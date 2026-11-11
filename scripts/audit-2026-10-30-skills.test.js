@@ -450,3 +450,17 @@ test('HK-20 skill site: the run-book template types no key name into a browser',
     assert.doesNotMatch(reach, /browser_type|browser_fill_form|--secrets|<secret>/, 'the browser KEY route');
     assert.match(flat(reach), /Credentials live in: .* - checked for presence, never printed/, 'the credentials line stays');
 });
+
+// 2026-11-10 (the user's report on 2.9.0, task-solve): 'There is no non-decision stop' read as 'every reply gets the ask
+// again', so a question at an open stop was answered with the ask re-sent. A reply that asks is no pick.
+test('2026-11-10: a reply that ASKS at a stop is answered, the stop stays open', () =>
+{
+    for (const name of ['task-solve', 'issue-diagnoser'])
+    {
+        const text = flat(skill(name));
+        assert.ok(text.includes('A reply that ASKS is no pick: answer it and end the turn - the stop stays open.'), name);
+        assert.ok(!text.includes('There is no non-decision stop'), name);
+        assert.ok(text.includes('A stop IS one AskUserQuestion call'), `${name}: the contract's marker stays`);
+    }
+    assert.ok(flat(skill('issue-diagnoser')).includes("An interrupted or declined ask is answered by RE-ASKING, once any question in it is answered, in the user's next turn, never by inference."));
+});

@@ -9,10 +9,12 @@
 // only when /alfred-code:update runs, so a hook WRITES the new path and READS the new path first, the old one second
 // (findState / findStats / planDirs) - for the rest of the 2.x line; the fallback goes in 3.0. LAYOUT_MOVES is the
 // move map the installer applies (scripts/install/docs.js migrateLayout). Only Node's own modules are required (fs, path,
-// os): the engines copy this file beside themselves (HOOK_ENGINES) and load it with no prelude.
+// os) plus ./workspace-file.js, the workspace record's one reader - itself an engine: the engines copy both beside
+// themselves (HOOK_ENGINES) and load them with no prelude.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const workspaceFile = require('./workspace-file.js');
 
 // The stack's setting ALFRED_CODE_<suffix>, '' read as unset (env-reader in meta/shared-rules.json pins the copies).
 function envOf(env, suffix)
@@ -266,77 +268,32 @@ function dataRootOf(root, { env = process.env } = {})
     return checked.ok ? checked.value : '.alfred';
 }
 
-const WS_CATEGORIES = ['skill', 'agent', 'rule', 'hook', 'plugin', 'env', 'mcp', 'secret', 'doc', 'instructions'];
-const WS_NAME = /^[A-Za-z0-9._-]+$/;
-const WS_PATH_NAME = /^[A-Za-z0-9._\/-]+$/;
-const wsSegmentsOk = (value) => value.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
-// One workspace line as { key, kind, value } - workspace.js parseLine's reading; an unknown line has no key.
-function wsLine(raw)
+// The workspace record a data-root folder holds, through the one reader: { file, state, view } - `view` the installer's
+// { parent, children, ignores }; a garbage or absent record reads as an empty view, and `file` is the path it was read from.
+function wsRead(dir)
 {
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) return { kind: 'comment' };
-    const [word, ...rest] = line.split(/\s+/);
-    // The text after the keyword and its separators, inner whitespace kept - parseLine's reading (R062): a child named
-    // `a  b` read as `a b` never matched its back-reference, so the hooks saw no chain for it.
-    const value = line.slice(word.length).replace(/^\s+/, '');
-    if (word === 'parent')
-    {
-        if (value === 'none') return { key: 'parent', kind: 'parent-none', raw: line };
-        if (/^\.\.(\/\.\.)*$/.test(value)) return { key: 'parent', kind: 'parent', value, raw: line };
-    }
-    else if (word === 'role')
-    {
-        if (value === 'root' || value === 'standalone') return { key: 'role', kind: 'role', value };
-    }
-    else if (word === 'above')
-    {
-        if (value === 'none' || /^\.\.(\/\.\.)*$/.test(value)) return { key: 'above', kind: 'above', value };
-    }
-    else if (word === 'child')
-    {
-        if (value !== '' && !value.startsWith('/') && !/[:\\]/.test(value) && wsSegmentsOk(value)) return { key: `child ${value}`, kind: 'child', value };
-    }
-    else if (word === 'ignore' && rest.length === 2)
-    {
-        const [category, name] = rest;
-        const fixed = (category === 'docs' || category === 'memory') && name === 'root';
-        const named = WS_CATEGORIES.includes(category) && (WS_NAME.test(name)
-            || ((category === 'doc' || category === 'instructions') && WS_PATH_NAME.test(name) && wsSegmentsOk(name)));
-        if (fixed || named) return { key: `ignore ${category} ${name}`, kind: 'ignore', category, name };
-    }
-    return { kind: 'unknown' };
+    const read = workspaceFile.readRecord(dir);
+    return { file: read.file, state: read.state, view: workspaceFile.viewOf(read.state === 'ok' ? read.record : workspaceFile.emptyRecord()) };
 }
-// A workspace file's view, { parent, children, ignores }: a BOM dropped, CRLF as LF, a repeated entry kept at its first
-// spelling (workspace.js parseWorkspace and viewOf); an unreadable or absent file is an empty view.
-function wsView(file)
-{
-    const view = { parent: null, children: [], ignores: [] };
-    let text = '';
-    try { if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) return view; text = fs.readFileSync(file, 'utf8'); } catch { return view; }
-    const seen = new Set();
-    for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n/))
-    {
-        const e = wsLine(raw);
-        if (!e.key || seen.has(e.key)) continue;
-        seen.add(e.key);
-        if (e.kind === 'parent') view.parent = e.value;
-        else if (e.kind === 'child') view.children.push(e.value);
-        else if (e.kind === 'ignore') view.ignores.push({ category: e.category, name: e.name });
-    }
-    return view;
-}
-const wsFile = (root, env) => path.join(root, ...dataRootOf(root, { env }).split('/'), 'workspace');
+const wsDir = (root, env) => path.join(root, ...dataRootOf(root, { env }).split('/'));
 const wsReal = (p) =>
 {
     try { return fs.realpathSync.native(p); }
     catch { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }
 };
-// workspace.js realKey: the real path, `/` separated, case-folded on darwin and win32.
-const wsKey = (p) =>
+// THE TREE KEY (workspace.js realKey is this): one spelling per folder for every compare of the folders the installer
+// and the hooks walk - the real path (macOS /tmp is /private/tmp, a Windows 8.3 name expanded), `/` separated, case-folded
+// where the disk folds case by default. A path that does not exist keys as its resolved spelling. The plugin listing's
+// projectPath is compared by another rule, the listing key (plugins.js projectKey): the CLI keeps that case.
+// path-key: the real path, '/' separated, case-folded on darwin, win32 and any drive-letter path - one rule for every folder compare (bug 5 of the complexity audit).
+function pathKey(p, platform = process.platform)
 {
-    const key = wsReal(p).split(path.sep).join('/');
-    return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
-};
+    const s = String(p);
+    const drive = /^[A-Za-z]:[\\/]/.test(s);
+    const real = drive ? path.win32.resolve(platform === 'win32' ? wsReal(s) : s) : wsReal(s);
+    const key = drive || platform === 'win32' ? real.replace(/\\/g, '/') : real.split(path.sep).join('/');
+    return drive || platform === 'win32' || platform === 'darwin' ? key.toLowerCase() : key;
+}
 const wsRel = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const wsIsDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 
@@ -350,17 +307,19 @@ function workspaceOn({ env = {}, projectRoot })
     return switchValueOn(ownLayers(projectRoot, env).values[SWITCH_KEY]);
 }
 
-// The project's own workspace file: its parent line and its ignore lines.
+// The project's own workspace record: its parent and its ignores.
 function ownWorkspace(projectRoot, { env = process.env } = {})
 {
-    const view = wsView(wsFile(wsReal(projectRoot), env));
+    const { view } = wsRead(wsDir(wsReal(projectRoot), env));
     return { parent: view.parent, ignores: view.ignores };
 }
 
-// The linked members above a project, nearest first: { members: [{ root, rel, dataRoot, ignores }], notes, ignores } -
-// `ignores` the project's own workspace file's, read once for the loader; `startData` the start's data root when the
-// caller already read it. A hop needs
-// a strict ancestor holding a stamp whose workspace file lists this folder as a child (workspace.js chain()). An
+// The linked members above a project, nearest first: { members: [{ root, rel, dataRoot, ignores }], notes, ignores, garbage } -
+// `ignores` the project's own workspace record's, read once for the loader; `garbage` each record the walk read as not
+// valid JSON, its file relative to the start, the start's own first (docs-session says each at session start); `startData`
+// the start's data root when the caller already read it. A hop needs
+// a strict ancestor holding a stamp whose workspace record lists this folder as a child (workspace.js chain()); a note
+// names the file the refused record was read from. An
 // ancestor's data root is read with the account alone, never the run's ALFRED_CODE_DATA_PATH. The kill switch is the
 // caller's to apply: this reads the chain whatever it says.
 function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startData } = {})
@@ -380,8 +339,9 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
     const notes = [];
     const seen = new Set([keyOf(start)]);
     let current = start;
-    let file = startData ? path.join(start, ...startData.split('/'), 'workspace') : wsFile(start, env);
-    let view = wsView(file);
+    const garbage = [];
+    let { file, state, view } = wsRead(startData ? path.join(start, ...startData.split('/')) : wsDir(start, env));
+    if (state === 'garbage') garbage.push(wsRel(start, file));
     const startIgnores = view.ignores;
     while (members.length < maxDepth && view.parent)
     {
@@ -394,8 +354,14 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
         if (!fs.existsSync(path.join(parent, '.claude', 'alfred-code.stamp'))) { refuse(`${label} holds no Alfred install`); break; }
         const parentData = dataRootOf(parent, { env: upEnv });
-        const parentFile = path.join(parent, ...parentData.split('/'), 'workspace');
-        const parentView = wsView(parentFile);
+        const { file: parentFile, state: parentState, view: parentView } = wsRead(path.join(parent, ...parentData.split('/')));
+        // A garbage parent record is named, never read as 'does not list this folder' - its children are unknown.
+        if (parentState === 'garbage')
+        {
+            garbage.push(wsRel(start, parentFile));
+            refuse(`${wsRel(start, parentFile)} is not valid JSON`);
+            break;
+        }
         if (!parentView.children.some((c) => keyOf(path.join(parent, ...c.split('/'))) === keyOf(current)))
         {
             refuse(`${label} does not list this folder as a child`);
@@ -409,7 +375,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         file = parentFile;
         view = parentView;
     }
-    return { members, notes, ignores: startIgnores };
+    return { members, notes, ignores: startIgnores, garbage };
 }
 
 // ---- the stack's variables (workspace roles and variables, D3 / D4) --------------------------------------------------
@@ -1148,8 +1114,8 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
-    PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey,
-    settingFrom, checkDataPath, dataRootOf, workspaceOn, wsLine, ownWorkspace, workspaceChain,
+    PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
+    settingFrom, checkDataPath, dataRootOf, workspaceOn, ownWorkspace, workspaceChain,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,

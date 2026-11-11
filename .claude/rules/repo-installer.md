@@ -127,7 +127,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     T2-03, 2026-10-21) (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). Audit 2026-10-11 added
     configure step 1's `update-preflight.js --inventory` table (proof: its `total:` line) with its closing ask, which needs that
     call to have run, and - inside a typed init / configure / validate run that printed a banner - a gap in the `[step n/N`
-    numbers (voided at PostToolUse like the paste), each with its own valve. A walk that never ASKS gave it nothing to judge (2026-10-21: a real init run narrated
+    numbers (a note at PostToolUse since 2026-11-10, never a void), each with its own valve. A table the gate printed under its own call at PostToolUse Bash (`systemMessage`, five `if` handlers, `guard-layer-table:print`) is never voided (2026-11-10). A walk that never ASKS gave it nothing to judge (2026-10-21: a real init run narrated
     the hooks table and moved on, and rendered the plugins table through `node -e`), so it also rides PreToolUse `Bash`
     behind `if: Bash(node *)` and judges the walk's NEXT step - a `stack-select.js`, `plugin-settings.js` or installer
     call - inside a typed init / configure run: denied while the latest `--table` has no answered ask after it (a re-run
@@ -220,7 +220,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `install/json-file.js` (`parseJson` / `readJson`; the scripts that read the same files - `stack-select.js`, `plugin-settings.js`,
   `analyze-usage.js`, `library-check.js`, `audit-install.js`, `hud-statusline.js`, `agents-md-check.js` - use it too, and all run from
   the whole tree, so it ships beside them): a leading BOM is stripped, and anything else wrong - a BOM plus
-  garbage included - still throws, so it is still unreadable. A BOM'd `.mcp.json` read as empty before (a bare
+  garbage included - still throws, so it is still unreadable. Every installer WRITE of such a file goes back through the
+  same module's `formatOf` / `stringifyLike`, handed the text it read (BOM included - a reader that strips it hands it back,
+  as `memory-dir.js readLocal` does): its BOM, line ends and indent kept, a file with no indented line written with two
+  spaces (bug 4 of the complexity audit, 2026-11-10 - seventeen writers re-laid out a CRLF or 4-space settings.json), and so
+  do the two init scripts that write a person's settings file, `plugin-settings.js` and `hud-statusline.js`;
+  `install-json-shape.test.js` fails an indented `JSON.stringify` write in `scripts/install/` or those two. Claude Code's own
+  `claude plugin install` still re-lays out a settings file it writes `enabledPlugins` into (probed 2.1.322). A BOM'd `.mcp.json` read as empty before (a bare
   `JSON.parse`), and once `keepMcpOrder` kept the BOM every update dropped a pick and its `enabledMcpjsonServers` entry
   (matrix F-BOM, 2.1.6); a new reader of such a file uses the helper, never a bare parse. At project scope, after the retire step's `claude mcp remove` writes `.mcp.json`, the file gets its own bytes back when
   its content did not change, and otherwise keeps its BOM, line ending, indent and key order and every top-level key
@@ -228,11 +234,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 - **Workspace layering (2026-10-26, on by default from 3.0.0).** A project installed inside an installed folder can join it as a CHILD: it takes the parent's set and
   the variables it reads through the chain, adds its own picks and can ignore any inherited item. Every project has a
-  ROLE - `role root|standalone` in its file, or a `parent` line (`roleOf`; no line reads `standalone (no role recorded)`) - and
-  `above <rel>|none` records the tree it was asked against, so the role ask (`roleAsk`) comes back only when that
+  ROLE - `role` (`root` | `standalone`) in its record, or a `parent` (`roleOf`; neither reads `standalone (no role
+  recorded)`) - and `above` (a `..` run or `none`) records the tree it was asked against, so the role ask (`roleAsk`) comes back only when that
   changes: init asks it before screen A, configure offers it in the Environment area, and update's preflight prints
-  `workspace: role-ask <case> <rel>` for the walk to ask. The record is `<data root>/workspace` (`repo-memory-data.md`)
-  - `parent <rel>` here and `child <rel>` in the parent; a parent counts only while its `child` line points back (hop
+  `workspace: role-ask <case> <rel>` for the walk to ask. The record is `<data root>/workspace.json`, read
+  through `stack/hooks/workspace-file.js` (`repo-memory-data.md`) - `parent` here and a `children` entry in the parent;
+  a parent counts only while its `children` entry points back (hop
   rule N1, `install/workspace.js chain`), and the walk stops at depth 8. The installer touches it at TWO points:
   `workspace.prepare` before the run reads its own set (the parent's lines from `--parent-plan`, or from the parent's own
   `update --installed-only --print-plan`; any doubt - a failed or blind read-back, a plan from another folder - leaves
@@ -241,7 +248,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the rest from each member's `.variables` at load, never `MEMBER_NEVER` (the docs mode, the switch) nor a member's
   whole-hook `HOOKS_OFF` entry, and a 2.12 child's copies still at their ledger hash go - and `workspaceStep` after the settings pass -
   the `claudeMdExcludes` rows for every stamped folder above (linked or not) in `settings.local.json`, ledgered as array
-  members, and the stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits; in a linked
+  members - and, after the stamp, `refreshBelow` (2026-11-10: a child installed before its root, or a rule the root
+  added later, loaded the root's rules twice until its own next run) writes the same rows into every stamped project
+  below whose own switch is on (depth 5, `RESCAN_SKIP`, no link followed), against that project's own ledger under its
+  `workspace.lock`: only that array moves, the rest of its `managed-settings` line re-renders byte for byte through
+  `stamp.settingsLine`, a failed stamp write puts the settings file back, `--print-plan` never reaches it - and the
+  stamp's `own-picks:` / `own-env:` lines that tell a child's own from what it inherits; in a linked
   child it syncs `permissions.additionalDirectories` to the ancestor docs roots (none past an `ignore docs root` here or
   in a nearer member) and `permissions.deny` to an `Edit(//<path>/**)` row over each of them and over every member's
   memory folder that is not the child's own (`ancestorAccess`, `editDenyRule`, `//c/...` on Windows; release 3 - such a

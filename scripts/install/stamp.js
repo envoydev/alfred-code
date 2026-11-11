@@ -162,6 +162,13 @@ const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
 const validServerName = (name) => typeof name === 'string' && SERVER_NAME.test(name);
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });
 
+// The `managed-settings` line's value: every settings row of both settings files, `<file>:<row>=<hash>`. renderLedger writes
+// it, and workspace.js refreshBelow re-renders a child's line through it, so the two never spell a row apart.
+function settingsLine(settings)
+{
+    return Object.entries(settings || {}).flatMap(([file, keys]) => Object.entries(keys || {}).map(([n, h]) => `${file}:${n}=${h}`)).join(',');
+}
+
 function renderLedger(ledger)
 {
     const { env = {}, deny = [], hooks = [], mcp = {}, mcpAt = {}, files = {}, settings = {}, account = {}, workspaceMcp = {}, workspaceWrap = {} } = ledger;
@@ -176,7 +183,7 @@ function renderLedger(ledger)
         `managed-hooks: ${hooks.map((h) => `${h.file}:${h.hook}:${h.id}`).join(',')}`,
         `managed-mcp: ${[...pairs(mcp), ...Object.entries(mcpAt || {}).flatMap(([scope, map]) => pairs(map).map((kv) => `${scope}:${kv}`))].join(',')}`,
         `managed-files: ${pairs(files).join(',')}`,
-        `managed-settings: ${Object.entries(settings || {}).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
+        `managed-settings: ${settingsLine(settings)}`,
         ...optional,
     ];
 }
@@ -761,7 +768,7 @@ function markInitialised(claudeDir, now = new Date())
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
-    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
+    readPicked, readLibrary, readLedger, renderLedger, settingsLine, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS, readMemoryLift, readUntrackTold,
 };

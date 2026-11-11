@@ -2698,7 +2698,10 @@ test('the ledgers are read from the bundle by default and a flag wins', (t) => {
   assert.match(md, /^\| Hook ledger \| joined \(1 rows\) \|$/m);
   // none anywhere
   fs.rmSync(path.join(b.out, 'data'), { recursive: true, force: true });
-  assert.strictEqual(ledgersRow(analyzeBundle(b, ['--report-md'])), '| Ledgers read | tool-usage: none found; hook-blocks: none found |');
+  // AC-9 (2026-11-10): an absent tool-usage ledger says why - the instrument records only when switched on
+  md = analyzeBundle(b, ['--report-md']);
+  assert.strictEqual(ledgersRow(md), '| Ledgers read | tool-usage: none found (records only with ALFRED_CODE_INSTRUMENT=1, default 0); hook-blocks: none found |');
+  assert.match(md, /^\| Hook ledger \| absent - identity attribution unavailable, not inferred; the tool-usage ledger records only with ALFRED_CODE_INSTRUMENT=1 \(default 0\) \|$/m);
 });
 
 test('the stamp falls back to the bundle\'s context/ copy', (t) => {

@@ -68,13 +68,14 @@ Gather the evidence <inline | through the seats>: <what settles it - one grep, o
 
 The mark moves to the seats when the evidence is BIG or MANY (a multi-megabyte log, a CI dump,
 three sources to correlate): the whole point of that seat is that the raw volume never lands in
-this context. An interrupted or declined ask is answered by RE-ASKING, never by inference.
+this context. An interrupted or declined ask is answered by RE-ASKING, once any question in it is
+answered, in the user's next turn, never by inference.
 
 ## The stop contract
 
 A stop IS one AskUserQuestion call: report one line of result and the artifact path, then put
 the next move through the AskUserQuestion tool - EVERY stop, the plain step-done ones included.
-There is no non-decision stop: 'what happens next' is itself the decision. The options are
+A reply that ASKS is no pick: answer it and end the turn - the stop stays open. The options are
 concrete - the next step named, the route-back where a step surfaced gaps, the fresh-session
 resume on a long run - the recommendation marked per that stop's own rule, free text always
 available via the built-in Other. Where the harness has no such tool, list the same options in

@@ -800,7 +800,9 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
   const approve = [{ question: 'The plan is gated. Build it in this session: one chat fits.', options: [
     { label: 'Approve - build in this session (Recommended)', description: 'x' }, { label: 'Approve - dispatch the agent seats', description: 'y' },
     { label: 'Not yet - changes needed', description: 'z' }] }];
-  assert.match(note('rc-approve', [marker, ...answered('u2'), assistantRow('a', fields)], approve), /mechanics: read/);
+  // (2026-11-10: a stop counts only after the flow moved since the last answer - here task-design wrote the plan)
+  const designRun = { type: 'assistant', message: { id: 'td', content: [{ type: 'tool_use', id: 'td1', name: 'Skill', input: { skill: 'alfred-code:task-design' } }] } };
+  assert.match(note('rc-approve', [marker, ...answered('u2'), designRun, assistantRow('a', fields)], approve), /mechanics: read/);
   assert.equal(note('rc-approve-ok', [marker, ...answered('u3'), assistantRow('a', fields.replace('spec at', 'mechanics: read; plan at'))], approve), '');
   // a09fc7d6#3 (audit 2026-10-20): the approval after this cycle's task-verify-plan run quotes the gate's `Passes:` line
   const gateRun = { type: 'assistant', message: { id: 'vp', content: [{ type: 'tool_use', id: 'vp1', name: 'Skill', input: { skill: 'alfred-code:task-verify-plan' } }] } };
@@ -821,7 +823,8 @@ test('guard-stop-contract: a solve-task stop that owes a receipt is told which o
   // a6a24815: the cross close report with no `ceilings:`
   const cross = typed('<command-name>/task-solve-cross</command-name>');
   const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nnotes purged: none`;
-  assert.match(note('rc-cross', [cross, ...answered('u8'), assistantRow('a', report)], goOn), /ceilings:/);
+  const seat = { type: 'assistant', message: { id: 'sd', content: [{ type: 'tool_use', id: 'sd1', name: 'Agent', input: { subagent_type: 'alfred-code:integration-reviewer', prompt: 'gate' } }] } };
+  assert.match(note('rc-cross', [cross, ...answered('u8'), seat, assistantRow('a', report)], goOn), /ceilings:/);
   assert.equal(note('rc-cross-ok', [cross, ...answered('u9'), assistantRow('a', `${report}\nceilings: none`)], goOn), '');
   assert.equal(note('rc-noflow', [typed('fix the typo'), assistantRow('a', 'hello')], approve), '', 'a session that never ran the flow owes nothing');
 });
@@ -1554,4 +1557,62 @@ test('guard-stop-contract (final review M3): a measured figure is replaced to it
   const suites = updOf(askIn(hot, [{ question: 'I measured 3 suites before. Resume or stay?', options: opts }]));
   assert.match(suites.questions[0].question, /^I measured 3 suites before\. Resume or stay\?$/, 'a count of suites is no token figure');
   assert.match(suites.questions[0].options[0].description, /Measured now:/, 'the fresh figure goes on the option instead');
+});
+
+// 2026-11-10: past the trigger, a question the user put at an open ask is answered first - the fresh-session offer waits
+// for the next clean close with no open question (the user's report on 2.9.0: the offer rode every answer).
+test('guard-stop-contract: the fresh-session offer waits while the user\'s question at an open ask is answered', () => {
+  const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: [{ question: 'Which follow-up?', options: [{ label: 'The cache fix (Recommended)', description: 'x' }, { label: 'The docs pass', description: 'y' }] }] } }] } });
+  const ans = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Your questions have been answered: "Which follow-up?"="${text}". You can now continue with these answers in mind.` }] }, toolUseResult: { answers: { 'Which follow-up?': text } } });
+  const statement = 'There are two issues: the stale cache read in the loader and the missing regression test for it.';
+  const rows = (name, text) => [assistantRow(`${name}-floor`, 'the first turn of this session', { cache_creation_input_tokens: 20000 }), ask(`${name}-q`), ans(`${name}-q`, text),
+    assistantRow(name, statement, { cache_read_input_tokens: 500000 })];
+  const dir = fs.mkdtempSync(path.join(TMP, 'log-'));
+  const asked = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'uq-fresh-1', transcript_path: transcript('uq-fresh-1', rows('uq-fresh-1', 'Tell me what issues you have found here?')), background_tasks: [] },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: dir } });
+  assert.equal(asked.status, 0, asked.stderr);
+  assert.match(fs.readFileSync(path.join(dir, 'guard-stop-contract.log'), 'utf8'), /fresh-session offer deferred/);
+  const picked = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'uq-fresh-2', transcript_path: transcript('uq-fresh-2', rows('uq-fresh-2', 'The docs pass')), background_tasks: [] }, { env: logEnv() });
+  assert.equal(picked.status, 2, 'no open question: the offer is made');
+});
+
+// 2026-11-10 (the user's report on 2.9.0, task-solve): the stop's ask was rejected, the user typed a question, and the same
+// ask came back with the three-field note and a `Repro:` note, though no step had run since. The notes speak only on a turn
+// where the flow moved since the last answer or rejection: a step Skill call, a new marker or a source edit.
+test('guard-stop-contract: no stop-field notes on a turn where no step advanced since the last answer', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: oneQ } }], usage: { cache_read_input_tokens: 900 } } });
+  const answered = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Which next?"="Continue (Recommended)". You can now continue with these answers in mind.' }] } });
+  const rejected = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true,
+    content: "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed." }] } });
+  const step = (id, skill) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'Skill', input: { skill } }], usage: { cache_read_input_tokens: 900 } } });
+  const design = assistantRow('nd-1', 'Design done.', { cache_read_input_tokens: 900 });
+  assert.equal(ctxOf(askIn(transcript('nostep-answered', [marker, design, ask('a1'), answered('a1'), assistantRow('nd-2', 'Both options cost one file.', { cache_read_input_tokens: 900 })]), oneQ)), '',
+    'an answered ask, then nothing advanced: no field note');
+  // the report's path: a step ran, its stop was rejected, the user typed a question, and the ask went out again - the re-ask
+  // deny spends its once, so the second send reaches the notes
+  const env = logEnv();
+  const report = transcript('nostep-report', [marker, step('s1', 'alfred-code:task-design'), design, ask('a2'), rejected('a2'),
+    typed('Why do you keep asking about next work?'), assistantRow('nd-3', 'Because the design stop is still open.', { cache_read_input_tokens: 900 })]);
+  const first = askIn(report, oneQ, env);
+  assert.equal(ctxOf(first), undefined, 'the first re-send is the re-ask deny');
+  assert.match(first.stdout, /"permissionDecision":"deny"/);
+  assert.equal(ctxOf(askIn(report, oneQ, env)), '', 'the valve send carries no field note');
+  assert.match(ctxOf(askIn(transcript('step-after', [marker, design, ask('a3'), answered('a3'), step('s2', 'task-verify-plan'), assistantRow('nd-4', 'The plan passes.', { cache_read_input_tokens: 900 })]), oneQ)),
+    /THREE named fields/, 'a step Skill call after the answer: the note');
+  assert.match(ctxOf(askIn(transcript('first-stop', [marker, design]), oneQ)), /`Size: /, "a cycle's first stop still owes its Size line");
+});
+
+test('guard-stop-contract: a plan read whole with its Repro section and a Completed line owes no Repro note', () => {
+  const marker = { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } };
+  const read = (id, body) => [
+    { type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: '/p/.alfred/docs/plans/2026-11-10-cache.md' } }], usage: { cache_read_input_tokens: 900 } } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: body }] } },
+  ];
+  const open = '1→# Cache fix\n2→## Repro\n3→the stale read returns the old value\n';
+  const done = assistantRow('rp-1', 'Read the plan.', { cache_read_input_tokens: 900 });
+  assert.match(ctxOf(askIn(transcript('repro-open', [marker, ...read('r1', open), done]), oneQ)), /no `Repro:` line/, 'an open bug plan still owes it');
+  assert.doesNotMatch(ctxOf(askIn(transcript('repro-closed', [marker, ...read('r2', `${open}4→Completed: 2026-11-09\n`), done]), oneQ)), /no `Repro:` line/, 'a closed one does not');
+  assert.doesNotMatch(ctxOf(askIn(transcript('repro-closed-bold', [marker, ...read('r3', `${open}4→**Completed:** 2026-11-09\n`), done]), oneQ)), /no `Repro:` line/, 'the bold spelling too');
 });

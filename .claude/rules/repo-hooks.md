@@ -559,7 +559,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live
     value; a key that names a key, `signingkey` or `publicKeyToken`, holds none, nor does a field named exactly `key` unless
     its value is credential-shaped (a Confluence `space.key` of `SD`, a Jira `customfield_10010` - 2.1.7), and neither does a file path, a switch
-    or a template reference). The 2.1.6 concerns round read every other format a credential ships in, the same way:
+    or a template reference). A mode word - exactly `token`, `oauth` or `optional-token`, case-sensitive (`MODE_WORDS`) -
+    says how a server authenticates, never a credential, under any key (SG1 D1: a companion catalog's `auth` field was
+    refused). A `Bearer <token>` under ANY key is judged by its token alone, read with RFC 6750 section 2.1's b64token
+    grammar (`[A-Za-z0-9-._~+/]+=*`): a known shape, or a credential-like token with no sample tell, is a credential and
+    the view masks only the token (`EMBEDDED_BEARER`; the space in the value had excused the whole value as a sample).
+    The 2.1.6 concerns round read every other format a credential ships in, the same way:
     YAML by indentation (a kubeconfig, gh's `hosts.yml`, a Kubernetes Secret's data, a compose environment list,
     bundler's host keys), XML (maven's `settings.xml`, a NuGet.Config's key/value pair, a web.config connection
     string, a publish profile), HCL (only a quoted value - `var.x` is an expression), properties and the `.cnf` /
@@ -625,7 +630,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked - its pattern read as ripgrep writes it (a
     leading `(?i)`, `\A` / `\z`; one JavaScript cannot compile matches every line), its walk breadth-first with dependency
     folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
-    entries (a stated ceiling). A path-qualified verb (`./tools/grep`,
+    entries (a stated ceiling). A FIND that hands its files to a reader (AC-2R, the owner's ruling of 2026-11-10) - an
+    `-exec` / `-execdir` / `-ok` action, a later `| xargs <print verb>` stage (a filter between counts), or `$(find ...)` as
+    a print verb's operand, no reducer (`grep -l`, `wc`) - is judged when a positive `-name` / `-path` pattern can match a
+    name on `CREDENTIAL_NAME_SAMPLES`, or one on `CREDENTIAL_NAMES_AIMED` (`.credentials.json`, `auth.json`, `hosts.yml`)
+    while matching none of `AIMED_DECOYS` (`*.json` matches every package.json, so it is not walked; a negated `-type` is
+    no type restriction - the final review's I2): `findCredentialFile` walks it in the Grep walk's order (`.git` and `node_modules`
+    last, not skipped; a `-o` / `-regex` find keeps only its depth and type tests), and a match holding a credential blocks
+    (`find-reader`), as does a walk past the same three ceilings - fail CLOSED there (`find-reader-unjudged`); a test
+    preload lowers them through `global.FIND_WALK_LIMITS`. A listing, a reducer and a pattern naming no listed file pass
+    (`find . -name '*.js' | xargs grep foo`); a loop, `xargs -a` and a find with no name test are stated limits. SG1 D7:
+    an `ls` listing fed on (`ls -a d | xargs -I{} cat d/{}`) is judged as a depth-1 find of its folder - a dot-name only
+    under `-a` / `-A` / `--all`, a walk past a ceiling passing - and a runtime's path BUILT with `join` / `resolve` /
+    `joinpath` / `Path(...)`, `/` or `+` from literals (a `path` alias of `require('path')` too, a folder name bound to a
+    literal joined) is a candidate like the spelled one, its literals paired in order (`scriptLiterals`). A path-qualified verb (`./tools/grep`,
     `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
     (audit 2026-10-08, replayed) - and is piped unprobed, as is a walk naming a program-running option (`--pre`, `--hostname-bin`,
     ugrep's `--filter`, `--pager`, `--view`, `-Q`, a config file; audit 2026-10-20 H1). Audit 2026-10-10 (C12): a word's inner quotes count
@@ -708,29 +726,45 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     becomes the redacted view with every value masked; the stream masker reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw), so the probe finds it
-    and the stage is piped. A shell command NAMING it is refused unless it only looks
-    (`test`, `[`, `ls`, `stat`, `wc`, the PowerShell `Test-Path` / `Get-Item` / `Get-ChildItem`; and since the 2026-10-17 usage
-    audit, as the LAST stage of its pipe only - a name printed into `| xargs cat` is a read - git's `check-ignore` / `check-attr`
-    / `ls-files` / `status`, a count-only, quiet or list grep or another `isReducer` stage, an `echo` / `printf` naming it with
-    no substitution and no redirect onto it, and a data heredoc's body, which is text the command writes) or runs the guard itself -
-    a `source`, a `cp`, a `git add` or an `rm` would carry the values somewhere the chat can read (`refuseSensitiveMention`,
-    probed: `source` then `echo` and a `cp` then `cat` both leaked before it) - named also as the shell would spell it
-    (audit 2026-10-14 HK11: `source .alfred/.sens*`, `git add -f .alfred/.sens*`, `--env-file`, `tar cf - .alfred | tar xOf -`
-    passed): quoted spans joined, each operand of the steps the shell runs resolved through the dump judge's own resolver
-    (globs, braces, list variables, a `cd`) to its real path - the store itself, or on an archive / `git add` / recursive copy
-    verb a folder holding it directly - at EVERY anchor the operand exists at (2.8.0: the project dir's own `.alfred`, listed
-    before the cwd, hid a nested cwd's store from `tar cf - .alfred`). A verb that takes a TREE whole - an archive being created, a recursive copy's source
+    and the stage is piped. A shell command is refused for what it READS of the store, never for naming it (SG1 rule 1,
+    D6; `refuseSensitiveMention`'s `judgeStage`) - a `source`, a `cp`, a `git add` or an `rm` would carry the values
+    somewhere the chat can read (probed: `source` then `echo` and a `cp` then `cat` both leaked before it). An operand of
+    the steps the shell runs is refused when the dump judge's own resolver (globs, braces, list variables, a `cd`) takes it
+    to the store itself, or on an archive / `git add` / recursive copy verb to a folder holding it directly, at EVERY anchor
+    the operand exists at (2.8.0: the project dir's own `.alfred`, listed before the cwd, hid a nested cwd's store from
+    `tar cf - .alfred`; audit 2026-10-14 HK11's `source .alfred/.sens*`, `git add -f .alfred/.sens*`, `--env-file` and
+    `tar cf - .alfred | tar xOf -` resolve the same way) - and, resolvable or not, when its text names the store
+    (`.sensitive-data` anywhere, `.secrets` behind its data root - `"$(pwd)/.alfred/.secrets"`, `$R/...` - or bare in a
+    pipe a stage of which names the data root), a `NAME=value` or `@file` word's value being an operand
+    (`DOTENV_CONFIG_PATH=`, `dd if=`, curl's `-F file=@`), or when it is a substitution whose body names it. THE FEEDER
+    RULE: a stage naming the store anywhere is refused when a later stage of its pipe runs what it prints - `xargs`,
+    `parallel`, a `while read` loop, a shell reading stdin, `source /dev/stdin` (`ls -a .alfred | grep .secrets | xargs
+    cat`) - looks included. TEXT is no operand (`textPositions`): a grep, `git grep` or rg pattern and a value option's
+    value (a `-f` / `--file` value stays an operand; `grepArgs` and `rgOperands` record both), a git `-m` / `--message`
+    value on commit, merge, tag, stash and notes and a `--grep` / `-S` / `-G` value on the log family, and an `echo` /
+    `printf` word but a redirect and its target; nor is an exclusion's value. The dump judge takes a grep stage's operands
+    and `-f` values as its candidates, never its pattern (`grepCandidates`: a grep for the store's name had become the
+    store's masked view). A look passes (`sensitiveLooks`: `test`, `[`, `ls`, `stat`, `wc`, the PowerShell `Test-Path` /
+    `Get-Item` / `Get-ChildItem`; as the LAST stage of its pipe only, git's `check-ignore` / `check-attr` / `ls-files` /
+    `status`, a count-only, quiet or list grep or another `isReducer` stage), and so do a data heredoc's body and the
+    guard's own runs; a shell's `-c` string and a heredoc a shell runs are commands. RULE 4: runtime code naming the store
+    or an engine - a runtime heredoc body, a runtime's `-e` / `-c` / `-p` / `--eval` / `--print` string, an awk or sed
+    program - is refused before any rewrite, with the hint that editing text that names the file is the Edit or Write
+    tool's (`refuseRuntimeMention`; a script's `open('<path>', 'r')` is no path a resolver follows). A verb that takes a TREE whole - an archive being created, a recursive copy's source
     (not its destination), a forced `git add` - is refused on any folder above the store too, unless the command excludes
     the store or a folder on its way (`--exclude`, zip's `-x`, matched as globs); a tar or 7z extract and a copy into the
     project pass (deep hooks review 2026-10-16, the user's ruling: `cp -R . x` and `rsync -a ./ x` copied it and passed).
-    Final review 2026-10-25 C1: the name also counts as TEXT, between any two non-name characters - `.sensitive-data`
-    anywhere, `.secrets` behind its data root (`"$(pwd)/.alfred/.secrets"`, `$R/...`, a script's `open('<path>', 'r')`, which
-    no resolver follows) or bare in a pipe whose stages name the data root (`ls -a .alfred | grep .secrets | xargs ...`) -
-    and a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
+    Final review 2026-10-25 C1: a `find` handing what it finds to a reader (an `-exec` / `-ok` action, a pipe on, a `$(...)` around it) is refused
     when its walk reaches the store and a `-name` / `-path` test matches the store's name, or, from the data root itself,
     no name test narrows it; a `-maxdepth` short of the store passes. The word after a find test (`-name`, `-path`,
     `-wholename`, `-regex`, `-lname` and their `-i` forms) is a pattern, never a path the command opens (E-batch U24:
-    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). The same day the dump half took `$(pwd)` / a backtick
+    `-not -path './.alfred/*'` excluding the data root was refused as naming the store). A negated test (`-not` / `!`)
+    matching the store where the find PRINTS it - the path from its start as written for a path test, the basename for a
+    name test - excludes it (AC-1, 2026-11-10): the find judge skips that store, and the feeder rule skips that operand,
+    only when it excludes the store from EVERY start reaching it, and only in a plain conjunction (`liftable`, the final
+    review's I1): no `-o` / `-or` / `,` or parentheses, one negation word before the test (`! -not -path` is no exclusion),
+    no action (`-print`, `-exec`) before it that has already handed the file on, and no `$` or backtick in its pattern.
+    A start that does not print the pattern's path (`find .alfred -not -path './.alfred/<store>'`) excludes nothing. The same day the dump half took `$(pwd)` / a backtick
     `pwd` as `$PWD` and `$(git rev-parse --show-toplevel)` as the work tree above it (a walk up to `.git`, no git spawned), so
     `cat "$(pwd)/.env"` is the file it names and a print of the store through either prefix is masked like the literal
     path's; any other substitution (`$(whoami)/.env`) still leaves the token unjudged. Audit 2026-10-30 HK-04: `$PWD`
@@ -752,6 +786,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ignored, or tracked). No server gets a value: the stack ships none since 2.10.1 (the browser and mobile launchers that read the store
     left with them, and the line's 'type a KEY name in the browser' sentence after them - audit 2026-10-30 HK-20); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
     through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
+    THE KEY FILE (SG1 D2): a companion plugin's `.mcps-secrets` (`KEY_FILE`) is `sensitive` by name - every value a
+    credential - so a Read, a Grep and a dump of it are judged like the store's; an operand that reads or moves it
+    (resolved, or its last segment split on `/`, `\`, `=` or `@`) is refused with its own message, `--presence` alone
+    (`--with-sensitive` reads only the data-root store). It is no feeder subject, and script text naming it is judged like
+    text naming `.env` (the narrow pin). THE ENGINES (R9, SG1 rule 2): `secrets-run.js` and `secret-chain.js` - the MCP
+    launcher passes a server's stdout unmasked, the chain reader returns every value raw - are refused, pointed to
+    `--with-sensitive`, when a command RUNS one (its command word, a runner's script operand or `-r` preload, a
+    substitution there), moves or copies it (`cp`, `mv`, `ln`, `install`, `rsync`) or feeds it to a runner (a `<`
+    redirect, a pipe into a runner on stdin or `source /dev/stdin`, an `xargs` / `parallel` running one, a `while read`
+    loop whose body has one), a name bound earlier in the command counting (`refuseEngineMention`); a read of its source
+    (`cat`, `sed -n`, `git diff`) runs.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent|SendMessage`, `SubagentStart`, `SubagentStop`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without its plan's gate file (written on explicit approval or an AUTO waiver) -
     PER PLAN since 2.8.0 (spec Part 4, the user's ruling of 2026-10-20: two sessions on two plans shared one stamp): the brief

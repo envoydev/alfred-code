@@ -17,7 +17,7 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 ## 2. The plan - a script states it, never you
 
-`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
+`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "$TMP/repo"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
 
 - `machine: <what> - present | missing: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   `csharp-ls` when `csharp-lsp` is kept, `typescript-language-server` (with the TypeScript 6 it reads) when
@@ -25,7 +25,8 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
   layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.
 - `capture: capture-awareness <topic> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - one row per
   awareness part in its fixed order, each only when the install lists the skill AND the part's seat (`project`,
-  `related-projects` and `agents` have none, and run whenever the skill is installed - each decides from disk).
+  `related-projects` and `agents` have none, and run whenever the skill is installed - each decides from disk); a
+  workspace root with no repository of its own skips the two seat parts.
 - `auto-update: ask <key>` - Claude Code's auto-update for the stack's marketplace, which nothing on this account has
   answered yet; step 4 asks it. `auto-update: on|off for <key> (<where>)` and `auto-update: not asked - <why>` are said
   in one line and ask nothing.
@@ -164,7 +165,7 @@ too. Its one line goes in the card.
 and why), the modes, as `memory: <default | docs | custom> · navigation: <the stack's order | yours>`, step 4's `auto-update:` line, AGENTS.md (created, improved or skipped,
 with the check's last line), then the `initialised:` line. Then the
 user's own next steps as suggestions, each with its one reason: a restart when step 3 installed a language server
-binary; `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
+binary; `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` (the plugin root your command body shows - never read from the shell) as the durable copy. Close the card
 with this line, verbatim: 'Nothing is pending on this run - these are yours to run when you choose.'
 The line is CONDITIONAL: print it only when the card carries nothing OWED - a blocked item a
 kept plugin needs IS owed: name it and put the close through the ask instead

@@ -20,8 +20,9 @@ const SIGNAL_KINDS = ['packages', 'files', 'csprojContent', 'content'];
 // Inside git, the files git keeps - tracked, plus untracked it does not ignore - so an ignored tool cache (a
 // mutation-test sandbox, a CLI build cache, a browser profile) is never read as a module (audit 2026-10-10,
 // session f10cb06a); the skip-list and the depth cap hold either way. Outside git, or where git lists nothing
-// (an ignored root), the folder walk.
-function walk(root)
+// (an ignored root), the folder walk. `nested`, when given, collects each folder below the root holding a `.git` entry
+// (a repo of its own, file or folder) the folder walk read into - git's own listing never enters one.
+function walk(root, nested = null)
 {
     const r = rt.spawnCommand('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
         { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
@@ -41,6 +42,7 @@ function walk(root)
         let entries;
         try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
         catch { return; }
+        if (nested && depth > 0 && entries.some(e => e.name === '.git')) nested.push(relPosix(root, dir));
         for (const e of entries)
         {
             if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) rec(path.join(dir, e.name), depth + 1); }
@@ -133,9 +135,9 @@ function safeRegex(source, where)
     catch (e) { console.error(`scan-evidence: skipping ${where} - invalid regex /${source}/ (${e.message})`); return null; }
 }
 
-function scan(root, catalog)
+function scan(root, catalog, nested = null)
 {
-    const files = walk(root);
+    const files = walk(root, nested);
     const packages = collectPackages(root, files);
     const dotnetManifests = files.filter(isDotnetManifest);
 
@@ -459,19 +461,54 @@ function orientationMain(argv, arg)
     process.stdout.write(`wrote ${out} (${Buffer.byteLength(doc)} bytes):\n\n${doc}`);
 }
 
+// 2026-11-10 (the user's report on 3.9.2): a shell cwd drifted above the project made `--root .` read another project's
+// manifests with no word of it. The scan names the root it read, and warns when it sits below a repo's top or read into
+// a nested repo (not in a workspace root, whose child projects are its own to read). Both paths are compared real and
+// '/'-separated, case-folded on Windows - Git for Windows prints `C:/...`.
+const realOf = (p) => { let r = p; try { r = fs.realpathSync.native(p); } catch { /* as given */ } return r; };
+const samePath = (a, b) =>
+{
+    const norm = (p) => { const r = realOf(p).split(path.sep).join('/').replace(/\/+$/, ''); return process.platform === 'win32' ? r.toLowerCase() : r; };
+    return norm(a) === norm(b);
+};
+function isWorkspaceRoot(root)
+{
+    try
+    {
+        const { view } = require('./install/workspace.js').readWorkspace(root, { env: process.env });
+        return view.role === 'root' || (view.children || []).length > 0;
+    }
+    catch { return false; }
+}
+// `role` is init's answer to the role ask (`--role root`): init writes the role at its install step, after this scan, so a
+// first-time Root answer is not on disk yet (final review 2026-11-10, Important 2).
+function rootLines(root, nested, role = '')
+{
+    const real = realOf(root);
+    const lines = [`root: ${real}`];
+    const r = rt.spawnCommand('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const top = r && r.status === 0 ? String(r.stdout || '').trim() : '';
+    if (top && !samePath(top, root)) lines.push(`!! scan-evidence: ${real} is below the repo ${top} - is --root the project?`);
+    if (nested.length && role !== 'root' && !isWorkspaceRoot(root))
+        lines.push(`!! scan-evidence: signals from nested repos ${nested.join(', ')} - each is its own project; check --root`);
+    return lines;
+}
+
 function main(argv)
 {
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
     if (argv.includes('--orientation')) return orientationMain(argv, arg);
     const root = arg('--root');
     const catalogPath = arg('--catalog');
-    if (!root || !catalogPath) { console.error('usage: scan-evidence.js --root <project> --catalog <evidence.json> [--out <file>] | --orientation --root <project> [--out <file>]'); process.exit(2); }
+    if (!root || !catalogPath) { console.error('usage: scan-evidence.js --root <project> --catalog <evidence.json> [--out <file>] [--role root] | --orientation --root <project> [--out <file>]'); process.exit(2); }
     let catalog;
     try { catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); }
     catch (e) { console.error(`scan-evidence: cannot read catalog ${catalogPath}: ${e.code || e.message}`); process.exit(1); }
     if (!fs.existsSync(root)) { console.error(`scan-evidence: no such root ${root}`); process.exit(1); }
 
-    const payload = { found: scan(root, catalog) };
+    const nested = [];
+    const payload = { found: scan(root, catalog, nested) };
+    const said = rootLines(root, nested, arg('--role') || '');
     const judgmentPath = arg('--judgment');
     if (judgmentPath)
     {
@@ -483,8 +520,9 @@ function main(argv)
 
     const result = JSON.stringify(payload, null, 2);
     const out = arg('--out');
-    if (out) fs.writeFileSync(out, result);
-    else process.stdout.write(result + '\n');
+    // With --out the JSON goes to the file and the root lines to stdout; without it stdout stays the JSON alone.
+    if (out) { fs.writeFileSync(out, result); process.stdout.write(said.join('\n') + '\n'); }
+    else { process.stdout.write(result + '\n'); process.stderr.write(said.join('\n') + '\n'); }
 }
 
 module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };

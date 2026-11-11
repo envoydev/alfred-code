@@ -27,7 +27,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { parseJson } = require('./install/json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./install/json-file.js');
 
 // Strict, like hud-statusline.js: an argument this script does not know, a value flag with no value
 // or a flag given twice throws - never read as absent, which would apply to ~/.claude or to every
@@ -64,11 +64,11 @@ function readDoc(file)
     let text;
     try { text = fs.readFileSync(file, 'utf8'); }
     catch { return { exists: false, doc: null }; }
-    if (!text.trim()) return { exists: true, doc: {} };
+    if (!text.trim()) return { exists: true, doc: {}, text };
     try
     {
         const doc = parseJson(text);
-        return doc && typeof doc === 'object' && !Array.isArray(doc) ? { exists: true, doc } : { exists: true, bad: true };
+        return doc && typeof doc === 'object' && !Array.isArray(doc) ? { exists: true, doc, text } : { exists: true, bad: true };
     }
     catch { return { exists: true, bad: true }; }
 }
@@ -205,12 +205,12 @@ function applyTargets(targets, replace, run = {})
     const backup = account ? backupOnce(account[0].absolute, run) : null;
     for (const [t, toWrite] of writes)
     {
-        const { doc: found, bad } = readDoc(t.absolute);
+        const { doc: found, bad, text } = readDoc(t.absolute);
         if (bad) continue;
         const doc = found || {};
         for (const r of toWrite) setLeaf(doc, r.key, r.want);
         fs.mkdirSync(path.dirname(t.absolute), { recursive: true });
-        fs.writeFileSync(t.absolute, JSON.stringify(doc, null, 2) + '\n');
+        fs.writeFileSync(t.absolute, stringifyLike(doc, formatOf(text)));
         written++;
         changed += toWrite.length;
     }

@@ -16,7 +16,7 @@ The labels are the `ask:` lines' as printed, in their order. The words: Child of
 values and adds its own picks; Standalone - an install of its own, asked again only when the folders around it change;
 Root - an install of its own that projects below can join. Unattended, take the first.
 
-- **Child of `<rel>`** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/init-child.md` now: the child install's
+- **Child of `<rel>`** - read `$TMP/repo/setup-plugin/references/init-child.md` now: the child install's
   changes to every step, its scope ask among them. Its join runs `role --answer child` before the install call.
 - **Standalone** or **Root** - every step runs as `init-install.md` writes it. In the call before the install (step 10),
   run `node "$TMP/repo/scripts/workspace.js" role --root . --answer <standalone|root>`, with `--data-path <folder>`

@@ -1017,3 +1017,118 @@ test('fn-8: gh repo view and gh api user are remote reads', () => {
     assert.doesNotMatch(ask(ran(command), merged), /This ask named (?:remote or job|git) state/, command);
   assert.match(ask(ran('git status --short'), merged), /no remote-aware read in this turn/, 'a local read still draws the note');
 });
+
+// 2026-11-10 (the user's report on 2.9.0, task-solve): a stop's ask was met with a QUESTION - typed into Other ('Tell me what
+// issues you have found here?'), given with a rejection, or typed after one - and every answer came back with the same
+// 'pick one' ask attached, then the Stop hook held a clarifying close as 'a decision-shaped question in prose'. A question
+// at an open ask is answered and the turn ends: a clarifying question back passes, an offer does not, the ask waits.
+{
+  const { runHook: runAs } = require('./hook-inprocess');
+  const ASK = (id) => call(id, 'AskUserQuestion', { questions: [{ question: 'Which follow-up?', options: [{ label: 'The cache fix (Recommended)', description: 'x' }, { label: 'The docs pass', description: 'y' }] }] });
+  const answered = (id, text) => result(id, `Your questions have been answered: "Which follow-up?"="${text}". You can now continue with these answers in mind.`, { answers: { 'Which follow-up?': text } });
+  const REJECT = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).";
+  const rejected = (id, said) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true,
+    content: said === undefined ? `${REJECT} STOP what you are doing and wait for the user to tell you how to proceed.` : `${REJECT} To tell you how to proceed, the user said:\n${said}` }] } });
+  const deniedAsk = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true,
+    content: 'PreToolUse:AskUserQuestion hook error: [node guard-stop-contract.js]: this ask was already put and the user answered it with a question.' }] } });
+  const edit = (id) => [call(id, 'Edit', { file_path: 'a.js', old_string: 'a', new_string: 'b' }), result(id, 'ok')];
+  const ANSWER = 'There are two issues: the stale cache read in the loader and the missing regression test for it.';
+  const CLARIFY = `${ANSWER}\n\nWhich of the two do you mean?`;
+  const OFFER = `${ANSWER}\n\nWant me to fix it?`;
+  const sidOf = () => `uq-${process.pid}-${++seq}`;
+  const stopAs = (sid, rows, text, env = {}) => runAs(path.basename(HOOK), { hook_event_name: 'Stop', session_id: sid, last_assistant_message: text,
+    transcript_path: transcript([...rows, say(`c${seq}`, text)]) }, { env: { ...logEnv(), ...env } });
+  const probes = (sid) => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.kind === 'discussion-close'); } catch { return []; } };
+  const opened = (text = 'Tell me what issues you have found here?') => [typed('/task-solve next'), ASK('q1'), answered('q1', text)];
+
+  test('question at an open ask: a read-only answer closing on a clarifying question passes, with a probe row', () => {
+    const sid = sidOf();
+    const r = stopAs(sid, [...opened(), ...work(4)], CLARIFY);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(probes(sid).length, 1, 'one discussion-close probe row');
+  });
+
+  test('question at an open ask: an offer is still held, and the hold says to end on the answer', () => {
+    const r = stopAs(sidOf(), [...opened(), ...work(4)], OFFER);
+    assert.strictEqual(r.status, 2);
+    assert.match(r.stderr, /you answered a question - end on the answer/);
+    assert.doesNotMatch(r.stderr, /AskUserQuestion/, 'no new ask this turn');
+  });
+
+  test('question at an open ask: a write after the answer keeps today\'s hold; one before the ask does not count', () => {
+    const held = stopAs(sidOf(), [...opened(), ...edit('e1'), ...work(4)], CLARIFY);
+    assert.strictEqual(held.status, 2);
+    assert.match(held.stderr, /AskUserQuestion/);
+    const sid = sidOf();
+    assert.strictEqual(stopAs(sid, [typed('/task-solve next'), ...edit('e2'), ASK('q1'), answered('q1', 'Tell me what issues you have found here?'), ...work(4)], CLARIFY).status, 0);
+  });
+
+  test('question at an open ask: what counts as a question, and what does not', () => {
+    assert.strictEqual(stopAs(sidOf(), [typed('/task-solve next'), ASK('q1'), rejected('q1', 'Tell me about issues'), ...work(4)], CLARIFY).status, 0, 'a rejection with a question');
+    for (const [rows, why] of [
+      [[typed('/task-solve next'), ASK('q1'), rejected('q1'), ...work(4)], 'a rejection with no text'],
+      [[typed('/task-solve next'), ASK('q1'), rejected('q1', 'Denied by user'), ...work(4)], "the harness's own 'Denied by user'"],
+      [[...opened('The docs pass'), ...work(4)], 'an Other answer equal to an offered label'],
+      [[...opened('can you fix the cache?'), ...work(4)], 'a request worded as a question'],
+      [[...opened('do the first one'), ...work(4)], 'an instruction'],
+    ]) {
+      const r = stopAs(sidOf(), rows, CLARIFY);
+      assert.strictEqual(r.status, 2, why);
+      assert.match(r.stderr, /AskUserQuestion/, why);
+    }
+    const plain = [typed('What issues did you find?'), ...work(4)];
+    assert.strictEqual(stopAs(sidOf(), plain, CLARIFY).status, stopAs(sidOf(), plain, CLARIFY, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' }).status,
+      'a typed question with no ask before it: unchanged');
+  });
+
+  test('question at an open ask: the report\'s step 5 - rejected with no text, then a typed question', () => {
+    const sid = sidOf();
+    const rows = [typed('/task-solve next'), ASK('q1'), rejected('q1'), typed('Why do you keep asking about next work?'), ...work(4)];
+    assert.strictEqual(stopAs(sid, rows, CLARIFY).status, 0);
+    assert.strictEqual(probes(sid).length, 1);
+    assert.strictEqual(stopAs(sidOf(), [...rows.slice(0, 4), typed('ok'), typed('Why do you keep asking?'), ...work(4)], CLARIFY).status, 2,
+      'two typed messages since the ask: no longer an open ask');
+  });
+
+  test('question at an open ask: inside the just-answered window too', () => {
+    const offer = stopAs(sidOf(), [...opened(), ...work(1)], OFFER);
+    assert.strictEqual(offer.status, 2, 'the 3-call window no longer lets the offer through');
+    assert.match(offer.stderr, /you answered a question - end on the answer/);
+    const sid = sidOf();
+    assert.strictEqual(stopAs(sid, [...opened(), ...work(1)], CLARIFY).status, 0);
+    assert.strictEqual(probes(sid).length, 1, 'the clarifying close writes its probe row');
+  });
+
+  test('question at an open ask: a hook-denied re-ask is skipped and the open one found', () => {
+    assert.strictEqual(stopAs(sidOf(), [...opened(), ...work(4), ASK('q2'), deniedAsk('q2')], CLARIFY).status, 0);
+  });
+
+  // Final review (2026-11-10, Important 1): the spec keeps today's hold for a turn that edited, ran a write or launched work -
+  // the question-turn text ('end on the answer, no new ask') is for a read-only answer alone.
+  test('question at an open ask: an offer after a write keeps today\'s hold, not the question-turn text', () => {
+    const r = stopAs(sidOf(), [...opened(), ...edit('e3'), ...work(4)], OFFER);
+    assert.strictEqual(r.status, 2);
+    assert.doesNotMatch(r.stderr, /you answered a question - end on the answer/, r.stderr);
+    assert.match(r.stderr, /AskUserQuestion/);
+  });
+
+  // Final review (Important 1, scenario D): an Other answer that is an INSTRUCTION settles the ask, so a question the user types
+  // after it is a question with no ask open - not userQuestion(). After an Other QUESTION, a typed one still is.
+  test('question at an open ask: a question typed after an Other instruction has no ask open', () => {
+    const sid = sidOf();
+    const rows = [...opened('Do the docs pass first instead'), ...edit('e4'), typed('Why did you change the loader?'), ...work(4)];
+    const offer = stopAs(sid, rows, OFFER);
+    assert.doesNotMatch(offer.stderr, /you answered a question - end on the answer/, offer.stderr);
+    stopAs(sid, rows, CLARIFY);
+    assert.strictEqual(probes(sid).length, 0, 'no discussion-close row: no ask is open');
+    const still = sidOf();
+    assert.strictEqual(stopAs(still, [...opened(), ...work(2), typed('And why is that one first?'), ...work(4)], CLARIFY).status, 0, 'after an Other question, a typed one is still the input');
+    assert.strictEqual(probes(still).length, 1);
+  });
+
+  test('question at an open ask: guard-stop-contract:question switches it off', () => {
+    const r = stopAs(sidOf(), [...opened(), ...work(4)], CLARIFY, { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' });
+    assert.strictEqual(r.status, 2);
+    assert.match(r.stderr, /AskUserQuestion/);
+  });
+}

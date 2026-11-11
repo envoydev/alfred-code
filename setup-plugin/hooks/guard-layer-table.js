@@ -25,7 +25,8 @@
 // not reset it), so a paste the transcript never shows cannot loop the walk. F27 (the fix run, live): Sonnet answered
 // six voids with the table in thinking only, so a paste void prints the table itself in the block reason the user sees,
 // and a re-ask of that table after such a void passes unpasted - one void per layer. Inside a typed init / configure / validate
-// run that has printed a step banner, a gap in the banner numbers voids the answer too, with its own valve of three.
+// run that has printed a step banner, a gap in the banner numbers is a note to the model in the run's own numbering
+// (2026-11-10: it voided an init answer with configure's '7/12' example), beside a void or alone - never a void itself.
 // `guard-layer-table:void` in ALFRED_CODE_HOOKS_OFF switches the void off. A tool_response with no answers object is no
 // shape this was measured on: no void.
 // PreToolUse (AskUserQuestion) keeps the checks that need no paste: a layer's own selection ask ('Agents: ...', 'Add to
@@ -54,6 +55,7 @@
 // like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the install walk before any
 // install record exists - and such a repo is written nothing (R54), so the block row waits for an installed one.
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const MARKER = 'alfred-code layer-table gate';
@@ -69,8 +71,10 @@ try {
 }
 if (!payload || typeof payload !== 'object') process.exit(0);
 const WALK_STEP = /(?:stack-select|plugin-settings|install[\\/]alfred-code)\.js\b/;
+// The scripts whose output is a decision table - printed for the user at PostToolUse Bash (2026-11-10, below).
+const TABLE_SCRIPT = /(?:stack-select|workspace|plugin-settings|audit-install|update-preflight)\.js\b/;
 const bashCommand = payload.tool_name === 'Bash' ? String((payload.tool_input && payload.tool_input.command) || '') : '';
-if (payload.tool_name === 'Bash' && !WALK_STEP.test(bashCommand)) process.exit(0);
+if (payload.tool_name === 'Bash' && !(payload.hook_event_name === 'PostToolUse' ? TABLE_SCRIPT : WALK_STEP).test(bashCommand)) process.exit(0);
 
 const EVENT = payload.hook_event_name || 'PreToolUse';
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
@@ -110,13 +114,13 @@ function blockRow(reason, table) {
   try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table } }); } catch { /* telemetry is never allowed to break the gate */ }
 }
 // One probe row per kind and id: a later gate run reads the same transcript again and writes none.
-function probeRow(kind, id) {
+function probeRow(kind, id, extra = {}) {
   if (unsetRepo) return;
   try {
     let have = '';
     try { have = fs.readFileSync(blocksFile(), 'utf8'); } catch { /* none yet */ }
     const seen = have.split('\n').some((l) => { try { const o = JSON.parse(l); return o.kind === kind && o.detail && o.detail.id === id; } catch { return false; } });
-    if (!seen) appendRow({ mode: 'probe', kind, detail: { id } });
+    if (!seen) appendRow({ mode: 'probe', kind, detail: { id, ...extra } });
   } catch { /* telemetry is never allowed to break the gate */ }
 }
 
@@ -411,6 +415,30 @@ const voidedResponse = (resp, line) => {
   return out;
 };
 
+// The decision table a call makes, from its command and its output: `{ name, proof, to?, from? }`, `proof` null for an
+// all-clear report (nothing to show), or null for no table call.
+function tableSpec(cmd, text) {
+  const m = TABLE_RE.exec(cmd);
+  const am = !m && AUDIT_RE.exec(cmd);
+  const report = !m && !am && LAST_LINE_REPORTS.find((r) => r.re.test(cmd) && !r.skip.test(cmd));
+  const plan = !m && !am && !report && WS_PLAN_RE.test(cmd) && WS_PLAN_PROOF.test(text);
+  if (plan) return { name: 'workspace plan table', proof: WS_PLAN_PROOF, to: WS_PLAN_PROOF, from: WS_PLAN_HEADER };
+  if (m) {
+    const total = new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`);
+    return { name: `${m[1]} table`, proof: total, to: total };
+  }
+  if (am) return { name: `${am[1]} audit`, proof: AUDIT_PROOF };
+  if (report) {
+    const last = text.split('\n').map((l) => l.trim()).filter(Boolean).pop();
+    // no result read back (a truncated tail) - nothing to prove against, so nothing to void; and an
+    // all-clear run printed no table, which the walk skips silently (measured on plugin-settings:
+    // every later ask was denied three times over a table that never existed)
+    const noTable = !last || report.empty.test(text);
+    return { name: report.name, proof: noTable ? null : { test: (t) => t.includes(last) } };
+  }
+  return null;
+}
+
 // What a void prints (F27): a table closed by its total line (`to`) ends there, and the plan starts at its header - the
 // update call cats update-workspace.md after the plan, and its preflight lines come before it. A report or an audit,
 // whose proof is no closing line, prints whole.
@@ -437,6 +465,7 @@ function unpasted(rows) {
   const askIds = new Set();
   let stop = false;
   let output = '';    // the table's own output, printed for the user by a void
+  let tableId = '';
   for (let i = rows.length - 1; i >= 0 && !stop; i--) {
     let o;
     try { o = JSON.parse(rows[i]); } catch { continue; }
@@ -460,29 +489,13 @@ function unpasted(rows) {
         break;
       }
       if (o.type === 'assistant' && b.type === 'tool_use' && !table && !errored.has(b.id)) {
-        const cmd = String((b.input && b.input.command) || '');
-        const m = TABLE_RE.exec(cmd);
-        const am = !m && AUDIT_RE.exec(cmd);
-        const report = !m && !am && LAST_LINE_REPORTS.find((r) => r.re.test(cmd) && !r.skip.test(cmd));
-        const plan = !m && !am && !report && WS_PLAN_RE.test(cmd) && WS_PLAN_PROOF.test(results[b.id] || '');
-        if (plan) table = { name: 'workspace plan table', proof: WS_PLAN_PROOF, to: WS_PLAN_PROOF, from: WS_PLAN_HEADER };
-        else if (m) {
-          const total = new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`);
-          table = { name: `${m[1]} table`, proof: total, to: total };
-        }
-        else if (am) table = { name: `${am[1]} audit`, proof: AUDIT_PROOF };
-        else if (report) {
-          const last = (results[b.id] || '').split('\n').map((l) => l.trim()).filter(Boolean).pop();
-          // no result read back (a truncated tail) - nothing to prove against, so nothing to void; and an
-          // all-clear run printed no table, which the walk skips silently (measured on plugin-settings:
-          // every later ask was denied three times over a table that never existed)
-          const noTable = !last || report.empty.test(results[b.id] || '');
-          table = { name: report.name, proof: noTable ? null : { test: (t) => t.includes(last) } };
-        }
-        if (table) output = tableAlone(results[b.id] || '', table);
+        table = tableSpec(String((b.input && b.input.command) || ''), results[b.id] || '');
+        if (table) { output = tableAlone(results[b.id] || '', table); tableId = b.id; }
       }
     }
   }
+  // 2026-11-10: the gate printed this table under its own call, so it was on screen when the user answered.
+  if (table && wasPrinted(payload.session_id, tableId)) return { printed: tableId };
   const ours = table ? [...denialTexts].filter(([id, t]) => askIds.has(id) && t.includes(`the ${table.name} ran`)).map(([, t]) => t) : [];
   // A void that printed this table put it on screen, so the re-ask is answered with it in view (F27).
   if (!table || !table.proof || ours.length >= MAX_DENIALS || ours.some((t) => t.includes(PRINTED)) || table.proof.test(texts)) return null;
@@ -516,6 +529,38 @@ function unpasted(rows) {
   };
 }
 
+// 2026-11-10 (the user's report on 3.9.2, Windows, Sonnet 5.5: five of eight first asks voided - the table written in
+// thinking only): the table is printed for the user when it is MADE, under its own Bash call, through systemMessage -
+// on screen above the ask's open dialog (the render check of 2026-11-10, Claude Code 2.1.321) - and the model is told so.
+// Once per session and tool id (the marker file, created exclusively); a table past PRINT_MAX prints nothing and the
+// paste check stays its gate. `guard-layer-table:print` in ALFRED_CODE_HOOKS_OFF switches it off.
+const PRINT_MAX = 9000;
+const safeName = (v) => String(v || '').replace(/[^\w.-]/g, '_');
+const printedPath = (session, id) => path.join(os.tmpdir(), `alfred-layer-printed-${safeName(session || 'nosession')}-${safeName(id)}`);
+const wasPrinted = (session, id) => { try { return !!id && fs.existsSync(printedPath(session, id)); } catch { return false; } };
+function printTable() {
+  const resp = payload.tool_response;
+  if (!ownId || !resp || resp.is_error) return;
+  const raw = typeof resp === 'string' ? resp : typeof resp.stdout === 'string' ? resp.stdout : '';
+  const text = raw.replace(/\r\n/g, '\n');
+  if (!text.trim() || !tableCall(bashCommand)) return;
+  const spec = tableSpec(bashCommand, text);
+  if (!spec || !spec.proof || !spec.proof.test(text)) return;
+  const shown = tableAlone(text, spec);
+  if (!shown || shown.length > PRINT_MAX) return;
+  let off = false;
+  try { off = (prelude || require(PRELUDE)).partOff('guard-layer-table', 'print', process.env); } catch { /* no prelude: print */ }
+  if (off) return;
+  try { fs.closeSync(fs.openSync(printedPath(payload.session_id, ownId), 'wx')); } catch { return; }
+  process.stdout.write(JSON.stringify({
+    systemMessage: `Alfred - the ${spec.name}:\n${shown}`,
+    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: `the ${spec.name} is on the user's screen now ` +
+      `(printed under this call) - do not paste it again; send the step banner, at most one line, then the ask` },
+  }));
+  probeRow('layer-table-print', ownId);
+  try { if (prelude) prelude.sweepStale(os.tmpdir(), 'alfred-layer-printed-'); } catch { /* housekeeping only */ }
+}
+
 // PostToolUse: the ask's own message is on disk now. A missing paste or banner voids the answer.
 function voidAsk() {
   const rows = readRows();
@@ -525,19 +570,43 @@ function voidAsk() {
   if (off || !voidedResponse(payload.tool_response, MARKER)) return;
   const guided = guidedRun(rows);
   if (!tailHasTable(rows) && !guided) return;
+  // 2026-11-10 (the user's report on 3.9.2: an init answer voided for a banner gap, with configure's '7/12' example): a gap
+  // is a note to the model in the run's own numbering, beside a void or alone - never a void of its own.
   const gap = guided ? bannerGap(rows) : null;
-  const found = gap ? {
-    branch: 'void step banner',
-    line: `${MARKER}: step banner missing - step ${gap.missing.join(', ')} of ${gap.total} printed none - the user answered ` +
-      `without it - this answer is void; send ONE message: the missing banners in order, each with its one line ` +
-      `(\`[step 7/12 - plugins] skipped - area not selected\`), then this step's content and this same ask.`,
-  } : tailHasTable(rows) ? unpasted(rows) : null;
-  if (!found) return;
+  const note = gap ? `${MARKER}: step ${gap.missing.join(', ')} of ${gap.total} printed no banner; print ` +
+    `[step ${gap.missing[0]}/${gap.total} - <step name>] and its one line before the next step` : '';
+  let found = tailHasTable(rows) ? unpasted(rows) : null;
+  if (found && found.printed) {
+    printAnswerProbe(found.printed);
+    found = null;
+  }
+  if (!found && !note) return;
+  const context = note ? { additionalContext: note } : {};
+  if (!found) {
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', ...context } }));
+    return;
+  }
   process.stdout.write(JSON.stringify({ decision: 'block', reason: found.shown ? `${found.lead}\n${found.shown}\n${found.line}` : found.line,
-    hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: voidedResponse(payload.tool_response, found.line) } }));
+    hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: voidedResponse(payload.tool_response, found.line), ...context } }));
   blockRow(found.line, found.branch);
 }
 
+// The answer to a printed table, measured: every answer one of the ask's option labels ('label'), or typed text ('other'
+// - the miss signal: a user who did not see the table asks about it). A rejected ask fires no PostToolUse hook
+// (measured, Claude Code 2.1.321), so it is never counted here.
+function printAnswerProbe(tableId) {
+  const answers = (payload.tool_response && payload.tool_response.answers) || {};
+  const labels = new Set(((payload.tool_input && payload.tool_input.questions) || [])
+    .flatMap((q) => ((q && q.options) || []).map((o) => String((o && o.label) || '').trim())));
+  const isLabel = (a) => String(a).split(/,\s*/).every((part) => labels.has(part.trim()));
+  const answer = Object.values(answers).every(isLabel) ? 'label' : 'other';
+  probeRow('layer-table-print-answer', ownId, { answer, table: tableId });
+}
+
+if (payload.tool_name === 'Bash' && EVENT === 'PostToolUse') {
+  try { printTable(); } catch { /* fail-open */ }
+  process.exit(0);
+}
 if (payload.tool_name === 'Bash') {
   try {
     const rs = readRows(WALK_TAIL);

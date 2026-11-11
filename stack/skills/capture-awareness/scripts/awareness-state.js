@@ -330,13 +330,15 @@ function parseMcpList(out)
 // A project path as the listing's `projectPath` is compared: a Windows drive path case-blind, separators and a trailing
 // one folded (`c:\WINDOWS\...` and `C:/Windows/.../` are one folder - the file system says so), a POSIX one through
 // realpath and case-exact. Audit 2026-10-11 SD07, session 7be545ce: a case-exact compare dropped the project's own row
-// and the refresh wrote that drop into the always-on rule. The installer's plugin reader folds the same way.
-const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+// and the refresh wrote that drop into the always-on rule. A copy of the installer's plugins.js projectKey (this script
+// ships without the installer); path-key.test.js runs one table through both.
+// listing-key: a drive-letter path case-folded, any other path its real path with its case kept - the plugin listing's own compare (bug 5 of the complexity audit, Task 5's probe).
 function projectKey(p, platform = process.platform)
 {
     const s = String(p);
-    if (/^[A-Za-z]:[\\/]/.test(s)) return path.win32.resolve(platform === 'win32' ? real(s) : s).toLowerCase();
-    return real(s);
+    const real = (native) => { try { return native ? fs.realpathSync.native(s) : fs.realpathSync(s); } catch { return null; } };
+    if (/^[A-Za-z]:[\\/]/.test(s)) return path.win32.resolve(platform === 'win32' ? real(true) || real(false) || s : s).replace(/\\/g, '/').toLowerCase();
+    return (real(false) || path.resolve(s)).split(path.sep).join('/');
 }
 // The install scopes, narrowest first: a plugin at several is decided by its narrowest row here, as enabledPlugins
 // precedence decides it (local over project over user). A row naming no scope ranks by its projectPath.

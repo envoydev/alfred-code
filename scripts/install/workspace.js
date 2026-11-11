@@ -1,221 +1,91 @@
 'use strict';
 // WORKSPACE LAYERING (spec docs: workspace layering design, section 2.1). A workspace ROOT folder holds an Alfred
 // install, and the child projects under it hold their own installs that inherit the root's set and can ignore parts
-// of it. Each project records its place in the tree in ONE machine-local file, `<data root>/workspace`:
+// of it. Each project records its place in the tree in ONE machine-local record, `<data root>/workspace.json` (spec:
+// the workspace.json design, 2026-11-10), read through the one reader `stack/hooks/workspace-file.js`:
 //
-//   parent <path>            at most one - `..` segments only, so moving the whole tree keeps it valid
-//   role root|standalone     the answered role (roles spec D1); a 2.11 / 2.12 `parent none` reads as `role standalone`
-//                            and is rewritten at the file's next write
-//   above <path>|none        the nearest stamped folder above when the role was last answered - update's tree-change test
-//   child <path>             direct children only, relative, `/` separated
-//   ignore <category> <name> an inherited item this project leaves out (never its own)
+//   parent    a run of `..` segments, so moving the whole tree keeps it valid - or role `root` / `standalone`, never both
+//   above     the nearest stamped folder above when the role was last answered (a `..` run, or `none`) - update's tree-change test
+//   children  direct children only, relative, `/` separated
+//   ignore    category -> names: an inherited item this project leaves out (never its own)
 //
-// A line the reader does not know is kept byte for byte and named; a duplicate entry is dropped on read. Every write
-// takes `<data root>/workspace.lock` (created with `wx`, retried for 2 s, taken over when older than 30 s), reads,
-// changes, writes a temp file and renames it into place - so two sibling inits cannot overwrite each other's `child`
-// line.
+// The old line file `<data root>/workspace` is still read, and converted at this installer's next write of the record:
+// the writer folds it in, renames workspace.json into place and deletes it. An unknown key is kept and named; an invalid
+// value is kept, never applied, until a mutation sets its key. A garbage workspace.json (not JSON) is never written over:
+// every read of it here asks nothing and names it once. Every write takes `<data root>/workspace.lock` (created with
+// `wx`, retried for 2 s, taken over when older than 30 s), reads, changes, writes a temp file and renames it into place -
+// so two sibling inits cannot overwrite each other's `children` entry.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
+const workspaceFile = require('../../stack/hooks/workspace-file.js');
 const brand = require('./brand.js');
-const { readJson, parseJson } = require('./json-file.js');
+const { readJson, parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { sleepMs, takeLock } = require('./file-lock.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
 
-const CATEGORIES = Object.freeze(['skill', 'agent', 'rule', 'hook', 'plugin', 'env', 'mcp', 'secret', 'doc', 'instructions']);
-const FILE = 'workspace';
-const LOCK = 'workspace.lock';
+const { CATEGORIES, PARENT_RE, JSON_NAME, LEGACY_NAME, LOCK_NAME, isChildPath, isIgnoreName, emptyRecord, readRecord, viewOf, renderRecord } = workspaceFile;
 
-// ------------------------------------------------------------------ the lines
+// ------------------------------------------------------------------ the mutators, on a record (workspace-file.js emptyRecord's shape)
 
-const PARENT_RE = /^\.\.(\/\.\.)*$/;
-const NAME_RE = /^[A-Za-z0-9._-]+$/;
-const PATH_NAME_RE = /^[A-Za-z0-9._\/-]+$/;
-const segmentsOk = (value) => value.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
-
-function isChildPath(value)
+// A parent excludes a role: setting one clears the other. `none` is the 2.11 spelling of role standalone.
+function setParent(record, rel)
 {
-    return typeof value === 'string' && value !== '' && !value.startsWith('/') && !/[:\\]/.test(value) && segmentsOk(value);
+    if (rel === 'none') return setRole(record, 'standalone');
+    if (rel !== null && !PARENT_RE.test(String(rel))) throw new Error(`workspace: parent ${rel} is not a run of .. segments`);
+    record.parent = rel;
+    if (rel !== null) { record.role = null; record.parentNone = false; }
+    return record;
 }
 
-function isIgnoreName(category, name)
-{
-    if (!CATEGORIES.includes(category) || typeof name !== 'string') return false;
-    if (NAME_RE.test(name)) return true;
-    return (category === 'doc' || category === 'instructions') && PATH_NAME_RE.test(name) && segmentsOk(name);
-}
-
-// One line as an entry; `raw` keeps the line as written (no line ending) for the kinds rendered as written.
-function parseLine(raw)
-{
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) return { kind: 'comment', raw };
-    const [word, ...rest] = line.split(/\s+/);
-    // The value is the text after the keyword and its separators, inner whitespace kept: a child folder named
-    // `a  b` must read back as itself, or the back-reference never matches the real folder (R062).
-    const value = line.slice(word.length).replace(/^\s+/, '');
-    if (word === 'parent')
-    {
-        if (value === 'none') return { kind: 'parent-none', raw };
-        if (PARENT_RE.test(value)) return { kind: 'parent', value, raw };
-    }
-    else if (word === 'role')
-    {
-        if (value === 'root' || value === 'standalone') return { kind: 'role', value, raw };
-    }
-    else if (word === 'above')
-    {
-        if (value === 'none' || PARENT_RE.test(value)) return { kind: 'above', value, raw };
-    }
-    else if (word === 'child')
-    {
-        if (isChildPath(value)) return { kind: 'child', value, raw };
-    }
-    else if (word === 'ignore' && rest.length === 2)
-    {
-        const [category, name] = rest;
-        if ((category === 'docs' || category === 'memory') && name === 'root') return { kind: 'ignore', category, name, raw };
-        if (isIgnoreName(category, name)) return { kind: 'ignore', category, name, raw };
-    }
-    return { kind: 'unknown', raw };
-}
-
-const keyOf = (e) => (e.kind === 'parent' || e.kind === 'parent-none' ? 'parent'
-    : e.kind === 'role' || e.kind === 'above' ? e.kind
-    : e.kind === 'child' ? `child ${e.value}`
-        : e.kind === 'ignore' ? `ignore ${e.category} ${e.name}` : null);
-
-// The model of a file's text. A leading BOM is dropped, CRLF reads as LF, and a duplicate entry - a second `parent`
-// line included - keeps its first spelling: a second parent line is unknown, so it is named, never silently chosen.
-function parseWorkspace(text)
-{
-    const body = String(text ?? '').replace(/^\uFEFF/, '');
-    const lines = body.split(/\r?\n/);
-    if (lines.length && lines[lines.length - 1] === '') lines.pop();
-    const seen = new Set();
-    const entries = [];
-    for (const raw of lines)
-    {
-        const entry = parseLine(raw);
-        const key = keyOf(entry);
-        if (key && seen.has(key))
-        {
-            if (key === 'parent' && entries.find((e) => keyOf(e) === 'parent' && e.raw.trim() !== raw.trim())) entries.push({ kind: 'unknown', raw });
-            continue;
-        }
-        if (key) seen.add(key);
-        entries.push(entry);
-    }
-    return { entries };
-}
-
-function renderEntry(e)
-{
-    if (e.kind === 'parent') return `parent ${e.value}`;
-    if (e.kind === 'parent-none') return 'parent none';
-    if (e.kind === 'role' || e.kind === 'above') return `${e.kind} ${e.value}`;
-    if (e.kind === 'child') return `child ${e.value}`;
-    if (e.kind === 'ignore') return `ignore ${e.category} ${e.name}`;
-    return e.raw.replace(/\r$/, '');
-}
-
-const renderWorkspace = (model) => model.entries.map((e) => `${renderEntry(e)}\n`).join('');
-
-function viewOf(model)
-{
-    const view = { parent: null, parentNone: false, role: null, above: null, children: [], ignores: [], unknown: [] };
-    for (const e of model.entries)
-    {
-        if (e.kind === 'parent') view.parent = e.value;
-        else if (e.kind === 'parent-none') { view.parentNone = true; view.role = view.role || 'standalone'; }
-        else if (e.kind === 'role') view.role = e.value;
-        else if (e.kind === 'above') view.above = e.value;
-        else if (e.kind === 'child') view.children.push(e.value);
-        else if (e.kind === 'ignore') view.ignores.push({ category: e.category, name: e.name });
-        else if (e.kind === 'unknown') view.unknown.push(e.raw.trim());
-    }
-    return view;
-}
-
-// ------------------------------------------------------------------ the mutators
-
-function setParent(model, rel)
-{
-    if (rel !== null && rel !== 'none' && !PARENT_RE.test(String(rel))) throw new Error(`workspace: parent ${rel} is not a run of .. segments`);
-    const at = model.entries.findIndex((e) => e.kind === 'parent' || e.kind === 'parent-none');
-    model.entries = model.entries.filter((e) => e.kind !== 'parent' && e.kind !== 'parent-none');
-    if (rel === null) return model;
-    const entry = rel === 'none' ? { kind: 'parent-none', raw: 'parent none' } : { kind: 'parent', value: rel, raw: `parent ${rel}` };
-    model.entries.splice(at < 0 ? 0 : at, 0, entry);
-    return model;
-}
-
-// The answered role, or null to drop the line; a `parent none` goes with it (the role says what it said).
-function setRole(model, value)
+// The answered role, or null to drop it; a role excludes a parent.
+function setRole(record, value)
 {
     if (value !== null && value !== 'root' && value !== 'standalone') throw new Error(`workspace: role ${value} is not root or standalone`);
-    const at = model.entries.findIndex((e) => e.kind === 'role' || e.kind === 'parent-none');
-    model.entries = model.entries.filter((e) => e.kind !== 'role' && e.kind !== 'parent-none');
-    if (value !== null) model.entries.splice(at < 0 ? 0 : at, 0, { kind: 'role', value, raw: `role ${value}` });
-    return model;
+    record.role = value;
+    record.parentNone = false;
+    if (value !== null) record.parent = null;
+    return record;
 }
 
-// The nearest stamped folder above at the last answer (`none` when there was none), or null to drop the line. A new line
-// sits after the role and parent lines.
-function setAbove(model, rel)
+// The nearest stamped folder above at the last answer (`none` when there was none), or null to drop it.
+function setAbove(record, rel)
 {
     if (rel !== null && rel !== 'none' && !PARENT_RE.test(String(rel))) throw new Error(`workspace: above ${rel} is not a run of .. segments or none`);
-    const at = model.entries.findIndex((e) => e.kind === 'above');
-    model.entries = model.entries.filter((e) => e.kind !== 'above');
-    if (rel === null) return model;
-    const entry = { kind: 'above', value: rel, raw: `above ${rel}` };
-    if (at >= 0) model.entries.splice(at, 0, entry);
-    else
-    {
-        const last = model.entries.reduce((n, e, i) => (['role', 'parent', 'parent-none'].includes(e.kind) ? i + 1 : n), 0);
-        model.entries.splice(last, 0, entry);
-    }
-    return model;
+    record.above = rel;
+    return record;
 }
 
-// A 2.11 / 2.12 `parent none` is `role standalone` from 3.0.0 (D1): the next write rewrites it in place.
-function retireParentNone(model)
-{
-    const at = model.entries.findIndex((e) => e.kind === 'parent-none');
-    if (at < 0) return model;
-    const hasRole = model.entries.some((e) => e.kind === 'role');
-    model.entries.splice(at, 1, ...(hasRole ? [] : [{ kind: 'role', value: 'standalone', raw: 'role standalone' }]));
-    return model;
-}
-
-function addChild(model, rel)
+function addChild(record, rel)
 {
     if (!isChildPath(rel)) throw new Error(`workspace: child ${rel} is not a relative path inside the project`);
-    if (!model.entries.some((e) => e.kind === 'child' && e.value === rel)) model.entries.push({ kind: 'child', value: rel, raw: `child ${rel}` });
-    return model;
+    if (!record.children.includes(rel)) record.children.push(rel);
+    return record;
 }
 
-function removeChild(model, rel)
+function removeChild(record, rel)
 {
-    model.entries = model.entries.filter((e) => !(e.kind === 'child' && e.value === rel));
-    return model;
+    record.children = record.children.filter((c) => c !== rel);
+    return record;
 }
 
-function addIgnore(model, category, name)
+function addIgnore(record, category, name)
 {
     const fixed = (category === 'docs' || category === 'memory') && name === 'root';
     if (!fixed && !isIgnoreName(category, name)) throw new Error(`workspace: ignore ${category} ${name} is not a known category and name`);
-    if (!model.entries.some((e) => e.kind === 'ignore' && e.category === category && e.name === name))
-        model.entries.push({ kind: 'ignore', category, name, raw: `ignore ${category} ${name}` });
-    return model;
+    const list = record.ignore[category] || (record.ignore[category] = []);
+    if (!list.includes(name)) list.push(name);
+    return record;
 }
 
-function removeIgnore(model, category, name)
+function removeIgnore(record, category, name)
 {
-    model.entries = model.entries.filter((e) => !(e.kind === 'ignore' && e.category === category && e.name === name));
-    return model;
+    const list = (record.ignore[category] || []).filter((n) => n !== name);
+    if (list.length) record.ignore[category] = list;
+    else delete record.ignore[category];
+    return record;
 }
 
 // ------------------------------------------------------------------ the switch
@@ -235,8 +105,9 @@ function workspaceOn({ env = {}, projectRoot })
 // the real ~/.claude/settings.json inside a throwaway-account run.
 const ancestorEnv = (env = {}) => ({ CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR });
 
-// { file } for the project's workspace file, or { why } when a handed data root is refused. A handed `dataRoot`
-// is the root init's walk chose before any setting names it (`register --data-path`).
+// { root, dir, file, legacy, lock } for the project's record - `file` workspace.json, `legacy` the old line file - or
+// { why } when a handed data root is refused. A handed `dataRoot` is the root init's walk chose before any setting names
+// it (`register --data-path`).
 function locate(projectRoot, { env = {}, dataRoot } = {})
 {
     let root;
@@ -248,7 +119,7 @@ function locate(projectRoot, { env = {}, dataRoot } = {})
     }
     else root = dataRootMod.dataRootOf({ env, projectDir: projectRoot }).root;
     const dir = path.join(projectRoot, ...root.split('/'));
-    return { root, dir, file: path.join(dir, FILE), lock: path.join(dir, LOCK) };
+    return { root, dir, file: path.join(dir, JSON_NAME), legacy: path.join(dir, LEGACY_NAME), lock: path.join(dir, LOCK_NAME) };
 }
 
 function workspacePath(projectRoot, opts = {})
@@ -258,70 +129,106 @@ function workspacePath(projectRoot, opts = {})
     return at.file;
 }
 
-function readAt(file)
-{
-    try
-    {
-        const text = fs.readFileSync(file, 'utf8');
-        const model = parseWorkspace(text);
-        return { file, state: 'ok', text, model, view: viewOf(model) };
-    }
-    catch (e)
-    {
-        const model = { entries: [] };
-        return { file, state: e && e.code === 'ENOENT' ? 'absent' : 'unreadable', text: '', model, view: viewOf(model) };
-    }
-}
-
+// { file, state, source, record, view, problems } - `state` is `ok`, `absent`, `garbage` (workspace.json is no JSON
+// object; its record reads empty) or `unreadable` (a refused data root, `why`); `file` the path the record was read from.
 function readWorkspace(projectRoot, opts = {})
 {
     const at = locate(projectRoot, opts);
-    if (!at.file)
-    {
-        const model = { entries: [] };
-        return { file: null, state: 'unreadable', model, view: viewOf(model), why: at.why };
-    }
-    const { text, ...got } = readAt(at.file);
-    return got;
+    if (!at.file) return { file: null, state: 'unreadable', source: null, record: emptyRecord(), view: viewOf(emptyRecord()), problems: [], why: at.why };
+    const read = readRecord(at.dir);
+    return { file: read.file, state: read.state, source: read.source, record: read.record, view: viewOf(read.record), problems: read.problems };
 }
 
-// Reads, changes and writes the project's workspace file under its lock. `mutate(model)` changes the model in place
-// (or returns a new one). Nothing is written when the change leaves the rendered file as it was, so a hand-saved
-// file keeps its bytes until a line in it really changes.
-function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
+// The one line for a garbage record, `rel` the file's path from the folder the run reads from.
+const garbageLine = (rel) => `!! workspace: ${rel} is not valid JSON - fix it by hand; the workspace pass neither reads nor writes it until then`;
+// Named once per run, wherever it is met first.
+const garbageSaid = new Set();
+function sayGarbage(file, from, log)
 {
-    const empty = viewOf({ entries: [] });
+    const key = realKey(file);
+    if (garbageSaid.has(key)) return;
+    garbageSaid.add(key);
+    log(garbageLine(relPosix(realOf(from), realOf(file)) || path.basename(file)));
+}
+const printLine = (line) => process.stdout.write(`${line}\n`);
+
+// The records this process converted, for olderProjectLines: { root, record, own, runRoot }.
+let conversions = [];
+function takeConversions()
+{
+    const taken = conversions;
+    conversions = [];
+    return taken;
+}
+
+const shownValue = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
+// The rendered object's value at an invalid entry's key (`parent`, `ignore.skill`).
+const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), object);
+
+// Reads, changes and writes the project's record under its lock. `mutate(record)` changes the record in place (or
+// returns a new one). A write is due when the record renders differently after the change, or when the old line file is
+// there - the conversion: workspace.json is written in the shape of the text it had (formatOf), renamed into place, and
+// then the old file is deleted with one log line. A hand-saved workspace.json keeps its bytes until a value changes. A
+// result's `wrote` says the file was written, `changed` that its values changed - a conversion alone writes, changing none. A
+// garbage workspace.json is never written over (`why: 'garbage'`). `runRoot` is the run's own project (default
+// `projectRoot`): the log lines name paths from it, and a conversion of another project's record is named by
+// olderProjectLines.
+function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
+{
+    const empty = viewOf(emptyRecord());
+    const fail = (why, view = empty) => ({ ok: false, why, view, wrote: false, changed: false, converted: false });
     const at = locate(projectRoot, { env, dataRoot });
-    if (!at.file) return { ok: false, why: 'unwritable', view: empty, wrote: false };
+    if (!at.file) return fail('unwritable');
     try { fs.mkdirSync(at.dir, { recursive: true }); }
-    catch { return { ok: false, why: 'unwritable', view: empty, wrote: false }; }
+    catch { return fail('unwritable'); }
+    const from = runRoot || projectRoot;
     let held = false;
     try
     {
         held = takeLock(at.lock, { now, sleep, retryMs, staleMs });
-        if (!held) return { ok: false, why: 'locked', view: readAt(at.file).view, wrote: false };
-        const current = readAt(at.file);
-        if (current.state === 'unreadable') return { ok: false, why: 'unwritable', view: current.view, wrote: false };
-        const before = renderWorkspace(current.model);
-        const model = retireParentNone(mutate(current.model) || current.model);
-        const after = renderWorkspace(model);
-        if (after === before) return { ok: true, view: viewOf(model), wrote: false };
+        if (!held) return fail('locked', viewOf(readRecord(at.dir).record));
+        const current = readRecord(at.dir);
+        if (current.state === 'garbage') { sayGarbage(current.file, from, log); return fail('garbage'); }
+        const before = JSON.stringify(renderRecord(current.record, current.unknown, current.invalid));
+        const record = mutate(current.record) || current.record;
+        const object = renderRecord(record, current.unknown, current.invalid);
+        const converting = current.source === 'legacy' || current.source === 'both';
+        const changed = JSON.stringify(object) !== before;
+        if (!converting && !changed) return { ok: true, view: viewOf(record), wrote: false, changed: false, converted: false };
         const tmp = `${at.file}.${process.pid}.${Date.now()}.tmp`;
         try
         {
-            fs.writeFileSync(tmp, after);
+            fs.writeFileSync(tmp, stringifyLike(object, formatOf(current.text ?? '')));
             fs.renameSync(tmp, at.file);
         }
         catch
         {
             try { fs.rmSync(tmp, { force: true }); } catch { /* nothing left to clean */ }
-            return { ok: false, why: 'unwritable', view: current.view, wrote: false };
+            return fail('unwritable', viewOf(current.record));
         }
-        return { ok: true, view: viewOf(model), wrote: true };
+        const fileRel = relPosix(from, at.file);
+        for (const bad of current.invalid)
+        {
+            if (bad.entry) continue;
+            const value = valueAt(object, bad.key);
+            if (JSON.stringify(value) === JSON.stringify(bad.value)) continue;
+            log(value === undefined ? `workspace: ${fileRel}: invalid ${bad.key} ${shownValue(bad.value)} dropped`
+                : `workspace: ${fileRel}: invalid ${bad.key} ${shownValue(bad.value)} replaced by ${shownValue(value)}`);
+        }
+        if (converting)
+        {
+            // The old file goes only once workspace.json is in place; a delete that fails leaves the union, which the next write folds.
+            try { fs.rmSync(at.legacy, { force: true }); } catch { /* read as 'both' until the next write */ }
+            const where = relPosix(from, projectRoot) || 'this project';
+            const named = current.problems.length ? ` (${current.problems.join('; ')})` : '';
+            log(`workspace: ${relPosix(from, at.dir)}/${LEGACY_NAME} converted to ${JSON_NAME}${named} - restart any session open in ${where} since before this run`);
+            conversions.push({ root: realOf(projectRoot), record, own: realKey(projectRoot) === realKey(from), runRoot: realOf(from) });
+        }
+        return { ok: true, view: viewOf(record), wrote: true, changed, converted: converting };
     }
     catch
     {
-        return { ok: false, why: 'unwritable', view: empty, wrote: false };
+        return fail('unwritable');
     }
     finally
     {
@@ -329,21 +236,83 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, now = Date.no
     }
 }
 
-// A data-root move carries the workspace file along (planDataMove moves only the secrets store, and leaves the old
-// root in place while it holds anything else). Never over a file the new root already holds.
+// The data root holding the run's own record: the `--data-path` choice once init registered there; on a root change the
+// record is still at the current root until moveWorkspace carries it after the run's install, so an absent record there
+// reads the current root's (undefined).
+function ownDataRootOf({ projectRoot, env = process.env, args = {} })
+{
+    const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
+    const chosen = checked && checked.ok ? checked.value : undefined;
+    return chosen !== undefined && readWorkspace(projectRoot, { env, dataRoot: chosen }).state === 'absent' ? undefined : chosen;
+}
+
+// The run's own record converted to workspace.json before the workspace pass reads it - whatever ALFRED_CODE_WORKSPACE
+// says: the conversion carries every value, so the switch's freeze still holds for the content. Writes nothing on a
+// converted project. { ok, why, converted }.
+function convertOwn({ projectRoot, env = process.env, dataRoot, log = () => {} })
+{
+    const r = writeWorkspace(projectRoot, (record) => record, { env, dataRoot, runRoot: projectRoot, log });
+    return { ok: r.ok, why: r.why, converted: Boolean(r.converted) };
+}
+
+// The first release that reads workspace.json - the version bump that ships it sets this (review I3, 2026-11-10).
+const JSON_SINCE = '3.10.0';
+
+// After a conversion: each project whose older release would now misread - a child a converted record lists, the parent
+// a converted record names, and the owner of a converted record not this run's own - when its stamp names a release
+// before JSON_SINCE, on either route (its copied engines are its own). One `!!` line each, the run's own project never.
+function olderProjectLines({ conversions: list = [], release, compare, env = process.env })
+{
+    if (!release || !compare) return [];
+    // A member at JSON_SINCE or later reads workspace.json; a tree not yet at it (the unreleased one) compares with its own.
+    const floor = compare(JSON_SINCE, release) > 0 ? release : JSON_SINCE;
+    const out = [];
+    const seen = new Set();
+    const inside = (dir, top) => { const rel = path.relative(realKey(top), realKey(dir)); return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel); };
+    for (const c of list)
+    {
+        const runRoot = c.runRoot || c.root;
+        seen.add(realKey(runRoot));
+        const candidates = [];
+        if (!c.own) candidates.push([c.root, inside(c.root, runRoot) ? 'child' : 'parent']);
+        if (c.record.parent) candidates.push([path.resolve(c.root, ...c.record.parent.split('/')), 'parent']);
+        for (const child of c.record.children) candidates.push([path.join(c.root, ...child.split('/')), 'child']);
+        for (const [dir, kind] of candidates)
+        {
+            const key = realKey(dir);
+            if (seen.has(key) || !isDir(dir)) continue;
+            const file = stamp.stampFiles({ projectRoot: dir }).read;
+            const version = file ? stamp.readVersion(file) : '';
+            if (!version || compare(version, floor) >= 0) continue;
+            seen.add(key);
+            const label = relPosix(runRoot, realOf(dir)) || '.';
+            out.push(`!! workspace: ${label} runs an older release - it reads the old workspace file, which is now ${JSON_NAME}; update ${label} next${kind === 'child' ? " (or take 'the children too')" : ''}`);
+        }
+    }
+    return out;
+}
+
+// A data-root move carries the record along (planDataMove moves only the secrets store, and leaves the old root in place
+// while it holds anything else): workspace.json and a still-present old file as ONE record. Never over a record the new
+// root already holds under either name - moved one by one, a workspace.json could land beside a stale old file.
 function moveWorkspace({ projectRoot, from, to, log = () => {} })
 {
-    const src = path.join(projectRoot, ...String(from).split('/'), FILE);
-    const dst = path.join(projectRoot, ...String(to).split('/'), FILE);
-    if (!fs.existsSync(src)) return 'absent';
-    if (fs.existsSync(dst))
+    const dirOf = (root) => path.join(projectRoot, ...String(root).split('/'));
+    const names = [JSON_NAME, LEGACY_NAME];
+    const here = names.filter((n) => fs.existsSync(path.join(dirOf(from), n)));
+    if (!here.length) return 'absent';
+    const there = names.filter((n) => fs.existsSync(path.join(dirOf(to), n)));
+    if (there.length)
     {
-        log(`  !! workspace: ${from}/${FILE} left in place - ${to}/${FILE} already exists`);
+        log(`  !! workspace: ${here.map((n) => `${from}/${n}`).join(' and ')} left in place - ${to} already holds a workspace record (${there.join(', ')})`);
         return 'clash';
     }
-    fs.mkdirSync(path.dirname(dst), { recursive: true });
-    fs.renameSync(src, dst);
-    log(`  workspace: moved ${from}/${FILE} -> ${to}/${FILE}`);
+    fs.mkdirSync(dirOf(to), { recursive: true });
+    for (const n of here)
+    {
+        fs.renameSync(path.join(dirOf(from), n), path.join(dirOf(to), n));
+        log(`  workspace: moved ${from}/${n} -> ${to}/${n}`);
+    }
     return 'moved';
 }
 
@@ -354,13 +323,10 @@ const realOf = (p) =>
     try { return fs.realpathSync.native(p); }
     catch { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }
 };
-// One spelling per folder: the real path (macOS /tmp is /private/tmp, a Windows 8.3 name is expanded), `/`
-// separated, case-folded where the filesystem folds case by default.
-const realKey = (p) =>
-{
-    const key = realOf(p).split(path.sep).join('/');
-    return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
-};
+// One spelling per folder: the hooks' tree key (layout.js pathKey) - the real path, `/` separated, case-folded where the
+// filesystem folds case by default. One home, so the installer and the hooks never key a folder two ways. The path alone:
+// callers hand realKey to Array.map, whose index must never reach pathKey's platform.
+const realKey = (p) => require('../../stack/hooks/layout.js').pathKey(p);
 const relPosix = (from, to) => path.relative(from, to).split(path.sep).join('/');
 const isStamped = (dir) => fs.existsSync(path.join(dir, '.claude', brand.BRAND.stamp));
 const isDir = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
@@ -411,9 +377,15 @@ function joinVerdict(projectRoot, { env = process.env, exec = runtime.execComman
 // standalone. `asked` is false while the file holds no role, parent or above line (status:
 // `standalone (no role recorded)` - never 'not asked', which elsewhere is a verdict to skip an ask: Sonnet skipped the
 // init role ask on it, F28 in the fix run).
-function roleOf(projectRoot, { env = process.env } = {})
+function roleOf(projectRoot, { env = process.env, log = printLine } = {})
 {
-    const view = readWorkspace(projectRoot, { env }).view;
+    const read = readWorkspace(projectRoot, { env });
+    // A garbage record is no role at all: nothing is derived from it, and it is named once.
+    if (read.state === 'garbage') { sayGarbage(read.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
+    const view = read.view;
+    // So is a parent whose own record is garbage: the chain cannot say whether it still lists this project.
+    const parentRead = view.parent ? readWorkspace(path.resolve(realOf(projectRoot), ...view.parent.split('/')), { env: ancestorEnv(env) }) : null;
+    if (parentRead && parentRead.state === 'garbage') { sayGarbage(parentRead.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const children = view.children.length;
     const asked = Boolean(view.role || view.parent || view.above);
     if (view.parent && chain(projectRoot, { env, maxDepth: 1 }).members.length) return { kind: 'child', rel: view.parent, children, asked: true };
@@ -426,6 +398,7 @@ const childCount = (n) => `${n} ${n === 1 ? 'child' : 'children'}`;
 function roleText(role)
 {
     if (!role) return 'workspace off';
+    if (role.kind === 'unknown') return 'unknown - the workspace record is not valid JSON';
     if (role.kind === 'child') return `child of ${role.rel}${role.children ? `, root of ${childCount(role.children)}` : ''}`;
     if (role.kind === 'root') return role.children ? `root of ${childCount(role.children)}` : 'root, no child yet';
     return role.asked ? 'standalone' : 'standalone (no role recorded)';
@@ -441,9 +414,18 @@ const WHY = {
 // update asks only on a tree change: never answered with a joinable folder above, `above` naming another folder than
 // the nearest stamped one now, a child whose chain is empty, or a stamped folder between a child and its parent. A
 // folder above that cannot be joined asks nothing, and `above` stays until an answer rewrites it.
-function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, when = 'configure' } = {})
+function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, when = 'configure', log = printLine } = {})
 {
     if (!workspaceOn({ env, projectRoot })) return null;
+    // A garbage record here, or in the parent it names, raises no ask: the line names the file, fixed by hand.
+    const root = realOf(projectRoot);
+    const own = readWorkspace(projectRoot, { env });
+    if (own.state === 'garbage') { sayGarbage(own.file, root, log); return null; }
+    if (own.view.parent)
+    {
+        const parentRead = readWorkspace(path.resolve(root, ...own.view.parent.split('/')), { env: ancestorEnv(env) });
+        if (parentRead.state === 'garbage') { sayGarbage(parentRead.file, root, log); return null; }
+    }
     const v = joinVerdict(projectRoot, { env, exec });
     const near = v.parent;
     const opt = (label, answer) => ({ label, answer });
@@ -456,7 +438,7 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
         return out('init-none', null, isCheckout(projectRoot, { exec })
             ? [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')] : [opt('Root (Recommended)', 'root'), opt('Standalone', 'standalone')]);
     }
-    const role = roleOf(projectRoot, { env });
+    const role = roleOf(projectRoot, { env, log });
     const keep = opt('Keep (Recommended)', 'stay');
     if (when === 'configure')
     {
@@ -464,7 +446,7 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
         if (role.kind === 'root') return out('configure-root', near ? near.rel : null, [keep, ...join, opt('Become standalone', 'standalone')]);
         return out('configure-standalone', near ? near.rel : null, [keep, ...join, opt('Become a root', 'root')]);
     }
-    const view = readWorkspace(projectRoot, { env }).view;
+    const view = own.view;
     if (view.parent && role.kind !== 'child')
     {
         const lost = chain(projectRoot, { env, maxDepth: 1 }).notes.some((n) => n.endsWith('does not list this folder as a child'));
@@ -495,17 +477,22 @@ function register(projectRoot, { env = process.env, exec = runtime.execCommand, 
     if (!v.ok) return { ok: false, code: 2, lines: [`!! workspace: ${v.parent.rel} cannot take this folder as a child (${v.why})`] };
     const childRel = relPosix(v.parent.root, root);
     const upEnv = ancestorEnv(env);
-    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { env: upEnv });
-    if (!up.ok && up.why === 'locked') return { ok: false, code: 3, lines: [`!! workspace: the workspace file in ${v.parent.rel} is locked by another run - nothing was written; the join is offered again at the next update`] };
-    if (!up.ok) return { ok: false, code: 1, lines: [`!! workspace: the workspace file in ${v.parent.rel} could not be written - nothing was joined`] };
-    const here = writeWorkspace(root, (m) => setAbove(setRole(setParent(m, v.parent.rel), null), above ? v.parent.rel : null), { env, dataRoot });
+    const said = [];
+    const log = (l) => said.push(l);
+    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { env: upEnv, runRoot: root, log });
+    if (!up.ok && up.why === 'locked') return { ok: false, code: 3, lines: [...said, `!! workspace: the workspace file in ${v.parent.rel} is locked by another run - nothing was written; the join is offered again at the next update`] };
+    if (!up.ok && up.why === 'garbage') return { ok: false, code: 1, lines: [...said, `!! workspace: the workspace record in ${v.parent.rel} is garbage (not valid JSON) - nothing was joined; fix it by hand, then join again`] };
+    if (!up.ok) return { ok: false, code: 1, lines: [...said, `!! workspace: the workspace file in ${v.parent.rel} could not be written (${up.why}) - nothing was joined`] };
+    const here = writeWorkspace(root, (m) => setAbove(setRole(setParent(m, v.parent.rel), null), above ? v.parent.rel : null), { env, dataRoot, log });
     if (!here.ok)
     {
-        // The parent's line alone is a child the chain never reaches: take it back, unless it was there before.
-        if (up.wrote) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv });
-        return { ok: false, code: here.why === 'locked' ? 3 : 1, lines: [`!! workspace: this project's workspace file is ${here.why === 'locked' ? 'locked by another run' : 'not writable'} - nothing was joined; the join is offered again at the next update`] };
+        // The parent's line alone is a child the chain never reaches: take it back, unless it was there before (a
+        // conversion alone writes the parent's file without adding the line).
+        if (up.changed) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv, runRoot: root });
+        const state = here.why === 'locked' ? 'locked by another run' : here.why === 'garbage' ? 'garbage (not valid JSON)' : 'not writable';
+        return { ok: false, code: here.why === 'locked' ? 3 : 1, lines: [...said, `!! workspace: this project's workspace file is ${state} - nothing was joined; the join is offered again at the next update`] };
     }
-    return { ok: true, code: 0, rel: v.parent.rel, lines: [`workspace: parent ${v.parent.rel} ${here.wrote ? 'written' : 'kept'}`, `workspace: child ${childRel} ${up.wrote ? 'written' : 'kept'} in ${v.parent.rel}`] };
+    return { ok: true, code: 0, rel: v.parent.rel, lines: [...said, `workspace: parent ${v.parent.rel} ${here.changed ? 'written' : 'kept'}`, `workspace: child ${childRel} ${up.changed ? 'written' : 'kept'} in ${v.parent.rel}`] };
 }
 
 // The stamp's managed-env line with `change(rows)` applied to its `.variables` rows - the rest of the stamp kept.
@@ -622,11 +609,13 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
     const nearRel = () => { const p = findParent(root, { env }); return p ? p.rel : 'none'; };
     const write = (mutate) =>
     {
-        const r = writeWorkspace(root, mutate, { env, dataRoot });
+        const r = writeWorkspace(root, mutate, { env, dataRoot, log });
         return r.ok ? null : fail(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
     };
     const view = readWorkspace(root, { env, dataRoot }).view;
-    const role = roleOf(root, { env });
+    const role = roleOf(root, { env, log });
+    // A garbage record here or in the parent: roleOf named it; an answer would rewrite links it cannot read.
+    if (role.kind === 'unknown') return fail(1, '!! workspace: a workspace record this project reads is not valid JSON - nothing was changed; fix it by hand, then answer again');
     const leave = (to) =>
     {
         keepOnLeave(root, { env, log });
@@ -649,7 +638,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         pruneOnJoin(root, { env, log });
         return { ok: true, code: 0, lines: [...lines, `role: child of ${r.rel}`] };
     };
-    if (answer === 'stay') return write((m) => setAbove(m, nearRel())) || { ok: true, code: 0, lines: [`role: ${roleText(roleOf(root, { env }))}`] };
+    if (answer === 'stay') return write((m) => setAbove(m, nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${roleText(roleOf(root, { env, log }))}`] };
     if (answer === 'leave:standalone' || answer === 'leave:root')
     {
         if (!view.parent) return fail(2, '!! workspace: this project has no parent to leave');
@@ -660,7 +649,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         if (role.kind === 'child') return leave(answer);
         if (answer === 'standalone' && view.children.length)
             return fail(2, `!! workspace: this project is the root of ${view.children.join(', ')} - each child leaves first (its configure), or /alfred-code:uninstall here releases them`);
-        return write((m) => setAbove(setRole(m, answer), nearRel())) || { ok: true, code: 0, lines: [`role: ${answer}`] };
+        return write((m) => setAbove(setRole(m, answer), nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${answer}`] };
     }
     if (answer === 'child') return joinHere(null);
     if (answer === 'rejoin')
@@ -696,6 +685,7 @@ function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {
         if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
         if (!isStamped(parent)) { refuse(`${label} holds no Alfred install`); break; }
         const parentRead = readWorkspace(parent, { env: ancestorEnv(env) });
+        if (parentRead.state === 'garbage') { refuse(`${relPosix(start, parentRead.file)} is not valid JSON`); break; }
         if (!parentRead.view.children.some((c) => realKey(path.join(parent, ...c.split('/'))) === realKey(current)))
         {
             refuse(`${label} does not list this folder as a child`);
@@ -714,14 +704,16 @@ function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {
 
 // The project and every descendant its `child` lines reach, pre-order. A child folder that is missing or holds no
 // stamp is `gone`, and nothing below it is read.
-function subtree(projectRoot, { env = process.env, maxDepth = 8 } = {})
+function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine } = {})
 {
     const top = realOf(projectRoot);
     const rows = [{ root: top, rel: '.', depth: 0, parentRel: null, state: 'ok' }];
     const seen = new Set([realKey(top)]);
+    // A garbage record is named, and nothing below it is read.
+    const viewAt = (dir, readEnv) => { const r = readWorkspace(dir, { env: readEnv }); if (r.state !== 'garbage') return r.view; sayGarbage(r.file, top, log); return null; };
     const walk = (dir, rel, depth, view) =>
     {
-        if (depth >= maxDepth) return;
+        if (depth >= maxDepth || !view) return;
         for (const c of view.children)
         {
             const child = path.join(dir, ...c.split('/'));
@@ -731,18 +723,19 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8 } = {})
             const childRel = rel === '.' ? c : `${rel}/${c}`;
             const ok = isDir(child) && isStamped(child);
             rows.push({ root: ok ? realOf(child) : child, rel: childRel, depth: depth + 1, parentRel: rel, state: ok ? 'ok' : 'gone' });
-            if (ok) walk(child, childRel, depth + 1, readWorkspace(child, { env: ancestorEnv(env) }).view);
+            if (ok) walk(child, childRel, depth + 1, viewAt(child, ancestorEnv(env)));
         }
     };
-    walk(top, '.', 0, readWorkspace(top, { env }).view);
+    walk(top, '.', 0, viewAt(top, env));
     return rows;
 }
 
 const RESCAN_SKIP = new Set(['.git', 'node_modules', '.claude']);
 
-// Stamped folders under the project with no `parent` or `parent none` line - projects installed before their root,
-// offered as children. A stamped folder ends the walk down that branch: what is below it is that project's.
-function rescan(projectRoot, { maxDepth = 5, env = process.env } = {})
+// Stamped folders under the project with no `parent` in their record, nor a 2.11 `parent none` line still in the old
+// file - projects installed before their root, offered as children. A stamped folder ends the walk down that branch:
+// what is below it is that project's.
+function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine } = {})
 {
     const top = realOf(projectRoot);
     const dataRoot = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
@@ -758,8 +751,10 @@ function rescan(projectRoot, { maxDepth = 5, env = process.env } = {})
             const child = path.join(dir, d.name);
             if (isStamped(child))
             {
-                const view = readWorkspace(child, { env: ancestorEnv(env) }).view;
-                if (!view.parent && !view.parentNone) found.push(relPosix(top, child));
+                const read = readWorkspace(child, { env: ancestorEnv(env) });
+                // a garbage record is no project to offer: named, and left to be fixed by hand
+                if (read.state === 'garbage') sayGarbage(read.file, top, log);
+                else if (!read.view.parent && !read.view.parentNone) found.push(relPosix(top, child));
                 continue;
             }
             if (depth + 1 < maxDepth) walk(child, depth + 1);
@@ -852,7 +847,15 @@ function envPlan(ctx)
     if (!w || ctx.args.action === 'uninstall') return null;
     const linked = Boolean(w.on && w.members.length);
     const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
-    const view = linked ? { ignores: w.ignores } : readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot }).view;
+    let view = { ignores: w.ignores };
+    if (!linked)
+    {
+        const read = readWorkspace(ctx.projectRoot, { env: ctx.env, dataRoot });
+        // A garbage record: the plan of a project whose parent cannot be reached - no chained key seeded, so no default lands
+        // in `.variables` to shadow the chain once the record is fixed by hand.
+        if (read.state === 'garbage') return { linked: false, ignored: [], copies: [], seeds: [], hooksOffDrop: [], memberEnv: {} };
+        view = read.view;
+    }
     if (!linked && !(view && view.parent)) return null;
     const plan = { linked, ignored: (view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name), copies: [], seeds: [], hooksOffDrop: [], memberEnv: {} };
     if (!linked) return plan;
@@ -964,6 +967,108 @@ function excludeGlobs(paths, platform = process.platform)
     return [...new Set(out)];
 }
 
+// ------------------------------------------------------------------ refresh below (2026-11-10)
+
+// The user's report: a child session loaded the root's rules twice. A project's own run writes `claudeMdExcludes` for
+// every stamped folder above it (workspaceStep), so the duplicates came from a child installed before its root, or a rule
+// the root added later - until that child's own next run. This brings that write forward from the root's install or
+// update: every stamped project below (depth `maxDepth`, RESCAN_SKIP, no link followed, a stamped folder walked into)
+// whose own switch is on gets the excludes its own run would write, synced against ITS OWN ledger, under its workspace
+// lock. Only that array moves, a member its ledger does not hold is the user's and stays, and every other ledger row is
+// re-rendered byte for byte. A failed stamp write puts the settings file back (or removes it, when this made it), so no
+// row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500 } = {})
+{
+    const { syncMembers, MEMBER_PATH } = require('./settings.js');
+    const top = realOf(projectRoot);
+    const ownData = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const below = [];
+    const walk = (dir, depth) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            if (!d.isDirectory() || d.isSymbolicLink() || RESCAN_SKIP.has(d.name) || (dir === top && d.name === ownData)) continue;
+            const child = path.join(dir, d.name);
+            if (isStamped(child)) below.push(child);
+            if (depth + 1 < maxDepth) walk(child, depth + 1);
+        }
+    };
+    walk(top, 0);
+    const out = { refreshed: [], current: [], skipped: [] };
+    // Another project's data root and workspace file are read with the account alone (ancestorEnv): this run's own
+    // ALFRED_CODE_DATA_PATH is not the child's. A launch `0` still freezes the child's switch, as it would its own run.
+    const childEnv = { ...ancestorEnv(env), ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
+    const isExclude = (row) => { const m = MEMBER_PATH.exec(row); return Boolean(m) && m[1] === 'claudeMdExcludes'; };
+    for (const child of below.sort())
+    {
+        const rel = relPosix(top, child);
+        const skip = (why) => { out.skipped.push(rel); if (why) log(`  !! workspace: ${rel} ${why}`); };
+        let on = false;
+        try { on = workspaceOn({ env: childEnv, projectRoot: child }); }
+        catch { on = false; }
+        if (!on) { skip(''); continue; }
+        const ownRead = readWorkspace(child, { env: ancestorEnv(env) });
+        if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
+        const claudeDir = path.join(child, '.claude');
+        const file = path.join(claudeDir, 'settings.local.json');
+        const stampFile = path.join(claudeDir, brand.BRAND.stamp);
+        const ledger = stamp.readLedger(stampFile);
+        if (!ledger) { skip('- its stamp holds no ledger to record the rows in; its excludes refresh on its next run'); continue; }
+        const settingsMap = ledger.settings || {};
+        const prior = settingsMap['settings.local.json'] || {};
+        let want;
+        try
+        {
+            const ignores = ownRead.view.ignores || [];
+            const ancestors = stampedAncestors(child, { env: ancestorEnv(env) });
+            want = uniqSorted(excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: ignores })), process.platform));
+        }
+        catch (e) { skip(`- its excludes could not be worked out (${e.message}); left as it is`); continue; }
+        if (!want.length && !Object.keys(prior).some(isExclude)) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
+        const at = locate(child, { env: ancestorEnv(env) });
+        if (!at.file) { skip(`- its data root is refused (${at.why}); left as it is`); continue; }
+        let held = false;
+        try
+        {
+            fs.mkdirSync(at.dir, { recursive: true });
+            held = takeLock(at.lock, { now: Date.now, sleep: sleepMs, retryMs, staleMs: 30000 });
+        }
+        catch { held = false; }
+        if (!held) { skip('is locked - its excludes refresh on its next run'); continue; }
+        try
+        {
+            let before = null;
+            try { before = fs.readFileSync(file); }
+            catch (e) { if (!e || e.code !== 'ENOENT') { skip(`- its settings.local.json cannot be read (${e && e.code}); left as it is`); continue; } }
+            const notes = [];
+            const r = syncMembers({ file, arrayPath: 'claudeMdExcludes', want, prior, log: () => {}, note: (m) => notes.push(m) });
+            if (r.refused) { skip(`- ${notes[0] || 'its settings.local.json cannot be read'}`); continue; }
+            const mine = Object.fromEntries(Object.entries(prior).filter(([row]) => isExclude(row)));
+            const same = Object.keys(mine).length === Object.keys(r.rows).length && Object.entries(r.rows).every(([row, h]) => mine[row] === h);
+            if (!r.changed && same) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
+            const local = { ...Object.fromEntries(Object.entries(prior).filter(([row]) => !isExclude(row))), ...r.rows };
+            const next = { ...settingsMap, 'settings.local.json': local };
+            if (!Object.keys(local).length) delete next['settings.local.json'];
+            try { stamp.markLine(stampFile, 'managed-settings', stamp.settingsLine(next)); }
+            catch (e)
+            {
+                try { if (before === null) fs.rmSync(file, { force: true }); else fs.writeFileSync(file, before); }
+                catch { /* named below either way */ }
+                skip(`- its stamp could not be written (${e && e.code}); its settings.local.json is as it was`);
+                continue;
+            }
+            if (r.created) warnUnignored(child, file);
+            out.refreshed.push(rel);
+            log(`workspace: ${rel} - excludes refreshed (${Object.keys(r.rows).length} rules)`);
+        }
+        finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+    }
+    return out;
+}
+
 // ------------------------------------------------------------------ the installer's steps (spec 2.1-2.5)
 
 // Why a parent's plan cannot be inherited from - its run reported failures, could not read a file, or could not read its
@@ -1003,14 +1108,13 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
     const read = stamp.stampFiles({ projectRoot }).read;
     const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
     if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
-    const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
-    // The file sits at --data-path once init registered there; on a root change it is still at the current root until
-    // moveWorkspace carries it after this run's install, so an absent file there reads the current root's.
-    const chosen = checked && checked.ok ? checked.value : undefined;
-    const ownDataRoot = chosen !== undefined && readWorkspace(projectRoot, { env, dataRoot: chosen }).state === 'absent' ? undefined : chosen;
+    const ownDataRoot = ownDataRootOf({ projectRoot, env, args });
     const own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
+    // The run's own record is garbage: the workspace part is frozen, as at the switch's 0 - no members, nothing inherited
+    // added or dropped, the own lines carried.
+    if (own.state === 'garbage') { sayGarbage(own.file, realOf(projectRoot), (l) => log(`  ${l}`)); return { ...base, on: false, garbage: true }; }
     const where = own.file ? relPosix(realOf(projectRoot), own.file) : 'the workspace file';
-    for (const raw of own.view.unknown) log(`  !! workspace: ${where} line '${raw}' is not understood - left as it is`);
+    for (const problem of own.problems) log(`  !! workspace: ${where}: ${problem}`);
     const { members, notes } = chain(projectRoot, { env, ownDataRoot });
     for (const n of notes) log(`  ${n}`);
     const at = { ...base, members, ignores: own.view.ignores, fileRoot: ownDataRoot };
@@ -1066,7 +1170,7 @@ function recordWord({ projectRoot, env = process.env, dataRoot, parentLines, ign
         for (const l of ignore) addIgnore(m, split(l).category, split(l).name);
         for (const l of lift) removeIgnore(m, split(l).category, split(l).name);
         return m;
-    }, { env, dataRoot });
+    }, { env, dataRoot, log: (l) => log(`  ${l}`) });
     if (!r.ok)
     {
         log(`  !! workspace: the ignore lines could not be written (${r.why}) - the next update takes ${[...ignore, ...lift].join(', ')} from the parent as before`);
@@ -1381,17 +1485,14 @@ function linkTarget(file)
     throw Object.assign(new Error(`${file}: too many levels of symbolic links`), { code: 'ELOOP' });
 }
 
-// The file written back in its own shape: the indent of its first indented line, its line ending, its BOM - through a
+// The file written back in its own shape (json-file.js formatOf: its BOM, line ends and indent) - through a
 // temp file beside it and a rename. A LINK is written through, never replaced (review fix pass, run B, m7: a dotfiles
 // link at the account settings.json became a plain file): the temp file and the rename go to the link's real file, in
 // that file's own folder. Every writer here is an account settings.json writer - D5's apply and remove, and the
 // auto-update answer (marketplace-autoupdate.js).
 function writeLike(file, text, data)
 {
-    const indentLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l));
-    const indent = indentLine ? indentLine.match(/^[ \t]+/)[0] : '  ';
-    const eol = text.includes('\r\n') ? '\r\n' : '\n';
-    const body = `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${JSON.stringify(data, null, indent).split('\n').join(eol)}${eol}`;
+    const body = stringifyLike(data, formatOf(text));
     const target = linkTarget(file);
     const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
     try { fs.writeFileSync(tmp, body); fs.renameSync(tmp, target); }
@@ -1466,13 +1567,13 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
     {
         const child = path.join(root, ...rel.split('/'));
         if (!isDir(child) || !isStamped(child)) continue;
-        const points = (m) => { const v = viewOf(m).parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
+        const points = (record) => { const v = record.parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
         const held = readWorkspace(child, { env: ancestorEnv(env) });
-        if (!points(held.model)) { stale.push(rel); continue; }
+        if (!points(held.record)) { stale.push(rel); continue; }
         const kept = keepOnLeave(child, { env: ancestorEnv(env), log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
         if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - run uninstall again`); continue; }
-        const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env) });
+        const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env), runRoot: root, log });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
         // Its D2 copies stay as the user's own registrations: the rows and the parent hashes they were made from go.
@@ -1481,7 +1582,7 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         log(`workspace: released ${rel} - it reads as standalone now, every item it holds its own`);
         released.push(rel);
     }
-    if (released.length || stale.length) writeWorkspace(root, (m) => { for (const rel of [...released, ...stale]) removeChild(m, rel); return m; }, { env, dataRoot });
+    if (released.length || stale.length) writeWorkspace(root, (m) => { for (const rel of [...released, ...stale]) removeChild(m, rel); return m; }, { env, dataRoot, log });
     return released;
 }
 
@@ -1497,14 +1598,38 @@ function leaveParent({ projectRoot, env = process.env, dataRoot, log = () => {},
     if (isDir(parent))
     {
         const childRel = relPosix(realOf(parent), root);
-        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { env: ancestorEnv(env) });
+        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { env: ancestorEnv(env), runRoot: root, log });
         if (!up.ok) return failed(up.why, `workspace: the workspace file in ${own.view.parent} could not be changed (${up.why}) - nothing was removed`);
-        if (up.wrote) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
+        if (up.changed) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
     }
-    const here = writeWorkspace(root, (m) => setParent(m, null), { env, dataRoot });
+    const here = writeWorkspace(root, (m) => setParent(m, null), { env, dataRoot, log });
     if (!here.ok) return failed(here.why, `workspace: this project's workspace file could not be changed (${here.why})`);
     log(`workspace: parent ${own.view.parent} removed`);
     return { left: true };
+}
+
+// Before uninstall changes anything: the path, relative to the project, of each record it would write that reads garbage -
+// this project's own (and then nothing more is read), the parent's its record names, each listed child's that is a
+// stamped folder. Run past one, releaseChildren would file a garbage child as stale, and leaveParent would fail on a
+// garbage parent after the files were already removed.
+function garbageOnLeave({ projectRoot, env = process.env, dataRoot })
+{
+    const root = realOf(projectRoot);
+    const own = readWorkspace(root, { env, dataRoot });
+    if (own.state === 'garbage') return [relPosix(root, own.file)];
+    const out = [];
+    const check = (dir) => { const r = readWorkspace(dir, { env: ancestorEnv(env) }); if (r.state === 'garbage') out.push(relPosix(root, r.file)); };
+    if (own.view.parent)
+    {
+        const parent = path.resolve(root, ...own.view.parent.split('/'));
+        if (isDir(parent)) check(parent);
+    }
+    for (const rel of own.view.children)
+    {
+        const child = path.join(root, ...rel.split('/'));
+        if (isDir(child) && isStamped(child)) check(child);
+    }
+    return out;
 }
 
 // ------------------------------------------------------------------ the exclude check (spec 3)
@@ -1652,13 +1777,13 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
 
 module.exports = {
     editDenyRule, ancestorAccess,
-    CATEGORIES, workspaceOn, parseLine, parseWorkspace, renderWorkspace, viewOf,
+    CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
-    ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace,
+    ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace, garbageLine, sayGarbage, convertOwn, ownDataRootOf, takeConversions, olderProjectLines, JSON_SINCE,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
-    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
-    releaseChildren, leaveParent, managedSettingsFile, checkLoads, writeLike,
+    releaseChildren, leaveParent, garbageOnLeave, managedSettingsFile, checkLoads, writeLike,
 };

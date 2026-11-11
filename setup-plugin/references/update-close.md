@@ -158,7 +158,7 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 
 ## 8. Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path:
+Remove `$TMP` per `$TMP/repo/setup-plugin/references/source-protocol.md`, on EVERY exit path:
 after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
 user 'no'. Then confirm the project tree holds only installed artifacts by LOOKING, never with
 `git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status

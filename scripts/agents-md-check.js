@@ -64,9 +64,15 @@ const PROGRAM = /^(?:\.{1,2}\/|\/)?[A-Za-z0-9_][A-Za-z0-9._+/-]*$/;
 // Where a shell starts a new command: `&&`, `||`, `;` and a whitespace-delimited `|` - never the `&` of a
 // redirect (`2>&1`) or a `|` inside an argument (`gulp build:local|develop`).
 const COMMAND_SPLIT = /&&|\|\||;|(?<=\s)\|(?=\s|$)/;
-// A clause that denies what it names - 'No `x`', 'there is no `x`', 'NOT used here: `x`' - claims nothing
-// exists. A clause ends at a sentence stop, a ` - ` aside or a table cell.
+// A clause that denies what it names - 'No `x`', 'there is no `x`', 'NOT used here: `x`' - claims nothing exists. A clause
+// ends at a sentence stop, a ` - ` aside or a table cell.
 const NEGATION = /\b(no|not|never|none|nor|without)\b|n't\b/i;
+// An absence word denies only the path that is its SUBJECT - '`x` is absent', '`x` and `y` are missing from this
+// checkout', 'the `x` folder is absent' (AC-8) - read from the text right after the path's span. Never a path it governs
+// as an object ('the tests missing from `x`', 'Absent a config, ... `x`', '`x` when the var is absent'), nor 'is missing
+// nothing' (the final review's M6, 2026-11-10: a clause-wide absence word hid seven real claims).
+// The prose read here has its code spans blanked to spaces, so a list's other paths are whitespace between its `and`s.
+const SUBJECT_ABSENT = /^(?:\s*(?:,|\band\b|\bor\b)\s*)*\s*(?:(?:folder|directory|dir|file|path)s?\s+|(?:folders|directories)\s+)?(?:is|are)\s+(?:absent|missing)\b(?!\s+nothing\b)/i;
 const CLAUSE_END = /[.;!?](?=\s|$)|\s-\s|\|/g;
 // A one-dot word that names a kind of copy or a reserved domain (`.template`, `.example`, `.invalid`),
 // never a dotfile of its own.
@@ -265,7 +271,7 @@ function denied(prose, from, to)
         if (m.index + m[0].length <= from) start = m.index + m[0].length;
         else if (m.index >= to) { end = m.index; break; }
     }
-    return NEGATION.test(prose.slice(start, end));
+    return NEGATION.test(prose.slice(start, end)) || SUBJECT_ABSENT.test(prose.slice(to, end));
 }
 
 // The project's files as git sees them (tracked, plus untracked it does not ignore), else a walk that
@@ -650,6 +656,9 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     for (const f of findings) out(`${f.file}:${f.line} ${f.kind}: ${f.what} - ${f.why}\n`);
     if (!findings.length) { out(`agents-md-check: clean (${targets.length} file(s))\n`); return 0; }
     out(`agents-md-check: ${findings.length} finding(s) in ${new Set(findings.map((f) => f.file)).size} file(s)\n`);
+    // AC-8 (2026-11-10): the keep marker existed, but this output never named it - a path row is the one a user may
+    // have written on purpose. The line starts like the summary, so no `<file>:<line> <kind>:` reader counts it.
+    if (findings.some((f) => f.kind === 'path')) out('agents-md-check: a line that names a path on purpose takes <!-- agents-md-check: keep --> and is not checked again\n');
     return 1;
 }
 

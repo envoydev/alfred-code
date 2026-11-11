@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const SCRIPT = path.join(__dirname, 'scan-evidence.js');
 const CATALOG = path.join(__dirname, '..', 'meta', 'evidence.json');
@@ -427,3 +428,87 @@ test('--orientation on an Nx workspace: each project.json\'s declared targets an
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// 2026-11-10 (the user's report on 3.9.2): the shell's cwd had drifted to a folder above the project, so `--root .`
+// read another project's manifests (sqlite, csharp-lsp from a child folder) with no word of it. The scan names the root
+// it read and warns on a nested repo or a root below a repo's top; the found map is unchanged.
+{
+    const { spawnSync: run } = require('node:child_process');
+    const git = (cwd, ...a) => run('git', ['-C', cwd, ...a], { encoding: 'utf8' });
+    const scanOut = (root) =>
+    {
+        const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-out-')), 'found.json');
+        const r = run('node', [SCRIPT, '--root', root, '--catalog', CATALOG, '--out', out], { encoding: 'utf8' });
+        return { r, lines: r.stdout.split('\n').filter(Boolean), found: JSON.parse(fs.readFileSync(out, 'utf8')).found };
+    };
+    const nestedRoot = () =>
+    {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-nest-'));
+        fs.mkdirSync(path.join(root, 'child', '.git'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'child', 'app.csproj'), '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />\n  </ItemGroup>\n</Project>\n');
+        return root;
+    };
+
+    test('scan names its root and warns on signals from a nested repo; the found map is unchanged', () =>
+    {
+        const root = nestedRoot();
+        const { r, lines, found } = scanOut(root);
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(lines[0], `root: ${fs.realpathSync.native(root)}`);
+        assert.ok(lines.includes('!! scan-evidence: signals from nested repos child - each is its own project; check --root'), r.stdout);
+        // captured from the scan before this change
+        assert.deepStrictEqual(found, { skills: { 'dotnet-data-access': 'Microsoft.EntityFrameworkCore.Sqlite in child/app.csproj', sqlite: 'Microsoft.EntityFrameworkCore.Sqlite in child/app.csproj' }, mcps: {}, plugins: { 'csharp-lsp': 'child/app.csproj present' } });
+    });
+
+    test('a workspace root reads its child projects with no nested-repo warning', () =>
+    {
+        const root = nestedRoot();
+        putWorkspace(root, { role: 'root' });
+        const { lines } = scanOut(root);
+        assert.deepStrictEqual(lines.filter((l) => l.startsWith('!!')), []);
+    });
+
+    // Final review (2026-11-10, Important 2): init writes the role at its install step, after this scan, so a first-time Root
+    // answer reaches the scan as --role root - the role file is not there yet.
+    test('a Root answer passed as --role root before the role is written: no nested-repo warning', () =>
+    {
+        const scanWith = (root, extra) =>
+        {
+            const r = run('node', [SCRIPT, '--root', root, '--catalog', CATALOG, ...extra], { encoding: 'utf8' });
+            return r.stderr.split('\n').filter((l) => l.startsWith('!!'));
+        };
+        const root = nestedRoot();
+        assert.deepStrictEqual(scanWith(root, ['--role', 'root']), []);
+        assert.match(scanWith(root, ['--role', 'standalone']).join('\n'), /signals from nested repos child/, 'a Standalone answer still warns');
+        assert.match(scanWith(root, []).join('\n'), /signals from nested repos child/, 'no answer: as before');
+    });
+
+    test('a root below a repo top is named; the repo top itself is not, whatever path spells it', () =>
+    {
+        const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-repo-'));
+        git(repo, 'init', '-q');
+        fs.mkdirSync(path.join(repo, 'sub'));
+        fs.writeFileSync(path.join(repo, 'sub', 'package.json'), '{}');
+        const below = scanOut(path.join(repo, 'sub'));
+        const top = git(repo, 'rev-parse', '--show-toplevel').stdout.trim();
+        assert.ok(below.lines.includes(`!! scan-evidence: ${fs.realpathSync.native(path.join(repo, 'sub'))} is below the repo ${top} - is --root the project?`), below.r.stdout);
+        // os.tmpdir() is a symlinked path on macOS (/var -> /private/var): the top spelled either way warns nothing
+        for (const spelled of [repo, fs.realpathSync.native(repo)])
+            assert.deepStrictEqual(scanOut(spelled).lines.filter((l) => l.startsWith('!!')), [], spelled);
+        if (process.platform !== 'win32')
+        {
+            const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-link-')), 'r');
+            fs.symlinkSync(repo, link);
+            assert.deepStrictEqual(scanOut(link).lines.filter((l) => l.startsWith('!!')), [], 'a symlinked top');
+        }
+    });
+
+    test('without --out stdout stays the JSON alone; the root line goes to stderr', () =>
+    {
+        const root = nestedRoot();
+        const r = run('node', [SCRIPT, '--root', root, '--catalog', CATALOG], { encoding: 'utf8' });
+        assert.ok(JSON.parse(r.stdout).found, 'stdout parses as the payload');
+        assert.match(r.stderr, /^root: /m);
+        assert.match(r.stderr, /^!! scan-evidence: signals from nested repos child/m);
+    });
+}

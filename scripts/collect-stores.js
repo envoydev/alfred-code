@@ -646,7 +646,16 @@ const STORES = [
         held: () => ['data/state/sessions/models.json'],
     },
     wholeRow('stamp', (ctx) => path.join(ctx.project, '.claude', 'alfred-code.stamp'), 'context/alfred-code.stamp', false),
-    wholeRow('workspace', (ctx) => path.join(ctx.dataRoot, 'workspace'), 'context/workspace'),
+    {
+        // workspace.json under its own name, else the old line file a release before 3.10 wrote (spec: the workspace.json design)
+        id: 'workspace', cls: 'meta', match: 'whole', inData: true,
+        find: (ctx) =>
+        {
+            const name = ['workspace.json', 'workspace'].find((n) => exists(ctx.fs, path.join(ctx.dataRoot, n)));
+            return name ? { items: [{ to: `context/${name}`, from: path.join(ctx.dataRoot, name) }], why: 'read at collect time' } : { items: [] };
+        },
+        held: () => ['context/workspace.json', 'context/workspace'],
+    },
     wholeRow('tools-inventory', (ctx) => path.join(ctx.dataRoot, 'state', 'tools-inventory.json'), 'data/state/tools-inventory.json', true, 'tools-inventory.json'),
     wholeRow('lsp-coverage', (ctx) => path.join(ctx.dataRoot, 'state', 'lsp-coverage.json'), 'data/state/lsp-coverage.json', true, 'lsp-coverage.json'),
     wholeRow('workspace-check', (ctx) => path.join(ctx.dataRoot, 'state', 'workspace-check.json'), 'data/state/workspace-check.json', true, 'workspace-check.json'),

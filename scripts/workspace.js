@@ -113,8 +113,8 @@ function roleVerb(out)
     if (answer !== undefined) return report(out, ws.applyRole(root, answer, { env, exec, dataRoot: dataPathArg() }));
     const when = arg('--when', 'configure');
     if (!WHEN.includes(when)) throw bad(`--when takes ${WHEN.join(', ')}`);
-    out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env }) : null)}`);
-    const ask = ws.roleAsk(root, { env, exec, when });
+    out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
+    const ask = ws.roleAsk(root, { env, exec, when, log: out });
     if (!ask) return;
     if (ask.why) out(`why: ${ask.why}`);
     ask.options.forEach((label, i) => out(`ask: ${label}\t${ask.answers[i]}`));
@@ -130,16 +130,16 @@ function ignore(out)
     const [category, name, ...rest] = String(add ?? remove).trim().split(/\s+/);
     if (!name || rest.length) throw bad(`'${add ?? remove}' is not '<category> <name>'`);
     // The mutators throw on a bad line; writeWorkspace would read that as an unwritable file.
-    try { ws.addIgnore({ entries: [] }, category, name); }
+    try { ws.addIgnore(ws.emptyRecord(), category, name); }
     catch (e) { throw bad(e.message.replace(/^workspace: /, '')); }
-    const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, dataRoot });
+    const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, dataRoot, log: out });
     if (!r.ok) throw new Exit(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
-    out(`workspace: ignore ${category} ${name} ${add !== undefined ? (r.wrote ? 'added' : 'kept') : (r.wrote ? 'removed' : 'not there')}`);
+    out(`workspace: ignore ${category} ${name} ${add !== undefined ? (r.changed ? 'added' : 'kept') : (r.changed ? 'removed' : 'not there')}`);
 }
 
 function children(out)
 {
-    for (const row of ws.subtree(rootArg(), { env }).filter((r) => r.depth === 1)) out(`child: ${row.rel}\t${row.state}`);
+    for (const row of ws.subtree(rootArg(), { env, log: out }).filter((r) => r.depth === 1)) out(`child: ${row.rel}\t${row.state}`);
 }
 
 const list = (lines) => (lines.length ? lines.join(', ') : '-');
@@ -147,8 +147,10 @@ const list = (lines) => (lines.length ? lines.join(', ') : '-');
 function status(out)
 {
     const root = rootArg();
-    out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env }) : null)}`);
+    out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
     const own = ws.readWorkspace(root, { env });
+    // a garbage record: its one line, once, whether or not roleOf (the switch on) named it already
+    if (own.state === 'garbage') ws.sayGarbage(own.file, root, out);
     const linked = ws.chain(root, { env });
     for (const n of linked.notes) out(n);
     const parent = linked.members[0];
@@ -477,7 +479,7 @@ function treeHash(root)
     };
     walk(path.join(root, '.claude'), '.claude');
     const own = ws.readWorkspace(root, { env }).file;
-    if (own) add(own, 'workspace');
+    if (own) add(own, path.basename(own));
     return rows.join('\n');
 }
 
@@ -530,7 +532,7 @@ function cascade(out)
             if (r.state === 'gone')
             {
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
-                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { env: r.parentRel === '.' ? env : ws.ancestorEnv(env) });
+                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { env: r.parentRel === '.' ? env : ws.ancestorEnv(env), runRoot: top, log: out });
                 row(r.rel, 'gone');
                 continue;
             }
@@ -612,6 +614,11 @@ function main()
         out(e.message);
         code = e.code;
     }
+    // workspace.json: each project an older release would now misread, the records this verb converted - against the
+    // snapshot the CLI runs from.
+    const { releaseVersion } = require('./install/alfred-code.js');
+    const { compareVersions } = require('./install/source.js');
+    for (const line of ws.olderProjectLines({ conversions: ws.takeConversions(), release: releaseVersion(path.join(__dirname, '..')), compare: compareVersions, env })) out(line);
     return code;
 }
 

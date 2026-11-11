@@ -256,9 +256,12 @@ test('CLI: every flag the walks pass still parses', () => {
 // Matrix F-BOM follow-up (2.1.6, V1): the target-file and catalog readers go through the shared BOM-stripping reader,
 // keeping their answers for a missing, blank and garbage file.
 test('readDoc / readJson: a BOM\'d file reads like one without, and a BOM plus garbage stays bad (V1)', () => {
-    const { readDoc, readJson } = require('./plugin-settings.js');
+    const { readDoc: readDocWithText, readJson } = require('./plugin-settings.js');
+    // readDoc also hands back the text it read, so its writer keeps that file's shape (bug 4); the answer alone is pinned here.
+    const readDoc = (f) => { const { text, ...rest } = readDocWithText(f); return rest; };
     const dir = fs.mkdtempSync(path.join(ROOT, 'bom-'));
     const put = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+    assert.strictEqual(readDocWithText(put('shape.json', '{\r\n    "a": 1\r\n}\r\n')).text, '{\r\n    "a": 1\r\n}\r\n');
     assert.deepStrictEqual(readDoc(put('ok.json', '\uFEFF{"a": 1}')), { exists: true, doc: { a: 1 } });
     assert.deepStrictEqual(readDoc(put('plain.json', '{"a": 1}')), { exists: true, doc: { a: 1 } });
     assert.deepStrictEqual(readDoc(put('bad.json', '\uFEFF{"a": ')), { exists: true, bad: true });

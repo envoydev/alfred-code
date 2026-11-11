@@ -104,6 +104,60 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const walkBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8');
 const STATE_READ = /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./;
 
+// The user's report of 2026-11-10: 'Stop suggesting gh during install or configure, user will select what to use on
+// its own'. The installer still accepts --forge-cli for a hand-run install; the walk never asks it.
+test('init asks no forge CLI question - the user picks their own tools', () => {
+    const body = installBody();
+    assert.doesNotMatch(body, /Reach <host> for the CI/);
+    assert.doesNotMatch(body, /forge-session\.js" --profile/);
+    assert.doesNotMatch(body, /--forge-cli/);
+});
+
+// Final review (2026-11-10, Important 2): the role is written at the install step, after the evidence scan, so a Root
+// answer reaches the scan as a flag - else a first-time root's own children read as stray nested repos.
+test('init\'s evidence scan takes a Root answer as --role root', () => {
+    assert.match(flat(installBody()), /scan-evidence\.js" --root \. --catalog [^`]*`\. Add `--role root` when the role ask was answered Root/);
+});
+
+// 2026-11-10: the gate prints a decision table under the call that made it and says so in its note; a paste then
+// shows the user the same table twice, so each paste mandate names that one case.
+test('the paste mandates skip a table the gate printed', () => {
+    const clause = /unless the gate's note under the table call says it printed the table for the user/;
+    for (const [name, body] of [['walk.md', refBody('walk')], ['init install phase', installBody()], ['configure', cmdBody('configure')]])
+        assert.match(flat(body), clause, name);
+});
+
+// 2026-11-10 (the user's report on 3.9.2): `${CLAUDE_PLUGIN_ROOT}` is expanded only in a command's own text, never in
+// a reference file a body cats, and the Bash tool has no such variable - every path had to be rewritten by hand. A
+// reference reads the snapshot (`$TMP/repo/...`); the only occurrences left are matched by their text, never a line.
+test('the references never read ${CLAUDE_PLUGIN_ROOT} from the shell: each occurrence is one of the five kept', () => {
+    const allowed = {
+        'init-bootstrap.md': [/\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/post-install\.md` \(the plugin root your command body shows/],
+        'init-install.md': [/\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/post-install\.md` \(the plugin root your command body shows/],
+        'source-protocol.md': [/^`\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md`; read it in ONE Bash `cat`/m, /Never read `\$\{CLAUDE_PLUGIN_ROOT\}` from the shell/],
+        'source-protocol-notes.md': [/reading `\$\{CLAUDE_PLUGIN_ROOT\}` from the shell silently skipped/],
+    };
+    const dir = path.join(PLUGIN_DIR, 'references');
+    const stray = [];
+    let kept = 0;
+    for (const name of fs.readdirSync(dir).filter((f) => f.endsWith('.md'))) {
+        const text = fs.readFileSync(path.join(dir, name), 'utf8');
+        for (let i = text.indexOf('${CLAUDE_PLUGIN_ROOT}'); i >= 0; i = text.indexOf('${CLAUDE_PLUGIN_ROOT}', i + 1)) {
+            const around = text.slice(Math.max(0, i - 60), i + 120);
+            const lineStart = text.lastIndexOf('\n', i) + 1;
+            const line = text.slice(lineStart, text.indexOf('\n', i) < 0 ? text.length : text.indexOf('\n', i));
+            if ((allowed[name] || []).some((re) => re.test(around) || re.test(line))) kept++;
+            else stray.push(`${name}: ...${around.replace(/\s+/g, ' ')}...`);
+        }
+    }
+    assert.deepStrictEqual(stray, [], 'a reference reads $TMP/repo/..., never the shell variable');
+    assert.strictEqual(kept, 5, 'the five kept occurrences');
+});
+
+test('init\'s git hygiene ask says the data root\'s .variables stays listed on purpose', () => {
+    assert.match(flat(installBody()), /\.variables stays listed in git status on purpose/);
+});
+
 test('init is one command with two phases: the router reads the state and loads ONE phase file - manual-only', () => {
     const init = cmdBody('init');
     assert.match(init, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, 'init stays manual-only');
@@ -387,7 +441,7 @@ test('the layer table is never redirected to a file - the tool result is what ge
     assert.match(body, /total: N <layer>/, 'the walk carries the footer self-check');
     for (const [name, cmd] of [['init install phase', installBody()], ['configure', cmdBody('configure')]])
     {
-        assert.match(cmd, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/walk\.md/, `${name} runs the shared walk`);
+        assert.match(cmd, /(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/setup-plugin\/references\/walk\.md/, `${name} runs the shared walk`);
         assert.ok(!cmd.split('\n').some((l) => l.includes('--table <layer>')), `${name} restates no table command of its own`);
     }
 });
@@ -714,6 +768,65 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     assert.match(walk, /DELTA: `node "\$TMP\/repo\/scripts\/stack-select\.js" --selection "\$TMP\/raw\.json" --dropped "\$TMP\/dropped\.json"`/, 'the DELTA walk drives the drop cascade');
     assert.match(walk, /An `orphan: <category> <name> - <why> \(dropped\); nothing kept still needs it` line/, 'the DELTA walk consumes the orphan: lines');
     assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
+});
+
+// Bug 1 of the complexity audit (2026-11-10): the walk prose drifted from its own ladders (65516e7e), and a model
+// following validate's off-by-one list tripped the banner-gap note.
+const NUMBER_WORDS = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13 };
+function ladderOf(body)
+{
+    const at = body.indexOf('## The ladder');
+    const total = NUMBER_WORDS[(/(\w+) user-facing steps/i.exec(body.slice(at)) || [])[1].toLowerCase()];
+    const list = /^1 [^\n]*·[^\n]*$/m.exec(body.slice(at))[0].split(' · ').map((s) => /^(\d+) (.+)$/.exec(s.trim()));
+    return { total, numbers: list.map((m) => Number(m[1])), items: list.map((m) => m[2]) };
+}
+const bannersOf = (body) => [...body.matchAll(/\[step (\d+)\/(\d+) - ([^\]]+?)\]/g)].map((m) => ({ k: Number(m[1]), of: Number(m[2]), name: m[3] }));
+const bannerFits = (ladder, b) => b.of === ladder.total && String(ladder.items[b.k - 1] || '').toLowerCase().startsWith(b.name.toLowerCase());
+
+test('each walk ladder counts the same steps in its word, its list, its banners and its skeleton line', () => {
+    const ladders = [];
+    for (const [name, body] of [['init install phase', installBody()], ['configure', cmdBody('configure')], ['validate', cmdBody('validate')]])
+    {
+        const ladder = ladderOf(body);
+        assert.ok(ladder.total, `${name} says how many user-facing steps it has`);
+        assert.deepStrictEqual(ladder.numbers, Array.from({ length: ladder.total }, (_, i) => i + 1), `${name}'s ladder line numbers 1..${ladder.total}`);
+        for (const b of bannersOf(body)) assert.ok(bannerFits(ladder, b), `${name}: [step ${b.k}/${b.of} - ${b.name}] names step ${b.k} of its ${ladder.total}-step ladder (${ladder.items[b.k - 1]})`);
+        const prints = /prints all (\d+) banners/.exec(flat(body));
+        if (prints) assert.strictEqual(Number(prints[1]), ladder.total, `${name}'s skeleton line counts its ${ladder.total} banners`);
+        ladders.push({ name, ...ladder });
+    }
+    for (const b of bannersOf(walkBody()))
+    {
+        const ladder = ladders.find((l) => l.total === b.of);
+        assert.ok(ladder && bannerFits(ladder, b), `walk.md: [step ${b.k}/${b.of} - ${b.name}] fits no ladder`);
+    }
+    const init = flat(cmdBody('init'));
+    const install = ladders.find((l) => l.name === 'init install phase');
+    assert.strictEqual(NUMBER_WORDS[(/INSTALL ->.*?(\w+) banner steps/.exec(init) || [])[1]], install.total, 'init.md counts the install phase\'s banner steps');
+    const bootstrap = NUMBER_WORDS[(/^(\w+) steps, one banner line/m.exec(refBody('init-bootstrap')) || [])[1].toLowerCase()];
+    assert.strictEqual(NUMBER_WORDS[(/BOOTSTRAP ->.*?(\w+) banner steps/.exec(init) || [])[1]], bootstrap, 'init.md counts the bootstrap phase\'s banner steps');
+});
+
+test("walk.md's rules example quotes the live rules table", () => {
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'walk-rules-'));
+    const rawFile = path.join(dir, 'raw.json');
+    fs.writeFileSync(rawFile, JSON.stringify({ skills: [], agents: [], rules: [], plugins: [] }));
+    try
+    {
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--graph', path.join(ROOT, 'meta', 'stack-graph.json'),
+            '--table', 'rules', '--recs', path.join(ROOT, 'meta', 'recommendations.json'), '--stacks', 'aspnet,web-angular'], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        const [, marked, locked, unmarked] = /counts: (\d+) marked \((\d+) locked\), (\d+) unmarked/.exec(r.stdout) || [];
+        const [, total] = /total: (\d+) rules/.exec(r.stdout) || [];
+        assert.ok(marked && total, `the table prints its counts and total lines:\n${r.stdout}`);
+        const walk = flat(walkBody());
+        for (const quote of [`(${total} rows on aspnet + web-angular: ${marked} marked, ${unmarked} unmarked)`, `install the ${marked} marked rows? ${unmarked} are unmarked`,
+            `all ${total} rows of the catalog`, `the ${locked} baseline rules`])
+            assert.ok(walk.includes(quote), `walk.md's FRESH rules example quotes the live table: ${quote}`);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // The install-time twin of validate's judgment gate: a typed add that conflicts with the
@@ -1450,7 +1563,7 @@ test(`C15: update is a ${UPDATE_ROUTER_CAP}-char router that opens on its model 
     assert.ok(flatRouter.indexOf('## The run') > flatRouter.indexOf('**When the gate stops the run'), 'the call order comes after the gate');
     assert.match(flatRouter, /ONE call: `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \. ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the walk rides step 1\'s call');
     assert.match(flatRouter, /step 3's `--log` call with `; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"` appended/, 'the close rides the --log call');
-    assert.match(refBody('update-walk'), /--running "\$\{CLAUDE_PLUGIN_ROOT\}" ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
+    assert.match(refBody('update-walk'), /--running <RESOLVED's running=, else \?> ; cat "\$TMP\/repo\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
     const body = updateBody();
     const afterTitle = body.slice(body.indexOf('# Update Alfred Code'));
     assert.match(afterTitle, /^# Update Alfred Code[^\n]*\n\n## 0\. Where to run it\n\n\*\*The model gate comes first - before any tool call and before reading further\.\*\*/, 'the gate is the body\'s first section');
@@ -1528,8 +1641,8 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     assert.strictEqual(firstOption(child, 'Where should the stack\'s plugins be enabled in this child'), 'local (Recommended)');
     assert.strictEqual(firstOption(child, 'Ignore these machine-local paths in this clone'), '.git/info/exclude (Recommended)');
     // the child text is read only on the role ask's Child answer, so a standalone install carries none of it
-    assert.ok(!/cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md"/.test(refBody('init-install')), 'init-install reads init-child.md unasked');
-    assert.match(flat(refBody('init-role')), /\*\*Child of `<rel>`\*\* - read `\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-child\.md` now/);
+    assert.ok(!/cat "(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/setup-plugin\/references\/init-child\.md"/.test(refBody('init-install')), 'init-install reads init-child.md unasked');
+    assert.match(flat(refBody('init-role')), /\*\*Child of `<rel>`\*\* - read `\$TMP\/repo\/setup-plugin\/references\/init-child\.md` now/);
 });
 
 test('init-child: the local-scope hygiene lines come from git-hygiene.js --local-child, read and applied (AC8)', () =>
@@ -1565,7 +1678,7 @@ test('R066: both parent reads check the read-back before the walk marks a row fr
 test('update-workspace.md is cat only behind a workspace line', () =>
 {
     const walk = flat(refBody('update-walk'));
-    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-workspace\.md"/g) || [];
+    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
     assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child or a rescan row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
@@ -1641,7 +1754,7 @@ test('update-close reads the cascade rows and runs check-loads only when cascade
 test('configure step 8 and init screen B ask the environment rows in calls of at most four', () => {
     assert.match(flat(cmdBody('configure')), /in calls of at most four questions, in catalog order/);
     const install = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-install.md'), 'utf8'));
-    assert.match(install, /in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/init-env-more\.md"`/);
+    assert.match(install, /in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "\$TMP\/repo\/setup-plugin\/references\/init-env-more\.md"`/);
     const more = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'init-env-more.md'), 'utf8');
     assert.match(more, /^How many of a session's agents may run at once\?$/m);
 });

@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync, spawn } = require('node:child_process');
 const variables = require('./install/variables.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const CLI = path.join(__dirname, 'variables.js');
 const MOD = path.join(__dirname, 'install', 'variables.js');
@@ -308,8 +309,8 @@ test('show names own, from <rel>, settings.local.json and default', (t) =>
     const { dir, env } = sandbox(t);
     const parent = project(dir, 'ws');
     const kid = project(dir, 'ws/kid');
-    put(path.join(parent, '.alfred', 'workspace'), 'child kid\n');
-    put(path.join(kid, '.alfred', 'workspace'), 'parent ..\n');
+    putWorkspace(parent, { children: ['kid'] });
+    putWorkspace(kid, { parent: '..' });
     put(varsOf(parent), 'ALFRED_CODE_HISTORY=7\nALFRED_CODE_SCORER_LEVEL=60\n');
     put(varsOf(kid), 'ALFRED_CODE_SCORER_LEVEL=80\n');
     put(localOf(kid), JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1' } }));

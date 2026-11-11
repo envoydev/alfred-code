@@ -966,16 +966,19 @@ function readOnlyCommand(command, depth = 0) {
     return READ_HEAD_RE.test(head);
   });
 }
-function readOnlyTurn() {
+// `fromRow` (userQuestion's, rows back from the newest): only the calls after that row count, and an ask writes nothing.
+function readOnlyTurn(fromRow) {
+  const bounded = Number.isInteger(fromRow);
   try {
-    return walkBack(() => (o) => {
+    return walkBack(() => { let n = 0; return (o) => {
+      if (bounded && n++ >= fromRow) return true;
       if (!o || !o.message) return undefined;
       const c = o.message.content;
       if (o.type === 'assistant' && Array.isArray(c)) {
         for (const b of c) {
           if (!b || b.type !== 'tool_use') continue;
           const name = String(b.name || '');
-          if (READ_ONLY_TOOL_RE.test(name)) continue;
+          if (READ_ONLY_TOOL_RE.test(name) || (bounded && name === 'AskUserQuestion')) continue;
           if ((shellWrites ? shellWrites.isShellTool(name) : SHELL_TOOL_RE.test(name)) && name !== 'Monitor' && readOnlyCommand((b.input || {}).command)) continue;
           return false;
         }
@@ -983,7 +986,7 @@ function readOnlyTurn() {
       }
       if (o.type === 'user' && isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return true;
       return undefined;
-    }, false) === true;
+    }; }, false) === true;
   } catch { return false; }
 }
 function answersInfoRequest(closeTail) {
@@ -1012,6 +1015,88 @@ const REQUEST_QUESTION_RE = /^\s*(?:please\s+)?(?:can|could|would|will)\s+you\b/
 function askedQuestion(prompt) {
   const last = prompt.split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
   return /\?["')\]]*$/.test(last) && !REQUEST_QUESTION_RE.test(last);
+}
+
+// THE OPEN DECISION MET WITH A QUESTION (2026-11-10, the user's report on 2.9.0, task-solve): a stop's ask answered through
+// Other with 'Tell me what issues you have found here?', then rejected with 'Tell me about issues', then a typed 'why do
+// you keep asking' - and each answer came back with the same ask attached, the last close held as a prose decision. The
+// newest ask the USER settled (an answer or their rejection; a hook's denial decided nothing) is read: an option label
+// picked closes it; Other text, the text given with a rejection, or the one typed message after it is the input, and a
+// question there means the turn answers it and ends - the ask comes back when a later message picks, approves or says go
+// on. Returns { text, fromRow (rows back from the newest), kind: 'other' | 'rejected' | 'typed', askText } or null.
+// `guard-stop-contract:question` in ALFRED_CODE_HOOKS_OFF switches it off.
+const INFO_OPEN_RE = /^\s*(?:(?:please\s+)?(?:can|could)\s+you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who)\b/i;
+const REJECTED_SAID_RE = /\btool use was rejected\b[\s\S]*?the user said:[ \t]*\n([\s\S]*)$/i;
+// the harness's own words in the said-slot carry no question of the user's: the 'clarify' button, a bare deny
+const HARNESS_SAID_RE = /^\s*(?:Denied by user\b|The user wants to clarify these questions\b)/i;
+function isQuestionInput(text) {
+  const t = String(text || '').replace(/\n\s*Note: The user's next message[\s\S]*$/i, '').trim();
+  const last = t.split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
+  if (!last) return false;
+  const info = INFO_OPEN_RE.test(last);
+  if (REQUEST_QUESTION_RE.test(last) && !info) return false;
+  return info || askedQuestion(t);
+}
+function askAnswerValues(r) {
+  const answers = r.row && r.row.toolUseResult && r.row.toolUseResult.answers;
+  if (answers && typeof answers === 'object') return Object.values(answers).map((a) => String(a));
+  return [...resultText(r.block).matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)].map((m) => m[2]);
+}
+function userQuestion() {
+  try {
+    if (partOff('guard-stop-contract', 'question')) return null;
+    return walkBack(() => {
+      let n = 0;
+      let newer = null;
+      let typedAt = null;
+      let typedCount = 0;
+      const results = new Map();
+      return (o) => {
+        const at = n++;
+        const next = newer;
+        newer = o;
+        if (!o || !o.message) return undefined;
+        const c = o.message.content;
+        if (o.type === 'user') {
+          if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, { block: b, row: o, at });
+          if (typedMessage(o, next) && !/^\s*Stop hook feedback:/.test(rowText(o))) {
+            // a second typed message since the ask: the conversation moved on, the ask is no longer the open one
+            if (++typedCount > 1) return null;
+            typedAt = { text: rowText(o), at };
+          }
+          return undefined;
+        }
+        if (o.type !== 'assistant' || !Array.isArray(c)) return undefined;
+        for (const b of [...c].reverse()) {
+          if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+          const r = results.get(b.id);
+          if (!r) continue;
+          const text = resultText(r.block);
+          if (r.block.is_error === true && !ANSWER_RESULT_RE.test(text)) continue;   // a hook's denial decided nothing
+          const questions = (b.input && Array.isArray(b.input.questions)) ? b.input.questions : [];
+          const askText = String((questions[0] && questions[0].question) || '');
+          let input = null;
+          if (/\btool use was rejected\b|^\s*The user (?:declined|chose not) to answer/i.test(text)) {
+            const said = ((REJECTED_SAID_RE.exec(text) || [])[1] || '').trim();
+            input = typedAt ? { ...typedAt, kind: 'typed' }
+              : said && !HARNESS_SAID_RE.test(said) ? { text: said, at: r.at, kind: 'rejected' } : null;
+          } else {
+            const labels = new Set(questions.flatMap((q) => ((q && q.options) || []).map((x) => String((x && x.label) || '').trim())));
+            const isLabel = (a) => labels.has(a.trim()) || a.split(/,\s*/).every((part) => labels.has(part.trim()));
+            const free = askAnswerValues(r).find((a) => !isLabel(a));
+            if (free === undefined) return null;   // an option picked: the decision is made
+            // Other text that is no question (an instruction) settles the ask too: a question typed after it has no ask open
+            // (final review Important 1, scenario D). After an Other QUESTION the ask is still open, and a typed one is the input.
+            if (typedAt && !isQuestionInput(free)) return null;
+            input = typedAt ? { ...typedAt, kind: 'typed' } : { text: free, at: r.at, kind: 'other' };
+          }
+          if (!input || !isQuestionInput(input.text)) return null;
+          return { text: input.text.trim(), fromRow: input.at, kind: input.kind, askText };
+        }
+        return undefined;
+      };
+    }, null);
+  } catch { return null; }
 }
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
@@ -2682,6 +2767,11 @@ if (payload.hook_event_name === 'Stop') {
     const _fresh_at = ctxThreshold();
     if (_fresh_at === null || ctx <= _fresh_at) process.exit(0);
     if (FRESH_RE.test(prose)) process.exit(0); // the OFFER is prose - a fenced example is not one
+    // The user's question at an open ask is answered first (2026-11-10): the offer waits for a clean close with none.
+    if (userQuestion()) {
+      breadcrumb('Stop: fresh-session offer deferred, the user\'s question at an open ask is answered first');
+      process.exit(0);
+    }
     if (freshAskAnsweredThisTurn()) {
       breadcrumb('Stop: fresh-session offer skipped, a fresh-session ask was answered this turn');
       process.exit(0);
@@ -2735,6 +2825,25 @@ if (payload.hook_event_name === 'Stop') {
   // ...unless the close hands the user a NEW action to run and report back on ('Run the pull, then tell me when it's
   // done'): the answer settled the ask before it, not this one (audit 2026-10-11 SD10, session d9035363 - the block
   // this exemption skipped was answered in one click).
+  // The user met an open ask with a question (userQuestion, 2026-11-10): an offer is held with its own words - no new ask
+  // this turn - and a clarifying close after a read-only answer passes. It sits before askJustAnswered, whose 3-call
+  // window would let every close through, the offer included.
+  // Both read-only: a turn that edited, ran a write or launched work keeps today's hold (the spec; final review Important 1).
+  const openQuestion = userQuestion();
+  const answeredReadOnly = !!openQuestion && readOnlyTurn(openQuestion.fromRow);
+  if (answeredReadOnly && proseAsk(tail)) {
+    blockDetail('question-turn-offer', proseAskMatch(tail) || tail.trim().slice(-80));
+    process.stderr.write(
+      'The user met the open decision with a question, and this turn answers it.\n' +
+      'you answered a question - end on the answer; the open decision waits for the user\'s next message. Drop the\n' +
+      'closing offer and put no new ask in this turn - the decision comes back when their next message picks, approves or\n' +
+      'says go on. A clarifying question back is fine; an offer to change something waits for that decision.');
+    process.exit(2);
+  }
+  if (answeredReadOnly && endsOnQuestion) {
+    ledgerRow({ tool: '', mode: 'probe', kind: 'discussion-close', reason: `probe: a ${openQuestion.kind} question at an open ask, answered read-only and closed on a question - logged, not held` });
+    process.exit(0);
+  }
   if (askJustAnswered() && !(doneClose && USER_RUN_WAIT_RE.test(closeTail))) {
     breadcrumb('Stop: an AskUserQuestion was just answered or declined - not re-asking');
     process.exit(0);
@@ -2777,15 +2886,18 @@ if (payload.hook_event_name === 'Stop') {
     return u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
   })();
   const _trigger = ctxThreshold();
+  // the trigger and what lowered it, in the banner's own words (fresh-session.js triggerText, 2026-11-10); an engine
+  // older than the hook has no triggerText and the bare number stands
+  const _triggerSaid = (() => { try { return fresh.triggerText(fresh.ctxThresholdWhy()) || `${Math.round(_trigger / 1000)}k`; } catch { return `${Math.round(_trigger / 1000)}k`; } })();
   const freshLine = COMPACT_INSTEAD
     ? 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1), so no resume option belongs in the ask.\n'
     : _trigger === null
     ? 'The fresh-session offer is switched off on this install, so no resume option is expected.\n'
     : (_carry
       ? `This session carries ~${Math.round(_carry / 1000)}k tokens per message and this window's\n`
-        + `fresh-session trigger is ${Math.round(_trigger / 1000)}k - past it, the resume option belongs in the\n`
+        + `fresh-session trigger is ${_triggerSaid} - past it, the resume option belongs in the\n`
         + 'same ask.\n'
-      : `This window's fresh-session trigger is ${Math.round(_trigger / 1000)}k per message and this turn's own\n`
+      : `This window's fresh-session trigger is ${_triggerSaid} per message and this turn's own\n`
         + 'carry could not be read - past the trigger, the resume option belongs in the same ask.\n');
   const pendingOwed = ((closeTail.match(PENDING_RE) || [])[0] || '').trim();
   process.stderr.write(
@@ -3036,6 +3148,34 @@ function settleAskFixed() {
   try { if (keep.length) fs.writeFileSync(file, keep.map((x) => JSON.stringify(x)).join('\n') + '\n'); else fs.rmSync(file, { force: true }); } catch { /* the next run settles it */ }
 }
 if (payload.tool_name === 'AskUserQuestion') { try { settleAskFixed(); } catch { /* never decides */ } }
+// THE RE-ASK (2026-11-10, the user's report on 2.9.0, task-solve): the user met a stop's ask with a question, and the same
+// ask came back attached to the answer, three times. While that question is open (userQuestion), the SAME ask - its first
+// question equal, case and spacing folded - is denied ONCE per (ask, question) pair: an exclusive marker under the temp
+// dir, and the identical second send goes out (the valve, so a model that has a reason to re-ask is never looped). Off
+// for a seat, nobody at the terminal (auto-run answers its own asks), and `guard-stop-contract:question`.
+let reaskDenied = false;
+function reAskDeny() {
+  if (payload.agent_id || partOff('guard-stop-contract', 'question') || unattended(payload) || autoLive(payload)) return;
+  const qs = (payload.tool_input && Array.isArray(payload.tool_input.questions)) ? payload.tool_input.questions : [];
+  const fold = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const first = fold(qs[0] && qs[0].question);
+  if (!first) return;
+  const open = userQuestion();
+  if (!open || fold(open.askText) !== first) return;
+  const os = require('os');
+  const tag = require('crypto').createHash('sha1').update(`${open.askText}\n${open.text}`).digest('hex').slice(0, 12);
+  const marker = require('path').join(os.tmpdir(), `alfred-reask-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80)}-${tag}`);
+  try { fs.closeSync(fs.openSync(marker, 'wx')); } catch { return; }   // spent (or unwritable): the ask goes out
+  const why = `Blocked: the user asked a question - answer it in prose and end the turn. They met this ask with '${open.text.slice(0, 160)}', `
+    + 'so it is not answered yet: answer that question, put no ask in this turn, and end it. The ask comes back when their next '
+    + 'message picks, approves or says go on - or re-send it unchanged if the answer itself needs their pick now.';
+  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: why.split('\n')[0].slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
+  breadcrumb(`block reask: ${open.kind}`);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }));
+  reaskDenied = true;
+  process.exit(0);
+}
+if (payload.tool_name === 'AskUserQuestion') { try { reAskDeny(); } catch (e) { if (reaskDenied) throw e; } }
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   let askFixed = null;
@@ -3483,6 +3623,14 @@ function flowFieldNotes(questions, askText, turnText) {
   // (new scope re-enters at task-design) re-arms the notes (usage audit 2026-11-03 U08: 6 of 6 post-cycle asks in one
   // session carried the three-field note; the review of 2026-11-03: a step call is the new cycle too).
   if (flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt)) return notes;
+  // No step since the last answer or rejection (2026-11-10, the user's report on 2.9.0: a rejected stop, a typed question,
+  // and the same ask back with the three-field and Repro notes): an ask on a turn where the flow did not move - no step
+  // Skill call, no new marker, no source edit, no plan written or stamped, no seat dispatched (the cross flow's work) - is
+  // the same stop re-put or a side question, never a new stop. `askAt` keeps its meaning for the receipts.
+  // `guard-stop-contract:question` restores the old reading.
+  const lastSettled = Math.max(flow.askAt, flow.rejectAt);
+  const moved = Math.max(flow.stepAt, flow.flowAt, flow.editAt, flow.planWriteAt, flow.agentAt, flow.completed === null ? -1 : flow.completed);
+  if (lastSettled >= 0 && !(moved > lastSettled) && !partOff('guard-stop-contract', 'question')) return notes;
   if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
     notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
       + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
@@ -3684,6 +3832,18 @@ function flowLine(line, at, state) {
   // Where the newest ANSWERED ask sits: the first stop is the ask with no answer since the newest marker, and the close
   // the one with none since the plan's Completed stamp (audit 2026-10-10, the T4 cross-track receipts).
   if (isUser && line.includes('"tool_result"') && ANY_ANSWER_RE.test(line)) state.askAt = at;
+  // ...and where the newest REJECTED ask sits (ANY_ANSWER_RE reads answers and declines only): the user's rejection of an
+  // AskUserQuestion, its result keyed by the ask's own id, since an Edit's rejection reads the same words.
+  if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Agent|Task)"/.test(line)) state.agentAt = at;
+  if (isAssistant && line.includes('"AskUserQuestion"') && line.includes('"tool_use"')) {
+    try { for (const b of JSON.parse(line).message.content || []) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') state.lastAskId = String(b.id || ''); } catch { /* a cut row */ }
+  }
+  if (isUser && state.lastAskId && line.includes('tool use was rejected') && line.includes(state.lastAskId)) {
+    try {
+      const c = JSON.parse(line).message.content;
+      if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.tool_use_id === state.lastAskId && /\btool use was rejected\b/.test(resultText(b)))) state.rejectAt = at;
+    } catch { /* a cut row */ }
+  }
   // Either separator: a Windows file_path reads `plans\\` in the raw row and `plans\` parsed (gate, Windows leg, 2026-10-11).
   if (isAssistant && line.includes('Completed:') && /plans[\\/]/.test(line) && line.includes('"tool_use"')) {
     try {
@@ -3733,6 +3893,8 @@ function flowLine(line, at, state) {
 function cycleFacts(line, at, state, isUser, isAssistant) {
   const SAID_RE = /\bSize\**\s*:\s*\**\s*(trivial|small|standard|cross)\b/gi;
   const REPRO_HEAD_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?#{2,4}[ \t]*Repro(?:duction)?\b/i;
+  // a CLOSED plan owes no Repro (2026-11-10): its Completed line, prefix- and bold-tolerant as the Read readers are
+  const COMPLETED_LINE_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?[-*]?\s*\**Completed:/;
   const PLAN_RE = /(?:^|[\\/])plans[\\/][^\\/]+$/;
   if (isAssistant && /Size\**\s*:\s*\**\s*(?:trivial|small|standard|cross)/i.test(line)) {
     try {
@@ -3755,7 +3917,7 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
       const bug = /(?:^|\n)bug: (yes|no)\b/.exec(text);
       if (floor && bug) state.bugSaid = { yes: bug[1] === 'yes', at };
       if (/(?:^|\n)size check: raise to standard\b/.test(text)) state.sizeRaisedAt = at;
-      if (REPRO_HEAD_RE.test(text)) state.reproPlanAt = at;
+      if (REPRO_HEAD_RE.test(text) && !COMPLETED_LINE_RE.test(text)) state.reproPlanAt = at;
     } catch { /* a cut row */ }
   }
   if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Write|Edit|MultiEdit|NotebookEdit|Read|Skill)"/.test(line)) {
@@ -3771,7 +3933,8 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
         if (PLAN_RE.test(file)) {
           state.planAt = at;
           const body = [input.content, input.new_string, ...(Array.isArray(input.edits) ? input.edits.map((e) => e && e.new_string) : [])].join('\n');
-          if (b.name !== 'Read' && REPRO_HEAD_RE.test(body)) state.reproPlanAt = at;
+          if (b.name !== 'Read') state.planWriteAt = at;
+          if (b.name !== 'Read' && REPRO_HEAD_RE.test(body) && !COMPLETED_LINE_RE.test(body)) state.reproPlanAt = at;
         } else if (b.name !== 'Read' && file && cycleSourceFile(file)) state.editAt = at;
       }
     } catch { /* a cut row */ }
@@ -3819,19 +3982,19 @@ function flowState() {
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
     sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
-    autoCmd: false, stepAt: -1 };
+    autoCmd: false, stepAt: -1, rejectAt: -1, lastAskId: '', planWriteAt: -1, agentAt: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 9, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 10, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
       // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1), v9
-      // where a flow step's Skill call sits (the review of 2026-11-03)
-      if (kept && kept.v === 9 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // where a flow step's Skill call sits (the review of 2026-11-03), v10 the newest rejected ask and a closed plan's Repro
+      if (kept && kept.v === 10 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

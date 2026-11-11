@@ -11,6 +11,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { plan, render } = require('./init-plan.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const SCRIPT = path.join(__dirname, 'init-plan.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'init-plan-'));
@@ -249,6 +250,69 @@ test('captures: one row per awareness part', () =>
     assert.match(render(plan({ inv: INV({ agents: ['architecture-analyzer'] }), root, platform: 'linux', env: E(), probe: NONE })).find((l) => l.startsWith('init-plan:')), /4 captures to run$/);
 });
 
+// AC-4 (2026-11-10): session be3a0031 planned the architecture and code-style captures on a root holding six child
+// repositories and no repository of its own - each child is the project those captures describe.
+test('captures: a workspace root with no repository of its own plans no architecture or code-style capture', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const GIT = E({ PATH: process.env.PATH });
+    const BARE = 'skip: a workspace root with no repository of its own - each child captures its own';
+    const withChildren = (n, record) =>
+    {
+        const root = project();
+        for (let i = 0; i < n; i++) execFileSync('git', ['init', '-q', path.join(root, `child-${i}`)]);
+        if (record) putWorkspace(root, record);
+        return root;
+    };
+    const rows = (root, env = GIT) =>
+    {
+        const lines = render(plan({ inv: INV(), root, platform: process.platform, env, probe: NONE }));
+        return { seats: lines.filter((l) => /^capture: capture-awareness (?:architecture|project-code-style) - /.test(l)).map((l) => l.split(' - ').slice(1).join(' - ')),
+            count: lineOf(lines, /^init-plan:/).replace(/.* blocked, /, '') };
+    };
+    for (const [name, root] of [['six git children, no record', withChildren(6)], ['two git children, no record (at)', withChildren(2)],
+        ['a role root record, one git child', withChildren(1, { role: 'root' })]])
+    {
+        const r = rows(root);
+        assert.deepStrictEqual(r.seats, [BARE, BARE], name);
+        assert.strictEqual(r.count, '3 captures to run', name);
+    }
+    const inited = withChildren(6);
+    execFileSync('git', ['init', '-q', inited]);
+    for (const [name, root, env] of [['the same root after git init', inited, GIT], ['one git child, no record (one under)', withChildren(1), GIT],
+        ['no git on PATH', withChildren(6), E({ PATH: path.join(TMP, 'no-bin') })]])
+    {
+        const r = rows(root, env);
+        assert.ok(r.seats.every((d) => d.startsWith('run: ')), `${name}: ${r.seats}`);
+        assert.strictEqual(r.count, '5 captures to run', name);
+    }
+});
+
+// The final review's M5 (2026-11-10): a dotfiles repository at HOME is no repository of the root's own (runtime.js gitRoot
+// reads it the same way), and a child linked to a repository is a child checkout.
+test('captures: a workspace root under a dotfiles repository at HOME, or with linked child checkouts, plans no seat capture', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const BARE = 'skip: a workspace root with no repository of its own - each child captures its own';
+    const seats = (root, env) => render(plan({ inv: INV(), root, platform: process.platform, env, probe: NONE }))
+        .filter((l) => /^capture: capture-awareness (?:architecture|project-code-style) - /.test(l)).map((l) => l.split(' - ').slice(1).join(' - '));
+    const home = path.join(TMP, `dotfiles-${seq++}`);
+    fs.mkdirSync(home, { recursive: true });
+    execFileSync('git', ['init', '-q', home]);
+    const ws = path.join(home, 'work');
+    fs.mkdirSync(path.join(ws, '.claude'), { recursive: true });
+    for (const c of ['a', 'b']) execFileSync('git', ['init', '-q', path.join(ws, c)]);
+    assert.deepStrictEqual(seats(ws, E({ PATH: process.env.PATH, HOME: home, USERPROFILE: home })), [BARE, BARE], 'under a dotfiles repository at HOME');
+    // control: the same folder under a repository that is not HOME is a repository's folder
+    assert.ok(seats(ws, E({ PATH: process.env.PATH, HOME: path.join(TMP, 'elsewhere'), USERPROFILE: path.join(TMP, 'elsewhere') })).every((d) => d.startsWith('run: ')), 'under a repository not at HOME');
+    if (process.platform === 'win32') return;   // a symlink needs a privilege there
+    const repos = path.join(TMP, `repos-${seq++}`);
+    for (const c of ['x', 'y']) execFileSync('git', ['init', '-q', path.join(repos, c)]);
+    const linked = project();
+    for (const c of ['x', 'y']) fs.symlinkSync(path.join(repos, c), path.join(linked, c));
+    assert.deepStrictEqual(seats(linked, E({ PATH: process.env.PATH })), [BARE, BARE], 'two linked child checkouts');
+});
+
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
 test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missing or malformed one', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
 {
@@ -357,8 +421,8 @@ test('unattended: the CLI prints the mode on --mode, and the decisions after the
     const inv = path.join(root, 'installed.json');
     fs.writeFileSync(inv, JSON.stringify(INV({ plugins: [] })));
     const env = (on) => ({ PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...(on ? { ALFRED_CODE_UNATTENDED: '1' } : {}) });
-    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(true), encoding: 'utf8' }).stdout, 'unattended: on\n');
-    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(false), encoding: 'utf8' }).stdout, 'unattended: off\n');
+    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(true), cwd: root, encoding: 'utf8' }).stdout, 'unattended: on\nleftovers: none\n');
+    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(false), cwd: root, encoding: 'utf8' }).stdout, 'unattended: off\nleftovers: none\n');
     const on = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: env(true), encoding: 'utf8' }).stdout.trim().split('\n');
     const off = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: env(false), encoding: 'utf8' }).stdout.trim().split('\n');
     assert.ok(!off.some((l) => l.startsWith('unattended:')), 'attended: the plan alone');
@@ -486,12 +550,11 @@ test('init-plan prints instructions-both: ask before its last line, and unattend
     const top = fs.mkdtempSync(path.join(TMP, 'd5-'));
     const ws = path.join(top, 'ws');
     const api = path.join(ws, 'api');
-    for (const [dir, file] of [[ws, 'child api\n'], [api, 'parent ..\n']])
+    for (const [dir, record] of [[ws, { children: ['api'] }], [api, { parent: '..' }]])
     {
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        putWorkspace(dir, record);
     }
     fs.writeFileSync(path.join(ws, 'CLAUDE.md'), '# team\n');
     const env = E({ CLAUDE_CONFIG_DIR: path.join(top, 'acct'), ALFRED_CODE_WORKSPACE: '1' });   // on by default since 3.0.0; pinned so a launch 0 in the caller's env cannot freeze it
@@ -527,4 +590,24 @@ test('init-plan prints the auto-update line before instructions-both, and unatte
     const answered = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
     assert.match(lineOf(render(answered), /^auto-update:/), /^auto-update: off for envoydev \(/, 'a no is never asked again');
     assert.ok(!unattended(answered).some((l) => l.includes('auto-update')));
+});
+
+// 2026-11-10 (the user's report on 3.9.2): the state read not-installed while an earlier install's .alfred/docs/ was
+// there, and nothing said so before the install. --mode names what an earlier install left, before screen A.
+test('--mode names an earlier install\'s leftovers: the data root with no stamp', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
+{
+    const mode = (root, extra = {}) => spawnSync(process.execPath, [SCRIPT, '--mode'], { env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...extra }, cwd: root, encoding: 'utf8' }).stdout.split('\n')[1];
+    const root = project();
+    assert.strictEqual(mode(root), 'leftovers: none', 'no data root');
+    fs.mkdirSync(path.join(root, '.alfred'));
+    assert.strictEqual(mode(root), 'leftovers: none', 'an empty data root');
+    fs.mkdirSync(path.join(root, '.alfred', 'docs'));
+    fs.writeFileSync(path.join(root, '.alfred', 'docs', 'a.md'), '# a\n');
+    fs.mkdirSync(path.join(root, '.alfred', 'state'));
+    assert.strictEqual(mode(root), 'leftovers: .alfred/ (docs, state)');
+    const moved = project();
+    fs.mkdirSync(path.join(moved, 'data', 'docs'), { recursive: true });
+    assert.strictEqual(mode(moved, { ALFRED_CODE_DATA_PATH: 'data' }), 'leftovers: data/ (docs)', 'the data root the settings name');
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 3.9.2\n');
+    assert.strictEqual(mode(root), 'leftovers: none', 'a stamp: an install, not leftovers');
 });

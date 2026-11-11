@@ -38,7 +38,7 @@ function repo({ engine = true } = {})
     put(root, 'README.md', '# x\n');
     git(root, 'add', '-A');
     git(root, 'commit', '-qm', 'code');
-    if (engine) for (const f of ['docs.js', 'layout.js']) put(root, `.claude/hooks/${f}`, fs.readFileSync(path.join(HOOKS, f), 'utf8'));
+    if (engine) for (const f of ['docs.js', 'layout.js', 'workspace-file.js']) put(root, `.claude/hooks/${f}`, fs.readFileSync(path.join(HOOKS, f), 'utf8'));
     put(root, `${AW}/watch.json`, '{}');
     return root;
 }

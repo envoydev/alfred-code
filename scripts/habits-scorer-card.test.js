@@ -40,6 +40,7 @@ test('the output-scorer seat: read-only tools, sonnet/xhigh, one Scope, the atta
 // the Findings section, `opts.drop` / `opts.extra` remove or add a row id, `opts.evidence` replaces every quote.
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 const SCORECARD = path.join(REPO, 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
 const { grade, parseRubric, sealOf } = require(SCORECARD);
 // Every CLI run and score file sits in a throwaway project; the CLI env drops the stack's keys and the session's project
@@ -135,11 +136,10 @@ test('grade: a bad --level reads the env level, else 80 (spec 5.4: parsed per 5.
 test('the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child', () => {
     const ws = fs.mkdtempSync(path.join(ROOT, 'ws-'));
     const api = path.join(ws, 'api');
-    for (const [dir, line] of [[ws, 'child api\n'], [api, 'parent ..\n']]) {
+    for (const [dir, record] of [[ws, { children: ['api'] }], [api, { parent: '..' }]]) {
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+        putWorkspace(dir, record);
     }
     fs.writeFileSync(path.join(ws, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=90\n');
     const env = { CLAUDE_CONFIG_DIR: path.join(ws, 'acct'), ALFRED_CODE_WORKSPACE: '1' };

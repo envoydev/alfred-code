@@ -44,7 +44,7 @@ const workspace = require('./workspace.js');
 const variables = require('./variables.js');
 const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
-const { readJson } = require('./json-file.js');
+const { readJson, formatOf, stringifyLike } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
 const { BRAND, marketOf } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
@@ -105,7 +105,7 @@ const RETIRED_DENY = [
 // The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
-const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'model-windows.json'];
+const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js', 'model-windows.json'];
 // I12: the serena context the full copy route copied into the project's .claude up to 2.10.0 - no run copies it now,
 // so the ledger prunes an unchanged copy (pruneDroppedCopies).
 const NAV_CONTEXT = 'navigation-context.yml';
@@ -371,6 +371,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const renaming = { renamed: manifest.renamed, log, said: new Set() };
         args.add = selection.renameLines(selection.dropFormerPicks({ lines: args.add, log, said: formerSaid }), renaming);
         args.drop = selection.renameLines(args.drop, renaming);
+        // workspace.json (2026-11-10): the run's own old record converts before the workspace pass reads it, whatever the
+        // switch says - the conversion carries every value; --print-plan writes nothing.
+        if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: workspace.ownDataRootOf({ projectRoot, env, args }), log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
         const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note });
         const userAdds = [...args.add];
@@ -636,6 +639,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile),
         });
 
+        // The projects below take this run's excludes now, not at their own next run (workspace.js refreshBelow, 2026-11-10).
+        // --print-plan returned before the stamp; a project with its switch off is left alone.
+        if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
+        {
+            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }) }); }
+            catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
+        }
+
         summarise(ctx, failures);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }
@@ -678,12 +689,14 @@ function runLayers(ctx)
     catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
     variablesStep(ctx);
     installHooksAndRules(ctx);
-    if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx, path.join(ctx.claudeDir, 'settings.local.json'));
+    if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
+    // Each project an older release would now misread, the records this run converted being workspace.json.
+    for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(ctx.source.dir), compare: compareVersions, env: ctx.env })) ctx.log(`  ${line}`);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
-    try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal }); }
+    try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal: (c, file) => warnUnignoredLocal(c.projectRoot, file, c) }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
     memoryDir.staleLocalStep(ctx);
     // A hand-set root still waiting on update's ask moves nothing yet - its folders are re-laid out only once it is
@@ -1798,11 +1811,12 @@ function liftMemorySwitchOff({ sourceDir, stampFile, legacyUnstamped = false, cl
     // Custom memory's switch-off (the writer's memory pass) is ledgered; the old server's never was.
     if (Object.hasOwn(((ledger && ledger.settings) || {})[path.basename(file)] || {}, 'autoMemoryEnabled')) return '';
     let data;
-    try { ({ data } = settings.readSettings(file)); }
+    let fileText;
+    try { ({ data, text: fileText } = settings.readSettings(file)); }
     catch (err) { note(`${err.message} - autoMemoryEnabled was not checked there; the next update checks it again`); return path.basename(file); }
     if (data.autoMemoryEnabled !== false) return '';
     delete data.autoMemoryEnabled;
-    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
     // Custom memory chosen for this file: the writer pass after this puts the switch-off straight back, ledgered, with its own
     // 'written' line - a 'removed' line before it would contradict it (fix-pass review m4). The choice sits where the writer
     // reads it: settings.local.json over settings.json, a --memory answer over both.
@@ -2062,15 +2076,16 @@ function installHooksAndRules(ctx)
     // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named. F7: it
     // is the user's to act on (a machine path would be committed), so it carries the `!!` marker the 1.x
     // update body's grep and every `warn:` pass read.
-    if (!hadLocal && fs.existsSync(localSettings)) warnUnignoredLocal(ctx, localSettings);
+    if (!hadLocal && fs.existsSync(localSettings)) warnUnignoredLocal(ctx.projectRoot, localSettings, ctx);
 }
 
-// C8's line, for a settings.local.json this run created that git does not ignore - the settings pass and the workspace
-// excludes (which hold this machine's absolute paths) both call it, each only for a file it made.
-function warnUnignoredLocal(ctx, file)
+// C8's line, for a settings.local.json this run created that git does not ignore - the settings pass, the workspace
+// excludes (which hold this machine's absolute paths) and the refresh of a project below (`root` that project's) all
+// call it, each only for a file it made.
+function warnUnignoredLocal(root, file, { rt, log })
 {
-    if (ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, file)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
-        ctx.log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(ctx.projectRoot, file).split(path.sep).join('/')} to .gitignore`);
+    if (rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(root, file)], { cwd: root, stdio: 'ignore' }).status === 1)
+        log(`  !! settings.local.json: created for this machine's own values - git does not ignore it here; add ${path.relative(root, file).split(path.sep).join('/')} to .gitignore`);
 }
 
 // --- R10 THE LEDGER ------------------------------------------------------------------------------
@@ -2289,6 +2304,14 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
         return 1;
     }
     if (backup) { lostLine(); return 1; }
+    // workspace.json: a record the release below would write that reads garbage holds uninstall back before any change -
+    // run past it, a garbage child would be filed as stale and a garbage parent fail after the files were removed.
+    const garbled = workspace.garbageOnLeave({ projectRoot, env, dataRoot: stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root });
+    if (garbled.length)
+    {
+        for (const rel of garbled) err(`error: ${rel} is not valid JSON - the workspace links it records cannot be released; nothing was removed - fix it by hand, then run uninstall again\n`);
+        return 1;
+    }
     if (hasClaude)
     {
         const market = marketOf({ listing: plugins.parsePluginList(rawList, projectRoot, { byMarketplace: true }), marketplaces: readMarkets(), env }).key;
@@ -2336,6 +2359,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     // project's own file sits under the root the stamp records - the settings pass above already took
     // ALFRED_CODE_DATA_PATH out.
     workspace.leaveParent({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
+    for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(path.join(__dirname, '..', '..')), compare: compareVersions, env })) log(`  ${line}`);
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
     if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });
     const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
@@ -2470,4 +2494,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, HOOK_MODULES, forgeCliStep, SECRET_DENY, RETIRED_DENY, SHIPPED_DENY, releaseVersion };

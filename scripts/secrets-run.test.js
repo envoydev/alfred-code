@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const runtime = require('./install/runtime.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'secrets-run-')));
@@ -30,9 +31,9 @@ const tree = (spec) =>
         const data = path.join(dir, ...(o.data || '.alfred').split('/'));
         fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        for (const f of ['secrets-run.js', 'secret-chain.js', 'layout.js']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, '.claude', 'hooks', f));
+        for (const f of ['secrets-run.js', 'secret-chain.js', 'layout.js', 'workspace-file.js']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, '.claude', 'hooks', f));
         fs.mkdirSync(data, { recursive: true });
-        if (o.file !== undefined) fs.writeFileSync(path.join(data, 'workspace'), o.file);
+        if (o.record !== undefined) putWorkspace(dir, o.record, { dataRoot: o.data || '.alfred' });
         if (o.store !== undefined) fs.writeFileSync(path.join(data, '.secrets'), o.store);
         if (o.local !== undefined) fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), o.local);
     }
@@ -40,8 +41,8 @@ const tree = (spec) =>
 };
 const VALUES = { kid: 'kid-a1', rootA: 'root-a', rootB: 'root-b' };
 const three = (extra = {}) => tree({
-    'ws': { file: 'child api\n', store: `A=${VALUES.rootA}\nB=${VALUES.rootB}\n`, ...extra.ws },
-    'ws/api': { file: 'parent ..\n', store: `A=${VALUES.kid}\n`, ...extra.api },
+    'ws': { record: { children: ['api'] }, store: `A=${VALUES.rootA}\nB=${VALUES.rootB}\n`, ...extra.ws },
+    'ws/api': { record: { parent: '..' }, store: `A=${VALUES.kid}\n`, ...extra.api },
 });
 // The test server: `presence K...` prints each key's type and length, `stderr K` writes the value to stderr, `bulk K`
 // writes 200 KB of JSON-RPC lines with the value in one, `exit N` exits with N.

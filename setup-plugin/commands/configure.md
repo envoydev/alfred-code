@@ -47,7 +47,7 @@ This command's extra stake in the snapshot: its revision is what step 1 compares
 to report what an update would bring - an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of
 a plugin-cache copy, which carries no `RELEASE-SOURCE` (never probe for one there).
 
-**Table before question - no exceptions.** Any table or report the user decides from (step 1's `--inventory` table, every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook voids the answer to an ask whose table is missing and prints the table itself.
+**Table before question - no exceptions.** Any table or report the user decides from (step 1's `--inventory` table, every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it, unless the gate's note under the table call says it printed the table for the user - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook voids the answer to an ask whose table is missing and prints the table itself.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
@@ -71,7 +71,7 @@ banner line so the user always knows where they are, what is being decided, and 
 
 1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 plugins · 8 environment · 9 permission mode · 10 prerequisite check · 11 update · 12 AGENTS.md (optional)
 
-**The skeleton is INVARIANT - the stability contract.** Every run prints all 13 banners, in this
+**The skeleton is INVARIANT - the stability contract.** Every run prints all 12 banners, in this
 order, exactly once each. A step that does not apply THIS run still prints its banner followed by
 ONE line naming why it is a no-op (`[step 7/12 - plugins] skipped - area not selected`,
 `[step 12/12 - AGENTS.md] skipped - the user declined`), then moves on - a step never silently

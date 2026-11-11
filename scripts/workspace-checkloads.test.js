@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const ws = require('./install/workspace.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 const { hashItem } = require('./install/library.js');
 
 const CLI = path.join(__dirname, 'workspace.js');
@@ -62,10 +63,9 @@ function setup({ events = () => [], agents = null, noCreds = true, found = null 
     execFileSync('git', ['init', '-q', child]);
     fs.writeFileSync(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
     fs.writeFileSync(path.join(child, '.claude', 'rules', 'own.md'), '# own\n');
-    for (const [dir, line] of [[root, 'child api\n'], [child, 'parent ..\n']])
+    for (const [dir, record] of [[root, { children: ['api'] }], [child, { parent: '..' }]])
     {
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), line);
+        putWorkspace(dir, record);
     }
     const real = { root: fs.realpathSync.native(root), child: fs.realpathSync.native(child) };
     const dump = path.join(top, 'dump');

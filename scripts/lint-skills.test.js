@@ -1654,7 +1654,7 @@ test('check 61: init-install.md is held at 31,960 bytes, and init-env-more.md ca
     assert.deepStrictEqual(sized(31960), []);
     assert.ok(sized(31961).some((f) => /init-install\.md is 31961 bytes, past its pin of 31960/.test(f)));
     assert.strictEqual(SETUP_ASK_TEMPLATES['setup-plugin/references/init-env-more.md'], 1);
-    assert.strictEqual(SETUP_ASK_TEMPLATES[rel], 9);
+    assert.strictEqual(SETUP_ASK_TEMPLATES[rel], 8);
 });
 
 // F12 (2026-10-28 workspace run): a skill script copied into a "type": "module" project died on its first require, so

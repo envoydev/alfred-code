@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const { dataRootOffer, toolIgnoreOffer, applyIgnore, rewriteOwnLine, OWN_COMMENT } = require('./git-hygiene.js');
 
@@ -15,7 +16,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'git-hygiene-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 let n = 0;
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-function repo({ env = {}, files = {}, init = true } = {})
+function repo({ env = {}, files = {}, init = true, workspace } = {})
 {
     const root = path.join(TMP, `r-${n += 1}`);
     fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
@@ -25,6 +26,7 @@ function repo({ env = {}, files = {}, init = true } = {})
         fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
         fs.writeFileSync(path.join(root, rel), body);
     }
+    if (workspace) putWorkspace(root, workspace);
     if (init) git(root, 'init', '-q');
     return root;
 }
@@ -109,12 +111,13 @@ test('apply: a root with committed docs is never written', () =>
     assert.ok(!fs.existsSync(path.join(root, '.gitignore')));
 });
 
-// A workspace child installed at local scope: the stamp's scope, the data root's workspace file with its parent line.
-const CHILD = { '.alfred/.gitignore': DATA_IGNORE, '.alfred/workspace': 'parent ..\n', '.claude/alfred-code.stamp': 'scope: local\ntool-ignores: .prettierignore=created\n', '.prettierignore': '# alfred-code\n/.claude/\n' };
+// A workspace child installed at local scope: the stamp's scope, the data root's workspace record naming its parent.
+const CHILD_WS = { parent: '..' };
+const CHILD = { '.alfred/.gitignore': DATA_IGNORE, '.claude/alfred-code.stamp': 'scope: local\ntool-ignores: .prettierignore=created\n', '.prettierignore': '# alfred-code\n/.claude/\n' };
 
 test('--local-child in a local workspace child: the data root is offered with committed docs, and a .prettierignore the run created beside it (AC8)', () =>
 {
-    const root = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD });
+    const root = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD, workspace: CHILD_WS });
     assert.match(dataRootOffer({ projectRoot: root }).why, /are committed/, 'without the flag: as today');
     assert.strictEqual(toolIgnoreOffer({ projectRoot: root }).state, 'none', 'without the flag: as today');
     const o = dataRootOffer({ projectRoot: root, localChild: true });
@@ -134,17 +137,17 @@ test('--local-child in a local workspace child: the data root is offered with co
 
 test('--local-child at project scope, without a parent line, or with the .prettierignore tracked, offers as today', () =>
 {
-    const project = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.claude/alfred-code.stamp': 'scope: project\ntool-ignores: .prettierignore=created\n' } });
+    const project = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.claude/alfred-code.stamp': 'scope: project\ntool-ignores: .prettierignore=created\n' }, workspace: CHILD_WS });
     assert.match(dataRootOffer({ projectRoot: project, localChild: true }).why, /are committed/);
     assert.strictEqual(toolIgnoreOffer({ projectRoot: project, localChild: true }).state, 'none');
-    const standalone = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.alfred/workspace': 'parent none\n' } });
+    const standalone = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD, workspace: { parentNone: true } });
     assert.match(dataRootOffer({ projectRoot: standalone, localChild: true }).why, /are committed/);
     assert.strictEqual(toolIgnoreOffer({ projectRoot: standalone, localChild: true }).state, 'none');
-    const tracked = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD });
+    const tracked = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: CHILD, workspace: CHILD_WS });
     git(tracked, 'add', '.prettierignore');
     assert.strictEqual(toolIgnoreOffer({ projectRoot: tracked, localChild: true }).state, 'none');
     assert.strictEqual(dataRootOffer({ projectRoot: tracked, localChild: true }).state, 'offer');
-    const appended = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.claude/alfred-code.stamp': 'scope: local\ntool-ignores: .prettierignore=appended\n' } });
+    const appended = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'git' }, files: { ...CHILD, '.claude/alfred-code.stamp': 'scope: local\ntool-ignores: .prettierignore=appended\n' }, workspace: CHILD_WS });
     assert.strictEqual(toolIgnoreOffer({ projectRoot: appended, localChild: true }).state, 'none', 'a file the project had is the project\'s');
 });
 

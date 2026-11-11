@@ -46,7 +46,7 @@ const path = require('node:path');
 const { spawnCommand } = require('./install/runtime.js');
 
 const { accountDir } = require('./install/stamp.js');
-const { parseJson } = require('./install/json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./install/json-file.js');
 const { planFor, applyTargets, backupOnce, report, readDoc } = require('./plugin-settings.js');
 // The plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR, else <account>/plugins) - one home, beside lsp-coverage.js, its other reader.
 const { pluginsRoot, movedRoot } = require('../stack/skills/capture-preferences/scripts/plugins-root.js');
@@ -522,7 +522,7 @@ function applyHud(plan, run = {})
         const doc = plan.settings.doc || {};
         doc.statusLine = lineAfter(doc, sl.command);
         fs.mkdirSync(path.dirname(plan.settingsFile), { recursive: true });
-        fs.writeFileSync(plan.settingsFile, JSON.stringify(doc, null, 2) + '\n');
+        fs.writeFileSync(plan.settingsFile, stringifyLike(doc, formatOf(plan.settings.text)));
         lines.push(sl.state === 'absent'
             ? `hud: statusLine written - claude-hud's own shape for this platform${plan.where === 'account' ? '' : `, in the ${plan.where} - claude-hud is installed for this project`}`
             : 'hud: statusLine refreshed - the claude-hud line had a stale shape; its other keys kept');

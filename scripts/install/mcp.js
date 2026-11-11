@@ -13,7 +13,7 @@
 //     key order (keepMcpOrder).
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseJson } = require('./json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
 // How each server shipped: the copy route's argument templates, the anchor code and the hosted documentation remote.
@@ -175,11 +175,7 @@ function keepMcpOrder({ mcpFile, before })
         fs.writeFileSync(mcpFile, before.raw);
         return 'restored';
     }
-    const bom = before.raw.startsWith('\uFEFF') ? '\uFEFF' : '';
-    const indent = (/^\uFEFF?\{\r?\n([ \t]+)"/.exec(before.raw) || [])[1] || 2;
-    const eol = before.raw.includes('\r\n') ? '\r\n' : '\n';
-    let text = bom + JSON.stringify(inOrderOf(data, before.data), null, indent).replace(/\n/g, eol);
-    if (/\r?\n$/.test(before.raw)) text += eol;
+    const text = stringifyLike(inOrderOf(data, before.data), formatOf(before.raw));
     if (text === now.raw) return 'kept';
     fs.writeFileSync(mcpFile, text);
     return 'reordered';
@@ -315,7 +311,7 @@ function removeManagedMcp({ mcpFile, managed = {}, log = () => {}, note = () => 
     }
     if (!removed.length) return { removed };
     if (!Object.keys(servers).length && Object.keys(data).length === 1) { fs.rmSync(mcpFile, { force: true }); log('  .mcp.json removed - it held nothing but the stack\'s servers'); }
-    else fs.writeFileSync(mcpFile, `${JSON.stringify(data, null, 2)}\n`);
+    else fs.writeFileSync(mcpFile, stringifyLike(data, formatOf(raw)));
     return { removed };
 }
 

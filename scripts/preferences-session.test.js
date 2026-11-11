@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const HOOK = path.join(HOOKS, 'preferences-session.js');
@@ -666,7 +667,7 @@ test('PF-4: with no seed beside the hook (a copy route without the skill), only 
     {
         const dir = path.join(p.root, '.claude', 'hooks');
         fs.mkdirSync(dir, { recursive: true });
-        for (const f of ['preferences-session.js', 'layout.js', 'shell-writes.js', 'hook-prelude.js']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f));
+        for (const f of ['preferences-session.js', 'layout.js', 'workspace-file.js', 'shell-writes.js', 'hook-prelude.js']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f));
         const text = reason(p.hook(bash('git commit -m x', sid()), {}, path.join(dir, 'preferences-session.js')));
         const othersAt = text.indexOf('The other entries');
         assert.ok(othersAt > text.indexOf('Do NOT commit or push'), text);
@@ -1980,7 +1981,7 @@ test('the session-start push writes one preferences-push probe row (item 7)', ()
 // ---- release 3, T4: a child of a workspace reads its ancestors' preferences after its own (R3, R4, R4b) --------------
 const ROOT_PERSONAL = PERSONAL.replace('put behaviour on the type that owns the data, never in a static helper class.', 'ROOT-ONLY: prefer composition over inheritance.');
 const layoutLib = require('../stack/hooks/layout.js');
-function wsProject({ rootDocs = {}, childDocs = {}, childFile = 'parent ..\n', engine = false } = {})
+function wsProject({ rootDocs = {}, childDocs = {}, childRecord = { parent: '..' }, engine = false } = {})
 {
     // .native: Windows CI's temp is an 8.3 name (RUNNER~1) and the readers report the long one.
     const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'prefs-ws-')));
@@ -1988,8 +1989,8 @@ function wsProject({ rootDocs = {}, childDocs = {}, childFile = 'parent ..\n', e
     const root = path.join(ws, 'api');
     const config = path.join(top, 'config');
     const write = (abs, text) => { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.writeFileSync(abs, text); };
-    write(path.join(ws, '.claude', 'alfred-code.stamp'), 'sha: x\n'); write(path.join(ws, '.alfred', 'workspace'), 'child api\n');
-    write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: x\n'); write(path.join(root, '.alfred', 'workspace'), childFile);
+    write(path.join(ws, '.claude', 'alfred-code.stamp'), 'sha: x\n'); putWorkspace(ws, { children: ['api'] });
+    write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: x\n'); putWorkspace(root, childRecord);
     spawnSync('git', ['init', '-q', '-b', 'develop'], { cwd: root });
     write(path.join(root, '.gitignore'), '.alfred/\n'); write(path.join(root, 'src', 'app.ts'), 'export const x = 1;\n'); write(path.join(config, 'x'), '');
     for (const [name, text] of Object.entries(rootDocs)) write(path.join(ws, PREFS, name), text);
@@ -2019,7 +2020,7 @@ test('a child: its own preference doc wins over the root\'s of the same name; th
 
 test('ignore doc PERSONAL-CODE-PREFERENCES.md takes only the root\'s copy out', () =>
 {
-    const p = wsProject({ rootDocs: { 'PERSONAL-CODE-PREFERENCES.md': ROOT_PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE }, childFile: 'parent ..\nignore doc PERSONAL-CODE-PREFERENCES.md\n' });
+    const p = wsProject({ rootDocs: { 'PERSONAL-CODE-PREFERENCES.md': ROOT_PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE }, childRecord: { parent: '..', ignore: { doc: ['PERSONAL-CODE-PREFERENCES.md'] } } });
     try
     {
         const held = reason(p.hook(edit('src/app.ts', sid())));
@@ -2138,7 +2139,7 @@ test('the path-only floor - 299 characters left gives the path alone, 300 and 30
 test('no memory line: an empty MEMORY.md, a missing MEMORY.md or folder, CLAUDE_CODE_PROJECT_DIR_NAME, ignore memory root, the kill switch, a seat\'s start', () =>
 {
     const p = wsProject();
-    const ig = wsProject({ childFile: 'parent ..\nignore memory root\n' });
+    const ig = wsProject({ childRecord: { parent: '..', ignore: { memory: ['root'] } } });
     try
     {
         const none = (q, payload = start(sid(), 'startup'), extra = {}) => assert.doesNotMatch(pushed(q.hook(payload, extra)), /Workspace root memory/);
@@ -2160,12 +2161,12 @@ test('no memory line: an empty MEMORY.md, a missing MEMORY.md or folder, CLAUDE_
 
 test('ws/api\'s ignore memory root drops the index for ws/api/tool too (R0); a child whose memory folder equals the root\'s gets no line', () =>
 {
-    const p = wsProject({ childFile: 'parent ..\nchild tool\nignore memory root\n' });
+    const p = wsProject({ childRecord: { parent: '..', children: ['tool'], ignore: { memory: ['root'] } } });
     const shared = wsProject();
     try
     {
         const tool = path.join(p.root, 'tool');
-        p.write(path.join(tool, '.claude', 'alfred-code.stamp'), 'sha: x\n'); p.write(path.join(tool, '.alfred', 'workspace'), 'parent ..\n');
+        p.write(path.join(tool, '.claude', 'alfred-code.stamp'), 'sha: x\n'); putWorkspace(tool, { parent: '..' });
         spawnSync('git', ['init', '-q'], { cwd: tool });
         putIndex(p, indexOf(3));
         const r = spawnSync(process.execPath, [HOOK], { cwd: tool, input: JSON.stringify({ cwd: tool, ...start(sid(), 'startup') }), encoding: 'utf8', env: { ...p.env, CLAUDE_PROJECT_DIR: tool } });

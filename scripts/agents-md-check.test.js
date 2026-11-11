@@ -251,6 +251,39 @@ test('I1e: a dot-token that is a suffix or a kind of name is no dotfile - `.api.
     assert.deepStrictEqual(kinds(run(root, text)), ['4 path .nvmrc']);
 });
 
+test('I1f: an absence word denies its clause - is absent, are missing from', () =>
+{
+    // AC-8 (2026-11-10): session be3a0031 raised two cert/ paths on a line that said the folder is absent in the checkout
+    const root = tree({ 'src/': '' });
+    const text = [
+        '`a/` is absent in this checkout.',
+        '`b/` and `c/` are missing from this checkout.',
+        'Sources live in `src/`; the `d/` folder is absent.',
+        'The parser handles missing values in `e/`.',
+    ].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)).map((k) => k.replace(/\/$/, '')), ['4 path e'], 'missing as an adjective claims the path');
+});
+
+test('I1h: an absence word denies only the path that is its subject - never one it governs as an object', () =>
+{
+    // the final review's M6 (2026-11-10): 'missing from/in' and 'absent' as clause-wide negation words hid real claims
+    const root = tree({ 'src/': '' });
+    const text = [
+        'Add the tests missing from `t1/unit/`.',
+        'Fill in the docs missing in `t2/api/`.',
+        'Absent a config, the CLI reads `t3/default.json`.',
+        '`t4/` is missing nothing the build needs.',
+        'Report anything missing in `t6/` to the owner.',
+        'The retry drops missing in-flight requests in `t7/retry/`.',
+        'Use `t10/` when the env var is absent.',
+        '`s1/` is absent in this checkout.',
+        '`s2/` and `s3/` are missing from this checkout.',
+        'Sources live in `src/`; the `s4/` folder is absent.',
+    ].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)).map((k) => k.replace(/\/$/, '')),
+        ['1 path t1/unit', '2 path t2/api', '3 path t3/default.json', '4 path t4', '5 path t6', '6 path t7/retry', '7 path t10']);
+});
+
 test('the <docs-path> placeholder resolves to the install\'s docs root', () =>
 {
     const root = tree({ '.claude/settings.json': JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), 'docs/ai/architecture/ARCHITECTURE.md': '' });
@@ -398,6 +431,7 @@ test('cli: findings print file:line kind and exit 1; a clean project exits 0; no
         'CLAUDE.md:7 command: nosuchprogram-xyz - not on PATH',
         'CLAUDE.md:10 path: src/gone.ts - does not exist',
         'agents-md-check: 3 finding(s) in 1 file(s)',
+        'agents-md-check: a line that names a path on purpose takes <!-- agents-md-check: keep --> and is not checked again',
     ]);
     const good = tree({ 'CLAUDE.md': '# Orders\n\n```bash\nnpm test\n```\n' }, { git: true });
     const ok = cli(good, [], { PATH });
@@ -421,6 +455,25 @@ test('cli: --file checks one file; an unreadable template skips only the templat
     const bad = cli(root, ['--bogus']);
     assert.strictEqual(bad.status, 2);
     assert.match(bad.stderr, /usage: node agents-md-check\.js/);
+});
+
+test('I1g: a raised path row is followed once by the keep-marker line; a clean run and a run with only non-path rows print none', () =>
+{
+    // AC-8 (2026-11-10): the marker existed, but the check's own output never named it
+    const KEEP = 'agents-md-check: a line that names a path on purpose takes <!-- agents-md-check: keep --> and is not checked again';
+    const keeps = (r) => r.stdout.split('\n').filter((l) => l === KEEP).length;
+    const paths = cli(tree({ 'AGENTS.md': '# Orders\n\nSee `src/gone.ts` and `lib/gone.ts`.\n' }, { git: true }));
+    assert.strictEqual(paths.status, 1, paths.stdout + paths.stderr);
+    assert.strictEqual(keeps(paths), 1, paths.stdout);
+    assert.strictEqual(paths.stdout.trim().split('\n').filter((l) => / path: /.test(l)).length, 2, paths.stdout);
+    assert.ok(paths.stdout.trim().endsWith(KEEP), 'the hint is the last line, after the summary');
+    const clean = cli(tree({ 'AGENTS.md': '# Orders\n' }, { git: true }));
+    assert.strictEqual(clean.status, 0, clean.stdout + clean.stderr);
+    assert.strictEqual(keeps(clean), 0, clean.stdout);
+    const other = cli(tree({ 'AGENTS.md': '# __PROJECT_NAME__\n\nTODO: describe the build.\n' }, { git: true }));
+    assert.strictEqual(other.status, 1, other.stdout + other.stderr);
+    assert.ok(!/ path: /.test(other.stdout), other.stdout);
+    assert.strictEqual(keeps(other), 0, other.stdout);
 });
 
 // A HAND copy of the template (the fill-in block's route when the seed step was skipped) keeps its

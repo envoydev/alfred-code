@@ -8801,6 +8801,19 @@
           "marker": "an earlier run's notes under the same name"
         }
       ]
+    },
+    "listing-key": {
+      "_note": "The plugin listing's own compare: a projectPath keyed for `claude plugin list --json` - a drive-letter path case-folded, any other path its real path with its case kept, as the CLI keeps it (Task 5's probe, Claude Code 2.1.322). The installer's reader and awareness-state.js, which ships without the installer; path-key.test.js runs one table through both.",
+      "owner": {
+        "file": "scripts/install/plugins.js",
+        "marker": "// listing-key: a drive-letter path case-folded, any other path its real path with its case kept - the plugin listing's own compare (bug 5 of the complexity audit, Task 5's probe)."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-awareness/scripts/awareness-state.js",
+          "marker": "// listing-key: a drive-letter path case-folded, any other path its real path with its case kept - the plugin listing's own compare (bug 5 of the complexity audit, Task 5's probe)."
+        }
+      ]
     }
   }
 }

@@ -11,6 +11,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const memoryDir = require('./install/memory-dir.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 const layout = require('../stack/hooks/layout.js');
 const stamp = require('./install/stamp.js');
 
@@ -46,6 +47,17 @@ test('docs: install --memory docs writes the absolute main-checkout path and its
     assert.ok(!Object.hasOwn(r.result.settings, 'autoMemoryDirectory'), 'never the committed settings.json');
     assert.strictEqual(r.result.mode, 'docs');
     assert.match(r.out, /settings\.local\.json: autoMemoryDirectory written - \.alfred\/docs\/memory\/ \(ALFRED_CODE_MEMORY is docs; Claude's own memory lives with the docs from the next session\)/);
+});
+
+test('docs: a BOM, CRLF and 4-space settings.local.json keeps its shape when the row is written (bug 4)', POSIX_ONLY, () =>
+{
+    const r = seedRun('install', SEL, { args: ['--memory', 'docs'],
+        prepare: (repo) => writeLocal(repo, '\uFEFF{\r\n    "mine": 1\r\n}\r\n'),
+        inspect: (repo) => readOr(path.join(repo, '.claude', 'settings.local.json')) });
+    const text = r.result;
+    assert.ok(text.startsWith('\uFEFF'), `BOM kept: ${JSON.stringify(text.slice(0, 40))}`);
+    assert.match(text, /\r\n {4}"autoMemoryDirectory"/);
+    assert.ok(!/(^|[^\r])\n/.test(text), 'no lone LF');
 });
 
 test('docs: a second update changes nothing', POSIX_ONLY, () =>
@@ -393,12 +405,11 @@ function sameRepoChild()
     const child = path.join(parent, 'api');
     fs.mkdirSync(child, { recursive: true });
     git(parent, 'init', '-q');
-    for (const [dir, file] of [[parent, 'child api\n'], [child, 'parent ..\n']])
+    for (const [dir, record] of [[parent, { children: ['api'] }], [child, { parent: '..' }]])
     {
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
-        fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+        putWorkspace(dir, record);
     }
     fs.writeFileSync(path.join(parent, '.alfred', '.variables'), 'ALFRED_CODE_MEMORY=docs\n');
     const configDir = path.join(top, 'acct');
@@ -475,6 +486,27 @@ const seedMemory = (dir, files) =>
 };
 const mtimeOf = (f) => fs.statSync(f).mtimeMs;
 const ATTR = (repo) => path.join(repo, '.alfred', 'docs', 'memory', '.gitattributes');
+
+// Final review (2026-11-10, Critical): a refactor changed warnUnignoredLocal to (root, file, { rt, log }) while memory-dir.js
+// called it as (ctx, file), so every --memory docs run that created settings.local.json threw inside the row check and
+// reported a failed step. The row step creates the file in a repo that does not ignore it: the row lands, the !! line names
+// the file, and no step fails.
+test('memory row: --memory docs creating settings.local.json in a repo that does not ignore it warns and fails no step', POSIX_ONLY, () =>
+{
+    const r = seedRun(['install', 'update'], SEL, {
+        args: [[], ['--installed-only', '--memory', 'docs']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            if (i === 0) { fs.rmSync(file, { force: true }); return null; }
+            return { local: readOr(file) };
+        },
+    });
+    const out = r.outs[1];
+    assert.doesNotMatch(out, /could not be checked|reported a failure/, out);
+    assert.match(String((JSON.parse(r.steps[1].local || '{}')).autoMemoryDirectory || ''), /docs\/memory/, out);
+    assert.match(out, /!! settings\.local\.json: created for this machine's own values - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/);
+});
 
 test('copy: default -> docs with --memory-copy copies every top-level .md, the old ones untouched', POSIX_ONLY, () =>
 {

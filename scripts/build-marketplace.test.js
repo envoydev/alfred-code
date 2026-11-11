@@ -140,8 +140,8 @@ test('the core carries every stack hook inline, its own two first in each event'
         for (const c of commands(stack, event))
             assert.ok(commands(core.hooks, event).includes(c), `the core must carry ${event} ${c}`);
     const own = (event) => commands(core.hooks, event).filter((c) => c.includes('/setup-plugin/hooks/'));
-    assert.deepStrictEqual(own('PreToolUse').length + own('SessionStart').length + own('PostToolUse').length, 4,
-        'the core keeps its own two hooks, the layer gate on three wirings');
+    assert.deepStrictEqual(own('PreToolUse').length + own('SessionStart').length + own('PostToolUse').length, 9,
+        'the core keeps its own two hooks, the layer gate on three wirings plus its five table prints');
     // F4 (2026-10-28): the paste check voids at PostToolUse, where the ask's own message is on disk.
     const post = core.hooks.PostToolUse.find((g) => g.matcher === 'AskUserQuestion');
     assert.match(line(post.hooks[0]), /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer gate leads PostToolUse AskUserQuestion');
@@ -151,7 +151,30 @@ test('the core carries every stack hook inline, its own two first in each event'
     assert.deepStrictEqual([bash.hooks[0].if, /guard-layer-table\.js/.test(line(bash.hooks[0]))], ['Bash(node *)', true], 'the layer gate rides Bash behind its if filter');
     assert.match(line(core.hooks.SessionStart[0].hooks[0]), /setup-plugin\/hooks\/library-stamp\.js/, 'the library-stamp line leads SessionStart');
     const total = (block) => Object.values(block).flat().reduce((n, g) => n + g.hooks.length, 0);
-    assert.strictEqual(total(core.hooks), total(stack) + 4, 'nothing doubled, nothing lost');
+    assert.strictEqual(total(core.hooks), total(stack) + 9, 'nothing doubled, nothing lost');
+});
+
+// 2026-11-10: the decision table is printed when it is made - a PostToolUse Bash handler per table script, each behind
+// its own `if` ('The `if` field holds exactly one permission rule ... define a separate hook handler for each',
+// code.claude.com/docs/en/hooks), the set held to the hook's own TABLE_SCRIPT line, read from its source (the hook
+// reads stdin at its top level, so no test requires it).
+test('the layer gate prints tables at PostToolUse Bash: one if-filtered handler per table script', () => {
+    const core = coreEntry();
+    const bash = core.hooks.PostToolUse.find((g) => g.matcher === 'Bash');
+    assert.ok(bash, 'a PostToolUse Bash group');
+    const ours = bash.hooks.filter((h) => /guard-layer-table\.js/.test(line(h)));
+    const rules = ours.map((h) => h.if);
+    assert.deepStrictEqual(rules, ['Bash(node *stack-select.js*)', 'Bash(node *workspace.js*)', 'Bash(node *plugin-settings.js*)',
+        'Bash(node *audit-install.js*)', 'Bash(node *update-preflight.js*)']);
+    const src = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js'), 'utf8');
+    const m = /^const TABLE_SCRIPT = \/\(\?:([\w|-]+)\)\\\.js\\b\/;$/m.exec(src);
+    assert.ok(m, 'the hook declares TABLE_SCRIPT on its own line');
+    assert.deepStrictEqual(rules.map((r) => /\*([\w-]+)\.js\*/.exec(r)[1]).sort(), m[1].split('|').sort(), 'one handler per script the hook prints for');
+    for (const h of ours) assert.strictEqual(h.timeout, 10);
+    // Final review (2026-11-10): handlers equal in command and args could be merged as one whatever their `if` - the hooks page
+    // promises nothing for that - so each carries its script's name as a second arg (no leading '--': no CLI invocation).
+    assert.strictEqual(new Set(ours.map((h) => line(h))).size, ours.length, `five distinct launch lines: ${ours.map((h) => line(h)).join(' | ')}`);
+    for (const h of ours) assert.ok(!String(h.args[1] || '').startsWith('--'), line(h));
 });
 
 // HK-22 retired (2026-11-04): the Haiku stop judge missed its gate (median 125 of 161 against the regex's 122, flips 24;

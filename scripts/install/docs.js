@@ -21,7 +21,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { parseJson } = require('./json-file.js');
+const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const rt = require('./runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 // A folder under the docs root is a DOMAIN when it holds a watch.json - architecture/ is
@@ -304,10 +304,7 @@ function ensureQualityNotOwned({ projectRoot, docsPath, log = () => {} })
     }
     if (require('../../stack/hooks/docs.js').matches(listed, QUALITY_NOT_OWNED)) return 'present';
     data.notOwned = [...listed, QUALITY_NOT_OWNED];
-    const indentLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l));
-    const eol = text.includes('\r\n') ? '\r\n' : '\n';
-    const body = JSON.stringify(data, null, indentLine ? indentLine.match(/^[ \t]+/)[0] : '').split('\n').join(eol);
-    fs.writeFileSync(file, `${text.startsWith('\uFEFF') ? '\uFEFF' : ''}${body}${/\r?\n$/.test(text) ? eol : ''}`);
+    fs.writeFileSync(file, stringifyLike(data, formatOf(text)));
     log(`  docs migration (quality): ${QUALITY_NOT_OWNED} added to quality/watch.json's notOwned list`);
     return 'added';
 }
@@ -638,7 +635,7 @@ function carryStyleWatch(base, style, log)
         if (ours.sourceRoots || theirs.sourceRoots) merged.sourceRoots = union(ours.sourceRoots, theirs.sourceRoots);
         if (ours.watch || theirs.watch) merged.watch = [...(ours.watch || []), ...(theirs.watch || [])];
         if (ours.notOwned || theirs.notOwned) merged.notOwned = union(ours.notOwned, theirs.notOwned);
-        next = `${JSON.stringify(merged, null, 2)}\n`;
+        next = stringifyLike(merged, formatOf(current));
     }
     try { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, next); fs.rmSync(from); }
     catch (err) { return kept(`it could not be carried over (${err.code || err.message})`); }
@@ -1181,9 +1178,7 @@ function mergeArchWatch({ base, log })
             ...(Array.isArray(e.sections) ? { sections: e.sections.map((x) => (typeof x === 'string' ? respellKeys(x, keys, AWARENESS, { strict: true }) : x)) } : {}) }
         : e));
     const moved = { ...arch, ...(Array.isArray(arch.watch) ? { watch: entries } : {}) };
-    const formatOf = (text) => ({ bom: text.startsWith('\uFEFF'), eol: text.includes('\r\n') ? '\r\n' : '\n', final: /\r?\n$/.test(text),
-        indent: (/^[ \t]+(?=\S)/.exec(text.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => /^[ \t]+\S/.test(l)) || '') || [''])[0] });
-    const write = (data, f) => fs.writeFileSync(awFile, `${f.bom ? '\uFEFF' : ''}${JSON.stringify(data, null, f.indent || '  ').split('\n').join(f.eol)}${f.final ? f.eol : ''}`);
+    const write = (data, f) => fs.writeFileSync(awFile, stringifyLike(data, f));
     const awText = read(awFile);
     if (awText === null && !exists(awFile))
     {
@@ -1210,7 +1205,8 @@ function mergeArchWatch({ base, log })
         else if (!Object.hasOwn(aw, k)) merged[k] = v;
     }
     const f = formatOf(awText);
-    write(merged, { ...f, indent: f.indent || formatOf(archText).indent });
+    // A watch with no indented line of its own (`{}`) takes the indent of the file merged into it.
+    write(merged, /^[ \t]+\S/m.test(awText) ? f : { ...f, indent: formatOf(archText).indent });
     removeKeepingHistory(archFile);
     log(`  docs migration (awareness): architecture/watch.json merged into awareness/watch.json - ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}, each kind prefixed 'architecture: '`);
     return 'merged';

@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const chain = require('../stack/hooks/secret-chain.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'secret-chain-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -23,16 +24,16 @@ const tree = (spec) =>
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
         fs.mkdirSync(data, { recursive: true });
-        if (o.file !== undefined) fs.writeFileSync(path.join(data, 'workspace'), o.file);
+        if (o.record !== undefined) putWorkspace(dir, o.record, { dataRoot: o.data || '.alfred' });
         if (o.store !== undefined) fs.writeFileSync(path.join(data, o.storeName || '.secrets'), o.store);
         if (o.local !== undefined) fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), o.local);
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
 const three = (extra = {}) => tree({
-    'ws': { file: 'child api\n', store: 'A=root-a\nB=root-b\n', ...extra.ws },
-    'ws/api': { file: 'parent ..\nchild tool\n', store: 'A=child-a\n', ...extra.api },
-    'ws/api/tool': { file: 'parent ..\n', ...extra.tool },
+    'ws': { record: { children: ['api'] }, store: 'A=root-a\nB=root-b\n', ...extra.ws },
+    'ws/api': { record: { parent: '..', children: ['tool'] }, store: 'A=child-a\n', ...extra.api },
+    'ws/api/tool': { record: { parent: '..' }, ...extra.tool },
 });
 
 test('nearest value wins and the source is the nearest folder (AC19)', () =>
@@ -50,7 +51,7 @@ test('nearest value wins and the source is the nearest folder (AC19)', () =>
 
 test('ignore secret drops an inherited key, never the project\'s own', () =>
 {
-    const at = three({ api: { file: 'parent ..\nchild tool\nignore secret B\nignore secret A\n' } });
+    const at = three({ api: { record: { parent: '..', children: ['tool'], ignore: { secret: ['B', 'A'] } } } });
     const got = chain.chainOf(at('ws/api'), { env: env0 });
     assert.deepStrictEqual(got.values, { A: 'child-a' }, 'B is gone, the child\'s own A stays');
     assert.deepStrictEqual(got.from, { A: '.' });
@@ -58,7 +59,7 @@ test('ignore secret drops an inherited key, never the project\'s own', () =>
 
 test('a grandchild loses what its parent ignores', () =>
 {
-    const at = three({ api: { file: 'parent ..\nchild tool\nignore secret B\n', store: 'C=child-c\n' } });
+    const at = three({ api: { record: { parent: '..', children: ['tool'], ignore: { secret: ['B'] } }, store: 'C=child-c\n' } });
     const got = chain.chainOf(at('ws/api/tool'), { env: env0 });
     assert.deepStrictEqual(got.values, { A: 'root-a', C: 'child-c' }, 'A from the root (api has none now), no B');
     assert.deepStrictEqual(got.from, { A: '../..', C: '..' });
@@ -87,9 +88,9 @@ test('UTF-16 and BOM stores read, an empty one and a folder named .secrets skipp
 {
     const wide = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('W=wide-value\r\n', 'utf16le')]);
     const at = tree({
-        'ws': { file: 'child api\n', store: wide },
-        'ws/api': { file: 'parent ..\nchild tool\n', store: '\uFEFFBOM=bom-value\r\n' },
-        'ws/api/tool': { file: 'parent ..\n', store: '' },
+        'ws': { record: { children: ['api'] }, store: wide },
+        'ws/api': { record: { parent: '..', children: ['tool'] }, store: '\uFEFFBOM=bom-value\r\n' },
+        'ws/api/tool': { record: { parent: '..' }, store: '' },
     });
     const got = chain.chainOf(at('ws/api/tool'), { env: env0 });
     assert.deepStrictEqual(got.values, { BOM: 'bom-value', W: 'wide-value' });
@@ -115,7 +116,7 @@ test('the project\'s own store is found from a sub-folder and in a settings-only
     fs.mkdirSync(path.join(at('ws/api'), '.git'));
     fs.mkdirSync(path.join(at('ws/api'), 'src', 'deep'), { recursive: true });
     fs.mkdirSync(path.join(at('ws/api'), '.kid'), { recursive: true });
-    fs.writeFileSync(path.join(at('ws/api'), '.kid', 'workspace'), 'parent ..\n');
+    putWorkspace(at('ws/api'), { parent: '..' }, { dataRoot: '.kid' });
     const got = chain.chainOf(path.join(at('ws/api'), 'src', 'deep'), { env: env0 });
     assert.deepStrictEqual(got.values, { K: 'kid-value', A: 'root-a', B: 'root-b' });
 });
@@ -138,7 +139,7 @@ test('readStore is the guard\'s reader: export, quotes, comments, = in a value, 
 
 test('a broken chain reads the project alone and carries the chain\'s note', () =>
 {
-    const at = three({ ws: { file: '# no children\n' } });
+    const at = three({ ws: { record: {} } });
     const got = chain.chainOf(at('ws/api'), { env: env0 });
     assert.deepStrictEqual(got.values, { A: 'child-a' });
     assert.strictEqual(got.notes.length, 1);

@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
@@ -5693,9 +5694,9 @@ function memWs() {
   const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'xp-mem-')));
   const at = (rel) => path.join(top, ...rel.split('/'));
   const put = (rel, text) => { fs.mkdirSync(path.dirname(at(rel)), { recursive: true }); fs.writeFileSync(at(rel), text); };
-  put('ws/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/.alfred/workspace', 'child api\n');
-  put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/.alfred/workspace', 'parent ..\nchild tool\n');
-  put('ws/api/tool/.claude/alfred-code.stamp', 'sha: x\n'); put('ws/api/tool/.alfred/workspace', 'parent ..\n');
+  put('ws/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(at('ws'), { children: ['api'] });
+  put('ws/api/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(at('ws/api'), { parent: '..', children: ['tool'] });
+  put('ws/api/tool/.claude/alfred-code.stamp', 'sha: x\n'); putWorkspace(at('ws/api/tool'), { parent: '..' });
   for (const d of ['ws', 'ws/api', 'ws/api/tool']) spawnSync('git', ['init', '-q'], { cwd: at(d) });
   const home = at('home');
   const acct = path.join(home, '.claude');
@@ -5890,9 +5891,9 @@ test('guard-cross-project-write: R068 past 200 characters a child\'s write into 
   try {
     const ws = path.join(top, 'w'.repeat(Math.max(1, 205 - (top.length + 1))));
     const api = path.join(ws, 'api');
-    for (const [dir, file] of [[ws, 'child api\n'], [api, 'parent ..\n']]) {
+    for (const [dir, record] of [[ws, { children: ['api'] }], [api, { parent: '..' }]]) {
       fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
-      fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); fs.writeFileSync(path.join(dir, '.alfred', 'workspace'), file);
+      fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n'); putWorkspace(dir, record);
       spawnSync('git', ['init', '-q'], { cwd: dir });
     }
     const home = path.join(top, 'home');

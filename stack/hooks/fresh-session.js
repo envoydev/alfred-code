@@ -587,21 +587,53 @@ function knownWindow() {
 // The trigger this session is judged against: the tier of the model's own capacity (tierKeyOf), else - no known
 // capacity, one under 200K - ALFRED_CODE_CONTEXT_WINDOW_DEFAULT itself, so the offer always has a number behind it.
 function ctxThreshold() {
+  return ctxThresholdWhy().at;
+}
+// The trigger and WHY it sits where it does (2026-11-10, the user's report: a banner said 329k on a 1M model and nothing
+// said why it was not the 400k tier): { at, tierAt, tiered, by: 'window' | 'capacity' | 'compaction' | null, n }.
+function ctxThresholdWhy() {
   const window = knownWindow();
+  const table = tableWindow();
   // The TIER is the model's own capacity, its table row - an auto-compact window only lowers the room the trigger must
   // fit in (the clamp below). Tiering by the lowered window put a 1M model under a 400k compaction window on another
   // tier's trigger (2026-10-14).
-  const tier = tierKeyOf(tableWindow());
-  let at = tier ? FRESH_AT[tier] : DEFAULT_AT;
+  const tier = tierKeyOf(table);
+  const tierAt = tier ? FRESH_AT[tier] : DEFAULT_AT;
+  let at = tierAt;
+  let by = null;
+  let n = null;
   // A trigger at or above the window it applies to can never be reached, and a gate that cannot
   // fire is the gate not existing. Honour the number that was set up to the point it goes
   // unreachable, then clamp it back inside the window.
-  if (at > 0 && window && at >= window) at = Math.floor(window * 0.9);
+  if (at > 0 && window && at >= window) {
+    at = Math.floor(window * 0.9);
+    by = table && window < table ? 'window' : 'capacity';
+    n = window;
+  }
   // ... and a trigger the harness's MEASURED compaction point sits under is the same unreachable gate: it is held at
   // 90% of the lowest automatic compaction this project recorded for this model. The seeded tier numbers are untouched.
   const seen = at > 0 ? observedCompaction() : null;
-  if (seen && at >= seen * 0.9) at = Math.floor(seen * 0.9);
-  return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
+  if (seen && at >= seen * 0.9) {
+    at = Math.floor(seen * 0.9);
+    by = 'compaction';
+    n = seen;
+  }
+  return { at: at > 0 ? at : null, tierAt, tiered: !!tier, by, n };   // at null = this trigger's offer is switched off
+}
+// What lowered the trigger, in words, or '' when nothing did: 'the 400k tier, lowered by this project's auto-compact
+// window of 366k'. triggerText puts it after the number: '329k (the 400k tier, ...)'.
+function triggerReason(why) {
+  if (!why || !why.by || !why.at) return '';
+  const k = (x) => `${Math.round(x / 1000)}k`;
+  const base = why.tiered ? `the ${k(why.tierAt)} tier` : `the ${k(why.tierAt)} default`;
+  return why.by === 'window' ? `${base}, lowered by this project's auto-compact window of ${k(why.n)}`
+    : why.by === 'compaction' ? `${base}, lowered by the lowest compaction this project recorded, ~${k(why.n)}`
+      : `${base}, lowered to fit the model's ${k(why.n)} context window`;
+}
+function triggerText(why) {
+  if (!why || !why.at) return '';
+  const reason = triggerReason(why);
+  return `${Math.round(why.at / 1000)}k${reason ? ` (${reason})` : ''}`;
 }
 // --- what a fresh session restarts at: the session's own cold floor ---------------------------
 // A large share of the carry can be the INSTALL's own standing inventory - system prompt, CLAUDE.md, the always-on
@@ -1034,7 +1066,7 @@ function stopOfferCtx(p = payload) {
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
-  tableWindow, recordSessionModel, knownWindow, ctxThreshold, coldFloor, firstUsage, worthResuming, contextNow,
+  tableWindow, recordSessionModel, knownWindow, ctxThreshold, ctxThresholdWhy, triggerReason, triggerText, coldFloor, firstUsage, worthResuming, contextNow,
   RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,
   AFTER_HOURS_FOLLOW, CACHE_LIFE_MS, IDLE_WAIT_FALLBACK_MS, afterHoursOf, CACHE_LIFE_READERS, hostOf, cacheLifeOf, idleWait, gapText,

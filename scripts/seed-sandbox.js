@@ -170,6 +170,8 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
         prepare(repo, work);
         const outs = [];
         const steps = [];
+        const codes = [];
+        const errs = [];
         let code = 0;
         let err = '';
         const actions = [].concat(action);
@@ -194,10 +196,12 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
                 code = e.status ?? 1;
                 err = String(e.stderr || '');
             }
+            codes.push(code);
+            errs.push(err);
             steps.push(each(repo, steps.length));
         }
         const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
-        return { calls, out: outs[outs.length - 1], outs, steps, result: inspect(repo), code, err };
+        return { calls, out: outs[outs.length - 1], outs, steps, codes, errs, result: inspect(repo), code, err };
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 }

@@ -69,7 +69,7 @@ a stop's own rule may move the mark, never add a second. A step-done stop:
 - 'Route back to <step>' - <the gap or finding that sends it back>
 - 'Resume in a fresh session' - required past the fresh-session trigger below
 ```
-There is no non-decision stop: 'what happens next' is itself the decision. The options are
+A reply that ASKS is no pick: answer it and end the turn - the stop stays open. The options are
 concrete; free text comes through the built-in Other. Where the harness has no such tool, list the same options in plain
 text and END THE TURN.
 

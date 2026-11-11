@@ -678,3 +678,58 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
     flowStop(ok, transcript(ok, [...head, typed('also fix the header colour'), next.row, result(next.id, 'ok'), edit.row, result(edit.id, 'ok')]), 'Planned and fixed.');
     assert.strictEqual(flowProbes(ok, 'post-close-edit').length, 0, 'a new backslash plan file covers the edit');
 });
+
+// 2026-11-10 (the user's report on 2.9.0, task-solve): the user met a stop's ask with a question, and the same ask came
+// back with the answer. While that question is open (guard-stop-contract.js userQuestion), the SAME ask re-sent is denied
+// ONCE per (ask, question) pair - answer in prose and end the turn - and the identical second send goes out (the valve).
+{
+    const Q = 'Which follow-up?';
+    const askInput = (question = Q) => ({ questions: [{ question, header: 'Next', options: [{ label: 'The cache fix (Recommended)', description: 'x' }, { label: 'The docs pass', description: 'y' }] }] });
+    const answeredRow = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+        content: `Your questions have been answered: "${Q}"="${text}". You can now continue with these answers in mind.` }] }, toolUseResult: { answers: { [Q]: text } } });
+    let sq = 0;
+    const sidOf = () => `rq-${process.pid}-${++sq}`;
+    const opened = (answer, lead = []) =>
+    {
+        const a = call('AskUserQuestion', askInput());
+        return [...lead, typed('/task-solve next'), a.row, answeredRow(a.id, answer), say('There are two issues: the stale cache read and the missing test.')];
+    };
+    const reask = (root, rows, { sid = sidOf(), question, env } = {}) =>
+        run(root, { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', session_id: sid, tool_use_id: `t-${++n}`,
+            transcript_path: transcript(root, rows), tool_input: askInput(question) }, env);
+    const decision = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecision || ''; } catch { return ''; } };
+    const reason = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason || ''; } catch { return ''; } };
+    const QUESTION = 'Tell me what issues you have found here?';
+
+    test('re-ask: the same ask re-sent after an Other question is denied once, the identical second send goes out', () => {
+        const root = project();
+        const sid = sidOf();
+        const rows = opened(QUESTION);
+        const first = reask(root, rows, { sid });
+        assert.strictEqual(decision(first), 'deny', first.stdout + first.stderr);
+        assert.match(reason(first), /the user asked a question - answer it in prose and end the turn/);
+        const f = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
+        assert.ok(fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).some((x) => x.detail && x.detail.branch === 'reask'), 'one block row');
+        const second = reask(root, rows, { sid });
+        assert.notStrictEqual(decision(second), 'deny', 'the valve: the second send goes out');
+    });
+
+    test('re-ask: a label pick, another question text, the part switch and nobody at the terminal all pass', () => {
+        const root = project();
+        assert.notStrictEqual(decision(reask(root, opened('The docs pass'))), 'deny', 'a label pick closed the ask');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { question: 'Which file first?' })), 'deny', 'a different ask');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' } })), 'deny', 'the part switch');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_UNATTENDED: '1' } })), 'deny', 'an unattended run');
+        assert.strictEqual(decision(reask(root, opened(QUESTION))), 'deny', 'the control still denies');
+    });
+
+    test('re-ask: a live auto-run waiver of this session passes', () => {
+        const root = project();
+        const sid = sidOf();
+        fs.mkdirSync(path.join(root, '.alfred', 'state', 'approvals'), { recursive: true });
+        fs.writeFileSync(path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL'), `AUTO - "/mode-auto-run --mode-auto-run-on"\nsession: ${sid}\nskill: mode-auto-run\ntranscript-size: 0\n`);
+        const at = new Date(Date.now() - 60000).toISOString();
+        const modeRow = { type: 'user', timestamp: at, message: { role: 'user', content: '<command-message>mode-auto-run</command-message>\n<command-name>/mode-auto-run</command-name>\n<command-args>--mode-auto-run-on</command-args>' } };
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION, [modeRow]), { sid })), 'deny');
+    });
+}

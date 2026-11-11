@@ -681,6 +681,26 @@ test('guard-secret-value: a bare file name a dump verb reads is judged where the
       ['a flag value beside a clean file', 'cd ~/.aws && grep -A 2 -m credentials aws notes'],
     ];
     for (const [what, command] of pass) assert.equal(b(command), 0, `pass: ${what}`);
+    // AC-2 (2026-11-10): find's `-type` is no `type` dump verb - its -name / -path words were read as files to print
+    fs.mkdirSync(path.join(home, '.claude'));
+    fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: FAKE_TOKEN } }));
+    const proj = fs.mkdtempSync(path.join(TMP, 'ac2-proj-'));
+    fs.writeFileSync(path.join(proj, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    const listings = [
+      ['a -type f listing beside the account file', 'cd ~/.claude && ls -a && find . -maxdepth 1 -type f -not -name .credentials.json'],
+      ['a -type f listing excluding a path', 'find ~/.aws -type f -not -path ~/.aws/credentials'],
+      ['a -type f listing of .env', 'find . -type f -name .env', proj],
+      ['a -type f listing piped to sort', "find . -maxdepth 2 -type f -name '.env*' | sort", proj],
+    ];
+    for (const [what, command, cwd] of listings) {
+      const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', ...(cwd ? { cwd } : {}) }, { HOME: home, USERPROFILE: '', ...(cwd ? { CLAUDE_PROJECT_DIR: cwd } : {}) });
+      assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), `AC-2 ${what}: no value`);
+      assert.strictEqual(verdict(r), 0, `AC-2 ${what}: ${r.stderr}`);
+    }
+    // the controls: a real read of either file still comes back as its redacted view
+    assert.equal(b('cat .env', proj), REWRITE, 'AC-2 control: cat .env');
+    assert.equal(b('cat ~/.claude/.credentials.json'), REWRITE, 'AC-2 control: cat the account credentials');
+    fs.rmSync(proj, { recursive: true, force: true });
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -3124,4 +3144,333 @@ test('guard-secret-value: a GitLab personal token literal is blocked, the bare p
   const token = 'glpat' + '-' + 'Ab1_'.repeat(6);
   assert.equal(bash(`curl -H "PRIVATE-TOKEN: ${token}" https://gitlab.example.test/api/v4/user`), 2, 'a token in a header');
   assert.equal(bash(`echo "GitLab tokens open with ${'glpat' + '-'} and twenty characters"`), 0, 'prose about the shape is not the shape');
+});
+
+// AC-2R (the owner's ruling, 2026-11-10: 'Close it in this fix'): a find whose -name / -path pattern can name a credential
+// file the guard knows, handing its files to a reader - an -exec action, `| xargs <print verb>`, `cat $(find ...)` - is
+// judged by what its walk matches: a match holding a credential blocks, a walk past a ceiling blocks unjudged. A listing,
+// a reducer, a clean match and a pattern that names no credential file pass. Every fake value is built here, never printed.
+test('AC-2R: a find that hands a credential file to a reader', () => {
+  const FAKE_PASS = ['Qm', '7v', 'Lr', '2k'].join('').repeat(3);
+  const noValue = (text) => !text.includes(FAKE_TOKEN) && !text.includes(FAKE_PASS);
+  const dir = fs.mkdtempSync(path.join(TMP, 'ac2r-'));
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  fs.mkdirSync(path.join(dir, 'sub'));
+  fs.writeFileSync(path.join(dir, 'sub', '.env.local'), `DB_PASSWORD=${FAKE_PASS}\n`);
+  fs.mkdirSync(path.join(dir, 'docs'));
+  fs.writeFileSync(path.join(dir, 'docs', 'a.md'), '# notes\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), '{"version":"1.0.0"}\n');
+  fs.writeFileSync(path.join(dir, '.env.example'), '');
+  const call = (command, cwd = dir, env = {}, pre = null) => spawnSync(process.execPath, [...(pre ? ['-r', pre] : []), HOOK],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, ...env } });
+  const DISPATCH = path.join(__dirname, '..', 'stack', 'hooks', 'shell-guards.js');
+  const viaDispatch = (command, cwd = dir) => spawnSync(process.execPath, [DISPATCH],
+    { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd } });
+  const refusedHere = (what, r, file) => {
+    assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
+    assert.strictEqual(r.status, 2, `${what}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /credential guard: this find hands /, what);
+    assert.match(r.stderr, /--presence/, what);
+    if (file) assert.ok(r.stderr.includes(file), `${what}: names ${file}\n${r.stderr}`);
+  };
+  const passed = (what, r) => {
+    assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
+    assert.strictEqual(r.status, 0, `${what}: ${r.stderr}`);
+    assert.strictEqual(updatedCommand(r), null, `${what}: the command untouched`);
+  };
+  try {
+    const refused = [
+      ['xargs cat', 'find . -name .env | xargs cat', '.env'],
+      ['-type f before the name test', 'find . -type f -name .env | xargs cat', '.env'],
+      ['-print0 into xargs -0', "find . -name '.env*' -print0 | xargs -0 cat", '.env'],
+      ['-exec cat {} +', 'find . -name .env -exec cat {} +', '.env'],
+      ['-exec cat {} \\;', 'find . -name .env -exec cat {} \\;', '.env'],
+      ['-iname into -execdir head', "find . -iname '.ENV' -execdir head {} +", '.env'],
+      ['cat $(find ...)', 'cat $(find . -name .env)', '.env'],
+      ['a start folder', "find sub -name '.env*' | xargs cat", '.env.local'],
+      ['xargs grep printing lines', "find . -name '.env*' | xargs grep API", '.env'],
+      ['wide: an -o reaches every file', "find . -name '.env*' -o -name '*.md' | xargs cat", '.env'],
+      ["-name '*' reaches .env", "find . -name '*' | xargs cat", '.env'],
+      // a filter stage between the find and its xargs still hands the names on (a side agent's note, the owner's run)
+      ['a sort between', 'find . -name .env | sort | xargs cat', '.env'],
+      ['a head between', "find . -name '.env*' | head -5 | xargs head", '.env'],
+      // the final review's I2a: a negated -type is no 'only folders' (AC-2 had opened it, the walk read `d` as the only type)
+      ['! -type d', 'find . -name .env ! -type d | xargs cat', '.env'],
+      ['-not -type d', 'find . -name .env -not -type d | xargs cat', '.env'],
+      ['! -type d -print0 into xargs -0 head', 'find . -name .env ! -type d -print0 | xargs -0 head', '.env'],
+      // the final review's M4: a print verb is a lone word - `cat.exe` is cat
+      ['xargs cat.exe', 'find . -name .env | xargs cat.exe', '.env'],
+    ];
+    for (const [what, command, file] of refused) refusedHere(what, call(command), file);
+    for (const [what, command, file] of refused.slice(0, 10)) refusedHere(`dispatcher: ${what}`, viaDispatch(command), file);
+    // the block row names the branch and the file, never the value
+    const ledger = path.join(TMP, `ledger-ac2r-${Date.now()}`);
+    refusedHere('ledgered', call('find . -name .env | xargs cat', dir, { ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger }));
+    const rowsText = fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'suite.jsonl'), 'utf8');
+    assert.ok(noValue(rowsText), 'no value in the block row');
+    assert.deepStrictEqual(rowsText.trim().split('\n').map((l) => JSON.parse(l).detail.branch), ['find-reader']);
+
+    const pass = [
+      ['a listing', 'find . -name .env'],
+      ['a listing piped to sort', 'find . -name .env | sort'],
+      ['a listing piped to head', 'find . -name .env | head'],
+      ['xargs ls -l', 'find . -name .env | xargs ls -l'],
+      ['xargs wc -l', 'find . -name .env | xargs wc -l'],
+      ['xargs grep -l', "find . -name '.env*' | xargs grep -l API_TOKEN"],
+      ['xargs grep -c', "find . -name '.env*' | xargs grep -c API_TOKEN"],
+      ['-exec grep -q', "find . -name '*.json' -exec grep -q version {} \\; -print"],
+      ['a pattern naming no credential file', "find . -name '*.md' | xargs cat"],
+      ['-exec cat over docs', "find docs -name '*.md' -exec cat {} +"],
+      ['a negated test leaves only the empty example', "find . -maxdepth 1 -name '.env*' -not -name .env | xargs cat"],
+      ['no name test (unchanged)', 'find . -type f | xargs cat'],
+      ['wide with no pattern naming a credential file', "find . -name '*.md' -o -name none | xargs cat"],
+      ['a filter then xargs ls', 'find . -name .env | sort | xargs ls -l'],
+      // the final review's M4: a hyphenated program that starts with a print verb's name is another program
+      ['xargs sort-package-json', "find . -name '.env*' | xargs sort-package-json"],
+      ['xargs head-check', 'find . -name .env | xargs head-check'],
+    ];
+    for (const [what, command] of pass) passed(what, call(command));
+
+    // a node_modules of 4,001 .js files beside a fake-token .env: no pattern names a credential file, so no walk
+    const big = fs.mkdtempSync(path.join(TMP, 'ac2r-big-'));
+    fs.writeFileSync(path.join(big, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    fs.mkdirSync(path.join(big, 'node_modules'));
+    for (let i = 1; i <= 4001; i++) fs.writeFileSync(path.join(big, 'node_modules', `m${String(i).padStart(4, '0')}.js`), 'module.exports = 1;\n');
+    fs.mkdirSync(path.join(big, 'src'));
+    fs.writeFileSync(path.join(big, 'src', 'a.ts'), 'export const a = 1;\n');
+    passed('a search through a large tree', call("find . -name '*.js' | xargs grep -n foo", big));
+    passed('the -prune -o form', call("find . -path ./node_modules -prune -o -name '*.ts' -print | xargs grep foo", big));
+    // the final review's I2b: the account's credential file, named by its own name, is walked and judged; a pattern every
+    // package.json also matches (`*.json`) aims at no credential file and is not walked
+    const acct = fs.mkdtempSync(path.join(TMP, 'ac2r-acct-'));
+    fs.mkdirSync(path.join(acct, '.claude'));
+    fs.writeFileSync(path.join(acct, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: FAKE_TOKEN } }));
+    fs.writeFileSync(path.join(acct, '.claude', 'settings.json'), '{"theme":"dark"}\n');
+    refusedHere('the account file by name', call('find . -maxdepth 1 -type f -name .credentials.json | xargs cat', path.join(acct, '.claude')), '.credentials.json');
+    refusedHere('cd into the account folder', call(`cd "${path.join(acct, '.claude')}" && find . -maxdepth 1 -type f -name .credentials.json | xargs cat`, acct), '.credentials.json');
+    refusedHere('a pattern aimed at it', call("find . -name '*credentials*' | xargs cat", acct), '.credentials.json');
+    passed('*.json across a tree past the entries ceiling: not walked', call("find . -name '*.json' | xargs grep -n version", big, {}, (() => {
+      const p = path.join(TMP, 'ac2r-tiny.js'); fs.writeFileSync(p, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 30, entries: 10 };\n'); return p; })()));
+
+    // a project with no credential file, and a .env with an empty value
+    const clean = fs.mkdtempSync(path.join(TMP, 'ac2r-clean-'));
+    fs.writeFileSync(path.join(clean, 'notes.env'), 'NOTE=hello\n');
+    passed('no credential file', call("find . -name '*.env' | xargs cat", clean));
+    fs.writeFileSync(path.join(clean, '.env'), 'API_TOKEN=\n');
+    passed('an empty value', call('find . -name .env | xargs cat', clean));
+
+    // the three ceilings at their boundaries, through findCredentialFile with small limits (a test preload, as the
+    // judging budget's JUDGE_WORK_MAX), the fake token placed past the cut
+    const pre = path.join(TMP, 'ac2r-limits.js');
+    fs.writeFileSync(pre, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 30, entries: 10 };\n');
+    const small = (d) => call("find . -name '*.env' | xargs cat", d, {}, pre);
+    const unjudged = (what, r, ceiling) => {
+      assert.ok(noValue(r.stdout + r.stderr), `${what}: no value in the output`);
+      assert.strictEqual(r.status, 2, `${what}: ${r.stderr}`);
+      assert.match(r.stderr, new RegExp(`credential guard: this find walks past ${ceiling} before handing its files to cat`), what);
+      assert.match(r.stderr, /--redacted/, what);
+    };
+    const files = fs.mkdtempSync(path.join(TMP, 'ac2r-files-'));
+    for (const n of ['a', 'b']) fs.writeFileSync(path.join(files, `${n}.env`), 'A=1\n');
+    passed('files: 2 clean matches', small(files));
+    fs.writeFileSync(path.join(files, 'c.env'), 'A=1\n');
+    passed('files: 3 clean matches', small(files));
+    fs.writeFileSync(path.join(files, 'd.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    unjudged('files: 4 matches', small(files), '3 matched files');
+    const bytes = fs.mkdtempSync(path.join(TMP, 'ac2r-bytes-'));
+    const sized = (n) => `NOTE=${'x'.repeat(n - 6)}\n`;
+    fs.writeFileSync(path.join(bytes, 'a.env'), sized(15));
+    fs.writeFileSync(path.join(bytes, 'b.env'), sized(14));
+    passed('bytes: 29 in all', small(bytes));
+    fs.writeFileSync(path.join(bytes, 'b.env'), sized(15));
+    passed('bytes: 30 in all', small(bytes));
+    fs.writeFileSync(path.join(bytes, 'b.env'), sized(16));
+    unjudged('bytes: 31 in all', small(bytes), '30 bytes of matched files');
+    const entries = fs.mkdtempSync(path.join(TMP, 'ac2r-entries-'));
+    fs.writeFileSync(path.join(entries, 'a.env'), 'A=1\n');
+    for (let i = 1; i <= 8; i++) fs.writeFileSync(path.join(entries, `n${i}.txt`), 'x\n');
+    passed('entries: 9 walked', small(entries));
+    fs.writeFileSync(path.join(entries, 'n9.txt'), 'x\n');
+    passed('entries: 10 walked', small(entries));
+    fs.writeFileSync(path.join(entries, 'z.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+    unjudged('entries: 11 walked', small(entries), '10 folder entries');
+
+    // the real files ceiling: 3,999 and 4,000 clean pass, the token in the 4,000th is found, 4,001 clean is unjudged
+    const many = fs.mkdtempSync(path.join(TMP, 'ac2r-many-'));
+    const nth = (i) => path.join(many, `f${String(i).padStart(4, '0')}.env`);
+    for (let i = 1; i <= 3999; i++) fs.writeFileSync(nth(i), 'A=1\n');
+    const real = () => call("find . -name '*.env' | xargs cat", many);
+    passed('3,999 clean matches', real());
+    fs.writeFileSync(nth(4000), 'A=1\n');
+    passed('4,000 clean matches', real());
+    fs.writeFileSync(nth(4000), `API_TOKEN=${FAKE_TOKEN}\n`);
+    refusedHere('the token in the 4,000th', real(), 'f4000.env');
+    fs.writeFileSync(nth(4000), 'A=1\n');
+    fs.writeFileSync(nth(4001), 'A=1\n');
+    unjudged('4,001 clean matches', real(), '4000 matched files');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// SG1 D1: the companion catalog's auth / noKey mode values ('token', 'oauth', 'optional-token') name HOW a server
+// authenticates, not a credential - an exact, case-sensitive word list, so anything else stays guarded.
+test('SG1 D1: a mode word under a credential key is no credential; anything else stays guarded', () => {
+  const f = fixtures();
+  const json = (name, obj) => { const p = path.join(f.dir, name); fs.writeFileSync(p, JSON.stringify(obj, null, 2)); return p; };
+  for (const word of ['token', 'oauth', 'optional-token']) for (const key of ['auth', 'noKey', 'API_KEY']) {
+    const p = json(`mode-${key}-${word}.json`, { tools: [{ name: 'x', [key]: word }] });
+    assert.equal(read(p), 0, `Read: ${key}=${word}`);
+    assert.equal(bash(`cat "${p}"`), 0, `cat: ${key}=${word}`);
+  }
+  for (const v of ['oauthx', 'token1', 'OAuth', 'Token', 'optional-tokens', 'opensesame']) {
+    const p = json(`kept-${v}.json`, { auth: v });
+    assert.equal(read(p), 2, `Read keeps ${v} guarded`);
+    assert.equal(bash(`cat "${p}"`), REWRITE, `cat keeps ${v} guarded`);
+  }
+  assert.equal(read(json('quoted-number.json', { MAX_TOKEN: '4096' })), 2, 'a quoted digit string stays guarded (D1)');
+  assert.equal(read(json('json-number.json', { MAX_TOKEN: 4096 })), 0, 'a JSON number already passes');
+  const dot = path.join(f.dir, 'mode.env'); fs.writeFileSync(dot, 'AUTH=oauth\nAPI_KEY=optional-token\n');
+  assert.equal(bash(`cat "${dot}"`), 0, 'dotenv mode words');
+  assert.equal(cli('--presence', json('presence.json', { auth: 'oauth' }), 'auth').stdout.trim(), 'auth=set (5 chars)', '--presence reports presence, never a value');
+});
+
+// SG1 Bearer (spec Change 1): a `Bearer <token>` value is a credential under any key, in every format, judged on the
+// token alone (RFC 6750 section 2.1's b64token) by the same sample tells as every embedded credential.
+const BEARER = ['Qw', '7r', 'Zk', '4p'].join('').repeat(5); // 40 chars, three classes
+const B = 'Bear' + 'er ';
+test('SG1 Bearer: a Bearer token is a credential under any key, in every format', () => {
+  const f = fixtures();
+  const files = {
+    'b.json': JSON.stringify({ auth: B + BEARER }),
+    'x.json': JSON.stringify({ note: B + BEARER }),
+    'h.json': JSON.stringify({ headers: { Authorization: B + BEARER } }),
+    'arr.json': JSON.stringify({ headers: [`Authorization: ${B}${BEARER}`] }), // Review Focus 4
+    'h.yaml': `headers:\n  Authorization: ${B}${BEARER}\n`,
+    'h.config': `<configuration><add key="Authorization" value="${B}${BEARER}"/></configuration>\n`,
+    'h.env': `AUTH_HEADER=${B}${BEARER}\n`,
+    'lower.json': JSON.stringify({ x: 'bear' + 'er ' + BEARER }),
+    'short16.json': JSON.stringify({ x: B + BEARER.slice(0, 16) }),
+    'ghp.json': JSON.stringify({ x: B + ['gh', 'p_'].join('') + 'A1b2'.repeat(9) }), // a known shape, any length
+  };
+  for (const [name, text] of Object.entries(files)) {
+    const p = path.join(f.dir, name); fs.writeFileSync(p, text);
+    assert.equal(read(p), 2, `Read ${name}`);
+    const cmd = rewritten(`cat "${p}"`);
+    assert.ok(cmd, `cat ${name} is rewritten`);
+    const out = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' });
+    assert.ok(!(out.stdout + out.stderr).includes(BEARER.slice(0, 16)), `${name}: the view holds no token`);
+    assert.match(out.stdout, /<set \(\d+ chars\)>/, `${name}: the view shows the masked value`);
+  }
+  const s = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: `+  headers: { Authorization: '${B}${BEARER}' },\n`, encoding: 'utf8' });
+  assert.ok(!s.stdout.includes(BEARER), 'the stream masker masks a Bearer token in a source line');
+});
+test('SG1 Bearer: an interpolation or a short token is no Bearer credential', () => {
+  const f = fixtures();
+  const cases = {
+    'tpl.json': JSON.stringify({ auth: B + '${GITHUB_TOKEN}' }), 'angle.json': JSON.stringify({ auth: B + '<your-token>' }),
+    'short15.json': JSON.stringify({ x: B + BEARER.slice(0, 15) }), 'head.json': JSON.stringify({ x: `${B}${BEARER.slice(0, 20)}\${x}` }),
+    'ident.json': JSON.stringify({ x: B + 'abc-def-ghi' }), // an identifier
+    'tplword.json': JSON.stringify({ headers: { Authorization: B + 'YOUR_ACCESS_TOKEN_HERE' } }), // template words, a NAME
+  };
+  for (const [name, text] of Object.entries(cases)) { const p = path.join(f.dir, name); fs.writeFileSync(p, text); assert.equal(read(p), 0, name); }
+  for (const line of ['+  const h = `' + B + '${process.env.API_TOKEN}`;', `+    h = f"${B}{self.access_token}"`, `+  h = "${B}#{token}"`, `+  h = '${B}' + token`]) {
+    const s = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: line + '\n', encoding: 'utf8' });
+    assert.equal(s.stdout, line + '\n', `unchanged: ${line}`);
+  }
+});
+test('SG1 Bearer: a diff adding a Bearer token is piped through the masker; an interpolation diff runs as written', () => {
+  const g = fs.mkdtempSync(path.join(TMP, 'bearer-git-'));
+  const git = (...a) => spawnSync('git', ['-C', g, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  for (const [n, t] of [['h.yaml', 'headers: {}\n'], ['a.ts', '// a\n'], ['b.py', '# b\n']]) fs.writeFileSync(path.join(g, n), t);
+  git('add', '-A'); git('commit', '-qm', 'base');
+  fs.writeFileSync(path.join(g, 'h.yaml'), `headers:\n  Authorization: ${B}${BEARER}\n`);
+  fs.writeFileSync(path.join(g, 'a.ts'), '// a\nconst h = `' + B + '${process.env.API_TOKEN}`;\n');
+  fs.writeFileSync(path.join(g, 'b.py'), `# b\nh = f"${B}{self.access_token}"\n`);
+  const call = (command) => run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: g }, { CLAUDE_PROJECT_DIR: g });
+  const piped = updatedCommand(call('git diff -- h.yaml'));
+  assert.ok(piped && piped.startsWith('git diff -- h.yaml'), 'the diff runs with the masker piped after it');
+  assert.ok(!spawnSync('bash', ['-c', piped], { cwd: g, encoding: 'utf8' }).stdout.includes(BEARER), 'the piped diff holds no token');
+  for (const c of ['git diff -- a.ts', 'git diff -- b.py', 'grep -rn Bearer a.ts b.py']) assert.equal(verdict(call(c)), 0, `${c} runs as written, no pipe`);
+});
+
+// SG1 D7: the two read gaps the dotenv and the key file share - a path a script builds from literals, and a listing
+// fed to a reader. Project `a` holds only `.alfred/.env`, `b` only a root `.env`, so each row's cause stays apart.
+test('SG1 D7: a built path or a fed listing reaching a credential file is judged', () => {
+  const E = ['.e', 'nv'].join('');
+  const a = fs.mkdtempSync(path.join(TMP, 'd7a-'));
+  fs.mkdirSync(path.join(a, '.alfred')); fs.mkdirSync(path.join(a, 'config'));
+  fs.writeFileSync(path.join(a, '.alfred', E), `API_TOKEN=${FAKE_TOKEN}\n`); fs.writeFileSync(path.join(a, 'config', 'a.md'), '# a\n');
+  const b = fs.mkdtempSync(path.join(TMP, 'd7b-'));
+  fs.writeFileSync(path.join(b, E), `API_TOKEN=${FAKE_TOKEN}\n`); fs.writeFileSync(path.join(b, 'notes.md'), '# n\n');
+  const at = (dir, command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }, { CLAUDE_PROJECT_DIR: dir }));
+  for (const [dir, c] of [
+    [a, `python3 -c "import os; print(open(os.path.join('.alfred', '${E}')).read())"`],
+    [a, `node -e "const p=require('path');console.log(require('fs').readFileSync(p.join('.alfred','${E}'),'utf8'))"`],
+    [a, `python3 - <<'EOF'\nfrom pathlib import Path\nprint((Path('.alfred') / '${E}').read_text())\nEOF`],
+    [a, `python3 -c "print(open('.alfred/' + '${E}').read())"`], // a concatenation of literals
+    [b, `python3 -c "import os; print(open(os.path.join('.', '${E}')).read())"`],
+    [b, `python3 -c "x='.'; print(open('${E}').read())"`], // no join: only the in-order string pass reads it
+  ]) assert.equal(at(dir, c), REWRITE, c);
+  for (const [dir, c] of [[b, 'ls -a | grep env | xargs cat'], [b, 'ls -A . | xargs cat'], [a, 'ls -a .alfred | xargs -I{} cat .alfred/{}'],
+    [a, 'ls -a .alfred/.e* | xargs cat']]) // the last is Review Focus 5
+    assert.equal(at(dir, c), 2, c);
+  for (const [dir, c] of [[a, 'ls | xargs wc -l'], [a, 'ls config | xargs cat'], [b, 'ls | xargs cat'],
+    [a, `python3 -c "import os; print(os.path.join('.alfred', 'x.md'))"`],
+    [a, `python3 -c "import os; print(open(os.path.join('.alfred', 'missing', '${E}')).read())"`]])
+    assert.equal(at(dir, c), 0, c);
+  // each route in dotenv, JSON and the key file (spec Build order 2b), and a join with a write (the dropped-steps block)
+  const d7c = fs.mkdtempSync(path.join(TMP, 'd7c-'));
+  const K = ['.mcps-sec', 'rets'].join('');
+  const forms = [['d1', E, `API_TOKEN=${FAKE_TOKEN}\n`], ['d2', 'creds.json', JSON.stringify({ apiKey: FAKE_TOKEN })], ['d3', K, `CONTEXT7_API_KEY=${FAKE_TOKEN}\n`]];
+  for (const [sub, name, text] of forms) { fs.mkdirSync(path.join(d7c, sub)); fs.writeFileSync(path.join(d7c, sub, name), text); }
+  for (const [sub, name] of forms) {
+    assert.equal(at(d7c, `python3 -c "import os; print(open(os.path.join('${sub}', '${name}')).read())"`), REWRITE, `join: ${sub}`);
+    assert.equal(at(d7c, `ls -a ${sub} | xargs -I{} cat ${sub}/{}`), 2, `listing: ${sub}`);
+  }
+  assert.equal(at(d7c, `python3 -c "import os; p=os.path.join('d1', '${E}'); open('out.txt','w').write(open(p).read())"`), 2, 'a join with a write');
+});
+
+// D7's own review (fresh opus, 2026-11-10): each reproduced IMPORTANT finding, one test each
+const d7Project = (files) => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'd7r-'));
+  for (const [rel, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); }
+  return (command, pre = null) => verdict(spawnSync(process.execPath, [...(pre ? ['-r', pre] : []), HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }));
+};
+const D7E = ['.e', 'nv'].join('');
+test('SG1 D7 review: an ls redirect or option value is no listed folder', () => {
+  const at = d7Project({ [D7E]: `API_TOKEN=${FAKE_TOKEN}\n`, 'notes.md': '# n\n' });
+  for (const c of ['ls -A 2>/dev/null | xargs cat', 'ls -A 2> /dev/null | xargs cat', 'ls -A -I node_modules | xargs cat', 'ls -A --hide x | xargs cat', 'ls -A -w 200 | xargs cat'])
+    assert.equal(at(c), 2, c);
+  assert.equal(at(`ls -I ${D7E} | xargs cat`), 0, 'an ignore pattern is no operand');
+});
+test('SG1 D7 review: the Path(a, b) constructor is a join', () => {
+  const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n` });
+  const c = `python3 -c "from pathlib import Path; print(open(Path('.alfred', '${D7E}')).read())"`;
+  assert.equal(at(c), REWRITE, c);
+});
+test('SG1 D7 review: a path call read before a method on it', () => {
+  const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n`, 'notes.md': '# n\n' });
+  for (const c of [`python3 -c "from pathlib import Path; print(Path('.alfred').joinpath('${D7E}').read_text())"`,
+    `python3 -c "from pathlib import Path; print(Path('.alfred', '${D7E}').read_text())"`,
+    `python3 - <<'EOF'\nfrom pathlib import Path\nprint(Path('.alfred', '${D7E}').read_text())\nEOF`])
+    assert.equal(at(c), REWRITE, c);
+  assert.equal(at(`python3 -c "from pathlib import Path; print(Path('notes.md').read_text())"`), 0, 'a clean file');
+});
+test('SG1 D7 review: a folder name bound to a literal joins', () => {
+  const at = d7Project({ [`.alfred/${D7E}`]: `API_TOKEN=${FAKE_TOKEN}\n` });
+  for (const c of [`python3 -c "import os; root = '.alfred'; print(open(os.path.join(root, '${D7E}')).read())"`,
+    `node -e "const path=require('path'); const dir='.alfred'; console.log(require('fs').readFileSync(path.join(dir,'${D7E}'),'utf8'))"`])
+    assert.equal(at(c), REWRITE, c);
+});
+test('SG1 D7 review: a listing past a walk ceiling passes, a dot-name before it is still judged', () => {
+  const logs = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`logs/app${n}.log`, 'ERROR nothing to see here\n']));
+  const at = d7Project({ ...logs, [D7E]: `API_TOKEN=${FAKE_TOKEN}\n` });
+  const pre = path.join(TMP, 'd7r-limits.js');
+  fs.writeFileSync(pre, 'global.FIND_WALK_LIMITS = { files: 3, bytes: 60, entries: 10 };\n');
+  for (const c of ['ls logs/*.log | xargs grep -n ERROR', 'ls logs | xargs -I{} cat logs/{}', 'ls logs/*.log | xargs tail -n 2'])
+    assert.equal(at(c, pre), 0, c);
+  assert.equal(at('ls -A . logs | xargs cat', pre), 2, 'the dot-name sorts first and is judged');
+  assert.equal(at("find logs . -name '*.log' -o -name '.e*' | xargs cat", pre), 2, 'a find past a ceiling still fails closed');
 });

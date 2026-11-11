@@ -139,7 +139,7 @@ test('audit 2026-10-08: the usage audit quotes the fresh-session seeds the env c
     assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_FOR_1M\` (${seed('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M')} seeded)`), 'the 1M trigger');
     assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_FOR_300K\` (${seed('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K')})`), 'the 300K trigger');
     assert.ok(line.includes(`\`ALFRED_CODE_CONTEXT_WINDOW_FOR_200K\` (${seed('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K')}; a trigger at or above the window clamps to 90% of it)`), 'the 200K trigger and its clamp');
-    assert.match(read('stack/hooks/fresh-session.js'), /at >= window\) at = Math\.floor\(window \* 0\.9\)/, 'the clamp the line names is the hook\'s');
+    assert.match(read('stack/hooks/fresh-session.js'), /at >= window\)\s*\{?\s*at = Math\.floor\(window \* 0\.9\)/, 'the clamp the line names is the hook\'s');
     // the privacy invariant sits where compaction never cuts it - before the run, not after ~18k chars
     const skill = read('stack/skills/capture-usage-report/SKILL.md');
     assert.ok(skill.indexOf('## Privacy rule') > -1 && skill.indexOf('## Privacy rule') < skill.indexOf('## The run'), 'privacy rule before the run');
