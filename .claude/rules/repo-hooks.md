@@ -436,14 +436,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     operand is sized by what it expands to (segment by segment, at most 2,000 entries) and passes while its files
     together stay within THRESHOLD lines and BIG_BYTES, and a loop, `find -exec cat` or `xargs cat` whose next stage is
     `wc` is a count (audit 2026-10-20 C28: a two-file glob and a `| wc -l` were denied as sweeps); a
-    leading `cd` moves the anchor; a runtime script - inline (`-e` / `-c`) or fed through a heredoc - is read whole and
-    judged by what it PRINTS: a count, a length, a test, a map of those, one element, a helper's result or a slice with
-    literal bounds within the Read half's own cap (THRESHOLD lines, BIG_BYTES characters) is not a dump, nor a window
-    whose two bounds share one base the script never reassigns (`lines[i-5:i+5]`, `sed -n "$((n-5)),$((n+5))p"`) and a
-    print guarded by a match test on the element it prints (a `grep -C` or `grep -o` loop - a match call that spans lines,
-    `re.S`, is the content); the content, a match-all rebuild of it (`s.match(/.*/g).join('\n')`), a slice with an open,
-    oversized or unbounded end, every element in a loop or a collection it was put into is (2.1.6 K2 and its concerns
-    round). A heredoc body is its program's script only when that program takes its script from stdin
+    leading `cd` moves the anchor; a runtime script (`node -e`, `python3 -c`, one fed through a heredoc or here-string)
+    is not read - complexity stage 1 A5 removed the print analyser that judged what it PRINTS (2.1.6 K2), whose one real
+    fire was a print the host caps at 30,000 characters of Bash output. A heredoc body is its program's script only when that program takes its script from stdin
     (`stdinIsScript`, one walker in both guards, `heredoc-stdin-script` in shared-rules.json): each option word is read
     the way that interpreter's own parser reads it (a `STDIN_FLAGS` row for the shells, node, python, ruby, perl and
     php), so a script file named, or a script handed as `-c` / `-e` / `-m` / php's `-r`, makes the body input data;
@@ -451,21 +446,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     --max-old-space-size 4096`, `python3 -Q new`, `perl -Mstrict -we`); an option the table does not know takes the
     next word as its value, and a script option with no script word after it leaves the body the script; a runtime's
     `-` (and php's `--`) is stdin with the script's argv after it, while a shell's `-` or `--` only ends its options; a
-    program with no row (deno, bun, pwsh) always runs its body. A shell body is then judged as commands, like `-c`, and
-    a runtime body as its script. A verb that prints a whole file under another name is size-gated like `cat` (nl, tac,
+    program with no row (deno, bun, pwsh) always runs its body. A shell body is then judged as commands, like `-c`; a
+    runtime body is not read. A verb that prints a whole file under another name is size-gated like `cat` (nl, tac,
     sort, base64, xxd, `dd if=`, a copy onto `/dev/stdout`, curl `file://`, vim's print, `look ''`, an identity sed /
-    awk / `perl -p`, grep with an empty pattern, a read loop echoing every line, perl's handle read, php's
-    `file_get_contents` / `readfile`); a bounded run, or one into a file, is not - and a group or subshell redirected to a
-    file copies (U25: `{ echo a; cat big.html; } > out.txt` was cut at its own `;`; a terminal device or `>&2` still
-    prints), and a later print of that file is sized as the largest file a cat inside the group printed, as HK-19 sizes
-    `cat a > b` (final review I2: `{ cat big.html; } > out.txt && cat out.txt`). A verb, `;` or `|` inside a quoted string is
+    awk / `perl -p`, grep with an empty pattern, a read loop echoing every line); a bounded run, or one into a file, is
+    not - and a group or subshell redirected to a file copies (U25: `{ echo a; cat big.html; } > out.txt` was cut at its
+    own `;`; a terminal device or `>&2` still prints). A verb, `;` or `|` inside a quoted string is
     text (`grep -c 'cat -n' f` runs no cat), unless a shell runs the string (a shell's `-c`, `eval`, `watch`, a stage piped
     into `sh`), and pairing stops trusting quotes after a comment's apostrophe; `echo "$(cat f)"` prints what its
-    substitution read, an assignment of one does not. Only a gated file over the threshold
-    is a content source; a print reached through an alias is followed, one passed along or called by bracket is a dump.
+    substitution read, an assignment of one does not.
     Heredoc spans come from `heredocsOf` in this guard and the secret guard alike, so every opener spelling it accepts
-    (`<<\EOT`, `<<-'EOT'`, `<< 'EOT'`) is judged the same (seam M1; a table test runs each spelling through both), a runtime
-    or shell here-string is read as its inline flag, `deno` / `bun` / `pwsh` bodies are judged, and an unquoted heredoc's `$(...)`
+    (`<<\EOT`, `<<-'EOT'`, `<< 'EOT'`) is judged the same (seam M1; a table test runs each spelling through both), a shell
+    here-string is read as its inline flag, a `pwsh` body is judged, and an unquoted heredoc's `$(...)`
     is a command (m2, m5). Quotes, comments and heredocs come from ONE pass, `lexShell` (the eighth R015 review,
     2026-11-05: three scanners - heredocsOf, blankComments, quotedSpans - each read quoting its own way, and each place
     one disagreed with bash hid a `git push` from every guard). Its context stack (the top, `$( )`, a backtick, `${ }`,
@@ -502,10 +494,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     character nest under 8 s). `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
-    on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard
-    (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; `JUDGE_MAX_DEPTH`). A test holds each
+    on any machine: each judging step charges the characters it reads, the thresholds at the top of each guard
+    (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; the secret guard's `JUDGE_MAX_DEPTH`). A test holds each
     40,000-character pathological shape to linear work in both guards, and a command past the work budget is blocked
-    while code nested past the depth cap is read as printing what it read (the secret guard blocks it) - never let
+    while code nested past the secret guard's depth cap is read as printing what it read (it blocks it) - never let
     through; nothing stops reading silently at a count; a shell heredoc nested past three levels is out of budget and
     blocks (audit 2026-10-08: five `bash <<EOF` levels passed). The audit 2026-10-08 route fixes: a pipe into a filter
     exempts a segment only when the filter bounds it - an identity filter (`grep ""`, `awk 1`, wholeFiles' rules) or a
@@ -525,7 +517,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     changed one's denial names `git diff HEAD -- <file>`; an inverted grep (`grep -v`, or a pipe into one) prints the
     file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a
     one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
-    relative target with no file at any anchor prints nothing unless a `cd` the guard cannot follow came first; a
+    relative target with no file at any anchor prints nothing, after a `cd` the guard cannot follow too (it failed
+    CLOSED there until complexity stage 1 A5, and never fired); a
     `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole, and so does one under `<data root>/state/sessions/scorer/` - the output scorer's draft, the grader's mandated input (`guard-read-write.test.js`); a markup template's denial names `grep -n`, never the symbol
     overview; and the convention-rule notice reads no `>` inside quotes and no write target outside the project. Audit
     2026-10-20 H7: a `find <dirs> -name <one literal name> -exec cat` (or `| xargs cat`) is a sweep of whatever files that
@@ -533,8 +526,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     one over THRESHOLD lines (a gated extension) or BIG_BYTES (any other) blocks as `named-find-dump`; a name with a glob
     character stays the sweep rule's. Audit 2026-10-30 HK-19: `wholeFiles` reads `shell-writes.js` `PRINT_VERBS`, so
     `shuf` and the table's other verbs are sized like `cat`; `git show <rev>:<path>` / `:<path>` is sized from the blob
-    (`cat-file`, no filter), a diff naming paths sizes each file it ADDS, and a print of a copy's destination earlier in
-    the command is sized as its source. RU-03: the two Angular rows of the convention notice cover every glob of
+    (`cat-file`, no filter), and a diff naming paths sizes each file it ADDS (a print of a copy's destination was sized
+    as its source until complexity stage 1 A5). RU-03: the two Angular rows of the convention notice cover every glob of
     `angular-conventions.md` and `angular-styling-conventions.md`.
     Every denial on a source file names the navigation line of the session-start tool order and the LSP
     `documentSymbol` / `goToDefinition` / `findReferences` calls (a size denial on another extension and a tree it

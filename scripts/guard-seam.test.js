@@ -82,20 +82,13 @@ test('seam m1: a runtime heredoc inside a substitution or a subshell is judged',
   assert.ok(secretHits(`(${py('')})`), 'secret, ( )');
   assert.ok(secretHits(`x=\`${py('')}\``), 'secret, backtick');
   assert.ok(secretHits(`OUT=$(${py('')})`), 'secret, NAME=$( )');
-  const pyBig = `python3 - <<'EOF'\nprint(open('src/big.js').read())\nEOF\n`;
-  assert.ok(readHits(`echo "$(${pyBig})"`), 'read, $( )');
-  assert.ok(readHits(`(${pyBig})`), 'read, ( )');
+  // the read guard's half went with its print analyser (complexity stage 1 A5): it reads no runtime script
 });
 
-// ---- m2: the read guard has the secret guard's runtime list and here-string branch ----
-test('seam m2: the read guard judges a runtime here-string and the wider runtime list', () => {
-  const p = "print(open('src/big.js').read())";
-  assert.ok(readHits(`python3 <<< "${p}"`), 'python here-string');
-  assert.ok(readHits(`node <<< "console.log(require('fs').readFileSync('src/big.js','utf8'))"`), 'node here-string');
-  assert.ok(readHits(`ruby <<< "puts File.read('src/big.js')"`), 'ruby here-string');
-  assert.ok(readHits(`bun run - <<'EOF'\nconsole.log(require('fs').readFileSync('src/big.js','utf8'))\nEOF`), 'bun run -');
-  assert.ok(readHits(`deno run - <<'EOF'\nconsole.log(Deno.readTextFileSync('src/big.js'))\nEOF`), 'deno run -');
+// ---- m2: a PowerShell body fed from stdin is commands; a runtime's is not read (complexity stage 1 A5) ----
+test('seam m2: the read guard judges a PowerShell heredoc body and reads no runtime script', () => {
   assert.ok(readHits(`pwsh -Command - <<'EOF'\nGet-Content src/big.js\nEOF`), 'pwsh -Command -');
+  assert.ok(!readHits(`python3 <<< "print(open('src/big.js').read())"`), 'a runtime here-string is not read');
 });
 
 // ---- m5: a body a shell expands, a git verb that prints a blob, a script the command wrote and runs ----
@@ -224,14 +217,8 @@ test('seam delta 1: a whole-file dump inside a subshell, a group, after ! or tim
 
 // ---- delta 3: a here-string handed to a runtime that reads its script from stdin (`-`, `-Command -`, `run -`) is a script ----
 test('seam delta 3: a here-string to a runtime with - or flags is judged like the inline form', () => {
-  const py = "print(open('src/big.js').read())";
-  const nodeJs = "console.log(require('fs').readFileSync('src/big.js','utf8'))";
-  const shapes = [
-    `python3 - <<< "${py}"`, `python3 -u - <<< "${py}"`, `python - <<< "${py}"`,
-    `node - <<< "${nodeJs}"`, `ruby - <<< "puts File.read('src/big.js')"`, `perl - <<< "open(F, 'src/big.js'); print <F>;"`,
-    `bun run - <<< "${nodeJs}"`, `deno run - <<< "console.log(Deno.readTextFileSync('src/big.js'))"`,
-    `pwsh -Command - <<< "Get-Content src/big.js"`, `pwsh - <<< "Get-Content src/big.js"`, `pwsh <<< "Get-Content src/big.js"`,
-  ];
+  // the read guard keeps the PowerShell shapes; a runtime's here-string is the secret guard's alone (complexity stage 1 A5)
+  const shapes = [`pwsh -Command - <<< "Get-Content src/big.js"`, `pwsh - <<< "Get-Content src/big.js"`, `pwsh <<< "Get-Content src/big.js"`];
   for (const c of shapes) assert.ok(readHits(c), `read: ${c}`);
   const sec = [`python3 - <<< "print(open('.env').read())"`, `node - <<< "console.log(require('fs').readFileSync('.env','utf8'))"`,
     `ruby - <<< "puts File.read('.env')"`];
