@@ -1620,6 +1620,22 @@ test('settings-writer: the scorer reseed moves the old seed where .variables hol
         else assert.deepStrictEqual(reset, [], label);
     }
 });
+// Complexity stage 1 B9: ALFRED_CODE_FORGE_WATCH is retired with no when_value, and since 3.0.0 the seed
+// sits in .variables, so the env pass reads a retired key there too and the line leaves, named after its file.
+test('stage 1 B9: a retired key in .variables leaves it, named, and other lines stay', () =>
+{
+    const file = settingsFile({ env: { ALFRED_CODE_HOOKS_OFF: '' } });
+    const varsAt = path.join(path.dirname(path.dirname(file)), '.alfred', '.variables');
+    fs.mkdirSync(path.dirname(varsAt), { recursive: true });
+    fs.writeFileSync(varsAt, 'ALFRED_CODE_FORGE_WATCH=all\nALFRED_CODE_SCORER=1\n');
+    const { data, logs } = write(file, { migrations: REAL_MIGRATIONS, variablesFile: varsAt, ledger: { prior: null, releaseHooks: [] } });
+    const values = require('./install/variables.js').read(varsAt).values;
+    assert.ok(!Object.hasOwn(values, 'ALFRED_CODE_FORGE_WATCH'), logs.join('\n'));
+    assert.strictEqual(values.ALFRED_CODE_SCORER, '1');
+    assert.ok(logs.includes('  .variables env: ALFRED_CODE_FORGE_WATCH removed (retired - nothing reads it)'), logs.join('\n'));
+    assert.ok(!logs.some((m) => /FORGE_WATCH/.test(m) && /\bmoved\b/.test(m)), logs.join('\n'));
+    assert.ok(!Object.hasOwn((data && data.env) || {}, 'ALFRED_CODE_FORGE_WATCH'));
+});
 test('the scorer catalog rows: seed 1 and designer-plan; the old seeds are reseeds, not former_defaults', () =>
 {
     const row = (k) => CATALOG.find((r) => r.key === k);

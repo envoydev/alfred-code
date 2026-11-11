@@ -163,7 +163,7 @@ test('name-matched stores take this session\'s files and no other session\'s', (
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     const rc = run(fx);
     for (const id of ['hook-blocks', 'tools-usage', 'history', 'scorer', 'sessions:COMPACT-STATE-', 'sessions:AGENT-CAP-',
-        'sessions:SCORER-', 'sessions:preferences-', 'forge:ACTS-', 'forge:PAUSE-', 'session-inspector'])
+        'sessions:SCORER-', 'sessions:preferences-', 'session-inspector'])
         assert.strictEqual(row(rc, id).status, 'copied', id);
     assert.strictEqual(row(rc, 'sessions:SCORER-').files, 2, 'SCORER- takes SCORER-HELD-');
     assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', 'scorer', fx.sid, 'draft.md')));
@@ -178,14 +178,12 @@ test('an entry naming the session under no listed prefix is taken as unlisted pr
 {
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     fx.write(path.join(fx.dataRoot, 'state', 'sessions', `NEWTHING-${fx.sid}`), 'new');
-    fx.write(path.join(fx.dataRoot, 'state', 'forge', `ODD-${fx.sid}.json`), 'odd');
     const rc = run(fx);
     const r = row(rc, 'sessions:unlisted');
     assert.strictEqual(r.status, 'copied');
     assert.strictEqual(r.why, 'unlisted prefix');
     assert.strictEqual(r.files, 1);
     assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', `NEWTHING-${fx.sid}`)));
-    assert.strictEqual(row(rc, 'forge:unlisted').status, 'copied');
 });
 
 test('a ledger in its pre-2.8.0 docs-root home is taken and marked legacy home', (t) =>
@@ -240,8 +238,8 @@ test('no data root and an empty one', (t) =>
     fs.rmSync(fx.dataRoot, { recursive: true, force: true });
     const rc = run(fx);
     assert.ok(fs.existsSync(path.join(fx.out, `${fx.sid}.jsonl`)));
-    const dataRows = rc.stores.filter((s) => /^(hook-blocks|tools-usage|history|scorer|sessions:|forge:)/.test(s.id));
-    assert.ok(dataRows.length >= 20, `${dataRows.length} data-root rows`);
+    const dataRows = rc.stores.filter((s) => /^(hook-blocks|tools-usage|history|scorer|sessions:)/.test(s.id));
+    assert.ok(dataRows.length >= 15, `${dataRows.length} data-root rows`);
     for (const s of dataRows)
     {
         assert.strictEqual(s.status, 'absent', s.id);
@@ -249,7 +247,7 @@ test('no data root and an empty one', (t) =>
     }
     fs.mkdirSync(fx.dataRoot);
     const rc2 = run(fx, ['--out', path.join(fx.root, 'out2')]);
-    for (const s of rc2.stores.filter((x) => /^(hook-blocks|history|scorer|sessions:|forge:)/.test(x.id)))
+    for (const s of rc2.stores.filter((x) => /^(hook-blocks|history|scorer|sessions:)/.test(x.id)))
         assert.strictEqual(s.why, 'not written', s.id);
 });
 
@@ -297,7 +295,7 @@ test('a pruned history reads pruned', (t) =>
     assert.strictEqual(row(run(older), 'history').why, 'pruned');
 });
 
-// ---- Task 4: stores under another root - forge, preferences, handoff - and approvals ------------------------------
+// ---- Task 4: stores under another root - preferences, handoff - and approvals --------------------------------------
 
 const { execFileSync } = require('node:child_process');
 // No auto-maintenance: a commit spawns a detached `git maintenance run --auto`, whose objects/maintenance.lock came and
@@ -305,7 +303,7 @@ const { execFileSync } = require('node:child_process');
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', ...args],
     { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 
-test('a linked-worktree session finds forge and handoff under the main checkout', (t) =>
+test('a linked-worktree session finds handoff under the main checkout', (t) =>
 {
     const fx = makeSession({}); t.after(fx.cleanup);
     git(fx.project, 'init', '-q');
@@ -314,16 +312,11 @@ test('a linked-worktree session finds forge and handoff under the main checkout'
     git(fx.project, 'worktree', 'add', '-q', wt);
     // an installed main checkout: handoff.js puts the store under the main checkout only when it holds a record
     fx.write(path.join(fx.project, '.claude', 'alfred-code.stamp'), 'version: 3.8.0\n');
-    fx.write(path.join(fx.dataRoot, 'state', 'forge', `ACTS-${fx.sid}.jsonl`), line({ session: fx.sid, act: 'push' }));
     fx.write(path.join(fx.dataRoot, 'state', 'handoff', 'feat.jsonl'), line({ name: 'feat/1/seat', text: 'note', at: '2026-11-01T10:30:00.000Z' }));
     const rc = run(fx, ['--project', wt]);
     const main = fs.realpathSync.native(fx.project);
-    for (const id of ['forge:ACTS-', 'handoff'])
-    {
-        assert.ok(['copied', 'filtered'].includes(row(rc, id).status), `${id}: ${row(rc, id).status}`);
-        assert.strictEqual(row(rc, id).root, main, id);
-    }
-    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'forge', `ACTS-${fx.sid}.jsonl`)));
+    assert.ok(['copied', 'filtered'].includes(row(rc, 'handoff').status), `handoff: ${row(rc, 'handoff').status}`);
+    assert.strictEqual(row(rc, 'handoff').root, main);
 });
 
 test('preferences records are found under the first checkout holding the preferences folder', (t) =>
@@ -776,7 +769,7 @@ test('withhold writes no text path and passes the gate', (t) =>
     const out = path.join(fx.project, 'bundles', 'w');
     const rc = run(fx, ['--out', out, '--text', 'withhold']);
     assert.strictEqual(rc.gate, 'withhold');
-    for (const id of ['transcript', 'subagents', 'session-folder', 'history', 'scorer', 'docs', 'tmp', 'forge:ACTS-'])
+    for (const id of ['transcript', 'subagents', 'session-folder', 'history', 'scorer', 'docs', 'tmp'])
     {
         const r = row(rc, id);
         assert.strictEqual(r.status, 'withheld', id);
@@ -795,7 +788,7 @@ test('swept: a session store older than 7 days', (t) =>
     const past = makeSession({ lastRowAgeMs: 7 * DAY + 1000 }); t.after(past.cleanup);
     const rcAt = run(at7);
     const rcPast = run(past);
-    for (const id of ['sessions:COMPACT-STATE-', 'scorer', 'forge:ACTS-'])
+    for (const id of ['sessions:COMPACT-STATE-', 'scorer'])
     {
         assert.deepStrictEqual([row(rcAt, id).status, row(rcAt, id).why], ['absent', 'not written'], id);
         assert.deepStrictEqual([row(rcPast, id).status, row(rcPast, id).why], ['absent', 'swept'], id);

@@ -298,16 +298,16 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
   Every guard appends one row per BLOCK to `<data root>/statistics/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it, split main session / seat by the row's `agent`, joined to its call by
   `tool_use_id`) - the block RATE is what says a gate earns its keep.
-  THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract,
-  docs-session, the turn build check (answer length did until 2026-10-20) and forge-session's ref watch on a loud ref
-  move no gated act explains (audit 2026-10-30 HK-23: the chain was documented as three; the stop judge, a `prompt` hook,
-  was held, then retired - THE STOP JUDGE, under the stop contract) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
+  THE STOP CHAIN (hooks audit 2026-10-08 S1): three hooks can block a `Stop` - the stop contract,
+  docs-session and the turn build check (answer length did until 2026-10-20; forge-session's ref watch did until
+  complexity stage 1 B9; the stop judge, a `prompt` hook, was held, then retired - THE STOP JUDGE, under the stop
+  contract) - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
   Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
   the flag alone never judged the close rewritten after a sibling's block. Each marks its own block (`hook-prelude.js`
   `markStopHeld`, a file under `ALFRED_CODE_HOOK_LOG_DIR` or the temp dir) and stands down on a continuation only when
   IT held this cycle (`stopHeldThisCycle`); a Stop with the flag false opens a new cycle and clears the marker. So
-  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most four continuations, in no fixed
-  order (the four run in parallel), with
+  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most three continuations, in no fixed
+  order (the three run in parallel), with
   Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
   hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not). The
@@ -1883,8 +1883,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
     list alone, and a lone anchored line is the user's.
     `docs/install-footprint.md` lists both writes.
-  - `forge-session.js` (`SessionStart` + `SubagentStart`, PostToolUse on the shell route and every MCP server outside the
-    stack, `Stop`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
+  - `forge-session.js` (`SessionStart` + `SubagentStart`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
     `<data root>/forge-lexicon.json`: words under the keys the base has, and R013's three open maps - a host's kind in
     `hints.kinds`, a known kind's CLI in `hints.clis`, its `how` (https) and tap-less `brew` in `hints.install`, never an
     `after`; every other new key is named in the start's `Forge:` line, never dropped silently) - the forge-neutral half of the git gates (spec 2026-10-23, the user's rulings: concepts,
@@ -1902,15 +1901,12 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     parsed with the call, one it cannot read or past the cap making the call `unknown` - a descriptor (`/dev/stdin`,
     `/dev/fd/N`, `/proc/self/fd/N`) is never opened (the hook's own stdin is drained) and a non-file is refused by stat
     before any open a FIFO would block (final review M2); and a bare `@` refspec is `HEAD`
-    (`pushTargets`). A not-checked reason over 160 characters keeps git's END, the text after its last `: ` (fn-2). Every publish
-    the gate allows, the push half off included, is ledgered in `<data root>/state/forge/ACTS-<session>.jsonl` under the
-    REPOSITORY's root (`forge.js ledgerRoot` - a worktree and its main checkout share one), a `git push` one row per
-    ref it names (`forge.js pushTargets`), and every other publish act of the same command a row of its own with its
-    own concept (`forge.js classifyCommand`; E-batch fn-9: `git push && gh pr merge 4` ledgered the push alone), each
-    with its `tool_use_id`; the watch trusts a row once its PostToolUse confirmed it. A forge publish act chained behind a
+    (`pushTargets`). Nothing is ledgered: the act ledger (`ACTS-<session>.jsonl`) and the ref watch that read it left in
+    complexity stage 1 (B9, 0 fires in 442 sessions); files an older release wrote under `<data root>/state/forge/` stay,
+    inert. A forge publish act chained behind a
     push is gated as if it stood alone (E-batch 4b, a side review of fn-9): it needs the receipt when the push moves
-    nothing (a dry run, nothing ahead - the denial names the chained act), and a push that moves nothing writes no push
-    row; a merge behind it is refused under a reviewed head (R015 below) and passes under a waiver.
+    nothing (a dry run, nothing ahead - the denial names the chained act); a merge behind it is refused under a reviewed
+    head (R015 below) and passes under a waiver.
     A merge naming no number checks its branch's tip (R015, `forge.js branchSelector` / `branchHead`: the current or the
     named branch on its push remote - `branch.<b>.pushRemote`, else `remote.pushDefault` - else its own remote, else the
     checkout's; a branch checked out from a PR ref reads that change's head). The merge is judged on the repository and
@@ -1937,33 +1933,10 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     {}`) or that sits in a substitution the reader never opened is gated as a push;
     `-R` / `--repo`, a missing branch, a branch tracking another branch and a detached HEAD leave the local rule.
     The hook itself: one line under 200 chars at start (the remote, its host and kind, the forge CLIs on PATH, the MCP
-    servers that are forge servers by launch command or URL, never by name, the watch state); then the REF WATCH -
-    a detached `--snapshot` child takes the baseline (`REFS-<session>.json`, every branch and tag by `git ls-remote`,
-    `GIT_TERMINAL_PROMPT=0`, ssh BatchMode, 6s cap - the hook's network egress, stated in its header and kept by ruling,
-    audit 2026-10-30 HK-27); PostToolUse after a merge, branch write, release or unknown call
-    re-reads and blocks on a LOUD move no act covers; `Stop` diffs once more when the turn ran anything but a known read
-    (an allowlist of read tools; `sed` with no `-i` / `-f`, no `e` command or flag and no `w` / `W`, and `awk` / `gawk`
-    with no `-f` / `-i` / `-l` / `-E` and no `system(`, pipe, `>` or `@` in the program are reads too - R011; an unknown or
-    abbreviated long option, or an awk cluster ending in a program file, is none - review 2026-11-05), a PostToolUse marked the cycle (a seat's call), or the last turn left background work
-    running. An act covers the ref it aims at; one naming no ref lands ONE move (at its head, else the single loud
-    candidate - with several it covers none and says so); an armed auto-merge persists across turns until it lands.
-    Loud: the default branch, the upstream, a branch GIT-PREFERENCES.md names in backticks, a commit a local branch holds, any
-    tag - blocked once per cycle; the rest is one summary `systemMessage`. An ASKED act covers nothing (Task 6 ruling,
-    revising Task 2's). A loud move no act of this session covers, but a confirmed, aimed act of ANOTHER session in the
-    repo does (R020, `otherActs`: the 20 newest other `ACTS-*.jsonl` by mtime inside the window `state.at - 1000`), is
-    one `systemMessage` line naming that act - '<ref> moved <a>..<b> by another session's gated <merge | release | branch
-    write>' (review 2026-11-05) - never a block; strict, so a
-    push carrying its head lands only that tip, an act naming no ref lands only the move at its head, an asked,
-    unconfirmed or all-refs act lands nothing, and none is used up. `REFS-LAST.json` carries the end snapshot to the next session, which reports only after an
-    asked call. Unreachable is `not checked (<why>)`, never clean. `forge-session:watch` in `ALFRED_CODE_HOOKS_OFF` off,
-    `ALFRED_CODE_FORGE_WATCH=loud-only` drops the summary (the session line says so). A check that fails or takes over 3 s
-    (a key waiting for a touch, an approval dialog) pauses the catch-all for 30 min (`PAUSE-<session>.json`, said once);
-    a turn marked `strong` (a forge call, a gated push PostToolUse confirmed) still checks, an answer within 3 s lifts
-    it, and `publish-only` holds the catch-all to those turns. A held turn marks the baseline `skipped`, so the next
-    diff says `since the last check`. A quick key tap never trips the pause (timing cannot tell it from the network), so
-    the first check over an SSH remote names `publish-only` once per repo (`SSH-NOTICE.json`). The start snapshot reads
-    HEAD and the refs in ONE call. Evidence: `docs/forge-routes-evidence.md`, 'The pause and publish-only'. The verified routes it is tested
-    against are `scripts/fixtures/forge-corpus.js`.
+    servers that are forge servers by launch command or URL, never by name) and no network; a PostToolUse or `Stop` row an
+    older install still wires answers exit 0 with no output, and no migration unwires it. `ALFRED_CODE_FORGE_WATCH` and
+    `forge-session:watch` are read by nothing; the `forge-watch-retired` migration takes the key out of an install. The
+    verified routes the classifier is tested against are `scripts/fixtures/forge-corpus.js`.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.

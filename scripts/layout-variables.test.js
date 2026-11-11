@@ -253,11 +253,11 @@ test('AC20: chain depth 7, 8 and 9 - the ninth member is not read', () =>
 
 test('AC20: values of 0, 1 and 2 characters; a bare ALFRED_CODE_ key is ignored', () =>
 {
-    const at = tree({ 'p': { stamp: true, vars: `${K('HISTORY')}=\n${K('MEMORY')}=c\n${K('FORGE_WATCH')}=on\nALFRED_CODE_=x\n` } });
+    const at = tree({ 'p': { stamp: true, vars: `${K('HISTORY')}=\n${K('MEMORY')}=c\n${K('AUTO_COMPACT')}=on\nALFRED_CODE_=x\n` } });
     const v = varsOf(at('p'), { ...UNSET, [K('HISTORY')]: '4' });
     assert.deepStrictEqual([v.values[K('HISTORY')], v.from[K('HISTORY')]], ['4', 'env'], 'an empty value is unset, as envOf reads it');
     assert.strictEqual(v.values[K('MEMORY')], 'c');
-    assert.strictEqual(v.values[K('FORGE_WATCH')], 'on');
+    assert.strictEqual(v.values[K('AUTO_COMPACT')], 'on');
     assert.ok(!Object.hasOwn(v.values, 'ALFRED_CODE_'));
     assert.deepStrictEqual(v.notes, []);
 });
@@ -382,8 +382,6 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         // word that follows the cache
         FRESH_SESSION_AFTER_HOURS: (e) => { const n = fresh.afterHoursOf(e); return n === null ? fresh.AFTER_HOURS_FOLLOW : String(n); },
         FRESH_SESSION_PAYBACK: (e) => fresh.paybackOf(e),
-        FORGE_WATCH: (e) => (/=== 'loud-only' \|\| watchSetting\(env\) === 'publish-only'\) watch = watchSetting\(env\)/.test(source('stack/hooks/forge-session.js'))
-            && ['loud-only', 'publish-only'].includes(String(prelude.envOf(e, 'FORGE_WATCH') || '')) ? prelude.envOf(e, 'FORGE_WATCH') : 'all'),
         WORKSPACE: (e) => layout.workspaceOn({ env: e, projectRoot: empty }),
     };
     // The user's ruling of 2026-10-21: an unset tier takes the DEFAULT trigger, never its own seed - so two tiers read

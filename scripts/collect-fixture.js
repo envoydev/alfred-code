@@ -106,7 +106,6 @@ const SESSION_NAMES = (s) => [
     `AUTO-RUN-${s}`, `AUTO-TAKEN-${s}`, `AUTO-SAID-${s}`, `COMPACT-STATE-${s}`, `twins-${s}.json`, `review-snapshot-${s}@c1.json`,
     `trivial-${s}`, `turn-check-${s}`, `AGENT-CAP-${s}-R-a1`, `SCORER-${s}`, `SCORER-HELD-${s}`, `preferences-${s}-main.json`,
 ];
-const FORGE_NAMES = (s) => [`ACTS-${s}.jsonl`, `REFS-${s}.json`, `NOTE-${s}.json`, `PAUSE-${s}.json`];
 function plantStores(fx)
 {
     const at = new Date(fx.firstMs + 10000).toISOString();
@@ -122,9 +121,8 @@ function plantStores(fx)
         const record = s === fx.sid ? 'untracked-at-start-abc123' : 'untracked-at-start-def456';
         fx.write(state('sessions', `untracked-session-${s}`), record);
         fx.write(state('sessions', record), `a.txt${mark}`);
-        for (const name of FORGE_NAMES(s)) fx.write(state('forge', name), `${name}${mark}`);
         fx.write(path.join(fx.project, '.claude', 'session-inspector', 'status', `${s}.json`), JSON.stringify({ schema: 1, session: s, title: `t${mark}` }));
     }
 }
 
-module.exports = { makeSession, plantStores, transcriptRows, encodeProject, line, SESSION_NAMES, FORGE_NAMES, FIRST_MS, LAST_MS };
+module.exports = { makeSession, plantStores, transcriptRows, encodeProject, line, SESSION_NAMES, FIRST_MS, LAST_MS };

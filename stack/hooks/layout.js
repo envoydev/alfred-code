@@ -33,7 +33,7 @@ const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(e
 const APPROVAL_NAME = /^(?:APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-ALLOW)$/;
 const flowKind = (name) => (APPROVAL_NAME.test(String(name)) ? 'approvals' : 'sessions');
 
-const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'forge', 'handoff']);
+const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'handoff']);
 const kindOf = (kind) =>
 {
     if (!STATE_KINDS.has(kind)) throw new Error(`layout: unknown state kind '${kind}'`);
@@ -393,7 +393,7 @@ const VARIABLE_KEYS = Object.freeze([
     'ALFRED_CODE_HISTORY', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_AUTO_COMPACT',
     'ALFRED_CODE_MAXIMUM_RUN_AGENTS', 'ALFRED_CODE_MEMORY', 'ALFRED_CODE_FRESH_SESSION_AFTER_HOURS',
-    'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_FORGE_WATCH', 'ALFRED_CODE_WORKSPACE',
+    'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_WORKSPACE',
 ]);
 const VARIABLE_SET = new Set(VARIABLE_KEYS);
 // Never taken from a member: the docs mode is this project's own layout (release 1's ENV_NEVER), and the chain cannot

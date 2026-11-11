@@ -895,20 +895,23 @@ function writeSettings(opts)
     const MOVED = new Set(VARIABLE_KEYS);
     const renameFrom = new Set((migrations.renames || []).filter(([, to]) => MOVED.has(to)).map(([from]) => from));
     const movable = (key) => MOVED.has(key) || renameFrom.has(key);
+    // A key retired whatever its value is read from .variables too, so the retire pass drops it and the move writes the line
+    // out (complexity stage 1 B9: ALFRED_CODE_FORGE_WATCH, seeded there since 3.0.0).
+    const retiredAny = new Set((migrations.retired || []).filter(([, onlyWhen]) => onlyWhen == null).map(([key]) => key));
     const settingsEnvBefore = data.env === undefined ? null : JSON.stringify(data.env);
     const settingsHad = new Set(plain(data.env) ? Object.keys(data.env).filter(movable) : []);
     const fileValues = {};
     const outranked = new Map();
     if (vars && (data.env === undefined || plain(data.env)))
     {
-        for (const [key, value] of Object.entries(vars.read(variablesFile).values)) if (movable(key)) fileValues[key] = value;
+        for (const [key, value] of Object.entries(vars.read(variablesFile).values)) if (movable(key) || retiredAny.has(key)) fileValues[key] = value;
         // The loader's order (D4): .variables over settings.json, settings.local.json over .variables - so a local-scope
         // run's own file keeps a value typed there, and the move carries the value every reader already saw.
         // O11 (burn-down 2026-11-04): a value of this file's that .variables outranks was never read. It is put back as typed
         // after the move - deleting it lost what the person typed - named with both lengths (never a value), and is no move.
         if (label !== 'settings.local.json' && plain(data.env))
             for (const [key, value] of Object.entries(fileValues))
-                if (Object.hasOwn(data.env, key) && String(data.env[key]) !== String(value)) outranked.set(key, { value: data.env[key], mine: String(data.env[key]).length, theirs: String(value).length });
+                if (movable(key) && Object.hasOwn(data.env, key) && String(data.env[key]) !== String(value)) outranked.set(key, { value: data.env[key], mine: String(data.env[key]).length, theirs: String(value).length });
         if (Object.keys(fileValues).length) data.env = label === 'settings.local.json' ? { ...fileValues, ...(data.env || {}) } : { ...(data.env || {}), ...fileValues };
     }
     const envBefore = plain(data.env) ? { ...data.env } : {};
@@ -1089,7 +1092,7 @@ function writeSettings(opts)
     };
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote,
-        seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) ? '.variables' : label) : null,
+        seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) || Object.hasOwn(fileValues, key) ? '.variables' : label) : null,
         chain: childEnv && childEnv.linked ? { values: memberEnv, ignored: childEnv.ignored || [] } : null }) && !vars) changed = true;
     // D5: a decision for a key settings.local.json holds lands there, where it takes effect over .variables - said so.
     const overrides = new Set();

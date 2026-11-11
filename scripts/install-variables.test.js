@@ -132,15 +132,26 @@ test('a credential-shaped value is refused, the key named, the value in no outpu
     const { dir, env } = sandbox(t);
     const root = project(dir);
     put(varsOf(root), 'ALFRED_CODE_HISTORY=5\n');
-    const run = cli(['set', '--root', root, `ALFRED_CODE_FORGE_WATCH=${TOKEN}`], env);
+    const run = cli(['set', '--root', root, `ALFRED_CODE_SCORER_OUTPUTS=${TOKEN}`], env);
     assert.strictEqual(run.status, 1);
     const out = run.stdout + run.stderr;
-    assert.match(out, /ALFRED_CODE_FORGE_WATCH/);
+    assert.match(out, /ALFRED_CODE_SCORER_OUTPUTS/);
     assert.ok(!out.includes(TOKEN) && !out.includes(TOKEN.slice(4, 16)), 'the value is in no output');
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=5\n');
     assert.ok(!fs.readdirSync(path.dirname(varsOf(root))).some((f) => (read(path.join(path.dirname(varsOf(root)), f)) || '').includes(TOKEN)), 'nor in any file');
     // A value on more than one line would write a second line: refused too.
     assert.deepStrictEqual(variables.set(root, [['ALFRED_CODE_HISTORY', '4\nALFRED_CODE_SCORER=1']], { env, log: () => {} }).refused, ['ALFRED_CODE_HISTORY']);
+});
+
+// Complexity stage 1 B9: the ref watch left, so its key leaves the catalog and a migration takes the seeded line out.
+test('stage 1 B9: ALFRED_CODE_FORGE_WATCH is out of the catalog and retired by a migration', () =>
+{
+    assert.ok(!require('../meta/environment.json').env.some((r) => r.key === 'ALFRED_CODE_FORGE_WATCH'));
+    const m = require('../meta/migrations.json').migrations.find((x) => x.id === 'forge-watch-retired');
+    assert.ok(m, 'the forge-watch-retired migration');
+    assert.strictEqual(m.detect.settings_env_key, 'ALFRED_CODE_FORGE_WATCH');
+    assert.strictEqual(m.remove_settings_env.key, 'ALFRED_CODE_FORGE_WATCH');
+    assert.ok(!('when_value' in m.remove_settings_env), 'retired whatever its value');
 });
 
 test('comments and unknown lines survive every write (AC10)', (t) =>
@@ -170,9 +181,9 @@ test('a quoted value survives an unrelated set (Review Focus 3)', (t) =>
 {
     const { dir, env } = sandbox(t);
     const root = project(dir);
-    put(varsOf(root), 'ALFRED_CODE_SCORER_OUTPUTS="spec, plan"\nALFRED_CODE_FORGE_WATCH=\'on\'\n');
+    put(varsOf(root), 'ALFRED_CODE_SCORER_OUTPUTS="spec, plan"\nALFRED_CODE_MEMORY=\'on\'\n');
     variables.set(root, ['ALFRED_CODE_HISTORY=2'], { env, log: () => {} });
-    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORER_OUTPUTS="spec, plan"\nALFRED_CODE_FORGE_WATCH=\'on\'\nALFRED_CODE_HISTORY=2\n');
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORER_OUTPUTS="spec, plan"\nALFRED_CODE_MEMORY=\'on\'\nALFRED_CODE_HISTORY=2\n');
     assert.deepStrictEqual(variables.read(varsOf(root)).values.ALFRED_CODE_SCORER_OUTPUTS, 'spec, plan');
     // A value the reader would strip is quoted on the way in, so it reads back as written.
     variables.set(root, ['ALFRED_CODE_SCORER_OUTPUTS="x"'], { env, log: () => {} });

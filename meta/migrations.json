@@ -452,6 +452,19 @@
    },
    "why": "the scorer on by default grades designer plan files only: inline plans lost 3 of 3 scored pairs (docs/habits-scorer-evidence.md). The stack's old seed, empty (all three outputs before 3.7.0, the seed since), moves to designer-plan; a list the user set stays",
    "then": "nothing - list all three names in ALFRED_CODE_SCORER_OUTPUTS to grade every output"
+  },
+  {
+   "id": "forge-watch-retired",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_FORGE_WATCH"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_FORGE_WATCH"
+   },
+   "why": "Complexity stage 1 (B9) removed forge-session's ref watch and the act ledger it read (0 fires in 442 sessions): nothing reads the switch.",
+   "then": "nothing - the key is gone; the Forge: session line stays"
   }
  ]
 }

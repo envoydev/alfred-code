@@ -22,7 +22,7 @@ const SEL = 'skill markdown-style\n';
 const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]);
 const CATALOG = require('../meta/environment.json').env.map((r) => r.key);
 // [key, the stack's old seed, the value it resets to] - the env pass's reseed list
-const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
+const { reseed: RESEEDS, retired: RETIRED } = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json'));
 const SETTINGS_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_HOOKS_OFF'];
 // A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
 const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
@@ -202,9 +202,11 @@ test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ig
         prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.alfred/\n'),
         each: (repo) => ({ settings: readOr(path.join(repo, '.claude', 'settings.json')), vars: fs.existsSync(varsFile(repo)) }),
     });
-    // byte-identical but for the two old scorer seeds the update moves (B1)
+    // byte-identical but for the two old scorer seeds the update moves (B1) and a key retired whatever its value
+    // (complexity stage 1 B9: v2.12.0 seeded ALFRED_CODE_FORGE_WATCH)
     const before = JSON.parse(steps[0].settings);
     before.env = reseeded(before.env);
+    for (const [key, onlyWhen] of RETIRED) if (onlyWhen == null) delete before.env[key];
     assert.strictEqual(steps[1].settings, `${JSON.stringify(before, null, 2)}\n`, outs[1]);
     assert.strictEqual(steps[1].vars, false, 'a .variables was written under an ignored data root');
     assert.match(outs[1], /!! variables: \.alfred\/\.variables is ignored by \.gitignore:1 - the keys are kept in settings\.json/, outs[1]);
