@@ -1,7 +1,7 @@
 // Behavior tests for the commit/push gate fixes in family F of the 2026-09-22 audit remediation
 // (docs/sessions-investigation/AUDIT/_fixmap.json, cluster 'F'): the receipt's probe-SCOPE check,
-// the security-review-receipt honesty check, the no-ff merge-order guidance, and the bare
-// `git add -N` guard. Each case pins a real measured defect - both directions, since a false
+// the security-review-receipt honesty check and the no-ff merge-order guidance (the bare `git add -N`
+// guard left in complexity stage 1, B7). Each case pins a real measured defect - both directions, since a false
 // positive here is as costly as the miss it replaces.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
@@ -23,8 +23,6 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
-// R173: the sweep check's timeout seam, wide here so a loaded runner never turns an add into a timeout denial.
-process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS = '60000';
 // A session where a review ran: every commit receipt needs one since 2026-10-22, so a case judging another of its lines
 // runs the guard over this transcript unless it hands its own.
 const REVIEWED = reviewedTranscript(TMP);
@@ -356,30 +354,6 @@ test('guard-ungated-commit: a no-ff merge head must be the receipt\'s head, not 
 
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(mergeHead));
   assert.equal(gateIn(dir, 'git push'), 0, 'a receipt naming the merge commit itself passes');
-});
-
-// ---------------------------------------------------------------------------------------------
-// 6. add-n-unchained (family E's one row, same hook)
-// ---------------------------------------------------------------------------------------------
-test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked', () => {
-  const dir = scratchRepo();
-  const blocked = gateFull(dir, 'git add -N .');
-  assert.equal(blocked.status, 2, 'add -N alone leaves intent-to-add entries open');
-  assert.match(blocked.stderr, /git diff HEAD --stat; git ls-files -o --exclude-standard/, 'names the index-free survey alfred-git.md:9 gives (f24eb967)');
-
-  assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q'), 0,
-    'the reset chained in the SAME call is the conformant scope-survey shape');
-  assert.equal(gateIn(dir, 'git add -N . && git reset -q'), 0, 'any chained git reset clears the block');
-  assert.equal(gateIn(dir, 'git add .'), 0, 'an ordinary add with no -N is untouched');
-  assert.equal(gateIn(dir, 'git add -N src/new-file.ts'), 0,
-    'intent-to-add on ONE named file is a deliberate staging move before `git add -p`, not the survey');
-  assert.equal(gateIn(dir, 'git add --intent-to-add .'), 2, 'the long spelling of the whole-tree shape is the same defect');
-  assert.equal(gateIn(dir, 'echo "run git add -N . then commit"'), 0, 'prose naming the shape is not the shape');
-  assert.equal(gateIn(dir, "cat <<'EOF' > plan.md\nStep 1: git add -N .\nEOF"), 0, 'a heredoc body is data, not a command');
-
-  const withCommit = gateFull(dir, 'git add -N . && git commit -am wip');
-  assert.equal(withCommit.status, 2, 'the add -N check fires before the commit gate is even reached');
-  assert.match(withCommit.stderr, /git ls-files -o --exclude-standard/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1289,17 +1263,6 @@ test('audit 2026-10-10 C18: a commit receipt carries the formatter check and its
   fs.writeFileSync(path.join(pdir, 'b.txt'), forty()); git('add', '-A'); git('commit', '-qm', 'b');
   writeReceipt(pdir, 'PUSH-GATE', pushReceipt(headOf(pdir)));
   assert.equal(gateIn(pdir, 'git push'), 0, 'a push receipt needs no format: line');
-});
-
-test('audit 2026-10-10 C17: the scope survey never resets an index holding staged work', () => {
-  const dir = scratchRepo();
-  assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q'), 0, 'nothing staged - the survey passes as before');
-  spawnSync('git', ['-C', dir, 'add', 'a.txt']);
-  const r = gateFull(dir, 'git add -N . && git diff HEAD --stat; git reset -q');
-  assert.equal(r.status, 2, 'a bare reset would unstage a.txt');
-  assert.match(r.stderr, /git diff HEAD --stat; git ls-files -o --exclude-standard/, 'names the index-free survey');
-  assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q -- b.txt'), 0, 'a reset of named paths leaves the rest staged');
-  assert.equal(gateIn(dir, 'git diff HEAD --stat; git ls-files -o --exclude-standard'), 0, 'the index-free survey');
 });
 
 // ---------------------------------------------------------------------------------------------

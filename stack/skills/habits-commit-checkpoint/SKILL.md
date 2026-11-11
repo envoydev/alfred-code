@@ -59,8 +59,7 @@ On any non-trivial diff, before committing or presenting, in order:
 it: the docs hook lists it at session start, once per HEAD (`<data root>/state/sessions/untracked-at-start-<HEAD
 sha>`, named in the start block). Stage the session's own paths by name, review and count only those in
 `spec:`, and name the pre-existing ones in one line as outside the change. One goes in only when the
-user names it - the commit guard blocks a `git add` that would sweep it in (`-A`, `.`, a directory)
-until `<data root>/state/approvals/UNTRACKED-ALLOW` lists it.
+user names it - a `git add -A`, `.` or a directory would sweep it in unasked.
 
 **Exemptions.** Skip the checkpoint for typos / one-line diffs, and a formatting-only diff inside the
 hook's trivial bar (below - above it a sweep needs a review like any change) - and for a diff an

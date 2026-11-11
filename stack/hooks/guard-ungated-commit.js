@@ -307,120 +307,12 @@ function commitArgs(args) {
 // `git $(echo commit)` - cannot be judged at all, and reading it as 'not a commit' is what an obfuscation leans on, so it
 // gates like a commit; so does a call the reader left unread (above).
 const commitCall = calls.find((c) => c.sub === 'commit' && !commitArgs(c.argv).flags.has('--dry-run'));
-// ---- a commit no `git commit` call of the command spells (audit 2026-10-30 HK-17) ----
-// Three routes landed a commit with no receipt: a runtime spawning `git commit` (`node -e "execSync('git commit -m x')"`,
-// `subprocess.run(['git', 'commit', ...])`, ruby / perl `system`, a backtick), the plumbing pair - `commit-tree` read into
-// `update-ref refs/heads/<b>` (or HEAD), or into a reset / merge / branch / checkout / switch that moves a branch onto it -
-// and `rebase --exec 'git commit ...'`. Each gates as a commit whose set is unread (the whole tree, like `git $C`). Only
-// literal words count: a spawn whose command the script computes (`['git', sub]` with `sub` unbound), a runtime's `git
-// push`, and a commit-tree result carried through a variable into a reset are out of model; `update-ref --stdin` and a
-// ref the shell expands are read as a branch.
-const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix']);
-const isGitWord = (w) => /(?:^|[\\/])git(?:\.exe)?$/i.test(w);
-// does a word list run `git commit` (past git's own options, a dry run excepted)?
-function commitsIn(words) {
-  for (let i = 0; i < words.length; i++) {
-    if (!isGitWord(words[i])) continue;
-    for (let k = i + 1; k < words.length; k++) {
-      const w = words[k];
-      if (GIT_VALUE_OPTS.has(w)) { k++; continue; }
-      if (w.startsWith('-')) continue;
-      if (w === 'commit' && !words.slice(k + 1, k + 40).includes('--dry-run')) return true;
-      break;
-    }
-  }
-  return false;
-}
-function updatesBranch(argv) {
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '-d') return false;
-    if (a === '--stdin') return true;
-    if (a === '-m') { i++; continue; }
-    if (a.startsWith('-')) continue;
-    return /^(?:HEAD|@)$/.test(a) || a.startsWith('refs/heads/') || a.includes('$');
-  }
-  return false;
-}
-function rebaseExecCommits(argv) {
-  const shellWords = (s) => String(s || '').split(/[\s;&|()'"]+/).filter(Boolean);
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    let cmd = null;
-    if (a === '--exec') cmd = argv[i + 1];
-    else if (a.startsWith('--exec=')) cmd = a.slice(7);
-    else if (/^-[A-Za-z]/.test(a) && !a.startsWith('--')) {
-      for (let k = 1; k < a.length; k++) {
-        if ('sXC'.includes(a[k])) break; // that option takes the rest as its value
-        if (a[k] === 'x') { cmd = k === a.length - 1 ? argv[i + 1] : a.slice(k + 1); break; }
-      }
-    }
-    if (cmd != null && commitsIn(shellWords(cmd))) return true;
-  }
-  return false;
-}
-const MOVES_BRANCH = new Set(['reset', 'merge', 'branch', 'checkout', 'switch']);
-const plumbingCall = commitCall ? null : calls.find((c) => (c.sub === 'update-ref' && updatesBranch(c.argv))
-  || (c.sub === 'rebase' && rebaseExecCommits(c.argv))
-  || (c.sub === 'commit-tree' && calls.some((o) => o !== c && MOVES_BRANCH.has(o.sub) && o.at < c.at && c.at < o.stop)));
-// A runtime's spawn: the call's argument text (a balanced paren, or a paren-less `system "..."` to its statement's end),
-// a backtick / `%x()` / `qx()` in ruby, perl and php, `` $`...` `` in node and bun, a PowerShell or osascript body's own
-// statements. Its words are the string literals' words, a bare name taking the literal the script bound it to.
-const SPAWN_CALL = /\b(?:subprocess\s*\.\s*(?:run|call|check_call|check_output|Popen|getoutput|getstatusoutput)|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*)|Open3\s*\.\s*\w+|IO\s*\.\s*popen|Bun\s*\.\s*spawn(?:Sync)?|Deno\s*\.\s*Command|execSync|execFileSync|spawnSync|execFile|exec|spawn|system|shell_exec|passthru|proc_open|popen|do\s+shell\s+script)(?:\s*(\()|[ \t]+(?=["'[]))/g;
-function spanAfter(body, from, paren) {
-  if (!paren) { const end = body.slice(from).search(/[;\n]/); return body.slice(from, end < 0 ? body.length : from + end); }
-  let depth = 0;
-  let q = null;
-  for (let i = from; i < body.length; i++) {
-    const ch = body[i];
-    if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
-    if (ch === '"' || ch === "'" || ch === '`') { q = ch; continue; }
-    if (ch === '(') depth++;
-    else if (ch === ')' && --depth === 0) return body.slice(from + 1, i);
-  }
-  return body.slice(from + 1);
-}
-function spanWords(span, body, depth = 0) {
-  const words = [];
-  for (const m of String(span).matchAll(/(["'`])((?:\\.|(?!\1)[^\\])*)\1|([A-Za-z_$][\w$]*)/g)) {
-    if (m[1]) { words.push(...m[2].split(/[\s;&|()]+/).filter(Boolean)); continue; }
-    const bind = depth < 2 && new RegExp(`(?:^|[\\s;{(,])(?:(?:const|let|var|my)\\s+)?\\$?${m[3].replace(/\$/g, '\\$')}\\s*=\\s*([^;\\n]+)`, 'm').exec(body);
-    words.push(...(bind ? spanWords(bind[1], body, depth + 1) : [`\u0000${m[3]}`]));
-  }
-  return words;
-}
-function runtimeCommitAt(text) {
-  let scripts = [];
-  try { scripts = sw.runtimeScripts(text); } catch { return -1; }
-  for (const s of scripts) {
-    const body = String(s.body || '');
-    if (!/\bgit\b/i.test(body) || !body.includes('commit')) continue;
-    if (/^(?:pwsh|powershell)$/.test(s.runtime)) {
-      const statements = body.split(/[;\n|{}]|&&/).map((st) => st.trim().replace(/^&\s*/, '').replace(/['"]/g, '').split(/\s+/));
-      if (statements.some((w) => isGitWord(w[0] || '') && commitsIn(w))) return s.index;
-      continue;
-    }
-    let inStr = () => false;
-    try { inStr = sw.codeStrings(body); } catch { /* every match counts */ }
-    const spans = [];
-    for (const m of body.matchAll(SPAWN_CALL)) if (!inStr(m.index)) spans.push(spanWords(spanAfter(body, m.index + m[0].length - (m[1] ? 1 : 0), !!m[1]), body));
-    if (/^(?:ruby|perl|php)$/.test(s.runtime)) {
-      for (const m of body.matchAll(/`([^`]*)`|%x\(([^)]*)\)|%x\{([^}]*)\}|\bqx\s*(?:\(([^)]*)\)|\{([^}]*)\}|\/([^/]*)\/)/g)) spans.push(String(m.slice(1).find((g) => g != null) || '').split(/\s+/));
-    }
-    if (/^(?:node|nodejs|bun|deno)$/.test(s.runtime)) {
-      for (const m of body.matchAll(/\$`([^`]*)`/g)) spans.push(m[1].split(/\s+/));
-    }
-    if (spans.some(commitsIn)) return s.index;
-  }
-  return -1;
-}
-const runtimeAt = commitCall || plumbingCall ? -1 : runtimeCommitAt(command);
-const opaqueCall = commitCall || plumbingCall ? null : calls.find((c) => c.opaque);
+// A runtime spawning `git commit`, a `commit-tree` / `update-ref` pair and `rebase --exec` are not read (complexity
+// stage 1 B8: 0 fires in 442 sessions).
+const opaqueCall = commitCall ? null : calls.find((c) => c.opaque);
 const commitMatch = commitCall ? { index: commitCall.at, call: commitCall, opaque: false }
-  : plumbingCall ? { index: plumbingCall.at, call: plumbingCall, opaque: true }
-    : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
-      : runtimeAt >= 0 ? { index: runtimeAt, call: null, opaque: true }
-        : gitRead.unreadAt >= 0 ? { index: gitRead.unreadAt, call: null, opaque: true } : null;
+  : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
+    : gitRead.unreadAt >= 0 ? { index: gitRead.unreadAt, call: null, opaque: true } : null;
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review): `guard-ungated-commit:push` in ALFRED_CODE_HOOKS_OFF, or the old
 // ALFRED_CODE_PUSH_GATE=0 for the 2.x line (hook-prelude.js partOff).
@@ -433,8 +325,7 @@ const PUSH_GATE_ON = !(() => { try { return require('./hook-prelude.js').partOff
 // (`gh pr merge`, `glab mr merge`, `az repos pr update --status completed`, one nobody listed), a raw API call, or an
 // MCP tool (`accept_merge_request`, `repo_pull_request_write {autoComplete: true}`, `push_files`) needs the same receipt.
 // A forge call whose verb the lexicon does not know is an ask - a deny when nobody is at the terminal to answer it.
-// With the publish half off nothing is gated or asked, but what it lets through is still ledgered below - else every push
-// would read as ungated to the ref watch (forge-session.js).
+// With the publish half off nothing is gated or asked.
 let publishMatch = null;
 let askMatch = null;
 let forgeLib = null;
@@ -483,109 +374,22 @@ if (forgeLib || PUSH_GATE_ON) {
   }
 }
 // Task 4b: the forge publish acts chained after a push (`git push && gh pr merge 4`). The push is the act selected above, so
-// these are read here once - each needs the receipt even when the push itself moves nothing, each merge gets its own
-// unseen-head check, and each is a ledger row of its own (fn-9).
+// these are read here once - each needs the receipt even when the push itself moves nothing, and each merge gets its own
+// unseen-head check.
 let chainedPublish = [];
 if (publishMatch && publishMatch.git && forgeLib && forgeLib.classifyCommand) {
   try { chainedPublish = forgeLib.classifyCommand(command, gitCwd, { parsed }).filter((a) => a && a.strength === 'known' && forgeLib.PUBLISH.has(a.concept)); }
   catch { chainedPublish = []; }
 }
-// The act ledger the ref watch reads (forge.js recordAct): what moved, where, from which head - in the repository's one
-// ledger (forge.js ledgerRoot), so a worktree's push is read by the session watching its main checkout. A git push is one row
-// per ref it names, so a push of feat/x never covers a move of main; one naming refs it does not list (--all, --tags) is one
-// row marked `all`. The call's tool_use_id rides along: the watch trusts a row only once its PostToolUse confirmed it ran.
-function ledgerPublish(match, dir, { pushRows = true } = {}) {
-  if (!forgeLib || !forgeLib.recordAct) return;
-  const f = match.forge || {};
-  const head = f.head || forgeLib.gitOut(dir, ['rev-parse', 'HEAD']) || null;
-  let rows = [{ ref: f.ref || null }];
-  if (match.git && forgeLib.pushTargets) {
-    rows = [];
-    // a push that moves nothing (a dry run, nothing ahead) is no act; the merge chained behind it still is (Task 4b)
-    if (pushRows) {
-      for (const p of calls.filter((c) => c.sub === 'push')) {
-        const targets = forgeLib.pushTargets(p.argv || [], gitCwd);
-        if (targets === null) rows.push({ ref: null, all: true });
-        else rows.push(...targets.map((ref) => ({ ref })));
-      }
-      if (!rows.length) rows = [{ ref: null }];
-    }
-    // fn-9: the command's other publish acts (`git push && gh pr merge 4`) are rows of their own, each with its own concept
-    for (const a of chainedPublish) rows.push({ ref: a.ref || null, concept: a.concept, change: a.change, head: a.head, armed: a.armed });
-  }
-  let ledger = dir;
-  try { ledger = forgeLib.ledgerRoot(dir) || dir; } catch { /* the act's own repo */ }
-  const seen = new Set();
-  for (const row of rows) {
-    const concept = row.concept || f.concept || forgeLib.CONCEPTS.BRANCH;
-    const key = `${concept}|${row.ref}|${!!row.all}|${row.change || ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    forgeLib.recordAct(ledger, payload.session_id, { concept, change: row.concept ? row.change : f.change, ref: row.ref, head: row.head || head, all: row.all,
-      armed: row.concept ? row.armed : f.armed, tool_use_id: payload.tool_use_id });
-  }
-}
 if (!PUSH_GATE_ON) {
-  const dry = publishMatch && publishMatch.git && !publishMatch.hidden && pushDry(publishMatch.call.argv || []);
-  if (publishMatch && (!dry || chainedPublish.length)) { try { ledgerPublish(publishMatch, gitRead.callDir(publishMatch.call || { at: publishMatch.index, dirs: [] }), { pushRows: !dry }); } catch { /* best effort */ } }
   publishMatch = null;
   askMatch = null;
 }
 
-// --- add -N without a chained reset -------------------------------------------------------
-// The commit checkpoint's ask derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
-// --exclude-standard`): the older `git add -N . && ...; git reset -q` unstaged a session's own `git rm` deletions (audit
-// 2026-10-10, session f24eb967). A bare `git add -N .` left its
-// intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
-// 8-call fsck/dangling-blob forensic chase and an unrequested re-stage that flipped a partially
-// staged file to fully staged. Independent of commit/push - it fires on its own. Scoped to the
-// WHOLE-TREE shape (`-N .`, or -N with no pathspec): `git add -N <new file>` before a `git add -p`
-// is a deliberate staging move with one file's entry to clear, not the survey this rule is about.
-const addN = calls.find((c) => c.sub === 'add' && c.argv.some((a) => a === '-N' || a === '--intent-to-add')
-  && c.argv.every((a) => a.startsWith('-') || a === '.'));
-const INDEX_FREE_SURVEY = 'git diff HEAD --stat; git ls-files -o --exclude-standard';
-if (addN && !calls.some((c) => c.sub === 'reset')) {
-  process.stderr.write(
-    `Blocked: ${actText(addN)} with no git reset in the same call - intent-to-add entries stay\n` +
-    `open across every Bash call after this one until something clears them (measured: 6 calls open,\n` +
-    `an 8-call fsck/dangling-blob chase, and an unrequested re-stage that flipped a partially staged\n` +
-    `file to fully staged). Survey the scope without touching the index - the tracked diff, then the\n` +
-    `untracked files:\n` +
-    `  ${INDEX_FREE_SURVEY}\n` +
-    `(the commit checkpoint's survey - a reset after -N would unstage work already staged).`,
-  );
-  process.exit(2);
-}
-// A bare `git reset -q` resets the WHOLE index, so chained after the survey it unstages every hunk the user had staged
-// (audit 2026-10-10: a read-only verifier seat ran it in session 05c925e9; in f24eb967 it unstaged a `git rm` and cost
-// an amend). Judged only when the index holds staged work: the survey that leaves the index alone passes it.
-const bareReset = addN && calls.find((c) => c.sub === 'reset' && c.at > addN.at && c.argv.every((a) => /^-(?:q|-quiet|-mixed)$/.test(a)));
-if (bareReset) {
-  let staged = false;
-  try {
-    execFileSync(...gitSafe(['diff', '--cached', '--quiet'], { cwd: gitRead.callDir(addN), timeout: 5000, stdio: 'ignore' }));
-  } catch (e) { staged = e && e.status === 1; }
-  if (staged) {
-    process.stderr.write(
-      `Blocked: ${actText(bareReset)} after ${actText(addN)} resets the WHOLE index, and the index holds staged work\n` +
-      `now - the survey would unstage it. Survey without touching the index:\n` +
-      `  ${INDEX_FREE_SURVEY}\n` +
-      `or reset only the paths -N added: git reset -q -- <those paths>.`,
-    );
-    process.exit(2);
-  }
-}
-
-// Every `git add` in the command - judged below against what was untracked before the session started, so a bare
-// `git add -A` in its own call is read too.
+// Every `git add` in the command: what a commit after it takes in (the staged-diff scan and the receipt count, below).
 const addCalls = calls.filter((c) => c.sub === 'add');
 // The ask for a forge call the lexicon cannot read: the user decides whether it publishes. Nobody at the terminal (print
-// mode, auto-mode) cannot answer an ask, so there it is a deny naming the act. The asked act is ledgered (`asked`) for the
-// ref watch, so a move the user approved reads as explained.
-// Where the act ledger lives: the repo root the receipts are read from once it is resolved below, the project before.
-function forgeRoot() {
-  try { return root; } catch { return process.env.CLAUDE_PROJECT_DIR || gitCwd; }
-}
+// mode, auto-mode) cannot answer an ask, so there it is a deny naming the act.
 function forgeAsk(r) {
   let nobody = false;
   try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
@@ -596,14 +400,11 @@ function forgeAsk(r) {
       `does not, add its verb to <data root>/forge-lexicon.json.`);
     process.exit(2);
   }
-  let ledger = forgeRoot();
-  try { ledger = forgeLib.ledgerRoot(ledger) || ledger; } catch { /* the project */ }
-  forgeLib.recordAct(ledger, payload.session_id, { ...r, asked: true, tool_use_id: payload.tool_use_id });
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
     permissionDecisionReason: `${what} - a forge call the stack cannot classify (${r.why}). Approve only if it merges, pushes and releases nothing; a publish needs the checkpoint's receipt.` } }));
   process.exit(0);
 }
-if (!commitMatch && !publishMatch && !addCalls.length) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
+if (!commitMatch && !publishMatch) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
 
 // Resolve the repo the act actually runs in: a `cd <sibling> && git commit` or a
 // `git -C <sibling> push` executes in a DIFFERENT repo than this hook's default root,
@@ -618,8 +419,8 @@ if (!commitMatch && !publishMatch && !addCalls.length) { if (askMatch) forgeAsk(
 // worktree commit through ungated whenever main was clean (measured on 2.1.283).
 const projectDir = process.env.CLAUDE_PROJECT_DIR || '';
 // The directory a git call runs in: its piece's cwd moved by every cd before it there (PowerShell's Set-Location and
-// Push-Location too), then the call's own `-C` chain - read the same way for the add sweep, the commit's set and the
-// scan (2.1.6 review B1). A cd the guard cannot follow (`cd $DIR`) leaves the piece's own cwd.
+// Push-Location too), then the call's own `-C` chain - read the same way for the commit's set and the scan
+// (2.1.6 review B1). A cd the guard cannot follow (`cd $DIR`) leaves the piece's own cwd.
 const callDir = gitRead.callDir;
 // the FIRST of the acts anchors the repo - everything before it moved the cwd
 const firstAct = [commitMatch && (commitMatch.call || { at: commitMatch.index, dirs: [] }),
@@ -656,9 +457,8 @@ const docsPrefix = () => {
   return `${d}/`;
 };
 // What was untracked when this change started (docs-session.js writes it once per HEAD at session start,
-// root-relative, spelled with core.quotePath=false) is not the change: out of the count and the trivial bar, and a
-// git add that would sweep it in is blocked below. The record for this HEAD first; a commit made since the session
-// started has none yet, so the newest record stands - a path it lists that is still untracked is still not the change,
+// root-relative, spelled with core.quotePath=false) is not the change: out of the count and the trivial bar. The record
+// for this HEAD first; a commit made since the session started has none yet, so the newest record stands - a path it lists that is still untracked is still not the change,
 // and one it lists that got committed no longer matters. No record at all - an older install, no SessionStart - is an
 // empty set. Before either: the record this session's first start used, named in `untracked-session-<sid>` (audit
 // 2026-10-10 C09), so a HEAD the session moved never hands it another session's snapshot.
@@ -1727,8 +1527,7 @@ if (publishMatch) {
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
   }
   // the lead act publishes, or a forge publish act chained behind a push that moves nothing does (Task 4b)
-  // the act ledger's push rows read what the lead push moves; the gate lets a dry run or a push with nothing ahead out only
-  // as the command's one act (pushAlone)
+  // the gate lets a dry run or a push with nothing ahead out only as the command's one act (pushAlone)
   // 'Nothing ahead' is git's own answer, not HEAD against a local @{u} (the seventh review, 2026-11-05: push.default=matching,
   // a remote's push refspec, a local upstream or a stale tracking ref published with no receipt): the lone push's words as
   // a dry run (forge.js pushWouldMove); a move, an error or no answer counts as ahead.
@@ -1800,12 +1599,10 @@ if (publishMatch) {
       process.exit(2);
     }
   }
-  // Allowed: the act ledger the ref watch reads.
-  if (gated && forgeLib) ledgerPublish(publishMatch, root, { pushRows: leadMoves });
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------
-if (!commitMatch && !addCalls.length) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
+if (!commitMatch) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
 
 // --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
 // Conflict markers, a debugger, a focused test, a credential-shaped literal and a hidden character
@@ -1841,7 +1638,7 @@ function lineFinding(file, text, lineNo) {
 }
 // A `<data root>/state/approvals/<name>` ALLOW receipt's lines (the pre-2.8.0 flow/ still read) - the USER's answer to a
 // block, read by hook-prelude.js readReceiptFile: under 8h, written after the session began, and a `session:` line naming
-// this call's session when the call names one (E1-6 / O1: another session's answer opened this one's sweep and scan).
+// this call's session when the call names one (E1-6 / O1: another session's answer opened this one's scan).
 // `write` is where a denial says to put one; `shut` the sentence a denial adds when a receipt is there but not honoured.
 function allowLines(name) {
   const file = receiptRead(name);
@@ -1856,107 +1653,6 @@ function allowLines(name) {
 const receiptLines = (lines) => { try { return prelude().receiptLinesText(payload, lines); } catch { return lines.map((l) => `  ${l}\n`).join(''); } };
 function prelude() { return require('./hook-prelude.js'); }
 
-// --- a git add that sweeps in what the session did not make --------------------------------------
-// Pilot 3: ~150 files the harness left untracked before the session began were committed by a close's `git add`, and
-// drove 13 'spec claims N file(s)' denials. git's own dry run says what each add would stage (top-relative, whatever
-// the pathspec - `.`, `-A`, `:/`, a directory, a glob); a pre-existing path in it is SWEPT unless the call names that
-// exact path, and a swept one passes only through UNTRACKED-ALLOW (a path, a directory ending in `/`, or `*`). A survey
-// (`-N`), a dry run, a patch or edit session and a tracked-only `-u` stage no untracked path and are not judged.
-// R173 (burn-down 2026-11-04): a dry run past its timeout read as 'the add will fail too', so on a loaded runner a broad
-// add swept untracked paths in unasked. A timed-out check now passes only an add whose every pathspec is an existing
-// file; any other asks once (UNTRACKED-ALLOW `*`). ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS is the tests' seam (5000 unset).
-const SWEEP_TIMEOUT_MS = Number(process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS) > 0 ? Number(process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS) : 5000;
-// The dry run's output buffer: spawnSync's 1 MB default overflowed at ~20k untracked paths (ENOBUFS, with a SIGTERM) and
-// read as a timeout (final review m3). 64 MB; an overflow asks once like a timeout, naming the overflow.
-// ALFRED_CODE_TEST_SWEEP_MAX_BUFFER is the tests' seam.
-const SWEEP_MAX_BUFFER = Number(process.env.ALFRED_CODE_TEST_SWEEP_MAX_BUFFER) > 0 ? Number(process.env.ALFRED_CODE_TEST_SWEEP_MAX_BUFFER) : 64 * 1024 * 1024;
-let sweepTimedOut = false;
-let sweepWhy = '';
-function exactFiles(args, cwd) {
-  if (args.some((a) => /^--pathspec-from-file\b/.test(a))) return false;
-  let rest = false;
-  const specs = args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); });
-  return specs.length > 0 && specs.every((a) => { try { return fs.statSync(path.resolve(cwd, a)).isFile(); } catch { return false; } });
-}
-function sweptPaths() {
-  const before = preExisting();
-  if (!before.size) return [];
-  // `.native`, here and in topOf: a Windows temp dir is an 8.3 short name (`RUNNER~1`) the JS resolver keeps, while
-  // git names the long one - the two never matched, so no sweep was ever blocked there (windows-2025 CI, 2026-09-27).
-  let realRoot = root;
-  try { realRoot = fs.realpathSync.native(root); } catch { /* keep the spelling */ }
-  const swept = new Set();
-  for (const call of addCalls) {
-    const cwd = callDir(call);
-    const args = call.argv;
-    const flags = args.slice(0, args.includes('--') ? args.indexOf('--') : args.length).filter((a) => a.startsWith('-'));
-    const quiet = flags.some((a) => /^--(intent-to-add|dry-run|patch|interactive|edit|update|refresh)$/.test(a) || (/^-[^-]/.test(a) && /[nNpieu]/.test(a.slice(1))));
-    if (quiet) continue;
-    const top = topOf(cwd);
-    if (!top) continue;
-    const r = spawnSync(...gitSafe(['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: SWEEP_TIMEOUT_MS, maxBuffer: SWEEP_MAX_BUFFER, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
-    const overflow = Boolean(r.error && r.error.code === 'ENOBUFS');
-    if (overflow || (r.error && r.error.code === 'ETIMEDOUT') || r.signal) {
-      if (!exactFiles(args, cwd)) { sweepTimedOut = true; sweepWhy = overflow ? `printed more than ${SWEEP_MAX_BUFFER} bytes` : sweepWhy || `timed out after ${SWEEP_TIMEOUT_MS}ms`; }
-      continue;
-    }
-    if (r.error || r.status !== 0) continue; // the add itself will fail the same way - never block on it
-    let rest = false;
-    const named = new Set(args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); })
-      .map((a) => path.relative(top, path.resolve(cwd, a)).split(path.sep).join('/')));
-    for (const line of String(r.stdout).split('\n')) {
-      const m = /^add '(.*)'$/.exec(line);
-      if (!m || named.has(m[1])) continue;
-      const rel = path.relative(realRoot, path.join(top, m[1])).split(path.sep).join('/');
-      if (before.has(rel)) swept.add(rel);
-    }
-  }
-  const { lines } = allowLines('UNTRACKED-ALLOW');
-  if (lines.includes('*')) sweepTimedOut = false;
-  return [...swept].filter((f) => !(lines.includes('*') || lines.includes(f) || lines.some((l) => l.endsWith('/') && f.startsWith(l))));
-}
-if (addCalls.length) {
-  const swept = sweptPaths();
-  if (sweepTimedOut) {
-    global.BLOCK_DETAIL = { branch: 'untracked-sweep-timeout', why: /^printed/.test(sweepWhy) ? 'overflow' : 'timeout' };
-    const record = preExistingRecord();
-    process.stderr.write(
-      `Blocked: the check of what this git add would stage (git add --dry-run) ${sweepWhy}, so it cannot\n` +
-      `tell whether the add sweeps in paths that were untracked before this change started (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}).\n` +
-      `Stage the change's own files by name instead - git add <file> ..., each an existing file, is not judged. When the user\n` +
-      `wants everything staged, write ${path.relative(root, receiptWrite('UNTRACKED-ALLOW')).split(path.sep).join('/')} with these lines and retry the SAME command -\n` +
-      receiptLines(['*']) +
-      `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-      `  'Stage only this session's files (Recommended)'\n` +
-      `  'Stage everything' - the user adds every untracked path to the change\n` +
-      `It is honoured for this session only, under 8h.\n` + allowLines('UNTRACKED-ALLOW').shut,
-    );
-    process.exit(2);
-  }
-  if (swept.length) {
-    global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
-    const rel = (name) => path.relative(root, receiptWrite(name)).split(path.sep).join('/');
-    const record = preExistingRecord();
-    // Past 15 paths the receipt is the top folders that hold them (a root file stays a path), printed whole: 15 lines of a
-    // longer list left the retry denied again for the rest (E-batch M7).
-    const sweepLines = swept.length > 15 ? [...new Set(swept.map((f) => (f.includes('/') ? `${f.split('/')[0]}/` : f)))] : swept;
-    process.stderr.write(
-      `Blocked: this git add stages ${swept.length} path(s) that were untracked before this change started -\n` +
-      `${swept.slice(0, 15).map((f) => `  ${f}`).join('\n')}\n` +
-      (swept.length > 15 ? `  ... and ${swept.length - 15} more\n` : '') +
-      `They are not this change (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}). Stage the change's own\n` +
-      `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
-      `${rel('UNTRACKED-ALLOW')} with these lines (one path per line; a directory ending in /, or *) and retry the SAME command -\n` +
-      receiptLines(sweepLines) +
-      `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-      `  'Stage only this session's paths (Recommended)'\n` +
-      `  'Stage them too' - the user adds these files to the change\n` +
-      `It is honoured for this session only, under 8h.\n` + allowLines('UNTRACKED-ALLOW').shut,
-    );
-    process.exit(2);
-  }
-}
-if (!commitMatch) process.exit(0);
 // What the commit takes in, read from the command: the commit's own flags and paths, and every `git add` before it.
 // Each path is placed where ITS git call runs and handed to git as a top-relative `:(top)` pathspec - read from the
 // repo top instead, a path named from a subfolder matched nothing, and 11 commit shapes counted as empty (2.1.6

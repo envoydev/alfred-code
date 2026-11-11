@@ -973,9 +973,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     option, and a skipped review is never the run's call).
     An unknown receipt line is never refused. A verify-skill VERIFIED line needs a Skill run in THIS session, read from the
     whole transcript (newest 64MB) - a 256KB tail refused three sessions whose review sat further back.
-    A `git add -N .` survey chained to a bare `git reset -q` blocks while the index holds staged work (the reset
-    would unstage it); the denial names `git diff HEAD --stat; git ls-files -o --exclude-standard`. The act a
-    denial echoes is capped at 200 characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
+    The act a denial echoes is capped at 200 characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
     Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own. A `cd "$VAR"`
     follows the newest LITERAL the same command assigned before it (`gitText`'s `callDir`), and a commit in a checkout other
     than the project's, on a detached HEAD, under the temp dir or the harness scratch root is scratch and needs no receipt
@@ -995,12 +993,12 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     counted (E-batch U26a).
     What was untracked when the change started (`docs-session.js`'s record, below - the one this session's first start
     named in `untracked-session-<sid>`, else the HEAD-keyed one, else the newest) is not the change: it
-    leaves the receipt's `spec:` count and the trivial bar, and a `git add` whose own dry run would stage one of
-    those paths without naming it (`-A`, `.`, `:/`, a directory, a glob) blocks until `<data root>/state/approvals/UNTRACKED-ALLOW`
-    lists it (a path, a directory ending in `/`, or `*`) - pilot 3's ~150 harness files drove 19 denials and one sweep.
-    Both ALLOW receipts are read by `hook-prelude.js readReceiptFile` (under 8h, written after the session began, a
-    `session:` line naming the call's session), and each denial prints the lines to write, `session:` first (E-batch
-    E1-6 / O1: another session's answer opened this one's sweep and scan).
+    leaves the receipt's `spec:` count and the trivial bar - pilot 3's ~150 harness files drove 19 denials. A `git add`
+    is not judged on its own: the untracked sweep and its UNTRACKED-ALLOW receipt, and the `git add -N .` survey check,
+    left in complexity stage 1 (B7, 0 fires in 442 sessions), so `git add -A` takes such a path in unasked.
+    STAGED-SCAN-ALLOW is read by `hook-prelude.js readReceiptFile` (under 8h, written after the session began, a
+    `session:` line naming the call's session), and its denial prints the lines to write, `session:` first (E-batch
+    E1-6 / O1: another session's answer opened this one's scan).
     The receipt's `spec:` count is measured on what the commit takes in - the scan's set, each add and commit path placed
     where its own git call runs (the cwd, a cd, its `-C`) as a `:(top)` pathspec (2.1.6 H2: on the whole tree, narrowing a
     commit never helped) - and on the whole tree when the command does not spell that set out (a path word the shell
@@ -1021,11 +1019,9 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     git aliases and carried scripts (`expandGitAliases`, `carriedScripts`, above): each alias is expanded in place and each carried script, its own aliases expanded, joins
     the command after a newline; an alias still standing after 5 steps, a lookup git cannot answer, an xargs-fed
     subcommand, or text past the scan budget that names git gates the call as a commit, unread, and as a push (any
-    unread text naming git: with nothing to commit the commit half passed a push zsh runs, the seventh fuzz pass) - and so do a runtime
-    script spawning `git commit` (node exec / spawn, python `subprocess` / `os.system`, ruby / perl `system` and backticks,
-    a PowerShell body), `update-ref` on `refs/heads/*` or `HEAD`, a `commit-tree` fed into a reset / merge / branch /
-    checkout / switch, and `rebase --exec` / `-x` running `git commit` (audit 2026-10-30 HK-17; literal words only, a
-    computed spawn and a runtime's push stay out of model). Every check reads
+    unread text naming git: with nothing to commit the commit half passed a push zsh runs, the seventh fuzz pass). A runtime
+    script spawning `git commit`, `update-ref` / `commit-tree` and `rebase --exec` are not read (audit 2026-10-30 HK-17's
+    readers left in complexity stage 1, B8: 0 fires in 442 sessions). Every check reads
     git however it is spelled (`/usr/bin/git`, `\git`, `--git-dir <d>`, `--work-tree <d>`), and behind a runner no
     list names (`xcrun`, `arch -arm64`, `bundle exec`, `op run --`, `flock`): a bare `git` word after a head that does
     more than print, read or edit data is the call (`DATA_HEADS` in shell-writes.js, so `echo` / `grep` / `ls` stay text;

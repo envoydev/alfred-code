@@ -5440,7 +5440,8 @@ test('audit 2026-10-30 HK-13, HK-14: every $HOME spelling and the other write ve
   allows(`[IO.File]::ReadAllText('${sib}/f.txt')`, 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
 });
 
-test('audit 2026-10-30 HK-17: a runtime spawning git commit, update-ref on a branch and rebase --exec commit are commits', () => {
+test('stage 1 B8: a runtime spawning git commit is not read as a commit', () => {
+  // Complexity stage 1 (B8): the runtime, commit-tree and rebase --exec commit readers fired 0 times in 442 sessions.
   const dir = cleanRepo();
   for (const f of ['n1.txt', 'n2.txt', 'n3.txt']) fs.writeFileSync(path.join(dir, f), forty());
   spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' });
@@ -5451,24 +5452,8 @@ test('audit 2026-10-30 HK-17: a runtime spawning git commit, update-ref on a bra
     `python3 - <<'EOF'\nimport os\nos.system('git -C . commit -am x')\nEOF`,
     `ruby -e 'system("git commit -m x")'`,
     `perl -e 'system("git", "commit", "-m", "x")'`,
-    'git update-ref refs/heads/main $(git commit-tree HEAD^{tree} -p HEAD -m x)',
-    'git update-ref HEAD abc1234',
-    "git rebase --exec 'git commit --amend --no-edit' HEAD~1",
-    'git rebase -x "git commit --amend -m y" main',
-    'git reset --soft $(git commit-tree HEAD^{tree} -p HEAD -m x)',
-    `node -e "const cp = require('child_process'); const cmd = 'git commit -qm x'; cp.execSync(cmd)"`,
-  ]) assert.equal(gateIn(dir, c), 2, `must gate as a commit: ${c}`);
-  for (const c of [
-    `node -e "console.log('git commit is a verb')"`,
-    `node -e "require('child_process').execSync('git status')"`,
-    `python3 -c "import subprocess; subprocess.run(['git', 'log', '--grep', 'commit'])"`,
-    'git commit-tree HEAD^{tree} -p HEAD -m x',
-    'git update-ref refs/notes/x abc1234',
-    'git update-ref -d refs/heads/old',
-    "git rebase --exec 'npm test' main",
-    `node -e "require('child_process').execSync('git commit --dry-run')"`,
-    `ruby -e 'puts "git commit"; system("git status")'`,
-  ]) assert.equal(gateIn(dir, c), 0, `must allow: ${c}`);
+  ]) assert.equal(gateIn(dir, c), 0, `not read as a commit: ${c}`);
+  assert.equal(gateIn(dir, 'git commit -m x'), 2, 'a literal git commit is still gated');
 });
 
 test('audit 2026-10-30 HK-19: shuf, git show <rev>:<path> and an added file\'s diff are sized like cat; a copy is not tracked (stage 1 A5)', () => {

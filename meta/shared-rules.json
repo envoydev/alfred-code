@@ -8133,19 +8133,6 @@
         }
       ]
     },
-    "commit-scope-fresh": {
-      "_note": "The commit ask's scope is derived fresh, untracked files counted and the index never moved. The checkpoint's ask step owns it since the git preferences seed kept only its crucial lines (the user's ruling of 2026-10-21; it was the seed's locked G2 before), and the commit guard's add -N denial names the same survey (skills audit 2026-10-21 S-13).",
-      "owner": {
-        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-        "marker": "`git diff HEAD --stat; git ls-files -o --exclude-standard`"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "git diff HEAD --stat; git ls-files -o --exclude-standard"
-        }
-      ]
-    },
     "preferences-precedence-ask": {
       "_note": "Ruling P (the user's, 2026-10-21, preferences audit): where a preferences entry and a skill, a house convention or another instruction disagree, the user is asked which wins, the entry's side marked (Recommended); a seat cannot ask, so it names the clash (designers on `user_decisions:`, implementers on `decisions:`) and carries on with the entry's side. Every home of the precedence states the same mark.",
       "owner": {

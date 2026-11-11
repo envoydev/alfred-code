@@ -2,8 +2,7 @@
 // A commit is the session's own change. Pilot 3 (b4-pilot-3-flow): ~150 files the harness left untracked before the
 // session began drove 19 commit-gate denials (13 were 'spec claims N file(s) but the tree has 148 uncommitted'), and
 // one close swept them into a commit. docs-session.js records the paths untracked at session start under
-// <docs-path>/flow/; guard-ungated-commit.js leaves them out of the receipt's count and the trivial-diff bar, and blocks
-// a `git add` that would sweep one in unless the user named it (the UNTRACKED-ALLOW receipt).
+// <docs-path>/flow/; guard-ungated-commit.js leaves them out of the receipt's count and the trivial-diff bar.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
@@ -15,9 +14,6 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
-// R173: the sweep check's timeout seam, wide here so a loaded runner never turns a broad-add allow case into a timeout
-// denial; the timeout cases at the end set it to 1.
-process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS = '60000';
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DOCS = '.alfred/docs';
@@ -78,7 +74,7 @@ test('the record is written once per HEAD: a resume or compact start never adds 
 });
 
 // audit 2026-10-10 C09 (session c6142301): the session moved HEAD, then a compact start snapshotted the new HEAD and
-// listed 7 of the session's own new files as pre-existing - the commit guard would have blocked their git add.
+// listed 7 of the session's own new files as pre-existing - the commit guard would have left them out of its count.
 test('audit 2026-10-10 C09: a compact or resume start after the session moved HEAD takes no snapshot; its own files stay its change', () => {
     const p = project();
     try {
@@ -93,16 +89,14 @@ test('audit 2026-10-10 C09: a compact or resume start after the session moved HE
             assert.match(again.stdout, /1 path was untracked when this change started/, `${source}: the first record is named again`);
             assert.ok(again.stdout.includes(path.basename(first)), source);
         }
-        const sweep = p.bash('moved', 'git add -A');
-        assert.strictEqual(sweep.status, 2);
-        assert.match(sweep.stderr, /  harness\/one\.txt/);
-        assert.doesNotMatch(sweep.stderr, /mine/, 'the session\'s own files are its change');
-        assert.strictEqual(p.bash('moved', 'git add src/').status, 0);
+        // the commit guard counts what is not pre-existing: the session's own 80 lines cross the trivial bar
+        const commit = 'git add -A && git commit -m x';
+        assert.strictEqual(p.bash('moved', commit).status, 2, 'the session\'s own files are its change');
         // another session started at the moved HEAD snapshots it - and the first session still reads its own record
         p.start('fresh');
         assert.deepStrictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean).sort(), ['harness/one.txt', 'src/mine.cs', 'src/mine2.cs']);
-        assert.doesNotMatch(p.bash('moved', 'git add -A').stderr, /mine/, 'the session pointer wins over the HEAD record');
-        assert.match(p.bash('fresh', 'git add -A').stderr, /src\/mine\.cs/, 'the new session reads its own');
+        assert.strictEqual(p.bash('moved', commit).status, 2, 'the session pointer wins over the HEAD record');
+        assert.strictEqual(p.bash('fresh', commit).status, 0, 'the new session reads its own: every file pre-existing, nothing counted');
         // a start with no session id, or a compact with no pointer, falls back to the HEAD record and never writes one
         fs.rmSync(path.join(p.dir, SESSIONS, 'untracked-session-moved'));
         p.git('checkout', '-q', '-'); p.write('src/three.cs', 'c\n');
@@ -123,118 +117,32 @@ test('outside a git repo SessionStart records nothing and stays quiet', () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a git add that would sweep in a pre-existing untracked path is blocked, naming it and the ALLOW route', () => {
+// Complexity stage 1 (B7): the untracked sweep and the `add -N` survey check fired 0 times in 442 sessions. A git add
+// is not judged on its own; the staged-diff scan still reads what a commit takes in.
+test('stage 1 B7: a git add over pre-existing untracked paths and git add -N pass', () => {
     const p = project();
     try {
         p.write('harness/one.txt', 'h\n'); p.write('harness/two.txt', 'h\n');
         p.start('s4');
         p.write('src/new.cs', forty);
-        for (const cmd of ['git add -A', 'git add .', 'git add --all', 'git add harness/', 'git add -A && git commit -m x', 'cd src && git add :/']) {
+        for (const cmd of ['git add -A', 'git add .', 'git add -N src/new.cs', 'git add -N .']) {
             const r = p.bash('s4', cmd);
-            assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
-            assert.match(r.stderr, /untracked before this change started/, cmd);
-            assert.match(r.stderr, /harness\/one\.txt/, cmd);
-            assert.match(r.stderr, /UNTRACKED-ALLOW/, cmd);
-        }
-    } finally { p.rm(); }
-});
-
-test('the session\'s own paths, a named path, a survey and a dry run all pass', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('s5');
-        p.write('src/new.cs', forty);
-        for (const cmd of ['git add src/new.cs', 'git add src/', 'git add harness/one.txt', 'git add -n -A', 'git add -N . && git diff HEAD --stat; git reset -q', 'git add -u']) {
-            const r = p.bash('s5', cmd);
             assert.strictEqual(r.status, 0, `${cmd}: ${r.stderr}`);
+            assert.doesNotMatch(r.stderr, /UNTRACKED-ALLOW/, cmd);
         }
-        p.dropRecords();
-        const none = p.bash('s5', 'git add -A');
-        assert.strictEqual(none.status, 0, 'no record at all: nothing is judged pre-existing');
     } finally { p.rm(); }
 });
 
-// macOS: os.tmpdir() is /var/..., a symlink to /private/var/... - git answers in the real spelling, the session may not.
-test('a named pre-existing path passes when the project dir is spelled through a symlink', { skip: process.platform === 'win32' && 'no symlinked tmpdir' }, () => {
-    const p = project();
-    const link = `${p.dir}-link`;
-    try {
-        fs.symlinkSync(p.dir, link);
-        p.write('harness/one.txt', 'h\n');
-        const env = { ...process.env, CLAUDE_PROJECT_DIR: link, ALFRED_CODE_DOCS_PATH: DOCS };
-        const hook = (file, payload) => spawnSync(process.execPath, [path.join(HOOKS, file)], { cwd: link, input: JSON.stringify(payload), encoding: 'utf8', env });
-        hook('docs-session.js', { hook_event_name: 'SessionStart', session_id: 's8', cwd: link });
-        const named = hook('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: 's8', cwd: link, tool_input: { command: 'git add harness/one.txt' } });
-        assert.strictEqual(named.status, 0, named.stderr);
-        const sweep = hook('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: 's8', cwd: link, tool_input: { command: 'git add -A' } });
-        assert.strictEqual(sweep.status, 2, 'the sweep is still judged through the link');
-    } finally { try { fs.unlinkSync(link); } catch { /* never linked */ } p.rm(); }
-});
-
-test('UNTRACKED-ALLOW opens the sweep for the paths the user named, and only those', () => {
+test('stage 1 B7: a staged credential is still refused at commit', () => {
     const p = project();
     try {
-        p.write('harness/one.txt', 'h\n'); p.write('harness/two.txt', 'h\n');
-        p.start('s6');
-        p.flow('UNTRACKED-ALLOW', 'session: s6\nharness/one.txt\n'); // E1-6: the session it answers
-        const partial = p.bash('s6', 'git add -A');
-        assert.strictEqual(partial.status, 2);
-        assert.match(partial.stderr, /harness\/two\.txt/);
-        assert.doesNotMatch(partial.stderr, /  harness\/one\.txt/, 'the named path is no longer listed');
-        p.flow('UNTRACKED-ALLOW', 'session: s6\nharness/\n');
-        assert.strictEqual(p.bash('s6', 'git add -A').status, 0, 'a directory line covers what is under it');
-        p.flow('UNTRACKED-ALLOW', 'session: s6\n*\n');
-        assert.strictEqual(p.bash('s6', 'git add .').status, 0);
-    } finally { p.rm(); }
-});
-
-// E-batch M7: past 15 swept paths the denial listed 15 receipt lines, so the retry was denied again for the rest. The lines
-// it prints, written as told, open the retry whatever the count.
-const printedReceipt = (stderr) => {
-    const m = /retry the SAME (?:command|call)[^\n]*\n((?:  .*\n)+)/.exec(stderr);
-    return m ? m[1].split('\n').map((l) => l.trim()).filter(Boolean) : [];
-};
-test('M7: past 15 swept paths the printed receipt lines cover every one', () => {
-    const p = project();
-    try {
-        for (let i = 0; i < 20; i += 1) p.write(`harness/f${i}.txt`, 'h\n');
-        for (let i = 0; i < 3; i += 1) p.write(`loose${i}.txt`, 'h\n');
-        p.start('m7');
-        const r = p.bash('m7', 'git add -A');
-        assert.strictEqual(r.status, 2);
-        const lines = printedReceipt(r.stderr);
-        assert.strictEqual(lines[0], 'session: m7', 'the session line first');
-        assert.ok(lines.length <= 16, `a short list: ${lines.length} lines`);
-        p.flow('UNTRACKED-ALLOW', lines.join('\n') + '\n');
-        const retry = p.bash('m7', 'git add -A');
-        assert.strictEqual(retry.status, 0, `the printed lines open the retry: ${retry.stderr.slice(0, 300)}`);
-    } finally { p.rm(); }
-});
-
-// E1-6 (inventory A): UNTRACKED-ALLOW is read by hook-prelude.js readReceiptFile - a `session:` line naming the call's
-// session - so another session's answer never opens this one's sweep.
-test('E1-6: UNTRACKED-ALLOW counts only for the session it names', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('e16');
-        p.flow('UNTRACKED-ALLOW', 'session: another-session\n*\n');
-        assert.strictEqual(p.bash('e16', 'git add -A').status, 2, 'another session\'s receipt opens nothing');
-        p.flow('UNTRACKED-ALLOW', 'session: e16\n*\n');
-        assert.strictEqual(p.bash('e16', 'git add -A').status, 0, 'this session\'s receipt opens the sweep');
-    } finally { p.rm(); }
-});
-
-test('E1-6: an old receipt with no session line asks again', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('e16b');
-        p.flow('UNTRACKED-ALLOW', '*\n');
-        const r = p.bash('e16b', 'git add -A');
-        assert.strictEqual(r.status, 2, 'a receipt naming no session is shut');
-        assert.match(r.stderr, /\n  session: e16b\n/, 'the denial\'s receipt lines start with this session');
+        p.start('s5');
+        p.write('.env', `TOKEN=${['gh', 'p_'].join('')}${'A'.repeat(36)}\n`);
+        spawnSync('git', ['-C', p.dir, 'add', '-A'], { encoding: 'utf8' });
+        const r = p.bash('s5', 'git commit -m x');
+        assert.strictEqual(r.status, 2, 'the staged-diff scan refuses the commit');
+        assert.match(r.stderr, /a credential-shaped literal/);
+        assert.match(r.stderr, /STAGED-SCAN-ALLOW/, 'and names its own receipt');
     } finally { p.rm(); }
 });
 
@@ -246,16 +154,14 @@ test('the receipt\'s spec count and the trivial-diff bar leave the pre-existing 
         p.write('src/a.cs', forty);
         const head = p.git('rev-parse', 'HEAD').stdout.trim();
         p.flow('COMMIT-GATE', ['VERIFIED the rounding fix', 'authorized: "commit it"', `head: ${head}`, 'spec: 1 file - src/a.cs', 'live-probe: NOT RUN - test', 'format: npx prettier --check - clean over 1 staged file', 'findings: none'].join('\n') + '\n');
-        // 2.1.6 H2: the count is what the commit takes in, so the sweep that takes the harness files in is the case -
-        // the user allowed it, and they still are not the change
-        p.flow('UNTRACKED-ALLOW', 'session: s7\n*\n');
+        // 2.1.6 H2: the count is what the commit takes in, so the add that takes the harness files in is the case -
+        // they still are not the change
         const r = p.bash('s7', 'git add -A && git commit -m fix');
         assert.strictEqual(r.status, 0, r.stderr);
         p.dropRecords();
         const other = p.bash('s7', 'git add -A && git commit -m fix');
-        assert.strictEqual(other.status, 2, 'without the record the same sweep counts 6 files');
+        assert.strictEqual(other.status, 2, 'without the record the same add counts 6 files');
         assert.match(other.stderr, /spec: claims 1 file\(s\) but this commit takes in 6/);
-        fs.rmSync(path.join(p.dir, DOCS, 'flow', 'UNTRACKED-ALLOW'));
         p.start('s7');
         fs.rmSync(path.join(p.dir, DOCS, 'flow', 'COMMIT-GATE'));
         p.git('checkout', '--', 'src/a.cs');
@@ -269,19 +175,17 @@ test('the receipt\'s spec count and the trivial-diff bar leave the pre-existing 
 test('I3: two sessions on one HEAD - the first session\'s new file is the second\'s change, not pre-existing', () => {
     const p = project();
     try {
-        p.write('harness/one.txt', 'h\n');
+        p.write('harness/one.txt', forty);
         p.start('first');
         p.write('src/mine.cs', forty);
         const hand = p.start('second');
         assert.match(hand.stdout, /1 path was untracked/, 'the second session reuses the first snapshot');
-        assert.strictEqual(p.bash('second', 'git add src/').status, 0, 'the earlier session\'s file is committable without naming it');
-        const sweep = p.bash('second', 'git add -A');
-        assert.strictEqual(sweep.status, 2);
-        assert.match(sweep.stderr, /  harness\/one\.txt/);
-        assert.doesNotMatch(sweep.stderr, /src\/mine\.cs/);
+        // the commit guard counts the earlier session's file (40 lines, past the trivial bar), never the harness one
+        const commit = 'git add -A && git commit -m x';
+        assert.strictEqual(p.bash('second', commit).status, 2, 'the earlier session\'s file is the second\'s change');
         const before = p.head();
         p.git('add', 'src/mine.cs'); p.git('commit', '-qm', 'mine');
-        assert.strictEqual(p.bash('second', 'git add -A').status, 2, 'a commit mid-session keeps the last snapshot in force');
+        assert.strictEqual(p.bash('second', commit).status, 0, 'a commit mid-session keeps the last snapshot in force');
         p.write('scratch.txt', 's\n');
         p.start('third');
         assert.notStrictEqual(p.head(), before);
@@ -327,7 +231,7 @@ test('the checkpoint skill scopes the commit to the session\'s own change', () =
     assert.match(text, /untracked-at-start-/);
     assert.match(text, /stage the session's own paths by name/i);
     assert.match(text, /outside the change/i);
-    assert.match(text, /UNTRACKED-ALLOW/);
+    assert.doesNotMatch(text, /UNTRACKED-ALLOW/, 'stage 1 B7: no receipt nothing reads');
 });
 
 // 2.1.6 review M2 / T18: the trivial bar is cumulative per SESSION - this commit's own set plus what the commits since the
@@ -608,10 +512,10 @@ test('R3-m9: with no history record the ledger pins its own start', () => {
 test('2.8.0: a record and pointer an older hook left in the legacy flow/ are read; a new start writes state/sessions/', () => {
     const p = project();
     try {
-        p.write('harness/one.txt', 'x\n');
+        p.write('harness/one.txt', forty);
         p.flow(`untracked-at-start-${p.head()}`, 'harness/one.txt\n');
         p.flow('untracked-session-old', `untracked-at-start-${p.head()}\n`);
-        assert.match(p.bash('old', 'git add -A').stderr, /harness\/one\.txt/, 'the legacy record still keeps the pre-existing path out');
+        assert.strictEqual(p.bash('old', 'git add -A && git commit -m x').status, 0, 'the legacy record still keeps the pre-existing path out of the count');
         assert.strictEqual(p.start('old', 'resume').status, 0);
         assert.strictEqual(fs.existsSync(p.record()), false, 'a resume reuses the legacy record, writes none');
         p.dropRecords();
@@ -641,82 +545,4 @@ test('2.8.0: the commit guard reads the session start from state/history/, else 
             assert.strictEqual(p.bash('h', 'git add src/feat2.cs && git commit -m "part 2"').status, 2, `${where}: part 2 crosses the bar`);
         } finally { p.rm(); }
     }
-});
-
-// R173 (burn-down 2026-11-04): the sweep check's `git add --dry-run` ran under a 5 s timeout, and a timed-out check read
-// as 'the add will fail too', so a loaded runner let a broad add sweep untracked paths in unasked. A timed-out check of a
-// broad add now asks once (UNTRACKED-ALLOW `*`), and an add naming existing files passes. The seam sets the timeout to
-// 1 ms, which no git dry run meets on any OS; every other case in this file runs at 60000 (set at the top).
-// A 1 ms timer is not sure to fire: on the gate's Linux leg (2026-11-04) a dry run finished before spawnSync looked at
-// it, and the add was judged on its output. Off Windows a `git` on PATH sleeps 3 s on `--dry-run` (its sleep holding no
-// pipe, so the kill returns at once) and the timeout is 300 ms, so it always fires; on Windows no spawnSync can launch
-// a script shim without a shell, and a process start there outlasts 1 ms.
-function slowSweep() {
-    if (process.platform === 'win32') return { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '1' };
-    const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-slowgit-'));
-    fs.writeFileSync(path.join(dir, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = --dry-run ] && sleep 3 </dev/null >/dev/null 2>&1; done\nexec '${real}' "$@"\n`, { mode: 0o755 });
-    return { ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS: '300', PATH: `${dir}${path.delimiter}${process.env.PATH}` };
-}
-const TIMEOUT_1MS = slowSweep();
-
-test('a broad add whose sweep check times out is denied, naming the timeout and the UNTRACKED-ALLOW * line', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('t1');
-        p.write('src/new.cs', forty);
-        for (const cmd of ['git add -A', 'git add .', 'git add src/', 'git add "src/*.cs"']) {
-            const r = p.bash('t1', cmd, TIMEOUT_1MS);
-            assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
-            assert.match(r.stderr, /timed out/, cmd);
-            assert.match(r.stderr, /UNTRACKED-ALLOW/, cmd);
-            assert.match(r.stderr, /^ {2}\*$/m, cmd);
-        }
-    } finally { p.rm(); }
-});
-
-test('an add naming exact paths passes when its sweep check times out', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('t2');
-        p.write('src/new.cs', forty);
-        for (const cmd of ['git add src/new.cs', 'git add -- src/new.cs src/a.cs']) {
-            const r = p.bash('t2', cmd, TIMEOUT_1MS);
-            assert.strictEqual(r.status, 0, `${cmd}: ${r.stderr}`);
-        }
-    } finally { p.rm(); }
-});
-
-// Final review m3: a dry run whose output passed spawnSync's 1 MB default came back ENOBUFS with a SIGTERM and was
-// denied as 'timed out after 5000ms' - the wrong reason and the wrong fix for a repo with 20k+ untracked paths. The
-// buffer is 64 MB (ALFRED_CODE_TEST_SWEEP_MAX_BUFFER is the seam); an overflow still asks once, naming the overflow.
-test('a broad add whose sweep check overflows its buffer is denied naming the output size, never a timeout', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('t4');
-        p.write('src/new.cs', forty);
-        const r = p.bash('t4', 'git add -A', { ALFRED_CODE_TEST_SWEEP_MAX_BUFFER: '8' });
-        assert.strictEqual(r.status, 2, r.stderr);
-        assert.match(r.stderr, /printed more than 8 bytes/);
-        assert.doesNotMatch(r.stderr, /timed out/);
-        assert.match(r.stderr, /^ {2}\*$/m);
-        const exact = p.bash('t4', 'git add src/new.cs', { ALFRED_CODE_TEST_SWEEP_MAX_BUFFER: '8' });
-        assert.strictEqual(exact.status, 0, `an add naming exact files passes: ${exact.stderr}`);
-    } finally { p.rm(); }
-});
-
-test('UNTRACKED-ALLOW * opens a timed-out broad add', () => {
-    const p = project();
-    try {
-        p.write('harness/one.txt', 'h\n');
-        p.start('t3');
-        p.write('src/new.cs', forty);
-        assert.strictEqual(p.bash('t3', 'git add -A', TIMEOUT_1MS).status, 2);
-        p.flow('UNTRACKED-ALLOW', 'session: t3\n*\n');
-        const r = p.bash('t3', 'git add -A', TIMEOUT_1MS);
-        assert.strictEqual(r.status, 0, r.stderr);
-    } finally { p.rm(); }
 });
