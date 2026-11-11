@@ -801,7 +801,7 @@ function maskFormatText(text, file, mask, count) {
   let gpg = false;
   let ppk = 0;
   let block = -1; // the indent of a YAML key whose block scalar holds a credential
-  const keyLine = (line) => { count(); return `${indentOf(line)}<private key line>`; };
+  const keyLine = (line) => { count(line.trim()); return `${indentOf(line)}<private key line>`; };
   const out = lines.map((raw, idx) => {
     let line = raw;
     if (pem) { if (PEM_END.test(line)) { pem = false; return line; } return line.trim() ? keyLine(line) : line; }
@@ -817,7 +817,7 @@ function maskFormatText(text, file, mask, count) {
     if (PEM_PRIVATE.test(line) && !PEM_END.test(line)) pem = true;
     // a comment or blank line takes only the passes at the end
     const k = COMMENT_LINE.test(line) && kind !== 'xml' ? null : kind;
-    if (k === 'pem' && GPG_PRIVATE.test(line)) { gpg = true; count(); return line.replace(/^(\s*(?:Key:\s*)?).*$/, '$1<private key line>'); }
+    if (k === 'pem' && GPG_PRIVATE.test(line)) { gpg = true; count(line.replace(/^\s*(?:Key:\s*)?/, '')); return line.replace(/^(\s*(?:Key:\s*)?).*$/, '$1<private key line>'); }
     if (k === 'ppk') {
       const p = line.match(PPK_PRIVATE);
       if (p) { ppk = Number(p[1]); return line; }
@@ -1498,7 +1498,7 @@ function valuesOf(file, { every = false } = {}) {
     if (!hit) return out;
     const names = new Map(((otherPairs(text, file) || {}).pairs || []).map(([k, v]) => [String(v), k]));
     for (const l of text.split(LINES)) { const m = l.match(DOTENV_LINE); if (m) names.set(unquote(m[2]), m[1]); }
-    maskFormatText(text, file, (v) => put(names.get(v) || hit, v), () => {});
+    maskFormatText(text, file, (v) => put(names.get(v) || hit, v), (v) => v && put(hit, v));
     return out;
   }
   const open = every && (JSON_CONFIG.test(String(file)) || realOf(file) === realOf(pathMod.join(accountDir(), 'settings.json')));
@@ -1521,9 +1521,9 @@ function collectValues(p, every = true) {
   const cwd = typeof p.cwd === 'string' && p.cwd ? p.cwd : process.cwd();
   const project = process.env.CLAUDE_PROJECT_DIR || cwd;
   const command = String((p.tool_input || {}).command || '');
-  const add = (key, value, source, file) => {
-    // a store value is kept whatever it looks like, as --with-sensitive keeps it
-    if (value.length < MASK_MIN || isPlaceholder(value) || (source !== 'store' && isSampleValue(key, value))) return;
+  const add = (key, value, source, file, all) => {
+    // an every-value read (the store, a named dotenv or config) keeps a value whatever it looks like
+    if (value.length < MASK_MIN || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
     for (const v of new Set([value, JSON.stringify(value).slice(1, -1)])) if (!values.has(v)) values.set(v, { key, source, file: file ? baseOf(file) : null });
   };
   const take = (file, all, source) => {
@@ -1531,7 +1531,7 @@ function collectValues(p, every = true) {
     try { if (spentMs() > MASK_BUDGET_MS || !fs.statSync(file).isFile()) return; id = `${realOf(file)}\n${all}`; } catch { return; }
     if (files.has(id)) return;
     files.add(id);
-    for (const { key, value } of valuesOf(file, { every: all })) add(key, value, source, file);
+    for (const { key, value } of valuesOf(file, { every: all })) add(key, value, source, file, all);
   };
   // 1. the files the command names, at the cwd, the project, each directory it names and each directory a cd leaves
   let dirs = [cwd, project];

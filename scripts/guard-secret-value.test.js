@@ -1287,6 +1287,47 @@ test('swap 1 masker: every value of a named dotenv and every env / headers strin
   }
 });
 
+// The whole-branch review of swap 1, finding 1: a named file's values went through the sample filter, so a passphrase
+// holding spaces and a Basic header printed raw though ruling 14 masks every value of a named dotenv and config.
+test('swap 1 review fix: a named dotenv value holding spaces, a flag word and a Basic header of a named JSON config are masked', () => {
+  const fx = maskFixture();
+  const phrase = ['correct', 'horse', 'battery', 'staple'].join(' ');
+  const basic = `Basic ${Buffer.from(`user:${'p4'.repeat(8)}`).toString('base64')}`;
+  fs.mkdirSync(path.join(fx.project, 'cfg'), { recursive: true });
+  const dotenv = `DB_PASSWORD="${phrase}"\nDEBUG=true\n`;
+  const config = `${JSON.stringify({ mcpServers: { x: { command: 'npx', headers: { Authorization: basic } } } }, null, 2)}\n`;
+  fs.writeFileSync(path.join(fx.project, 'cfg', '.env.spaced'), dotenv);
+  fs.writeFileSync(path.join(fx.project, 'cfg', '.mcp.json'), config);
+  const out = (command, stdout) => { const r = masked(command, { response: said(stdout) }); return r.out ? answer(r).updatedToolOutput.stdout : stdout; };
+  const env = out('cat cfg/.env.spaced', dotenv);
+  assert.ok(!env.includes(phrase), 'the passphrase is masked');
+  assert.ok(env === `DB_PASSWORD="${SET(phrase)}"\nDEBUG=${SET('true')}\n`, 'every value of the named dotenv, whatever it looks like');
+  const mcp = out('cat cfg/.mcp.json', config);
+  assert.ok(!mcp.includes(basic), 'the Basic header is masked');
+  assert.ok(mcp.includes(`"Authorization": "${SET(basic)}"`) && mcp.includes('"command": "npx"'), 'its command kept');
+  // kept: the failure path observes with the credential verdicts only, so a flag word is no exposure there
+  const failed = masked('cat cfg/.env.spaced', { response: null, payload: { hook_event_name: 'PostToolUseFailure', error: 'DEBUG=true\n' } });
+  assert.ok(!failed.rows.some((x) => x.detail && x.detail.kind === 'exposure'), 'no exposure row for a flag word');
+});
+
+// Finding 2: a PuTTY key's private lines were counted and never collected, and the line pass knows the format only from
+// a diff header - a plain `cat` of the key printed them raw.
+test('swap 1 review fix: a PuTTY key printed by cat comes back with its private lines and its MAC masked', () => {
+  const fx = maskFixture();
+  const priv = [`pk1${'Ab9'.repeat(20)}`, `pk2${'Cd8'.repeat(20)}`];
+  const mac = 'e7'.repeat(32);
+  const body = `PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: none\nComment: someone\nPublic-Lines: 1\n${'pub'.repeat(20)}\nPrivate-Lines: 2\n${priv[0]}\n${priv[1]}\nPrivate-MAC: ${mac}\n`;
+  fs.writeFileSync(path.join(fx.project, 'id.ppk'), body);
+  const r = masked('cat id.ppk', { response: said(body) });
+  assert.ok(r.out, 'the masker answers');
+  const got = answer(r).updatedToolOutput.stdout;
+  assert.ok(priv.every((l) => !got.includes(l)) && !got.includes(mac), 'no private line and no MAC in what the model gets');
+  assert.ok(got.includes('Public-Lines: 1') && got.includes('pub'.repeat(20)) && got.includes('Private-Lines: 2'), 'the public half stays as printed');
+  // one line of the key printed with no header around it is masked too
+  const one = masked('sed -n 7p id.ppk', { response: said(`${priv[0]}\n`) });
+  assert.ok(one.out && !answer(one).updatedToolOutput.stdout.includes(priv[0]), 'a lone private line');
+});
+
 test('swap 1 masker: the 200-fragment cap', () => {
   const fx = maskFixture();
   const value = (n) => `capval-${String(n).padStart(3, '0')}`;
