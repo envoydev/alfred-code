@@ -105,3 +105,59 @@ files).
 
 Run 1's PostToolUse median is over the 100 ms line the design set for the per-file row, so the choice of a row on
 every file action goes back to the owner; nothing was changed to get under it.
+
+## Stage 4b - G2
+
+Does a rule the loader sends get followed as well as the same rule loaded by Claude Code itself? 2026-11-12, Claude
+Code 2.1.322, model `claude-sonnet-5-5` (the `sonnet` alias, one id on all 120 init rows), effort `high`, macOS, the
+stack at 8c16aa5d. Twelve clauses, five runs per arm, 120 billed sessions through the `skill-comply` fixtures at the
+`plain` prompt level, each in its own `HOME` and config dir.
+
+- **Native arm** - the copy-route install as shipped: the rules in `.claude/rules`.
+- **Loader arm** - the same install, then before the scaffold every `.claude/rules/*.md` that is also a shipped rule
+  moved by hand into `.alfred/stack/rules` (stage 4c's move is not built): the six pathless rules, `markdown-docs` and
+  the fixture's stack rules. Each case was checked: a native case got no loader block; a loader case moved all six
+  pathless rules and got every `Project rules, part k of n` block with its closing line (120 of 120 valid). A $0 probe
+  of one case per arm showed each pathless rule's marker once in the first request, and a path rule absent from the
+  first request and once after the Read of a matching file.
+
+A hit is the clause's step graded PASS after a read of the transcript; a run that never reached the clause's trigger
+is a miss in either arm. All 120 reads agreed with the grader.
+
+| Clause | Rule | Native (of 5) | Loader (of 5) | Down |
+| --- | --- | --- | --- | --- |
+| C1 `interaction-literal-example` | alfred-interaction | 5 | 5 | 0 |
+| C2 `interaction-permission-given` | alfred-interaction | 5 | 5 | 0 |
+| C3 `answer-budget` | alfred-interaction | 5 | 5 | 0 |
+| C4 `tier4-house-voice` | alfred-interaction | 5 | 5 | 0 |
+| C5 `preferences-branch-pattern` | alfred-preferences | 5 | 5 | 0 |
+| C6 `tier4-docs-placement` | alfred-docs-root | 4 | 4 | 0 |
+| C7 `tier4-secret-handoff` | alfred-security | 5 | 5 | 0 |
+| C8 `habits-code-comments` | alfred-quality-gates | 0 | 0 | 0 |
+| C9 `rule-navigation-large-json` | alfred-navigation | 5 | 5 | 0 |
+| C10 `csharp` | csharp-conventions (path) | 5 | 5 | 0 |
+| C11 `rule-javascript-load` | javascript-conventions (path) | 5 | 5 | 0 |
+| C12 `rule-markdown-load` | markdown-docs (path) | 5 | 5 | 0 |
+
+`G2: PASS - native 54/60, loader 54/60, worst clause down 0`. The pass line, fixed in the design before the run: 'the
+loader passes when its hits over the sixty runs are at most five under native's and no clause is down by four or
+more of its five'; with equal arms it is crossed by chance in about 13% of rounds at 80% adherence, 5% at 90%, 1% at
+95%.
+
+- **The misses.** C6: one run per arm stopped to ask how to gather before a first architecture capture and wrote
+  nothing. C8: no run in either arm wrote a doc comment at all (the rule's 'none by default' held), so the
+  doc-comment trigger never fired and every run is a miss - the clause cannot separate the arms in this fixture.
+- **What C10-C12 measured.** Loads before the first touch of a matching file: native 14, loader 12 of 15 each - the
+  skills' own descriptions fire on the prompt, so those hits do not need the rule. Hits after the touch: native 1 of 1
+  run, loader 3 of 3. Fewer than five such runs per arm: the path-rule half of the round did not test delivery. The
+  $0 probe above and the unit tests are what show the path push arrives.
+- **Nudges and shell touches.** No hit followed a `This command touches files governed by` nudge in either arm
+  (`withoutNudged` is also `PASS`). Shell first touches: native 6, loader 7. A load before the touch counts as a hit.
+- **Not run.** None: 120 of 120 sessions ended `ok`.
+- **The compaction cell** (the open G1 cell): one print-mode session in a loader case project - a Read, `/compact`,
+  then two more messages. The `compact` start fired, and after the compact boundary one `SessionStart` attachment held
+  parts 1, 2 and 3 of 3, each opened and closed once. Print mode dropped the two messages queued after `/compact`, so
+  the path rule's return was not seen live; the per-session record was gone after the run, and the loader's unit test
+  'path rule: again after a compaction and after a clear' pins the return. Result: `yes` for the parts.
+- **Spend.** $16.27 for the 120 sessions (smoke $3.25 for 24, reps $13.02 for 96) plus $0.14 for the compaction
+  session: $16.41 of the $40 cap.

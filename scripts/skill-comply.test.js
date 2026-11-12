@@ -627,8 +627,9 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
     // A fixture added by a prose A/B group is pinned in that group's own scripts/skill-comply-prose-<group>.test.js (the
-    // 2026-11-04 round: a group's fixtures ship or leave with its verdict), so no stray folder passes unnamed.
-    const prose = fs.readdirSync(__dirname).filter((f) => /^skill-comply-prose-[A-Z]\.test\.js$/.test(f)).map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
+    // 2026-11-04 round: a group's fixtures ship or leave with its verdict), or in a gate round's own
+    // scripts/skill-comply-g<n>.test.js (the workspace G2 rule A/B), so no stray folder passes unnamed.
+    const prose = fs.readdirSync(__dirname).filter((f) => /^skill-comply-(prose-[A-Z]|g\d+)\.test\.js$/.test(f)).map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
     for (const name of listed.filter((n) => !base.includes(n))) assert.ok(prose.includes(`'${name}'`), `${name} is pinned by no skill-comply-prose-<group>.test.js`);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "skill": "rule-markdown-load",
+  "sources": ["stack/rules/markdown-docs.md"],
+  "extracted": "2026-11-12",
+  "note": "The markdown path rule's one job, graded from the trace: the markdown-style Skill call lands before the first write to README.md. A rule-adherence clause of the G2 A/B (native rules against the loader).",
+  "run": {
+    "max_turns": 12,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill"],
+    "selection": { "skills": ["markdown-style"], "rules": ["markdown-docs"] }
+  },
+  "prompts": {
+    "explicit": "Load the markdown style skill first. Add a \"Running the tests\" section to README.md - the command is `npm test`.",
+    "plain": "Add a \"Running the tests\" section to README.md - the command is `npm test`.",
+    "adverse": "Tiny docs fix: add a \"Running the tests\" section to README.md (`npm test`), nothing fancy."
+  },
+  "matchers": {
+    "readme_write": { "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "README\\.md$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "README\\.md$" },
+      { "tool": "Write", "field": "file_path", "text_match": "README\\.md$" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "markdown-style-before-write",
+      "from": "stack/rules/markdown-docs.md",
+      "quote": "is the `markdown-style` Skill call, before the NEXT write to that file lands",
+      "session": false,
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "markdown-style loaded before the first README write",
+          "before": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?markdown-style$" },
+          "after": { "ref": "readme_write" }
+        }
+      ]
+    }
+  ]
+}
