@@ -779,3 +779,14 @@ judged:
   `state/forge/` stay, unread.
 
 Nothing to do by hand. Restart a session left open across the update, so it reads the new hook rows.
+
+## after 3.10.0 - a local-scope install no longer adds a second copy of the plugin
+
+A project set up at local scope used to get its own local row of `alfred-code` even when the account already had the
+plugin at user scope (or the project at project scope), so `/plugin` listed it twice. A local-scope run now leaves a
+plugin that is installed and switched on at a broader scope where it is, and only updates it there. A project- or
+user-scope run installs at its own scope as before, and so does a local run when the broader row is switched off.
+
+A row doubled by an earlier release is not removed. This update names it once per run, with the command that drops
+it: `claude plugin uninstall alfred-code@<marketplace> --scope local`. Running it is optional. While the local row is
+there it is the one that loads; without it this project runs the account's copy, which any project's update moves.

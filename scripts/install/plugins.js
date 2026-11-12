@@ -210,6 +210,44 @@ function scopesOf(rows, spec, fallback = '')
 // enable or block it everywhere, so a second row would change nothing but the version it loads.
 const adminOwned = (rows, spec) => scopesOf(rows, spec).some(isManaged);
 
+// The rows of `spec` that count as installed, from a listing read with `everyScope`.
+const rowsOf = (rows, spec) =>
+{
+    const [bare, market] = String(spec).split('@');
+    return (rows || []).filter((r) => r.name === bare && (!market || !r.marketplace || r.marketplace === market) && r.version);
+};
+// The broader row that serves this project - the NARROWEST of `project` and `user`, and only while the plugin is on
+// here: by the settings files' word where one names it (effectiveOn - a narrower file's off outranks a broader row,
+// and the listing's flag can read a running row off, S22), else by that row's own flag. Never a user row reached past
+// a project row that is off (the review of 2026-11-12). '' for none.
+function broaderOn(rows, spec, isOn = () => undefined)
+{
+    const row = rowsOf(rows, spec).filter((r) => r.scope === 'project' || r.scope === 'user')
+        .sort((x, y) => scopeRank(x.scope) - scopeRank(y.scope))[0];
+    if (!row) return '';
+    const said = effectiveOn(isOn, spec);
+    return (said === undefined ? row.enabled !== false : said) ? row.scope : '';
+}
+// A LOCAL run does not double a required plugin a broader scope already serves (the owner's report of 2026-11-11:
+// every workspace and child set up at local scope listed the core twice, once at user scope and once at local). A
+// local row is this checkout's alone, so beside a row that is on it adds only a second copy to keep current. ''
+// where the run installs as before: any other run scope (a project-scope row is what a team commits, and the
+// account's row does not stand in for it), a plugin that is off here, a local row already here, an optional item
+// (scopeFor places it) - and a managed row never reaches this (adminOwned).
+const servedBroader = (rows, spec, scope, isOn) => (scope !== 'local' || scopedItem(spec) || rowsOf(rows, spec).some((r) => r.scope === 'local')
+    ? '' : broaderOn(rows, spec, isOn));
+// The same doubling on an install made before that rule: on a local run, a local row that is on beside a broader one
+// that serves. Said with the one command that drops the extra row, never run - an uninstall is the user's (scope
+// rule 6). A local row that is off is what keeps the plugin off here, and at another run scope it may be the user's
+// own pin: neither is named.
+function doubledLine(rows, spec, scope, isOn)
+{
+    const here = rowsOf(rows, spec).find((r) => r.scope === 'local');
+    if (scope !== 'local' || scopedItem(spec) || !here || here.enabled === false) return '';
+    const broad = broaderOn(rows, spec, isOn);
+    return broad ? `  !! plugin ${spec} is installed at local scope and at ${broad} scope - the ${broad} one already serves this project; to drop the extra row: ${leftAt(spec, 'local')}` : '';
+}
+
 // A stack row already at the snapshot's own release needs no `plugin update`: the source step (the protocol's
 // resolve, or refreshStackSource) updated every stack entry before the run read its snapshot, the snapshot IS the
 // newest entry, and every marketplace entry ships at the one release version. Updating it again spawned the CLI
@@ -420,7 +458,7 @@ function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces,
 // and the run continues - fail-soft, like every other layer. `fresh` names what this run installed
 // already (a move): nothing is left to do for it. `rows` (every scope's, parsePluginList everyScope) names
 // each scope an installed plugin is updated at.
-function installPlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], rows = before, fresh = [], refreshed = new Set(), release = null, cli, log = () => {}, note = () => {} })
+function installPlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], rows = before, fresh = [], refreshed = new Set(), release = null, isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
@@ -439,6 +477,15 @@ function installPlugins({ plugins, scope, scopes = {}, marketplaces = [], before
             updateEvery(spec, every, { cli, log, rows, release });
             continue;
         }
+        const served = servedBroader(rows, spec, scope, isOn);
+        if (served)
+        {
+            log(`plugin [${served}]: ${spec} is already installed at ${served} scope, which serves this project - not installed again at local scope`);
+            updateEvery(spec, every, { cli, log, rows, release });
+            continue;
+        }
+        const doubled = doubledLine(rows, spec, scope, isOn);
+        if (doubled) log(doubled);
         // An optional item already installed is refreshed where it lives, never doubled at the run's scope (2.2.0);
         // a required one is installed at the run's scope and every row of it updated.
         const pscope = scopedItem(spec) ? scopeFor(spec, scope, before, scopes) : scope;
@@ -751,7 +798,7 @@ function extraMarketplaces(rows, set)
 // (docs/plugin-cli-evidence.md S22). Every plugin is updated at EACH scope it is installed
 // at (`rows`, every scope's) - the admin's managed row included, the one call that scope takes - while an
 // enable runs only where this project loads it, never at managed scope.
-function updatePlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], rows = before, after, fresh = [], restored = [], refreshed = new Set(), release = null, cli, log = () => {}, note = () => {} })
+function updatePlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], rows = before, after, fresh = [], restored = [], refreshed = new Set(), release = null, isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
@@ -766,6 +813,8 @@ function updatePlugins({ plugins, scope, scopes = {}, marketplaces = [], before 
             updateEvery(spec, every, { cli, log, quiet: false, rows, release });
             continue;
         }
+        const doubled = doubledLine(rows, spec, scope, isOn);
+        if (doubled) log(doubled);
         if (!fieldOf(before, spec, 'version'))
         {
             log(`plugin install [${pscope}]: ${spec}`);

@@ -1547,7 +1547,7 @@ function installPlugins(ctx)
         plugins.dropStaleRetired({ rows, blind, retiredRows, market: ctx.market, claudeDir: ctx.claudeDir, log: ctx.log, note: ctx.note });
         standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, release, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: () => (ctx.pluginsAfter = readListing()),
         });
         hudLine();
@@ -1578,7 +1578,7 @@ function installPlugins(ctx)
     }
     standDown();
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, release, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     hudLine();
 }

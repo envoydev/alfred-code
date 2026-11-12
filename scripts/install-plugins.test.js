@@ -275,6 +275,120 @@ test('install: a plugin ALREADY installed is updated at its own scope; a fresh o
     assert.ok(inst >= 0 && inst < run.calls.indexOf('plugin update old@m --scope user -y'), run.calls.join(' | '));
 });
 
+// The owner's report of 2026-11-11: every workspace and child set up at local scope got a second, local row of the
+// core beside the account's own. A local row is this machine's alone, so a broader row that is on already serves it.
+test('install: a LOCAL run does not double a required plugin a broader scope already serves', () =>
+{
+    for (const at of ['user', 'project'])
+    {
+        const run = cli();
+        const logs = [];
+        const row = { name: 'alfred-code', marketplace: 'envoydev', version: '3.10.0', scope: at, enabled: true };
+        P.installPlugins({ plugins: ['alfred-code@envoydev'], scope: 'local', before: [row], rows: [row], cli: run, log: (m) => logs.push(m) });
+        assert.deepStrictEqual(run.matching(/^plugin install /), [], `${at}: ${run.calls.join(' | ')}`);
+        assert.deepStrictEqual(run.matching(/^plugin update /), [`plugin update alfred-code@envoydev --scope ${at} -y`], at);
+        assert.ok(logs.some((l) => l.includes(`already installed at ${at} scope`) && l.includes('not installed again at local scope')), logs.join(' | '));
+    }
+});
+
+test('install: a LOCAL run still installs where the broader row cannot serve it', () =>
+{
+    const core = { name: 'alfred-code', marketplace: 'envoydev', version: '3.10.0', scope: 'user', enabled: true };
+    // the listing reads the broader row off: this project gets its own row, as before
+    const off = cli();
+    P.installPlugins({ plugins: ['alfred-code@envoydev'], scope: 'local', before: [{ ...core, enabled: false }], rows: [{ ...core, enabled: false }], cli: off });
+    assert.deepStrictEqual(off.matching(/^plugin install /), ['plugin install alfred-code@envoydev --scope local -y']);
+    // nothing installed anywhere
+    const none = cli();
+    P.installPlugins({ plugins: ['alfred-code@envoydev'], scope: 'local', before: [], rows: [], cli: none });
+    assert.deepStrictEqual(none.matching(/^plugin install /), ['plugin install alfred-code@envoydev --scope local -y']);
+    // a same-named plugin of another marketplace is not ours
+    const other = cli();
+    const official = { ...core, marketplace: 'claude-plugins-official' };
+    P.installPlugins({ plugins: ['alfred-code@envoydev'], scope: 'local', before: [official], rows: [official], cli: other });
+    assert.deepStrictEqual(other.matching(/^plugin install /), ['plugin install alfred-code@envoydev --scope local -y']);
+});
+
+// The review's finding: 'serves this project' is what is ON here, by the settings files first (effectiveOn) and the
+// listing's flag only where no file names the plugin - never a broader row reached past a narrower one that is off.
+test('install: a LOCAL run reads what is on here - a narrower off outranks a broader row, and the settings files outrank the listing flag', () =>
+{
+    const core = { name: 'alfred-code', marketplace: 'envoydev', version: '3.10.0', enabled: true };
+    const SPEC = 'alfred-code@envoydev';
+    const local = [`plugin install ${SPEC} --scope local -y`];
+    const run = (rows, isOn) =>
+    {
+        const c = cli();
+        const logs = [];
+        P.installPlugins({ plugins: [SPEC], scope: 'local', before: rows.slice(0, 1), rows, isOn, cli: c, log: (m) => logs.push(m) });
+        return { installs: c.matching(/^plugin install /), logs: logs.join(' | ') };
+    };
+    const projectOff = { ...core, scope: 'project', enabled: false };
+    const user = { ...core, scope: 'user' };
+    // a project row that is off is never skipped to reach the user row: the project file's false keeps the core off here
+    assert.deepStrictEqual(run([projectOff, user]).installs, local, 'a project row off above a user row on');
+    // settings.local.json says off (the user's own disable, a stand-down) with no local row: the user row does not serve
+    assert.deepStrictEqual(run([user], (spec, scope) => (scope === 'local' ? false : undefined)).installs, local, 'a local false with no local row');
+    assert.deepStrictEqual(run([user], (spec, scope) => (scope === 'project' ? false : scope === 'user' ? true : undefined)).installs, local, 'a project false over a user true');
+    // the settings file's word over a stale listing flag (S22): a running project-scope core listed off still serves
+    const stale = run([projectOff], (spec, scope) => (scope === 'project' ? true : undefined));
+    assert.deepStrictEqual(stale.installs, [], stale.logs);
+    assert.match(stale.logs, /already installed at project scope/);
+    // both on: the narrowest broader row is the one named
+    const both = run([{ ...core, scope: 'project' }, user]);
+    assert.deepStrictEqual(both.installs, []);
+    assert.match(both.logs, /already installed at project scope/, both.logs);
+    // an optional item with a scope of its own is placed by scopeFor, never by this rule
+    const hud = cli();
+    const hudRow = { name: 'claude-hud', marketplace: 'claude-hud', version: '0.15.0', scope: 'user', enabled: true };
+    const hudLogs = [];
+    P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'local', before: [hudRow], rows: [hudRow], cli: hud, log: (m) => hudLogs.push(m) });
+    assert.ok(!hudLogs.some((l) => /not installed again at local scope/.test(l)), hudLogs.join(' | '));
+});
+
+test('install: a project- or user-scope run keeps installing at its own scope beside a broader row', () =>
+{
+    // a project-scope row is the committed state a team shares; the account's row does not stand in for it
+    const row = { name: 'alfred-code', marketplace: 'envoydev', version: '3.10.0', scope: 'user', enabled: true };
+    for (const scope of ['project', 'user'])
+    {
+        const run = cli();
+        P.installPlugins({ plugins: ['alfred-code@envoydev'], scope, before: [row], rows: [row], cli: run });
+        assert.deepStrictEqual(run.matching(/^plugin install /), [`plugin install alfred-code@envoydev --scope ${scope} -y`], scope);
+    }
+});
+
+test('install and update: a local row beside a broader one is named with the command that drops it', () =>
+{
+    const user = { name: 'alfred-code', marketplace: 'envoydev', version: '3.10.0', scope: 'user', enabled: true };
+    const local = { ...user, scope: 'local' };
+    const line = /alfred-code@envoydev is installed at local scope and at user scope .*claude plugin uninstall alfred-code@envoydev --scope local/;
+    const inst = cli();
+    const instLogs = [];
+    P.installPlugins({ plugins: ['alfred-code@envoydev'], scope: 'local', before: [local], rows: [local, user], cli: inst, log: (m) => instLogs.push(m) });
+    assert.ok(instLogs.some((l) => line.test(l)), instLogs.join(' | '));
+    assert.deepStrictEqual(inst.matching(/^plugin uninstall /), [], 'said, never done');
+    const upd = cli();
+    const updLogs = [];
+    P.updatePlugins({ plugins: ['alfred-code@envoydev'], scope: 'local', before: [local], rows: [local, user], after: [local], cli: upd, log: (m) => updLogs.push(m) });
+    assert.ok(updLogs.some((l) => line.test(l)), updLogs.join(' | '));
+    assert.deepStrictEqual(upd.matching(/^plugin uninstall /), []);
+    // said only where dropping the local row changes nothing here: one row alone, a local row that is off (it is what
+    // keeps the core off, and the uninstall would switch it on), a settings file that says off, and a run at another
+    // scope (the local row may be a pin of the user's own) say nothing
+    const said = (rows, scope = 'local', isOn) =>
+    {
+        const out = [];
+        P.updatePlugins({ plugins: ['alfred-code@envoydev'], scope, before: rows.slice(0, 1), rows, after: rows.slice(0, 1), isOn, cli: cli(), log: (m) => out.push(m) });
+        return out.some((l) => /is installed at local scope and at/.test(l));
+    };
+    assert.strictEqual(said([user]), false, 'one row alone');
+    assert.strictEqual(said([{ ...local, enabled: false }, user]), false, 'a local row that is off');
+    assert.strictEqual(said([local, user], 'local', (spec, scope) => (scope === 'local' ? false : undefined)), false, 'settings.local.json says off');
+    assert.strictEqual(said([local, user], 'project'), false, 'a project-scope run');
+    assert.strictEqual(said([local, { ...user, enabled: false }]), false, 'a broader row that is off');
+});
+
 test('install: an official plugin of the same NAME is not the stack\'s - it neither triggers nor scopes the update', () =>
 {
     // The official marketplace ships plugins named like stack entries (`serena`, `sentry`, `playwright`

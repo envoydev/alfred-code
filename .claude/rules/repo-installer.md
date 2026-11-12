@@ -171,7 +171,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 - **The scope rules (the user's spec of 2026-10-08, checked against code.claude.com/docs/en/plugins/cli-reference,
   /plugins/loading, /mcp and /managed-mcp; `scripts/install-scope-rules.test.js`).** Every scope Claude Code
-  offers - `local`, `project`, `user`, and `managed` (the admin's). (1) The core installs at the run's scope (the three `alfred-` servers that followed it until 2.10.1 are retired). (2) A plugin at several scopes reads its narrowest row
+  offers - `local`, `project`, `user`, and `managed` (the admin's). (1) The core installs at the run's scope (the three `alfred-` servers that followed it until 2.10.1 are retired) - except on a `local` run that finds it at `project` or `user` scope with no local row here and ON in this project - by the settings files' word (`effectiveOn`), else the narrowest broader row's own listing flag, never a user row reached past a project row that is off: that row serves the project, so it is only updated there (`plugins.servedBroader`, the owner's report of 2026-11-11 - every local-scope workspace and child listed the core twice); on a local run a local row that is on beside such a row is named with its uninstall command, never removed (`doubledLine`). (2) A plugin at several scopes reads its narrowest row
   (`parsePluginList` ranks local, project, user, managed). (3) An uninstall or a move takes one scope's row; a
   broader row stays, named. (4) An update refreshes every scope a plugin is installed at (`updateEvery`) - a stack
   row already at the snapshot's release is skipped (`atRelease`, `plugin current [<scope>]`: the source step updated
