@@ -208,7 +208,7 @@ an update does: report each `layout:` line it printed, verbatim; `layout: curren
 
 Then apply the step-1 environment choices where they differ from what the installer left: ONE `node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> KEY=value ...` naming ONLY the keys screen B asked (never `ALFRED_CODE_AUTO_COMPACT`, which the installer wrote from its flag); it puts each where it takes effect and names the file. The installer seeds only absent keys, so these values are the user's and survive every update. An accepted default needs no write only where `variables.js show --root .` already reads that value - compare after the install: one row's seed is DETECTED from the repo rather than constant (its `what` says so), and there the catalog default and the seeded value can differ.
 
-The docs root is always `<data root>/docs`, which the installer stamped into `.claude/rules/alfred-docs-root.md`; every later update re-stamps it.
+The docs root is always `<data root>/docs`, which the installer stamped into `.alfred/stack/rules/alfred-docs-root.md`; every later update re-stamps it.
 
 On a step-2 'set the default for this project' answer, merge `permissions.defaultMode: <value>` into the scope's project settings file (`.claude/settings.local.json` at `local` scope, else `.claude/settings.json`) - never the account file - touching ONLY that key inside `permissions` (`allow` / `deny` / `ask` / `additionalDirectories` and everything else in the file untouched). A 'keep it as it is' answer writes nothing.
 

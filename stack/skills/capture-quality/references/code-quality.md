@@ -55,7 +55,7 @@ Collect the rule sources, in precedence order (`references/code-quality-doc-shap
    ```
 
    No `loops/` folder, or one with no stage prompt: say so in the report and judge against the other sources alone (`PERSONAL-CODE-PREFERENCES.md`, `PROJECT-CODE-PREFERENCES.md`, the convention rules) - never seed the folder (that is the quality loop's bootstrap) and never invent a rubric in its place.
-3. **The stack's convention rules** - the path-scoped files under `.claude/rules/` whose globs attach a file family to its house convention skill. Only the families the target actually holds count.
+3. **The stack's convention rules** - the path-scoped files under `.alfred/stack/rules/` whose globs attach a file family to its house convention skill. Only the families the target actually holds count.
 
 **No rule source at all - stop.** No `PERSONAL-CODE-PREFERENCES.md`, no stage prompt under `loops/`, no `PROJECT-CODE-PREFERENCES.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the three ways to get rules, all the user's to run: `/capture-preferences` records their own preferences, `/capture-awareness project-code-style` records the code style, and `/loop-code-quality` seeds the `loops/` starter set.
 

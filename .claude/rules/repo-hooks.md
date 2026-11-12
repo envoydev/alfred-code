@@ -1523,6 +1523,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `clone` laying a settings file down, an extract tool other than tar and unzip, a scoped `claude plugin marketplace
     remove` of the core's marketplace, a glob or a deeper folder removed, and a dropped core key from a shell write whose
     content the guard cannot know (a redirect, a `jq` / `sponge` rewrite, `: > file`).
+    THE SECOND CHECK (workspace stage 4c): a write to a project rule source - a file under `.alfred/stack/rules`, that
+    folder or `.alfred/stack` itself - or to any `.alfred/workspace.json` ASKS (`permissionDecision: 'ask'`, exit 0, naming
+    the file and `/alfred-code:configure`), on a file tool, a filesystem server and the shell route alike, under every
+    stand-down, a subagent's call included, in a repository never set up too; the target is read as written and as its
+    real path, so a link, a `..` or a backslash spelling is the same file. A Cursor payload is refused instead (stderr,
+    exit 2: its preToolUse does not enforce an ask). The guard switch-off above is judged first. There is no off switch:
+    an unattended run that edits a store rule waits at the host's prompt, the stated cost.
   - `guard-desktop-exec.js` - RETIRED in complexity stage 1 B12 (2026-11-11): the gate on a desktop server's `App`
     `launch_executable`, `Shell`, `PowerShell`, `execute_shell_command` and Playwright's `browser_run_code_unsafe`, under
     any registration name, fired 0 times in 442 sessions, and the stack ships no such server since 2.10.1. The file is in
@@ -1903,7 +1910,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     once per session and actor, recorded in `<data root>/state/sessions/rules-<session>-<actor>.json` (temp file and
     rename; `compact` and `clear` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
     (`mode: probe`, chars, parts, unsent) to the session's `hook-blocks` ledger. It reads its gates through the prelude
-    (`ALFRED_CODE_HOOKS_OFF` and the profiles switch it off until stage 4c) and two itself: no `.alfred/stack/rules` in the
+    (since stage 4c it is not switchable: `hook-prelude.js UNSWITCHABLE` keeps it on under the off-list and `minimal`, and
+    `selection.LOCKED_HOOKS` holds it and the config guard on in every answered selection - a None turns every other hook
+    off, and the read-back still says `hook none`) and two itself: no `.alfred/stack/rules` in the
     chain prints and writes nothing, and a `--part` argument is never read as a CLI call. Limits: a seat's own compaction
     is unmeasured, and the Cursor live cells are NOT RUN. `always-on-surface.js` counts check 33 with its `render`.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is

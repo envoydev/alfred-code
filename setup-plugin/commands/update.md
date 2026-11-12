@@ -54,7 +54,7 @@ is handled, then proceed on their answer.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
+`alfred-interaction.md` rule loaded at all, so this command's own text is the only place
 the voice can come from.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at

@@ -140,7 +140,7 @@ the table with `denied` as its origin, since the plugin still ships it and confi
 back. `model` / `effort` are the frontmatter pins read from the agent file (the plugin's own copy
 for a carried seat).
 
-**Rules** - `.claude/rules/*.md`:
+**Rules** - `.alfred/stack/rules/*.md` (the library, sent by the plugin) and `.claude/rules/*.md` (the generated ones):
 
 | rule | scope | origin |
 |---|---|---|

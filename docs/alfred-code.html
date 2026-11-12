@@ -1234,8 +1234,8 @@ function renderHooks(filtered) {
   return html;
 }
 
-// Path-scoped Claude rules - fetched into .claude/rules/, auto-attached by the
-// harness on a matching file path. Not skills; kept in sync with the installer
+// Path-scoped Claude rules - fetched into .alfred/stack/rules/ (sent by the plugin's rule loader), attached by the
+// loader on a matching file path. Not skills; kept in sync with the installer
 // CLAUDE_RULES=() array by scripts/lint-skills.js.
 const rules = [
   // [name, paths glob, description]
@@ -1260,10 +1260,10 @@ const rules = [
 ];
 
 function renderRules(filtered) {
-  let html = `<h2>Rules</h2><div class="group-meta">Rules fetched into <code>.claude/rules/</code> (Claude-only; not skills): the always-on baseline set, the rest path-scoped. ${filtered.length} entries.</div>`;
+  let html = `<h2>Rules</h2><div class="group-meta">Rules fetched into <code>.alfred/stack/rules/</code> and sent by the plugin's rule loader (not skills): the always-on baseline set, the rest path-scoped. ${filtered.length} entries.</div>`;
   html += `<table><thead><tr><th style="width:18%">Rule</th><th style="width:27%">Paths</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
   for (const [name, paths, desc] of filtered) {
-    html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td><code>fetched into .claude/rules/</code></td><td class="desc">${desc}</td></tr>`;
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td><code>fetched into .alfred/stack/rules/</code></td><td class="desc">${desc}</td></tr>`;
   }
   html += `</tbody></table>`;
   return html;
