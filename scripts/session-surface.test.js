@@ -419,6 +419,19 @@ test('a plugin under a moved plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR) is read
     const unmoved = fx.run({ env: { ...process.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: '' } });
     assert.match(flagsOf(unmoved, 'dangling')[0].detail, /alfred-code@envoydev is enabled \(project\) but not in the plugin cache/, 'unset, the config dir\'s plugins/ is read');
 });
+test('4c surface: a store rule is named from the project as given when the loader spells its real path another way', { skip: process.platform === 'win32' && 'a link needs privilege here' }, () =>
+{
+    // The Windows gate's temp folder: the native real path expands an 8.3 name the given root keeps. A link stands in.
+    const fx = install({ project: { '.git/HEAD': 'x', '.claude/alfred-code.stamp': 'source: test\n', '.alfred/stack/rules/alfred-security.md': 'Never print a credential.\n' } });
+    const other = path.join(fx.root, 'long-name');
+    fs.symlinkSync(fx.proj, other, 'dir');
+    const native = fs.realpathSync.native;
+    fs.realpathSync.native = (p, ...rest) => { const r = native(p, ...rest); return r.startsWith(fx.proj) ? other + r.slice(fx.proj.length) : r; };
+    let rows;
+    try { rows = rowsAt(fx.run(), 'session-start'); }
+    finally { fs.realpathSync.native = native; }
+    assert.ok(rows.some((r) => r.source === path.join('.alfred', 'stack', 'rules', 'alfred-security.md')), JSON.stringify(rows.map((r) => r.source)));
+});
 test('4c surface: the status floor counts the rules the loader sends, a root\'s included, and a native rule once', () =>
 {
     const fx = install({

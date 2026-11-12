@@ -418,7 +418,8 @@ function surface(projectRoot, options = {})
     try
     {
         const r = require('../stack/hooks/rules-session.js').rulesFor(projectRoot);
-        for (const x of [...r.always, ...r.scoped]) ruleFiles.push({ file: x.file, owner: ruleOwner(x.name) });
+        const real = fs.realpathSync.native(projectRoot);   // the loader's spelling; Windows expands an 8.3 name the root keeps
+        for (const x of [...r.always, ...r.scoped]) ruleFiles.push({ file: path.join(projectRoot, path.relative(real, x.file)), owner: ruleOwner(x.name) });
     }
     catch { /* no loader: the native rules alone */ }
     if (options.withUser) walkRules(path.join(account.dir, 'rules'), 'user');
