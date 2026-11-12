@@ -19,6 +19,7 @@ paths:
 What each meta file owns and what the repo-level scripts (lint, usage analysis, evidence scan) do. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
 - `meta/` - never installed:
+  - `meta/probes/` - host-behaviour probes against a local stand-in, never installed, re-run on a new Claude Code release.
   - `shared-rules.json` pins every deliberate multi-home rule (owner + marker-pinned copies); the lint
     goes red when a copy's marker breaks.
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
