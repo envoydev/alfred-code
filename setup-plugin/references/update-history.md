@@ -885,3 +885,39 @@ Both spellings are read. An update rewrites a file that still holds the old keys
 before the root: while a project up to five folders below runs a release that reads only the old keys, the root
 keeps them and the update prints `workspace.json keeps its singular keys: <project> is at <version>`. A project
 deeper than that, or one that joins later on an older release, names each key it cannot read - update it.
+
+## after 3.10.0 - a seat's model can be set per project in .alfred/agents.json
+
+**A file you write by hand names the model a seat runs on.** `.alfred/agents.json`, beside `workspace.json`:
+
+```json
+{
+  "claude": {
+    "agents": {
+      "aspnet-verifier": { "model": "opus" },
+      "Explore": { "model": "haiku" }
+    }
+  }
+}
+```
+
+- The seat files keep their own model. An entry overrides it for this project only, at the moment the seat is
+  dispatched; a dispatch that names a model itself keeps that model.
+- In a workspace a child takes its root's entries too. The nearest file naming the seat wins: the project's own, then
+  each project above it. A linked git worktree with no file of its own reads the main checkout's.
+- A seat is named bare (`aspnet-verifier`); a key written with the plugin prefix (`alfred-code:aspnet-verifier`) means
+  the same seat.
+- The value is one of `sonnet`, `opus`, `haiku`, `fable` - the names Claude Code's Agent tool takes. Any other
+  value, a full model id included, is skipped and named in status: the Agent tool would refuse the dispatch.
+- `/alfred-code:status` lists what applies - `models: agents aspnet-verifier = opus (here)` - and names each entry it
+  skipped and why. A file that is not JSON, an unknown key or a bad value never blocks a dispatch: what cannot be
+  read is skipped, and the seat takes the next file's entry or its own model.
+- The dispatch guard applies the entries, so with `guard-unapproved-dispatch` in `ALFRED_CODE_HOOKS_OFF`, or the
+  `minimal` hook profile, none applies and status says so. Status cannot see three other ways the guard is off -
+  `disableAllHooks`, a managed policy that switches hooks off, and a copied-hooks install whose settings lost the
+  guard's row: there it still lists the entries while the seats run on their own models.
+- A `skills` map is read and reported, not applied: on this Claude Code release a skill's `model` field does not
+  change the request. A `cursor` map is read and reported too; it waits for the Cursor run.
+- The installer never writes, moves or removes the file - an update and an uninstall leave it as it is.
+
+Nothing to do by hand.

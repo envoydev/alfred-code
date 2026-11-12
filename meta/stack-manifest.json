@@ -767,7 +767,7 @@
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent|SendMessage",
       "event": "",
-      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO; and a dispatch, or a SendMessage that resumes a stopped seat, while ALFRED_CODE_MAXIMUM_RUN_AGENTS of the session's agents run (agent-cap.js)"
+      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO; and a dispatch, or a SendMessage that resumes a stopped seat, while ALFRED_CODE_MAXIMUM_RUN_AGENTS of the session's agents run (agent-cap.js); an allowed dispatch naming no model takes the one the project's .alfred/agents.json sets for the seat (agent-models.js)"
     },
     {
       "file": "guard-unapproved-dispatch.js",

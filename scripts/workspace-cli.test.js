@@ -296,12 +296,12 @@ test('status names the parent, the own, ignored and inherited lines, and the las
     const plan = path.join(TMP, 'installed.json');
     fs.writeFileSync(plan, JSON.stringify({ skills: ['javascript', 'npm'], rules: ['alfred-security'], plugins: [{ name: 'alfred-code' }] }));
     const r = cli('status', '--root', at('ws/api'), '--installed', plan);
-    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\ninstalled-above: 1\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
+    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\ninstalled-above: 1\nown: skill npm\nignored: skill sqlite\nmodels: none\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
     fs.mkdirSync(path.join(at('ws/api'), '.alfred', 'state'), { recursive: true });
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'state', 'workspace-check.json'), JSON.stringify({ at: '2026-10-26T10:00:00Z', state: 'clean', misses: [] }));
     assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ndocs: -\nmemory: -\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
     const alone = tree({ alone: { git: true } });
-    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\ninstalled-above: 0\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
+    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\ninstalled-above: 0\nown: -\nignored: -\nmodels: none\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
 });
 
 test('status names the ancestor docs roots and the memory index it reads, or ignored', () =>
@@ -636,4 +636,107 @@ test('review I1: ignore --remove of a line an old-format record never held conve
     assert.strictEqual(r.code, 0, r.out + r.err);
     assert.match(r.out, /converted to workspace\.json/, r.out);
     assert.match(r.out, /^workspace: ignore skill x not there$/m, r.out);
+});
+
+// ---- the model file (workspace stage 2): status says what .alfred/agents.json applies here ----
+const agentModels = require('../stack/hooks/agent-models.js');
+const putModels = (root, value) =>
+{
+    fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.alfred', 'agents.json'), typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+};
+const modelLines = (root, extra = [], e = ENV) =>
+{
+    const r = spawnSync(process.execPath, [CLI, 'status', '--root', root, ...extra], { encoding: 'utf8', env: e });
+    return { code: r.status, err: r.stderr, all: r.stdout.split('\n'), lines: r.stdout.split('\n').filter((l) => /^models: |agents\.json/.test(l)) };
+};
+const seat = (model) => ({ model });
+
+test('status lists each applied entry and where it came from', () =>
+{
+    const at = joined();
+    putModels(at('ws'), { claude: { agents: { 'aspnet-verifier': seat('opus'), 'web-angular-verifier': seat('opus') } } });
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('haiku') } } });
+    const r = modelLines(at('ws/api'));
+    assert.deepStrictEqual(r.lines, ['models: agents aspnet-verifier = haiku (here)', 'models: agents web-angular-verifier = opus (..)']);
+    assert.strictEqual(r.all[r.all.indexOf(r.lines[0]) - 1].split(':')[0], 'ignored', 'right after the ignored line');
+    assert.deepStrictEqual(modelLines(at('ws')).lines, ['models: agents aspnet-verifier = opus (here)', 'models: agents web-angular-verifier = opus (here)']);
+});
+
+test('status says models: none with no file', () =>
+{
+    assert.deepStrictEqual(modelLines(joined()('ws/api')).lines, ['models: none']);
+});
+
+test('status names a garbage file and each skipped entry once', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), '{ not json');
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, ['models: none', '  !! agents.json (here): not JSON - the file is ignored']);
+    putModels(at('ws/api'), { claude: { agents: { ok: seat('sonnet'), bad: seat('opus 4') } }, gemini: {} });
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, ['models: agents ok = sonnet (here)',
+        '  !! agents.json (here): claude.agents.bad: the model must be 1 to 100 characters of letters, digits and . _ : [ ] - - skipped', "  !! agents.json (here): unknown host 'gemini' skipped"]);
+});
+
+test('status names the skills line while skill entries are not applied', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { skills: { csharp: seat('haiku') } } });
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, agentModels.SKILLS_APPLY ? ['models: skills csharp = haiku (here)']
+        : ['models: none', `  !! agents.json (here): claude.skills: not applied in this release (${agentModels.SKILLS_WHY})`]);
+});
+
+test('status --host cursor lists no applied entry, and both reads carry the cursor lines', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } }, cursor: { agents: { 'aspnet-verifier': seat('gpt-5') } } });
+    const waits = '  !! agents.json (here): cursor.agents: read, not applied - waits for the Cursor run';
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, ['models: agents aspnet-verifier = opus (here)', waits]);
+    assert.deepStrictEqual(modelLines(at('ws/api'), ['--host', 'cursor']).lines, ['models: none', waits]);
+    const other = modelLines(at('ws/api'), ['--host', 'other']);
+    assert.notStrictEqual(other.code, 0);
+    assert.match(other.err + other.all.join('\n'), /^!! workspace: --host takes claude or cursor$/m);
+    assert.ok(!other.all.some((l) => l.startsWith('role: ')), 'refused before any line is printed');
+});
+
+test('status says the entries are not applied with the dispatch guard in the off-list', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus'), bad: seat('') } } });
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer, guard-unapproved-dispatch' } }));
+    const shell = { ...ENV };
+    delete shell.ALFRED_CODE_HOOKS_OFF;
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, ['models: not applied - guard-unapproved-dispatch is off (the off-list)',
+        '  !! agents.json (here): claude.agents.bad: the model must be 1 to 100 characters of letters, digits and . _ : [ ] - - skipped']);
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-unapproved-dispatch:cap' } }));
+    assert.strictEqual(modelLines(at('ws/api'), [], shell).lines[0], 'models: agents aspnet-verifier = opus (here)', 'a part entry stands the guard down for nothing');
+});
+
+// The review's fix pass: the hook reads the off-list from its environment, where a user-scope install's csv and a shell's own arrive.
+test('status reads the off-list from the environment too, spaces around a name included', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } } });
+    const off = ['models: not applied - guard-unapproved-dispatch is off (the off-list)'];
+    for (const csv of ['guard-unapproved-dispatch', 'guard-answer , guard-unapproved-dispatch.js ', ' Guard-Unapproved-Dispatch,guard-answer'])
+        assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, ALFRED_CODE_HOOKS_OFF: csv }).lines, off, csv);
+    for (const csv of ['guard-answer', 'guard-unapproved-dispatch:cap', 'my-guard-unapproved-dispatch'])
+        assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, ALFRED_CODE_HOOKS_OFF: csv }).lines, ['models: agents aspnet-verifier = opus (here)'], csv);
+});
+
+test('status says the entries are not applied under the minimal profile', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } } });
+    const off = ['models: not applied - guard-unapproved-dispatch is off (the minimal profile)'];
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).lines, off);
+    const account = path.join(TMP, 'acct-minimal');
+    fs.mkdirSync(account, { recursive: true });
+    const shell = { ...ENV, CLAUDE_CONFIG_DIR: account };
+    delete shell.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE;
+    const stored = (profile) => fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'other@envoydev': { options: { hook_profile: 'minimal' } }, 'alfred-code@envoydev': { options: { hook_profile: profile } } } }));
+    stored('minimal');
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, off, 'the account settings answer where the shell has no variable');
+    stored('strict');
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, ['models: agents aspnet-verifier = opus (here)']);
 });

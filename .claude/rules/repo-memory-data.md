@@ -146,7 +146,9 @@ The stores and what each holds, where the docs root and the data root live, and 
   rest of an older folder (`fixed-root.js`). The hooks read a member's record under `<member>/.alfred` alone; the
   installer's `chain()` reads a member through the reader, so a child's lone update still finds a parent whose data
   sits in its older folder, and an ancestor is read with an env that keeps only the account. `workspace.js check-loads` writes its last result, whatever the state, to `<data root>/state/
-  workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. Uninstall takes out the
+  workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. `<data root>/agents.json`
+  sits beside the record and is the user's alone: hand-edited, read by `stack/hooks/agent-models.js` (the model a seat
+  runs on, `repo-hooks.md`), never written, moved or removed by the installer. Uninstall takes out the
   `parent` and the `children` entry on both sides (`leaveParent`, `releaseChildren`, which first writes each child's
   inherited values into its own `.variables`) and leaves the rest of the file, as it leaves the data root.
 - **A child reads its ancestors' docs and memory, never writes them** (workspace layering, release 3, 2026-10-27). An

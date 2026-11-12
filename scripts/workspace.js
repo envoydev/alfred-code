@@ -135,6 +135,9 @@ const list = (lines) => (lines.length ? lines.join(', ') : '-');
 function status(out)
 {
     const root = rootArg();
+    const models = require('../stack/hooks/agent-models.js');
+    const host = arg('--host', 'claude');
+    if (!models.HOSTS.includes(host)) throw bad(`--host takes ${models.HOSTS.join(' or ')}`);
     out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
     const own = ws.readWorkspace(root, { env });
     // a garbage record: its one line, once, whether or not roleOf (the switch on) named it already
@@ -149,6 +152,16 @@ function status(out)
     const ownPicks = (stampFile && stamp.readOwnPicks(stampFile)) || [];
     out(`own: ${list(ownPicks)}`);
     out(`ignored: ${list(own.view.ignores.map((i) => `${i.category} ${i.name}`))}`);
+    // THE MODEL FILE: what .alfred/agents.json applies here. The dispatch guard applies it, so with the guard off - the off-list, or the minimal
+    // profile, which a command's shell has no variable for and reads from the account settings - no entry is.
+    const read = models.entries({ start: root, env, host });
+    let stored = '';
+    try { stored = Object.entries(JSON.parse(fs.readFileSync(path.join(ws.accountPaths(env).configDir, 'settings.json'), 'utf8')).pluginConfigs).find(([id]) => id.split('@')[0] === BRAND.core)[1].options.hook_profile; } catch { /* none stored */ }
+    const guardOff = /(^|,)\s*guard-unapproved-dispatch(\.js)?\s*(,|$)/i.test([env.ALFRED_CODE_HOOKS_OFF, require('../stack/hooks/layout.js').hooksOffOf(root, { env })].join(',')) ? 'the off-list' : String(env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored).trim().toLowerCase() === 'minimal' ? 'the minimal profile' : '';
+    if (guardOff) out(`models: not applied - guard-unapproved-dispatch is off (${guardOff})`);
+    else if (!read.applied.length) out('models: none');
+    else for (const row of read.applied) out(`models: ${row.kind} ${row.name} = ${row.model} (${row.from})`);
+    for (const p of read.problems) out(`  !! agents.json (${p.from}): ${p.text}`);
     const installed = arg('--installed');
     if (installed === undefined) out('from-root: unknown - pass --installed <plan json>');
     else

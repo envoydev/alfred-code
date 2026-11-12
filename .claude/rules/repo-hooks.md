@@ -750,6 +750,18 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
     then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
+    THE MODEL FILE (workspace stage 2, 2026-11-12): a hand-edited `<project>/.alfred/agents.json` - `{ "claude": { "agents":
+    { "<seat>": { "model": "<alias>" } } } }` - names the model a seat runs on. `agent-models.js` (a `HOOK_MODULES` module,
+    required inside a try at the exit that uses it) reads the project's own file (in a linked git worktree with none, the main checkout's), then each linked workspace member's above,
+    nearest first, a plugin prefix dropped from the seat and from a key. Every ALLOWED `Agent` / `Task` dispatch leaves through ONE exit, `answer(extra)`: it
+    writes one `updatedInput` - the Explore / Plan prompt change and, where the call names no `model`, the entry's - with no
+    permission decision, and nothing when there is neither. A dispatch naming a model, a block, a repo never set up and the
+    guard stood down (the off-list, `minimal`, hooks off) leave the seat's own pin. Stage 0 measured what is taken
+    (`docs/workspace-source-evidence.md`): the Agent tool's schema takes `sonnet`, `opus`, `haiku` and `fable`, and a reply carrying any other
+    model REFUSES the dispatch, so only those four apply (`FULL_IDS` false), and a skill's `model:` moves no request (`SKILLS_APPLY` false - a `skills` map is read and named, never
+    applied); a `cursor` map is read and named until the Cursor run. No shape of the file blocks or throws: each problem is one
+    `!! agents.json (<from>): ...` line of `scripts/workspace.js status`, beside its `models:` lines. Status reads the off-list
+    and the stored `minimal` profile without the prelude, whose load would apply the project's variables to the run's env.
     THE AGENT CAP (`ALFRED_CODE_MAXIMUM_RUN_AGENTS`, the user's task of 2026-10-27; the maximum-run-agents design): how many
     of a session's agents may run at once - default 5, `0` no cap, at most 50, anything not a whole number read as 5
     (`agent-cap.js capOf`). `agent-cap.js` is a module the three hooks require inside a try (`HOOK_MODULES`, copied on
