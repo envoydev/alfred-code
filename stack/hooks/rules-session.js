@@ -292,7 +292,7 @@ function memberPart(T, items, base, room, who)
     if (!take.length && room < PART_ROOM) return null;
     if (!take.length) take = [{ ...todo[0], text: cutTo(todo[0].text, room - build([], true).length - 2, todo[0].rel) }];
     const last = k === RULE_PARTS && take.length < todo.length;
-    while (last && take.length > 1 && build(take, false, true).length > room) take = take.slice(0, -1);
+    while (last && take.length && build(take, false, true).length > room) take = take.slice(0, -1);
     const text = build(take, !last && take.length < todo.length, last);
     const mark = [`/ ${T} ${text.length} ${who}`, last && `/ not sent: ${rest(take)}`, ...take.map((i) => i.name), ''].filter((l) => l !== false);
     if (base) try { fs.mkdirSync(path.dirname(base), { recursive: true }); fs.writeFileSync(`${base}-${k}`, mark.join('\n'), { flag: 'wx' }); }
@@ -339,7 +339,8 @@ function main(argv = process.argv, env = process.env)
         if (typeof target !== 'string' || !target) return;
         const file = layout.realpathOrSelf(path.resolve(input.cwd || start, target));   // as real as the roots
         const [from, texts, who] = [layout.realpathOrSelf(path.resolve(start)), [], `${session} ${actor}`];
-        const chain = layout.memberOf(file, start, { env })?.chain || [];
+        const chain = layout.memberOf(file, rules.project, { env })?.chain || [];
+        const hit = chain.length ? layout.realpathOrSelf(layout.mainCounterpart(file) || file) : file;   // a worktree's file, as its member reads it
         const room = () => texts.reduce((n, t) => n - 2 - t.length, PART_ROOM);
         let own = rules;   // the touched member's rules match its file (Task 4), each keyed by its holder in the chain
         for (const m of chain)
@@ -351,7 +352,7 @@ function main(argv = process.argv, env = process.env)
             if (p && texts.push(p.text)) ledger({ kind: 'member-push', member: T, part: p.k, chars: p.text.length, unsent: p.left, tool: input.tool_name });
         }
         const sent = record ? recordOf(record) : [];
-        const push = pathPush(own, file, sent, room(), (r, c = chain.find((x) => x.root === r.root)) => (c ? `${c.key}/${r.name}` : r.name));
+        const push = pathPush(own, hit, sent, room(), (r, c = chain.find((x) => x.root === r.root)) => (c ? `${c.key}/${r.name}` : r.name));
         if (record && push.now.length) writeRecord(record, [...sent, ...push.now]);
         return void say([...texts, push.now.length && push.text].filter(Boolean).join('\n\n'));
     }

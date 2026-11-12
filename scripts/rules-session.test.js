@@ -1125,6 +1125,50 @@ test('member path rule: block and path rule in one call stay inside PART_ROOM', 
     assert.ok(touch(w.root, path.join(w.api, 'b.ts')).includes('M-API-TS'));
 });
 
+test('member path rule: a touch inside a linked worktree of the root matches a sub-folder member\'s rule from its root', () =>
+{
+    const w = M();
+    const sub = path.join(w.root, 'sub');
+    stamp(sub);
+    ws(w.root, { parent: 'root', children: ['api', 'sub'] });
+    ws(sub, { parent: '..' });
+    store(sub, 'ts', scoped('src/**/*.ts', 'M-SUB-TS'));
+    const wt = path.join(w.top, 'wt');
+    const gitdir = path.join(w.root, '.git', 'worktrees', 'wt');
+    fs.mkdirSync(gitdir, { recursive: true });
+    fs.writeFileSync(path.join(gitdir, 'commondir'), '../..');
+    put(path.join(wt, '.git'), `gitdir: ${gitdir}\n`);
+    put(path.join(wt, 'sub', 'src', 'a.ts'), 'x');
+    const text = touch(wt, path.join(wt, 'sub', 'src', 'a.ts'));
+    assert.ok(text.includes('Project ../ws/sub, part 1') && text.includes('M-SUB-TS'), text);
+});
+
+test('member: a host that names no project folder - a start below the root still finds the member', () =>
+{
+    const w = M();
+    store(w.api, 'own', 'M-API');
+    const below = path.join(w.root, 'src');
+    fs.mkdirSync(below, { recursive: true });
+    const env = envFor(w.root);
+    delete env.CLAUDE_PROJECT_DIR;
+    const res = spawnSync(process.execPath, [LOADER], { input: JSON.stringify({ session_id: SID, cwd: below, ...READ(path.join(w.api, 'a.txt')) }), encoding: 'utf8', env, cwd: below });
+    assert.ok(ctx(res).includes('M-API'), res.stdout);
+});
+
+test('memberPart: part 5 stays inside the room with a long not-sent list, a fitting rule or a cut one', () =>
+{
+    const { memberPart, PART_ROOM } = loader();
+    const base = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'part5-')), 'rules-s-main-m-k');
+    for (let k = 1; k <= 4; k++) fs.writeFileSync(`${base}-${k}`, `/ api 1 s main\n#head\n`);
+    const rest = Array.from({ length: 20 }, (_, i) => ({ name: `r${i}`, rel: `api/.alfred/stack/rules/a-long-rule-name-${i}.md`, text: 'y'.repeat(500) }));
+    for (const n of [9300, 13000])
+    {
+        for (const f of fs.readdirSync(path.dirname(base))) if (f.endsWith('-5')) fs.unlinkSync(path.join(path.dirname(base), f));
+        const got = memberPart('api', [{ name: 'big', rel: 'api/big.md', text: 'x'.repeat(n) }, ...rest], base, PART_ROOM, `${SID} main`);
+        assert.ok(got.text.length <= PART_ROOM && got.text.includes('Not sent - past part 5:'), `${n}: ${got.text.length}`);
+    }
+});
+
 test('path rule: a start-chain record written before this change still reads', () =>
 {
     const w = M();
