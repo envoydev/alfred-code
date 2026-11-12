@@ -1471,6 +1471,23 @@ function accountPaths(env = process.env)
     return { configDir: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), accountFile: path.join(env.CLAUDE_CONFIG_DIR || home, '.claude.json') };
 }
 
+// Workspace stage 4c: what keeps a rule from being sent here, one `rules:` line each - for the install run and status.
+function ruleNotes({ projectRoot, env = process.env })
+{
+    const loader = require('../../stack/hooks/rules-session.js');
+    const r = loader.rulesFor(projectRoot, env);
+    const out = [...r.notes, ...loader.parts(r.always, { natives: r.natives }).unsent.map((u) => `not sent - ${u}`)];
+    const files = [['.claude/settings.json'], ['.claude/settings.local.json'], [path.join(accountPaths(env).configDir, 'settings.json'), true]];
+    const jsonOf = (f) => { try { return parseJson(fs.readFileSync(f, 'utf8')) || {}; } catch { return {}; } };
+    const read = files.map(([f, abs]) => [f, jsonOf(abs ? f : path.join(projectRoot, f))]);
+    const lay = require('../../stack/hooks/layout.js');
+    const offList = [env.ALFRED_CODE_HOOKS_OFF, lay.hooksOffOf(projectRoot, { env }), ...read.map(([, d]) => d.env?.ALFRED_CODE_HOOKS_OFF)];
+    if (offList.join(',').split(',').some((h) => /^rules-session(\.js)?$/i.test(h.trim())))
+        out.push('rules-session is named in the off-list - it carries the project\'s rules and still runs; leave a rule out with ignore rule');
+    for (const [f, d] of read) if (d.disableAllHooks === true) out.push(`disableAllHooks is true in ${f}`);
+    return out.map((l) => `rules: ${l}`);
+}
+
 // The first CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md in the project or a folder above it - the account dir's
 // own CLAUDE.md is the user's memory, not a project file.
 function claudeMdAbove(projectRoot, { env = process.env } = {})
@@ -1861,6 +1878,7 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
 }
 
 module.exports = {
+    ruleNotes,
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,

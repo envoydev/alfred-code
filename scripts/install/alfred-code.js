@@ -706,6 +706,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
         });
 
+        if (args.action === 'install' || args.action === 'update') for (const l of workspace.ruleNotes({ projectRoot, env })) log(`  ${l}`);
         // The projects below take this run's excludes now, not at their own next run (workspace.js refreshBelow, 2026-11-10).
         // --print-plan returned before the stamp; a project with its switch off is left alone.
         if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
@@ -2004,9 +2005,11 @@ function installHooksAndRules(ctx)
     // over an emptied folder. N4: the copy route never marks here - 'copy' before a single copy has
     // landed reads back as the user's None; it marks once the copies are in (N7, below).
     // m9: and only when a stack hook copy is there to prune - with none (a copy-route None) the prune
-    // destroys no evidence, and an early 'plugin' would read that None back as every hook on.
+    // destroys no evidence, and an early 'plugin' would read that None back as every hook on. The locked hooks are
+    // copied on every selection, so their copies are no evidence either.
     const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
-    if (ctx.routes.hooks && catalogHooks.some((f) => fs.existsSync(path.join(ctx.claudeDir, 'hooks', f))))
+    const picksOnDisk = catalogHooks.filter((f) => !selection.LOCKED_HOOKS.includes(f.replace(/\.js$/, '')));
+    if (ctx.routes.hooks && picksOnDisk.some((f) => fs.existsSync(path.join(ctx.claudeDir, 'hooks', f))))
         stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), 'plugin');
     // On the plugin route a copied hook is dead weight once unwired, so its file goes too; what a
     // release retired goes on either route, file and wiring together.

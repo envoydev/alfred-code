@@ -172,7 +172,7 @@ test('derive-state: rules and MCP servers pass through as picked - they are copi
     const got = derive(file);
     assert.deepStrictEqual(got.rules.copy, ['alfred-security', 'csharp-conventions']);
     assert.deepStrictEqual(got.mcps, ['alfred-documentation', 'alfred-navigation', 'chrome-control']);
-    assert.deepStrictEqual(got.hooks.on, ['guard-secret-value']);
+    assert.deepStrictEqual([...got.hooks.on].sort(), ['guard-secret-value', ...require('./install/selection.js').LOCKED_HOOKS].sort(), 'the locked hooks ride the answer');
 });
 
 test('derive-state: an empty selection installs the core and denies every seat it carries', () =>
@@ -435,9 +435,10 @@ test('derive-state: `hook none` - the walk\'s None at the hooks layer - switches
 {
     const got = derive(selectionFile(['rule alfred-security', 'hook none']));
     assert.strictEqual(got.hooks.answered, true);
-    assert.deepStrictEqual(got.hooks.on, []);
+    const locked = require('./install/selection.js').LOCKED_HOOKS;
+    assert.deepStrictEqual([...got.hooks.on].sort(), [...locked].sort(), 'only the locked hooks stay on (stage 4c)');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    assert.deepStrictEqual(got.hooks.off, shipped);
+    assert.deepStrictEqual(got.hooks.off, shipped.filter((h) => !locked.includes(h)));
 });
 
 test('derive-state CLI: `written` is what THIS route writes - the full copy route writes no off-state', () =>
@@ -554,7 +555,7 @@ test('readInstalled: every hook switched off reads back as `hook none`, not as u
 {
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const lines = readInstalled({ plugins: ['alfred-code'], hooksOff: shipped.join(','), routes: { hooks: true }, sourceDir: ROOT });
-    assert.deepStrictEqual(lines, ['hook none']);
+    assert.deepStrictEqual(lines, ['hook none'], 'the locked hooks are no pick (stage 4c), so every other hook off is the None');
 });
 
 // The always closure arrives on its own (2.1.0): the always skills and seats, and what the always rules
@@ -893,4 +894,12 @@ test('F18: a missing or garbage --inherited is one error line and exit 1', () =>
         assert.strictEqual(cli('--inherited', plan, '--ignores', path.join(dir, 'gone.txt')).status, 0, 'a missing ignores file is none');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Workspace stage 4c, Task 4: the rule loader is locked on, so the off-list naming it makes no off row and no gap in the floor.
+test('derive-state: rules-session named in the off-list is not an off row', () =>
+{
+    const row = (name) => classifyNew({ added: [{ category: 'hook', name }], plugins: ['alfred-code'], hooksOff: 'rules-session,guard-answer', routes: ALL_ROUTES, sourceDir: ROOT })[0];
+    assert.strictEqual(row('rules-session').verdict, 'arrives', 'the loader is no off row');
+    assert.strictEqual(row('guard-answer').verdict, 'off', 'every other hook still follows the list');
 });

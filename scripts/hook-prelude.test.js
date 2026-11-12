@@ -140,7 +140,7 @@ const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protec
 test('profile minimal keeps only the rm, secret and force-push guards; every other hook stands down', () => {
     const { PROTECTIVE } = require(PRELUDE);
     for (const hook of EVERY_HOOK)
-        assert.strictEqual(standDown(hook, { [PROFILE]: 'minimal' }, ['node', 'x.js']), !PROTECTIVE.has(hook), hook);
+        assert.strictEqual(standDown(hook, { [PROFILE]: 'minimal' }, ['node', 'x.js']), !PROTECTIVE.has(hook) && hook !== 'rules-session', hook);
     assert.strictEqual(standDown('guard-catastrophic-rm.js', { [PROFILE]: ' Minimal ' }, ['node', 'x.js']), false, 'case, space and the suffix are read like the csv');
     assert.strictEqual(standDown('docs-session', { [PROFILE]: ' Minimal ' }, ['node', 'x.js']), true);
     assert.strictEqual(standDown('guard-read-whole-file', { [PROFILE]: 'minimal' }, ['node', 'guard-read-whole-file.js', '--flag']), false, 'a CLI is never gated');
@@ -1651,4 +1651,22 @@ test('transcriptField reads the newest row carrying the key; a torn last row rea
     assert.strictEqual(transcriptField(file([]), 'version'), null, 'an empty file');
     assert.strictEqual(transcriptField(path.join(dir, 'absent.jsonl'), 'version'), null, 'no file');
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Workspace stage 4c, Task 4: the rule loader carries the project's rules, so neither the off-list nor the minimal profile stands it down.
+test('prelude: hookDisabled and profileOff are false for rules-session whatever the off-list and the profile say', () =>
+{
+    const { profileOff } = require(PRELUDE);
+    const env = { ALFRED_CODE_HOOKS_OFF: 'rules-session,guard-secret-value', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' };
+    assert.strictEqual(hookDisabled('rules-session', env), false);
+    assert.strictEqual(hookDisabled('rules-session.js', env), false);
+    assert.strictEqual(profileOff('rules-session', env), false);
+});
+
+test('prelude: every other hook still follows both', () =>
+{
+    const { profileOff } = require(PRELUDE);
+    const env = { ALFRED_CODE_HOOKS_OFF: 'rules-session,guard-secret-value', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' };
+    assert.strictEqual(hookDisabled('guard-secret-value', env), true);
+    assert.strictEqual(profileOff('docs-session', env), true);
 });

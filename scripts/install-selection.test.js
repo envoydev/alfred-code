@@ -973,11 +973,12 @@ test('B-m6: a part-qualified rename value is no selection line', () =>
 });
 
 // F5 (the 2026-10-28 workspace run): one home for the always-on lock the installer and stack-select both read.
-test('lockedLines: the always rules and skills, nothing else', () =>
+test('lockedLines: the always rules and skills and the locked hooks, nothing else', () =>
 {
-    assert.deepStrictEqual(sel.lockedLines({ rules: ['a'], skills: ['b'], agents: ['c'] }), new Set(['rule a', 'skill b']));
-    assert.strictEqual(sel.lockedLines(undefined).size, 0);
-    assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, 0);
+    const hooks = sel.LOCKED_HOOKS.map((h) => `hook ${h}`);
+    assert.deepStrictEqual(sel.lockedLines({ rules: ['a'], skills: ['b'], agents: ['c'] }), new Set(['rule a', 'skill b', ...hooks]));
+    assert.strictEqual(sel.lockedLines(undefined).size, hooks.length);
+    assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, hooks.length);
 });
 
 // E-batch O4: a hand-written partial --selection on install was applied as given - its closure came only at the next

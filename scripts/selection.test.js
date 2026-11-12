@@ -149,3 +149,57 @@ test('awarenessDocs: the split docs and the run book under either name', () =>
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// Workspace stage 4c, Task 4: the rule loader and the config guard are locked hooks - no selection leaves them out.
+test('selection: applySelection keeps both locked hooks when the picked set names other hooks only', () =>
+{
+    const { applySelection, LOCKED_HOOKS, lockedLines } = require('./install/selection.js');
+    assert.deepStrictEqual(LOCKED_HOOKS, ['rules-session', 'guard-config-protection']);
+    const lists = { hooks: ['guard-ungated-commit.js::Bash', 'rules-session.js::SessionStart', 'rules-session.js::Read', 'guard-config-protection.js::Write', 'guard-secret-value.js::Bash'] };
+    assert.deepStrictEqual(applySelection(lists, new Set(['hook guard-ungated-commit'])).hooks, lists.hooks.filter((e) => !e.startsWith('guard-secret-value')));
+    assert.deepStrictEqual(applySelection(lists, new Set(['hook none'])).hooks, lists.hooks.filter((e) => /^(rules-session|guard-config-protection)\./.test(e)));
+    assert.deepStrictEqual(applySelection(lists, new Set(['skill x'])).hooks, lists.hooks, 'an unanswered hooks layer keeps every hook');
+    assert.ok(lockedLines({}).has('hook rules-session') && lockedLines({}).has('hook guard-config-protection'));
+});
+
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const HOOKS_COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+const settingsText = (repo) => ['settings.json', 'settings.local.json'].map((f) => { try { return fs.readFileSync(path.join(repo, '.claude', f), 'utf8'); } catch { return ''; } }).join('\n');
+
+test('install: a selection file whose hooks layer leaves both locked hooks out still copies and wires them on the copy route', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', 'skill markdown-style\nhook guard-ungated-commit\n', { env: HOOKS_COPY,
+        inspect: (repo) => ({ files: ['rules-session.js', 'guard-config-protection.js', 'guard-secret-value.js'].map((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))), wired: settingsText(repo) }) });
+    assert.deepStrictEqual(result.files, [true, true, false]);
+    assert.match(result.wired, /rules-session\.js/);
+    assert.match(result.wired, /guard-config-protection\.js/);
+});
+
+test('selection: a drop of hook rules-session or hook guard-config-protection is refused like a locked rule', POSIX_ONLY, () =>
+{
+    for (const env of [{}, HOOKS_COPY])
+    {
+        const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', { env,
+            args: [[], ['--installed-only', '--drop', 'hook rules-session', '--drop', 'hook guard-config-protection']], inspect: (repo) => settingsText(repo) });
+        for (const h of ['rules-session', 'guard-config-protection']) assert.match(outs[1], new RegExp(`--drop hook ${h} not applied - locked`));
+        if (env === HOOKS_COPY) for (const f of ['rules-session.js', 'guard-config-protection.js']) assert.ok(result.includes(f), f);
+        else assert.doesNotMatch(result, /ALFRED_CODE_HOOKS_OFF[^\n]*(rules-session|guard-config-protection)/);
+    }
+});
+
+test('install: rules-session named in the off-list is reported in one line, and a disableAllHooks true in each settings file the session reads is named', POSIX_ONLY, () =>
+{
+    const put = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(body)); };
+    const { outs } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            put(path.join(repo, '.claude', 'settings.local.json'), { disableAllHooks: true, env: { ALFRED_CODE_HOOKS_OFF: 'rules-session' } });
+            const project = JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'));
+            put(path.join(repo, '.claude', 'settings.json'), { ...project, disableAllHooks: true });
+            put(path.join(path.dirname(repo), 'acct', 'settings.json'), { disableAllHooks: true });
+            return null;
+        } });
+    assert.match(outs[1], /rules: rules-session is named in the off-list - it carries the project's rules and still runs; leave a rule out with ignore rule/);
+    for (const f of ['\\.claude/settings\\.json', '\\.claude/settings\\.local\\.json', 'acct/settings\\.json']) assert.match(outs[1], new RegExp(`rules: disableAllHooks is true in \\S*${f}`), f);
+});

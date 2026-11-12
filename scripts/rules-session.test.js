@@ -677,15 +677,14 @@ test('path rule: a rule larger than the room is cut and marked sent', () =>
     assert.strictEqual(touch(p, path.join(p, 'b.ts')), '');
 });
 
-test('handler: a --part argument is not read as a CLI call, so the gates still apply', () =>
+test('loader: the rules are sent with rules-session in ALFRED_CODE_HOOKS_OFF and under the minimal profile', () =>
 {
-    const p = project({ a: 'M-A', ts: TS });
-    const off = { ALFRED_CODE_HOOKS_OFF: 'rules-session' };
-    const spawnOff = (args, payload) => spawnSync(process.execPath, [LOADER, ...args],
-        { input: JSON.stringify({ session_id: SID, cwd: p, ...payload }), encoding: 'utf8', env: envFor(p, off) });
-    assert.strictEqual(ctx(spawnOff(['--part', '1'], START())), '');
-    assert.strictEqual(ctx(spawnOff([], READ(path.join(p, 'a.ts')))), '');
-    assert.ok(part(p, 1).includes('M-A'));
+    for (const off of [{ ALFRED_CODE_HOOKS_OFF: 'rules-session' }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }])
+    {
+        const p = project({ a: 'M-A', ts: TS });   // a fresh session record each: a path rule goes once per session
+        assert.ok(part(p, 1, START(), off).includes('M-A'), JSON.stringify(off));
+        assert.ok(touch(p, path.join(p, `${Object.keys(off)[0]}.ts`), {}, off).includes('M-TS'), JSON.stringify(off));
+    }
 });
 
 test('handler: garbage or empty stdin, an unknown event, --part 9', () =>
@@ -727,4 +726,51 @@ test('path rule: a project with no .git reached through a symlinked path', { ski
     fs.symlinkSync(path.join(top, 'real'), via);
     const p = path.join(via, 'p');
     assert.ok(touch(p, path.join(p, 'src', 'a.ts')).includes('M-SRC'));
+});
+
+// Task 4 of stage 4c: workspace.js status prints the loader's notes, its unsent rules and what stops it, one rules: line each.
+const WS_CLI = path.join(ROOT, 'scripts', 'workspace.js');
+const status = (dir, extra) => spawnSync(process.execPath, [WS_CLI, 'status', '--root', dir], { encoding: 'utf8', env: envFor(dir, extra) }).stdout;
+
+test('status: a refused ignore of a locked rule, an unmatched glob, a skipped link and an unsent rule each print one rules: line', () =>
+{
+    const name = loader().LOCKED_RULES[0];
+    const t = W({ apiIgnore: [name] });
+    store(t.root, name);
+    assert.match(status(t.api), new RegExp(`^rules: ignore rule ${name} not honoured: the rule is locked$`, 'm'));
+    const g = project({ g: '---\npaths: ["**/*.{a,b}"]\n---\nglob rule' });
+    assert.match(status(g), /^rules: glob not matched: \*\*\/\*\.\{a,b\} in \.alfred\/stack\/rules\/g\.md$/m);
+    if (process.platform !== 'win32')
+    {
+        const l = project();
+        fs.writeFileSync(path.join(path.dirname(l), 'other.md'), 'linked');
+        fs.symlinkSync(path.join(path.dirname(l), 'other.md'), path.join(l, '.alfred', 'stack', 'rules', 'link.md'));
+        assert.match(status(l), /^rules: rule skipped: \.alfred\/stack\/rules\/link\.md - a link$/m);
+    }
+    const rs = [1, 2, 3, 4, 5, 6].map((k) => rule(`r${k}`, ROOM([rule(`r${k}`, 1)])));
+    const u = project(Object.fromEntries(rs.map((r) => [r.name, r.text])));
+    const out = status(u);
+    for (const r of rs.slice(4)) assert.match(out, new RegExp(`^rules: not sent - ${r.rel.replace(/\./g, '\\.')}$`, 'm'));
+});
+
+test('status: rules-session in the off-list prints its line, and a disableAllHooks true in the project, the local and the user settings file prints one line naming each file', () =>
+{
+    const p = project({ a: 'M-A' });
+    assert.match(status(p, { ALFRED_CODE_HOOKS_OFF: 'rules-session' }),
+        /^rules: rules-session is named in the off-list - it carries the project's rules and still runs; leave a rule out with ignore rule$/m);
+    assert.doesNotMatch(status(p), /^rules: /m, 'a clean project prints none');
+    const user = path.join(HOME_DIR, '.claude', 'settings.json');
+    const local = ['.claude', 'settings.local.json'];
+    for (const f of [path.join(p, '.claude', 'settings.json'), path.join(p, ...local), user])
+    {
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(f, JSON.stringify({ disableAllHooks: true }));
+    }
+    try
+    {
+        const out = status(p);
+        for (const f of ['.claude/settings.json', local.join('/'), user])
+            assert.ok(out.split('\n').includes(`rules: disableAllHooks is true in ${f}`), `${f}\n${out}`);
+    }
+    finally { fs.unlinkSync(user); }
 });

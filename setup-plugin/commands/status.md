@@ -152,6 +152,10 @@ for a carried seat).
 capture-written rule (`alfred-awareness.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
+Under the table, paste every `rules:` line the `workspace` call of section 2 printed, as printed - a refused
+ignore of a locked rule, an unmatched glob, a skipped rule file, a rule past the last part (`not sent`), `rules-session`
+named in the off-list, and each settings file whose `disableAllHooks` is true (then no rule is sent).
+
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
 every message of every session: total the bytes of the pathless rules plus the project
@@ -217,7 +221,8 @@ wired ones), `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`,
 `layout`, `history`, `fresh-session`, `shell-writes`, `hidden-chars`, `forge`, and an older install's `memory`), the shared `hook-prelude`, the dispatchers
 (`shell-guards`, `file-guards`) and the generated legacy `inject-code-style.js` - `HOOK_EXCLUDE` in
 `scripts/install/selection.js` is the list. On the plugin route the `wired` column reads `plugin` for every row and the
-matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)`.
+matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)` - except
+`rules-session` and `guard-config-protection`, which every install carries: named there, they read `locked`.
 On the copy route the set is joined against the scope file's `hooks` block:
 
 | hook | wired | matcher |

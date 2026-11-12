@@ -117,9 +117,11 @@ function hookProfile(env)
     return HOOK_PROFILES.includes(value) ? value : 'standard';
 }
 
+// The rule loader carries the project's rules: no off-list or profile stands it down (workspace stage 4c).
+const UNSWITCHABLE = new Set(['rules-session']);
 function profileOff(hook, env)
 {
-    return hookProfile(env) === 'minimal' && !PROTECTIVE.has(baseName(hook));
+    return hookProfile(env) === 'minimal' && !PROTECTIVE.has(baseName(hook)) && !UNSWITCHABLE.has(baseName(hook));
 }
 
 // A hook's own on-switch (`ALFRED_CODE_<suffix>=1`), with the profile applied: strict reads a STRICT_ON
@@ -147,7 +149,7 @@ function hookDisabled(hook, env)
     const off = String(envOf(source, 'HOOKS_OFF') || '');
     if (!off.trim()) return false;
     const wanted = baseName(hook);
-    if (!wanted) return false;
+    if (!wanted || UNSWITCHABLE.has(wanted)) return false;
     return off.split(',').map(baseName).filter(Boolean).map((n) => HOOK_RENAMED[n] || n).filter((n) => !n.includes(':')).includes(wanted);
 }
 

@@ -248,10 +248,12 @@ function categoryOf(closure, name)
 // The picks plus the always-on rules and skills, which ride every install whatever raw.json holds - the walk keeps
 // locked rows out of it, so a closure over raw alone reads what the baseline requires as unrequired (the 2026-10-28
 // fix run: a root install emitted without its baseline, and a FRESH table offered docs-as-code as a free pick).
+const lockedHooks = () => require('./install/selection.js').LOCKED_HOOKS;   // lazy: selection.js requires this file
 function withAlways(raw, always)
 {
     const join = (k) => [...new Set([...(Array.isArray(raw[k]) ? raw[k] : []), ...(always && Array.isArray(always[k]) ? always[k] : [])])];
-    return { ...raw, rules: join('rules'), skills: join('skills') };
+    const hooks = Array.isArray(raw.hooks) && raw.hooks.length ? [...new Set([...raw.hooks, ...lockedHooks()])] : raw.hooks;   // unanswered stays so
+    return { ...raw, rules: join('rules'), skills: join('skills'), hooks };
 }
 
 // The inverse cascade: everything in the remaining selection that (transitively)
@@ -367,7 +369,8 @@ function tableRows(graph, layer, opts)
 
     // F21 (the 2026-10-28 workspace run): the always-on baseline is in every install whatever the walk answers, so it reads
     // `locked` in both modes, over from root, ignored and orphaned - the installer refuses its drop (selection.lockedLines).
-    const always = new Set(['rules', 'skills'].includes(layer) && opts.always && Array.isArray(opts.always[layer]) ? opts.always[layer] : []);
+    const always = new Set(layer === 'hooks' ? lockedHooks()
+        : ['rules', 'skills'].includes(layer) && Array.isArray(opts.always?.[layer]) ? opts.always[layer] : []);
     const judge = (name) =>
     {
         let status, why;

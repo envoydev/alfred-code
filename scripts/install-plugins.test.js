@@ -1204,15 +1204,17 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
     });
     const run = (kept, off, route) => seedRun('update', 'skill markdown-style\n', { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'], prepare: layout(kept, off, route), inspect }).result;
     const kept = ['guard-protected-force-push', 'guard-secret-value'];
+    const locked = require('./install/selection.js').LOCKED_HOOKS;   // stage 4c: copied and wired on every selection
     const two = run(kept);
-    assert.deepStrictEqual(two.onDisk, kept.map((h) => `${h}.js`), 'the picked hooks stay copied');
-    assert.deepStrictEqual(two.off, shipped.filter((h) => !kept.includes(h)).sort(), 'every hook the project does not wire is named off');
+    const held = [...kept, ...locked];
+    assert.deepStrictEqual(two.onDisk, held.map((h) => `${h}.js`).sort(), 'the picked hooks and the locked two stay copied');
+    assert.deepStrictEqual(two.off, shipped.filter((h) => !held.includes(h)).sort(), 'every hook the project does not wire is named off');
     const none = run([], undefined, 'copy');
-    assert.deepStrictEqual(none.onDisk, [], 'the None holds: nothing is copied back');
-    assert.deepStrictEqual(none.off, [...shipped].sort(), 'and the core keeps every hook quiet');
+    assert.deepStrictEqual(none.onDisk, locked.map((h) => `${h}.js`).sort(), 'the None holds: only the locked hooks are copied');
+    assert.deepStrictEqual(none.off, shipped.filter((h) => !locked.includes(h)).sort(), 'and the core keeps every other hook quiet');
     const noneOwn = run(['my-hook'], undefined, 'copy');
-    assert.deepStrictEqual(noneOwn.onDisk, [], 'the None holds beside the user\'s own hook file too');
-    assert.deepStrictEqual(noneOwn.off, [...shipped].sort());
+    assert.deepStrictEqual(noneOwn.onDisk, locked.map((h) => `${h}.js`).sort(), 'the None holds beside the user\'s own hook file too');
+    assert.deepStrictEqual(noneOwn.off, shipped.filter((h) => !locked.includes(h)).sort());
     // Ruling R55: without the stamp's route the None cannot be told from a plugin-route leftover, and
     // every guard silent is the worse mistake - a pre-11b None comes back as every hook.
     const unknown = run([]);
@@ -1281,8 +1283,9 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     assert.ok(MODULES.every((m) => two.steps[0].files.includes(m)), 'the copy route copies its modules');
     assert.deepStrictEqual(two.steps[1].files.filter((f) => MODULES.includes(f) || shipped.includes(f.replace(/\.js$/, ''))), [],
         'the plugin route leaves no copied hook and no copy-route module behind');
-    assert.deepStrictEqual(hooksIn(two.steps[2]), kept.map((h) => `${h}.js`), 'back on the copies: the two hooks the plugin route ran');
-    assert.deepStrictEqual(two.steps[2].off, shipped.filter((h) => !kept.includes(h)).sort(), 'and the rest stay named off');
+    const held = [...kept, ...require('./install/selection.js').LOCKED_HOOKS];   // stage 4c: the locked hooks ride every selection
+    assert.deepStrictEqual(hooksIn(two.steps[2]), held.map((h) => `${h}.js`).sort(), 'back on the copies: the hooks the plugin route ran');
+    assert.deepStrictEqual(two.steps[2].off, shipped.filter((h) => !held.includes(h)).sort(), 'and the rest stay named off');
 
     const all = trip('skill markdown-style\n');
     assert.deepStrictEqual(hooksIn(all.steps[2]), shipped.map((h) => `${h}.js`).sort(), 'every hook the plugin route ran is copied back');
@@ -1294,11 +1297,12 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     {
         const none = seedRun(actions, 'skill markdown-style\nhook none\n', { plugins: listing, env, args: actions.map((a) => (a === 'install' ? [] : ['--installed-only'])), each: read });
         const last = none.steps[none.steps.length - 1];
-        assert.deepStrictEqual(hooksIn(last), [], `${env.length} steps: the None holds`);
-        assert.deepStrictEqual(last.off, [...shipped].sort(), `${env.length} steps: every hook named off`);
+        const locked = require('./install/selection.js').LOCKED_HOOKS;   // stage 4c: copied and wired on every selection
+        assert.deepStrictEqual(hooksIn(last), locked.map((h) => `${h}.js`).sort(), `${env.length} steps: the None holds`);
+        assert.deepStrictEqual(last.off, shipped.filter((h) => !locked.includes(h)).sort(), `${env.length} steps: every other hook named off`);
     }
 
-    for (const [selection, want] of [[`skill markdown-style\n${kept.map((h) => `hook ${h}`).join('\n')}\n`, kept], ['skill markdown-style\n', shipped]])
+    for (const [selection, want] of [[`skill markdown-style\n${kept.map((h) => `hook ${h}`).join('\n')}\n`, held], ['skill markdown-style\n', shipped]])
     {
         const mine = trip(selection, ownHook);
         assert.deepStrictEqual(hooksIn(mine.steps[2]), want.map((h) => `${h}.js`).sort(), 'the user\'s own hook file changes nothing');
@@ -1530,7 +1534,8 @@ test('seed: a copy-route None survives a plugin-route run that dies after the ma
 {
     const s = hooksRouteSandbox('m9-', 'skill markdown-style\nhook none\n');
     const fullCopy = { ...s.env, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
-    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !require('./install/alfred-code.js').HOOK_MODULES.includes(f));
+    const locked = require('./install/selection.js').LOCKED_HOOKS.map((h) => `${h}.js`);   // stage 4c: copied on every selection
+    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !require('./install/alfred-code.js').HOOK_MODULES.includes(f) && !locked.includes(f));
     try
     {
         // Step 1: the full copy route with the user's None - the stamp says 'copy', no stack hook copied.

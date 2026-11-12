@@ -282,7 +282,8 @@ test('install-scope: a local-scope update --installed-only keeps the hooks the u
         inspect: (repo) => json(repo, path.join('.claude', 'settings.local.json')).env.ALFRED_CODE_HOOKS_OFF,
     });
     assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
-    assert.ok(before && before.split(',').length === HOOK_COUNT - 1, `setup did not switch every hook but the picked one off: ${before}`);
+    // Stage 4c: the two locked hooks are never named off.
+    assert.ok(before && before.split(',').length === HOOK_COUNT - 3, `setup did not switch every hook but the picked and the locked off: ${before}`);
     assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
 });
 
@@ -427,7 +428,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
         // Project A is untouched by B's later run - still its own real None.
         const aSettings = JSON.parse(fs.readFileSync(path.join(projectA, '.claude', 'settings.json'), 'utf8'));
         const aOff = String((aSettings.env && aSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
-        assert.strictEqual(aOff.length, HOOK_COUNT, `project A's own None must stay every hook, unaffected by B: ${aOff.join(',')}`);
+        assert.strictEqual(aOff.length, HOOK_COUNT - 2, `project A's own None must stay every hook but the two locked, unaffected by B: ${aOff.join(',')}`);
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });

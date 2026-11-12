@@ -97,6 +97,8 @@ function parseSelection(text)
 
 // Keep only the entries the selection names. HOOKS are the special case: no `hook` line at all
 // means the file predates the hooks layer, and every hook stays.
+// Workspace stage 4c: the rule loader and the config guard ride every selection that names hooks - no pick leaves them out.
+const LOCKED_HOOKS = ['rules-session', 'guard-config-protection'];
 function applySelection(lists, picked)
 {
     const hasHooks = [...picked].some((l) => l.startsWith('hook '));
@@ -105,7 +107,7 @@ function applySelection(lists, picked)
     {
         const entries = lists[key] || [];
         if (key === 'hooks' && !hasHooks) { out.hooks = [...entries]; continue; }
-        out[key] = entries.filter((entry) => picked.has(`${line} ${name(entry)}`));
+        out[key] = entries.filter((entry) => picked.has(`${line} ${name(entry)}`) || (key === 'hooks' && LOCKED_HOOKS.includes(name(entry))));
     }
     return out;
 }
@@ -287,7 +289,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
     const noneBefore = routes.hooks && names.includes(BRAND.core) && stampHooks.length > 0
-        && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
+        && stampHooks.filter((h) => !LOCKED_HOOKS.includes(h)).every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
     for (const line of noneBefore ? installed.filter((l) => !l.startsWith('hook ')).concat('hook none') : installed)
         if (!lines.includes(line)) lines.push(line);
     // A seat the stamp homes in the core ran on the core, whatever that release's placement: on a real
@@ -385,7 +387,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
         const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
         if (on)
         {
-            lines.push(...(on.length ? on.map((h) => `hook ${h}`) : ['hook none']));
+            lines.push(...(on.some((h) => !LOCKED_HOOKS.includes(h)) ? on.map((h) => `hook ${h}`) : ['hook none']));   // locked: no pick
             log(keptNone ? 'installed-only: the copy route kept no hook here - none is copied back'
                 : `installed-only: no hook is copied here yet - copying the ${on.length} ALFRED_CODE_HOOKS_OFF does not name`);
         }
@@ -949,10 +951,11 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 function lockedLines(always)
 {
     const list = (k) => (always && Array.isArray(always[k]) ? always[k] : []);
-    return new Set([...list('rules').map((n) => `rule ${n}`), ...list('skills').map((n) => `skill ${n}`)]);
+    return new Set([...list('rules').map((n) => `rule ${n}`), ...list('skills').map((n) => `skill ${n}`), ...LOCKED_HOOKS.map((n) => `hook ${n}`)]);
 }
 
 module.exports = {
+    LOCKED_HOOKS,
     lockedLines, addLines, closeLines, closeSelection, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };
