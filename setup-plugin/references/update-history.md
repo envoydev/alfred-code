@@ -921,3 +921,33 @@ deeper than that, or one that joins later on an older release, names each key it
 - The installer never writes, moves or removes the file - an update and an uninstall leave it as it is.
 
 Nothing to do by hand.
+
+## after 3.10.0 - skills and agents live once in .alfred/stack, linked into .claude
+
+**Each library skill now lives in `.alfred/stack/skills/<name>`, and on the copy route each seat in
+`.alfred/stack/agents/<name>.md`.** `.claude/skills` and `.claude/agents` hold a link per item, and the stamp's
+`links:` line lists them. The first update moves each copy it recorded into the store (`skill moved to the store:
+<name>`) and links it back (`link: .claude/skills/<name> -> .alfred/stack/skills/<name>`); Claude Code lists each item
+once, as before. On the plugin route the seats still ship in the plugin, so no agent is linked.
+
+- **Where git would commit a link, nothing moves.** A project whose `.claude/skills` or `.claude/agents` git does not
+  ignore - files of that folder tracked, or a `.claude` with no ignore line, as at `project` scope - keeps its copies
+  there, and the run names the two ways to the store: the `local` scope, or an ignore line for the folder plus
+  `git rm -r --cached .claude/<kind>`. Where git cannot be run, the copies stay too.
+- **A workspace root holds its members' picks.** A skill or seat a project below picked lands once, in the root's
+  store; the stamp's `member-picks:` line names it and `/alfred-code:status` prints `held for members: <names>`. A child
+  links the root's own picks and its own, never a sibling's, and leaves out what it or a project between ignores.
+  A root whose `.claude` git does not ignore holds none and says `member pick <kind>/<name> not held`.
+- **On Windows a seat is a copy** - linking a file needs admin rights there - written again from the store at each
+  run. A copy you edited stays: `agent kept: .claude/agents/<name>.md - edited since it was copied from the store, so
+  it is yours`.
+- **What is yours stays.** A real folder or file of yours under a link's name, or a link the stamp does not list, is
+  left and named (`link skipped: ...`); an item of yours in `.alfred/stack` stays the project's own. An uninstall takes
+  only the links and the store items still at the hash the stack wrote; a project below a root that is uninstalled,
+  or one that leaves its workspace, keeps every item it linked as its own, in its own store.
+- **An edit asks nothing under `acceptEdits`.** The skills and seats now sit in `.alfred/stack`, outside `.claude`,
+  so a session in that mode edits them without the prompt Claude Code shows for a `.claude` file.
+- `/alfred-code:status` prints `links: <n> whole`, or one `!! link <path>: <state>` line per link that is dangling,
+  missing, edited here or behind the store.
+
+Nothing to do by hand.

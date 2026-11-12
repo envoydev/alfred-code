@@ -69,7 +69,9 @@ const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## M
 // ---------------------------------------------------------------- small IO helpers (all fail-soft)
 
 const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
-const readDir = (p) => { try { return fs.readdirSync(p, { withFileTypes: true }); } catch { return []; } };
+// A link (a store item linked into .claude) reads as what it points at; a dangling one as neither a folder nor a file.
+const follow = (dir, e) => { if (!e.isSymbolicLink()) return e; const st = statOf(path.join(dir, e.name)); return { name: e.name, isDirectory: () => Boolean(st && st.isDirectory()), isFile: () => Boolean(st && st.isFile()) }; };
+const readDir = (p) => { try { return fs.readdirSync(p, { withFileTypes: true }).map((e) => follow(p, e)); } catch { return []; } };
 const statOf = (p) => { try { return fs.statSync(p); } catch { return null; } };
 const slash = (p) => p.split(path.sep).join('/');
 const relTo = (root, p) => slash(path.relative(root, p));

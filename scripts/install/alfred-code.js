@@ -41,6 +41,8 @@ const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
+const { takeLock, sleepMs } = require('./file-lock.js');
+const links = require('./links.js');
 const fixedRoot = require('./fixed-root.js');
 const variables = require('./variables.js');
 const memoryDir = require('./memory-dir.js');
@@ -184,7 +186,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             return 1;
         }
     }
-    const skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
     // THE DATA ROOT (stack/mcp/data-root.js): the one folder this run lays the project's data under - the docs, the hooks'
     // state and statistics, the project's sensitive data.
@@ -392,6 +393,25 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: dataInfo.root, log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
         const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root });
+        // Workspace stage 3 (links.js): each kind's home - the store where git cannot commit a link, else .claude/<kind>. A local
+        // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
+        const writes = !args.printPlan && args.action !== 'uninstall';
+        if (writes) claudeIgnoreStep({ claudeDir, args, log, rt });
+        const homes = Object.fromEntries(links.KINDS.map((k) => [k, links.homeOf(projectRoot, k, { rt, write: writes })]));
+        if (writes) links.syncLinks({ projectRoot, prior: (stampFile ? stampLayer.readLinks(stampFile) : []).filter((e) => homes[e.path.split('/')[0]].state === 'visible'), rt, log });   // a scope move: links become copies before any write follows one
+        const stampedLib = (stampFile && stampLayer.readLibrary(stampFile)) || {};
+        for (const k of writes ? links.KINDS : [])
+        {
+            const rows = Object.keys((priorLedger && priorLedger.files) || {}).filter((r) => r.startsWith(`${k}/`)).map((r) => r.slice(k.length + 1).replace(/\.md$/, ''));
+            if (links.moveIn({ projectRoot, kind: k, names: [...Object.keys(stampedLib[k] || {}), ...rows], home: homes[k], log }).failed.length) homes[k] = { ...homes[k], dir: path.join(claudeDir, k), store: false };
+        }
+        const [skillsDir, agentsDir] = [homes.skills.dir, homes.agents.dir];
+        // A joined child: what its parent holds of a linked kind is linked from the chain, never copied here. Its parent's set in
+        // doubt, or the workspace switched off over links into a chain, what it links (links.inherited) stands in for that set.
+        const recorded = stampFile ? stampLayer.readLinks(stampFile) : [];
+        const lineOfLink = (e) => `${e.path.split('/')[0].slice(0, -1)} ${e.path.split('/')[1].replace(/\.md$/, '')}`;
+        const top = wsPrep.members.length ? wsPrep.members[wsPrep.members.length - 1].root : null;
+        const child = top || (!wsPrep.on && links.inherited(projectRoot, recorded).length) ? { top, parentLines: wsPrep.parentLines || links.inherited(projectRoot, recorded).map(lineOfLink), linked: { skills: homes.skills.store, agents: homes.agents.store && !routes.skills } } : null;
         const userAdds = [...args.add];
         const userDrops = [...args.drop];
         // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
@@ -409,7 +429,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const stackListing = effective(plugins.parsePluginList(raw, projectRoot, { marketplace: market })).filter((r) => !foreign.has(r.name));
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
             const back = selection.readBack({
-                claudeDir, skillsDir,
+                claudeDir, skillsDir, agentsDir,
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
@@ -424,6 +444,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // one of those since is the user's hand-allow).
                 seatsRoute: stampLayer.readSeatsRoute(stampFile),
                 ledgerSeats: [...new Set(((priorLedger && priorLedger.deny) || []).map((d) => stackSeat(d.entry)).filter(Boolean))],
+                // A member's own pick held here is never the root's - a fresh walk too, for an add its last stamp write lost.
+                held: [...((stampFile && stampLayer.readMemberPicks(stampFile)) || []), ...(wsPrep.on && !wsPrep.parent ? workspace.memberPicks(projectRoot, { seatsRoute: stampLayer.readSeatsRoute(stampFile) || 'plugin' }).lines
+                    .filter((l) => !((lastPicked || {})[`${l.split(' ')[0]}s`] || []).some((e) => e.split('@')[0] === l.split(' ')[1])) : [])],
                 always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
                 // C5: the copy route's hooks are committed wiring - read from settings.json alone there.
@@ -434,6 +457,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:init) first\n`);
                 return 1;
             }
+            // Ruling 6: a joined child's linked items are installed as its links record lists them; a project with no chain (an
+            // unlisted child) keeps what it linked from one as its own picks.
+            for (const e of child ? recorded : wsPrep.on ? links.inherited(projectRoot, recorded) : [])
+                for (const k of (child ? child.linked[e.path.split('/')[0]] : homes[e.path.split('/')[0]].store) ? ['lines', 'closeFrom'] : []) if (!back[k].includes(lineOfLink(e))) back[k].push(lineOfLink(e));
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
             readBlind = Boolean(back.blind);
             installedBefore = back.lines;
@@ -581,7 +608,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             : walked.filter((n) => versionDue.includes(n) || stillHeld(n));
         const ctx = {
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
-            projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
+            projectRoot, claudeDir, skillsDir, agentsDir, homes, child, configDir, mcpFile, home, stampFile,
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
             dataInfo,
@@ -612,7 +639,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         copy.removeDropped({
             drop: args.dropApplied || [], log, keep: (category, name) => category === 'skill' && foreignSkill(ctx, name),
-            dirs: { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks') },
+            dirs: { skill: skillsDir, agent: agentsDir, rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks') },
             shipped: {
                 skill: manifest.catalogs.skills.map((e) => e.split('|').pop()),
                 agent: manifest.agents.map((e) => e.replace(/\.md$/, '')),
@@ -628,11 +655,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // A restored pin value lands AFTER copyLibrary already hashed the agent it edited, so the
             // recorded hash is stale - re-hash what --keep-pins just touched, or the next check reads
             // a kept pin as drift.
-            rehashKind(ctx.library && ctx.library.agents, path.join(claudeDir, 'agents'));
+            rehashKind(ctx.library && ctx.library.agents, agentsDir);
         }
 
         pruneDroppedCopies(ctx);
         const secretsAt = secretsRecord(ctx, secrets);
+        // The links: every item in a store is wanted; a kind git sees is wanted by what this run copied, so its line is said.
+        const storeList = (k) => { try { return fs.readdirSync(homes[k].dir, { withFileTypes: true }).filter((d) => (k === 'skills' ? d.isDirectory() : d.isFile() && d.name.endsWith('.md'))).map((d) => d.name.replace(/\.md$/, '')); } catch { return []; } };
+        const copied = (k) => (k === 'skills' ? lists.skills.map((e) => e.split('|').pop()) : ctx.routes.skills ? Object.keys((ctx.library && ctx.library.agents) || {}) : lists.agents.map((a) => a.replace(/\.md$/, '')));
+        const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).map((name) => ({ kind: k, name })));
+        const linkRecord = links.syncLinks({ projectRoot, members: child ? wsPrep.members : [], want, prior: recorded, keep: !wsPrep.on, rt, log });
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
@@ -647,7 +679,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
-            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile),
+            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
         });
 
         // The projects below take this run's excludes now, not at their own next run (workspace.js refreshBelow, 2026-11-10).
@@ -698,7 +730,6 @@ function runLayers(ctx)
     // Memory P3: a `--memory docs` that cannot be written here is unset before the settings pass writes the mode.
     try { memoryDir.gate(ctx); }
     catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
-    claudeIgnoreStep(ctx);
     variablesStep(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
@@ -1304,12 +1335,81 @@ function installSkillsAndAgents(ctx)
     });
     ctx.routes = closure.routes;
     ctx.stackEntries = closure.entries;
+    // Workspace stage 3: a root holds its members' own picks, read and copied under its workspace lock.
+    const lock = ctx.workspace && ctx.workspace.on && !ctx.workspace.parent ? workspace.locate(ctx.projectRoot).lock : null;
+    let locked = false;
+    try { if (lock) { fs.mkdirSync(path.dirname(lock), { recursive: true }); locked = takeLock(lock, { now: Date.now, sleep: sleepMs, retryMs: 500, staleMs: 30000 }); } }
+    catch { locked = false; }
+    try { ctx.held = membersHeld(ctx, lock ? locked : ctx.workspace && !ctx.workspace.on ? 'off' : null); copyKinds(ctx, closure); }
+    finally { if (locked) try { fs.unlinkSync(lock); } catch { /* already gone */ } }
+}
 
+// A joined child's names of a linked kind that are not copied here: each its parent holds (linked from the chain), and each
+// own pick its top's store took (addToStore). A locked or not-linkable top leaves the pick to today's copy.
+function childAway(ctx, kind, names, copyOne)
+{
+    const c = ctx.child;
+    if (!c || !c.linked[kind]) return new Set();
+    const route = ctx.routes.skills ? 'plugin' : 'copy';
+    return new Set(names.filter((n) => c.parentLines.includes(`${kind.slice(0, -1)} ${n}`)
+        || (c.top && ['added', 'present'].includes(workspace.addToStore({ root: c.top, kind, name: n, copy: (dir) => copyOne(n, dir), route, from: ctx.projectRoot, log: ctx.log })))));
+}
+
+// The child's own copies of what went away: an unchanged one goes, one edited since its record stays as the child's own.
+function pruneAway(ctx, away)
+{
+    const lib = stampLayer.readLibrary(ctx.stampFile) || {};
+    const rows = (ctx.ledger && ctx.ledger.files) || {};
+    for (const [kind, dir, file] of [['skills', ctx.skillsDir, (n) => n], ['agents', ctx.agentsDir, (n) => `${n}.md`]])
+        pruneCopies(ctx, dir, [...away[kind]].map(file), kind.slice(0, -1), 'linked from above', { keep: (f) =>
+        {
+            const was = (lib[kind] || {})[f.replace(/\.md$/, '')] || rows[`${kind}/${f}`];
+            return !was || (library.hashItem(path.join(dir, f)) !== was && 'edited here since the stack copied it, so it stays this project\'s own');
+        } });
+}
+
+// The items the joined members below picked themselves that this root's own selection does not name (`locked` null: no
+// root here). A seat on the plugin route is held by leaving it un-denied; a kind git sees holds none (ruling 8).
+function membersHeld(ctx, locked)
+{
+    const held = { skills: [], agents: [], seats: [], lines: [] };
+    if (locked === null) return held;
+    let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
+    if (locked === false) ctx.log('  !! workspace: the store is locked - member picks are read at the next run');
+    else if (locked === true)
+    {
+        const got = workspace.memberPicks(ctx.projectRoot, { seatsRoute: ctx.routes.skills ? 'plugin' : 'copy' });
+        for (const n of got.notes) ctx.log(`  ${n}`);
+        lines = got.lines;
+    }
+    const own = new Set([...ctx.lists.skills.map((e) => `skill ${e.split('|').pop()}`), ...ctx.lists.agents.map((a) => `agent ${a.replace(/\.md$/, '')}`)]);
+    const shipped = { skill: ctx.manifest.catalogs.skills.map((e) => e.split('|').pop()), agent: ctx.manifest.agents.map((a) => a.replace(/\.md$/, '')) };
+    for (const l of lines.filter((x) => !own.has(x)))
+    {
+        const [cat, name] = l.split(' ');
+        if (!shipped[cat].includes(name)) continue;
+        if (cat === 'agent' && ctx.routes.skills) held.seats.push(name);
+        else if (ctx.homes[`${cat}s`].store) held[`${cat}s`].push(name);
+        else { ctx.log(`  member pick ${cat}s/${name} not held: .claude/${cat}s is not ignored here`); continue; }
+        held.lines.push(l);
+    }
+    if (held.lines.length) ctx.log(`  kept for members below: ${held.lines.map((l) => l.split(' ')[1]).join(', ')}`);
+    return held;
+}
+
+function copyKinds(ctx, closure)
+{
     // On the plugin route every skill travels by copy and every seat rides the core (2.1.0). A seat's
     // leftover copy - a 2.0.x library seat, or the copy route's - lists BESIDE the core's own under
     // another name, so it goes BEFORE the enable. What a release retired goes on either route.
-    const skillNames = ctx.lists.skills.map((e) => e.split('|').pop());
-    const agentsDir = path.join(ctx.claudeDir, 'agents');
+    const agentsDir = ctx.agentsDir;
+    closure.extraSkills = [...new Set([...(closure.extraSkills || []), ...ctx.held.skills])];
+    const plugin = ctx.routes.skills;
+    const skillAt = (n, dir) => (plugin ? library.copyLibrary({ sourceDir: ctx.source.dir, skillsDir: dir, agentsDir: dir, skills: [n], agents: [], stamped: null, claims: () => true, log: () => {}, note: ctx.note })
+        : copy.syncTree({ src: path.join(ctx.source.dir, 'stack', 'skills', n), dest: path.join(dir, n), render: copyRender(ctx, 'skill') }));
+    const agentAt = (n, dir) => copy.installFromSource({ sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent', destDir: dir, files: [`${n}.md`], render: copyRender(ctx, 'agent'), log: () => {}, note: ctx.note });
+    const away = { skills: childAway(ctx, 'skills', plugin ? closure.extraSkills : ctx.lists.skills.map((e) => e.split('|').pop()), skillAt), agents: childAway(ctx, 'agents', ctx.lists.agents.map((a) => a.replace(/\.md$/, '')), agentAt) };
+    const skillNames = [...new Set([...ctx.lists.skills.map((e) => e.split('|').pop()), ...ctx.held.skills])].filter((n) => !away.skills.has(n));
     pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'skill', ctx.skillsDir) });
     pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'agent', agentsDir) });
     if (ctx.routes.skills)
@@ -1356,13 +1456,15 @@ function installSkillsAndAgents(ctx)
         pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked');
         ctx.library = library.copyLibrary({
             sourceDir: ctx.source.dir, skillsDir: ctx.skillsDir, agentsDir,
-            skills: closure.extraSkills, agents: closure.extraAgents,
+            skills: closure.extraSkills.filter((n) => !away.skills.has(n)), agents: closure.extraAgents,
             stamped, claims: (kind, name) => kind !== 'skills' || skillClaim(ctx)(name), log: ctx.log, note: ctx.note,
         });
         for (const n of ctx.library.foreign) ctx.foreignSkills.add(n);
         for (const n of keptSeats) ctx.library.agents[n] = stamped.agents[n];
+        pruneAway(ctx, away);
         return;
     }
+    pruneAway(ctx, away);
 
     // C17: each copy is written as the text it holds on this route (copyRender) and only when that
     // differs, so a re-run over unchanged skills and seats rewrites nothing.
@@ -1378,8 +1480,17 @@ function installSkillsAndAgents(ctx)
 
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
-        destDir: agentsDir, files: ctx.lists.agents, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
+        destDir: agentsDir, files: [...new Set([...ctx.lists.agents, ...ctx.held.agents.map((n) => `${n}.md`)])].filter((f) => !away.agents.has(f.replace(/\.md$/, ''))), render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
     });
+    // A member-only item the last run held and no member picks now goes, unless edited since its ledger row.
+    const was = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
+    for (const [cat, dir, file] of [['skill', ctx.skillsDir, (n) => n], ['agent', agentsDir, (n) => `${n}.md`]])
+    {
+        const gone = was.filter((l) => l.startsWith(`${cat} `) && !ctx.held.lines.includes(l)).map((l) => file(l.slice(cat.length + 1)))
+            .filter((f) => !(cat === 'skill' ? skillNames : ctx.lists.agents).includes(f));
+        const rows = (ctx.ledger && ctx.ledger.files) || {};
+        pruneCopies(ctx, dir, gone, cat, 'no member below picks it now', { keep: (f) => (rows[`${cat}s/${f}`] && library.hashItem(path.join(dir, f)) !== rows[`${cat}s/${f}`] ? 'edited since the stack wrote it, so it is yours' : false) });
+    }
 }
 
 // C17 / B seam: what a copy-route copy holds - the shipped text, with a seat's `alfred-code:<skill>` preloads bare on the
@@ -1922,11 +2033,14 @@ function installHooksAndRules(ctx)
     // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
-    const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {
+    const { hooksOff, hooksAnswered, agentDeny: denied, agentAllow } = writable(state, {
         routes: ctx.routes, answered: ctx.answered,
         wired: ctx.routes.hooks ? null : [...new Set(ctx.lists.hooks.map(hookName))],
         shipped: [...new Set(ctx.manifest.catalogs.hooks.map(hookName))],
     });
+    // Workspace stage 3: a seat a member below picked is not denied at its root.
+    const agentHeld = ctx.held ? ctx.held.seats : [];
+    const agentDeny = denied.filter((r) => !agentHeld.includes(stackSeat(r)));
     // T16/R47 (I1): at `local` scope the stack's own settings writes are machine-personal - they go
     // to settings.local.json, never the shared settings.json; every other scope keeps the shared
     // file. settingsTarget is the one helper every write site names.
@@ -1940,7 +2054,7 @@ function installHooksAndRules(ctx)
         // A local-scope run leaves the stack's stale wiring and 1.x keys in settings.json - it removes them there.
         sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
-        denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
+        denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow, agentHeld,
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
@@ -2105,7 +2219,9 @@ function managedFiles(ctx)
     if (!ctx.routes.skills)
     {
         for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) put(`skills/${n}`, path.join(ctx.skillsDir, n));
-        for (const a of ctx.lists.agents) put(`agents/${a}`, path.join(ctx.claudeDir, 'agents', a));
+        for (const a of ctx.lists.agents) put(`agents/${a}`, path.join(ctx.agentsDir, a));
+        for (const n of ctx.held ? ctx.held.skills : []) put(`skills/${n}`, path.join(ctx.skillsDir, n));
+        for (const n of ctx.held ? ctx.held.agents : []) put(`agents/${n}.md`, path.join(ctx.agentsDir, `${n}.md`));
     }
     // An AGENTS.md this run seeded (or moved from its 2.1.6 CLAUDE.md name) is the template's until init fills it in - from then on it is the project's.
     if (ctx.stackAgentsMd) put('AGENTS.md', ledgerPath(ctx, 'AGENTS.md'));
@@ -2135,7 +2251,7 @@ function readOrNull(file)
 // The AGENTS.md row is read where the seed sits, under the install's name - .claude/, or the root on --instructions-at root
 // (seeds.seededAgentsMdPath).
 const ledgerPath = (ctx, rel) => (rel === 'AGENTS.md' ? ctx.seedFile || seeds.seededAgentsMdPath(ctx.projectRoot, ctx.instructionsKind)
-    : rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
+    : rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : rel.startsWith('agents/') ? path.join(ctx.agentsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
 
 // R10: a copy the last run recorded that this RELEASE no longer ships at all goes - when it still holds
 // what the stack wrote; an edited one is the user's and stays, said. The `retired` lists prune under the
@@ -2277,7 +2393,9 @@ function runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile
     workspace.releaseChildren({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note,
         variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: keptRoot }) });
-    uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
+    const homeDir = (k) => links.homeOf(projectRoot, k, { write: false }).dir;
+    links.removeLinks({ projectRoot, record: stampLayer.readLinks(file), log });
+    uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: homeDir('skills'), agentsDir: homeDir('agents'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
     uninstallLayer.removeGeneratedRules({ claudeDir, projectRoot, sourceDir: path.join(__dirname, '..', '..'), docsPath, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     uninstallLayer.removeSessionStatus({ projectRoot, dataRoot: keptRoot, log, note });
@@ -2390,7 +2508,7 @@ function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, ma
 // path through the nearest folder that exists - a database not created yet under a symlinked root (macOS /var -> /private/var)
 // still reads as inside, never as a '../..' climb (re-verify 2 R3).
 const pinFiles = (ctx) => pinsLayer.pinFiles({
-    projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir,
+    projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir, agentsDir: ctx.agentsDir,
     agents: ctx.lists.agents, skills: ctx.lists.skills,
 });
 

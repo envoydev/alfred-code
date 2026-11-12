@@ -752,7 +752,7 @@
     <div id="content"></div>
 
     <div class="inv-sources">
-      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/alfred-code</code>, every skill pick copied into the project as a library copy and every subagent carried by the core <code>alfred-code</code> plugin, each one the project did not pick denied (<code>node scripts/install/alfred-code.js install --skills-only</code>, or the <code>alfred-code</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
+      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/alfred-code</code>, every skill pick copied into the project as a library copy - once, into <code>.alfred/stack/skills</code>, and linked into <code>.claude/skills</code> where git ignores that folder - and every subagent carried by the core <code>alfred-code</code> plugin, each one the project did not pick denied (<code>node scripts/install/alfred-code.js install --skills-only</code>, or the <code>alfred-code</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
     </div>
   </section>
 
@@ -788,7 +788,7 @@ const builtin = {
 
 const house = {
   title: "Skills (House)",
-  meta: "Convention skills, authored in this repo and published to envoydev/alfred-code. Every pick, the always-on ones included, is copied into the project as a library copy, hashed in the install stamp. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation); model-only = fires on its description, no /-command (user-invocable: false).",
+  meta: "Convention skills, authored in this repo and published to envoydev/alfred-code. Every pick, the always-on ones included, is copied into the project as a library copy, hashed in the install stamp: once into .alfred/stack/skills, linked from .claude/skills, where git ignores that folder (a workspace root holds its members' picks there too); in .claude/skills itself where git would commit a link. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation); model-only = fires on its description, no /-command (user-invocable: false).",
   invokeColumn: true,
   source: "https://github.com/envoydev/alfred-code",
   install: "node scripts/install/alfred-code.js install --skills-only",

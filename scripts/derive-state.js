@@ -389,7 +389,7 @@ function copiedSkills(skillsDir, overrides = {})
     let graph = {};
     try { graph = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'stack-graph.json'), 'utf8')).skills || {}; } catch { graph = {}; }
     let dirs = [];
-    try { dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { dirs = []; }
+    try { dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory() || d.isSymbolicLink()).map((d) => d.name); } catch { dirs = []; }
     const out = [];
     for (const name of dirs.filter((n) => Object.hasOwn(graph, n)).sort())
     {

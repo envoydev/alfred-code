@@ -1301,3 +1301,29 @@ test('Section 7: the writer keeps a file\'s spelling - a new file and a plural f
     assert.deepStrictEqual(fileJson(bad), { ignore: { hooks: ['h'], skills: ['s'], rules: 'x' } });
     assert.deepStrictEqual(out.lines.filter((l) => /dropped|replaced/.test(l)), []);
 });
+
+// Workspace stage 3, Task 3: memberPicks - the skill and seat lines the joined members below a root picked themselves.
+test('memberPicks: joined members\' own skill and seat picks, 8 folders deep, a garbage or line-less stamp named, a non-member silent', () =>
+{
+    const deep = (n) => Array.from({ length: n }, (_, i) => `d${i + 1}`).join('/');
+    const at = tree({
+        'ws': { stamp: true, record: { children: ['api', 'web', 'bad', 'bare', deep(8), deep(9)] } },
+        'ws/api': { stamp: true, record: { parent: '..' } }, 'ws/web': { stamp: true, record: { parent: '..' } },
+        'ws/bad': { stamp: true, record: { parent: '..' } }, 'ws/bare': { stamp: true, record: { parent: '..' } },
+        'ws/other': { stamp: true },
+        [`ws/${deep(8)}`]: { stamp: true, record: { parent: Array(8).fill('..').join('/') } },
+        [`ws/${deep(9)}`]: { stamp: true, record: { parent: Array(9).fill('..').join('/') } },
+    });
+    const put = (rel, text) => fs.writeFileSync(path.join(at(rel), '.claude', 'alfred-code.stamp'), text);
+    put('ws/api', 'seats-route: plugin\nown-picks: skill/csharp,agent/evidence-gatherer,rule/r\n');
+    put('ws/web', 'seats-route: copy\nown-picks: skill/devops,agent/wpf-verifier\n');
+    put('ws/bad', '\u0000\u0001 not a stamp');
+    put('ws/bare', 'seats-route: plugin\n');
+    put('ws/other', 'own-picks: skill/dotnet\n');
+    put(`ws/${deep(8)}`, 'own-picks: skill/dotnet-grpc\n');
+    put(`ws/${deep(9)}`, 'own-picks: skill/dotnet-mvc-controllers\n');
+    const got = ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'plugin' });
+    assert.deepStrictEqual(got.lines, ['agent evidence-gatherer', 'skill csharp', 'skill devops', 'skill dotnet-grpc']);
+    assert.deepStrictEqual(got.notes.sort(), ['member bad not counted: its stamp holds no own-picks line', 'member bare not counted: its stamp holds no own-picks line']);
+    assert.deepStrictEqual(ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'copy' }).lines, ['skill csharp', 'skill devops', 'skill dotnet-grpc', 'agent wpf-verifier'].sort());
+});

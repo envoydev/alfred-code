@@ -125,6 +125,8 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         }
         if (have && was && have !== was) log(`  overwriting a hand-edited copy: ${item.label} ${item.name}`);
         else if (have && !was && claims) log(`  taking over a copy the stamp did not record: ${item.label} ${item.name} - its heading or name is the stack's`);
+        const via = (() => { try { return fs.lstatSync(item.dst).isSymbolicLink() && fs.realpathSync(item.dst); } catch { return null; } })();   // a link into this project's store: refresh the item there
+        if (via && via.startsWith(path.join(fs.realpathSync(path.join(item.dst, '..', '..', '..')), '.alfred', 'stack') + path.sep)) item.dst = via;
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
         if (body) fs.writeFileSync(item.dst, body);

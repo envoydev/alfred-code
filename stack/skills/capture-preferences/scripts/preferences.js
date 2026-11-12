@@ -113,7 +113,7 @@ function readDirs(projectRoot, { env = process.env } = {})
     let up = [];
     try
     {
-        const layout = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+        const layout = require([path.join(__dirname, '..', '..', '..', 'hooks'), path.join(projectRoot, '.claude', 'hooks')].map((d) => path.join(d, 'layout.js')).find((f) => fs.existsSync(f)));
         if (typeof layout.ancestorPrefsDirs === 'function') up = layout.ancestorPrefsDirs(projectRoot, { env });
     }
     catch { /* no layout beside the skill: the own dirs alone */ }

@@ -130,6 +130,12 @@ The stores and what each holds, where the docs root and the data root live, and 
   line each (`args.js RETIRED_FLAGS`). THE SKEW WINDOW: until an older custom-root install runs
   `/alfred-code:update`, the new hooks read `.alfred` - defaults, no chain, the old folder's store known only by
   content - so a session left open across the update is restarted (the release note says so).
+- **The library skills and copy-route seats live in `<data root>/stack`** (workspace stage 3, 2026-11-12), beside the
+  data: `.alfred/stack/skills/<name>/` and `.alfred/stack/agents/<name>.md`, each linked into `.claude` where git
+  ignores that folder (`install/links.js`, `repo-installer.md`). The store is the stack's copies and the project's own
+  items there, never state - the data root's `/*` ignore keeps it out of git at every versioning. A workspace root's
+  store also holds its members' picks (the stamp's `member-picks:` line). No hook names the store: each reads
+  `.claude/skills` or `.claude/agents` and follows the link; only the installer and `scripts/workspace.js status` name it.
 - **The workspace record and the load check live in the data root** (workspace layering, release 1, 2026-10-26;
   JSON since the workspace.json design, 2026-11-10): `<data root>/workspace.json` holds the project's `parent` (a `..`
   run) or `role` (`root` | `standalone`), `above` (a `..` run or `none` - the tree its role was asked against),

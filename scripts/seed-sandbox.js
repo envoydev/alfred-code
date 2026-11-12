@@ -237,13 +237,24 @@ function plantOlderRoot(repo, R = 'var/data')
     const { valueHash } = require('./install/stamp.js');
     const to = path.join(repo, ...R.split('/'));
     fs.mkdirSync(path.dirname(to), { recursive: true });
+    // An older release kept its copies in `.claude`: each stored item goes back over its link, and the store goes.
+    for (const kind of ['skills', 'agents'])
+    {
+        const store = path.join(repo, '.alfred', 'stack', kind);
+        for (const n of fs.existsSync(store) ? fs.readdirSync(store) : [])
+        {
+            try { fs.unlinkSync(path.join(repo, '.claude', kind, n)); } catch { /* no link there */ }
+            fs.renameSync(path.join(store, n), path.join(repo, '.claude', kind, n));
+        }
+    }
+    fs.rmSync(path.join(repo, '.alfred', 'stack'), { recursive: true, force: true });
     fs.renameSync(path.join(repo, '.alfred'), to);
     const file = path.join(repo, '.claude', 'settings.json');
     const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
     settings.env = { ...(settings.env || {}), ALFRED_CODE_DATA_PATH: R };
     fs.writeFileSync(file, JSON.stringify(settings, null, 2));
     const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
-    const lines = fs.readFileSync(stampFile, 'utf8').split('\n').filter((l) => !/^data-root:/.test(l)).join('\n').replace(/\n*$/, '');
+    const lines = fs.readFileSync(stampFile, 'utf8').split('\n').filter((l) => !/^(data-root|links):/.test(l)).join('\n').replace(/\n*$/, '');
     fs.writeFileSync(stampFile, `${lines.replace(/settings\.json:ALFRED_CODE_DATA_PATH=[0-9a-f]{64}/, `settings.json:ALFRED_CODE_DATA_PATH=${valueHash(R)}`)}\ndata-root: ${R}\n`);
     return to;
 }

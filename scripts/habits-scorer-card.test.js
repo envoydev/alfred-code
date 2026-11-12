@@ -220,6 +220,17 @@ test('start: the root-cause inputs take the run book by its new name, the old on
     assert.deepStrictEqual(inputs('rb2'), ['.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md', '.alfred/docs/awareness/RUN-AND-DEBUG-AWARENESS.md'],
         'the new name wins over a hand copy left at the old one; the moved map is handed');
 });
+test('start: a scorer run from a store copy finds a skill input in the project\'s .claude/skills', () => {
+    const root = fs.mkdtempSync(path.join(ROOT, 'store-'));
+    const own = path.join(root, '.alfred', 'stack', 'skills', 'mode-output-scorer');
+    fs.cpSync(path.join(REPO, 'stack', 'skills', 'mode-output-scorer'), own, { recursive: true });
+    fs.cpSync(path.join(REPO, 'stack', 'hooks'), path.join(root, '.claude', 'hooks'), { recursive: true });
+    const book = path.join(root, '.claude', 'skills', 'task-version-upgrade', 'references', 'upgrade-playbooks.md');
+    fs.mkdirSync(path.dirname(book), { recursive: true }); fs.writeFileSync(book, 'x\n');
+    const r = spawnSync(process.execPath, [path.join(own, 'scripts', 'scorecard.js'), 'start', '--root', root, '--session', 'S', '--slug', 'st1', '--output', 'upgrade-plan'], { cwd: root, env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(fs.readFileSync(kv(r).inputs, 'utf8').trim(), '.claude/skills/task-version-upgrade/references/upgrade-playbooks.md');
+});
 test('start: one slug, one output; a released or final slug takes no new start (R30, Review Focus)', () => {
     start('o1');
     assert.strictEqual(cli(['start', ...at('o1'), '--output', 'ticket']).status, 2);

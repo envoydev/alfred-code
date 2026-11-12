@@ -103,6 +103,19 @@ test('derive: skills, agents, rules and hooks are read off disk', () =>
         assert.ok(lines.includes(want), `${want} missing from ${lines.join(', ')}`);
 });
 
+test('derive: a link reads as the item it points at; a dangling one is none', { skip: process.platform === 'win32' }, () =>
+{
+    const dir = target({});
+    const real = target({ skills: ['project-aspnet'], agents: ['ng-implementer'] });
+    fs.mkdirSync(path.join(dir, 'skills'), { recursive: true }); fs.mkdirSync(path.join(dir, 'agents'), { recursive: true });
+    fs.symlinkSync(path.join(real, 'skills', 'project-aspnet'), path.join(dir, 'skills', 'project-aspnet'));
+    fs.symlinkSync(path.join(real, 'agents', 'ng-implementer.md'), path.join(dir, 'agents', 'ng-implementer.md'));
+    fs.symlinkSync(path.join(real, 'agents', 'gone.md'), path.join(dir, 'agents', 'gone.md'));
+    fs.symlinkSync(path.join(real, 'skills', 'gone'), path.join(dir, 'skills', 'gone'));
+    const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] });
+    assert.deepStrictEqual(lines.filter((l) => /^(skill|agent) /.test(l)).sort(), ['agent ng-implementer', 'skill project-aspnet']);
+});
+
 test('derive: generated project-owned files and the engine modules are NOT items', () =>
 {
     // The captures rewrite alfred-project-* and project-code-style; docs.js / memory.js are

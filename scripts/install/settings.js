@@ -853,7 +853,7 @@ function writeSettings(opts)
 {
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
-        agentDeny = [], agentAllow = [],
+        agentDeny = [], agentAllow = [], agentHeld = [],
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
@@ -1000,6 +1000,14 @@ function writeSettings(opts)
         if (deny && !deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
     }
     for (const rule of agentAllow) dropSeat(rule, null);
+    // Workspace stage 3: a seat a member below picked - the stack's own deny row for it goes, a row it never wrote is the user's.
+    for (const rule of deny ? deny.filter((e) => agentHeld.includes(stackSeat(e))) : [])
+    {
+        if (!((prior && prior.deny) || []).some((d) => d.file === label && d.entry === rule)) { log(`  seat ${stackSeat(rule)} stays off here: your own deny row`); continue; }
+        deny.splice(deny.indexOf(rule), 1);
+        changed = true;
+        log(`  ${label}: agent allowed again ${rule} - a member below picked it`);
+    }
     // C4 (R133 N1): a seat denied only in settings.local.json stays off whatever settings.json says, so
     // the allow drops it there too - the one entry of that file this run removes.
     let localAllowed = false;

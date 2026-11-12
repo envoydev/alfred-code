@@ -74,7 +74,9 @@ One table, no ask - it is seven rows and every other area reads against it:
   secrets chain by key and source, never a value), each `models:` line (`models: <kind> <name> = <model> (<from>)` - a
   model `.alfred/agents.json` sets here or in a project above, `models: none`, or `models: not applied - ...` with the
   dispatch guard off) and each `!! agents.json (<from>): ...` line (an entry that was skipped, and why),
-  each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
+  the `links: <n> whole` line or each `!! link <path>: <state>` line (a skill or seat linked from `.alfred/stack`
+  that is `dangling`, `missing`, `edited` here or `stale` behind the store), the `held for members: <names>` line (the
+  picks a root holds in its store for the projects below), each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
 
 ## 3. One question - what else to show
 

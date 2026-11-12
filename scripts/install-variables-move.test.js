@@ -66,6 +66,8 @@ function treeHash(dir)
             const p = path.join(d, e.name);
             if (e.name === '.git') continue;
             if (e.isDirectory()) { walk(p); continue; }
+            // A link (a skill or agent in the store, workspace stage 3) is its target, never read as a file.
+            if (e.isSymbolicLink()) { rows.push(`${path.relative(dir, p)} -> ${fs.readlinkSync(p)}`); continue; }
             let body = fs.readFileSync(p);
             if (e.name === 'alfred-code.stamp') body = Buffer.from(String(body).replace(/^installed(-ms)?: .*$/gm, ''));
             rows.push(`${path.relative(dir, p)} ${crypto.createHash('sha256').update(body).digest('hex')}`);

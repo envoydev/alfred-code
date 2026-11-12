@@ -952,8 +952,10 @@ function paraDelta(a, b) {
   return { onlyA, onlyB };
 }
 
+// A link (a store item linked into .claude) reads as what it points at; a dangling one as neither a folder nor a file.
 function dirEntries(dir) {
-  try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  const follow = (e) => { let st = null; try { st = fs.statSync(path.join(dir, e.name)); } catch { /* dangling */ } return { name: e.name, isDirectory: () => Boolean(st && st.isDirectory()), isFile: () => Boolean(st && st.isFile()) }; };
+  try { return fs.readdirSync(dir, { withFileTypes: true }).map((e) => (e.isSymbolicLink() ? follow(e) : e)); } catch { return []; }
 }
 function readHead(file) {
   try { return fs.readFileSync(file, 'utf8'); } catch { return ''; }

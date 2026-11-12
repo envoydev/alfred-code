@@ -27,11 +27,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 // The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
-// plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
+// plugin and a real copy, else in the project's .claude/hooks (a linked copy runs from the store); none, the env as it is.
 let loader = null;
 try
 {
-    loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+    loader = require([path.join(__dirname, '..', '..', '..', 'hooks'), path.join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'hooks')].map((d) => path.join(d, 'layout.js')).find((f) => fs.existsSync(f)));
     loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout);
 }
 catch { /* the process env as it stands */ }
@@ -404,7 +404,7 @@ function inputsOf(ctx, output, target, env = process.env) {
       const abs = target ? path.resolve(ctx.root, target.replace(/\\/g, '/')) : null;
       if (abs && isFile(abs)) lines.push(shown(abs));
     } else if (entry.startsWith('skill:')) {
-      const abs = path.join(__dirname, '..', '..', ...entry.slice('skill:'.length).split('/'));
+      const abs = [path.join(__dirname, '..', '..'), path.join(ctx.root, '.claude', 'skills')].map((d) => path.join(d, ...entry.slice('skill:'.length).split('/'))).find(isFile) || '';
       if (isFile(abs)) lines.push(shown(abs));
     } else if (entry.endsWith('/')) {
       const abs = path.join(docsAbs, entry);

@@ -294,6 +294,27 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   launch `0` freezes it whatever the files say, else the project's own value decides (settings.local.json, its
   `.variables`, the settings `env`, so a file `0` beats a launch `1`), else the launch value, and only a `0` turns it
   off; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
+- **The store and the links (workspace stage 3, 2026-11-12; `install/links.js`, `install-store.test.js`, `links.test.js`).**
+  A kind's HOME (`links.homeOf`) is `<project>/.alfred/stack/<kind>` when git cannot commit a link there, else
+  `.claude/<kind>` as before. The git state of `.claude/<kind>` (`gitState`): `none` (no repository) and `ignored` are
+  linkable; `visible` (git does not ignore it, or tracks a file in it) and `unknown` (git cannot be run) keep the
+  copies, with one `<kind> stay as copies` line naming the two ways (the local scope, or an ignore line plus
+  `git rm -r --cached`). The first run on a linkable kind renames each recorded copy into the store (`moveIn`; the
+  first rename that throws puts back what it moved and the kind runs on copies that run), then `syncLinks` makes one
+  link per item - a relative directory symlink for a skill (a junction on Windows), a relative file symlink for a
+  copy-route agent (a copy with its hash on Windows, written again at each run, an edited one kept) - and the stamp's
+  `links:` line records each (`<kind>/<file>=symlink|junction|copy[@<hash>]`). A link points at the nearest HOLDER: the
+  project's own store, else a chain member's. Anything at a link path the stamp does not list - a real folder or file,
+  a link of the user's - is left and named. The library hashes (`library-*`, or the copy route's `managed-files`) are
+  of the store copies. TWO WRITERS of one store: a workspace root's run, and a child's run adding its own pick
+  (`workspace.addToStore`), each under the root's `workspace.lock`; a pick a child adds lands on the root's
+  `member-picks:` line, so the root's next read-back holds it (`membersHeld`: a `member pick ... not held` line where
+  the root's own kind is not linkable) and lifts its own seat deny for it (`settings.js agentHeld`; a deny row the
+  ledger does not hold stays, `seat <name> stays off here: your own deny row`). The root's `refreshBelow` walk re-links
+  each moved child (`relink`, under the child's lock); a released or leaving child copies every linked item into its own
+  store first (`copyIn`). Uninstall takes the listed links and the store items still at their hash. Readers follow a
+  link (`links-readers.test.js`): the listers turn a symlink dirent into what it points at, and the four skill scripts
+  that look for a hook engine beside the skills folder fall back to `<project>/.claude/hooks`.
 - **Everything installs from ONE source snapshot** per run (`install/source.js`, `createSource`), resolved in
   this order: a handed `--source`; the PLUGIN CACHE; the release archive
   (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version); a shallow clone

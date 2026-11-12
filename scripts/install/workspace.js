@@ -560,6 +560,26 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {} } = {})
     return { written, defaults: [] };
 }
 
+// Workspace stage 3: a child leaving its workspace keeps each item it linked from above - copied as it stands into its
+// own store and linked there - so its next session lists the same skills. Never on its own uninstall.
+function copyIn(child, log = () => {})
+{
+    const links = require('./links.js');
+    const file = path.join(child, '.claude', brand.BRAND.stamp);
+    const prior = stamp.readLinks(file);
+    for (const e of prior)   // a copy entry too: its file goes into the child's store, or the sync below would drop it
+    {
+        const own = path.join(child, '.alfred', 'stack', e.path);
+        let target;
+        try { target = fs.realpathSync(path.join(child, '.claude', e.path)); } catch { continue; }
+        if (fs.existsSync(own)) continue;
+        fs.mkdirSync(path.dirname(own), { recursive: true });
+        fs.cpSync(target, own, { recursive: true });
+    }
+    const want = prior.map((e) => ({ kind: e.path.split('/')[0], name: e.path.split('/')[1].replace(/\.md$/, '') }));
+    stamp.markLine(file, 'links', stamp.linksValue(links.syncLinks({ projectRoot: child, want, prior, log })) || null);
+}
+
 // One answer to the role ask: { ok, code, lines }. Every answer rewrites `above`, so the same tree is never asked twice.
 function applyRole(projectRoot, answer, { env = process.env, exec = runtime.execCommand, dataRoot } = {})
 {
@@ -582,6 +602,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         keepOnLeave(root, { env, log });
         const r = leaveParent({ projectRoot: root, env, dataRoot, log });
         if (r.why) return fail(r.why === 'locked' ? 3 : 1, `!! ${r.line}`);
+        copyIn(root, log);   // only once the leave holds: a failed one keeps the child linked to its root
         return write((m) => setAbove(setRole(m, to), nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${to}`] };
     };
     const joinHere = (rel) =>
@@ -929,6 +950,67 @@ function excludeGlobs(paths, platform = process.platform)
     return [...new Set(out)];
 }
 
+// Workspace stage 3: the `skill` and `agent` lines each joined member below `root` picked itself (its stamp's `own-picks`),
+// walked `maxDepth` folders deep - an `agent` line only from a member on the root's seats route (ruling 7). A member whose
+// stamp holds no such line adds nothing and is named; a stamped folder whose chain does not end at `root` is passed over.
+function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
+{
+    const top = realOf(root);
+    const lines = new Set();
+    const notes = [];
+    const visit = (dir) =>
+    {
+        const members = chain(dir).members;
+        if (!members.length || realOf(members[members.length - 1].root) !== top) return;
+        const file = path.join(dir, '.claude', brand.BRAND.stamp);
+        const picks = stamp.readOwnPicks(file);
+        if (!picks) { notes.push(`member ${relPosix(top, dir)} not counted: its stamp holds no own-picks line`); return; }
+        for (const l of picks) if (l.startsWith('skill ') || (l.startsWith('agent ') && stamp.readSeatsRoute(file) === seatsRoute)) lines.add(l);
+    };
+    const walk = (dir, depth) =>
+    {
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { /* unreadable: nothing below */ }
+        for (const d of entries.filter((e) => e.isDirectory() && !e.isSymbolicLink() && !RESCAN_SKIP.has(e.name)))
+        {
+            if (isStamped(path.join(dir, d.name))) visit(path.join(dir, d.name));
+            if (depth + 1 < maxDepth) walk(path.join(dir, d.name), depth + 1);
+        }
+    };
+    walk(top, 0);
+    return { lines: [...lines].sort(), notes };
+}
+
+// Workspace stage 3: a joined child's own pick, put into its top's store under the top's lock (`copy(dir)` writes it) and
+// recorded on the top's stamp - its library hash (the copy route: its managed-files row) and, unless the top picked it
+// itself, its member-picks entry. 'added' | 'present' | 'locked' | 'not-held' (the top's kind is not linkable).
+function addToStore({ root, kind, name, copy, route = 'plugin', from = root, log = () => {} })
+{
+    const links = require('./links.js');
+    const home = links.homeOf(root, kind);
+    if (!home.store) return 'not-held';
+    const [rel, item, at] = [relPosix(from, root) || '.', path.join(home.dir, links.fileOf(kind, name)), locate(root)];
+    let held = false;
+    try { fs.mkdirSync(at.dir, { recursive: true }); held = takeLock(at.lock, { now: Date.now, sleep: sleepMs, retryMs: 500, staleMs: 30000 }); }
+    catch { held = false; }
+    if (!held) { log(`  !! store: ${rel} is locked - ${kind}/${name} is added at the next run`); return 'locked'; }
+    try
+    {
+        const present = fs.existsSync(item);
+        if (!present) { fs.mkdirSync(home.dir, { recursive: true }); copy(home.dir); log(`store: ${kind}/${name} added to ${rel}/.alfred/stack`); }
+        const file = path.join(root, '.claude', brand.BRAND.stamp);
+        const hash = require('./library.js').hashItem(item);
+        const pairs = (map) => Object.entries(map).map(([n, h]) => `${n}=${h}`).join(',');
+        if (route === 'plugin') stamp.markLine(file, `library-${kind}`, pairs({ ...((stamp.readLibrary(file) || {})[kind] || {}), [name]: hash }));
+        else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${links.fileOf(kind, name)}`]: hash }));
+        const line = `${kind.slice(0, -1)} ${name}`;
+        const own = ((stamp.readPicked(file) || {})[kind] || []).some((e) => e.split('@')[0] === name);
+        if (!own) stamp.markLine(file, 'member-picks', [...new Set([...(stamp.readMemberPicks(file) || []), line])].map((l) => l.replace(' ', '/')).sort().join(','));
+        return present ? 'present' : 'added';
+    }
+    finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+}
+
 // ------------------------------------------------------------------ refresh below (2026-11-10)
 
 // The user's report: a child session loaded the root's rules twice. A project's own run writes `claudeMdExcludes` for
@@ -939,6 +1021,34 @@ function excludeGlobs(paths, platform = process.platform)
 // lock. Only that array moves, a member its ledger does not hold is the user's and stays, and every other ledger row is
 // re-rendered byte for byte. A failed stamp write puts the settings file back (or removes it, when this made it), so no
 // row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
+// Workspace stage 3: a moved member below `top` re-links what it links plus the top's own items of each linked kind, less
+// what it or a member between ignores, under its own lock. A child with no `links:` line is not moved yet: its update does it.
+function relink(child, top, rel, ignores, log)
+{
+    const links = require('./links.js');
+    const file = path.join(child, '.claude', brand.BRAND.stamp);
+    const prior = stamp.readLinks(file);
+    const { members } = chain(child);
+    if (!/^links:/m.test(readOr(file)) || !members.length || realOf(members[members.length - 1].root) !== top) return;
+    const topFile = path.join(top, '.claude', brand.BRAND.stamp);
+    const held = new Set(stamp.readMemberPicks(topFile) || []);
+    const off = new Set([...ignores, ...members.slice(0, -1).flatMap((m) => m.view.ignores || [])].map((i) => `${i.category} ${i.name}`));
+    const lib = stamp.readLibrary(topFile) || {};
+    const rows = Object.keys((stamp.readLedger(topFile) || {}).files || {}).map((r) => r.split('/'));
+    const want = [...prior.map((e) => ({ kind: e.path.split('/')[0], name: e.path.split('/')[1].replace(/\.md$/, '') }))];
+    for (const kind of links.KINDS.filter((k) => links.homeOf(child, k).store))
+        for (const name of [...Object.keys(lib[kind] || {}), ...rows.filter((r) => r[0] === kind).map((r) => r[1].replace(/\.md$/, ''))])
+            if (!held.has(`${kind.slice(0, -1)} ${name}`) && !off.has(`${kind.slice(0, -1)} ${name}`)) want.push({ kind, name });
+    const at = locate(child);
+    let got = false;
+    try { got = takeLock(at.lock, { now: Date.now, sleep: sleepMs, retryMs: 500, staleMs: 30000 }); }
+    catch { got = false; }
+    if (!got) { log(`  !! workspace: ${rel} is locked - its links refresh on its next run`); return; }
+    const once = [...new Map(want.map((w) => [`${w.kind}/${w.name}`, w])).values()];
+    try { stamp.markLine(file, 'links', stamp.linksValue(links.syncLinks({ projectRoot: child, members, want: once, prior, log: (l) => log(`  ${rel}: ${l.trim()}`) })) || null); }
+    finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+}
+
 function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare } = {})
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
@@ -980,6 +1090,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         if (!on) { skip(''); continue; }
         const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
+        relink(child, top, rel, ownRead.view.ignores || [], log);
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -1540,6 +1651,7 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         if (!points(held.record)) { stale.push(rel); continue; }
         const kept = keepOnLeave(child, { env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR }, log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
         if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - run uninstall again`); continue; }
+        copyIn(child, (l) => log(`workspace: ${rel}: ${l.trim()}`));
         const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { runRoot: root, log });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
@@ -1748,7 +1860,7 @@ module.exports = {
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
-    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,

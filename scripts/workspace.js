@@ -152,6 +152,12 @@ function status(out)
     const ownPicks = (stampFile && stamp.readOwnPicks(stampFile)) || [];
     out(`own: ${list(ownPicks)}`);
     out(`ignored: ${list(own.view.ignores.map((i) => `${i.category} ${i.name}`))}`);
+    // The stage 3 links: whole, or each entry that is not, then the picks this root holds for a member below.
+    const record = stampFile ? stamp.readLinks(stampFile) : [];
+    const broken = require('./install/links.js').checkLinks({ projectRoot: root, record, members: linked.members, rt }).filter((c) => c.state !== 'ok');
+    if (record.length) out(broken.length ? broken.map((c) => `  !! link ${c.path}: ${c.state}`).join('\n') : `links: ${record.length} whole`);
+    const held = (stampFile && stamp.readMemberPicks(stampFile)) || [];
+    if (held.length) out(`held for members: ${held.sort().join(', ')}`);
     // THE MODEL FILE: what .alfred/agents.json applies here. The dispatch guard applies it, so with the guard off - the off-list, or the minimal
     // profile, which a command's shell has no variable for and reads from the account settings - no entry is.
     const read = models.entries({ start: root, env, host });
