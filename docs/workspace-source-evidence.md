@@ -246,3 +246,57 @@ under it - in its own repository as in a sub-folder - and never `AGENTS.md`, so 
 and line 3 (the native rule files) stay: on a host that loads them the 'unless it is already in your context' clause
 covers it. R4 `yes`: a sub-agent keys its own markers, so the limit 'a sub-agent shares its parent's markers' is not
 needed.
+
+## Stage 5 - the member block
+
+A session in a workspace is sent a joined member's own rules and pointers on its first file touch under that member:
+its head (instruction file, generated rule files, docs, preferences, the rules it leaves out), its own always-on store
+rules, in parts of at most 9,500 characters across later touches, at most five; its path rules match its own file.
+Proved on installer-made temp projects from this working tree, every row on an isolated home and account dir, the real
+account's `installed_plugins.json`, `known_marketplaces.json`, `settings.json` and `~/.gitconfig` hashed before and
+after (unchanged). macOS, Claude Code 2.1.323, Node 22.23.3, 2026-11-13, on the review-fix tree (e78bba0b).
+
+**The matrix.** 82 PASS, 0 FAIL, 3 NOT RUN, 5 stand-in sessions ($0). The rows cover a fresh root and two children at
+`local`, `project` and `user` scope (the block's every line, one marker under the root's `state/sessions`, one
+`member-push` ledger row, nothing written under a child); an update over 3.10.0 in both orders; a re-run (stores,
+stamps, settings and the block's text unchanged); the user's own root rule, rule file, preference and a child's own
+key and hook kept byte-equal; a garbage child record (no block; `workspace.js status` names it), a child with no
+store (the pointer lines only), an unreadable rule and a link in the store (skipped), `state/sessions` a file (the
+part printed on each touch); a block of 9,499 and 9,500 characters (one part) and 9,501 (two); a member's path rule, a
+rule the child ignores and a rule both hold; a session in a child touching its sibling, a file outside the workspace
+and an unjoined stamped folder; a linked worktree of the root with a sub-folder member; the copy route and a Cursor
+payload; the revert. What the rows showed beyond a pass:
+
+- 3.10.0 ships no rule loader, so a root not yet updated prints no block. A child installed by 3.10.0 gets the pointer
+  lines, its `.claude/rules` files on line 3.
+- A child updated before its root keeps its library copies in its own store until its next update, and its block
+  resends them (three parts, 27,320 characters), each under 'replaces the workspace's rule of this name'.
+- From a linked worktree of the root a member resolves in the main checkout (as the start's own chain does), so the
+  block names `../ws/sub`; the markers sit beside the loader's record.
+- Under the copy route the plugin's row stands down, so one block is sent, never two.
+
+**The cells ($0, the local stand-in).**
+
+| Cell | Result | What was read |
+| --- | --- | --- |
+| the session after a Read under a child | `yes` | the block absent from the first request, once in the request after the Read |
+| the session after a Write under a child | `yes` | the block once in the request after the Write (`acceptEdits`) |
+| a dispatched agent after its own Read | `yes` | the block in its own next request, none in the session's |
+| a dispatched agent when the session already has the block | `yes` | its own copy, the session's once |
+| a second child in the same session | `yes` | two blocks, the first not repeated |
+| eight loader calls at once for one session | `yes` | one block among them, one marker (by hand: the stand-in answers one tool call per request) |
+| the session after an Edit under a child | `NOT RUN` | an Edit needs a prior Read, which sends the block; Edit delivery is stage 0's P4 |
+
+**The cost.** The PostToolUse row's median of 20, a touch under a member against one in the start project, a fresh
+session each run: macOS 37.1 / 33.7 ms (before stage 5: 32.6 / 32.0); Windows (the gate's VM, two runs) 98.6 / 85.7
+and 97.8 / 88.7 ms - under the design's 100 ms line by about 2 ms, with stage 4a's 118.4 ms still open for the owner.
+
+**Linux and Windows.** The gate's `linux` and `win` legs on the three test files the stage touched: 163 tests, 0
+failed each (6 skipped on Windows) at 1b048862, and 166, 0 failed each on the review fix (e78bba0b). The cell 'the
+session after a Read under a child' ran in the gate's Windows 11 VM on 1b048862 (Claude Code 2.1.309, Node 22.23.3,
+$0): `yes`, the block in the request after the Read and not before.
+
+**The revert.** The tree before stage 5 (e62cc6cb) run on a project holding markers and a record with `<key>/<name>`
+entries: no block, no error, the start's path rule sent once; its compact start removes the record and leaves the
+markers, which nothing reads. `rm -f .alfred/state/sessions/rules-*-m-????????????-[1-5]
+.alfred/state/sessions/.alfred-sweep-rules-` in the project then leaves no marker and removes nothing else.
