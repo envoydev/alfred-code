@@ -661,7 +661,7 @@ function precheck(projectRoot, rulePath)
         if (!st.isFile() || skipName(path.basename(p)) || path.resolve(p) === path.resolve(rulePath)) return;
         if (st.mtimeMs > ruleStat.mtimeMs) hits.push({ path: relTo(projectRoot, p), mtime: st.mtimeMs });
     };
-    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.mcp.json', ...STAMPS])
+    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.alfred/stack/rules', '.mcp.json', ...STAMPS])
     {
         visit(path.join(projectRoot, src), 0);
     }
@@ -825,7 +825,7 @@ function inventory(projectRoot)
     const fams = seatFamilies(seats);
     sub(`seat families (${fams.length}): ${fams.join(', ') || 'none'}`);
 
-    const rules = scanRules(path.join(projectRoot, '.claude', 'rules'));
+    const rules = ['.claude/rules', '.alfred/stack/rules'].flatMap((d) => scanRules(path.join(projectRoot, d)));   // native, then the store
     const scoped = rules.filter((r) => r.pathScoped);
     say('RULES', `${rules.length} total, ${rules.length - scoped.length} pathless, ${scoped.length} path-scoped`);
     sub(`pathless: ${rules.filter((r) => !r.pathScoped).map((r) => r.name).join(', ') || 'none'}`);

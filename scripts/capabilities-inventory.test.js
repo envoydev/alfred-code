@@ -945,3 +945,19 @@ test('--rule: an absolute docs root is imported as it stands, a space escaped; a
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(watch, 'utf8')).notOwned, ['AGENTS-AWARENESS.md'], 'a run-book write that dropped the entry gets it back, its watch rows kept');
     assert.strictEqual(JSON.parse(fs.readFileSync(watch, 'utf8')).watch.length, 1);
 });
+
+// Stage 4c: library rules live in .alfred/stack/rules, sent by the rule loader - the inventory lists them beside the
+// native ones, and a changed store rule is drift like a changed native one.
+test('4c inventory: the store rules are listed beside the native ones, and the store folder is watched', { skip: posixOnly }, () =>
+{
+    const root = project('store-rules');
+    write(path.join(root, '.alfred', 'stack', 'rules', 'alfred-security.md'), '# security\n', -100);
+    write(path.join(root, '.alfred', 'stack', 'rules', 'javascript-conventions.md'), '---\npaths: ["**/*.js"]\n---\n# js\n', -100);
+    let { out } = run([], { cwd: root });
+    assert.match(out, /RULES:\s+4 total, 2 pathless, 2 path-scoped/);
+    assert.match(out, /path-scoped: javascript-conventions \[\*\*\/\*\.js\]/);
+    touch(path.join(root, '.alfred', 'stack', 'rules', 'alfred-security.md'), 200);
+    ({ out } = run([], { cwd: root }));
+    assert.match(out, /PRECHECK:\s+drift - 1 file\(s\) newer than the doc/);
+    assert.match(out, /\.alfred\/stack\/rules\/alfred-security\.md/);
+});

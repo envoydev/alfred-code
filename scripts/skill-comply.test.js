@@ -1008,3 +1008,9 @@ test('tool_order after_optional: no after event passes, an after with no before 
     assert.strictEqual(run(step({ after_optional: true }), [tool('Bash', { command: 'git switch -c SHOP-205' }), tool('Bash', { command: 'git branch -a' })]).verdict, 'FAIL');
     assert.strictEqual(run(step({ after_optional: true }), [...ask, tool('Bash', { command: 'git switch -c SHOP-205' })]).verdict, 'PASS');
 });
+test('4c parseTranscript: a rule loader block\'s rule name is in the context target', () => {
+    const block = 'Project rules, part 1 of 1 - binding instructions for this project\n\n## alfred-git (.alfred/stack/rules/alfred-git.md)\nCommit on the user\'s word.\n\nEnd of project rules, part 1 of 1';
+    const run = sc.parseTranscript(jsonl([{ type: 'attachment', attachment: { type: 'hook_additional_context', content: [block], hookEvent: 'SessionStart' } }, user('go')]));
+    const ctx = (pattern) => sc.gradeRun({ steps: [{ id: 'c', graders: [{ type: 'regex', target: 'context', pattern, flags: 'm' }] }] }, run).steps[0].verdict;
+    assert.deepStrictEqual([ctx('^## alfred-git \\('), ctx('alfred-security')], ['PASS', 'FAIL']);
+});

@@ -1147,7 +1147,9 @@ function inventoryOnDisk(explicitDir, cwd, sessionLastTs, sessionFirstTs, stampO
     const merge = (dirRows, plugRows) => [...new Map([...plugRows, ...dirRows].map((r) => [r.name, r])).values()].sort(byName);
     const skills = merge(loadSkillsDir(path.join(d, 'skills')), plug.skills);
     const agents = merge(loadAgentsDir(path.join(d, 'agents')), plug.agents);
-    const rules = loadRulesDir(path.join(d, 'rules'));
+    // The rule loader's store beside the native folder, a native file of the same name winning (it is what loads).
+    const store = path.basename(d) === '.claude' ? loadRulesDir(path.join(path.dirname(d), '.alfred', 'stack', 'rules')) : [];
+    const rules = [...new Map([...store, ...loadRulesDir(path.join(d, 'rules'))].map((r) => [r.name, r])).values()].sort(byName);
     if (!skills.length && !agents.length && !rules.length) return null;
     const note = plug.from.length ? ` (${plug.skills.length} skill(s) and ${plug.agents.length} agent(s) served by ${plug.from.join(', ')})` : '';
     // The cwd branch below REWRITES `why` from the stamp, so the note travels as its own field and
@@ -1607,6 +1609,7 @@ function addSessionUse(acc, main, agents, inventoryDir, bundleDir) {
     const row = ensure(acc.rules, file, { alwaysOn: false, globs: [] });
     mark(row, 'attached (transcript record)', e.records || 0, e.firstTs);
     mark(row, 'shell-route notice', e.shellNotices || 0, e.firstTs);
+    mark(row, 'rule loader block', e.loaderBlocks || 0, e.firstTs);
   }
   for (const r of inv.rules) {
     if (r.alwaysOn || !r.globs.length) continue;
@@ -2155,7 +2158,7 @@ async function analyzeTranscript(file, window) {
       if (Array.isArray(o.attachments)) for (const a of o.attachments) if (a && typeof a === 'object') ats.push(a);
       for (const at of ats) {
         const bump = (ruleFile, key) => {
-          const e = s.ruleAttachments[ruleFile] || (s.ruleAttachments[ruleFile] = { records: 0, shellNotices: 0, firstTs: null });
+          const e = s.ruleAttachments[ruleFile] || (s.ruleAttachments[ruleFile] = { records: 0, shellNotices: 0, loaderBlocks: 0, firstTs: null });
           e[key] += 1;
           if (o.timestamp && (!e.firstTs || o.timestamp < e.firstTs)) e.firstTs = o.timestamp;
         };
@@ -2267,8 +2270,11 @@ async function analyzeTranscript(file, window) {
         } else if (at.type === 'hook_additional_context') {
           const txt = Array.isArray(at.content) ? at.content.join('\n') : String(at.content || '');
           // one notice can name its rule twice - the notice is the event, not each mention
-          const named = new Set([...txt.matchAll(/\.claude[\\/]rules[\\/]([A-Za-z0-9._-]+\.md)/g)].map((x) => x[1]));
-          for (const r of named) bump(r, 'shellNotices');
+          const named = new Set([...txt.matchAll(/(?:\.claude|\.alfred[\\/]stack)[\\/]rules[\\/]([A-Za-z0-9._-]+\.md)/g)].map((x) => x[1]));
+          // the rule loader's block: one `## <name> (<path>)` heading per rule sent, a continued chunk not counted again
+          const sent = new Set([...txt.matchAll(/^## ([A-Za-z0-9._-]+) \([^)\n]+\.md\)$/gm)].map((x) => `${x[1]}.md`));
+          for (const r of named) if (!sent.has(r)) bump(r, 'shellNotices');
+          for (const r of sent) bump(r, 'loaderBlocks');
         }
       }
     }

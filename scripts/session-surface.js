@@ -414,6 +414,13 @@ function surface(projectRoot, options = {})
         }
     };
     walkRules(path.join(projectRoot, '.claude', 'rules'), '');
+    // The rule loader's own (the store, a workspace root's included); a native file of the same name is counted above.
+    try
+    {
+        const r = require('../stack/hooks/rules-session.js').rulesFor(projectRoot);
+        for (const x of [...r.always, ...r.scoped]) ruleFiles.push({ file: x.file, owner: ruleOwner(x.name) });
+    }
+    catch { /* no loader: the native rules alone */ }
     if (options.withUser) walkRules(path.join(account.dir, 'rules'), 'user');
 
     // Skills: the project's copies, the user's own (with --with-user), and every enabled plugin's.

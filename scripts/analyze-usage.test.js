@@ -2793,3 +2793,28 @@ test('--receipt names the bundle\'s collected.json over the copy beside the tran
   fs.writeFileSync(garbage, '{ not json');
   assert.match(analyzeBundle(b, ['--report-md', '--receipt', garbage]), /^collected\.json unreadable - stores beyond the transcript are unknown$/m);
 });
+
+test('4c usage: the store rules join the inventory, a loader block names its rules, and a notice may name a store path', () => {
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  const store = path.join(root, '.alfred', 'stack', 'rules');
+  fs.mkdirSync(store, { recursive: true });
+  fs.writeFileSync(path.join(store, 'store-always.md'), '---\ndescription: d\n---\n\nbody\n');
+  fs.writeFileSync(path.join(store, 'store-scoped.md'), '---\npaths: ["**/*.py"]\n---\n\nbody\n');
+  fs.writeFileSync(path.join(store, 'demo-conventions.md'), '---\npaths: ["**/*.go"]\n---\n\nthe native copy wins\n');
+  const file = path.join(dir, 'session.jsonl');
+  const block = 'Project rules, part 1 of 1 - binding instructions for this project\n\n## store-always (.alfred/stack/rules/store-always.md)\nbody\n\n'
+    + '## store-always (.alfred/stack/rules/store-always.md) - continued\nmore\n\nEnd of project rules, part 1 of 1';
+  fs.writeFileSync(file, [
+    line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } }),
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:01.000Z', attachment: { type: 'hook_additional_context', hookName: 'rules-session.js', content: [block] } }),
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:02.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.alfred/stack/rules/store-scoped.md`. Read the rule.'] } }),
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:03.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
+  ].join(''));
+  const { inventory } = run([file, '--inventory', claude, '--plugins', pluginsFile]);
+  assert.deepStrictEqual(invRow(inventory.rules, 'store-always.md').how, ['rule loader block x1'], 'one block per rule, a continued heading not counted again');
+  assert.deepStrictEqual(invRow(inventory.rules, 'store-scoped.md').how, ['shell-route notice x1'], 'a notice naming a store path');
+  assert.deepStrictEqual(invRow(inventory.rules, 'demo-conventions.md').how, ['attached (transcript record) x1'], 'a native load still counts');
+  for (const n of ['store-scoped.md', 'demo-conventions.md']) assert.strictEqual(inventory.rules.filter((r) => r.name === n).length, 1, `${n} once`);
+});

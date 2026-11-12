@@ -419,3 +419,31 @@ test('a plugin under a moved plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR) is read
     const unmoved = fx.run({ env: { ...process.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: '' } });
     assert.match(flagsOf(unmoved, 'dangling')[0].detail, /alfred-code@envoydev is enabled \(project\) but not in the plugin cache/, 'unset, the config dir\'s plugins/ is read');
 });
+test('4c surface: the status floor counts the rules the loader sends, a root\'s included, and a native rule once', () =>
+{
+    const fx = install({
+        project: {
+            '.git/HEAD': 'x',
+            '.claude/alfred-code.stamp': 'source: test\n',
+            '.claude/rules/alfred-git.md': 'The native copy wins.\n',
+            '.alfred/stack/rules/alfred-git.md': 'The store copy never arrives.\n',
+            '.alfred/stack/rules/alfred-security.md': '---\ndescription: s\n---\nNever print a credential.\n',
+            '.alfred/stack/rules/ts-conventions.md': '---\npaths:\n  - "**/*.ts"\n---\nTypes first.\n',
+        },
+    });
+    const start = rowsAt(fx.run(), 'session-start');
+    assert.equal(start.filter((r) => /alfred-git\.md$/.test(r.source)).length, 1, 'a native rule is counted once');
+    assert.ok(start.some((r) => r.source === '.claude/rules/alfred-git.md'), 'the native copy is the one counted');
+    const store = start.find((r) => r.source === path.join('.alfred', 'stack', 'rules', 'alfred-security.md'));
+    assert.ok(store, 'a store rule is a session-start row');
+    assert.equal(store.owner, 'project', 'owned by the inventory, which lists no alfred-security here');
+    assert.equal(store.chars, 'Never print a credential.'.length);
+    assert.equal(rowsAt(fx.run(), 'path-scoped').find((r) => /ts-conventions/.test(r.source)).owner, 'house', 'a listed rule is the house\'s');
+    assert.ok(rowsAt(fx.run(), 'path-scoped').some((r) => r.source === path.join('.alfred', 'stack', 'rules', 'ts-conventions.md')), 'a scoped store rule');
+
+    const root = fx.proj;
+    write(root, { '.alfred/workspace.json': JSON.stringify({ parent: 'root', children: ['api'] }) });
+    write(path.join(root, 'api'), { '.git/HEAD': 'x', '.claude/alfred-code.stamp': 'source: test\n', '.alfred/workspace.json': JSON.stringify({ parent: '..' }) });
+    const child = surface(path.join(root, 'api'), { configDir: fx.acct, inventory: INVENTORY, home: fx.root });
+    assert.ok(rowsAt(child, 'session-start').some((r) => r.source === path.join('..', '.alfred', 'stack', 'rules', 'alfred-security.md')), 'a root\'s store rule counts in a joined child');
+});

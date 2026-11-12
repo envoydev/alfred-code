@@ -426,7 +426,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
 
     // A `## Rules` section naming the stack's own rules is the list an older template seeded (the user's ruling of
     // 2026-10-21: the rules load themselves, so it only repeats them) - one row at its heading, offered for removal.
-    const STACK_RULE_REF = /\.claude\/rules\/(?:alfred|baseline)-|`(?:\.claude\/rules\/)?alfred-\*/;
+    const STACK_RULE_REF = /(?:\.claude|\.alfred\/stack)\/rules\/(?:alfred|baseline)-|`(?:\.claude\/rules\/)?alfred-\*/;
     let rules = null;
 
     let fence = null;
