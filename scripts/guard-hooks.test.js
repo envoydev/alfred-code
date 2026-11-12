@@ -688,10 +688,15 @@ test('guard-protected-force-push: a held branch: a switch back through a variabl
   const back = 'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"';
   assert.equal(at(back, onFeature), 0, 'back on the feature branch');
   assert.equal(at(back.replace('git checkout main', 'git checkout feature/x'), onMain), 2, 'back on main');
-  // F3: each git asked once per name
+  // F3: each git asked once per name - about one git process per checkout (42 for the 40, counted 2026-11-12). The budget
+  // scales with what one git process costs here: a loaded Windows VM pays ~115 ms each and passed 4 s twice with nothing
+  // asked twice, while a guard that asks per pair of names (1,600 calls) is still far over three calls a name.
+  const s0 = Date.now();
+  for (let i = 0; i < 5; i++) spawnSync('git', ['-C', onFeature, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
+  const budget = Math.max(4000, ((Date.now() - s0) / 5) * 40 * 3);
   const t0 = Date.now();
   at(Array.from({ length: 40 }, (_, i) => `git checkout feat-${i} && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"`).join(' && '), onFeature);
-  assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
+  assert.ok(Date.now() - t0 < budget, `${Date.now() - t0} ms (budget ${Math.round(budget)} ms)`);
 });
 
 test('guard-protected-force-push: a held branch in run order, a loop name unread, an unread switch off main, no recursion blow-up (review 19)', () => {
