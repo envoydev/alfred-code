@@ -710,6 +710,19 @@ const ruleInstalled = (rule) => {
   }
   return !known;
 };
+// Stage 4c: where a rule store exists the loader's view decides - a store rule (a root's in a joined child too) is named
+// by its path, a native one by .claude/rules. Read only once a write matched a rule; fail-open to the check above.
+let loaded;
+const ruleAt = (rule) => {
+  if (loaded === undefined) {
+    try {
+      const r = require('./rules-session.js').rulesFor(anchorDirs[0] || process.cwd());
+      const served = [...r.scoped, ...r.always].map((x) => [`${x.name}.md`, x.rel]);
+      loaded = r.hasStore ? new Map([...r.natives.map((n) => [`${n}.md`, `.claude/rules/${n}.md`]), ...served]) : null;
+    } catch { loaded = null; }
+  }
+  return loaded ? loaded.get(rule) || null : ruleInstalled(rule) ? `.claude/rules/${rule}` : null;
+};
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
 // neither is the install's own `.claude/` tree, so a `.md` target there names no rule - not even one
 // whose pattern its NAME happens to carry (`next.js-upgrade.md`, `Dockerfile.md`): that would spend the
@@ -754,7 +767,7 @@ function announceRules(text, extra = [], cds = []) {
   const f = sessionStateFile();
   try { state = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* fresh state */ }
   const said = state.__rules || [];
-  const fresh = hit.filter((r) => !said.includes(r) && ruleInstalled(r));
+  const fresh = hit.filter((r) => !said.includes(r) && ruleAt(r));
   if (!fresh.length) return;
   const flush = () => {
     try {
@@ -766,7 +779,7 @@ function announceRules(text, extra = [], cds = []) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        additionalContext: `This command touches files governed by ${fresh.map((r) => `\`.claude/rules/${r}\``).join(' and ')}. `
+        additionalContext: `This command touches files governed by ${fresh.map((r) => `\`${ruleAt(r)}\``).join(' and ')}. `
           + `A path-scoped rule attaches on a FILE-TOOL touch only, so working through the shell never loads it - `
           + `read the rule and load the house-style skill it names before the next edit to those files.`,
       },

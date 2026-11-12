@@ -2349,9 +2349,9 @@ const TEST_RULE_QUALIFIER_RE = /\b(?:full|whole|entire|all the|every|each|watch|
 function noTestRule(root) {
   const path = require('path');
   const files = ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', path.join('.claude', 'AGENTS.md'), path.join('.claude', 'CLAUDE.md')].map((f) => path.join(root, f));
-  try {
-    for (const f of fs.readdirSync(path.join(root, '.claude', 'rules')).sort()) if (f.endsWith('.md')) files.push(path.join(root, '.claude', 'rules', f));
-  } catch { /* no rules folder */ }
+  for (const dir of [path.join(root, '.claude', 'rules'), path.join(root, '.alfred', 'stack', 'rules')]) {   // the native and the store rules
+    try { for (const f of fs.readdirSync(dir).sort()) if (f.endsWith('.md')) files.push(path.join(dir, f)); } catch { /* no rules folder */ }
+  }
   files.push(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude'), 'CLAUDE.md'));
   for (const f of files) {
     let text;

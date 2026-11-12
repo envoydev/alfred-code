@@ -683,3 +683,31 @@ test('U25: a redirected group or subshell is a copy', () => {
     '{ cat big.html; } >&2', '{ echo a; cat big.html; } 2> err.txt', '{ cat big.html; } > out.txt; cat big.html', '( cat big.html ) > /dev/tty'])
     assert.equal(sh(c), 2, c);
 });
+
+// Stage 4c: the reminder reads the rule loader's view where a store exists - a rule the loader serves from
+// .alfred/stack/rules (a root's in a joined child too) is named by that path, a native one by .claude/rules, and a rule
+// in neither gives no reminder.
+test('4c read guard: a store rule, a native rule, neither, and a root\'s store rule in a joined child', () => {
+  const put = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+  const JS = '---\npaths:\n  - "**/*.js"\n---\n# js\n';
+  const repo = (dir) => { put(path.join(dir, '.git', 'HEAD'), 'x'); put(path.join(dir, '.claude', 'alfred-code.stamp'), 'source: test\n'); return dir; };
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'store4c-')));
+  const at = (d) => ({ cwd: d, env: { ...process.env, CLAUDE_PROJECT_DIR: d } });
+  const said = (d) => announce('cp x.js dist/app.js', sid(), READ, at(d));
+  const inStore = repo(path.join(top, 'a'));
+  put(path.join(inStore, '.alfred', 'stack', 'rules', 'javascript-conventions.md'), JS);
+  assert.match(said(inStore), /`\.alfred\/stack\/rules\/javascript-conventions\.md`/, 'a store rule by its store path');
+  const native = repo(path.join(top, 'b'));
+  put(path.join(native, '.alfred', 'stack', 'rules', 'csharp-conventions.md'), '# cs\n');
+  put(path.join(native, '.claude', 'rules', 'javascript-conventions.md'), JS);
+  assert.match(said(native), /`\.claude\/rules\/javascript-conventions\.md`/, 'a native rule by its .claude/rules path');
+  const neither = repo(path.join(top, 'c'));
+  put(path.join(neither, '.alfred', 'stack', 'rules', 'csharp-conventions.md'), '# cs\n');
+  assert.equal(said(neither), '', 'a rule in neither folder gives no reminder');
+  const root = repo(path.join(top, 'ws'));
+  const child = repo(path.join(root, 'api'));
+  put(path.join(root, '.alfred', 'workspace.json'), JSON.stringify({ parent: 'root', children: ['api'] }));
+  put(path.join(child, '.alfred', 'workspace.json'), JSON.stringify({ parent: '..' }));
+  put(path.join(root, '.alfred', 'stack', 'rules', 'javascript-conventions.md'), JS);
+  assert.match(said(child), /\.alfred\/stack\/rules\/javascript-conventions\.md/, 'a root\'s store rule reminds in a joined child');
+});
