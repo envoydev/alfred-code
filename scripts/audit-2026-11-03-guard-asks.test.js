@@ -818,3 +818,73 @@ test('run B m8: on win32 a lower-case off-list key is the same key', () => {
   assert.equal(run('win32', settings({ env: { Alfred_Code_Hooks_Off: 'docs-session' } })).status, 0, 'win32: no protective guard named');
   assert.equal(run('linux', lower).status, 0, 'linux: another key, which no hook reads');
 });
+
+// ---- Stage 4c: the rule store ------------------------------------------------------------------------------------------
+// The loader sends what .alfred/stack/rules holds, and the workspace file decides what a child inherits: a write to
+// either asks - the file tools, a filesystem server and the shell - under every stand-down. A read passes.
+const asks = (r, why, file) => {
+  assert.equal(r.status, 0, `${why}: exit\n${r.stderr}`);
+  const out = JSON.parse(r.stdout || '{}').hookSpecificOutput || {};
+  assert.equal(out.permissionDecision, 'ask', `${why}: an ask\n${r.stdout}`);
+  if (file) assert.ok(out.permissionDecisionReason.includes(file), `${why}: names ${file}\n${out.permissionDecisionReason}`);
+};
+const quiet = (r, why) => { assert.equal(r.status, 0, `${why}\n${r.stderr}`); assert.equal(r.stdout, '', `${why}: no output`); };
+const RULE = '.alfred/stack/rules/x.md';
+
+test('4c store: a file-tool write to a store rule, the store folders or the workspace file asks, naming the file', () => {
+  const p = project('store-files').write([typed('go')]);
+  p.file(RULE, '# x\n');
+  const f = path.join(p.root, RULE);
+  asks(configWrite(p, f, '# y\n'), 'Write', RULE);
+  asks(configEdit(p, f, '# x', '# y'), 'Edit');
+  asks(hook(p, 'guard-config-protection.js', { tool_name: 'MultiEdit', tool_input: { file_path: f, edits: [{ old_string: '# x', new_string: '# y' }] } }), 'MultiEdit');
+  asks(hook(p, 'guard-config-protection.js', { tool_name: 'NotebookEdit', tool_input: { notebook_path: path.join(p.root, '.alfred/stack/rules/n.ipynb'), new_source: 'x' } }), 'NotebookEdit');
+  asks(configWrite(p, path.join(p.root, '.alfred', 'workspace.json'), '{}'), 'the workspace file', '.alfred/workspace.json');
+  const parent = path.dirname(p.root);
+  asks(configWrite(p, path.join(parent, '.alfred', 'workspace.json'), '{}'), 'a parent folder\'s workspace file');
+  asks(configWrite(p, path.join(TMP, 'elsewhere', '.alfred', 'workspace.json'), '{}'), 'an unrelated folder\'s workspace file');
+  asks(configWrite(p, path.join(p.root, 'sub', '..', RULE), '# y\n'), 'a .. spelling');
+  fs.symlinkSync(path.join(p.root, '.alfred', 'stack', 'rules'), path.join(p.root, 'linked'));
+  asks(configWrite(p, path.join(p.root, 'linked', 'x.md'), '# y\n'), 'through a symlinked folder');
+  asks(configWrite(p, `${p.root}\\.alfred\\stack\\rules\\x.md`.replace(/\//g, '\\'), '# y\n'), 'a backslash spelling');
+  asks(configWrite(p, 'C:\\proj\\.alfred\\stack\\rules\\x.md', '# y\n'), 'a drive-letter path');
+  for (const other of ['.alfred/docs/x.md', 'src/rules/x.md', '.alfred/agents.json', '.alfred/stack/skills/s/SKILL.md'])
+    quiet(configWrite(p, path.join(p.root, other), 'x\n'), other);
+});
+
+test('4c store: the shell routes - a redirect, sed, tee, cp, mv, rm, a folder removal, PowerShell; a read passes', () => {
+  const p = project('store-shell').write([typed('go')]);
+  p.file(RULE, '# x\n');
+  p.file('a.md', '# a\n');
+  for (const cmd of [`echo x > ${RULE}`, `sed -i.bak 's/x/y/' ${RULE}`, `echo x | tee ${RULE}`, `cp a.md ${RULE}`, `mv a.md ${RULE}`, `rm ${RULE}`,
+    'rm -r .alfred/stack/rules', 'mv .alfred/stack/rules old', 'rm -r .alfred/stack'])
+    asks(configShell(p, cmd), cmd);
+  asks(hook(p, 'guard-config-protection.js', { tool_name: 'PowerShell', tool_input: { command: 'Set-Content .alfred\\stack\\rules\\x.md x' } }), 'PowerShell');
+  for (const cmd of [`cat ${RULE}`, `grep -n a ${RULE}`, 'rm -r .alfred', 'echo x > .alfred/docs/x.md']) quiet(configShell(p, cmd), cmd);
+});
+
+test('4c store: a filesystem server write and move ask; every stand-down still asks; Cursor gets exit 2', () => {
+  const p = project('store-gates').write([typed('go')]);
+  const f = path.join(p.root, RULE);
+  p.file(RULE, '# x\n');
+  const src = p.file('incoming.md', '# in\n');
+  asks(hook(p, 'guard-config-protection.js', { tool_name: 'mcp__files__write_file', tool_input: { path: f, content: '# y\n' } }), 'write_file');
+  asks(hook(p, 'guard-config-protection.js', { tool_name: 'mcp__files__move_file', tool_input: { source: src, destination: f } }), 'move_file');
+  for (const env of [{ ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }])
+    asks(configWrite(p, f, '# y\n', { env }), JSON.stringify(env));
+  asks(hook(p, 'guard-config-protection.js', { tool_name: 'Write', tool_input: { file_path: f, content: '# y\n' }, agent_id: 'a1', agent_type: 'general-purpose' }), 'a subagent');
+  const bare = project('store-bare').write([typed('go')]);
+  fs.rmSync(path.join(bare.root, '.claude', 'alfred-code.stamp'));
+  asks(configWrite(bare, path.join(bare.root, RULE), '# y\n'), 'a repo never set up');
+  const cursor = hook(p, 'guard-config-protection.js', { tool_name: 'Write', tool_input: { file_path: f, content: '# y\n' }, cursor_version: '1.7.0' });
+  assert.equal(cursor.status, 2, 'a Cursor payload');
+  assert.equal(cursor.stdout, '');
+  assert.match(cursor.stderr, /hand this edit to the user: .*\.alfred\/stack\/rules\/x\.md is a project rule source/);
+  const both = configShell(p, `echo '{"disableAllHooks": true}' > .claude/settings.json && echo x > ${RULE}`);
+  assert.equal(both.status, 2, 'a guard switch-off is the first check\'s denial');
+  assert.match(both.stderr, GUARD_OFF);
+  const file = spawned('file-guards.js', { session_id: S, cwd: p.root, transcript_path: p.tp, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: f, content: '# y\n' } }, { env: p.env, cwd: p.root });
+  asks(file, 'the file dispatcher');
+  const sh = spawned('shell-guards.js', { session_id: S, cwd: p.root, transcript_path: p.tp, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: `echo x > ${RULE}` } }, { env: p.env, cwd: p.root });
+  asks(sh, 'the shell dispatcher');
+});

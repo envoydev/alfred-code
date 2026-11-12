@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // guard-config-protection.js - PreToolUse (Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor, and a filesystem
 // server's write_file / edit_file / move_file under any registration name - SYS-02, below).
-// One check: a write that switches a PROTECTIVE guard off asks the user, on every route and under every stand-down
-// (SYS-01, below). The lint-config judge that shared this file - a change to an existing lint, format or strictness
-// config, and the CONFIG-EDIT-ALLOW receipt that opened one - left in complexity stage 1 (B11): 0 fires in 442 sessions.
+// Two checks, on every route and under every stand-down: a write that switches a PROTECTIVE guard off asks the user
+// (SYS-01, below), and so does a write to a project rule source or the workspace file (THE RULE STORE, below). The
+// lint-config judge that shared this file - a change to an existing lint, format or strictness config, and the
+// CONFIG-EDIT-ALLOW receipt that opened one - left in complexity stage 1 (B11): 0 fires in 442 sessions.
 // So `guard-config-protection` in the hooks off-list, and the old ALFRED_CODE_CONFIG_PROTECT=0, switch nothing off.
 'use strict';
 const fs = require('fs');
@@ -750,13 +751,28 @@ function removedCore(abs) {
   }
   return null;
 }
-function guardOffShell() {
-  if (!shell) return null;
+// The command and its scan, read once for both checks; null when there is no shell reader or nothing to read.
+let scanned;
+function shellScan() {
+  if (scanned !== undefined) return scanned;
   let command = String((payload.tool_input || {}).command || '');
   if (/^PowerShell$/i.test(String(payload.tool_name || ''))) command = command.replace(/\\/g, '/');
-  if (!command.trim()) return null;
-  let scan;
-  try { scan = shell.scanShell(command, { cwd: CWD, landing: true }); } catch { return null; }
+  try { scanned = shell && command.trim() ? { command, scan: shell.scanShell(command, { cwd: CWD, landing: true }) } : null; } catch { scanned = null; }
+  return scanned;
+}
+// A word as the shell resolves it where target t stands; null when the shell computes it.
+function wordAt(scan, t, word) {
+  const anchor = shell.anchorAt(scan.cds, t.index, CWD, (w) => nativePath(shell.unquote(w)));
+  const raw = scan.expandVars(String(word || ''), t.index);
+  if (!raw || shell.isVar(raw) || /[$`]/.test(raw)) return null;
+  const spelled = nativePath(raw.replace(/^~(?=[\\/])/, HOME_DIR || '~'));
+  if (anchor === null && !path.isAbsolute(spelled)) return null;
+  return path.resolve(anchor || CWD, spelled);
+}
+function guardOffShell() {
+  const read = shellScan();
+  if (!read) return null;
+  const { command, scan } = read;
   let carriedTexts = [];
   try { carriedTexts = shell.carriedScripts(command, { cwd: CWD }).map((sc) => sc.text); } catch { carriedTexts = []; }
   const cliOff = pluginCliOff([command, ...carriedTexts]);
@@ -785,15 +801,7 @@ function guardOffShell() {
   };
   const done = new Set();
   for (const t of scan.targets) {
-    const anchor = shell.anchorAt(scan.cds, t.index, CWD, norm);
-    // a word as the shell resolves it where this step stands; null when the shell computes it
-    const resolveWord = (word) => {
-      const raw = scan.expandVars(String(word || ''), t.index);
-      if (!raw || shell.isVar(raw) || /[$`]/.test(raw)) return null;
-      const spelled = nativePath(raw.replace(/^~(?=[\\/])/, HOME_DIR || '~'));
-      if (anchor === null && !path.isAbsolute(spelled)) return null;
-      return path.resolve(anchor || CWD, spelled);
-    };
+    const resolveWord = (word) => wordAt(scan, t, word);
     const verb = String(t.verb || '').toLowerCase();
     if (t.verb === 'rm' || /^a move OUT/.test(String(t.what || ''))) {
       // a removal switches no guard off, but a settings file that enables the core takes its key with it
@@ -883,5 +891,34 @@ function guardOffDenial(off) {
       : shell && shell.isShellTool(payload.tool_name) ? guardOffShell() : guardOffFile();
   } catch { switched = null; /* a judge that throws passes the call: the guard fails open */ }
   if (switched) guardOffDenial(switched);
+}
+
+// ---- THE RULE STORE (workspace stage 4c) -------------------------------------------------------------------------------
+// The rule loader sends what <project>/.alfred/stack/rules holds, and .alfred/workspace.json decides what a child inherits,
+// so a write to a rule file, the rules or stack folder itself (an rm -r or a mv of either takes every rule out) or a workspace
+// file asks the user - the path's shape decides, as spelled and as resolved, and a removal of .alfred whole is not this
+// check's (it is the data root). A read writes nothing and passes. Cursor's preToolUse does not enforce an ask: exit 2 there.
+const STORE_RE = /[\\/]\.alfred[\\/](?:stack(?:[\\/]rules(?:[\\/][^\\/]+)?)?|workspace\.json)$/i;
+function storeWrite() {
+  const ti = payload.tool_input || {};
+  const name = String(payload.tool_name || '');
+  const read = !FS_WRITE_TOOL.test(name) && shell && shell.isShellTool(name) ? shellScan() : null;
+  const targets = FS_WRITE_TOOL.test(name) ? [ti.path, ti.source, ti.destination].map(fsPath)
+    : read ? read.scan.targets.map((t) => wordAt(read.scan, t, t.raw))
+      : [ti.file_path, ti.notebook_path].map((t) => (typeof t === 'string' && t ? resolveIn(t) : null));
+  const hit = targets.find((t) => t && (STORE_RE.test(t) || STORE_RE.test(real(t))));
+  return hit ? shownAs(hit) : null;
+}
+{
+  let file = null;
+  try { file = storeWrite(); } catch { file = null; /* fails open */ }
+  if (file) {
+    let cursor = false;
+    try { cursor = require('./hook-prelude.js').cursorHost(payload); } catch { cursor = typeof payload.cursor_version === 'string'; }
+    if (cursor) { process.stderr.write(`hand this edit to the user: ${file} is a project rule source\n`); process.exit(2); }
+    const reason = `${file} is a project rule source (or the workspace file): confirm this write, or make the change with /alfred-code:configure`;
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } }));
+    process.exit(0);
+  }
 }
 
