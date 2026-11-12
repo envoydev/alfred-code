@@ -458,5 +458,6 @@ test('4c surface: the status floor counts the rules the loader sends, a root\'s 
     write(root, { '.alfred/workspace.json': JSON.stringify({ parent: 'root', children: ['api'] }) });
     write(path.join(root, 'api'), { '.git/HEAD': 'x', '.claude/alfred-code.stamp': 'source: test\n', '.alfred/workspace.json': JSON.stringify({ parent: '..' }) });
     const child = surface(path.join(root, 'api'), { configDir: fx.acct, inventory: INVENTORY, home: fx.root });
-    assert.ok(rowsAt(child, 'session-start').some((r) => r.source === path.join('..', '.alfred', 'stack', 'rules', 'alfred-security.md')), 'a root\'s store rule counts in a joined child');
+    const rows = rowsAt(child, 'session-start').map((r) => r.source);   // posix on every OS
+    assert.ok(rows.includes('../.alfred/stack/rules/alfred-security.md'), `a root's store rule counts in a joined child: ${JSON.stringify(rows)}`);
 });
