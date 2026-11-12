@@ -69,7 +69,7 @@ test('links: homeOf - the store where the kind is linkable, .claude where git se
     assert.strictEqual(links.fileOf('skills', 'x'), 'x');
 });
 
-test('links: a skill is a directory link and an agent a file link, each resolving to the store; a second run changes nothing', () =>
+test('links: a skill is a directory link and an agent a file link, each resolving to the store; a second run changes nothing', { skip: process.platform === 'win32' && 'the win32 shape (a junction and a copy) is the next test' }, () =>
 {
     const p = store(fresh(), { skills: ['a'], agents: ['x'] });
     const { record, log } = sync(p, { want: want(['a'], ['x']) });
