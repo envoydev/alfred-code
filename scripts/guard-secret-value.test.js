@@ -263,6 +263,17 @@ test('guard-secret-value: a malformed cwd never crashes the gate', () => {
   assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: `cat ${rel}` }, cwd: { a: 1 }, session_id: 'suite' })), REFUSED, 'an object cwd');
 });
 
+// Git Bash drops a backslash before an ordinary letter, so `.claude\settings-secret.json` reads as one odd name - but on
+// Windows it is the path the model meant, and the guard reads the word as written too (the gate's Windows leg of
+// 2026-11-12: the rewritten shell half kept only a drive or UNC path's backslashes).
+test('guard-secret-value: on Windows a relative path written with backslashes still names the credential file', { skip: process.platform !== 'win32' }, () => {
+  const call = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd: ROOT, session_id: 'suite' }));
+  assert.equal(call('cat .claude\\settings-secret.json'), REFUSED, 'a bare word');
+  assert.equal(call('cat ".claude\\settings-secret.json"'), REFUSED, 'a double-quoted word');
+  assert.equal(call('grep TOKEN < .claude\\settings-secret.json'), REFUSED, 'an input redirect');
+  assert.equal(call('cat .claude\\clean.json'), 0, 'a file with no credential stays readable');
+});
+
 const presence = (...args) => spawnSync(process.execPath, [HOOK, '--presence', ...args], { encoding: 'utf8' });
 
 test('guard-secret-value --presence: reports set (N chars) or absent, never a value', () => {

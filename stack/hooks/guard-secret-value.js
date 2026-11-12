@@ -1709,6 +1709,13 @@ function namedBy(entry, cwd, left) {
   if (baseOf(argv[0] || '') === pathMod.basename(__filename) && OWN_MODES.includes(argv[1])) return [];
   const words = argv.slice();
   for (const r of entry.cmd.redirs) if (r.op === '<' && r.target) words.push(shellWrites.dequote(entry.sh.text.slice(r.target.s, r.target.e)));
+  // On Windows a relative path's backslash is the separator the model meant (`.claude\settings.json`): Git Bash drops
+  // it, and the shared reader keeps it only for a drive or UNC path - so each such word is tried as written too.
+  if (process.platform === 'win32') {
+    const asWritten = (raw) => { const w = String(raw || '').replace(/^["']|["']$/g, ''); if (w.includes('\\') && !words.includes(w)) words.push(w); };
+    for (const t of entry.cmd.words) asWritten(t.raw);
+    for (const r of entry.cmd.redirs) if (r.op === '<' && r.target) asWritten(entry.sh.text.slice(r.target.s, r.target.e));
+  }
   const out = [];
   cwdAnchor = anchorFor(entry, cwd);
   for (const w of words) {
