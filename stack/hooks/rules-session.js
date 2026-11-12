@@ -177,7 +177,7 @@ function rulesFor(start, env = process.env, { host = 'claude' } = {})
     try { from = fs.realpathSync.native(from); } catch { /* as given */ }
     const out = { project: projectOf(from, prelude), hasStore: false, always: [], scoped: [], natives: [], notes: [] };
     if (!out.project) return out;
-    const chain = layout.workspaceOn({ env, projectRoot: out.project }) ? layout.workspaceChain(out.project, { env }) : null;
+    const chain = layout.workspaceChain(out.project, { env });   // the switch off freezes the chain, never cuts it (4c review I3)
     const holders = [{ root: out.project, ignores: chain ? chain.ignores : [] }, ...(chain ? chain.members : [])];
     out.hasStore = holders.some((h) => isDir(path.join(h.root, ...RULES)));
     if (!out.hasStore) return out;

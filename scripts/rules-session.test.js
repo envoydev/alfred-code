@@ -428,12 +428,14 @@ test('rulesFor: a repository never set up below a stamped root is served', () =>
     assert.strictEqual(at(path.join(lone, 'r')).project, null);
 });
 
-test('rulesFor: the workspace switched off reads the project alone', () =>
+// Review I3 (4c): a joined child holds no copy of what its parent holds, so the switch off must not strip it of those
+// rules - off freezes the chain the records name, it does not cut it.
+test('rulesFor: the workspace switched off still reads the recorded chain, so a joined child keeps its inherited rules', () =>
 {
     const t = W();
     store(t.root, 'a');
     store(t.api, 'b');
-    assert.deepStrictEqual(names(at(t.api, { env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } }).always), ['b']);
+    assert.deepStrictEqual(names(at(t.api, { env: { ...ENV, ALFRED_CODE_WORKSPACE: '0' } }).always), ['a', 'b']);
 });
 
 test('rulesFor: an unsupported glob is named and the rule\'s other globs still match', () =>

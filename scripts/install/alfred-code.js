@@ -429,7 +429,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const recorded = stampFile ? stampLayer.readLinks(stampFile) : [];
         const lineOfLink = (e) => `${e.path.split('/')[0].slice(0, -1)} ${e.path.split('/')[1].replace(/\.md$/, '')}`;
         const top = wsPrep.members.length ? wsPrep.members[wsPrep.members.length - 1].root : null;
-        const child = top || (!wsPrep.on && links.inherited(projectRoot, recorded).length) ? { top,
+        const child = top || (!wsPrep.on && links.inherited(projectRoot, recorded).length) ? { top, holders: wsPrep.members.map((m) => m.root),
             parentLines: wsPrep.parentLines || links.inherited(projectRoot, recorded).map(lineOfLink),
             linked: { skills: homes.skills.store, agents: homes.agents.store && !routes.skills, rules: true } } : null;
         const userAdds = [...args.add];
@@ -1379,8 +1379,11 @@ function childAway(ctx, kind, names, copyOne)
     const c = ctx.child;
     if (!c || !c.linked[kind]) return new Set();
     const route = ctx.routes.skills ? 'plugin' : 'copy';
-    return new Set(names.filter((n) => c.parentLines.includes(`${kind.slice(0, -1)} ${n}`)
-        || (c.top && ['added', 'present'].includes(workspace.addToStore({ root: c.top, kind, name: n, copy: (dir) => copyOne(n, dir), route, from: ctx.projectRoot, log: ctx.log })))));
+    // A rule is sent from above only out of a member's store; one its root still holds natively stays the child's (4c review I2).
+    const above = (n) => kind !== 'rules' || !c.holders.length || c.holders.some((r) => fs.existsSync(path.join(r, '.alfred', 'stack', 'rules', `${n}.md`)));
+    return new Set(names.filter((n) => (c.parentLines.includes(`${kind.slice(0, -1)} ${n}`) ? above(n)
+        : c.top && ['added', 'present'].includes(workspace.addToStore({ root: c.top, kind, name: n, copy: (dir) => copyOne(n, dir), route,
+            from: ctx.projectRoot, log: ctx.log })))));
 }
 
 // The child's own copies of what went away: an unchanged one goes, one edited since its record stays as the child's own.

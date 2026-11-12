@@ -875,6 +875,25 @@ test('child: a joined child copies no rule its parent holds', POSIX_ONLY, () =>
     assert.ok(got.rootCanary, 'the root keeps its canary');
 });
 
+test('child: a rule its root still holds natively (no store copy) stays the child\'s own', POSIX_ONLY, () =>
+{
+    // 4c review I2: a child in its own repository is never sent the root's .claude/rules, only a member's store.
+    const { outs, steps } = child([{ at: '.' }, { at: 'api', before: (ws, work) =>
+    {
+        fs.mkdirSync(claude(ws, 'rules'), { recursive: true });
+        fs.renameSync(store(ws, 'rules', 'alfred-security.md'), claude(ws, 'rules', 'alfred-security.md'));
+        joinApi(ws, work);
+    }, after: (ws) =>
+    {
+        const env = { ALFRED_CODE_WORKSPACE: '1', CLAUDE_CONFIG_DIR: path.join(path.dirname(ws), 'acct') };
+        const r = require('../stack/hooks/rules-session.js').rulesFor(path.join(ws, 'api'), env);
+        return { ...kidRules(ws), sent: [...r.always, ...r.scoped].map((x) => x.name) };
+    } }]);
+    const got = steps[1];
+    assert.ok(got.sent.includes('alfred-security'), `the child's loader sends the rule: ${outs[1]}`);
+    assert.strictEqual(got.sent.filter((n) => n === 'alfred-interaction').length, 1, outs[1]);
+});
+
 for (const tracked of [false, true])
 {
     test(`child: a library rule only the child picked goes into the ROOT's store${tracked ? ', the root\'s .claude/rules tracked by git' : ''}`, POSIX_ONLY, () =>
