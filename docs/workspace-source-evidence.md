@@ -84,4 +84,24 @@ with `g1-c.md` (`G1-CHILD`). 'Once' is counted over the request's JSON text.
 | a path rule | `yes` | `G1-PATH` absent from the first request, once in the request after the Read of `src/a.ts` |
 | the request after a compaction | `NOT RUN` | One try: the session resumed with `/compact` passed to the probe's fixed prompt gave one `SessionStart` with source `resume` and no `compact` event. The unit tests of the `compact` source stand in; one live session is the open cell |
 | the inert state | `yes` | The same root with `.alfred/stack/rules` moved aside: no `Project rules` text in the first request |
-| the rows' cost | macOS 31-34 ms, Linux 20-23 ms, Windows on the leg | Medians of 20 starts each: macOS (Node 24) `--part 1` 33.9 / 31.1 ms with and without the store, PostToolUse 32.9 / 31.1; Linux (`node:22` container) 22.3 / 20.0 and 22.7 / 19.9 |
+| the rows' cost | macOS 31-34 ms, Linux 20-23 ms, Windows 84-118 ms | Medians of 20 starts each: macOS (Node 24) `--part 1` 33.9 / 31.1 ms with and without the store, PostToolUse 32.9 / 31.1; Linux (`node:22` container) 22.3 / 20.0 and 22.7 / 19.9; Windows (two runs, below) |
+
+### Windows
+
+The same four cells and the timing in the gate's Windows 11 VM, Node 22.23.3, the rows written in shell form with the
+guest's `node.exe` spelled out, on the committed loader (6032e9d0). `claude update` run as the VM's service account
+installed 2.1.322 into that account's profile and left the user's copy at 2.1.309, so the cells ran 2.1.322 from there
+and the install was removed afterwards. The gate's `win` leg ran the loader's eight test files: 314 tests, 0 failed,
+10 skipped (the two loader tests that need POSIX permissions or links, and eight earlier Windows skips in the other
+files).
+
+| Cell | Result | What was read |
+| --- | --- | --- |
+| a main request | `yes` | `G1-ROOT-A` and `G1-ROOT-B` once each in the first request, `G1-CHILD` absent |
+| a subagent's request | `yes` | The two root markers once each in the subagent's first request |
+| a child session's request | `yes` | `G1-ROOT-A`, `G1-ROOT-B` and `G1-CHILD` once each in the first request |
+| a path rule | `yes` | `G1-PATH` absent from the first request, once in the request after the Read of `src/a.ts` |
+| the rows' cost | 84-118 ms | Two runs of 20 starts each. Run 1: `--part 1` 101.7 / 89.8 ms with and without the store, PostToolUse 118.4 / 96.4. Run 2: 90.0 / 83.6 and 89.6 / 90.2. A bare `node -e 0` start in the same VM took 89 ms, so almost all of it is the runtime's start |
+
+Run 1's PostToolUse median is over the 100 ms line the design set for the per-file row, so the choice of a row on
+every file action goes back to the owner; nothing was changed to get under it.
