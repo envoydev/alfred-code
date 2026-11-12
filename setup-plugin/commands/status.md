@@ -156,6 +156,11 @@ Under the table, paste every `rules:` line the `workspace` call of section 2 pri
 ignore of a locked rule, an unmatched glob, a skipped rule file, a rule past the last part (`not sent`), `rules-session`
 named in the off-list, and each settings file whose `disableAllHooks` is true (then no rule is sent).
 
+In a workspace, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/session-surface.js" . | sed -n '/^MEMBERS ENTERED/,$p'` and
+paste the `MEMBERS ENTERED` section it prints, as printed - each joined project the newest session entered (its rules
+sent on the first file touch under it), per actor, with its parts and characters and any rule past part 5. It prints
+nothing when the session entered none.
+
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
 every message of every session: total the bytes of the pathless rules plus the project

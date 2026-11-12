@@ -951,3 +951,12 @@ once, as before. On the plugin route the seats still ship in the plugin, so no a
   missing, edited here or behind the store.
 
 Nothing to do by hand.
+
+## after 3.10.0 - a workspace session is sent a child's own rules on the first file touch under it
+
+A session started at a workspace root, or in one member, now gets another joined member's own rules and pointers
+the first time it reads or edits a file under that member: its instructions file, rule files, docs root and
+preferences named, its always-on rules sent, and the root's rules it leaves out listed. A large member arrives over
+up to five touches. `/alfred-code:status` lists the members the newest session entered.
+
+Nothing to do by hand.

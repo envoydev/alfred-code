@@ -1909,7 +1909,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     nothing and check 73 fails a shipped one), the file's path read from the rule's project, else from its own checkout;
     once per session and actor, recorded in `<data root>/state/sessions/rules-<session>-<actor>.json` (temp file and
     rename; `compact` and `clear` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
-    (`mode: probe`, chars, parts, unsent) to the session's `hook-blocks` ledger. It reads its gates through the prelude
+    (`mode: probe`, chars, parts, unsent) to the session's `hook-blocks` ledger. A JOINED MEMBER (workspace stage 5): the
+    first touch of a file under a member outside the start's chain (`layout.memberOf`; a grandchild brings its parent
+    first) sends that member's block - `Project <T>, part <k>`, a head naming its AGENTS.md (else CLAUDE.md), its
+    `.claude/rules` files, docs root, preferences and the start's always-on rules it leaves out, then its own always-on
+    rules, largest first, a same-named one headed as replacing the workspace's - one part per touch, at most five. Each
+    part is claimed by the exclusive marker `rules-<session>-<actor>-m-<sha256(rel) 12>-<k>` beside the record (first line
+    `/ <T> <chars> <session> <actor>`, an optional `/ not sent:` line, then the item names), so parallel calls send it
+    once; a marker found empty is another call mid-claim and prints nothing, an unwritable folder sends the part
+    unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`
+    and `clear` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
+    record as `<holder key>/<name>`, and the blocks and path rules of one call share one 9,500-character room (a rule
+    that does not fit waits for the next touch). One `member-push` row per part (member, part, chars, unsent, tool). A
+    Cursor payload gets the same text in `additional_context`; `session-surface.js` lists the members the newest session
+    entered (`MEMBERS ENTERED`) from the markers' first lines. It reads its gates through the prelude
     (since stage 4c it is not switchable: `hook-prelude.js UNSWITCHABLE` keeps it on under the off-list and `minimal`, and
     `selection.LOCKED_HOOKS` holds it and the config guard on in every answered selection - a None turns every other hook
     off, and the read-back still says `hook none`) and two itself: no `.alfred/stack/rules` in the

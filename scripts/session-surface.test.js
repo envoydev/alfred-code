@@ -461,3 +461,55 @@ test('4c surface: the status floor counts the rules the loader sends, a root\'s 
     const rows = rowsAt(child, 'session-start').map((r) => r.source);   // posix on every OS
     assert.ok(rows.includes('../.alfred/stack/rules/alfred-security.md'), `a root's store rule counts in a joined child: ${JSON.stringify(rows)}`);
 });
+
+// ---- stage 5: the members a session entered, from the rule loader's markers ---------------------------------------------
+const K1 = 'a1b2c3d4e5f6';
+function markers(proj, list)
+{
+    const dir = path.join(proj, '.alfred', 'state', 'sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    list.forEach(([name, text], i) =>
+    {
+        const f = path.join(dir, name);
+        fs.writeFileSync(f, text);
+        const t = new Date(Date.now() - (list.length - i) * 60000);
+        fs.utimesSync(f, t, t);
+    });
+}
+const X = 'api/.alfred/stack/rules/x.md';
+const BASE_MARKS = [[`rules-s0-main-m-${K1}-1`, '/ api 100 s0 main\n#head\n'], [`rules-s1-main-m-${K1}-1`, '/ api 4200 s1 main\n#head\nown\n'],
+    [`rules-s1-main-m-${K1}-2`, `/ api 900 s1 main\n/ not sent: ${X}\nb\n`]];
+
+test('surface: the members a session entered are listed from its markers', () =>
+{
+    const fx = install();
+    markers(fx.proj, BASE_MARKS);
+    const s = fx.run();
+    assert.deepStrictEqual(s.members, [{ member: 'api', actor: 'main', parts: 2, chars: 5100, unsent: [X] }]);
+    const text = require('./session-surface.js').render(s);
+    assert.ok(text.includes('MEMBERS ENTERED\n  api  main  2 part(s), 5100 chars'), text);
+    assert.ok(text.includes(`  api  main  not sent - past part 5: ${X}`));
+});
+
+test('surface: one member entered by the session and by an agent is two rows, nothing summed', () =>
+{
+    const fx = install();
+    markers(fx.proj, [[`rules-s1-a1-m-${K1}-1`, '/ api 4200 s1 a1\n#head\n'], ...BASE_MARKS]);
+    assert.deepStrictEqual(fx.run().members.map((m) => [m.member, m.actor, m.parts, m.chars]), [['api', 'main', 2, 5100], ['api', 'a1', 1, 4200]]);
+});
+
+test('surface: a session id and an actor holding dashes are read from line 1', () =>
+{
+    const fx = install();
+    markers(fx.proj, [[`rules-a-b-c-main-m-${K1}-1`, '/ web 50 a-b-c main\n#head\n'], [`rules-a-b-c-d-m-${K1}-1`, '/ my api 300 a-b c-d\n#head\n']]);
+    assert.deepStrictEqual(fx.run().members, [{ member: 'my api', actor: 'c-d', parts: 1, chars: 300, unsent: [] }]);
+});
+
+test('surface: no marker, an unreadable marker and a marker with no first line give no row and no throw', () =>
+{
+    const fx = install();
+    assert.deepStrictEqual(fx.run().members, []);
+    markers(fx.proj, [[`rules-s1-main-m-${K1}-1`, ''], [`rules-s1-main-m-${K1}-2`, '/ api 4200\n']]);
+    fs.mkdirSync(path.join(fx.proj, '.alfred', 'state', 'sessions', `rules-s1-main-m-${K1}-3`));
+    assert.deepStrictEqual(fx.run().members, []);
+});
