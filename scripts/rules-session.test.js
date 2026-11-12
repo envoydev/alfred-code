@@ -213,17 +213,22 @@ const native = (dir, name, text = `native ${name}`) => put(path.join(dir, '.clau
 const names = (list) => list.map((r) => r.name);
 const ENV = { HOME: os.tmpdir() };
 // The standard tree: a stamped root `ws`, a joined child `ws/api`, a joined leaf `ws/api/lib`, each a repository.
-function W({ apiIgnore, libIgnore } = {})
+// `web` adds a second child `ws/web`, `lib2` a second grandchild `ws/api/lib2` (stage 5).
+function W({ apiIgnore, libIgnore, web: withWeb, lib2: withLib2 } = {})
 {
     const top = tree({ 'ws/.git/HEAD': 'x', 'ws/api/.git/HEAD': 'x', 'ws/api/lib/.git/HEAD': 'x' });
     const root = path.join(top, 'ws');
     const api = path.join(root, 'api');
     const lib = path.join(api, 'lib');
-    for (const d of [root, api, lib]) stamp(d);
-    ws(root, { parent: 'root', children: ['api'] });
-    ws(api, { parent: '..', children: ['lib'], ...(apiIgnore ? { ignore: { rules: apiIgnore } } : {}) });
+    const web = path.join(root, 'web');
+    const lib2 = path.join(api, 'lib2');
+    for (const d of [root, api, lib, ...(withWeb ? [web] : []), ...(withLib2 ? [lib2] : [])]) { put(path.join(d, '.git', 'HEAD'), 'x'); stamp(d); }
+    ws(root, { parent: 'root', children: ['api', ...(withWeb ? ['web'] : [])] });
+    ws(api, { parent: '..', children: ['lib', ...(withLib2 ? ['lib2'] : [])], ...(apiIgnore ? { ignore: { rules: apiIgnore } } : {}) });
     ws(lib, { parent: '..', ...(libIgnore ? { ignore: { rules: libIgnore } } : {}) });
-    return { top, root, api, lib };
+    if (withWeb) ws(web, { parent: '..' });
+    if (withLib2) ws(lib2, { parent: '..' });
+    return { top, root, api, lib, web, lib2 };
 }
 const at = (dir, opts = {}) => loader().rulesFor(dir, opts.env || ENV, { host: opts.host || 'claude' });
 
@@ -775,4 +780,282 @@ test('status: rules-session in the off-list prints its line, and a disableAllHoo
             assert.ok(out.split('\n').includes(`rules: disableAllHooks is true in ${f}`), `${f}\n${out}`);
     }
     finally { fs.unlinkSync(user); }
+});
+
+// ---- stage 5: a joined member's block on the first touch under it ----------------------------------------------------
+const mkey = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
+const sessionsDir = (root) => LAYOUT.statePath(root, 'sessions', '', {});
+const marker = (root, rel, k, actor = 'main', sid = SID) => path.join(sessionsDir(root), `rules-${sid}-${actor}-m-${mkey(rel)}-${k}`);
+const memberMarkers = (root) => { try { return fs.readdirSync(sessionsDir(root)).filter((f) => f.includes('-m-')); } catch { return []; } };
+const LINE1 = (t) => `Rules and data of ${t}. Binding for work under ${t}, in addition to the workspace's rules.`;
+const DONE = (t, k) => `End of project ${t}, part ${k} - complete`;
+const MORE = (t, k) => `End of project ${t}, part ${k} - more follows on the next file touch under ${t}`;
+const big = (n, mark) => `${mark}\n${'y'.repeat(99).concat('\n').repeat(Math.ceil(n / 100))}`.slice(0, n);
+function M(opts = {})
+{
+    const w = W(opts);
+    store(w.root, 'base', 'M-BASE');
+    return w;
+}
+
+test('member: nothing of a child is sent at the root\'s start', () =>
+{
+    const w = M();
+    store(w.api, 'own', 'M-API');
+    for (let k = 1; k <= 5; k++) assert.ok(!part(w.root, k).includes('M-API'), `part ${k}`);
+});
+
+test('member: the first touch under a child sends its block once, lines in order', () =>
+{
+    const w = M();
+    put(path.join(w.api, 'AGENTS.md'), 'agents');
+    native(w.api, 'gen');
+    fs.mkdirSync(path.join(w.api, '.alfred', 'docs', 'preferences'), { recursive: true });
+    store(w.api, 'own', 'M-API');
+    const text = touch(w.root, path.join(w.api, 'src', 'a.txt'));
+    assert.strictEqual(text, ['Project api, part 1', [LINE1('api'),
+        'Instructions of this project: api/AGENTS.md - Read it before working here, unless it is already in your context.',
+        'Rule files of this project: api/.claude/rules/gen.md - Read each one that is not already in your context before working here.',
+        'Docs of this project: api/.alfred/docs - read its map before designing or editing here.',
+        'Preferences of this project: api/.alfred/docs/preferences - for files under api they come before the workspace\'s.'].join('\n'),
+    '## own (api/.alfred/stack/rules/own.md)\nM-API', DONE('api', 1)].join('\n\n'));
+    assert.deepStrictEqual(fs.readFileSync(marker(w.root, 'api', 1), 'utf8').trim().split('\n'), [`/ api ${text.length} ${SID} main`, '#head', 'own']);
+    assert.strictEqual(touch(w.root, path.join(w.api, 'src', 'b.txt')), '');
+});
+
+test('member: a bare member sends the opening, line 1 and the closing only; CLAUDE.md is named when there is no AGENTS.md', () =>
+{
+    const w = M();
+    fs.mkdirSync(path.join(w.api, '.alfred', 'stack', 'rules'), { recursive: true });
+    assert.strictEqual(touch(w.root, path.join(w.api, 'a.txt')), ['Project api, part 1', LINE1('api'), DONE('api', 1)].join('\n\n'));
+    const v = M();
+    put(path.join(v.api, 'CLAUDE.md'), 'claude');
+    assert.ok(touch(v.root, path.join(v.api, 'a.txt')).includes('Instructions of this project: api/CLAUDE.md - Read it'));
+});
+
+test('member: no skill or agent is named', () =>
+{
+    const w = M();
+    put(path.join(w.api, '.alfred', 'stack', 'skills', 'x', 'SKILL.md'), 'skill');
+    put(path.join(w.api, '.alfred', 'stack', 'agents', 'y.md'), 'agent');
+    const text = touch(w.root, path.join(w.api, 'a.txt'));
+    assert.ok(text.includes('Project api, part 1') && !text.includes('SKILL.md') && !text.includes('stack/agents'), text);
+});
+
+test('member: a grandchild\'s touch sends its parent\'s block, then its own', () =>
+{
+    const w = M();
+    const text = touch(w.root, path.join(w.lib, 'a.txt'));
+    assert.strictEqual(count(text, 'Project api, part 1'), 1);
+    assert.strictEqual(count(text, 'Project api/lib, part 1'), 1);
+    assert.ok(text.indexOf('Project api, part 1') < text.indexOf('Project api/lib, part 1'));
+    assert.strictEqual(touch(w.root, path.join(w.api, 'b.txt')), '');
+});
+
+test('member: two grandchildren under one child send the child\'s block once', () =>
+{
+    const w = M({ lib2: true });
+    assert.ok(touch(w.root, path.join(w.lib, 'a.txt')).includes('Project api, part 1'));
+    const second = touch(w.root, path.join(w.lib2, 'a.txt'));
+    assert.ok(!second.includes('Project api,') && second.includes('Project api/lib2, part 1'), second);
+});
+
+test('member: a same-named rule takes the replaces heading', () =>
+{
+    const w = M();
+    store(w.api, 'base', 'M-API-BASE');
+    assert.ok(touch(w.root, path.join(w.api, 'a.txt'))
+        .includes('## base (api/.alfred/stack/rules/base.md) - replaces the workspace\'s rule of this name for files under api\nM-API-BASE'));
+});
+
+test('member: a rule the child leaves out is named on line 6, a locked one never', () =>
+{
+    const w = M({ apiIgnore: ['base', 'alfred-security'] });
+    store(w.root, 'alfred-security', 'M-SEC');
+    const text = touch(w.root, path.join(w.api, 'a.txt'));
+    assert.ok(text.includes('This project leaves out: base - do not apply them to files under api.'), text);
+});
+
+test('member: a block of two parts goes over two touches, nothing twice', () =>
+{
+    const w = M();
+    store(w.api, 'a', big(6000, 'M-A'));
+    store(w.api, 'b', big(6000, 'M-B'));
+    const one = touch(w.root, path.join(w.api, '1.txt'));
+    const two = touch(w.root, path.join(w.api, '2.txt'));
+    assert.ok(one.endsWith(MORE('api', 1)), one.slice(-120));
+    assert.ok(two.startsWith('Project api, part 2') && two.endsWith(DONE('api', 2)), two.slice(-120));
+    assert.strictEqual(touch(w.root, path.join(w.api, '3.txt')), '');
+    assert.strictEqual(count(one + two, 'M-A'), 1);
+    assert.strictEqual(count(one + two, 'M-B'), 1);
+});
+
+test('member: a rule added between two parts is sent, none twice', () =>
+{
+    const w = M();
+    store(w.api, 'a', big(6000, 'M-A'));
+    store(w.api, 'b', big(6000, 'M-B'));
+    touch(w.root, path.join(w.api, '1.txt'));
+    store(w.api, 'c', 'M-C');
+    const rest = touch(w.root, path.join(w.api, '2.txt')) + touch(w.root, path.join(w.api, '3.txt'));
+    assert.strictEqual(count(rest, 'M-B'), 1);
+    assert.strictEqual(count(rest, 'M-C'), 1);
+});
+
+test('member: part 5 with a rule left names it and stays inside the room', () =>
+{
+    const w = M();
+    for (const n of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']) store(w.api, n, big(9000, `M-${n}`));
+    const outs = [1, 2, 3, 4, 5, 6].map((k) => touch(w.root, path.join(w.api, `${k}.txt`)));
+    assert.match(outs[4], /Not sent - past part 5: api\/\.alfred\/stack\/rules\/r\d\.md/);
+    assert.ok(outs[4].length <= 9500, String(outs[4].length));
+    assert.ok(outs[4].endsWith(DONE('api', 5)));
+    assert.strictEqual(outs[5], '');
+});
+
+test('memberPart: at the room, one under, one over', () =>
+{
+    const { memberPart } = loader();
+    const room = 2000;
+    const fixed = 'Project api, part 1'.length + 2 + 'H'.length + 2 + 2 + DONE('api', 1).length;
+    const items = (n) => [{ name: '#head', text: 'H' }, { name: 'r', rel: 'api/r.md', text: 'x'.repeat(n) }];
+    for (const [n, left] of [[room - fixed, 0], [room - fixed - 1, 0], [room - fixed + 1, 1]])
+    {
+        const got = memberPart('api', items(n), null, room, `${SID} main`);
+        assert.strictEqual(got.left, left, `${n}`);
+        assert.ok(got.text.length <= room);
+    }
+});
+
+test('member: a rule larger than a part is cut at a line end and counts as sent', () =>
+{
+    const w = M();
+    store(w.api, 'huge', big(12000, 'M-HUGE'));
+    const one = touch(w.root, path.join(w.api, '1.txt'));
+    const two = touch(w.root, path.join(w.api, '2.txt'));
+    assert.ok(one.includes(LINE1('api')) && one.endsWith(MORE('api', 1)) && !one.includes('M-HUGE'), one.slice(0, 300));
+    assert.ok(two.endsWith(`(cut at 9500 characters - read api/.alfred/stack/rules/huge.md for the rest)\n\n${DONE('api', 2)}`), two.slice(-200));
+    assert.ok(two.length <= 9500);
+    assert.strictEqual(touch(w.root, path.join(w.api, '3.txt')), '');
+});
+
+test('member: a session started below the workspace root names the member from its own folder', () =>
+{
+    const w = M({ web: true });
+    store(w.web, 'own', 'M-WEB');
+    const text = touch(w.api, path.join(w.web, 'a.txt'));
+    assert.ok(text.startsWith('Project ../web, part 1'), text.slice(0, 80));
+    assert.ok(text.includes('## own (../web/.alfred/stack/rules/own.md)\nM-WEB'), text);
+});
+
+test('member: eight calls at once print part 1 exactly once', async () =>
+{
+    const w = M();
+    store(w.api, 'own', 'M-API');
+    const input = JSON.stringify({ session_id: SID, cwd: w.root, ...READ(path.join(w.api, 'a.txt')) });
+    const one = () => new Promise((resolve) =>
+    {
+        const c = spawn(process.execPath, [LOADER], { env: envFor(w.root) });
+        let out = '';
+        c.stdout.on('data', (d) => { out += d; });
+        c.on('close', () => resolve(out));
+        c.stdin.end(input);
+    });
+    const outs = await Promise.all(Array.from({ length: 8 }, one));
+    assert.strictEqual(count(outs.join(''), 'Project api, part 1'), 1);
+    assert.deepStrictEqual(memberMarkers(w.root), [path.basename(marker(w.root, 'api', 1))]);
+});
+
+test('member: a marker found empty prints nothing and makes no second marker', () =>
+{
+    const w = M();
+    put(marker(w.root, 'api', 1), '');
+    assert.strictEqual(touch(w.root, path.join(w.api, 'a.txt')), '');
+    assert.ok(!fs.existsSync(marker(w.root, 'api', 2)));
+});
+
+test('member: a marker folder that cannot be written still sends the part; no session id sends part 1 every touch', () =>
+{
+    const w = M();
+    put(sessionsDir(w.root).replace(/[\\/]$/, ''), 'not a folder');
+    for (const n of [1, 2]) assert.ok(touch(w.root, path.join(w.api, `${n}.txt`)).includes('Project api, part 1'), `touch ${n}`);
+    const v = M();
+    for (const n of [1, 2]) assert.ok(touch(v.root, path.join(v.api, `${n}.txt`), { session_id: undefined }).includes('Project api, part 1'));
+    assert.deepStrictEqual(memberMarkers(v.root), []);
+});
+
+test('member: two members in one session; the main actor and an agent each get it once', () =>
+{
+    const w = M({ web: true });
+    assert.ok(touch(w.root, path.join(w.api, 'a.txt')).includes('Project api, part 1'));
+    assert.ok(touch(w.root, path.join(w.web, 'a.txt')).includes('Project web, part 1'));
+    assert.ok(touch(w.root, path.join(w.api, 'b.txt'), { agent_id: 'agent-x1' }).includes('Project api, part 1'));
+    assert.strictEqual(touch(w.root, path.join(w.api, 'c.txt'), { agent_id: 'agent-x1' }), '');
+    assert.strictEqual(touch(w.root, path.join(w.api, 'd.txt')), '');
+});
+
+test('member: a session started in a child gets its sibling\'s block', () =>
+{
+    const w = M({ web: true });
+    assert.ok(touch(w.api, path.join(w.web, 'a.txt')).includes('Project ../web, part 1'));
+});
+
+test('member: a touch outside the workspace, under an unjoined project and under a garbage child sends nothing and writes no marker', () =>
+{
+    const w = M({ web: true });
+    const loose = path.join(w.root, 'loose');
+    put(path.join(loose, '.git', 'HEAD'), 'x');
+    stamp(loose);
+    store(loose, 'own', 'M-LOOSE');
+    fs.writeFileSync(path.join(w.web, '.alfred', 'workspace.json'), '{');
+    for (const f of [path.join(os.tmpdir(), 'a.txt'), path.join(loose, 'a.txt'), path.join(w.web, 'a.txt')])
+        assert.strictEqual(touch(w.root, f), '', f);
+    assert.deepStrictEqual(memberMarkers(w.root), []);
+});
+
+test('member: a compact and a clear start delete the markers and the block is sent again; a resume keeps them', () =>
+{
+    const w = M();
+    const send = (n) => touch(w.root, path.join(w.api, `${n}.txt`));
+    assert.ok(send(1).includes('Project api, part 1'));
+    part(w.root, 1, START('resume'));
+    assert.strictEqual(send(2), '');
+    for (const source of ['compact', 'clear'])
+    {
+        part(w.root, 1, START(source));
+        assert.deepStrictEqual(memberMarkers(w.root), [], source);
+        assert.ok(send(3).includes('Project api, part 1'), source);
+    }
+});
+
+test('member: creating a marker sweeps the rules- prefix', () =>
+{
+    const w = M();
+    const old = path.join(sessionsDir(w.root), 'rules-old-main-m-000000000000-1');
+    put(old, '/ x 1 old main\n#head\n');
+    const t = new Date(Date.now() - 8 * 24 * 3600 * 1000);
+    fs.utimesSync(old, t, t);
+    assert.ok(touch(w.root, path.join(w.api, 'a.txt')).includes('Project api, part 1'));
+    assert.ok(!fs.existsSync(old));
+});
+
+test('member: a Cursor payload prints the same text in Cursor\'s field', () =>
+{
+    const w = M();
+    store(w.api, 'own', 'M-API');
+    const claude = touch(w.root, path.join(w.api, 'a.txt'));
+    const v = M();
+    store(v.api, 'own', 'M-API');
+    const cursorRead = { hook_event_name: 'postToolUse', cursor_version: '1.7.0', conversation_id: 'conv-1', tool_name: 'Read',
+        tool_input: { file_path: path.join(v.api, 'a.txt') } };
+    assert.strictEqual(ctx(run(v.root, [], JSON.stringify({ cwd: v.root, ...cursorRead }))), claude);
+});
+
+test('member: the ledger row\'s five fields', () =>
+{
+    const w = M();
+    const text = touch(w.root, path.join(w.api, 'a.txt'));
+    const rows = fs.readFileSync(LAYOUT.statsPath(w.root, ['hook-blocks', `${SID}.jsonl`], {}), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const row = rows[rows.length - 1];
+    assert.deepStrictEqual([row.kind, row.member, row.part, row.chars, row.unsent, row.tool], ['member-push', 'api', 1, text.length, 0, 'Read']);
 });

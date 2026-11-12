@@ -3,7 +3,7 @@
 //
 // rules-session.js - the rule loader: the rules in `.alfred/stack/rules` (and each workspace member's) sent as context.
 // Five SessionStart and five SubagentStart rows (`--part 1`-`5`) each send one part of the always-on rules; one
-// PostToolUse row sends a path rule the first time a touched file matches its `paths:`. No such folder: nothing at all.
+// PostToolUse row sends a path rule the first time a touched file matches its `paths:`, and a joined member's block. No store: nothing.
 // The plugin copy yields to a copied twin by event and matcher only, never by `--part` (hook-prelude.js).
 'use strict';
 const fs = require('node:fs');
@@ -250,12 +250,55 @@ function pathPush(rules, file, sent)
         const block = `\n\n${headingOf(r)}\n${r.text}`;
         if (text.length + block.length <= PART_ROOM) { text += block; now.push(r.name); continue; }
         if (now.length) continue;
-        const tail = `\n(cut at ${PART_ROOM} characters - read ${r.rel} for the rest)`;
-        const room = PART_ROOM - text.length - tail.length;
-        const at = block.lastIndexOf('\n', room);
-        return { text: text + block.slice(0, at > 1 ? at : room) + tail, now: [r.name] };
+        return { text: text + cutTo(block, PART_ROOM - text.length, r.rel), now: [r.name] };
     }
     return { text, now };
+}
+
+// A block cut at a line end (else at the room) so it and the line naming the rest fit `room` characters.
+const cutTo = (block, room, rel, tail = `\n(cut at ${PART_ROOM} characters - read ${rel} for the rest)`, at = block.lastIndexOf('\n', room - tail.length)) =>
+    block.slice(0, at > 1 ? at : room - tail.length) + tail;
+// A joined member's block in sending order: its head (lines 1 to 6), then its own always-on rules, largest first.
+function memberBlock(m, from, held, mine, layout)
+{
+    const [T, dr, at] = [posix(from, m.root), layout.docsRootOf(m.root), (...p) => posix(from, path.join(m.root, ...p))];
+    const doc = ['AGENTS.md', 'CLAUDE.md'].find((f) => fs.existsSync(path.join(m.root, f)));
+    const gen = mdFiles(path.join(m.root, '.claude', 'rules')).map((f) => at('.claude', 'rules', f)).join(', ');
+    const [has, swap] = [[...mine.always, ...mine.scoped].map((r) => r.name).concat(mine.natives), [...held.always.map((r) => r.name), ...held.natives]];
+    const out = held.always.filter((r) => !path.relative(r.root, m.root).startsWith('..') && !has.includes(r.name)).map((r) => r.name).join(', ');
+    const head = [`Rules and data of ${T}. Binding for work under ${T}, in addition to the workspace's rules.`,
+        doc && `Instructions of this project: ${at(doc)} - Read it before working here, unless it is already in your context.`,
+        gen && `Rule files of this project: ${gen} - Read each one that is not already in your context before working here.`,
+        isDir(dr) && `Docs of this project: ${posix(from, dr)} - read its map before designing or editing here.`,
+        isDir(`${dr}/preferences`) && `Preferences of this project: ${posix(from, dr)}/preferences - for files under ${T} they come before the workspace's.`,
+        out && `This project leaves out: ${out} - do not apply them to files under ${T}.`].filter(Boolean).join('\n');
+    return [{ name: '#head', text: head }, ...mine.always.filter((r) => r.root === m.root).map((r) => ({ name: r.name, rel: r.rel,
+        text: `${headingOf(r)}${swap.includes(r.name) ? ` - replaces the workspace's rule of this name for files under ${T}` : ''}\n${r.text}` }))
+        .sort((a, b) => b.text.length - a.text.length || byName(a, b))];
+}
+
+// The next part of a member's block, claimed by the exclusive marker `<base>-<k>` (none when `base` is null), or null.
+function memberPart(T, items, base, room, who)
+{
+    let [k, marks] = [1, []];
+    for (let t; base && k <= RULE_PARTS; k++, marks = marks.concat(t.split('\n')))   // an empty marker: another call is mid-claim
+    { try { t = fs.readFileSync(`${base}-${k}`, 'utf8'); } catch { break; } if (!t) return null; }
+    const todo = items.filter((i) => !marks.includes(i.name));   // a marker line opening with '/' names no item
+    if (!todo.length || k > RULE_PARTS) return null;
+    const rest = (take) => todo.slice(take.length).map((i) => i.rel).sort().join(', ');
+    const build = (take, more, last) => [`Project ${T}, part ${k}`, ...take.map((i) => i.text), last && `Not sent - past part 5: ${rest(take)}`,
+        `End of project ${T}, part ${k} - ${more ? `more follows on the next file touch under ${T}` : 'complete'}`].filter(Boolean).join('\n\n');
+    let take = build(todo).length <= room ? todo : todo.filter((_, n) => build(todo.slice(0, n + 1), true).length <= room);
+    if (!take.length && room < PART_ROOM) return null;
+    if (!take.length) take = [{ ...todo[0], text: cutTo(todo[0].text, room - build([], true).length - 2, todo[0].rel) }];
+    const last = k === RULE_PARTS && take.length < todo.length;
+    while (last && take.length > 1 && build(take, false, true).length > room) take = take.slice(0, -1);
+    const text = build(take, !last && take.length < todo.length, last);
+    const mark = [`/ ${T} ${text.length} ${who}`, last && `/ not sent: ${rest(take)}`, ...take.map((i) => i.name), ''].filter((l) => l !== false);
+    if (base) try { fs.mkdirSync(path.dirname(base), { recursive: true }); fs.writeFileSync(`${base}-${k}`, mark.join('\n'), { flag: 'wx' }); }
+    catch (e) { if (e.code === 'EEXIST' && e.syscall === 'open') return null; }   // another call claimed it; else the part goes unrecorded
+    if (base) loadPrelude()?.sweepStale(path.dirname(base), 'rules-');
+    return { k, text, left: todo.length - take.length };
 }
 
 function main(argv = process.argv, env = process.env)
@@ -286,32 +329,39 @@ function main(argv = process.argv, env = process.env)
     const record = session && layout.statePath(rules.project, 'sessions', `rules-${session}-${actor}.json`, env);
     const say = (text) => text && process.stdout.write(JSON.stringify(cursor ? { additional_context: text }
         : { hookSpecificOutput: { hookEventName: kind, additionalContext: text } }));
+    const ledger = (row, dir = layout.statsPath(rules.project, ['hook-blocks'], env)) => { if (session) try { fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(path.join(dir, `${session}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'rules-session.js', event,
+            mode: 'probe', ...row, agent: actor })}\n`); } catch { /* the row is a probe */ } };
     if (!part)
     {
         const tool = input.tool_input || {};
         const target = tool.file_path || tool.notebook_path;
         if (typeof target !== 'string' || !target) return;
+        const file = layout.realpathOrSelf(path.resolve(input.cwd || start, target));   // as real as the roots
+        const [from, texts, who] = [layout.realpathOrSelf(path.resolve(start)), [], `${session} ${actor}`];
+        for (const m of layout.memberOf(file, start, { env })?.chain || [])
+        {
+            const [mine, T] = [rulesFor(m.root, env, { host: cursor ? 'cursor' : 'claude' }), posix(from, m.root)];
+            for (const r of [...mine.always, ...mine.scoped]) r.rel = posix(from, r.file);
+            const base = session && layout.statePath(rules.project, 'sessions', `rules-${session}-${actor}-m-${m.key}`, env);
+            const p = memberPart(T, memberBlock(m, from, rules, mine, layout), base, texts.reduce((n, t) => n - 2 - t.length, PART_ROOM), who);
+            if (p && texts.push(p.text)) ledger({ kind: 'member-push', member: T, part: p.k, chars: p.text.length, unsent: p.left, tool: input.tool_name });
+        }
         const sent = record ? recordOf(record) : [];
-        const push = pathPush(rules, layout.realpathOrSelf(path.resolve(input.cwd || start, target)), sent);   // as real as the roots
-        if (!push.now.length) return;
-        if (record) writeRecord(record, [...sent, ...push.now]);
-        return void say(push.text);
+        const push = pathPush(rules, file, sent);
+        if (record && push.now.length) writeRecord(record, [...sent, ...push.now]);
+        return void say([...texts, push.now.length && push.text].filter(Boolean).join('\n\n'));
     }
     if (['resume', 'fork'].includes(input.source)) return;
     const out = parts(rules.always, { natives: rules.natives });
-    if (part === 1 && record && ['compact', 'clear'].includes(input.source)) try { fs.unlinkSync(record); } catch { /* none yet */ }
-    if (part === 1 && session)
-    {
-        const row = { ts: new Date().toISOString(), hook: 'rules-session.js', event, mode: 'probe', kind: 'rules-push', agent: actor,
-            chars: out.parts.reduce((n, p) => n + p.length, 0), parts: out.parts.length, unsent: out.unsent.length };
-        const dir = layout.statsPath(rules.project, ['hook-blocks'], env);
-        try { fs.mkdirSync(dir, { recursive: true }); fs.appendFileSync(path.join(dir, `${session}.jsonl`), `${JSON.stringify(row)}\n`); }
-        catch { /* the row is a probe */ }
-    }
+    const stale = (f) => f === path.basename(record) || f.startsWith(`rules-${session}-${actor}-m-`);   // the record and its member markers
+    if (part === 1 && record && ['compact', 'clear'].includes(input.source))
+        try { for (const f of fs.readdirSync(path.dirname(record)).filter(stale)) fs.unlinkSync(path.join(path.dirname(record), f)); } catch { /* none yet */ }
+    if (part === 1) ledger({ kind: 'rules-push', chars: out.parts.join('').length, parts: out.parts.length, unsent: out.unsent.length });
     say(out.parts[part - 1]);
 }
 
-module.exports = { PART_ROOM, RULE_PARTS, LOCKED_RULES, NO_RULES_SEAT, render, pathsOf, pathGlob, parts, rulesFor, main };
+module.exports = { PART_ROOM, RULE_PARTS, LOCKED_RULES, NO_RULES_SEAT, render, pathsOf, pathGlob, parts, rulesFor, memberBlock, memberPart, main };
 if (require.main === module)
 {
     const prelude = loadPrelude();
