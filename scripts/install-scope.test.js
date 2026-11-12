@@ -29,7 +29,7 @@ for (const [scope, wantCliScope] of [['project', 'project'], ['user', 'user'], [
             args: ['--scope', scope],
             inspect: (repo) => ({
                 skill: exists(repo, '.claude', 'skills', 'csharp', 'SKILL.md'),
-                rule: exists(repo, '.claude', 'rules', 'markdown-docs.md'),
+                rule: fs.existsSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs')),
                 stamp: exists(repo, '.claude', 'alfred-code.stamp'),
                 settingsFile: exists(repo, '.claude', 'settings.json') ? 'settings.json' : exists(repo, '.claude', 'settings.local.json') ? 'settings.local.json' : null,
                 stampText: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
@@ -448,7 +448,7 @@ test('install-scope: at local scope a local docs path is the root the rule stamp
             fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
         },
         inspect: (repo) => ({
-            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'),
+            rule: fs.readFileSync(require('./install/copy.js').ruleAt(repo, 'alfred-docs-root'), 'utf8'),
             shared: json(repo, path.join('.claude', 'settings.json')),
             local: json(repo, path.join('.claude', 'settings.local.json')),
         }),

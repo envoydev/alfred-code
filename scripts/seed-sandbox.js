@@ -237,13 +237,13 @@ function plantOlderRoot(repo, R = 'var/data')
     const { valueHash } = require('./install/stamp.js');
     const to = path.join(repo, ...R.split('/'));
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    // An older release kept its copies in `.claude`: each stored item goes back over its link, and the store goes.
-    for (const kind of ['skills', 'agents'])
+    // An older release kept its copies in `.claude`: each stored item goes back over its link (a rule as a plain file), and the store goes.
+    for (const kind of ['skills', 'agents', 'rules'])
     {
         const store = path.join(repo, '.alfred', 'stack', kind);
         for (const n of fs.existsSync(store) ? fs.readdirSync(store) : [])
         {
-            try { fs.unlinkSync(path.join(repo, '.claude', kind, n)); } catch { /* no link there */ }
+            try { fs.unlinkSync(path.join(repo, '.claude', kind, n)); } catch { fs.mkdirSync(path.join(repo, '.claude', kind), { recursive: true }); }
             fs.renameSync(path.join(store, n), path.join(repo, '.claude', kind, n));
         }
     }

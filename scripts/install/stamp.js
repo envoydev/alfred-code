@@ -403,7 +403,7 @@ const readLinks = (file) => (lineOf(file, 'links') || []).map((s) => /^(skills\/
 function readMemberPicks(file)
 {
     const items = lineOf(file, 'member-picks');
-    return items && items.map((s) => s.split('/')).filter((p) => p.length === 2 && ['skill', 'agent'].includes(p[0]) && validItemName(p[1])).map(([c, n]) => `${c} ${n}`);
+    return items && items.map((s) => s.split('/')).filter((p) => p.length === 2 && ['skill', 'agent', 'rule'].includes(p[0]) && validItemName(p[1])).map(([c, n]) => `${c} ${n}`);
 }
 
 function readOwnEnv(file)

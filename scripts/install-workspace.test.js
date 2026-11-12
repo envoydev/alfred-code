@@ -43,8 +43,16 @@ const varsOf = (work, rel) => ((layoutLib.readDotenv(path.join(at(work, rel), '.
 const setVar = (work, rel, values) => assert.deepStrictEqual(variablesLib.set(at(work, rel), Object.entries(values).map(([k, v]) => `${k}=${v}`), { env: acct(work), log: () => {} }).refused, []);
 const effectiveOf = (work, rel) => Object.fromEntries(variablesLib.show(at(work, rel), { env: acct(work) }).map((r) => [r.key, r.value]));
 const excludesOf = (work, rel) => (json(path.join(at(work, rel), '.claude', 'settings.local.json')) || {}).claudeMdExcludes || [];
-const ruleGlobs = (work, rel) => (lineOf(stampOf(work, rel), 'library-rules') || '').split(',').filter(Boolean).map((e) => e.split('=')[0])
-    .map((n) => wsLib.excludeGlobs([path.join(at(work, rel), '.claude', 'rules', `${n}.md`)], process.platform)[0]);
+// Workspace stage 4c: a moved folder's library rules are sent by the loader and get no row; a generated rule in its
+// .claude/rules still does, so these cases plant one and read the rows of what sits natively there.
+const { GENERATED_FILES } = require('./install/selection.js');
+const plantGen = (work, rel, name = 'alfred-project-awareness') =>
+{
+    fs.mkdirSync(path.join(at(work, rel), '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(at(work, rel), '.claude', 'rules', `${name}.md`), `# ${name}\n`);
+};
+const ruleGlobs = (work, rel) => (fs.existsSync(path.join(at(work, rel), '.claude', 'rules')) ? fs.readdirSync(path.join(at(work, rel), '.claude', 'rules')) : [])
+    .filter((f) => GENERATED_FILES.has(f.replace(/\.md$/, ''))).map((f) => wsLib.excludeGlobs([path.join(at(work, rel), '.claude', 'rules', f)], process.platform)[0]);
 const setEnv = (work, rel, file, values) =>
 {
     const f = path.join(at(work, rel), '.claude', file);
@@ -133,14 +141,14 @@ function treeHash(dir, skip = [])
 test('a child install writes its excludes and keeps the root\'s set (AC1)', POSIX_ONLY, () =>
 {
     const r = scenario([
-        { at: '.', after: (work) => join(work, 'api') },
+        { at: '.', after: (work) => { join(work, 'api'); plantGen(work, '.'); } },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => ({
             want: ruleGlobs(work, '.'), excludes: excludesOf(work, 'api'), own: lineOf(stampOf(work, 'api'), 'own-picks'),
             js: hasSkill(work, 'api', 'javascript'), npm: hasSkill(work, 'api', OWN),
         }) },
     ]);
     const got = r.steps[1];
-    assert.ok(got.want.length > 0, 'the root holds rule copies');
+    assert.ok(got.want.length > 0, 'the root holds a generated rule');
     for (const g of got.want) assert.ok(got.excludes.includes(g), `no exclude for ${g}:\n${got.excludes.join('\n')}`);
     assert.strictEqual(got.own, `skill/${OWN}`, r.outs[1]);
     assert.ok(got.js && got.npm);
@@ -211,6 +219,7 @@ test('the user\'s own exclude entry, settings key and .mcp.json server survive i
         { at: '.', after: (work) =>
         {
             join(work, 'api');
+            plantGen(work, '.');
             fs.mkdirSync(path.join(at(work, 'api'), '.claude'), { recursive: true });
             fs.writeFileSync(path.join(at(work, 'api'), '.claude', 'settings.local.json'), JSON.stringify({ claudeMdExcludes: ['/my/own/**'], myKey: 1 }));
             fs.writeFileSync(path.join(at(work, 'api'), '.mcp.json'), JSON.stringify({ mcpServers: { mine: { command: 'mine' } } }));
@@ -756,9 +765,9 @@ test('a child-only update\'s yes (--add) for an item the parent lacks lands in o
 test('a nested project with parent none still gets the root\'s excludes, and a child also gets an unlinked stamped intermediate folder\'s excludes (AC27)', POSIX_ONLY, () =>
 {
     const r = scenario([
-        { at: '.', after: (work) => { edit(work, 'web', (m) => wsLib.setParent(m, 'none')); join(work, 'api/tool'); } },
+        { at: '.', after: (work) => { edit(work, 'web', (m) => wsLib.setParent(m, 'none')); join(work, 'api/tool'); plantGen(work, '.'); } },
         { at: 'web', after: (work) => ({ want: ruleGlobs(work, '.'), got: excludesOf(work, 'web') }) },
-        { at: 'api' },
+        { at: 'api', after: (work) => plantGen(work, 'api', 'alfred-architecture') },
         { at: 'api/tool', after: (work) => ({ want: [...ruleGlobs(work, '.'), ...ruleGlobs(work, 'api')], got: excludesOf(work, 'api/tool') }) },
     ]);
     for (const i of [1, 3])
@@ -1308,18 +1317,19 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
                 const data = json(f) || {};
                 data.claudeMdExcludes = [...(data.claudeMdExcludes || []), HAND];
                 fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
+                plantGen(work, '.');
             }, after: (work) => ({
                 want: ruleGlobs(work, '.'), api: excludesOf(work, 'api'), tool: excludesOf(work, 'api/tool'), web: excludesOf(work, 'web'),
                 rows: ledgerRows(work, 'api'),
             }) },
-            update('.', { args: ['--add', NEW_RULE], after: (work) => { keep.api = claudeHash(work, 'api'); keep.tool = claudeHash(work, 'api/tool'); return { want: ruleGlobs(work, '.'), api: excludesOf(work, 'api') }; } }),
+            update('.', { args: ['--add', NEW_RULE], before: (work) => plantGen(work, '.', 'alfred-architecture'), after: (work) => { keep.api = claudeHash(work, 'api'); keep.tool = claudeHash(work, 'api/tool'); return { want: ruleGlobs(work, '.'), api: excludesOf(work, 'api') }; } }),
             update('.', { after: (work) => ({ api: claudeHash(work, 'api') === keep.api, tool: claudeHash(work, 'api/tool') === keep.tool }) }),
             update('api', { after: (work) => ({ api: excludesOf(work, 'api'), rows: ledgerRows(work, 'api') }) }),
             update('.', { before: (work) => { keep.plan = claudeHash(work, 'api'); }, args: (work) => ['--print-plan', '--plan-out', path.join(work, 'plan.json')],
                 after: (work) => ({ api: claudeHash(work, 'api') === keep.plan }) }),
         ]);
         const root = r.steps[3];
-        assert.ok(root.want.length > 0, 'the root holds rule copies');
+        assert.ok(root.want.length > 0, 'the root holds a generated rule');
         for (const [rel, list] of [['api', root.api], ['api/tool', root.tool], ['web', root.web]])
             for (const g of root.want) assert.ok(list.includes(g), `${rel}: no exclude for ${g}\n${r.outs[3]}`);
         assert.ok(root.api.includes(HAND), 'the hand-added member is kept');

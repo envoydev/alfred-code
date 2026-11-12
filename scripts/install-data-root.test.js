@@ -46,7 +46,7 @@ const look = (repo) =>
         env: json(path.join(repo, '.claude', 'settings.json')).env || {},
         local: json(path.join(repo, '.claude', 'settings.local.json')).env || {},
         stamp: read(path.join(repo, '.claude', 'alfred-code.stamp')) || '',
-        rule: (/This install's root: `([^`]*)`/.exec(read(path.join(repo, '.claude', 'rules', 'alfred-docs-root.md')) || '') || [])[1],
+        rule: (/This install's root: `([^`]*)`/.exec(read(require('./install/copy.js').ruleAt(repo, 'alfred-docs-root')) || '') || [])[1],
         ignore: read(path.join(repo, '.alfred', '.gitignore')),
         has: (rel) => files.has(rel) || files.has(`${rel}/`),
         text: (rel) => files.get(rel) ?? null,
@@ -77,6 +77,9 @@ function twoZeroLayout(repo)
         .replace(/(^|,)\.variables:/gm, '$1settings.json:')
         .split('\n').filter((l) => !/^data-/.test(l)).join('\n');
     fs.writeFileSync(stampFile, stamp);
+    // A 2.0.0 install held its rules in .claude/rules (workspace stage 4c moved them into the store this removes).
+    const store = path.join(repo, '.alfred', 'stack', 'rules');
+    for (const f of fs.existsSync(store) ? fs.readdirSync(store) : []) put(path.join(claude, 'rules', f), read(path.join(store, f)));
     fs.rmSync(path.join(repo, '.alfred'), { recursive: true, force: true });
     put(path.join(repo, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
     put(path.join(repo, '.serena', 'project.yml'), 'project_name: repo\nlanguage_servers: ["typescript"]\n');
@@ -264,7 +267,7 @@ test('M11 a data move re-stamps every generated rule that names the docs root - 
             if (i === 0)
             {
                 plantR(repo);
-                const rule = path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
+                const rule = require('./install/copy.js').ruleAt(repo, 'alfred-docs-root');
                 fs.writeFileSync(rule, read(rule).split('.alfred/docs').join('var/data/docs'));   // as the older run stamped it
                 writePointers(repo, 'var/data/docs');
             }
@@ -286,7 +289,7 @@ test('M11 a data move re-stamps every generated rule that names the docs root - 
         {
             if (i !== 0) return null;
             twoZeroLayout(repo);
-            const rule = path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
+            const rule = require('./install/copy.js').ruleAt(repo, 'alfred-docs-root');
             fs.writeFileSync(rule, read(rule).split('.alfred/docs').join('.claude/docs'));   // as 2.0.0 stamped it
             writePointers(repo, '.claude/docs');
             return null;

@@ -246,7 +246,7 @@ test('a fresh install records alfred-docs-root\'s hash AFTER the placeholder sub
     const { result } = seedRun('install', 'skill markdown-style\nrule alfred-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
         inspect: (repo) =>
         {
-            const rulePath = path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
+            const rulePath = require('./install/copy.js').ruleAt(repo, 'alfred-docs-root');
             const content = fs.readFileSync(rulePath, 'utf8');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             const row = check({ project: repo, source: ROOT }).rows.find((r) => r.name === 'alfred-docs-root');
@@ -277,7 +277,7 @@ test('the copy-route rule carries no MCP tool name and is hashed as written - it
         env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
         inspect: (repo) =>
         {
-            const rulePath = path.join(repo, '.claude', 'rules', 'alfred-navigation.md');
+            const rulePath = require('./install/copy.js').ruleAt(repo, 'alfred-navigation');
             const content = fs.readFileSync(rulePath, 'utf8');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             return {
@@ -299,7 +299,7 @@ test('the copy-route rule carries no MCP tool name and is hashed as written - it
 test('alfred-docs-root is logged as rewritten only when its content changed', POSIX_ONLY, () =>
 {
     // The docs root is always .alfred/docs, so the changed content here is a rule left naming another root.
-    const rulePath = (repo) => path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
+    const rulePath = (repo) => require('./install/copy.js').ruleAt(repo, 'alfred-docs-root');
     const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
         args: [[], [], []],
         each: (repo, i) =>
@@ -325,7 +325,7 @@ test('alfred-docs-root is logged as rewritten only when its content changed', PO
 test('copy route: a rule is logged as rewritten only when its content changed (R111)', POSIX_ONLY, () =>
 {
     const env = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    const rule = (repo) => path.join(repo, '.claude', 'rules', 'alfred-navigation.md');
+    const rule = (repo) => require('./install/copy.js').ruleAt(repo, 'alfred-navigation');
     const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nmcp serena\nmcp context7\nmcp memory\n', {
         env,
         each: (repo, i) => { const text = fs.readFileSync(rule(repo), 'utf8'); if (i === 1) fs.appendFileSync(rule(repo), '\na hand edit\n'); return text; },
@@ -408,7 +408,7 @@ test('library-check on the full copy route: a fresh install is clean, an edited 
             fs.appendFileSync(path.join(newer, 'stack', 'rules', 'alfred-quality-gates.md'), '\n- a line a newer release added.\n');
             out.newer = states(newer);
             // A really edited copy.
-            fs.appendFileSync(path.join(repo, '.claude', 'rules', 'alfred-navigation.md'), '\nedited here\n');
+            fs.appendFileSync(require('./install/copy.js').ruleAt(repo, 'alfred-navigation'), '\nedited here\n');
             out.edited = states(ROOT);
             return out;
         },

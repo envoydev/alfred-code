@@ -849,3 +849,95 @@ test('copy: ruleAt names the store file when it exists, else the .claude/rules o
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// Workspace stage 4c: a joined child holds no copy of a rule its parent holds; its own rule pick goes to the root's store.
+const RULE_PICK = 'csharp-conventions';
+const kidRules = (ws) => ({ kidStore: ruleNames(store(path.join(ws, 'api'), 'rules')).sort(), kidNative: ruleNames(claude(path.join(ws, 'api'), 'rules')).sort(),
+    rootStore: ruleNames(store(ws, 'rules')).sort(), root: fs.readFileSync(stampOf(ws), 'utf8') });
+const trackRules = (ws) =>
+{
+    gitInit(ws);
+    fs.writeFileSync(path.join(ws, '.gitignore'), '.claude/*\n!.claude/rules/\n.alfred/\napi/\n');
+    fs.mkdirSync(claude(ws, 'rules'), { recursive: true });
+    fs.writeFileSync(claude(ws, 'rules', 'team.md'), '# the team rule\n');
+    require('./install/runtime.js').execCommand('git', ['-C', ws, 'add', '-f', '.gitignore', '.claude/rules/team.md']);
+    assert.strictEqual(require('./install/links.js').gitState(claude(ws, 'rules')), 'visible', 'the fixture puts .claude/rules in git\'s view');
+};
+
+test('child: a joined child copies no rule its parent holds', POSIX_ONLY, () =>
+{
+    const { outs, steps } = child([{ at: '.' }, { at: 'api', before: joinApi, after: kidRules }]);
+    const got = steps[1];
+    assert.ok(got.rootStore.includes('alfred-security') && got.rootStore.includes('alfred-docs-root'), outs[0]);
+    assert.deepStrictEqual(got.kidStore, [], outs[1]);
+    assert.deepStrictEqual(got.kidNative.filter((n) => got.rootStore.includes(n)), [], outs[1]);
+});
+
+for (const tracked of [false, true])
+{
+    test(`child: a library rule only the child picked goes into the ROOT's store${tracked ? ', the root\'s .claude/rules tracked by git' : ''}`, POSIX_ONLY, () =>
+    {
+        const { outs, steps } = child([
+            { at: '.' },
+            { at: 'api', sel: `${KID_SEL}rule ${RULE_PICK}\n`, before: (ws, work) => { if (tracked) trackRules(ws); joinApi(ws, work); }, after: kidRules },
+            { at: '.', act: 'update', after: kidRules },
+        ]);
+        const got = steps[1];
+        assert.ok(got.rootStore.includes(RULE_PICK), outs[1]);
+        assert.ok(!got.kidStore.includes(RULE_PICK) && !got.kidNative.includes(RULE_PICK), outs[1]);
+        assert.match(lineOf(got.root, 'member-picks'), new RegExp(`(^|,)rule/${RULE_PICK}(,|$)`));
+        assert.match(lineOf(got.root, 'library-rules'), new RegExp(`(^|,)${RULE_PICK}=`));
+        assert.ok(steps[2].rootStore.includes(RULE_PICK), `the root's next run keeps the member's rule: ${outs[2]}`);
+        assert.strictEqual(lineOf(steps[2].root, 'member-picks'), lineOf(got.root, 'member-picks'));
+    });
+}
+
+test('child: a locked root leaves the child\'s own rule pick in the child\'s store this run', POSIX_ONLY, () =>
+{
+    const { outs, steps } = child([
+        { at: '.' },
+        { at: 'api', sel: `${KID_SEL}rule ${RULE_PICK}\n`, before: (ws, work) => { joinApi(ws, work); fs.writeFileSync(path.join(ws, '.alfred', 'workspace.lock'), String(process.pid)); },
+            after: (ws) => { fs.rmSync(path.join(ws, '.alfred', 'workspace.lock'), { force: true }); return kidRules(ws); } },
+    ]);
+    assert.match(outs[1], new RegExp(`!! store: \\.\\. is locked - rules/${RULE_PICK} is added at the next run`));
+    assert.ok(steps[1].kidStore.includes(RULE_PICK), outs[1]);
+    assert.ok(!steps[1].rootStore.includes(RULE_PICK));
+});
+
+test('child: an inherited rule copy at its stamped hash is dropped at the update; an edited one moves into the child\'s own store', POSIX_ONLY, () =>
+{
+    const { outs, steps } = child([
+        { at: '.' },
+        { at: 'api', before: joinApi },
+        { at: 'api', act: 'update', before: (ws) =>
+        {
+            // The child laid in the old shape: two inherited copies in .claude/rules, recorded, one edited since.
+            const kid = path.join(ws, 'api');
+            fs.mkdirSync(claude(kid, 'rules'), { recursive: true });
+            const add = ['alfred-security', 'alfred-interaction'].map((n) => { fs.copyFileSync(store(ws, 'rules', `${n}.md`), claude(kid, 'rules', `${n}.md`)); return `${n}=${hashItem(claude(kid, 'rules', `${n}.md`))}`; });
+            const text = fs.readFileSync(stampOf(kid), 'utf8');
+            fs.writeFileSync(stampOf(kid), /^library-rules:/m.test(text) ? text.replace(/^library-rules: ?(.*)$/m, (l, v) => `library-rules: ${[v, ...add].filter(Boolean).join(',')}`) : `${text}library-rules: ${add.join(',')}\n`);
+            fs.appendFileSync(claude(kid, 'rules', 'alfred-interaction.md'), '\nedited here\n');
+        }, after: (ws) => ({ ...kidRules(ws), text: fs.readFileSync(store(path.join(ws, 'api'), 'rules', 'alfred-interaction.md'), 'utf8'), rootText: fs.readFileSync(store(ws, 'rules', 'alfred-interaction.md'), 'utf8') }) },
+    ]);
+    const got = steps[2];
+    assert.deepStrictEqual(got.kidStore, ['alfred-interaction'], outs[2]);
+    assert.ok(!got.kidNative.includes('alfred-security') && !got.kidNative.includes('alfred-interaction'), outs[2]);
+    assert.ok(got.text.includes('edited here') && !got.rootText.includes('edited here'));
+    assert.match(outs[2], /kept: alfred-interaction\.md - .*edited here since/, outs[2]);
+});
+
+test('child: the two rendered rules stay the child\'s own when its docs root differs from the root\'s', POSIX_ONLY, () =>
+{
+    const { outs, steps } = child([
+        { at: '.' },
+        { at: 'api', before: (ws, work) =>
+        {
+            joinApi(ws, work);
+            const f = store(ws, 'rules', 'alfred-docs-root.md');
+            fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/This install's root: `[^`]*`/, 'This install\'s root: `elsewhere/docs`'));
+        }, after: (ws) => ({ ...kidRules(ws), text: fs.readFileSync(store(path.join(ws, 'api'), 'rules', 'alfred-docs-root.md'), 'utf8') }) },
+    ]);
+    assert.deepStrictEqual(steps[1].kidStore, ['alfred-docs-root', 'alfred-preferences'], outs[1]);
+    assert.ok(!steps[1].text.includes('elsewhere/docs') && /This install's root: `[^`_]+`/.test(steps[1].text), steps[1].text);
+});

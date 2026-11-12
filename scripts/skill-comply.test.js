@@ -771,7 +771,7 @@ test('replay --live against a stub claude installs, scaffolds, records and grade
         assert.match(r.out, /csharp \(level plain\) - 3 of 3 graded steps followed, 1 skipped offline/);
         const proj = path.join(out, 'csharp', 'plain', 'project');
         assert.ok(fs.existsSync(path.join(proj, '.claude', 'skills', 'csharp', 'SKILL.md')), 'the copy route copied the skill under test');
-        assert.ok(fs.existsSync(path.join(proj, '.claude', 'rules', 'csharp-conventions.md')), 'and the rule carrying its load contract');
+        assert.ok(fs.existsSync(require('./install/copy.js').ruleAt(proj, 'csharp-conventions')), 'and the rule carrying its load contract');
         assert.strictEqual(execFileSync('git', ['-C', proj, 'log', '--format=%s'], { encoding: 'utf8' }).trim(), 'baseline');
         assert.strictEqual(execFileSync('git', ['-C', proj, 'status', '--porcelain'], { encoding: 'utf8' }).trim(), '');
         assert.strictEqual(fs.readFileSync(path.join(out, 'csharp', 'plain', 'transcript.jsonl'), 'utf8'), fs.readFileSync(canned, 'utf8'));

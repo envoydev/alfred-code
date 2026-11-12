@@ -405,9 +405,9 @@ test('stamp: links and member-picks round trip; a bad path, kind or name is drop
     assert.deepStrictEqual(stamp.readLinks(file), [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x.md', kind: 'copy', hash: h }]);
     assert.deepStrictEqual(stamp.readMemberPicks(file), ['agent y', 'skill b']);
     stamp.markLine(file, 'links', `skills/a=symlink,skills/../x=symlink,agents/y=symlink,skills/b=hard,agents/z.md=copy,skills/C=junction,skills/d=junction@${h}`);
-    stamp.markLine(file, 'member-picks', 'skill/ok,rule/r,skill/../x,agent/Bad,skill');
+    stamp.markLine(file, 'member-picks', 'skill/ok,rule/r,hook/h,skill/../x,agent/Bad,skill');
     assert.deepStrictEqual(stamp.readLinks(file), [{ path: 'skills/a', kind: 'symlink', hash: '' }]);
-    assert.deepStrictEqual(stamp.readMemberPicks(file), ['skill ok']);
+    assert.deepStrictEqual(stamp.readMemberPicks(file), ['skill ok', 'rule r'], 'a rule a member picked is held at the root too (4c); a hook is no store item');
     stamp.markLine(file, 'member-picks', null);
     stamp.markLine(file, 'links', null);
     assert.strictEqual(stamp.readMemberPicks(file), null);

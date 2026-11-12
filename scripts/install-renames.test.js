@@ -826,13 +826,17 @@ test('seed update: an unrecorded rule copy under an OLDER stack opening is taken
     const own = '---\npaths: ["**/Dockerfile"]\n---\n\nOur own container notes: pin every base image by digest.\n';
     const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^(library-rules): (.*)$/gm,
         (_, k, v) => `${k}: ${v.split(',').filter((e) => !/^(markdown-docs|devops-conventions)\b/.test(e)).join(',')}`));
-    const rule = (repo, name) => { try { return fs.readFileSync(path.join(repo, '.claude', 'rules', `${name}.md`), 'utf8'); } catch { return null; } };
+    const rule = (repo, name) => { try { return fs.readFileSync(require('./install/copy.js').ruleAt(repo, name), 'utf8'); } catch { return null; } };
     const libraryRules = (repo) => ((/^library-rules: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '').split(',').map((e) => e.split('=')[0]);
     const each = (repo, i) =>
     {
         if (i === 0)
         {
             assert.ok(rule(repo, 'markdown-docs') && rule(repo, 'devops-conventions'), 'the install wrote both rules');
+            // A pre-stamp install held its rules in .claude/rules (workspace stage 4c moved them to the store).
+            const st = path.join(repo, '.alfred', 'stack', 'rules');
+            fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+            for (const f of fs.readdirSync(st)) fs.renameSync(path.join(st, f), path.join(repo, '.claude', 'rules', f));
             fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), OLD_MARKDOWN_DOCS);
             fs.writeFileSync(path.join(repo, '.claude', 'rules', 'devops-conventions.md'), own);
             unrecord(path.join(repo, '.claude', 'alfred-code.stamp'));

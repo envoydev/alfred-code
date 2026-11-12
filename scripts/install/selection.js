@@ -229,7 +229,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
 // carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
-function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], log = () => {} })
+function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -253,7 +253,8 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     // entry is every project's, and would read a project the stack never touched as installed.
     // The core counts as enabled whatever its flag (brand.js rowOn, S22).
     const ownEntries = ours.some((r) => rowOn(r) && (r.scope === 'project' || r.scope === 'local'));
-    if (!hasInstall(lines) && !ownEntries) return none;
+    // A joined child may hold nothing of its own but the links its stamp lists (4c: no rule copy either).
+    if (!hasInstall([...lines, ...linked]) && !ownEntries) return none;
 
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.

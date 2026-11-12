@@ -1008,7 +1008,7 @@ test('a partial --selection on install takes the locked always-on rules and skil
     const { seedRun } = require('./seed-sandbox.js');
     const always = require('../meta/recommendations.json').always;
     const missing = (repo) => [
-        ...always.rules.filter((n) => !fs.existsSync(path.join(repo, '.claude', 'rules', `${n}.md`))).map((n) => `rule ${n}`),
+        ...always.rules.filter((n) => !fs.existsSync(require('./install/copy.js').ruleAt(repo, n))).map((n) => `rule ${n}`),
         ...always.skills.filter((n) => !fs.existsSync(path.join(repo, '.claude', 'skills', n, 'SKILL.md'))).map((n) => `skill ${n}`),
     ];
     const { steps, outs } = seedRun(['install', 'update'], 'skill csharp\nrule markdown-docs\nhook none\n', {

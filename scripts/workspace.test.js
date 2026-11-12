@@ -445,7 +445,7 @@ test('ancestorExcludes lists the stack\'s copies and the unedited seed, never th
     fs.writeFileSync(path.join(root, 'NOTES.md'), '# notes\n');
     const seedHash = hashItem(path.join(root, '.claude', 'AGENTS.md'));
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `sha: x\nlibrary-rules: alfred-house=${'a'.repeat(64)}\nmanaged-env: \nmanaged-files: AGENTS.md=${seedHash}\n`);
-    const got = ws.ancestorExcludes(root, { childIgnores: [{ category: 'instructions', name: 'NOTES.md' }, { category: 'instructions', name: 'MISSING.md' }] }).sort();
+    const got = ws.ancestorExcludes(root, { childIgnores: [{ category: 'instructions', name: 'NOTES.md' }, { category: 'instructions', name: 'MISSING.md' }, { category: 'rule', name: 'alfred-house' }] }).sort();
     assert.deepStrictEqual(got, [
         path.join(root, '.claude', 'AGENTS.md'),
         path.join(rules, 'alfred-agent-awareness.md'),
@@ -454,6 +454,44 @@ test('ancestorExcludes lists the stack\'s copies and the unedited seed, never th
     ].sort());
     fs.writeFileSync(path.join(root, '.claude', 'AGENTS.md'), '# seed, edited by the user\n');
     assert.ok(!ws.ancestorExcludes(root, {}).includes(path.join(root, '.claude', 'AGENTS.md')), 'an edited AGENTS.md is the user\'s');
+});
+
+// Workspace stage 4c: a library rule of an ancestor is a row only while it sits natively in that ancestor's .claude/rules
+// and the child ignores it or a nearer member (the child included) holds a file of that name in either folder.
+const LIB_STAMP = `sha: x\nlibrary-rules: alfred-house=${'a'.repeat(64)}\nmanaged-env: \n`;
+const putRule = (dir, folder, name = 'alfred-house') => { fs.mkdirSync(path.join(dir, ...folder.split('/')), { recursive: true }); fs.writeFileSync(path.join(dir, ...folder.split('/'), `${name}.md`), `# ${name}\n`); };
+const rulesTree = () =>
+{
+    const at = tree({ 'ws': { stamp: true }, 'ws/mid': { stamp: true }, 'ws/mid/kid': { stamp: true } });
+    for (const r of ['ws', 'ws/mid']) fs.writeFileSync(path.join(at(r), '.claude', 'alfred-code.stamp'), LIB_STAMP);
+    return at;
+};
+
+test('ancestorExcludes: a moved ancestor gets no library row', () =>
+{
+    const at = rulesTree();
+    putRule(at('ws'), '.alfred/stack/rules');
+    putRule(at('ws'), '.claude/rules', 'alfred-agent-awareness');
+    putRule(at('ws/mid/kid'), '.alfred/stack/rules');
+    const got = ws.ancestorExcludes(at('ws'), { childIgnores: [{ category: 'rule', name: 'alfred-house' }], nearer: [at('ws/mid/kid')] });
+    assert.deepStrictEqual(got, [path.join(at('ws'), '.claude', 'rules', 'alfred-agent-awareness.md')], 'the generated row stays, no library row');
+});
+
+test('ancestorExcludes: of two ancestors not yet moved only the farther one\'s rows are written, and a name the child ignores or holds itself is excluded at the nearer one too', () =>
+{
+    const row = (root) => path.join(root, '.claude', 'rules', 'alfred-house.md');
+    const rows = (at, ignores = []) => [at('ws/mid'), at('ws')].flatMap((a, i, all) => ws.ancestorExcludes(a, { childIgnores: ignores, nearer: [at('ws/mid/kid'), ...all.slice(0, i)] }));
+    let at = rulesTree();
+    for (const r of ['ws', 'ws/mid']) putRule(at(r), '.claude/rules');
+    assert.deepStrictEqual(rows(at), [row(at('ws'))], 'the nearer copy keeps loading, the farther one is excluded');
+    assert.deepStrictEqual(rows(at, [{ category: 'rule', name: 'alfred-house' }]).sort(), [row(at('ws')), row(at('ws/mid'))].sort(), 'an ignored name is excluded at both');
+    at = rulesTree();
+    for (const r of ['ws', 'ws/mid']) putRule(at(r), '.claude/rules');
+    putRule(at('ws/mid/kid'), '.alfred/stack/rules');
+    assert.deepStrictEqual(rows(at).sort(), [row(at('ws')), row(at('ws/mid'))].sort(), 'the child\'s own file replaces both');
+    at = rulesTree();
+    putRule(at('ws'), '.claude/rules');
+    assert.deepStrictEqual(rows(at), [], 'one ancestor not yet moved and no nearer holder: it keeps loading');
 });
 
 test('excludeGlobs on darwin and win32 writes a class per cased letter and each metacharacter as a one-character class', () =>
@@ -1323,7 +1361,7 @@ test('memberPicks: joined members\' own skill and seat picks, 8 folders deep, a 
     put(`ws/${deep(8)}`, 'own-picks: skill/dotnet-grpc\n');
     put(`ws/${deep(9)}`, 'own-picks: skill/dotnet-mvc-controllers\n');
     const got = ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'plugin' });
-    assert.deepStrictEqual(got.lines, ['agent evidence-gatherer', 'skill csharp', 'skill devops', 'skill dotnet-grpc']);
+    assert.deepStrictEqual(got.lines, ['agent evidence-gatherer', 'rule r', 'skill csharp', 'skill devops', 'skill dotnet-grpc']);
     assert.deepStrictEqual(got.notes.sort(), ['member bad not counted: its stamp holds no own-picks line', 'member bare not counted: its stamp holds no own-picks line']);
-    assert.deepStrictEqual(ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'copy' }).lines, ['skill csharp', 'skill devops', 'skill dotnet-grpc', 'agent wpf-verifier'].sort());
+    assert.deepStrictEqual(ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'copy' }).lines, ['rule r', 'skill csharp', 'skill devops', 'skill dotnet-grpc', 'agent wpf-verifier'].sort());
 });

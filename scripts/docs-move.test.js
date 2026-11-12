@@ -225,7 +225,7 @@ function olderInstall(repoDir, { value = 'docs-ext', files = EXT, file = 'settin
     const stamp = path.join(claude, 'alfred-code.stamp');
     const row = `${file}:ALFRED_CODE_DOCS_PATH=${valueHash(ledgered)}`;
     fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^managed-env: ?(.*)$/m, (_, rest) => `managed-env: ${rest ? `${rest},` : ''}${row}`));
-    const rule = path.join(claude, 'rules', 'alfred-docs-root.md');
+    const rule = require('./install/copy.js').ruleAt(repoDir, 'alfred-docs-root');
     fs.writeFileSync(rule, fs.readFileSync(rule, 'utf8').replace(/This install's root: `[^`]*`/, `This install's root: \`${value}\``));
     fs.rmSync(path.join(repoDir, '.alfred', 'docs'), { recursive: true, force: true });
     for (const [rel, body] of Object.entries(files)) put(repoDir, rel, body);
@@ -235,7 +235,7 @@ const envOf = (repoDir, file) => { try { return JSON.parse(fs.readFileSync(path.
 const look = (repoDir) => ({
     key: (envOf(repoDir, 'settings.json') || {}).ALFRED_CODE_DOCS_PATH,
     local: (envOf(repoDir, 'settings.local.json') || {}).ALFRED_CODE_DOCS_PATH,
-    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
+    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(require('./install/copy.js').ruleAt(repoDir, 'alfred-docs-root'), 'utf8'))[1],
     ledger: /ALFRED_CODE_DOCS_PATH/.test(fs.readFileSync(path.join(repoDir, '.claude', 'alfred-code.stamp'), 'utf8')),
     // the map arrives at the awareness home: the same update's architecture move (docs.migrateArchitecture) carries it on
     moved: ['awareness/ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md', 'mydomain/NOTES.md'].filter((rel) => fs.existsSync(path.join(repoDir, '.alfred', 'docs', ...rel.split('/')))),
@@ -399,7 +399,7 @@ test('installer: a settings file that does not parse moves nothing and leaves th
             fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
             return null;
         },
-        inspect: (r) => ({ rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1], ext: fs.existsSync(path.join(r, 'docs-ext', 'architecture')) }),
+        inspect: (r) => ({ rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(require('./install/copy.js').ruleAt(r, 'alfred-docs-root'), 'utf8'))[1], ext: fs.existsSync(path.join(r, 'docs-ext', 'architecture')) }),
     });
     assert.doesNotMatch(outs[1], /docs root: moved/);
     assert.deepStrictEqual(result, { rule: 'docs-ext', ext: true });

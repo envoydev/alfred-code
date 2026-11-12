@@ -51,7 +51,7 @@ for (const route of Object.keys(ROUTES))
     {
         const { result, calls } = run('install', route, {
             inspect: (repo) => ({
-                rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), 'utf8'),
+                rule: fs.readFileSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs'), 'utf8'),
                 agentsMd: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')),
                 engines: ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'memory.js', 'model-windows.json', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
                 stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),

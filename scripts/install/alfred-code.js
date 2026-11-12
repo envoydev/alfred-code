@@ -424,7 +424,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const recorded = stampFile ? stampLayer.readLinks(stampFile) : [];
         const lineOfLink = (e) => `${e.path.split('/')[0].slice(0, -1)} ${e.path.split('/')[1].replace(/\.md$/, '')}`;
         const top = wsPrep.members.length ? wsPrep.members[wsPrep.members.length - 1].root : null;
-        const child = top || (!wsPrep.on && links.inherited(projectRoot, recorded).length) ? { top, parentLines: wsPrep.parentLines || links.inherited(projectRoot, recorded).map(lineOfLink), linked: { skills: homes.skills.store, agents: homes.agents.store && !routes.skills } } : null;
+        const child = top || (!wsPrep.on && links.inherited(projectRoot, recorded).length) ? { top, parentLines: wsPrep.parentLines || links.inherited(projectRoot, recorded).map(lineOfLink), linked: { skills: homes.skills.store, agents: homes.agents.store && !routes.skills, rules: true } } : null;
         const userAdds = [...args.add];
         const userDrops = [...args.drop];
         // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
@@ -442,7 +442,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const stackListing = effective(plugins.parsePluginList(raw, projectRoot, { marketplace: market })).filter((r) => !foreign.has(r.name));
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
             const back = selection.readBack({
-                claudeDir, skillsDir, agentsDir,
+                claudeDir, skillsDir, agentsDir, linked: recorded.map(lineOfLink),
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
@@ -474,6 +474,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // unlisted child) keeps what it linked from one as its own picks.
             for (const e of child ? recorded : wsPrep.on ? links.inherited(projectRoot, recorded) : [])
                 for (const k of (child ? child.linked[e.path.split('/')[0]] : homes[e.path.split('/')[0]].store) ? ['lines', 'closeFrom'] : []) if (!back[k].includes(lineOfLink(e))) back[k].push(lineOfLink(e));
+            // 4c: a joined child's inherited rules are sent by the loader from above, so each is installed here with no copy.
+            const ignored = new Set((wsPrep.ignores || []).map((i) => `${i.category} ${i.name}`));
+            for (const l of child ? child.parentLines.filter((x) => x.startsWith('rule ') && !ignored.has(x)) : []) for (const k of ['lines', 'closeFrom']) if (!back[k].includes(l)) back[k].push(l);
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
             readBlind = Boolean(back.blind);
             installedBefore = back.lines;
@@ -1383,7 +1386,7 @@ function pruneAway(ctx, away)
 {
     const lib = stampLayer.readLibrary(ctx.stampFile) || {};
     const rows = (ctx.ledger && ctx.ledger.files) || {};
-    for (const [kind, dir, file] of [['skills', ctx.skillsDir, (n) => n], ['agents', ctx.agentsDir, (n) => `${n}.md`]])
+    for (const [kind, dir, file] of [['skills', ctx.skillsDir, (n) => n], ['agents', ctx.agentsDir, (n) => `${n}.md`], ['rules', ctx.rulesDir, (n) => `${n}.md`]].filter(([k]) => away[k]))
         pruneCopies(ctx, dir, [...away[kind]].map(file), kind.slice(0, -1), 'linked from above', { keep: (f) =>
         {
             const was = (lib[kind] || {})[f.replace(/\.md$/, '')] || rows[`${kind}/${f}`];
@@ -1395,7 +1398,7 @@ function pruneAway(ctx, away)
 // root here). A seat on the plugin route is held by leaving it un-denied; a kind git sees holds none (ruling 8).
 function membersHeld(ctx, locked)
 {
-    const held = { skills: [], agents: [], seats: [], lines: [] };
+    const held = { skills: [], agents: [], seats: [], rules: [], lines: [] };
     if (locked === null) return held;
     let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
     if (locked === false) ctx.log('  !! workspace: the store is locked - member picks are read at the next run');
@@ -1405,14 +1408,15 @@ function membersHeld(ctx, locked)
         for (const n of got.notes) ctx.log(`  ${n}`);
         lines = got.lines;
     }
-    const own = new Set([...ctx.lists.skills.map((e) => `skill ${e.split('|').pop()}`), ...ctx.lists.agents.map((a) => `agent ${a.replace(/\.md$/, '')}`)]);
-    const shipped = { skill: ctx.manifest.catalogs.skills.map((e) => e.split('|').pop()), agent: ctx.manifest.agents.map((a) => a.replace(/\.md$/, '')) };
+    const bare = (f) => f.replace(/\.md$/, '');
+    const own = new Set([...ctx.lists.skills.map((e) => `skill ${e.split('|').pop()}`), ...ctx.lists.agents.map((a) => `agent ${bare(a)}`), ...ctx.lists.rules.map((r) => `rule ${bare(r)}`)]);
+    const shipped = { skill: ctx.manifest.catalogs.skills.map((e) => e.split('|').pop()), agent: ctx.manifest.agents.map(bare), rule: ctx.manifest.rules.map(bare) };
     for (const l of lines.filter((x) => !own.has(x)))
     {
         const [cat, name] = l.split(' ');
         if (!shipped[cat].includes(name)) continue;
         if (cat === 'agent' && ctx.routes.skills) held.seats.push(name);
-        else if (ctx.homes[`${cat}s`].store) held[`${cat}s`].push(name);
+        else if (cat === 'rule' || ctx.homes[`${cat}s`].store) held[`${cat}s`].push(name);
         else { ctx.log(`  member pick ${cat}s/${name} not held: .claude/${cat}s is not ignored here`); continue; }
         held.lines.push(l);
     }
@@ -2026,8 +2030,13 @@ function installHooksAndRules(ctx)
     // The docs-root rule is compared and written with its root already substituted, so an update
     // that changes nothing about it neither rewrites it nor says it did (Task 8a concern 7).
     const docsRoot = ctx.docsRoot || copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
-    const ruleNames = ctx.lists.rules.map((f) => f.replace(/\.md$/, ''));
     const render = Object.fromEntries(ROOTED_RULES.map((name) => [`rules/${name}`, (text) => text.split('__DOCS_ROOT__').join(docsRoot)]));
+    // A joined child copies no rule a member above holds; the two rendered ones stay its own while its docs root differs (4c).
+    const copyRule = (n, dir) => library.copyLibrary({ sourceDir: ctx.source.dir, rulesDir: dir, rules: [n], render, claims: () => true, note: ctx.note });
+    const own = !ctx.child || !ctx.child.top || copy.stampedDocsRoot(ctx.child.top) !== docsRoot ? ROOTED_RULES : [];
+    const named = [...new Set([...ctx.lists.rules.map((f) => f.replace(/\.md$/, '')), ...(ctx.held ? ctx.held.rules : [])])];
+    const away = { rules: childAway(ctx, 'rules', named.filter((n) => !own.includes(n)), copyRule) };
+    const ruleNames = named.filter((n) => !away.rules.has(n));
     const rulesLibrary = library.copyLibrary({
         sourceDir: ctx.source.dir, rulesDir: ctx.rulesDir, ruleAt: (n) => ruleHome(ctx, n),
         rules: ruleNames,
@@ -2035,6 +2044,7 @@ function installHooksAndRules(ctx)
         stamped: stampLayer.readLibrary(ctx.stampFile), claims: (kind, name) => kind !== 'rules' || ruleClaim(ctx)(name), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
+    pruneAway(ctx, away);
     // After the new copies landed: a throw before this point leaves the old rules loading, never none.
     // An old install's retired copies sit in .claude/rules whether or not this run moved the rest (workspace stage 4c).
     for (const dir of new Set([ctx.rulesDir, path.join(ctx.claudeDir, 'rules')]))

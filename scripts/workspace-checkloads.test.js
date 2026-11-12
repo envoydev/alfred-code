@@ -63,6 +63,9 @@ function setup({ events = () => [], agents = null, noCreds = true, found = null 
     execFileSync('git', ['init', '-q', child]);
     fs.writeFileSync(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
     fs.writeFileSync(path.join(child, '.claude', 'rules', 'own.md'), '# own\n');
+    // The child holds its own alfred-security in its store, so the root's native copy is one it must not load (4c, Section 4).
+    fs.mkdirSync(path.join(child, '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(child, '.alfred', 'stack', 'rules', 'alfred-security.md'), '# security, the child\'s\n');
     for (const [dir, record] of [[root, { children: ['api'] }], [child, { parent: '..' }]])
     {
         putWorkspace(dir, record);
