@@ -161,3 +161,66 @@ more of its five'; with equal arms it is crossed by chance in about 13% of round
   'path rule: again after a compaction and after a clear' pins the return. Result: `yes` for the parts.
 - **Spend.** $16.27 for the 120 sessions (smoke $3.25 for 24, reps $13.02 for 96) plus $0.14 for the compaction
   session: $16.41 of the $40 cap.
+
+## Stage 4c - the rule move
+
+The library rules move from `.claude/rules` to `.alfred/stack/rules`, sent by the loader of stage 4a. Proved on
+installer-made temp projects from this working tree (`--source <repo>`, a local export registered first), every row
+on an isolated home and account dir, the real account's `installed_plugins.json`, `known_marketplaces.json`,
+`settings.json` and `~/.gitconfig` hashed before and after (unchanged). macOS, Claude Code 2.1.322, Node 22.23.3,
+2026-11-12, on the fix-pass tree (81d71903).
+
+**The matrix.** 183 PASS, 0 FAIL, 1 NOT RUN, 41 stand-in sessions ($0). The NOT RUN is the same-repository sub-folder
+child: the installer runs a sub-folder as its repository's root and join refuses a same-repository child (stage 3).
+The rows cover a fresh install, an update over 3.10.0, a re-run (no byte changed), the user's own rule and edited
+rule kept, a garbage stamp and a garbage `workspace.json`, every scope, a joined child, the write block under
+`acceptEdits` and `bypassPermissions`, a worktree and the revert. What the rows showed beyond a pass:
+
+- An edited library rule is overwritten by the source text at the move, as every update overwrites one today.
+- A rule-less selection leaves an empty store and the canary; deleting `.alfred` and updating lays no rule again,
+  as 3.10.0 does for a deleted `.claude/rules`.
+- A native `.claude/rules` file wins by name over a store file of the same name.
+
+**The cells ($0, the local stand-in).**
+
+| Cell | Result | What was read |
+| --- | --- | --- |
+| a main request | `yes` | Each always rule once, one `Project rules` block, the canary once |
+| a subagent's request | `yes` | Each always rule once |
+| a path rule | `yes` | `markdown-docs` absent from the first request, once in the request after a matching Read |
+| `disableAllHooks: true` | `yes` | The canary text once, no `Project rules` block |
+
+**The boundaries.** A store rule of 65,535 or 65,536 bytes is sent and fills the five parts (a 9-byte rule beside it
+is then not sent, and status names it `not sent`); one of 65,537 bytes is skipped, status printing `rule skipped:
+.alfred/stack/rules/big.md - over 64 KB`, and the small rule is sent. A workspace 8 deep reaches its top root's rule;
+9 deep does not (the walk stops at 8), the next root's rule still sent.
+
+**Linux.** The gate's `linux` leg on the 35 test files the stage touched: 1566 tests, 0 failed, 6 skipped.
+
+**Windows.** The gate's `win` leg on the same files first failed one test of 1566: the status floor's rows are posix
+on every OS and the test built its expected sources with the platform separator. The test was fixed (a test bug, two
+assertions) and the leg re-run on the file: 24 tests, 0 failed, 1 skipped (d1928e8f). Stage 4a's G1 cells then ran in
+the gate's Windows 11 VM through its `win-g1.js` recipe on the committed 4c loader (d1928e8f), the guest's Claude Code
+2.1.309 (not updated), Node 22.23.3, against the local stand-in ($0), on stage 4a's hand-made fixture with the rules
+in `.alfred/stack/rules`; the installer's own Windows route is covered by the leg's install tests.
+
+| Cell | Result | What was read |
+| --- | --- | --- |
+| a main request | `yes` | `G1-ROOT-A` and `G1-ROOT-B` once each in the first request, `G1-CHILD` absent |
+| a subagent's request | `yes` | The two root markers once each in the first subagent request |
+| a child session's request | `yes` | `G1-ROOT-A`, `G1-ROOT-B` and `G1-CHILD` once each in the first request |
+| a path rule | `yes` | `G1-PATH` absent from the first request, once in the request after the Read |
+
+**The revert.** An older installer lays no rule when the stamp reads none back, so deleting the store copies would
+leave a project with no rules. The revert is a recipe run over each project BEFORE the first update from the tree the
+revert lands on: each `.alfred/stack/rules/<name>.md` the stamp's `library-rules` line names at its stamped hash
+moves back to `.claude/rules/<name>.md` (a file changed since the install is kept in the store and named; where the
+name is already taken there, the store copy is removed and the native file stands), the canary
+`.claude/rules/alfred-rules.md` is removed at its ledger hash, and an emptied `.alfred/stack/rules` folder is removed.
+The matrix reverted onto the tree before 4c (abca3661, whose stage 4a loader reads the store) twice - with an edited
+rule and the user's own store file, and with nothing of the user's: after the recipe and that tree's update the rules
+were back in `.claude/rules` with no canary, the edited rule and the user's file stayed in the store, and a session
+sent each always rule once - the edited one from the native file that tree's update laid, which wins by name, so the
+edit is kept on disk but not sent. Without the recipe that tree also sent each rule once, from the store. Rolling forward
+again over each case put the rules back in the store. A revert onto 3.10.0 or earlier (no loader) was NOT RUN; there
+the recipe is required.
