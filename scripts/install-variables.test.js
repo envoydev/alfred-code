@@ -368,6 +368,7 @@ test('recommend: a folder with no repository, a local-scope child, a bad flag', 
         git(bare, 'init', '-q');
         const kid = cli(['recommend', '--root', bare, '--scope', 'local', '--child']);
         assert.strictEqual(kid.stdout, 'docs-versioning: recommend local - a local-scope child keeps its data root out of git\n');
+        assert.strictEqual(cli(['recommend', '--root', bare, '--scope', 'local']).stdout, 'docs-versioning: recommend local - a local install keeps its data root out of git\n');
         const plain = cli(['recommend', '--root', bare]);
         assert.strictEqual(plain.stdout, 'docs-versioning: recommend git - a git repository - the docs are committed and versioned per branch\n');
         assert.strictEqual(cli(['recommend', '--bogus']).status, 2);

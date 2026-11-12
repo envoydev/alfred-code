@@ -1509,3 +1509,85 @@ test('fixed root: a child\'s run reads its parent\'s unmoved folder', POSIX_ONLY
     assert.ok(got.record, 'the parent\'s record stays under R');
     assert.strictEqual(got.alfred, false, 'nothing is written under the parent\'s .alfred');
 });
+
+// ------------------------------------------------------------------ stage 1: the update's one rewrite of the ignore keys (Section 7)
+// refreshBelow called as the update calls it, on a root holding a stamp and a record; a project below is a folder with a
+// stamp naming its release. The launch 0 keeps each project below out of the excludes pass, which is not the subject.
+{
+    const { compareVersions } = require('./install/source.js');
+    const HOLD = (rel, version) => `  workspace.json keeps its singular keys: ${rel} is at ${version}`;
+    const tree = (t, record) =>
+    {
+        const root = fs.realpathSync.native(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'ws-plural-')));
+        t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+        const stamp = (rel, version) =>
+        {
+            const dir = path.join(root, ...rel.split('/').filter(Boolean), '.claude');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'alfred-code.stamp'), version === null ? 'scope: project\n' : `version: ${version}\nscope: project\n`);
+        };
+        const file = path.join(root, '.alfred', 'workspace.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+        stamp('', '3.11.0');
+        const run = (release) =>
+        {
+            const lines = [];
+            wsLib.refreshBelow({ projectRoot: root, env: { ALFRED_CODE_WORKSPACE: '0' }, log: (l) => lines.push(l), release, compare: compareVersions });
+            return lines.filter((l) => l.includes('workspace.json'));
+        };
+        return { root, file, stamp, run, text: () => fs.readFileSync(file, 'utf8'), json: () => JSON.parse(fs.readFileSync(file, 'utf8')) };
+    };
+
+    test('Section 7: an update rewrites singular ignore keys once, and a second run changes nothing', (t) =>
+    {
+        const w = tree(t, { role: 'root', ignore: { rule: ['a'], env: ['E'] } });
+        assert.deepStrictEqual(w.run('3.11.0'), []);
+        assert.deepStrictEqual(w.json(), { role: 'root', ignore: { rules: ['a'], env: ['E'] } });
+        const after = w.text();
+        const then = (Date.now() - 60000) / 1000;
+        fs.utimesSync(w.file, then, then);
+        const mtime = fs.statSync(w.file).mtimeMs;
+        assert.deepStrictEqual(w.run('3.11.0'), []);
+        assert.strictEqual(w.text(), after);
+        assert.strictEqual(fs.statSync(w.file).mtimeMs, mtime, 'the second run does not write the file');
+    });
+
+    test('Section 7: the rewrite is held while a project below is stamped by an older release, the line names it, and it is made once that project is updated', (t) =>
+    {
+        const w = tree(t, { ignore: { rule: ['a'] } });
+        const before = w.text();
+        w.stamp('below/api', '3.10.0');
+        w.stamp('below/bare', null);
+        assert.deepStrictEqual(w.run('3.11.0'), [HOLD('below/api', '3.10.0')]);
+        assert.strictEqual(w.text(), before, 'held: the file keeps its bytes');
+        w.stamp('below/api', '3.11.0');
+        assert.deepStrictEqual(w.run('3.11.0'), [], 'a stamp with no version line holds nothing');
+        assert.deepStrictEqual(w.json(), { ignore: { rules: ['a'] } });
+
+        // a tree not yet at PLURAL_SINCE compares with its own release, as JSON_SINCE does
+        const early = tree(t, { ignore: { hook: ['h'] } });
+        early.stamp('kid', '3.9.2');
+        assert.deepStrictEqual(early.run('3.10.0'), [HOLD('kid', '3.9.2')]);
+        early.stamp('kid', '3.10.0');
+        assert.deepStrictEqual(early.run('3.10.0'), []);
+        assert.deepStrictEqual(early.json(), { ignore: { hooks: ['h'] } });
+    });
+
+    test('Section 7: no release (an install run), a plural file and a file with no ignore keys are left alone', (t) =>
+    {
+        for (const [record, release] of [
+            [{ ignore: { rule: ['a'] } }, ''],
+            [{ ignore: { rules: ['a'] } }, '3.11.0'],
+            [{ role: 'root' }, '3.11.0'],
+            [{ ignore: { env: ['E'] } }, '3.11.0'],
+        ])
+        {
+            const w = tree(t, record);
+            w.stamp('below/api', '3.10.0');
+            const before = w.text();
+            assert.deepStrictEqual(w.run(release), [], JSON.stringify(record));
+            assert.strictEqual(w.text(), before, JSON.stringify(record));
+        }
+    });
+}

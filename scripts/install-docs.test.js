@@ -1153,6 +1153,7 @@ test('docsVersioningAdvice: no repository, a local-scope child, kept-out docs, a
     const repo = project();
     const child = docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local', child: true });
     assert.deepStrictEqual(child, { value: 'local', reason: 'a local-scope child keeps its data root out of git' });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local' }), { value: 'local', reason: 'a local install keeps its data root out of git' });
     assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'project', child: true }).value, 'git');
     const kept = project({ ignore: '.claude/docs/\n' });
     fs.mkdirSync(path.join(kept, '.claude', 'docs'), { recursive: true });

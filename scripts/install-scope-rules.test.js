@@ -294,3 +294,67 @@ test('seed uninstall: the deny entries an earlier release wrote are lifted, a ro
     });
     assert.deepStrictEqual(result, [{ serverName: 'mine' }], outs[1]);
 });
+
+// --- stage 1 of the workspace source design: the scope a run takes when none is given ----------------------------
+// `scopeDefault: ''` leaves the flag out, which the sandbox otherwise fills with `project`.
+const BARE = { scopeDefault: '' };
+const scopeState = (repo) => ({
+    scope: ((fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').match(/^scope: (.*)$/m) || [])[1]) ?? null,
+    shared: fs.existsSync(path.join(repo, '.claude', 'settings.json')),
+    local: fs.existsSync(path.join(repo, '.claude', 'settings.local.json')),
+    ignore: fs.existsSync(path.join(repo, '.claude', '.gitignore')),
+});
+
+test('stage 1: a fresh install given no scope is written at local', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', 'rule markdown-docs\n', { ...BARE, inspect: scopeState });
+    assert.deepStrictEqual(result, { scope: 'local', shared: false, local: true, ignore: true });
+});
+
+test('stage 1: an update whose stamp holds no valid scope stays at project', POSIX_ONLY, () =>
+{
+    for (const [line, said] of [['', false], ['scope: bogus\n', true]])
+    {
+        const { result, outs } = seedRun(['install', 'update'], 'rule markdown-docs\n', {
+            args: [['--scope', 'project'], []],
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                const file = path.join(repo, '.claude', 'alfred-code.stamp');
+                fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^scope: .*\n/m, line));
+                return null;
+            },
+            inspect: scopeState,
+        });
+        assert.strictEqual(result.scope, 'project', line);
+        assert.strictEqual(/falling back to project/.test(outs[1]), said, line);
+    }
+});
+
+test('stage 1: an install re-run with no scope keeps the stamped scope', POSIX_ONLY, () =>
+{
+    const own = seedRun(['install', 'install'], 'rule markdown-docs\n', { ...BARE, inspect: scopeState });
+    assert.deepStrictEqual(own.result, { scope: 'local', shared: false, local: true, ignore: true });
+    for (const scope of ['project', 'user'])
+    {
+        const { result } = seedRun(['install', 'install'], 'rule markdown-docs\n', { ...BARE, args: [['--scope', scope], []], inspect: scopeState });
+        assert.deepStrictEqual(result, { scope, shared: true, local: false, ignore: false }, `${scope}: the settings stay in settings.json`);
+    }
+});
+
+// Review M4: an older copy-route install that never wrote a stamp keeps its rows in settings.json (Section 4).
+test('stage 1: an install with no scope over a legacy unstamped install stays at project', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', 'rule markdown-docs\n', {
+        ...BARE,
+        prepare: (repo) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+            for (const f of ['guard-catastrophic-rm.js', 'docs-session.js']) fs.writeFileSync(path.join(repo, '.claude', 'hooks', f), 'x\n');
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'x' } }));
+        },
+        inspect: (repo) => ({ ...scopeState(repo), legacy: true }),
+    });
+    assert.strictEqual(result.scope, 'project');
+    assert.strictEqual(result.ignore, false);
+});

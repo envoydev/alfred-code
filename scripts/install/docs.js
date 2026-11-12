@@ -84,13 +84,13 @@ function docsVersioningSeed(o)
     return docsVersioningAdvice(o).value;
 }
 
-// The answer and the reason the walk shows beside it (F3, F15): no repository, then a local-scope child (its data root
+// The answer and the reason the walk shows beside it (F3, F15): no repository, then local scope, a child's too (the data root
 // stays out of git), then the kept-out rule below; `git` otherwise. A fake git with no inRepo skips the first test.
 function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child })
 {
     const g = git || realGit(projectRoot);
     if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs' };
-    if (child && scope === 'local') return { value: 'local', reason: 'a local-scope child keeps its data root out of git' };
+    if (scope === 'local') return { value: 'local', reason: child ? 'a local-scope child keeps its data root out of git' : 'a local install keeps its data root out of git' };
     return keptOutOfGitHere({ projectRoot, docsPath, g })
         ? { value: 'local', reason: 'the docs are kept out of git here' }
         : { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' };

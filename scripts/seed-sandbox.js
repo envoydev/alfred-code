@@ -121,8 +121,8 @@ else process.exit(1);
 // `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
 // and the last run's exit status and stderr come back as `code` and `err`.
 // `cwds` names each step's folder under the sandbox (`'ws/api'`), `repo` where it names none - for a tree of projects
-// that `prepare(repo, work)` lays out beside the repo.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], cwds = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
+// that `prepare(repo, work)` lays out beside the repo. `scopeDefault` is the `--scope` an install step naming none runs at; `''` leaves it out.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], cwds = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false, scopeDefault = 'project' } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -184,7 +184,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
             const src = sourceAt(i);
             try
             {
-                outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
+                outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...((a) => (scopeDefault && act === 'install' && !a.includes('--scope') ? [...a, '--scope', scopeDefault] : a))(argsAt(i))],
                     { cwd: path.join(work, cwds[i] || 'repo'), env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
                 code = 0;
                 err = '';

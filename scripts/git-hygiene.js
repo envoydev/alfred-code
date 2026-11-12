@@ -100,12 +100,14 @@ const rootLines = (line, shared) => (shared ? [`${line}*`, `!${line}.variables`]
 
 // An earlier `/<root>/` line this script wrote (its comment right above it), in the project's .gitignore or the repo's
 // exclude file, becomes the `/<root>/*` and `!/<root>/.variables` pair. A line of the user's own is never touched.
+// `drop` (a local install, whose folder's own file hides it): this project's comment and line or pair leave the exclude file.
 // Returns the files rewritten.
-function rewriteOwnLine({ projectRoot, root })
+function rewriteOwnLine({ projectRoot, root, drop = false })
 {
-    const files = [path.join(projectRoot, '.gitignore')];
+    const files = drop ? [] : [path.join(projectRoot, '.gitignore')];
     try { files.push(path.resolve(projectRoot, git(['rev-parse', '--git-path', 'info/exclude'], projectRoot))); }
     catch { /* no repository: the .gitignore alone */ }
+    const own = drop && files.length ? `/${git(['rev-parse', '--show-prefix'], projectRoot)}${root}/` : '';
     const done = [];
     for (const file of files)
     {
@@ -117,7 +119,9 @@ function rewriteOwnLine({ projectRoot, root })
         for (let i = lines.length - 1; i > 0; i--)
         {
             const line = lines[i].trim();
-            if (lines[i - 1].trim() !== OWN_COMMENT || !line.startsWith('/') || !line.endsWith(`/${root}/`)) continue;
+            const gone = !drop || lines[i - 1].trim() !== OWN_COMMENT ? 0 : line === own ? 2 : line === `${own}*` && (lines[i + 1] || '').trim() === `!${own}.variables` ? 3 : 0;
+            if (gone) { lines.splice(i - 1, gone); changed = true; i--; continue; }   // the next line to read is the one above the comment
+            if (drop || lines[i - 1].trim() !== OWN_COMMENT || !line.startsWith('/') || !line.endsWith(`/${root}/`)) continue;
             lines.splice(i, 1, ...rootLines(line, true));
             changed = true;
         }

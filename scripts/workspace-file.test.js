@@ -243,14 +243,14 @@ test('renderRecord: key order, empty keys out, invalid back in its key, unknown 
     const out = wf.renderRecord(record, { colour: 'red' }, [{ key: 'children', value: '../x', entry: true }, { key: 'ignore.skill', value: 'bad name', entry: true }, { key: 'ignore.colour', value: ['y'], entry: true }]);
     assert.deepStrictEqual(Object.keys(out), ['parent', 'above', 'children', 'ignore', 'colour']);
     assert.deepStrictEqual(out.children, ['api', '../x']);
-    assert.deepStrictEqual(out.ignore, { skill: ['x', 'bad name'], colour: ['y'] });
+    assert.deepStrictEqual(out.ignore, { skills: ['x', 'bad name'], colour: ['y'] }, 'the default spelling is the plural (stage 1)');
     assert.strictEqual(out.colour, 'red');
     assert.ok(!('parentNone' in out));
     assert.deepStrictEqual(Object.keys(wf.renderRecord({ ...wf.emptyRecord(), role: 'standalone', parentNone: true })), ['role']);
     assert.deepStrictEqual(wf.renderRecord(wf.emptyRecord()), {});
     // the reader's own invalid list round-trips: what it read comes back out in the same place
     const read = wf.readRecord(dirWith({ json: { parent: '..', children: ['api', '../x'], ignore: { skill: ['bad name'] } } }));
-    assert.deepStrictEqual(wf.renderRecord(read.record, read.unknown, read.invalid), { parent: '..', children: ['api', '../x'], ignore: { skill: ['bad name'] } });
+    assert.deepStrictEqual(wf.renderRecord(read.record, read.unknown, read.invalid, read.singular), { parent: '..', children: ['api', '../x'], ignore: { skill: ['bad name'] } });
 });
 
 test('renderRecord: a scalar or wrong-typed invalid value is written back as read while the record holds no value for its key, and left out once it does', () =>
@@ -261,9 +261,9 @@ test('renderRecord: a scalar or wrong-typed invalid value is written back as rea
     assert.deepStrictEqual(wf.renderRecord(empty, {}, [{ key: 'children', value: 'api' }]), { children: 'api' });
     assert.deepStrictEqual(wf.renderRecord({ ...empty, children: ['web'] }, {}, [{ key: 'children', value: 'api' }]), { children: ['web'] });
     assert.deepStrictEqual(wf.renderRecord(empty, {}, [{ key: 'ignore', value: [] }]), { ignore: [] });
-    assert.deepStrictEqual(wf.renderRecord({ ...empty, ignore: { skill: ['x'] } }, {}, [{ key: 'ignore', value: [] }]), { ignore: { skill: ['x'] } });
-    assert.deepStrictEqual(wf.renderRecord(empty, {}, [{ key: 'ignore.skill', value: 'x' }]), { ignore: { skill: 'x' } });
-    assert.deepStrictEqual(wf.renderRecord({ ...empty, ignore: { skill: ['y'] } }, {}, [{ key: 'ignore.skill', value: 'x' }]), { ignore: { skill: ['y'] } });
+    assert.deepStrictEqual(wf.renderRecord({ ...empty, ignore: { skill: ['x'] } }, {}, [{ key: 'ignore', value: [] }]), { ignore: { skills: ['x'] } });
+    assert.deepStrictEqual(wf.renderRecord(empty, {}, [{ key: 'ignore.skill', value: 'x' }]), { ignore: { skills: 'x' } });
+    assert.deepStrictEqual(wf.renderRecord({ ...empty, ignore: { skill: ['y'] } }, {}, [{ key: 'ignore.skill', value: 'x' }]), { ignore: { skills: ['y'] } });
     assert.deepStrictEqual(wf.renderRecord(empty, {}, [{ key: 'role', value: 'boss' }]), { role: 'boss' });
     assert.deepStrictEqual(wf.renderRecord({ ...empty, parent: '..' }, {}, [{ key: 'role', value: 'boss' }]), { parent: '..' }, 'a parent excludes any role');
 });
@@ -327,4 +327,46 @@ test('workspace-fixture: putWorkspace then readWorkspaceRecord round-trips a rec
     assert.strictEqual(fs.readFileSync(path.join(none, '.alfred', 'workspace'), 'utf8'), 'parent none\n', 'the 2.11 spelling stays writable for the tests that read it');
     assert.strictEqual(fx.LEGACY_DEFAULT, false);
     assert.ok(fx.putWorkspace(fs.mkdtempSync(path.join(TMP, 'fx-')), { children: ['api'] }).endsWith(`${path.sep}workspace.json`), 'the suites run on workspace.json by default');
+});
+
+// ------------------------------------------------------------------ stage 1: the plural ignore keys (Section 7)
+
+test('Section 7: a plural key reads as its category, a singular key still reads, both in one file are a union', () =>
+{
+    const plural = wf.readRecord(dirWith({ json: { ignore: { rules: ['a'], hooks: ['h'], skills: ['s'], agents: ['g'], plugins: ['p'] } } }));
+    assert.deepStrictEqual(plural.record.ignore, { rule: ['a'], hook: ['h'], skill: ['s'], agent: ['g'], plugin: ['p'] });
+    assert.deepStrictEqual(plural.problems, []);
+    assert.strictEqual(plural.singular, false);
+    const one = wf.readRecord(dirWith({ json: { ignore: { rule: ['a'] } } }));
+    assert.deepStrictEqual(one.record.ignore, { rule: ['a'] });
+    assert.strictEqual(one.singular, true);
+    const both = wf.readRecord(dirWith({ json: { ignore: { rule: ['a'], rules: ['a', 'b'] } } }));
+    assert.deepStrictEqual(both.record.ignore, { rule: ['a', 'b'] });
+    assert.strictEqual(both.singular, false);
+    assert.strictEqual(wf.readRecord(dirWith({ legacy: 'ignore rule a\n' })).singular, true);
+    assert.strictEqual(wf.readRecord(dirWith()).singular, false);
+    assert.strictEqual(wf.readRecord(dirWith({ json: { role: 'root' } })).singular, true);
+    assert.strictEqual(wf.readRecord(dirWith({ json: '' })).singular, true);
+    assert.strictEqual(wf.readRecord(dirWith({ json: '{' })).singular, false);
+    // the old file beside a plural workspace.json: the union reads, and the file stays plural
+    const mixed = wf.readRecord(dirWith({ json: { ignore: { rules: ['a'] } }, legacy: 'ignore hook h\n' }));
+    assert.deepStrictEqual(mixed.record.ignore, { rule: ['a'], hook: ['h'] });
+    assert.strictEqual(mixed.singular, false);
+});
+
+test('Section 7: the write is plural for the five kinds and for nothing else; the fourth argument keeps the singular', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { ignore: { rule: ['a'], env: ['E'], doc: ['x/y.md'], docs: ['root'], memory: ['root'] } } }));
+    assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).ignore, { rules: ['a'], env: ['E'], doc: ['x/y.md'], docs: ['root'], memory: ['root'] });
+    assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid, true).ignore, { rule: ['a'], env: ['E'], doc: ['x/y.md'], docs: ['root'], memory: ['root'] });
+    assert.deepStrictEqual({ ...wf.PLURAL }, { skill: 'skills', agent: 'agents', rule: 'rules', hook: 'hooks', plugin: 'plugins' });
+    assert.strictEqual(wf.PLURAL.constructor, undefined, 'no name is read off Object.prototype (review M2)');
+    assert.ok(Object.isFrozen(wf.PLURAL));
+});
+
+test('Section 7: an unknown ignore key is still a problem and is written back whole; a stack-kind key that is no list is written back as read under the written spelling', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { ignore: { rulez: ['a'], rules: 'x' } } }));
+    assert.deepStrictEqual(r.problems, ["invalid ignore category 'rulez' kept, not applied", "invalid ignore rule (not a list) 'x' kept, not applied"]);
+    assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).ignore, { rulez: ['a'], rules: 'x' });
 });

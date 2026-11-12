@@ -1137,6 +1137,7 @@ test('older-project lines: named for an older child of a converted record, for t
     assert.ok(ws.writeWorkspace(e('ws'), (r) => r, { runRoot: e('ws') }).converted);
     assert.deepStrictEqual(ws.olderProjectLines({ conversions: ws.takeConversions(), release: '3.11.0', compare: compareVersions, env: env0 }), [older('api', true), older('kid', true)]);
     assert.ok(compareVersions(ws.JSON_SINCE, '3.9.2') > 0, 'v3.9.2 reads only the old file');
+    assert.ok(compareVersions(ws.PLURAL_SINCE, '3.10.0') > 0, 'v3.10.0 reads no plural key');
 });
 
 test('garbage reads ask nothing: roleOf, roleAsk, rescan, subtree and the status verb over a garbage workspace.json raise no role, join or rejoin ask and print the one line', () =>
@@ -1244,4 +1245,59 @@ test('review I2: under a garbage parent record roleOf reads unknown, no role ask
         assert.match(r.lines[r.lines.length - 1], /not valid JSON - nothing was changed/, answer);
     }
     assert.strictEqual(fs.readFileSync(jsonOf(at('ws/api')), 'utf8'), before, 'the child keeps its parent');
+});
+
+// ------------------------------------------------------------------ stage 1: the plural ignore keys (Section 7)
+
+test('Section 7: the writer keeps a file\'s spelling - a new file and a plural file are written plural, any other existing file singular, plural: true rewrites it', () =>
+{
+    const fileJson = (root) => JSON.parse(fs.readFileSync(jsonOf(root), 'utf8'));
+    const fresh = project();
+    assert.ok(ws.writeWorkspace(fresh, (r) => ws.addIgnore(r, 'rule', 'a')).wrote);
+    assert.deepStrictEqual(fileJson(fresh), { ignore: { rules: ['a'] } }, 'no file yet: plural');
+    assert.strictEqual(ws.readWorkspace(fresh).singular, false);
+
+    const plural = putJson(project(), '{ "ignore": { "rules": ["a"] } }\n');
+    assert.ok(ws.writeWorkspace(plural, (r) => ws.addIgnore(r, 'hook', 'h')).changed);
+    assert.deepStrictEqual(fileJson(plural), { ignore: { rules: ['a'], hooks: ['h'] } }, 'a plural file stays plural');
+
+    const singular = putJson(project(), '{ "ignore": { "rule": ["a"] } }\n');
+    assert.strictEqual(ws.readWorkspace(singular).singular, true);
+    assert.strictEqual(ws.writeWorkspace(singular, (r) => ws.addIgnore(r, 'hook', 'h')).changed, true);
+    assert.deepStrictEqual(fileJson(singular), { ignore: { rule: ['a'], hook: ['h'] } }, 'a singular file stays singular');
+
+    // ruling 10: an existing file with no ignore keys may sit above an older member, which reads no plural key
+    const rooted = putJson(project(), '{ "role": "root" }\n');
+    assert.ok(ws.writeWorkspace(rooted, (r) => ws.addIgnore(r, 'rule', 'a')).wrote);
+    assert.deepStrictEqual(fileJson(rooted), { role: 'root', ignore: { rule: ['a'] } });
+
+    const once = putJson(project(), '{ "ignore": { "rule": ["a"] } }\n');
+    const first = ws.writeWorkspace(once, (r) => r, { plural: true });
+    assert.deepStrictEqual([first.wrote, first.changed], [true, true]);
+    assert.deepStrictEqual(fileJson(once), { ignore: { rules: ['a'] } });
+    assert.strictEqual(ws.writeWorkspace(once, (r) => r, { plural: true }).wrote, false, 'a second rewrite changes nothing');
+
+    // review focus 1: both spellings of one kind in one file - each name once, written back under the plural key
+    const both = putJson(project(), '{ "ignore": { "rule": ["a"], "rules": ["a", "b"] } }\n');
+    assert.ok(ws.writeWorkspace(both, (r) => ws.addIgnore(r, 'hook', 'h')).changed);
+    assert.deepStrictEqual(fileJson(both), { ignore: { rules: ['a', 'b'], hooks: ['h'] } });
+    // review M1: a JSON null is a value the file holds - written back, never logged as dropped
+    const nulled = putJson(project(), '{ "parent": null, "ignore": { "rule": null, "skill": ["a"] } }\n');
+    const quiet = sink();
+    assert.ok(ws.writeWorkspace(nulled, (r) => ws.addIgnore(r, 'hook', 'h'), { log: quiet.log }).changed);
+    assert.deepStrictEqual(quiet.lines.filter((l) => /dropped|replaced/.test(l)), []);
+    assert.strictEqual(fileJson(nulled).parent, null);
+    // review M2: a key that is also a name on Object.prototype is the user's own key - kept as written, no spelling read from it
+    const proto = putJson(project(), '{ "ignore": { "constructor": ["a"], "skill": ["s"] } }\n');
+    assert.strictEqual(ws.readWorkspace(proto).singular, true);
+    assert.ok(ws.writeWorkspace(proto, (r) => ws.addIgnore(r, 'hook', 'h')).changed);
+    assert.deepStrictEqual(Object.keys(fileJson(proto).ignore).sort(), ['constructor', 'hook', 'skill']);
+    assert.deepStrictEqual(fileJson(proto).ignore.constructor, ['a']);
+
+    // a stack-kind key that is no list, beside a change: written back under the file's spelling, never logged as dropped
+    const bad = putJson(project(), '{ "ignore": { "rules": "x", "hooks": ["h"] } }\n');
+    const out = sink();
+    assert.ok(ws.writeWorkspace(bad, (r) => ws.addIgnore(r, 'skill', 's'), { log: out.log }).wrote);
+    assert.deepStrictEqual(fileJson(bad), { ignore: { hooks: ['h'], skills: ['s'], rules: 'x' } });
+    assert.deepStrictEqual(out.lines.filter((l) => /dropped|replaced/.test(l)), []);
 });

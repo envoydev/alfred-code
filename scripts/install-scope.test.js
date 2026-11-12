@@ -83,9 +83,17 @@ test('install-scope: --scope project and --scope user write the shared settings.
 test('install-scope: a settings.local.json a local run creates is named when git would commit it', POSIX_ONLY, () =>
 {
     const said = /settings\.local\.json: created for this machine's own values - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/;
-    const bare = seedRun(['install', 'update'], SELECTION, { args: ['--scope', 'local'] });
+    // Since workspace stage 1 a local run hides `.claude` whole, so the line is left for a folder git tracks a file in.
+    const team = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'team-notes.md'), 'ours\n');
+        require('node:child_process').execFileSync('git', ['add', '-f', '.claude/team-notes.md'], { cwd: repo });
+    };
+    const bare = seedRun(['install', 'update'], SELECTION, { args: ['--scope', 'local'], prepare: team });
     assert.match(bare.outs[0], said, bare.outs[0]);
     assert.doesNotMatch(bare.outs[1], said, 'the file already existed on the second run');
+    assert.doesNotMatch(seedRun('install', SELECTION, { args: ['--scope', 'local'] }).out, said, 'a folder the run hides whole needs no line');
     const ignored = seedRun('install', SELECTION, { args: ['--scope', 'local'], prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/settings.local.json\n') });
     assert.doesNotMatch(ignored.out, said, 'the repo already ignores it');
 });

@@ -112,7 +112,11 @@ The stores and what each holds, where the docs root and the data root live, and 
   dataIgnoreText`, header-marked, a project's own text kept): a bare `*` would make `git check-ignore` answer yes for the
   docs and the versioning seed would read every fresh project as `local` (a `preferences/` domain holding only the git
   doc the install seeds casts no vote either - `docs.docsVersioningSeed`), and the file re-includes itself so it is
-  committed and a teammate's clone has it. The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE
+  committed and a teammate's clone has it - except at `local` scope with nothing under it committed (workspace stage 1,
+  2026-11-12), where the text is `/*` alone, the run also writes `.claude/.gitignore` holding `*` (`data-root.js
+  CLAUDE_IGNORE`, `alfred-code.js claudeIgnoreStep`: never over a file of the user's, never where git tracks a file
+  under `.claude`, ledgered as the `managed-files` row `.gitignore`, taken back at another scope and by uninstall) and
+  the stack's own line leaves `.git/info/exclude` (`git-hygiene.js rewriteOwnLine`, `drop`). The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE
   (`scripts/install/fixed-root.js`, deleted whole at the support floor): every installer run but `--print-plan` and
   `uninstall` plans from what the reader found and moves the stack's own entries of such a folder - `ROOT_ENTRIES`,
   plus a `.gitignore` carrying the stack's header - into `.alfred` before the run's first write. Entry by entry,
@@ -129,7 +133,10 @@ The stores and what each holds, where the docs root and the data root live, and 
 - **The workspace record and the load check live in the data root** (workspace layering, release 1, 2026-10-26;
   JSON since the workspace.json design, 2026-11-10): `<data root>/workspace.json` holds the project's `parent` (a `..`
   run) or `role` (`root` | `standalone`), `above` (a `..` run or `none` - the tree its role was asked against),
-  `children` and `ignore` (category -> names). ONE reader parses it for the installer and every hook on both routes:
+  `children` and `ignore` (category -> names; the five stack kinds are written plural - `skills`, `agents`, `rules`,
+  `hooks`, `plugins` - and read in either spelling, `workspace-file.js PLURAL`: a file with no plural key stays singular
+  until an update's one rewrite in `refreshBelow`, held while a stamped project below is older than `PLURAL_SINCE`).
+  ONE reader parses it for the installer and every hook on both routes:
   `stack/hooks/workspace-file.js`, an engine copied beside `layout.js` (`readRecord` -> `state` ok | absent | garbage).
   The 2.11-3.9 line file `<data root>/workspace` (`parent ..`, `child api`; `parent none` reads as standalone) is read
   until the support floor - alone, or beside the JSON as a union - and the installer's next write of the record

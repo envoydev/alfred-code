@@ -1450,7 +1450,8 @@ function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
     const hooksDir = path.join(repo, '.claude', 'hooks');
     return {
         work, repo, env, copyEnv, hooksDir,
-        run: (action, runEnv, out = () => {}) => main([...action, '--selection', selFile, '--source', ROOT], runEnv, { out, err: () => {}, cwd: repo }),
+        // An install names its scope: with none a fresh one is local since workspace stage 1, and these cases read settings.json.
+        run: (action, runEnv, out = () => {}) => main([...action, ...(action[0] === 'install' && !action.includes('--scope') ? ['--scope', 'project'] : []), '--selection', selFile, '--source', ROOT], runEnv, { out, err: () => {}, cwd: repo }),
         stamp: () => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
         onDisk: () => fs.readdirSync(hooksDir).sort(),
         hooksOff: () =>

@@ -1220,6 +1220,9 @@ test('update: a local install\'s update shows the settings.local.json gitignore 
             fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
             fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: local\n');
             fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
+            // Since stage 1 a local run hides `.claude` whole - except where git tracks a file in it, the case left for the advice.
+            fs.writeFileSync(path.join(repo, '.claude', 'team-notes.md'), 'ours\n');
+            require('node:child_process').execFileSync('git', ['add', '-f', '.claude/team-notes.md'], { cwd: repo });
         },
     });
     assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values - git does not ignore it here; add .claude/settings.local.json to .gitignore');
@@ -1336,7 +1339,10 @@ test('group D wording: the no-repo root, the scope, git hygiene, nothing to offe
     const ref = (rel) => fs.readFileSync(path.join(PLUGIN_DIR, ...rel.split('/')), 'utf8');
     const install = ref('references/init-install.md');
     assert.ok(install.includes("- 'Install here (Recommended)' - this directory is the project root, or a workspace root above the projects; move the mark to Stop when this directory sits inside the project you meant"), 'F1');
-    assert.ok(install.includes("- 'project (Recommended)' - .claude/settings.json - shared: committed with the repo, or read by every session in this folder"), 'F2');
+    const localLine = "- 'local (Recommended)' - this checkout only; the stack's settings go to .claude/settings.local.json, and .alfred and .claude stay out of git";
+    const sharedLine = "- 'project' - .claude/settings.json - shared: committed with the repo, or read by every session in this folder";
+    assert.ok(install.includes(localLine) && install.includes(sharedLine) && install.indexOf(localLine) < install.indexOf(sharedLine), 'F2, and local first since stage 1');
+    assert.ok(install.includes(`variables.js" recommend --root . --scope <screen A's scope>`), 'the versioning advice is read again once the scope is known');
     for (const rel of ['references/init-install.md', 'references/post-install.md'])
         assert.match(flat(ref(rel)), /no-repo mode[^.]*`git hygiene: skipped - no git repository`, and nothing about `\.claude\/AGENTS\.md`/, `F6 ${rel}`);
     assert.ok(flat(ref('references/walk.md')).includes('No kept plugin with a row, or a report whose last line reads `plugin-settings: nothing to offer`: skip this silently, ask nothing.'), 'F16');

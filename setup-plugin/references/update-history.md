@@ -852,3 +852,36 @@ plugin has no mode command: there `ALFRED_CODE_SCORER` and `ALFRED_CODE_AUTO_COM
 `/mode-auto-run <request>` starts auto-run, and it ends with the session. A headless one-call run (`claude -p`) turns
 auto-run on with `/mode-auto-run <request>`, or types the mode command as the session's first call and resumes that
 session with the flow command.
+
+## after 3.10.0 - a local install stays out of git; local is the default scope; ignore keys are plural
+
+**A local install leaves nothing in `git status`.** At `local` scope `.alfred/.gitignore` no longer re-includes
+itself, and the run writes `.claude/.gitignore` holding `*` - one small file inside each folder, nothing outside the
+project. The stack's line in `.git/info/exclude` goes once the folder's own file hides it. `.claude/.gitignore` is
+left alone where you wrote one yourself, and is not written where git already tracks a file under `.claude`.
+
+- A local install whose docs versioning is stored as `git` keeps its docs committed, so `.alfred/` still shows;
+  `ALFRED_CODE_DOCS_VERSIONING=local` (in `/alfred-code:configure`, the Environment area) hides the folder.
+- A move from `local` to `project` scope removes the stack's `.claude/.gitignore`. One you edited stays, and it hides
+  `.claude/settings.json` from git: delete `.claude/.gitignore` when `git status` shows no `.claude` change after the move.
+- Going back to 3.10.0 leaves `.claude/.gitignore` in place - that release does not know the file. Delete it by hand,
+  or `.claude` stays hidden from git at every scope.
+- `git clean -fdx` removes `.alfred` whole. The hooks write its ignore file back with the self re-include, so
+  `.alfred/` shows in `git status` until the next `/alfred-code:update`.
+
+**`local` is the scope a new install takes.** The scope question lists `local` first, and an install given no
+`--scope` runs at `local`. An installed project keeps its scope: an update, and an install run again, read it from
+the stamp. A new local install keeps its docs out of git too; pick `project` at the scope question, or `git` at the
+docs-versioning question, to commit them. A local install moved to `project` scope later keeps that answer: set
+`ALFRED_CODE_DOCS_VERSIONING=git` in `/alfred-code:configure` (the Environment area) to commit the docs for the team.
+
+**`workspace.json` spells its `ignore` keys in the plural** - `skills`, `agents`, `rules`, `hooks`, `plugins`:
+
+```json
+{ "ignore": { "rules": ["csharp-conventions"], "hooks": ["guard-answer"], "skills": ["markdown-style"] } }
+```
+
+Both spellings are read. An update rewrites a file that still holds the old keys, once. Update the projects below
+before the root: while a project up to five folders below runs a release that reads only the old keys, the root
+keeps them and the update prints `workspace.json keeps its singular keys: <project> is at <version>`. A project
+deeper than that, or one that joins later on an older release, names each key it cannot read - update it.

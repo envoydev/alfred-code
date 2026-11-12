@@ -294,11 +294,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const priorLedger = stampFile ? stampLayer.readLedger(stampFile) : legacyUnstamped ? null : stampLayer.emptyLedger();
         // I3 (R47): args.js left '' when --scope was not given. `update` takes the
         // scope the LAST install actually used, from the stamp's own `scope:` line (a 1.x `global`
-        // line maps to `user`, same as the CLI flag does); `install`, or an update with no stamp at
-        // all to read, defaults to `project` - the floor every scope always had.
+        // line maps to `user`, same as the CLI flag does), and so does an `install` over a stamp; with
+        // no stamp an `install` is `local` (the default scope), an `update` `project` as it always was.
         if (!args.scope)
         {
-            const rawStamped = args.action === 'update' && stampFile ? stampLayer.readStampScope(stampFile) : '';
+            const rawStamped = stampFile ? stampLayer.readStampScope(stampFile) : '';
             const stamped = rawStamped.toLowerCase() === 'global' ? 'user' : rawStamped.toLowerCase();
             // m2 (I3 minor): the stamp's `scope:` line reaches the CLI unvalidated otherwise - a
             // hand-edited or corrupted stamp (`scope: bogus`, or un-lowercased `scope: Global`) must
@@ -306,7 +306,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // log, which the model reads as tool output - named by its length only, the N1 rule.
             if (stamped && !ENUMS.scope.values.includes(stamped))
             { log(`  scope: the stamp's scope line (${rawStamped.length} chars) is not project|user|local - falling back to project`); }
-            args.scope = stamped && ENUMS.scope.values.includes(stamped) ? stamped : 'project';
+            args.scope = stamped && ENUMS.scope.values.includes(stamped) ? stamped : args.action === 'install' && !stampFile && !legacyUnstamped ? 'local' : 'project';
         }
         const cliScope = args.scope;
         // THE ONE-TIME MOVE (fixed-root.js), before the run's first write into the project and AFTER the scope is
@@ -654,7 +654,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // --print-plan returned before the stamp; a project with its switch off is left alone.
         if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
         {
-            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }) }); }
+            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions }); }
             catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
         }
 
@@ -698,6 +698,7 @@ function runLayers(ctx)
     // Memory P3: a `--memory docs` that cannot be written here is unset before the settings pass writes the mode.
     try { memoryDir.gate(ctx); }
     catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
+    claudeIgnoreStep(ctx);
     variablesStep(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
@@ -880,9 +881,23 @@ function ignoreStep(ctx, docsPath)
     let own = null;
     try { own = docs.ensureDocsIgnore({ projectRoot, docsPath, mode, covered: dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath })), log }); }
     catch (err) { note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
+    // A local install whose folder's own file now hides it whole needs no line in the clone's exclude file (git-hygiene.js).
+    if (ctx.args.scope === 'local' && dataCovered && !/^!\//m.test(readOrNull(path.join(projectRoot, ...root.split('/'), '.gitignore')) || '!/'))
+        for (const f of require('../git-hygiene.js').rewriteOwnLine({ projectRoot, root, drop: true })) log(`  ${path.basename(f)}: the data root's line removed - ${root}/.gitignore hides the folder now`);
     const docsCovered = (dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath }))) || STACK_IGNORE.includes(own);
     try { docs.pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered, dataCovered, log }); }
     catch (err) { note(`the nested .gitignore files could not be checked (${err.message}) - they stay as they are`); }
+}
+
+// A local install keeps `.claude` out of git with one file of its own (never in a folder git tracks files in), written before the settings pass; another scope takes the stack's text back.
+function claudeIgnoreStep(ctx)
+{
+    const file = path.join(ctx.claudeDir, '.gitignore');
+    const have = readOrNull(file);
+    if (ctx.args.scope !== 'local') { if (have === dataRoot.CLAUDE_IGNORE) { fs.rmSync(file); ctx.log('  .claude/.gitignore removed - .claude is shared at this scope'); } return; }
+    if (have !== null || gitTracks(ctx, ctx.claudeDir)) return;
+    fs.mkdirSync(ctx.claudeDir, { recursive: true }); fs.writeFileSync(file, dataRoot.CLAUDE_IGNORE);
+    ctx.log('  .claude/.gitignore written - a local install keeps .claude out of git');
 }
 
 // THE STACK'S VARIABLES (workspace roles and variables, D5 / D6), before the settings pass: where this run keeps them.
@@ -2108,6 +2123,7 @@ function managedFiles(ctx)
         catch { out[rel] = h; continue; }
         if (now === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel))) out[rel] = now;
     }
+    if (readOrNull(path.join(ctx.claudeDir, '.gitignore')) === dataRoot.CLAUDE_IGNORE) put('.gitignore', path.join(ctx.claudeDir, '.gitignore'));
     return out;
 }
 function readOrNull(file)
@@ -2131,7 +2147,7 @@ function pruneDroppedCopies(ctx)
     const shipped = new Set([
         ...[...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, HOOK_MODULES).map((f) => `hooks/${f}`),
         ...ctx.manifest.catalogs.skills.map((e) => `skills/${e.split('|').pop()}`),
-        ...ctx.manifest.agents.map((a) => `agents/${a}`), 'AGENTS.md',
+        ...ctx.manifest.agents.map((a) => `agents/${a}`), 'AGENTS.md', '.gitignore',
     ]);
     for (const [rel, h] of Object.entries(files))
     {

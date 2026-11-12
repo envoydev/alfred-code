@@ -131,7 +131,7 @@ function readWorkspace(projectRoot, opts = {})
     const at = locate(projectRoot, opts);
     if (!at.file) return { file: null, state: 'unreadable', source: null, record: emptyRecord(), view: viewOf(emptyRecord()), problems: [], why: at.why };
     const read = readRecord(at.dir);
-    return { file: read.file, state: read.state, source: read.source, record: read.record, view: viewOf(read.record), problems: read.problems };
+    return { file: read.file, state: read.state, source: read.source, singular: read.singular, record: read.record, view: viewOf(read.record), problems: read.problems };
 }
 
 // The one line for a garbage record, `rel` the file's path from the folder the run reads from.
@@ -158,7 +158,7 @@ function takeConversions()
 
 const shownValue = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
 // The rendered object's value at an invalid entry's key (`parent`, `ignore.skill`).
-const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), object);
+const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v === 'object' ? (k in v ? v[k] : v[workspaceFile.PLURAL[k]]) : undefined), object);
 
 // Reads, changes and writes the project's record under its lock. `mutate(record)` changes the record in place (or
 // returns a new one). A write is due when the record renders differently after the change, or when the old line file is
@@ -168,7 +168,7 @@ const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v 
 // garbage workspace.json is never written over (`why: 'garbage'`). `runRoot` is the run's own project (default
 // `projectRoot`): the log lines name paths from it, and a conversion of another project's record is named by
 // olderProjectLines.
-function writeWorkspace(projectRoot, mutate, { dataRoot, runRoot, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
+function writeWorkspace(projectRoot, mutate, { dataRoot, runRoot, plural = false, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
 {
     const empty = viewOf(emptyRecord());
     const fail = (why, view = empty) => ({ ok: false, why, view, wrote: false, changed: false, converted: false });
@@ -184,9 +184,9 @@ function writeWorkspace(projectRoot, mutate, { dataRoot, runRoot, log = () => {}
         if (!held) return fail('locked', viewOf(readRecord(at.dir).record));
         const current = readRecord(at.dir);
         if (current.state === 'garbage') { sayGarbage(current.file, from, log); return fail('garbage'); }
-        const before = JSON.stringify(renderRecord(current.record, current.unknown, current.invalid));
+        const before = JSON.stringify(renderRecord(current.record, current.unknown, current.invalid, current.singular));
         const record = mutate(current.record) || current.record;
-        const object = renderRecord(record, current.unknown, current.invalid);
+        const object = renderRecord(record, current.unknown, current.invalid, current.singular && !plural);
         const converting = current.source === 'legacy' || current.source === 'both';
         const changed = JSON.stringify(object) !== before;
         if (!converting && !changed) return { ok: true, view: viewOf(record), wrote: false, changed: false, converted: false };
@@ -242,6 +242,7 @@ function convertOwn({ projectRoot, env = process.env, dataRoot, log = () => {} }
 
 // The first release that reads workspace.json - the version bump that ships it sets this (review I3, 2026-11-10).
 const JSON_SINCE = '3.10.0';
+const PLURAL_SINCE = '3.11.0';   // the first release that reads the plural ignore keys (workspace-file.js PLURAL)
 
 // After a conversion: each project whose older release would now misread - a child a converted record lists, the parent
 // a converted record names, and the owner of a converted record not this run's own - when its stamp names a release
@@ -938,7 +939,7 @@ function excludeGlobs(paths, platform = process.platform)
 // lock. Only that array moves, a member its ledger does not hold is the user's and stays, and every other ledger row is
 // re-rendered byte for byte. A failed stamp write puts the settings file back (or removes it, when this made it), so no
 // row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
-function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500 } = {})
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare } = {})
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     const top = realOf(projectRoot);
@@ -958,6 +959,12 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         }
     };
     walk(top, 0);
+    // An update (`release`) writes this project's ignore keys plural once - held while a project below runs a release that reads none.
+    const own = release ? readWorkspace(top) : null;
+    const due = Boolean(own && own.singular && own.view.ignores.some((i) => workspaceFile.PLURAL[i.category]));
+    const older = due && below.sort().map((dir) => [dir, stamp.readVersion(path.join(dir, '.claude', brand.BRAND.stamp))]).find(([, v]) => v && compare(v, compare(PLURAL_SINCE, release) > 0 ? release : PLURAL_SINCE) < 0);
+    if (older) log(`  workspace.json keeps its singular keys: ${relPosix(top, older[0])} is at ${older[1]}`);
+    else if (due) writeWorkspace(top, (record) => record, { runRoot: top, plural: true, log });
     const out = { refreshed: [], current: [], skipped: [] };
     // A child's switch and its ancestors are read with the account alone: this run's launch values are not the child's.
     // A launch `0` still freezes the child's switch, as it would its own run.
@@ -1739,7 +1746,7 @@ module.exports = {
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
-    workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE,
+    workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
