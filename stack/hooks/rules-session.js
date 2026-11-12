@@ -238,19 +238,19 @@ function writeRecord(file, sent)
     catch { try { fs.unlinkSync(tmp); } catch { /* none written */ } }
 }
 
-// Unsent path rules matching the file, whole, to PART_ROOM; one that alone passes the room is cut and counts as sent.
-function pathPush(rules, file, sent)
+// Unsent path rules matching the file, whole, to `room`; one that alone passes a whole room is cut and counts as sent.
+function pathPush(rules, file, sent, room = PART_ROOM, keyOf = (r) => r.name)
 {
     let text = 'Project path rules - binding instructions for this project';
     const now = [];
     for (const r of rules.scoped)
     {
-        const rel = sent.includes(r.name) ? null : relFor(file, r.root);
+        const rel = sent.includes(keyOf(r)) ? null : relFor(file, r.root);
         if (rel === null || !r.globs.some((g) => { const re = pathGlob(g); return re && re.test(rel); })) continue;
         const block = `\n\n${headingOf(r)}\n${r.text}`;
-        if (text.length + block.length <= PART_ROOM) { text += block; now.push(r.name); continue; }
-        if (now.length) continue;
-        return { text: text + cutTo(block, PART_ROOM - text.length, r.rel), now: [r.name] };
+        if (text.length + block.length <= room) { text += block; now.push(keyOf(r)); continue; }
+        if (now.length || room < PART_ROOM) continue;
+        return { text: text + cutTo(block, room - text.length, r.rel), now: [keyOf(r)] };
     }
     return { text, now };
 }
@@ -339,16 +339,19 @@ function main(argv = process.argv, env = process.env)
         if (typeof target !== 'string' || !target) return;
         const file = layout.realpathOrSelf(path.resolve(input.cwd || start, target));   // as real as the roots
         const [from, texts, who] = [layout.realpathOrSelf(path.resolve(start)), [], `${session} ${actor}`];
-        for (const m of layout.memberOf(file, start, { env })?.chain || [])
+        const chain = layout.memberOf(file, start, { env })?.chain || [];
+        const room = () => texts.reduce((n, t) => n - 2 - t.length, PART_ROOM);
+        let own = rules;   // the touched member's rules match its file (Task 4), each keyed by its holder in the chain
+        for (const m of chain)
         {
-            const [mine, T] = [rulesFor(m.root, env, { host: cursor ? 'cursor' : 'claude' }), posix(from, m.root)];
+            const [mine, T] = [own = rulesFor(m.root, env, { host: cursor ? 'cursor' : 'claude' }), posix(from, m.root)];
             for (const r of [...mine.always, ...mine.scoped]) r.rel = posix(from, r.file);
             const base = session && layout.statePath(rules.project, 'sessions', `rules-${session}-${actor}-m-${m.key}`, env);
-            const p = memberPart(T, memberBlock(m, from, rules, mine, layout), base, texts.reduce((n, t) => n - 2 - t.length, PART_ROOM), who);
+            const p = memberPart(T, memberBlock(m, from, rules, mine, layout), base, room(), who);
             if (p && texts.push(p.text)) ledger({ kind: 'member-push', member: T, part: p.k, chars: p.text.length, unsent: p.left, tool: input.tool_name });
         }
         const sent = record ? recordOf(record) : [];
-        const push = pathPush(rules, file, sent);
+        const push = pathPush(own, file, sent, room(), (r, c = chain.find((x) => x.root === r.root)) => (c ? `${c.key}/${r.name}` : r.name));
         if (record && push.now.length) writeRecord(record, [...sent, ...push.now]);
         return void say([...texts, push.now.length && push.text].filter(Boolean).join('\n\n'));
     }

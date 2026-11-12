@@ -1059,3 +1059,76 @@ test('member: the ledger row\'s five fields', () =>
     const row = rows[rows.length - 1];
     assert.deepStrictEqual([row.kind, row.member, row.part, row.chars, row.unsent, row.tool], ['member-push', 'api', 1, text.length, 0, 'Read']);
 });
+
+// ---- stage 5: a joined member's path rules -----------------------------------------------------------------------------
+const scoped = (glob, mark, n = 0) => `---\npaths: ["${glob}"]\n---\n${mark}${n ? `\n${big(n, 'y')}` : ''}`;
+const sentOf = (root) => JSON.parse(fs.readFileSync(LAYOUT.statePath(root, 'sessions', `rules-${SID}-main.json`, {}), 'utf8')).sent;
+
+test('member path rule: sent on the first matching touch under the member, once, matched from the member\'s root', () =>
+{
+    const w = M();
+    store(w.api, 'ts', scoped('src/**/*.ts', 'M-API-TS'));
+    const one = touch(w.root, path.join(w.api, 'src', 'a.ts'));
+    assert.ok(one.indexOf('Project api, part 1') < one.indexOf('## ts (api/.alfred/stack/rules/ts.md)\nM-API-TS'), one);
+    assert.ok(one.indexOf('## ts (api/') > 0);
+    assert.strictEqual(touch(w.root, path.join(w.api, 'src', 'b.ts')), '');
+    assert.ok(!touch(w.root, path.join(w.root, 'src', 'a.ts')).includes('M-API-TS'));
+});
+
+test('member path rule: a middle member\'s rule is sent once over a grandchild\'s touch, then its parent\'s', () =>
+{
+    for (const order of [['lib', 'api'], ['api', 'lib']])
+    {
+        const w = M();
+        store(w.api, 'ts', scoped('**/*.ts', 'M-API-TS'));
+        const outs = order.map((d) => touch(w.root, path.join(w[d], 'a.ts')));
+        assert.strictEqual(count(outs.join(''), 'M-API-TS'), 1, order.join());
+        assert.deepStrictEqual(sentOf(w.root), [`${mkey('api')}/ts`], order.join());
+    }
+});
+
+test('member path rule: a cut rule\'s tail line names the path from the start folder', () =>
+{
+    const w = M();
+    store(w.api, 'ts', scoped('src/**/*.ts', 'M-API-TS', 12000));
+    touch(w.root, path.join(w.api, 'a.txt'));
+    assert.ok(touch(w.root, path.join(w.api, 'src', 'a.ts')).endsWith('(cut at 9500 characters - read api/.alfred/stack/rules/ts.md for the rest)'));
+});
+
+test('member path rule: a rule the child ignores is not sent for its file and still sent for the root\'s', () =>
+{
+    const w = M({ apiIgnore: ['ts'] });
+    store(w.root, 'ts', scoped('**/*.ts', 'M-ROOT-TS'));
+    assert.ok(!touch(w.root, path.join(w.api, 'a.ts')).includes('M-ROOT-TS'));
+    assert.ok(touch(w.root, path.join(w.root, 'a.ts')).includes('M-ROOT-TS'));
+});
+
+test('member path rule: the child\'s own copy for its file, the root\'s for the root\'s, each once', () =>
+{
+    const w = M();
+    store(w.root, 'ts', scoped('**/*.ts', 'M-ROOT-TS'));
+    store(w.api, 'ts', scoped('**/*.ts', 'M-API-TS'));
+    const a = touch(w.root, path.join(w.api, 'a.ts'));
+    assert.ok(a.includes('M-API-TS') && !a.includes('M-ROOT-TS'), a);
+    assert.ok(touch(w.root, path.join(w.root, 'a.ts')).includes('M-ROOT-TS'));
+    assert.strictEqual(touch(w.root, path.join(w.api, 'b.ts')) + touch(w.root, path.join(w.root, 'b.ts')), '');
+    assert.deepStrictEqual(sentOf(w.root), [`${mkey('api')}/ts`, 'ts']);
+});
+
+test('member path rule: block and path rule in one call stay inside PART_ROOM', () =>
+{
+    const w = M();
+    store(w.api, 'own', big(9000, 'M-OWN'));
+    store(w.api, 'ts', scoped('**/*.ts', 'M-API-TS', 2000));
+    const one = touch(w.root, path.join(w.api, 'a.ts'));
+    assert.ok(one.length <= 9500 && one.includes('M-OWN') && !one.includes('M-API-TS'), String(one.length));
+    assert.ok(touch(w.root, path.join(w.api, 'b.ts')).includes('M-API-TS'));
+});
+
+test('path rule: a start-chain record written before this change still reads', () =>
+{
+    const w = M();
+    store(w.root, 'ts', scoped('**/*.ts', 'M-ROOT-TS'));
+    put(LAYOUT.statePath(w.root, 'sessions', `rules-${SID}-main.json`, {}), JSON.stringify({ sent: ['ts'] }));
+    assert.strictEqual(touch(w.root, path.join(w.root, 'a.ts')), '');
+});
