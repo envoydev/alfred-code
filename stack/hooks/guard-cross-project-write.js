@@ -12,6 +12,15 @@
 // the expensive kind - a change landing in a repo whose tests, conventions, review and release
 // this session never ran, invisible to the project that owns it.
 //
+// THE WORKSPACE IS THE BOUNDARY (the owner, 2026-11-11: 'child can go out of child project to parent, but not out of
+// workspace, agent must ask me about it in current session and does not allow for subagents to go out of workspace').
+// A project joined to a workspace writes anywhere under the workspace's top member - the root, a sibling, a project
+// below - with no ask; a project in no workspace keeps its own root as the boundary. Past the boundary the MAIN session
+// gets the ask below. A SUBAGENT gets a plain refusal with no ask, and neither the session's receipt
+// nor a folder the user typed opens anything for it - it reports the change and the main session hands it off; a
+// command the guard could not read is refused for it the same way, since it may write past the boundary. A
+// member's memory folder stays read-only inside the workspace (R8, below).
+//
 // Reads pass. Writes inside the project root pass. Writes to the session's own scratch (the OS
 // temp dir), to the Claude account dirs (~/.claude and the ~/.claude-<name> siblings - settings,
 // memory; never their plugins/ code, THE INSTALLED PLUGINS' OWN CODE below), and to /dev pass.
@@ -343,6 +352,23 @@ function memoryOf() {
   } catch { /* fail open: no member memory to guard */ }
   return memoryDirs;
 }
+// The session's boundary past its own project: the top member of its workspace chain, or null in no workspace (the
+// switch off, a parent that does not point back, a record that cannot be read, a top member that holds the home folder -
+// each leaves the project as the boundary).
+let boundary;
+function workspaceTop() {
+  if (boundary !== undefined) return boundary;
+  boundary = null;
+  try {
+    if (!layout || typeof layout.workspaceChain !== 'function' || !layout.workspaceOn({ env: process.env, projectRoot: ROOT })) return boundary;
+    const { members } = layout.workspaceChain(layout.chainProjectOf(ROOT));
+    const top = members.length ? realish(members[members.length - 1].root) : null;
+    if (top && !(HOME && inside(HOME, top))) boundary = top; // a top holding the home folder opens nothing, as a typed folder
+  } catch { boundary = null; }
+  return boundary;
+}
+// A dispatched agent: refused past the boundary, with no ask and nothing the session was allowed.
+const SEAT = Boolean(payload.agent_id);
 // Member memory is compared case-folded on darwin too (R071): realish fixes the case only of a folder that exists, and
 // APFS opens either spelling, so `-ROOT/memory` reached a member's folder not made yet. Only this deny side folds there -
 // an allowance folded on a case-sensitive volume would open a sibling.
@@ -535,7 +561,7 @@ function pluginTreeRemoved(t) {
 }
 // Whether the user's own allowances open `t` inside a carved tree.
 const pluginOpened = (t, tree) => OWN_ALLOW.some((d) => inside(t, d) && inside(d, tree))
-  || receiptRoots.some((d) => inside(t, d)) || typedAllowed(t, tree);
+  || (!SEAT && (receiptRoots.some((d) => inside(t, d)) || typedAllowed(t, tree)));
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
@@ -544,11 +570,13 @@ function allowed(target) {
   const tree = pluginTree(t);
   if (tree) return pluginOpened(t, tree);
   if (ownMemory(t)) return true;
+  const top = workspaceTop();
+  if (top && inside(t, top)) return true; // anywhere in the session's workspace
   if (effectiveAllow.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return true;
-  if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
+  if (!SEAT && receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
   if (sameRepoWorktree(t)) return true;
-  if (typedAllowed(t)) return true; // a folder the user typed (U20)
+  if (!SEAT && typedAllowed(t)) return true; // a folder the user typed (U20)
 
   return false;
 }
@@ -676,8 +704,18 @@ function otherProjectRoot(target) {
 }
 // `shown` is the token the session wrote (or the resolved path after a cd); `abs` is where it lands.
 // The plugins-tree denial: no hand-off card (the tree is no project), dropping the change recommended.
+// What a subagent is told past the boundary: a refusal that names what to report, with no ask and no receipt route.
+function seatRefusal(what, shown, where, report) {
+  process.stderr.write(
+    `Blocked: ${what} targets '${shown}', ${where}. A subagent never writes outside its session's\n` +
+    `boundary, and nothing the session was allowed opens it here. Do not retry or route around it: stop this change and\n` +
+    `say in your result ${report} - the main session hands it off or asks the user.`,
+  );
+  process.exit(2);
+}
 function pluginBlock(what, shown, tree) {
   global.BLOCK_DETAIL = { branch: 'plugin-code' };
+  if (SEAT) seatRefusal(what, shown, `inside ${tree} - the installed plugins' own code and registries`, 'what you meant to change and where its source lives');
   const receiptRel = receiptRelOf();
   process.stderr.write(
     `Blocked: ${what} targets '${shown}', inside ${tree} - the installed plugins' own code and registries, where the\n` +
@@ -729,12 +767,15 @@ function block(what, shown, abs = shown) {
   global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool'
     : /^(?:write_file|edit_file|move_file|create_directory) /.test(what) ? 'mcp-file-write' : /git write/.test(what) ? 'git-write' : 'shell-write' };
   const otherRoot = otherProjectRoot(abs);
+  const top = workspaceTop();
+  const scope = top ? `workspace (${top})` : `project (${ROOT})`;
+  if (SEAT) seatRefusal(what, shown, `outside this session's ${scope}`, `what must change in ${other}, where (file + symbol) and why`);
   // Absolute, the sibling named: the user pastes the hand-off into that repo's session, which finds the card by this path.
   const card = path.resolve(ROOT, docsRoot, 'work', 'cross-project-tasks', `${other}.md`);
   const receiptRel = receiptRelOf();
   // Cut to the ask and its options (deep hooks review 2026-10-16: 1,553 chars per denial); the why is repo-hooks.md's.
   process.stderr.write(
-    `Blocked: ${what} targets '${shown}', outside this session's project (${ROOT}). A change another\n` +
+    `Blocked: ${what} targets '${shown}', outside this session's ${scope}. A change another\n` +
     `repo needs is handed off, not applied here. End this turn with ONE AskUserQuestion, in this order -\n` +
     `  'Task card in this project (Recommended)' - write ${card}:\n` +
     `  per task what changes where (file + symbol), why, the shared contract, how ${other} verifies it;\n` +
@@ -877,10 +918,20 @@ if (PLUGIN_ONLY) process.exit(0);
 const unread = scan.unread.slice();
 if (scan.aliasUnreadAt >= 0) unread.push({ at: scan.aliasUnreadAt, why: 'a git alias it could not read', path: null });
 for (const u of unread) {
-  if (u.path ? receiptRoots.some((d) => inside(realish(u.path), d)) : receiptLines.includes('unread')) continue;
   const shown = u.path || 'this command';
-  const receiptRel = receiptRelOf();
   global.BLOCK_DETAIL = { branch: 'unread', why: u.why };
+  // a subagent: refused whatever the session's receipt holds - an unread script may write past the boundary
+  if (SEAT) {
+    process.stderr.write(
+      `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes.\n` +
+      `A subagent never runs a command this guard could not read, and nothing the session was allowed opens it here.\n` +
+      `Do not retry or route around it: run a smaller piece the guard can read, or stop and say in your result what the\n` +
+      `command was for - the main session runs it or asks the user.`,
+    );
+    process.exit(2);
+  }
+  if (u.path ? receiptRoots.some((d) => inside(realish(u.path), d)) : receiptLines.includes('unread')) continue;
+  const receiptRel = receiptRelOf();
   process.stderr.write(
     `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes -\n` +
     `and a script it cannot read is never let through, since the same text a little shorter is judged.\n` +

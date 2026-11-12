@@ -893,7 +893,7 @@
       "file": "guard-cross-project-write.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card; an absolute path the user typed this session opens its folder (audit 2026-11-03 U20)"
+      "note": "one session, one project - or, for a project joined to a workspace, one workspace: block a WRITE that lands outside the project root, or outside the workspace's top member (reads/investigation untouched) - the change another repo needs is handed off as a task card; a subagent is refused past that boundary with no ask, whatever the session was allowed; an absolute path the user typed this session opens its folder (audit 2026-11-03 U20)"
     },
     {
       "file": "guard-cross-project-write.js",

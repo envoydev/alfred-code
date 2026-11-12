@@ -1371,7 +1371,19 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     registration name - audit 2026-11-03 SYS-02, the write half of HK-26; one more node start on those calls only) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`unlink`/`shred`/`trash`/`trash-put`/`mkdir`/`chmod` (E1-2c), `git -C <other>` mutating, `cd <other>` then a write);
-    the change goes to a task card under `<docs-path>/work/cross-project-tasks/`. Reading stays open. A shell path is
+    the change goes to a task card under `<docs-path>/work/cross-project-tasks/`. Reading stays open. THE WORKSPACE IS
+    THE BOUNDARY (the owner, 2026-11-11): a project joined to a workspace writes anywhere under the workspace's TOP member
+    - the root, a sibling, a project below - with no ask (`workspaceTop`: the last member of `layout.workspaceChain`, real
+    path; the switch off, a parent whose record does not point back, a record that cannot be read and a top that
+    holds the home folder each leave the project as the boundary; the memory folder of a member ABOVE the project stays
+    shut, R8 - a sibling's in-tree `autoMemoryDirectory` is not read and is inside the boundary). The grant is the
+    parent's `children` entry, so a stale one (a folder removed and cloned again under the same name) grants writes. Past the boundary the main session gets the ask.
+    A SUBAGENT (the payload's `agent_id`) is refused there with no ask (`seatRefusal`: stop the change, report what must
+    change and where): neither the session's `CROSS-WRITE-ALLOW` receipt nor a folder the user typed opens anything
+    for it, in the plugins tree too; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, session scratch and the account dirs stay open
+    to it, and a command the guard could not read (a script past the scan budget, an unread alias) is refused for it
+    too, whatever the receipt's `unread` line says. Cursor: not measured - a Cursor payload naming no
+    `agent_id` is judged as a main session. A shell path is
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
     scratch (the harness root `/tmp/claude-<uid>` listed on its own, so a project kept under `/tmp` still reaches it),

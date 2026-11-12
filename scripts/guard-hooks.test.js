@@ -5124,8 +5124,10 @@ test('guard-cross-project-write: an untracked settings.local.json opens its auto
     w.put('plain/.claude/alfred-code.stamp', 'sha: x\n');
     w.put('plain/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('mem/plain') }));
     assert.equal(w.write('plain', path.join(w.at('mem/plain'), 'MEMORY.md')).status, 2, 'no git repo says the file is untracked');
+    // the workspace off: joined, `ws` is inside the session's boundary whatever names it. `ws` holds the project and
+    // not the home folder (`<top>/home`), so only the project clause shuts it.
     w.put('ws/api/.claude/settings.local.json', JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
-    assert.equal(w.write('ws/api', w.at('ws/notes.md')).status, 2, 'a folder holding the project');
+    assert.equal(w.write('ws/api', w.at('ws/notes.md'), { ALFRED_CODE_WORKSPACE: '0' }).status, 2, 'a folder holding the project');
   } finally { w.rm(); }
 });
 
@@ -5175,8 +5177,9 @@ test('guard-cross-project-write: from a sub-folder or a linked worktree the root
 test('guard-cross-project-write: an account autoMemoryDirectory holding the project or the home folder opens nothing beside them', () => {
   const w = memWs();
   try {
+    // the workspace off, as above: `ws` holds the project and not the home folder
     fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: w.at('ws') }));
-    assert.equal(w.write('ws/api', w.at('ws/notes.md')).status, 2, 'a folder holding the project');
+    assert.equal(w.write('ws/api', w.at('ws/notes.md'), { ALFRED_CODE_WORKSPACE: '0' }).status, 2, 'a folder holding the project');
     fs.writeFileSync(path.join(w.acct, 'settings.json'), JSON.stringify({ autoMemoryDirectory: '~/' }));
     assert.equal(w.write('ws/api', path.join(w.home, 'notes.md')).status, 2, 'the home folder');
   } finally { w.rm(); }
@@ -5591,21 +5594,167 @@ test('audit 2026-10-30 HK-03: a security receipt opens only on the user\'s own a
 });
 
 test('audit 2026-10-30 HK-03: a seat\'s denial is anchored at its time in the seat\'s own transcript', () => {
-  const { root, write, allow: ALLOW, mine } = crossProject('rc-seat');
+  // Read through the prelude's own function: the cross-write guard no longer honours a receipt for a seat (below), and
+  // the anchor serves every guard that does.
+  const { root, otherRoot, allow: ALLOW, mine } = crossProject('rc-seat');
+  const { securityReceipt } = require(path.join(HOOKS, 'hook-prelude.js'));
   // Claude Code's layout: <dir>/<session>.jsonl, the seat's own at <dir>/<session>/subagents/agent-<id>.jsonl
   const tp = path.join(root, 'projects', `${RC}.jsonl`);
-  const seat = path.join(root, 'projects', RC, 'subagents', 'agent-seat1.jsonl');
-  const writeAs = (extra = {}) => write(tp, { agent_id: 'seat1', agent_type: 'Explore', ...extra });
+  const seatFile = path.join(root, 'projects', RC, 'subagents', 'agent-seat1.jsonl');
   rcFile(tp, [rc.typed('wire the client'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
-  rcFile(seat, [rc.typed('Brief: wire the client'), rc.denial(CROSS, 'Write')]);
+  rcFile(seatFile, [rc.typed('Brief: wire the client'), rc.denial(CROSS, 'Write')]);
+  pause(5);
+  const file = stateReceipt(root, CROSS, mine);
+  const live = (extra = {}) => {
+    const held = securityReceipt(file, { session_id: RC, transcript_path: tp, cwd: root, agent_id: 'seat1', agent_type: 'Explore', ...extra }, { marker: CROSS, labels: [/^allow .+ for this session$/] });
+    return !!(held && held.live && held.lines.includes(otherRoot));
+  };
+  assert.equal(live(), false, 'an older allow answer plus a new denial in a seat stays shut');
+  fs.appendFileSync(tp, rcLine(rc.answer(ALLOW)));
+  assert.equal(live(), true, 'the user\'s answer after the seat\'s denial opens it');
+  const named = rcFile(path.join(root, 'elsewhere', 'agent.jsonl'), [rc.denial(CROSS, 'Write')]);
+  assert.equal(live({ agent_transcript_path: named }), false, 'the payload\'s own agent_transcript_path is read first: a later seat denial there shuts it');
+  assert.equal(live({ agent_id: 'seat2' }), true, 'a seat with no denial of its own: the main transcript\'s anchor');
+});
+
+// ---- the workspace is the boundary (the owner, 2026-11-11): a child writes anywhere in its workspace; a write past the
+// workspace asks in the main session and is refused, with no ask and no receipt, in a subagent -------------------------
+function boundWs() {
+  const w = memWs();
+  w.put('ws/web/.claude/alfred-code.stamp', 'sha: x\n');
+  putWorkspace(w.at('ws'), { children: ['api', 'web'] });
+  putWorkspace(w.at('ws/web'), { parent: '..' });
+  spawnSync('git', ['init', '-q'], { cwd: w.at('ws/web') });
+  fs.mkdirSync(w.at('other'), { recursive: true });
+  spawnSync('git', ['init', '-q'], { cwd: w.at('other') });
+  const bash = (rel, command, extra = {}, env) => w.run(rel, { tool_name: 'Bash', tool_input: { command }, ...extra }, env);
+  const write = (rel, file, extra = {}, env) => w.run(rel, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' }, ...extra }, env);
+  return { ...w, bash, write };
+}
+
+test('guard-cross-project-write: a child session writes in its workspace root, a sibling and a project below it; past the workspace it asks', () => {
+  const w = boundWs();
+  try {
+    for (const [what, file] of [['the root', w.at('ws/README.md')], ['a sibling', w.at('ws/web/src/a.ts')], ['a project below', w.at('ws/api/tool/src/a.ts')], ['its own', w.at('ws/api/src/a.ts')]])
+      assert.equal(w.write('ws/api', file).status, 0, `${what}: ${w.write('ws/api', file).stderr}`);
+    assert.equal(w.write('ws/api/tool', w.at('ws/notes.md')).status, 0, 'two levels up: the top member is the boundary');
+    assert.equal(w.write('ws', w.at('ws/web/src/a.ts')).status, 0, 'the root writes below itself, as before');
+    assert.equal(w.bash('ws/api', `echo x >> ${w.at('ws/notes.md')}`).status, 0, 'a shell write into the root');
+    assert.equal(w.bash('ws/api', `cd ${w.at('ws/web')} && git commit -m x`).status, 0, 'a git write in a sibling checkout');
+    const out = w.write('ws/api', w.at('other/src/a.ts'));
+    assert.equal(out.status, 2, 'past the workspace');
+    assert.match(out.stderr, /AskUserQuestion/, 'the main session is asked');
+    assert.ok(out.stderr.includes(`outside this session's workspace (${w.at('ws')})`), out.stderr);
+    assert.equal(w.bash('ws/api', `git -C ${w.at('other')} commit -m x`).status, 2, 'a git write past the workspace');
+    // the boundary itself: the workspace's own folder is in, its parent and a folder that only shares its prefix are out
+    assert.equal(w.write('ws/api', path.join(w.top, 'x.md')).status, 2, 'one folder over the top member');
+    fs.mkdirSync(w.at('ws-other'), { recursive: true });
+    assert.equal(w.write('ws/api', w.at('ws-other/x.md')).status, 2, 'a folder that shares the workspace\'s prefix');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: with no workspace the project stays the boundary - the switch off, a parent that does not list the child, a garbage record', () => {
+  const w = boundWs();
+  try {
+    const up = w.at('ws/README.md');
+    const off = w.write('ws/api', up, {}, { ALFRED_CODE_WORKSPACE: '0' });
+    assert.equal(off.status, 2, 'the workspace switch off');
+    assert.ok(off.stderr.includes(`outside this session's project (${w.at('ws/api')})`), off.stderr);
+    putWorkspace(w.at('ws'), { children: ['web'] });
+    assert.equal(w.write('ws/api', up).status, 2, 'a parent whose record does not point back is no member');
+    putWorkspace(w.at('ws'), { children: ['api', 'web'] });
+    assert.equal(w.write('ws/api', up).status, 0, 'pointed back again');
+    fs.writeFileSync(path.join(w.at('ws/api'), '.alfred', 'workspace.json'), '{ not json');
+    assert.equal(w.write('ws/api', up).status, 2, 'a record that cannot be read widens nothing');
+    assert.equal(w.write('ws/api', w.at('ws/api/src/a.ts')).status, 0, 'and its own files still pass');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a subagent writes inside the workspace and is refused past it with no ask - a live receipt and a typed folder open nothing for it', () => {
+  const w = boundWs();
+  try {
+    const seat = { agent_id: 'seat1', agent_type: 'alfred-code:aspnet-implementer' };
+    assert.equal(w.write('ws/api', w.at('ws/README.md'), seat).status, 0, 'the root');
+    assert.equal(w.write('ws/api', w.at('ws/web/src/a.ts'), seat).status, 0, 'a sibling');
+    const other = w.at('other');
+    const target = path.join(other, 'src', 'a.ts');
+    const refused = (r, why) => {
+      assert.equal(r.status, 2, `${why}: ${r.stderr}`);
+      assert.doesNotMatch(r.stderr, /AskUserQuestion|CROSS-WRITE-ALLOW/, `${why}: no ask, no receipt route`);
+      assert.match(r.stderr, /A subagent never writes outside/, r.stderr);
+    };
+    refused(w.write('ws/api', target, seat), 'no receipt');
+    // the user allowed that tree for this session: the main session writes there, the seat still does not
+    const ALLOW = `Allow writes into ${other} for this session`;
+    const tp = rcFile(path.join(w.at('ws/api'), 'sessions', 't1.jsonl'), [rc.typed('wire the client in the other repo'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
+    pause(5);
+    stateReceipt(w.at('ws/api'), CROSS, `session: ${RC}\n${other}\n`);
+    const said = { session_id: RC, transcript_path: tp };
+    assert.equal(w.write('ws/api', target, said).status, 0, 'the main session, on the user\'s allow answer');
+    refused(w.write('ws/api', target, { ...said, ...seat }), 'a live receipt');
+    refused(w.bash('ws/api', `echo x >> ${target}`, { ...said, ...seat }), 'a shell write');
+    refused(w.bash('ws/api', `git -C ${other} commit -m x`, { ...said, ...seat }), 'a git write');
+    // a folder the user typed opens it for the main session only
+    const typed = rcFile(path.join(w.at('ws/api'), 'sessions', 't2.jsonl'), [rc.typed(`put the report in ${other}/`)]);
+    fs.rmSync(path.join(w.at('ws/api'), '.alfred', 'state', 'approvals', CROSS));
+    assert.equal(w.write('ws/api', target, { session_id: RC, transcript_path: typed }).status, 0, 'the main session, a typed folder');
+    refused(w.write('ws/api', target, { session_id: RC, transcript_path: typed, ...seat }), 'a typed folder');
+    // a tree the project declares its own stays open to a seat (this fixture sits under the temp folder, so that
+    // allowance is dropped for every actor here by the containment rule and is not the one to read)
+    assert.equal(w.write('ws/api', target, seat, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: other }).status, 0, 'ALLOW_WRITE_OUTSIDE');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: a subagent\'s unread script is refused with no ask - the session\'s `unread` receipt opens it for the main session only', () => {
+  const { root } = crossProject('seat-unread');
+  const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
+  const huge = path.join(fs.mkdtempSync(path.join(TMP, 'huge-')), 'huge.sh');
+  fs.writeFileSync(huge, `${'#'.repeat(SCAN_LIMITS.bytes + 1024)}\necho done\n`);
+  try {
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+    const sh = (extra = {}) => runIn('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `bash ${huge}` }, session_id: RC, cwd: root, ...extra }, { env });
+    const seat = { agent_id: 'seat1', agent_type: 'Explore' };
+    const refused = (r, why) => {
+      assert.equal(r.status, 2, `${why}: ${r.stderr}`);
+      assert.doesNotMatch(r.stderr, /AskUserQuestion|CROSS-WRITE-ALLOW/, `${why}: no ask, no receipt route`);
+      assert.match(r.stderr, /A subagent never runs a command this guard could not read/, r.stderr);
+    };
+    const asked = sh();
+    assert.equal(asked.status, 2, asked.stderr);
+    assert.match(asked.stderr, /AskUserQuestion/, 'the main session is asked');
+    refused(sh(seat), 'no receipt');
+    const tp = rcFile(path.join(root, 'sessions', 't.jsonl'), [rc.typed('run the big script'), rc.denial(CROSS, 'Bash'), rc.answer('Allow this command for this session')]);
+    pause(5);
+    stateReceipt(root, CROSS, `session: ${RC}\nunread\n${huge}\n`);
+    assert.equal(sh({ transcript_path: tp }).status, 0, 'the main session, on the user\'s allow answer');
+    refused(sh({ transcript_path: tp, ...seat }), 'a live receipt');
+  } finally { fs.rmSync(path.dirname(huge), { recursive: true, force: true }); }
+});
+
+test('guard-cross-project-write: a top member that holds the home folder is no boundary - the project stays it', () => {
+  const w = boundWs();
+  try {
+    const home = w.at('ws/home');
+    fs.mkdirSync(home, { recursive: true });
+    const there = { HOME: home, USERPROFILE: home };
+    const r = w.write('ws/api', w.at('ws/README.md'), {}, there);
+    assert.equal(r.status, 2, 'the root, with the home folder inside the workspace');
+    assert.ok(r.stderr.includes(`outside this session's project (${w.at('ws/api')})`), r.stderr);
+    assert.equal(w.write('ws/api', w.at('ws/api/src/a.ts'), {}, there).status, 0, 'its own files');
+    assert.equal(w.write('ws/api', w.at('ws/README.md')).status, 0, 'the home folder elsewhere: the workspace is the boundary');
+  } finally { w.rm(); }
+});
+
+test('guard-cross-project-write: in a project with no workspace a subagent is refused past the project, whatever the receipt', () => {
+  const { root, otherRoot, write, allow: ALLOW, mine } = crossProject('seat-solo');
+  const tp = rcFile(path.join(root, 'sessions', 't.jsonl'), [rc.typed('wire the client'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
   pause(5);
   stateReceipt(root, CROSS, mine);
-  assert.equal(writeAs().status, 2, 'an older allow answer plus a new denial in a seat stays shut');
-  fs.appendFileSync(tp, rcLine(rc.answer(ALLOW)));
-  assert.equal(writeAs().status, 0, 'the user\'s answer after the seat\'s denial opens it');
-  const named = rcFile(path.join(root, 'elsewhere', 'agent.jsonl'), [rc.denial(CROSS, 'Write')]);
-  assert.equal(writeAs({ agent_transcript_path: named }).status, 2, 'the payload\'s own agent_transcript_path is read first: a later seat denial there shuts it');
-  assert.equal(writeAs({ agent_id: 'seat2' }).status, 0, 'a seat with no denial of its own: the main transcript\'s anchor');
+  assert.equal(write(tp).status, 0, 'the main session');
+  const r = write(tp, { agent_id: 'seat1', agent_type: 'Explore' });
+  assert.equal(r.status, 2, r.stderr);
+  assert.doesNotMatch(r.stderr, /AskUserQuestion/, r.stderr);
+  assert.ok(r.stderr.includes(`outside this session's project (`) && r.stderr.includes(otherRoot.split(path.sep).pop()), r.stderr);
 });
 
 test('audit 2026-10-30 HK-03 / HK-16: DISCARD and CROSS-WRITE are this session\'s and the user\'s; each denial prints the lines', () => {

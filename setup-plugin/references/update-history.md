@@ -790,3 +790,17 @@ user-scope run installs at its own scope as before, and so does a local run when
 A row doubled by an earlier release is not removed. This update names it once per run, with the command that drops
 it: `claude plugin uninstall alfred-code@<marketplace> --scope local`. Running it is optional. While the local row is
 there it is the one that loads; without it this project runs the account's copy, which any project's update moves.
+
+## after 3.10.0 - a workspace is the write boundary, and a subagent never crosses it
+
+The cross-project write guard used to stop every write outside the session's own project. A project joined to a
+workspace now writes anywhere in that workspace - the root, a sibling, a project below it - with no ask; the
+boundary is the workspace's top member. A project in no workspace keeps its own folder as the boundary, and so does
+one whose workspace switch is off or whose parent does not list it.
+
+Past the boundary the main session is asked, as before. A subagent is not: it is refused with no ask, and neither
+your 'allow for this session' answer nor a folder you typed opens anything for it, and a script the guard could not
+read is refused for it too. It reports what must change and the main session hands it off or asks you. `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` still opens a tree for both.
+
+Nothing to do by hand. A project that relied on a subagent writing into a tree you allowed for the session: add that
+tree to `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, or let the main session make that write.
