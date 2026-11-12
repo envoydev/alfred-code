@@ -179,40 +179,6 @@ test('the mutators set, add and remove on a record; setParent and setRole exclud
     assert.ok(ws.CATEGORIES.includes('instructions'));
 });
 
-test('moveWorkspace moves workspace.json and a still-present old file as one record; the new root holding either name is a clash - neither file moves, the clash named', () =>
-{
-    const said = sink();
-    const log = said.log;
-    const root = putJson(putOld(project(), 'child web\n'), '{"children": ["api"]}\n');
-    assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'moved');
-    assert.deepStrictEqual([fs.existsSync(jsonOf(root)), fs.existsSync(legacyOf(root))], [false, false]);
-    assert.strictEqual(fs.readFileSync(jsonOf(root, '.ws-data'), 'utf8'), '{"children": ["api"]}\n');
-    assert.strictEqual(fs.readFileSync(legacyOf(root, '.ws-data'), 'utf8'), 'child web\n');
-    assert.deepStrictEqual(readWorkspaceValues(root, { dataRoot: '.ws-data' }), { children: ['api', 'web'] });
-    assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'absent');
-    // the new root holds the OTHER name: a clash either way
-    const cases = [
-        [(p) => putOld(p, 'child api\n'), (p) => putJson(p, '{}\n', '.ws-data'), 'workspace', 'workspace.json'],
-        [(p) => putJson(p, '{"children": ["api"]}\n'), (p) => putOld(p, 'child web\n', '.ws-data'), 'workspace.json', 'workspace'],
-    ];
-    for (const [here, there, mine, theirs] of cases)
-    {
-        const p = project();
-        here(p);
-        there(p);
-        const files = () => [jsonOf(p), legacyOf(p), jsonOf(p, '.ws-data'), legacyOf(p, '.ws-data')].map((f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null));
-        const before = files();
-        assert.strictEqual(ws.moveWorkspace({ projectRoot: p, from: '.alfred', to: '.ws-data', log }), 'clash', mine);
-        assert.deepStrictEqual(files(), before, 'neither file moved');
-        assert.ok(said.lines.some((l) => l.includes(`!! workspace: .alfred/${mine} left in place - .ws-data already holds a workspace record (${theirs})`)), said.lines.join('\n'));
-    }
-});
-
-test('ancestorEnv keeps only the account', () =>
-{
-    assert.deepStrictEqual(ws.ancestorEnv({ CLAUDE_CONFIG_DIR: '/acct', ALFRED_CODE_DATA_PATH: '.x' }), { CLAUDE_CONFIG_DIR: '/acct' });
-});
-
 // ------------------------------------------------------------------ the tree (Task 3)
 
 const { execFileSync } = require('node:child_process');
@@ -441,6 +407,18 @@ test('chainValues reads the members\' .variables, never a MEMBER_NEVER key, and 
     assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORER: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
     putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
     assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORER'));
+});
+
+// The fixed root (3.11.0): a child's installer run keeps its chain while its parent's data still sits in the folder an
+// older install named - the installer reads a member through the one reader, never the hooks' fixed .alfred.
+test('fixed root: chainValues reads a parent whose data still sits in its older folder', () =>
+{
+    const at = tree({ 'ws': { stamp: true }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    fs.writeFileSync(path.join(at('ws'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }));
+    putWorkspace(at('ws'), { children: ['api'] }, { dataRoot: 'var/data' });
+    fs.writeFileSync(path.join(at('ws'), 'var', 'data', '.variables'), 'ALFRED_CODE_HISTORY=5\n');
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_HISTORY: '5' });
+    assert.ok(!fs.existsSync(path.join(at('ws'), '.alfred')), 'nothing is made under the parent\'s .alfred');
 });
 
 test('chainValues reads nothing with the switch at 0 or for a project with no parent', () =>

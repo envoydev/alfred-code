@@ -739,6 +739,27 @@ test('removeStatus takes back the status files and the exclude lines this projec
     assert.ok(fs.existsSync(path.join(outside, 'aaaa.json')), 'nothing removed through the link');
 });
 
+// The fixed root (3.11.0): an uninstall over a folder an update has not moved yet names it; a hook never does.
+test('fixed root: removeStatus reads the list under the dataRoot it is handed', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const gitEnv = { ...scrubbed(process.env), HOME, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(ACCOUNT, 'gitconfig') };
+    fs.writeFileSync(gitEnv.GIT_CONFIG_GLOBAL, '');
+    const root = project();
+    execFileSync('git', ['init', '-q'], { cwd: root, env: gitEnv, stdio: 'pipe' });
+    const sub = path.join(root, 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    const env = { CLAUDE_PROJECT_DIR: root };
+    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: () => 0 } }), 'written', base);
+    const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
+    const moved = path.join(root, 'var', 'data', 'state', 'sessions', 'status-folders.json');
+    fs.mkdirSync(path.dirname(moved), { recursive: true });
+    fs.renameSync(list, moved);
+    assert.strictEqual(S().removeStatus(root, { env, dataRoot: 'var/data' }).files, 2);
+    assert.ok(!fs.existsSync(statusOf(sub, 's1')), 'the base the list names is swept');
+    assert.ok(!fs.existsSync(moved), 'the list goes with them');
+});
+
 
 // E-batch SYS-03 (the stated ceiling it closes: a pair for a base the list dropped stayed): uninstall also sweeps every
 // stack pair - the comment with an anchored line right under it - whose status folder exists in none of the repository's

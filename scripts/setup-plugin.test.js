@@ -716,7 +716,7 @@ test('router, status and configure read the local stack keys at every scope, and
     const status = flat(cmdBody('status'));
     assert.match(status, /at EVERY scope a stack key `settings\.local\.json` holds applies over `settings\.json`/);
     assert.match(status, /\*\*Environment\*\* - the install's knobs, one row each\. The variables come from ONE `node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/variables\.js" show --root \.`/);
-    assert.match(status, /`ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` come from the\s+STACK VIEW/);
+    assert.match(status, /`ALFRED_CODE_HOOKS_OFF` comes from the\s+STACK VIEW/);
     assert.match(status, /`ALFRED_CODE_HOOKS_OFF` read from the stack view/);
     const configure = flat(cmdBody('configure'));
     assert.match(configure, /`<key> stays here \(your value, <n> chars\)/);
@@ -1328,19 +1328,17 @@ test('group D wording: the no-repo root, the scope, git hygiene, nothing to offe
     assert.ok(configure.indexOf(note) < configure.lastIndexOf(close), 'F23 note sits before the pinned close');
 });
 
-// The data-root question (2.1.0) rides the same template shape as the walk's layer asks, so lint 61 holds
-// its recommended option - '.alfred (Recommended)' - first in both homes that ask it.
-// M12: setup has no data yet, so .alfred is its recommendation; configure reads a live install, and the walk's rule
-// is that the current state is the recommended answer - a custom root the user chose is never moved back.
-test('the data-root question is one ask template in init\'s install phase and configure - .alfred recommended there, the current root on configure', () =>
+// The data root is always .alfred (the fixed root, 2026-11-11): no body asks where the data goes, and none hands the
+// installer or workspace.js a folder.
+test('no body asks for a data folder or passes one', () =>
 {
-    for (const [rel, first] of [['references/init-install.md', /^- '\.alfred \(Recommended\)'/], ['commands/configure.md', /^- 'Keep <current> \(Recommended\)'/]])
+    for (const rel of ['references/init-install.md', 'references/init-child.md', 'references/init-role.md', 'references/update-workspace.md', 'commands/configure.md',
+        'references/update-walk.md', 'references/update-slow-path.md'])
     {
         const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
-        const data = askBlocks(text).filter((b) => /keep this project's data/i.test(b[0]));
-        assert.strictEqual(data.length, 1, `${rel} carries the data question as one ask template`);
-        const opts = data[0].filter((l) => /^- '/.test(l));
-        assert.match(opts[0], first, `${rel}: the recommended first option`);
+        assert.deepStrictEqual(askBlocks(text).filter((b) => /keep this project's data/i.test(b[0])), [], `${rel} asks where the data goes`);
+        assert.doesNotMatch(text, /--data-path|--data-move/, `${rel} passes a retired flag`);
+        assert.doesNotMatch(text, /data-move:/, `${rel} reads a line the preflight no longer prints`);
     }
 });
 

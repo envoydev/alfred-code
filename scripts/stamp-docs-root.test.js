@@ -448,17 +448,20 @@ test('stamp-docs-root --reprobe-versioning writes .variables and leaves settings
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// 2.1.5 audit M61: the stamped line states where the root comes from and carries no installer narration. Since 2.8.0
-// that is the data root's key and its default - ALFRED_CODE_DOCS_PATH is retired, so no settings file is named.
+// 2.1.5 audit M61: the stamped line states where the root comes from and carries no installer narration. Since the
+// fixed root that is `.alfred` - no key and no settings file is named.
 test('the stamped root line names the data root it sits under, and no installer narration (M61)', () => {
     const root = makeProject('{"env":{"ALFRED_CODE_DATA_PATH":".data"}}');
     try
     {
+        // An older install's folder: the key names it and it holds the stack's docs, so it is read until an update moves it.
+        fs.mkdirSync(path.join(root, '.data', 'docs'), { recursive: true });
+        fs.writeFileSync(path.join(root, '.data', 'docs', 'x.md'), 'x\n');
         run(root);
         const line = stampLine(root);
         assert.match(line, /This install's root: `\.data\/docs`/);
-        assert.match(line, /always `<data root>\/docs`, where `<data root>` is `ALFRED_CODE_DATA_PATH` \(default `\.alfred`\)/, line);
-        assert.doesNotMatch(line, /ALFRED_CODE_DOCS_PATH|settings\.local\.json/, line);
+        assert.match(line, /always `<data root>\/docs`, where `<data root>` is `\.alfred`/, line);
+        assert.doesNotMatch(line, /ALFRED_CODE_DOCS_PATH|ALFRED_CODE_DATA_PATH|settings\.local\.json/, line);
         assert.doesNotMatch(line, /stamped by every install|where every write prompts/, line);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }

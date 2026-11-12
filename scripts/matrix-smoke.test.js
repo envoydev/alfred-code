@@ -71,8 +71,8 @@ for (const route of Object.keys(ROUTES))
         const picked = (/^picked-skills: (.*)$/m.exec(result.stamp) || [])[1] || '';
         assert.deepStrictEqual(picked.split(',').sort(), [...new Set(['markdown-style', 'docs-as-code', ...require('../meta/recommendations.json').always.skills])].sort(), 'the stamp records the pick, its closure and the always-on skills - a copy, no plugin home (2.1.0)');
         assert.match(result.stamp, route === 'plugin' ? /^seats-route: plugin$/m : /^seats-route: copy$/m, 'how the seats came');
-        assert.strictEqual(result.settings.env.ALFRED_CODE_DATA_PATH, '.alfred', 'the settings env is seeded');
-        assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');
+        assert.strictEqual(typeof result.settings.env.ALFRED_CODE_HOOKS_OFF, 'string', 'the settings env is seeded');
+        for (const key of ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.strictEqual(result.settings.env[key], undefined, `${key}: no path key is ever written`);
         if (route === 'plugin')
         {
             assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
@@ -126,7 +126,7 @@ for (const route of Object.keys(ROUTES))
                 key: settings.includeCoAuthoredBy,
                 env: settings.env.OWN_FLAG,
                 hook: (settings.hooks.PreToolUse || []).find((e) => JSON.stringify(e).includes('own-hook.js')),
-                stack: settings.env.ALFRED_CODE_DATA_PATH,
+                stack: typeof settings.env.ALFRED_CODE_HOOKS_OFF,
             };
         };
         const { steps } = run(['install', 'update'], route, { prepare, each: own });
@@ -137,7 +137,7 @@ for (const route of Object.keys(ROUTES))
             assert.strictEqual(s.key, false, `${act}: the project's own settings key changed or vanished`);
             assert.strictEqual(s.env, 'on', `${act}: the project's own env key changed or vanished`);
             assert.deepStrictEqual(s.hook, OWN_HOOK, `${act}: the project's own hook changed or vanished`);
-            assert.strictEqual(s.stack, '.alfred', `${act}: the stack's own env was not merged in beside them`);
+            assert.strictEqual(s.stack, 'string', `${act}: the stack's own env was not merged in beside them`);
         }
     });
 }

@@ -15,15 +15,14 @@ const { SECRET_SHAPE, PEM_PRIVATE } = require('../credential-shapes.js');
 const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { STEP_MS, sleepMs, takeLock } = require('./file-lock.js');
 const stamp = require('./stamp.js');
-const { DATA_IGNORE_HEAD } = require('../../stack/mcp/data-root.js');
+const { DATA_IGNORE_HEAD, dataRootOf } = require('../../stack/mcp/data-root.js');
 
 const FILE = '.variables';
+// The folder a project's data sits in - `.alfred`, or an older install's folder until an update moves it.
+const rootOf = (place) => dataRootOf({ projectDir: place }).root;
 const LOCAL = 'settings.local.json';
 const KEY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const SETTINGS_KEYS = {
-    ALFRED_CODE_HOOKS_OFF: 'lives in .claude/settings.json - not written to .variables',
-    ALFRED_CODE_DATA_PATH: 'lives in .claude/settings.json - it names where .variables is, so it is not written to it',
-};
+const SETTINGS_KEYS = { ALFRED_CODE_HOOKS_OFF: 'lives in .claude/settings.json - not written to .variables' };
 const CATALOG = () => require('../../meta/environment.json').env || [];
 const isFile = (file) => { try { return fs.statSync(file).isFile(); } catch { return false; } };
 
@@ -33,7 +32,7 @@ function fileOf(projectRoot, { env = process.env, dataRoot } = {})
 {
     const checkout = path.resolve(projectRoot);
     // `dataRoot` is the checkout's root as a run decided it (the installer's, before its settings pass writes it).
-    const at = (place) => path.join(place, ...(dataRoot && place === checkout ? dataRoot : layout.dataRootOf(place, { env })).split('/'), FILE);
+    const at = (place) => path.join(place, ...(dataRoot && place === checkout ? dataRoot : rootOf(place)).split('/'), FILE);
     const own = at(checkout);
     if (isFile(own)) return own;
     const main = layout.mainCounterpart(checkout);
@@ -156,24 +155,6 @@ function ignoreVerdict(projectRoot, dataRoot)
     const own = Boolean(top) && real(path.resolve(top, m[1])) === real(mine) && head.startsWith(DATA_IGNORE_HEAD);
     return { ignored: true, source: m[1], line: Number(m[2]), own };
 }
-// A data root change (--data-path) carries the file, as workspace.js moveWorkspace carries the workspace file - before the
-// settings pass, so it reads the project's own values at the new root. A file already there is kept and the old named.
-function carry({ projectRoot, from, to, log = () => {} })
-{
-    const src = path.join(projectRoot, ...String(from).split('/'), FILE);
-    const dst = path.join(projectRoot, ...String(to).split('/'), FILE);
-    if (!fs.existsSync(src)) return 'absent';
-    if (fs.existsSync(dst))
-    {
-        log(`  !! variables: ${from}/${FILE} left in place - ${to}/${FILE} already exists`);
-        return 'clash';
-    }
-    fs.mkdirSync(path.dirname(dst), { recursive: true });
-    fs.renameSync(src, dst);
-    log(`  variables: moved ${from}/${FILE} -> ${to}/${FILE}`);
-    return 'moved';
-}
-
 // The line D6 prints for an ignored file.
 const ignoredLine = (dataRoot, verdict) =>
 {
@@ -277,7 +258,7 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log, 
             refuse(key, '- .variables is tracked here; change it with the team (no .variables.local yet)');
             continue;
         }
-        if (runScope !== 'local' && (verdict ??= ignoreVerdict(root, layout.dataRootOf(root, { env }))).ignored)
+        if (runScope !== 'local' && (verdict ??= ignoreVerdict(root, rootOf(root))).ignored)
         {
             if (value === null) delete (shared ??= sharedSettings(root)).data.env[key];
             else (shared ??= sharedSettings(root)).data.env[key] = value;
@@ -289,7 +270,7 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log, 
     if (localChanged) fs.writeFileSync(local.file, stringifyLike(local.data, formatOf(local.text)));
     if (shared && shared.data)
     {
-        log(ignoredLine(layout.dataRootOf(root, { env }), verdict));
+        log(ignoredLine(rootOf(root), verdict));
         fs.mkdirSync(path.dirname(shared.file), { recursive: true });
         fs.writeFileSync(shared.file, stringifyLike(shared.data, formatOf(shared.text)));
         log(`variables: ${result.toSettings.join(', ')} written to .claude/settings.json`);
@@ -315,7 +296,8 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log, 
 // `env` (a launch or un-migrated settings value) or `default` (the catalog's, nothing set).
 function show(projectRoot, { env = process.env, catalog = CATALOG() } = {})
 {
-    const { values, from } = layout.variablesOf(path.resolve(projectRoot), { env });
+    const root = path.resolve(projectRoot);
+    const { values, from } = layout.variablesOf(root, { env, dataRoot: rootOf(root) });
     return layout.VARIABLE_KEYS.map((key) =>
     {
         if (values[key] !== undefined)
@@ -328,4 +310,4 @@ function show(projectRoot, { env = process.env, catalog = CATALOG() } = {})
     });
 }
 
-module.exports = { FILE, fileOf, read, write, set, show, ignoreVerdict, ignoredLine, tracked, carry };
+module.exports = { FILE, rootOf, fileOf, read, write, set, show, ignoreVerdict, ignoredLine, tracked };

@@ -465,6 +465,19 @@
    },
    "why": "Complexity stage 1 (B9) removed forge-session's ref watch and the act ledger it read (0 fires in 442 sessions): nothing reads the switch.",
    "then": "nothing - the key is gone; the Forge: session line stays"
+  },
+  {
+   "id": "data-path-retired",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_DATA_PATH"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_DATA_PATH"
+   },
+   "why": "the data root is always .alfred: no hook, engine or script reads a folder name from a settings file any more, so the key names nothing. It goes whatever it holds - a folder it named is moved into .alfred by the same update, or the update stops and names the hand step.",
+   "then": "nothing - the key is gone; the project's data is under .alfred"
   }
  ]
 }

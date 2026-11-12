@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// THE DATA ROOT'S GIT LINE - whether `.alfred/` (ALFRED_CODE_DATA_PATH) should be ignored by the repo, and the
+// THE DATA ROOT'S GIT LINE - whether `.alfred/` (the data root) should be ignored by the repo, and the
 // write on the user's answer. The root carries its own `.gitignore` (stack/mcp/data-root.js dataIgnoreText), which
 // re-includes itself and the docs folder so committed docs reach a teammate's clone - so git always lists the root
 // as untracked (`?? .alfred/`). Where nothing under it is meant to be committed - the docs root sits elsewhere, or
@@ -41,7 +41,7 @@ function dataRootOffer({ projectRoot, localChild: asked = false })
 {
     const dataRoot = require('../stack/mcp/data-root.js');
     // Settings only, never a shell export: a settings value applies over one, and the installer reads it so.
-    const root = dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
+    const root = dataRoot.dataRootOf({ projectDir: projectRoot }).root;
     const none = (why) => ({ state: 'none', root, why });
     let top;
     try { top = git(['rev-parse', '--show-toplevel'], projectRoot); }

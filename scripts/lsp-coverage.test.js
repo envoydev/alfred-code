@@ -294,20 +294,6 @@ test('in git the walk\'s skipped folders are skipped too: .claude, node_modules 
     finally { s.done(); }
 });
 
-test('a nested data root is skipped by its whole path, its parent folder still read', () =>
-{
-    const s = sandbox();
-    try
-    {
-        writeJson(path.join(s.root, '.claude', 'settings.json'), { env: { ALFRED_CODE_DATA_PATH: 'docs/alfred' } });
-        for (const f of ['docs/alfred/state/x.js', 'docs/guide.md']) writeText(path.join(s.root, f), 'x\n');
-        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })], ['.md'], 'outside git');
-        spawnSync('git', ['init', '-q'], { cwd: s.root });
-        assert.deepStrictEqual([...lsp.projectExtensions({ projectRoot: s.root })], ['.md'], 'in git');
-    }
-    finally { s.done(); }
-});
-
 // Final review M3: a plugin no settings file names is on by its own default - `defaultEnabled`, the marketplace entry's over
 // the manifest's, true when none sets it; a settings entry still decides when there is one.
 test('a plugin the settings do not name follows its defaultEnabled, the marketplace entry over the manifest', () =>

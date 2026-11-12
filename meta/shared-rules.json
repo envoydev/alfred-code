@@ -44,19 +44,19 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs root is <data root>/docs - ALFRED_CODE_DATA_PATH, default .alfred, so .alfred/docs; outside .claude/, the directory Claude Code protects (2.0.0). ALFRED_CODE_DOCS_PATH is retired in 2.8.0 (the user's ruling of 2026-10-20, D7): no run writes it, an update moves the stack's docs from a leftover value and removes it (scripts/install/docs.js docsMovePlan), and every reader still reads a leftover key first for the 2.x line. The always-on alfred-docs-root rule is canonical; the code-level defaults (each hook's inline docsRootEnv() fallback, the installer's resolver, the re-stamp script) must state the same value. Every other code home of the fallback (the engines, the analyzers) is held to the same shape by scripts/docs-root-default.test.js, which also fails on a NEW home spelling another default.",
+      "_note": "The docs root is <data root>/docs and the data root is always .alfred (the fixed root, 3.11.0), so .alfred/docs; outside .claude/, the directory Claude Code protects (2.0.0). ALFRED_CODE_DOCS_PATH is retired in 2.8.0 (the user's ruling of 2026-10-20, D7): no run writes it, an update moves the stack's docs from a leftover value and removes it (scripts/install/docs.js docsMovePlan), and every reader still reads a leftover key first for the 2.x line. The always-on alfred-docs-root rule is canonical; the code-level defaults (each hook's inline docsRootEnv() fallback, the installer's resolver, the re-stamp script) must state the same value. Every other code home of the fallback (the engines, the analyzers) is held to the same shape by scripts/docs-root-default.test.js, which also fails on a NEW home spelling another default.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
-        "marker": "always `<data root>/docs`, where `<data root>` is `ALFRED_CODE_DATA_PATH` (default `.alfred`)"
+        "marker": "always `<data root>/docs`, where `<data root>` is `.alfred`"
       },
       "sites": [
         {
           "file": "scripts/install/copy.js",
-          "marker": "return envOf(view, 'DOCS_PATH') || `${data.ok ? data.value : DATA_ROOT_DEFAULT}/docs`;"
+          "marker": "return envOf(view, 'DOCS_PATH') || `${require('../../stack/mcp/data-root.js').dataRootOf({ projectDir: projectRoot }).root}/docs`;"
         },
         {
           "file": "scripts/stamp-docs-root.js",
-          "marker": "return envOf(env, 'DOCS_PATH') || `${envOf(env, 'DATA_PATH') || DEFAULT_DATA_ROOT}/docs`;"
+          "marker": "return envOf(env, 'DOCS_PATH') || `${require('../stack/mcp/data-root.js').dataRootOf({ projectDir: path.dirname(claudeDir) }).root}/docs`;"
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
@@ -72,7 +72,7 @@
         },
         {
           "file": "stack/hooks/docs-session.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.alfred/docs'"
         }
       ]
     },
@@ -7772,87 +7772,87 @@
       ]
     },
     "data-root-reader": {
-      "_note": "The data root, ALFRED_CODE_DATA_PATH relative to the project or .alfred - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout).",
+      "_note": "The data root, always .alfred (an absolute ALFRED_CODE_DATA_PATH is a harness's scratch and is kept) - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout; the fixed root, 2026-11-11).",
       "owner": {
         "file": "stack/hooks/layout.js",
-        "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
       },
       "sites": [
         {
           "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "setup-plugin/hooks/guard-layer-table.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-answer.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-catastrophic-rm.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-config-protection.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-cross-project-write.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-fresh-session-start.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-protected-force-push.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-secret-value.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/history.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         }
       ]
     },
@@ -8320,19 +8320,6 @@
         {
           "file": "stack/hooks/layout.js",
           "marker": "function settingFrom({ env, projectDir, suffix })\n{\n    const read = (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
-        }
-      ]
-    },
-    "data-path-check": {
-      "_note": "Which data roots are usable - data-root.js's checkDataPath, copied byte for byte into the hooks' layout.js so the workspace chain refuses the roots the installer refuses.",
-      "owner": {
-        "file": "stack/mcp/data-root.js",
-        "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/layout.js",
-          "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
         }
       ]
     },

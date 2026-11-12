@@ -69,8 +69,6 @@ It prints, in order:
   it, on), `renamed` (a copied item whose old copy is on disk - the update carries it), `offer`
   (only a yes brings it), `off` (the user's own off-state names it), `unknown` (the plugin listing could
   not be read).
-- `data-move: offer <root><TAB>from=<places><TAB>...` - this project's data sits outside its data root, or
-  `data-move: none (<why>)`. Only `offer` is asked, below.
 - `docs-move: offer <from> -> <to><TAB>moves=<names><TAB>stack=<n><TAB>own=<names|none>` - a docs root the user set by
   hand holds the stack's docs, or `docs-move: none (<why>)`. Only `offer` is asked, below.
 - `instructions-file: <agents|claude> files=<...> answer=<...> local=<yes|no> update=<ask-rename|ask|ask-local|record-claude|none>`
@@ -131,21 +129,17 @@ asked - they go in the step-7 report. No offer, no ask: this is still the no-que
 takes its Recommended option (adding the recommended items only adds), logged as one `unattended: <question> ->
 <choice>` line.
 
-**The data root - ONE ask, and only on `data-move: offer`.** Read `update-slow-path.md`'s 'The data root move'
-first (the typed-folder and `conflicts=` cases live there), then one AskUserQuestion before the
-installer runs, naming the `from=` places - in the SAME call as the new-items ask when both fire, one question each:
+**The data root is no ask.** It is always `.alfred`. Where an install from before 3.11.0 kept its data in another
+folder, this update moves the stack's entries of that folder into `.alfred` unasked and the log says `data root: moved
+<folder> to .alfred`; a `!! data root:` line means the run stopped before its first write - relay it with the hand step
+it names, as it is.
 
-```ask
-Move this project's sensitive-data file into <root>? From <from places>. Recommended: one folder outside .claude/, its machine state kept out of git.
-- '<root> - move it (Recommended)' - the file moves in this run; nothing is overwritten
-- 'Keep the current layout' - nothing moves, the hooks keep reading it where it is, and no later update asks again (configure can still move it)
-```
-
-After a move, until that restart this session's hooks keep writing under the OLD root - they read it from the
-environment the session started with - and its loaded rule text still names the old one (audit 2026-10-11, session
-bca100bd: the monitor hook re-created `<old root>/flow/` after the move). Say so in the close, with the one action it
-leaves: after the restart, a file under the old root's `state/` or `statistics/` - or, from a session that started
-before 2.8.0, its `flow/` or `hook-blocks/` - is this session's record and safe to delete.
+After a move - this one, or a docs root's below - the `--log` call prints `restart: yes`, and until that restart this
+session's hooks keep writing under the OLD root - they read it from the environment the session started with - and its
+loaded rule text still names the old one (audit 2026-10-11, session bca100bd: the monitor hook re-created `<old
+root>/flow/` after the move). Say so in the close, with the one action it leaves: after the restart, a file under the
+old root's `state/` or `statistics/` - or, from a session that started before 2.8.0, its `flow/` or `hook-blocks/` - is
+this session's record and safe to delete.
 
 **A docs root the user set by hand - ONE ask, and only on `docs-move: offer`.** Every other leftover docs root moves
 unasked; this one may be the team's own folder, and the stack picks its entries by name - so the question names every
@@ -219,7 +213,7 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--docs-root-move move [--docs-root-leave <entry>,...]] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... --keep-pins [--docs-versioning git|local] [--docs-root-move move [--docs-root-leave <entry>,...]] [--instructions-file agents|claude] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` (`project`, `user` or `local`).

@@ -48,8 +48,8 @@ One table, no ask - it is seven rows and every other area reads against it:
 | stack version (stamp) | 2.0.0 @ <short-sha> |
 | running plugin | 2.0.0 - `alfred-code@<key>`, enabled at project scope |
 | scope | project |
-| data root | .alfred (default) |
-| docs root | .alfred/docs (default) |
+| data root | .alfred |
+| docs root | .alfred/docs |
 | initialised | 2026-09-24 |
 | workspace | child of .. - own 3, ignored 1 - load check clean 2026-10-25 |
 
@@ -59,11 +59,10 @@ One table, no ask - it is seven rows and every other area reads against it:
   marketplace key (the part after `@`) and its
   scope. No CLI: `claude CLI unavailable`.
 - `scope`: the stamp's `scope:` line; absent = `project`.
-- `data root`: `ALFRED_CODE_DATA_PATH` from the scope file (`settings.local.json` over `settings.json`),
-  `(default)` when absent - the one folder for this project's docs and the hooks' state - plus the count
-  of the stamp's `data-pending:` lines when there are any (a sensitive-data move a run could not make) and
-  `data move kept` when the stamp says `data-move: kept`.
-- `docs root`: `<data root>/docs` - `ALFRED_CODE_DATA_PATH` from the scope file, `(default)` when absent; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
+- `data root`: always `.alfred` - the one folder for this project's docs and the hooks' state. A leftover
+  `ALFRED_CODE_DATA_PATH` in a settings file (retired in 3.11.0) shows the folder it names instead, marked `(leftover -
+  /alfred-code:update moves it into .alfred and removes the key)`.
+- `docs root`: `.alfred/docs`; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 - `workspace`: one call, `node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" status --root . ; node
   "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. Its first line, `role: <role>`, opens the row:
@@ -255,7 +254,7 @@ table verbatim, its update command in the close; a `floor: <spec> ... not judged
 **Environment** - the install's knobs, one row each. The variables come from ONE
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/variables.js" show --root .` - `<KEY>=<value> (<source>)` per key, the source
 `own` (this project's `.variables`), `from <rel>` (a workspace member's), `settings.local.json` or `default` - and its
-`!! variables:` notes go under the table as they are; `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` come from the
+`!! variables:` notes go under the table as they are; `ALFRED_CODE_HOOKS_OFF` comes from the
 STACK VIEW (`settings.local.json` over `settings.json` key by key, at every scope). The rows are the catalog's: read
 `${CLAUDE_PLUGIN_ROOT}/meta/environment.json` and print one row per `env` entry - its `key`, its value and source, and
 its `what` cut to one clause - never a copied list, which drifts (2026-10-21: a copy here had lost five of the

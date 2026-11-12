@@ -216,7 +216,7 @@ function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () 
     let status;
     try { status = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'session-status.js')); }
     catch (e) { note(`session status: not removed - the module could not be loaded (${e.message})`); return; }
-    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot, ...(dataRoot ? { ALFRED_CODE_DATA_PATH: dataRoot } : {}) } });
+    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) });
     const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
     if (got.files) log(`  session status: ${got.files} file${got.files === 1 ? '' : 's'} removed${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
     if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);

@@ -221,15 +221,15 @@ function shownPath(root, p, pth = path)
 }
 
 // 2026-11-10 (the user's report on 3.9.2): the state read not-installed while an earlier install's data root was there,
-// and nothing said so before the install. `--mode` names it: the data root (the settings' ALFRED_CODE_DATA_PATH, else
-// .alfred) of the cwd's git top level, or the cwd, when it holds anything and no stamp says an install is here.
-function leftovers(cwd = process.cwd(), env = process.env)
+// and nothing said so before the install. `--mode` names it: the data root (.alfred, or the folder an
+// older install named) of the cwd's git top level, or the cwd, when it holds anything and no stamp says an install is here.
+function leftovers(cwd = process.cwd())
 {
     const r = rt.spawnCommand('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     const top = r && r.status === 0 ? String(r.stdout || '').trim() : '';
     const projectRoot = top || cwd;
     if (require('./install/stamp.js').stampFiles({ projectRoot }).read) return 'none';
-    const root = require('../stack/mcp/data-root.js').dataRootOf({ env, projectDir: projectRoot }).root;
+    const root = require('../stack/mcp/data-root.js').dataRootOf({ projectDir: projectRoot }).root;
     let names = [];
     try { names = fs.readdirSync(path.join(projectRoot, ...root.split('/'))).sort(); } catch { /* no data root */ }
     return names.length ? `${root}/ (${names.join(', ')})` : 'none';

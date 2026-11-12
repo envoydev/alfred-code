@@ -49,55 +49,181 @@ test('data path: a relative folder is the answer; everything that would break a 
     }
 });
 
-test('data root: absent is .alfred; the setting is read from the shell, then settings.local.json, settings.json and the account', () =>
+// ------------------------------------------------------------------ the fixed root's reader (2026-11-11)
+// The data root is always `.alfred`. The reader finds a folder an EARLIER release left elsewhere - from the old key in the
+// project's two settings files and the stamp's `data-root:` line - so the installer can move it. It writes nothing.
+const stampAt = (dir, text) => put(path.join(dir, '.claude', 'alfred-code.stamp'), text);
+const KEY = (value) => ({ ALFRED_CODE_DATA_PATH: value });
+
+test('fixed root reader: no key and no stamp line is .alfred, no source', () =>
 {
-    const p = fresh('root');
-    const acct = path.join(p, 'acct');
-    const env = { CLAUDE_CONFIG_DIR: acct };
-    assert.deepStrictEqual(dr.dataRootOf({ env, projectDir: p }), { root: '.alfred', source: 'default' });
-    put(path.join(acct, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.acct' } }));
-    assert.strictEqual(dr.dataRootOf({ env, projectDir: p }).root, '.acct');
-    settings(p, { ALFRED_CODE_DATA_PATH: '.shared' });
-    assert.strictEqual(dr.dataRootOf({ env, projectDir: p }).root, '.shared');
-    settings(p, { ALFRED_CODE_DATA_PATH: '.mine' }, 'settings.local.json');
-    assert.deepStrictEqual(dr.dataRootOf({ env, projectDir: p }), { root: '.mine', source: 'setting' });
-    assert.strictEqual(dr.dataRootOf({ env: { ...env, ALFRED_CODE_DATA_PATH: '.shell' }, projectDir: p }).root, '.shell');
+    const p = fresh('reader-none');
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: p }), { root: '.alfred', sources: [], refused: [], candidates: [] });
+    assert.deepStrictEqual(dr.dataRootOf({}), { root: '.alfred', sources: [], refused: [], candidates: [] }, 'no project');
+    put(path.join(p, 'var', 'data', 'docs', 'x.md'));
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: p, env: KEY('var/data') }).sources, [], 'an env argument is ignored');
 });
 
-test('data root: a refused value falls back to .alfred and says why, never to a folder under .claude/', () =>
+test('fixed root reader: each candidate alone names its folder when it holds a stack entry', () =>
 {
-    const p = fresh('bad-root');
-    settings(p, { ALFRED_CODE_DATA_PATH: '.claude/data' });
-    const got = dr.dataRootOf({ env: { CLAUDE_CONFIG_DIR: path.join(p, 'acct') }, projectDir: p });
+    for (const from of ['settings.local.json', 'settings.json', 'stamp'])
+    {
+        const p = fresh('reader-one');
+        put(path.join(p, 'var', 'data', 'docs', 'x.md'));
+        if (from === 'stamp') stampAt(p, 'sha: abc\ndata-root: var/data\n');
+        else settings(p, KEY('var/data'), from);
+        const got = dr.dataRootOf({ projectDir: p });
+        assert.strictEqual(got.root, 'var/data', from);
+        assert.deepStrictEqual(got.sources, ['var/data'], from);
+        assert.deepStrictEqual(got.candidates, [{ root: 'var/data', from }]);
+    }
+    const q = fresh('reader-stampfile');
+    put(path.join(q, 'var', 'data', 'state', 's.json'));
+    put(path.join(q, 'elsewhere.stamp'), 'data-root: var/data\n');
+    assert.strictEqual(dr.dataRootOf({ projectDir: q, stampFile: path.join(q, 'elsewhere.stamp') }).root, 'var/data', 'a stamp file handed in');
+});
+
+test('fixed root reader: the order is local, shared, stamp', () =>
+{
+    const p = fresh('reader-order');
+    for (const r of ['a', 'b', 'c']) put(path.join(p, r, 'docs', 'x.md'));
+    settings(p, KEY('a'), 'settings.local.json');
+    settings(p, KEY('b'));
+    stampAt(p, 'data-root: c\n');
+    const got = dr.dataRootOf({ projectDir: p });
+    assert.deepStrictEqual(got.sources, ['a', 'b', 'c']);
+    assert.strictEqual(got.root, 'a');
+});
+
+test('fixed root reader: a refused key is skipped and reported, with and without a stamp line', () =>
+{
+    for (const raw of ['../x', '/abs/data'])
+    {
+        const p = fresh('reader-refused');
+        settings(p, KEY(raw));
+        const alone = dr.dataRootOf({ projectDir: p });
+        assert.strictEqual(alone.root, '.alfred');
+        assert.deepStrictEqual(alone.refused, [{ raw, file: 'settings.json', why: dr.checkDataPath(raw).why }]);
+        assert.deepStrictEqual(alone.candidates, []);
+        put(path.join(p, 'var', 'data', 'docs', 'x.md'));
+        stampAt(p, 'data-root: var/data\n');
+        const withStamp = dr.dataRootOf({ projectDir: p });
+        assert.strictEqual(withStamp.root, 'var/data', 'the stamp answers past a refused key');
+        assert.strictEqual(withStamp.refused.length, 1);
+    }
+});
+
+test('fixed root reader: a BOM is read, a malformed file says nothing', () =>
+{
+    const p = fresh('reader-bom');
+    put(path.join(p, 'var', 'data', 'docs', 'x.md'));
+    put(path.join(p, '.claude', 'settings.json'), `${String.fromCharCode(0xFEFF)}${JSON.stringify({ env: KEY('var/data') })}`);
+    assert.strictEqual(dr.dataRootOf({ projectDir: p }).root, 'var/data');
+    const q = fresh('reader-malformed');
+    put(path.join(q, 'other', 'docs', 'x.md'));
+    put(path.join(q, '.claude', 'settings.json'), '{ nope');
+    put(path.join(q, '.claude', 'settings.local.json'), '');
+    stampAt(q, 'data-root: other\n');
+    const got = dr.dataRootOf({ projectDir: q });
+    assert.deepStrictEqual(got.candidates, [{ root: 'other', from: 'stamp' }]);
+    assert.strictEqual(got.root, 'other');
+});
+
+test('fixed root reader: an absent, an empty and a project-only folder are no source', () =>
+{
+    const rows = [
+        ['absent', () => {}],
+        ['empty', (p) => fs.mkdirSync(path.join(p, 'var', 'data'), { recursive: true })],
+        ['a file of the project\'s own', (p) => put(path.join(p, 'var', 'data', 'notes.md'))],
+        ['a .gitignore without the stack\'s header', (p) => put(path.join(p, 'var', 'data', '.gitignore'), '*.tmp\n')],
+    ];
+    for (const [label, build] of rows)
+    {
+        const p = fresh('reader-nosource');
+        settings(p, KEY('var/data'));
+        build(p);
+        const got = dr.dataRootOf({ projectDir: p });
+        assert.deepStrictEqual(got.sources, [], label);
+        assert.strictEqual(got.root, '.alfred', label);
+        assert.deepStrictEqual(got.candidates, [{ root: 'var/data', from: 'settings.json' }], label);
+    }
+});
+
+test('fixed root reader: a folder holding only the stack\'s .gitignore is a source', () =>
+{
+    const p = fresh('reader-ignore-only');
+    settings(p, KEY('var/data'));
+    put(path.join(p, 'var', 'data', '.gitignore'), `${dr.DATA_IGNORE_HEAD}\n*\n!/.gitignore\n`);
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: p }).sources, ['var/data']);
+    assert.deepStrictEqual(dr.stackEntries(path.join(p, 'var', 'data')), ['.gitignore']);
+    assert.deepStrictEqual(dr.stackEntries(path.join(p, 'nowhere')), []);
+});
+
+// Review C1: the one-time move leaves an older folder its ignore file where the folder keeps entries of its own, so they
+// stay out of git. That folder holds no data of the stack's any more - nothing may read it as the data root again.
+test('fixed root reader: the stack\'s .gitignore beside only the project\'s own entries is no source', () =>
+{
+    const p = fresh('reader-ignore-kept');
+    settings(p, KEY('var/data'));
+    put(path.join(p, 'var', 'data', '.gitignore'), `${dr.DATA_IGNORE_HEAD}\n/*\n!/.gitignore\n`);
+    put(path.join(p, 'var', 'data', 'chrome-control', 'Default', 'Cookies'));
+    const got = dr.dataRootOf({ projectDir: p });
+    assert.deepStrictEqual([got.sources, got.root], [[], '.alfred']);
+    put(path.join(p, 'var', 'data', 'state', 'x.json'), '{}\n');
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: p }).sources, ['var/data'], 'one entry of the stack\'s beside them makes it a source again');
+});
+
+test('fixed root reader: .Alfred on a case-insensitive disk and a key naming a .alfred link\'s target are .alfred', (t) =>
+{
+    const linked = fresh('reader-link');
+    put(path.join(linked, 'store', 'real', 'docs', 'x.md'));
+    try { fs.symlinkSync(path.join(linked, 'store', 'real'), path.join(linked, '.alfred'), 'junction'); }
+    catch (err) { t.diagnostic(`no link on this disk (${err.code})`); return; }
+    settings(linked, KEY('store/real'));
+    const got = dr.dataRootOf({ projectDir: linked });
+    assert.deepStrictEqual(got.sources, [], 'the link\'s target is .alfred');
     assert.strictEqual(got.root, '.alfred');
-    assert.strictEqual(got.source, 'invalid');
-    assert.match(got.why, /\.claude/);
+    const p = fresh('reader-case');
+    put(path.join(p, '.alfred', 'docs', 'x.md'));
+    if (!fs.existsSync(path.join(p, '.Alfred'))) { t.diagnostic('a case-sensitive disk: the case half is skipped'); return; }
+    settings(p, KEY('.Alfred'));
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: p }).sources, [], '.Alfred is .alfred here');
+});
+
+test('fixed root reader: two candidates that both hold data are two sources', () =>
+{
+    const p = fresh('reader-two');
+    put(path.join(p, 'var', 'a', 'docs', 'x.md'));
+    put(path.join(p, 'var', 'b', '.variables'), 'K=v\n');
+    settings(p, KEY('var/a'));
+    stampAt(p, 'data-root: var/b\n');
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: p }).sources, ['var/a', 'var/b']);
+    const same = fresh('reader-same');
+    put(path.join(same, 'var', 'a', 'docs', 'x.md'));
+    settings(same, KEY('var/a'));
+    settings(same, KEY('./var/a/'), 'settings.local.json');
+    stampAt(same, 'data-root: var/a\n');
+    assert.deepStrictEqual(dr.dataRootOf({ projectDir: same }).sources, ['var/a'], 'one folder named three times is one source');
+});
+
+test('fixed root reader: readRootLine and stamp.readDataLines agree', () =>
+{
+    const stampLayer = require('./install/stamp.js');
+    for (const [text, want] of [['sha: a\ndata-root: var/data\n', 'var/data'], ['data-root: ../out\n', ''], ['data-root: .claude/x\n', ''], ['sha: a\n', ''], ['', '']])
+    {
+        const p = fresh('reader-line');
+        stampAt(p, text);
+        assert.strictEqual(dr.readRootLine(text), want, text);
+        assert.strictEqual(stampLayer.readDataLines(path.join(p, '.claude', 'alfred-code.stamp')).root, want, text);
+    }
 });
 
 // ------------------------------------------------------------------ the move plan
 
-test('move plan: only the sensitive-data file moves, and only on a root change - an older release\'s server data is no row', () =>
-{
-    const p = fresh('plan');
-    put(path.join(p, '.serena', 'project.yml'), 'project_name: app');
-    put(path.join(p, '.playwright', 'chrome', 'Default', 'Cookies'));
-    put(path.join(p, '.alfred', 'serena', 'project.yml'));
-    put(path.join(p, '.alfred', 'firefox-control', 'prefs.js'));
-    put(path.join(p, '.memory-mcp', 'memory.db'));
-    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.alfred' }), [], 'no prior root: nothing moves');
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.alfred', prior: '.alfred' }), [], 'the same root: nothing moves');
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' }),
-        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data', conflict: false }]);
-    for (const cls of ['serena', 'memory', 'chrome-control', 'browser']) assert.strictEqual(dr.targetOf(cls, '.data'), null, `${cls} has no place`);
-    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'serena', from: '.serena', to: '.data/serena' }).state, 'absent', 'a server\'s folder is never moved');
-    assert.ok(fs.existsSync(path.join(p, '.serena', 'project.yml')));
-});
-
-test('pending lines: rendered and read back; a server\'s line an older release wrote, a malformed or foreign line is dropped', () =>
+test('pending lines: an older stamp\'s line is read back; a server\'s line, a malformed or foreign line is dropped', () =>
 {
     const rows = [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }];
-    const text = `sha: abc\n${dr.renderPending(rows).join('\n')}\n`
+    const text = 'sha: abc\ndata-pending: sensitive .alfred/.sensitive-data -> var/data/.sensitive-data\n'
         + 'data-pending: serena .serena -> .alfred/serena\ndata-pending: chrome-control .playwright/chrome -> .alfred/chrome-control\n'
         + 'data-pending: rm -rf / -> x\ndata-pending: sensitive ../out/.sensitive-data -> .alfred/.sensitive-data\n';
     assert.deepStrictEqual(dr.readPending(text), rows);
@@ -105,37 +231,12 @@ test('pending lines: rendered and read back; a server\'s line an older release w
 
 // ------------------------------------------------------------------ the project's sensitive data (2026-10-13)
 
-test('sensitive data: its place is <root>/.secrets (an old <root>/.sensitive-data read too); a root change moves the file and nothing else does', () =>
+test('sensitive data: its place is <root>/.secrets, no server class has one, and a pending line is read back', () =>
 {
     assert.strictEqual(dr.targetOf('sensitive', '.data'), '.data/.secrets');
-    assert.strictEqual(dr.rootOfPlace('sensitive', 'var/data/.sensitive-data'), 'var/data');
-    const p = fresh('sensitive-plan');
-    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.alfred' }), [], 'at its place already');
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' }),
-        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data', conflict: false }]);
-    put(path.join(p, '.data', '.sensitive-data'), 'K=other\n');
-    assert.strictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' })[0].conflict, true, 'a store at both places');
-    const q = fresh('sensitive-dir');
-    fs.mkdirSync(path.join(q, '.alfred', '.sensitive-data'), { recursive: true });
-    put(path.join(q, '.alfred', '.sensitive-data', 'x'));
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: q, root: '.data', prior: '.alfred' }), [], 'a folder of that name is no store');
+    for (const cls of ['serena', 'memory', 'chrome-control', 'browser']) assert.strictEqual(dr.targetOf(cls, '.data'), null, `${cls} has no place`);
     assert.deepStrictEqual(dr.readPending('data-pending: sensitive .alfred/.sensitive-data -> .data/.sensitive-data\n'),
         [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data' }]);
-});
-
-test('sensitive data: the move writes the new root\'s .gitignore first and refuses to overwrite a store already there', () =>
-{
-    const p = fresh('sensitive-move');
-    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
-    assert.deepStrictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }), { state: 'moved' });
-    assert.strictEqual(fs.readFileSync(path.join(p, 'var', 'data', '.sensitive-data'), 'utf8'), 'K=v\n');
-    assert.ok(!fs.existsSync(path.join(p, '.alfred', '.sensitive-data')));
-    assert.ok(fs.readFileSync(path.join(p, 'var', 'data', '.gitignore'), 'utf8').startsWith(dr.DATA_IGNORE_HEAD), 'the new root ignores it');
-    put(path.join(p, '.alfred', '.sensitive-data'), 'K=new\n');
-    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }).state, 'conflict');
-    assert.strictEqual(fs.readFileSync(path.join(p, 'var', 'data', '.sensitive-data'), 'utf8'), 'K=v\n', 'neither side touched');
-    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.none/.sensitive-data', to: '.x/.sensitive-data' }).state, 'absent');
 });
 
 // The capture's credentials file before 2026-10-13 moves into the store (the user's call: one credential home, by update).
@@ -259,11 +360,9 @@ test('secrets file: .secrets first, .sensitive-data second, a folder is neither 
     put(path.join(dir, '.alfred', '.secrets'), 'K=v\n');
     assert.strictEqual(dr.findSecretsFile(dir, '.alfred').name, '.secrets');
     assert.strictEqual(dr.targetOf('sensitive', '.alfred'), '.alfred/.secrets');
-    assert.strictEqual(dr.rootOfPlace('sensitive', '.data/.sensitive-data'), '.data');
-    assert.strictEqual(dr.rootOfPlace('sensitive', '.data/.secrets'), '.data');
 });
 
-test('phase 1 writes no .secrets beside an old .sensitive-data: ensure, adopt and the move keep the found name (item 3)', () =>
+test('phase 1 writes no .secrets beside an old .sensitive-data: ensure and adopt keep the found name (item 3)', () =>
 {
     const dir = fresh('secrets-phase1');
     put(path.join(dir, '.alfred', '.sensitive-data'), 'K=v\n');
@@ -272,8 +371,6 @@ test('phase 1 writes no .secrets beside an old .sensitive-data: ensure, adopt an
     put(path.join(dir, '.alfred', 'docs', 'project-capabilities', 'credentials.local.env'), 'T=1\n');
     assert.strictEqual(dr.adoptCredentials({ projectDir: dir, check: () => true }).to, '.alfred/.sensitive-data');
     assert.ok(!fs.existsSync(path.join(dir, '.alfred', '.secrets')));
-    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: dir, root: '.data', prior: '.alfred' }),
-        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data', conflict: false }]);
     const empty = fresh('secrets-none');
     assert.strictEqual(dr.ensureSensitiveFile({ projectDir: empty, check: () => true }), 'written');
     assert.ok(fs.existsSync(path.join(empty, '.alfred', '.secrets')));

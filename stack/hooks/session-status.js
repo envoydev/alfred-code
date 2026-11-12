@@ -34,7 +34,7 @@ const engine = (name) =>
 function depsOf(deps) {
   if (deps && deps.resolved) return deps;
   const given = deps && typeof deps === 'object' ? deps : {};
-  const out = { resolved: true, env: given.env || process.env, clock: given.clock || Date.now, uptime: given.uptime, exec: given.exec };
+  const out = { resolved: true, env: given.env || process.env, clock: given.clock || Date.now, uptime: given.uptime, exec: given.exec, dataRoot: given.dataRoot };
   for (const name of Object.keys(ENGINE_FILES)) Object.defineProperty(out, name, { enumerable: true, get: () => (name in given ? given[name] : engine(name)) });
   return out;
 }
@@ -182,7 +182,9 @@ function probeRow(payload, row, d) {
 }
 
 // The folder list: every base a session of this project wrote a status file under, absolute with `/`, at most 32.
-const listFile = (root, d) => (d.layout ? d.layout.statePath(root, 'sessions', 'status-folders.json', d.env) : null);
+// `dataRoot` is the uninstall's alone: the folder an older install's data still sits in. A hook never hands one.
+const listFile = (root, d) => (d.dataRoot ? path.join(root, ...String(d.dataRoot).split('/'), 'state', 'sessions', 'status-folders.json')
+  : d.layout ? d.layout.statePath(root, 'sessions', 'status-folders.json', d.env) : null);
 // The list's text, or null: only a regular file (no link, FIFO or device) under 64 KB is read - 32 entries are a few
 // KB, and a link to a FIFO or /dev/zero stalled the session start (R134).
 const LIST_MAX = 64 * 1024;

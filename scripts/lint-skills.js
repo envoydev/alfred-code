@@ -1276,7 +1276,8 @@ const SETUP_ASK_TEMPLATES = {
     // +7: screen A's scope, root, profile and forge CLI asks (the GitHub CLI ask until 2026-10-23), step 2's permission mode, step 10's blockers and the
     // git-hygiene ask (audit 2026-10-21 commands T2-12). -1: the profile ask, with --space (the user's ruling of 2026-10-23).
     // -1: the forge CLI ask - the user picks their own tools (the user's report of 2026-11-10; --forge-cli stays for a hand run).
-    'setup-plugin/references/init-install.md': 8,
+    // -1: screen B's data-root ask - the data root is always .alfred (the fixed root, 2026-11-11).
+    'setup-plugin/references/init-install.md': 7,
     // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
     // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
     'setup-plugin/references/init-child.md': 2,
@@ -1300,7 +1301,8 @@ const SETUP_ASK_TEMPLATES = {
     // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
     // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
     // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
-    'setup-plugin/commands/configure.md': 14,
+    // -2: step 8's data-root asks, the move and the keep-or-change one (the fixed root, 2026-11-11).
+    'setup-plugin/commands/configure.md': 12,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1310,7 +1312,8 @@ const SETUP_ASK_TEMPLATES = {
     // -1: the old-seed rename ask - the walk asks instructions-place.md's name templates instead (2026-10-22).
     // +2: the workspace join ask and the account's both-instruction-files ask (workspace layering, 2026-10-26).
     // The join ask became the role ask, one template over its five cases (workspace roles and variables D2, 2026-10-27).
-    'setup-plugin/references/update-walk.md': 6,
+    // -1: the data-root ask - the data root is always .alfred (the fixed root, 2026-11-11).
+    'setup-plugin/references/update-walk.md': 5,
     // the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26); the children's
     // asks became the scope ask - the children too, or only this project - one template with and one without them (2026-10-28).
     'setup-plugin/references/update-workspace.md': 3,
@@ -1354,7 +1357,7 @@ function setupAskFiles(root, fsLike = fs)
 }
 // A reference init reads with ONE `cat` is held at its size: init-install.md passed the Bash output cap (2026-10-27), so
 // a new screen-B call went into a reference of its own, and growing this file again would cut its tail off that read.
-const SETUP_SIZE_PINS = { 'setup-plugin/references/init-install.md': 31960 };
+const SETUP_SIZE_PINS = { 'setup-plugin/references/init-install.md': 30491 };
 function lintSetupAskPresence(files)
 {
     const findings = [];
@@ -3100,7 +3103,6 @@ const REALPATH_PINS = {
     'scripts/preferences.test.js': 4,
     'scripts/profile-fixture.test.js': 1,
     'scripts/scan-evidence.test.js': 1,
-    'scripts/secret-chain.test.js': 1,
     'scripts/secrets-run.test.js': 1,
     'scripts/session-scope.test.js': 1,
     'scripts/session-status.test.js': 3,

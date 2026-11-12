@@ -162,9 +162,8 @@ function resolveDocsRoot(projectRoot, scope)
     // R98: at project and user scope the docs root is settings.json's alone - the stamped rule is shared.
     const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
     const view = env && typeof env === 'object' ? env : {};
-    const { checkDataPath, DATA_ROOT_DEFAULT } = require('../../stack/mcp/data-root.js');
-    const data = checkDataPath(envOf(view, 'DATA_PATH') || DATA_ROOT_DEFAULT);
-    return envOf(view, 'DOCS_PATH') || `${data.ok ? data.value : DATA_ROOT_DEFAULT}/docs`;
+    // The data root is `.alfred`, or the folder an earlier release left elsewhere until an update moves it (the reader).
+    return envOf(view, 'DOCS_PATH') || `${require('../../stack/mcp/data-root.js').dataRootOf({ projectDir: projectRoot }).root}/docs`;
 }
 
 // The docs versioning DECLARED for this project - 'git', 'local', or null when the key is absent or holds anything else

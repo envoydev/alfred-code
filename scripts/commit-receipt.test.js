@@ -180,20 +180,20 @@ test('a subfolder, a moved docs root, --dry-run and clear', () => {
   assert.equal(helper(dir, ['clear', 'commit'], { env: moved }).status, 0, 'clearing an absent receipt is fine');
 });
 
-test('2.8.0 layout: the receipt follows ALFRED_CODE_DATA_PATH, stays out of the count, and clear takes the legacy flow/ one too', () => {
+test('fixed root: a relative data key does not move the receipt; it stays out of the count, and clear takes the legacy flow/ one too', () => {
   const { dir } = repo();
   fs.writeFileSync(path.join(dir, 'a.txt'), forty());
   const data = { ALFRED_CODE_DATA_PATH: 'var/alfred' };
   assert.equal(helper(dir, COMMIT, { env: data }).status, 0);
-  assert.match(receiptOf(dir, 'COMMIT-GATE', 'var/alfred'), /^spec: 1 file - a\.txt$/m, 'no .gitignore keeps state/ out - the count does');
+  assert.match(receiptOf(dir, 'COMMIT-GATE'), /^spec: 1 file - a\.txt$/m, 'no .gitignore keeps state/ out - the count does');
+  assert.ok(!fs.existsSync(path.join(dir, 'var')), 'nothing lands under the folder the key names');
   assert.equal(guard(dir, 'git add -A && git commit -m x', data).status, 0, 'and the guard reads it there, its own file uncounted');
-  // a receipt a 2.7.0 skill copy left in the old flow/ would be read once the new one is gone, so clear removes both -
-  // under the data root's docs, where 2.7.0 wrote ALFRED_CODE_DOCS_PATH for a custom data root
-  const legacy = path.join(dir, 'var', 'alfred', 'docs', 'flow', 'COMMIT-GATE');
+  // a receipt a 2.7.0 skill copy left in the old flow/ would be read once the new one is gone, so clear removes both
+  const legacy = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   fs.mkdirSync(path.dirname(legacy), { recursive: true });
   fs.writeFileSync(legacy, 'WAIVED - "skip the review"\n');
   assert.equal(helper(dir, ['clear', 'commit'], { env: data }).status, 0);
-  assert.ok(!fs.existsSync(path.join(dir, 'var', 'alfred', 'state', 'approvals', 'COMMIT-GATE')), 'the new one is gone');
+  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'state', 'approvals', 'COMMIT-GATE')), 'the new one is gone');
   assert.ok(!fs.existsSync(legacy), 'and the legacy one');
 });
 

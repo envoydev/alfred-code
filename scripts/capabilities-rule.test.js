@@ -101,37 +101,12 @@ test('I20: the rows name the resolved data root, never the slots', () =>
     for (const row of rows) assert.doesNotMatch(row, /<data root>|<engine>|<server>|<docs-path>/, row);
 });
 
-test('I20: the data root follows ALFRED_CODE_DATA_PATH, settings.local.json over settings.json', () =>
+test('fixed root: the routing header names .alfred whatever the settings and the account say', () =>
 {
-    const { root, home } = project('data-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
+    const { root, home } = project('data-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } }, account: { env: { ALFRED_CODE_DATA_PATH: 'acct-data' } } });
     const { out } = run([], { cwd: root, home });
-    assert.match(out, /MCP ROUTING rows - .*\(data root data\/mine\):/, out);
-});
-
-test('I20: the script resolves the data root the way stack/mcp/data-root.js does', () =>
-{
-    const { dataRootOf } = require('../stack/mcp/data-root.js');
-    const { dataRoot } = loadScript();
-    const cases = [
-        ['none', {}],
-        ['settings', { settings: { env: { ALFRED_CODE_DATA_PATH: 'data/a' } } }],
-        ['local-wins', { settings: { env: { ALFRED_CODE_DATA_PATH: 'data/a' } }, local: { env: { ALFRED_CODE_DATA_PATH: './data/b/' } } }],
-        ['malformed-local', { settings: { env: { ALFRED_CODE_DATA_PATH: 'data/a' } }, local: '{ not json' }],
-        ['under-claude', { settings: { env: { ALFRED_CODE_DATA_PATH: '.claude/data' } } }],
-        ['absolute', { settings: { env: { ALFRED_CODE_DATA_PATH: '/abs/data' } } }],
-        ['space', { settings: { env: { ALFRED_CODE_DATA_PATH: 'my data' } } }],
-        ['dotdot', { settings: { env: { ALFRED_CODE_DATA_PATH: 'a/../b' } } }],
-        ['account', { account: { env: { ALFRED_CODE_DATA_PATH: 'acct-data' } } }],
-    ];
-    for (const [name, opts] of cases)
-    {
-        const { root, home } = project(`parity-${name}`, opts);
-        const env = { CLAUDE_CONFIG_DIR: path.join(home, '.claude') };
-        assert.equal(dataRoot(root, env), dataRootOf({ env, projectDir: root }).root, name);
-    }
-    const { root } = project('parity-env');
-    const env = { ALFRED_CODE_DATA_PATH: 'from-shell', CLAUDE_CONFIG_DIR: path.join(TMP, 'nowhere') };
-    assert.equal(dataRoot(root, env), dataRootOf({ env, projectDir: root }).root, 'the shell env first');
+    assert.match(out, /MCP ROUTING rows - .*\(data root \.alfred\):/, out);
+    assert.strictEqual(loadScript().dataRoot(root), '.alfred');
 });
 
 test('I20: routingRow leaves no slot outside the first call names', () =>
@@ -153,11 +128,11 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
 
 test('I20: the rows\' docs and data roots follow a local-scope install\'s settings.local.json over settings.json', () =>
 {
-    // 2.8.0: the data root follows ALFRED_CODE_DATA_PATH the same way; since HK-16 the routing header names it, no row.
+    // The data root is .alfred whatever a key names (the fixed root); since HK-16 the routing header names it, no row.
     const { root, home } = project('docs-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs', ALFRED_CODE_DATA_PATH: 'shared' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs', ALFRED_CODE_DATA_PATH: 'var/data' } } });
     const { out } = run([], { cwd: root, home });
     assert.match(out, /DOCS ROOT: var\/data\/docs\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.local\.json env\)/);
-    assert.match(out, /MCP ROUTING rows - .*\(data root var\/data\):/, out);
+    assert.match(out, /MCP ROUTING rows - .*\(data root \.alfred\):/, out);
 });
 
 test('I20: --verify fails a rule still holding an unresolved slot', () =>

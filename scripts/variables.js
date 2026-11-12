@@ -63,7 +63,7 @@ function main(env = process.env)
     if (args.cmd === 'show')
     {
         for (const row of variables.show(args.root, { env })) console.log(`${row.key}=${row.value} (${row.source})`);
-        for (const note of layout.variablesOf(args.root, { env }).notes) console.log(note);
+        for (const note of layout.variablesOf(args.root, { env, dataRoot: variables.rootOf(path.resolve(args.root)) }).notes) console.log(note);
         return 0;
     }
     const got = variables.set(args.root, args.pairs, { scope: args.scope || undefined, env });

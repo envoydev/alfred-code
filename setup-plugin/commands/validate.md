@@ -286,7 +286,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 ## 8. Environment - the stack's values against this release
 
 The one layer that is not an artifact: the values this stack owns - each catalog variable in the project's
-`<data root>/.variables`, and `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` in the scope's settings `env`. Read
+`.alfred/.variables`, and `ALFRED_CODE_HOOKS_OFF` in the scope's settings `env`. Read
 the rows from the snapshot's `$TMP/repo/meta/environment.json`; the variables from ONE `node
 "$TMP/repo/scripts/variables.js" show --root .` (`<KEY>=<value> (<source>)` per key - `own`, `from <rel>`,
 `settings.local.json` or `default` - then its `!! variables:` notes: a HOOKS_OFF line in `.variables` that is not
@@ -311,10 +311,8 @@ table of the actionable rows only - an install whose env already matches gets th
   probed '<value>': <the mode line's own parenthetical>`. A leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0 - the
   docs root is always `<data root>/docs`) is never written or removed from here: name `/alfred-code:update`, which moves
   the stack's docs from the root it names and then removes it, in its reason column.
-  `ALFRED_CODE_DATA_PATH` is never offered from here, MISSING or changed: the data root carries the docs
-  and the hooks' state, so a new value without the move would strand them - name
-  `/alfred-code:configure` (its data question moves them) in its reason column; a missing key is written
-  back by the next update from the stamp's `data-root:` line.
+  A leftover `ALFRED_CODE_DATA_PATH` (retired in 3.11.0 - the data root is always `.alfred`) is the same: never written
+  or removed from here; name `/alfred-code:update`, which moves the folder it names into `.alfred` and removes it.
   Every other MISSING row still offers the catalog default unchanged. A row with `"seed": false` is never MISSING and
   never offered: it is set only in the launch environment or by hand (`ALFRED_CODE_WORKSPACE`).
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the

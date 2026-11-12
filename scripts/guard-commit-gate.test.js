@@ -261,7 +261,8 @@ test('guard-ungated-commit: plain top-level folders are not projects - only a fo
 // as commitSet() does. A data root inside a manifest-owning folder read its own ledger rows as a second project.
 test('ab-HO3: the push scope skips the data root state as it skips the docs root', () => {
   const { dir, git } = pushRepo();
-  const env = { ALFRED_CODE_DATA_PATH: 'tools/.alfred' };
+  // an absolute value is the one form a hook still takes (the fixed root, 3.11.0): the data root inside tools/
+  const env = { ALFRED_CODE_DATA_PATH: path.join(dir, 'tools', '.alfred') };
   const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
   put('tools/package.json', '{}\n');
   put('apps/auth/a.ts', forty());

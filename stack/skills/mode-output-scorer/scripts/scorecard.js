@@ -89,8 +89,9 @@ function envOf(env, suffix)
     const value = env[`ALFRED_CODE_${suffix}`];
     return value === '' ? undefined : value;
 }
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
-const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+// data-root-reader (meta/shared-rules.json): the data root is always .alfred. An absolute ALFRED_CODE_DATA_PATH is a
+// harness's scratch and is kept; anything else is .alfred.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 
 class Stop extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -353,7 +354,7 @@ function slugContext(args, env = process.env, allocate = false) {
   const session = sessionOf(args.session, env);
   if (!session) fail(4, 'no session id - rerun with --session self and grade with --self');
   const root = projectRoot(args.root, env);
-  const dataRel = dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH', env, root) });
+  const dataRel = dataRoot(env);
   const self = allocate && session === 'self';
   const sessionId = self ? `self-${hex()}` : session;
   const folder = path.resolve(root, dataRel, 'state', 'sessions', 'scorer', safeSession(sessionId), slug);

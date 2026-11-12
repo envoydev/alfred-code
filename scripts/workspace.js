@@ -29,7 +29,6 @@ const stamp = require('./install/stamp.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { BRAND } = require('./install/brand.js');
-const { checkDataPath } = require('../stack/mcp/data-root.js');
 
 // This CLI's own flags stop at `--`; what follows is `answer`'s installer arguments.
 const own = process.argv.indexOf('--') < 0 ? process.argv : process.argv.slice(0, process.argv.indexOf('--'));
@@ -59,16 +58,6 @@ function rootArg()
     return realOf(root);
 }
 
-// The folder this project's own file lives in before any setting names it; checked before anything is written.
-function dataPathArg()
-{
-    const raw = arg('--data-path');
-    if (raw === undefined) return undefined;
-    const checked = checkDataPath(raw);
-    if (!checked.ok) throw bad(`--data-path ${raw} refused - ${checked.why}`);
-    return checked.value;
-}
-
 function parentVerb(out)
 {
     const v = ws.joinVerdict(rootArg(), { env, exec });
@@ -87,7 +76,7 @@ function report(out, r)
 
 function register(out)
 {
-    report(out, ws.register(rootArg(), { env, exec, dataRoot: dataPathArg() }));
+    report(out, ws.register(rootArg(), { env, exec }));
 }
 
 function unregister(out)
@@ -101,7 +90,7 @@ function join(out)
 {
     const answer = arg('--answer');
     if (answer !== 'join' && answer !== 'none') throw bad('--answer takes join or none');
-    report(out, ws.applyRole(rootArg(), answer === 'join' ? 'child' : 'standalone', { env, exec, dataRoot: dataPathArg() }));
+    report(out, ws.applyRole(rootArg(), answer === 'join' ? 'child' : 'standalone', { env, exec }));
     out(`join: ${answer}`);
 }
 
@@ -110,7 +99,7 @@ function roleVerb(out)
 {
     const root = rootArg();
     const answer = arg('--answer');
-    if (answer !== undefined) return report(out, ws.applyRole(root, answer, { env, exec, dataRoot: dataPathArg() }));
+    if (answer !== undefined) return report(out, ws.applyRole(root, answer, { env, exec }));
     const when = arg('--when', 'configure');
     if (!WHEN.includes(when)) throw bad(`--when takes ${WHEN.join(', ')}`);
     out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
@@ -123,7 +112,6 @@ function roleVerb(out)
 function ignore(out)
 {
     const root = rootArg();
-    const dataRoot = dataPathArg();
     const add = arg('--add');
     const remove = arg('--remove');
     if ((add === undefined) === (remove === undefined)) throw bad("ignore takes one of --add or --remove '<category> <name>'");
@@ -132,7 +120,7 @@ function ignore(out)
     // The mutators throw on a bad line; writeWorkspace would read that as an unwritable file.
     try { ws.addIgnore(ws.emptyRecord(), category, name); }
     catch (e) { throw bad(e.message.replace(/^workspace: /, '')); }
-    const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, dataRoot, log: out });
+    const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, log: out });
     if (!r.ok) throw new Exit(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
     out(`workspace: ignore ${category} ${name} ${add !== undefined ? (r.changed ? 'added' : 'kept') : (r.changed ? 'removed' : 'not there')}`);
 }
@@ -199,7 +187,7 @@ function status(out)
     out(check && check.state && check.at ? `check: ${check.state} ${check.at}` : 'check: never');
     for (const line of ws.hintLines(root, { env })) out(line);
     // variables.js show's notes (D7): a guard key, a key never read, a key named like a credential - never a value.
-    for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env }).notes) out(note);
+    for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env, dataRoot: require('./install/variables.js').rootOf(root) }).notes) out(note);
     // The secrets chain by key and source - the nearest store's key wins - never a value.
     const secrets = require('../stack/hooks/secret-chain.js').chainOf(root, { env });
     for (const [key, rel] of Object.entries(secrets.from)) out(`secrets: ${key} ${rel === '.' ? 'own' : `from ${rel}`}`);
@@ -289,7 +277,7 @@ function readBack(root, source, file, parentPlan)
     return read.plan ? { file, plan: read.plan } : { why: read.why };
 }
 
-const ASK = [/^data-move: offer /, /^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: role-ask /];
+const ASK = [/^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: role-ask /];
 
 // The project's own asks, as update-preflight prints them for it.
 function asksOf(root)
@@ -381,7 +369,7 @@ function planVerb(out)
 }
 
 // Each ask line plan prints, and the installer flag that answers it.
-const ANSWER_FLAGS = ['--data-move', '--docs-root-move', '--docs-root-leave', '--instructions-file', '--instructions-at', '--add'];
+const ANSWER_FLAGS = ['--docs-root-move', '--docs-root-leave', '--instructions-file', '--instructions-at', '--add'];
 const projectRel = (rel) => rel === '.' || (/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(rel) && rel.split('/').every((p) => p !== '.' && p !== '..'));
 
 // [flag, value, ...] checked as the installer checks it; the line that refuses it, or null.
@@ -532,11 +520,11 @@ function cascade(out)
             if (r.state === 'gone')
             {
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
-                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { env: r.parentRel === '.' ? env : ws.ancestorEnv(env), runRoot: top, log: out });
+                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { runRoot: top, log: out });
                 row(r.rel, 'gone');
                 continue;
             }
-            const first = ws.chain(r.root, { env: ws.ancestorEnv(env), maxDepth: 1 }).members[0];
+            const first = ws.chain(r.root, { maxDepth: 1 }).members[0];
             if (!first || ws.realKey(first.root) !== ws.realKey(parent.root))
             {
                 out(`!! cascade: ${r.rel} does not name ${r.parentRel} as its parent - skipped; join it again or run workspace.js unregister there`);

@@ -11,7 +11,7 @@ own picks and ignores, and its own scope.
   project, top-down. `.` is this project, whose own delta is step 2's. A child's `add` / `drop` is what this release and
   this project's set do to that child; `?` with an indented `!! no projection - <why>` means its read-back failed, and
   the cascade skips it and everything below it.
-- Indented under a row, that project's own asks, as its own update would print them: `data-move: offer`,
+- Indented under a row, that project's own asks, as its own update would print them:
   `docs-move: offer`, `instructions-file: ... update=ask*`, `instructions-both: ask`, `workspace: role-ask <case> <rel>`.
 - `gone: <rel>` - a listed child folder that no longer holds an install; the cascade removes its line.
 - `rescan: <rel>` - with `--rescan`, an installed project below with no parent line.
@@ -52,7 +52,7 @@ On 'No, only this project', record it now, in step 2, and write no child's answe
 node "$TMP/repo/scripts/workspace.js" answer --file "$TMP/answers.json" --hold
 ```
 
-The Recommended answer per ask: `data-move: offer` -> `--data-move move`; `docs-move: offer` -> `--docs-root-move move`;
+The Recommended answer per ask: `docs-move: offer` -> `--docs-root-move move`;
 `instructions-file:` -> the name template `instructions-place.md` names for its `update=` verdict, its Recommended value
 as `--instructions-file agents|claude` (`update=ask-local` passes none); `workspace: role-ask` -> the first `ask:` line of
 `node "$TMP/repo/scripts/workspace.js" role --root <rel> --when update`, its answer run now as `node

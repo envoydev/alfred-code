@@ -41,6 +41,7 @@ const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
+const fixedRoot = require('./fixed-root.js');
 const variables = require('./variables.js');
 const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
@@ -187,7 +188,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const mcpFile = path.join(projectRoot, '.mcp.json');
     // THE DATA ROOT (stack/mcp/data-root.js): the one folder this run lays the project's data under - the docs, the hooks'
     // state and statistics, the project's sensitive data.
-    const dataInfo = resolveDataRoot({ args, claudeDir, projectRoot, log });
+    // It is always `.alfred` (2026-11-11): the reader only finds a folder an earlier release left elsewhere, which the run
+    // moves once (fixed-root.js). `recorded` is the stamp's own data lines.
+    const dataStamp = stampLayer.stampFiles({ projectRoot }).read;
+    const dataInfo = {
+        ...dataRoot.dataRootOf({ projectDir: projectRoot, stampFile: dataStamp }),
+        recorded: dataStamp ? stampLayer.readDataLines(dataStamp) : { root: '', pending: [], secrets: null },
+    };
+    for (const r of dataInfo.refused) log(`data root: ALFRED_CODE_DATA_PATH '${r.raw}' in ${r.file} refused (${r.why}) - not read; remove the value`);
     // F1 (matrix 2.1.5 7e): the claude CLI replaces an account file it cannot parse (a 0-byte one too) at its first plugin
     // or mcp call and keeps the old one under backups/ in its config folder (measured on 2.1.284; `--version` leaves it
     // alone). Read here, before this run's own first call - uninstall reads it for the registrations an earlier release's
@@ -245,7 +253,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let rawListing = null;
 
     if (args.action === 'uninstall')
-        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed: args.instructionsSeed, log, note, err, failures: () => failures });
+        return runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed: args.instructionsSeed, log, note, err, failures: () => failures });
 
     try
     {
@@ -272,7 +280,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (market !== BRAND.marketplace) log(`marketplace: ${market} (the key this install was registered under)`);
         const resolved = source.resolve();
         if (!resolved) return 1;
-
         // What this run READS of the last install: the project's stamp.
         const stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
         const manifest = loadManifest(resolved.dir);
@@ -302,6 +309,15 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             args.scope = stamped && ENUMS.scope.values.includes(stamped) ? stamped : 'project';
         }
         const cliScope = args.scope;
+        // THE ONE-TIME MOVE (fixed-root.js), before the run's first write into the project and AFTER the scope is
+        // known (the update routes pass none, and a local-scope run leaves a team's folder): every stack entry of a folder an
+        // earlier release left elsewhere goes under `.alfred`. A plan writes nothing and reads the folder where it is.
+        if (args.printPlan) { for (const r of dataInfo.sources) log(`data root: ${r} moves to .alfred at the next update`); }
+        else
+        {
+            if (!fixedRoot.moveToFixedRoot({ projectRoot, info: dataInfo, scope: args.scope, rt, log }).ok) return 1;
+            dataInfo.root = dataRoot.DATA_ROOT_DEFAULT;
+        }
 
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
         if (legacyUnstamped) log('no stamp: an unstamped legacy install - its picks are read from disk, an old name under its new one');
@@ -333,7 +349,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
                 ledgerSettings: priorLedger && priorLedger.settings ? priorLedger.settings['settings.local.json'] || {} : null,
                 ledgerDeny: priorLedger ? priorLedger.deny : null,
-                variablesFile: dataInfo.invalid ? null : variables.fileOf(projectRoot, { env: {}, dataRoot: dataInfo.prior || dataInfo.root }),
+                variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: dataInfo.root }),
                 ledgerVariables: priorLedger && priorLedger.env ? priorLedger.env['.variables'] || {} : null,
             });
             // Review finding 1: the ledger's deny rows follow what the move carried, so the writer below
@@ -373,9 +389,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         args.drop = selection.renameLines(args.drop, renaming);
         // workspace.json (2026-11-10): the run's own old record converts before the workspace pass reads it, whatever the
         // switch says - the conversion carries every value; --print-plan writes nothing.
-        if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: workspace.ownDataRootOf({ projectRoot, env, args }), log: (m) => log(`  ${m}`) });
+        if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: dataInfo.root, log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
-        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note });
+        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root });
         const userAdds = [...args.add];
         const userDrops = [...args.drop];
         // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
@@ -535,13 +551,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         // --- the run ---------------------------------------------------------------
-        // The store's rename (item 3), before the move so a root change carries the name it lands under.
+        // The store's rename (item 3).
         const secrets = secretsStep({ projectRoot, info: dataInfo, log });
-        // The data move: the project's sensitive data, carried inline with a root change (planDataMove).
-        const dataPlan = planDataMove({
-            projectRoot, info: dataInfo,
-            answer: args.dataMove, stamped: (Boolean(stampFile) && fs.existsSync(stampFile)) || Boolean(legacyUnstamped), log, note,
-        });
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -573,7 +584,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
-            dataInfo, dataPlan,
+            dataInfo,
             // The MCP plugin and server names the renames left behind (manifest `renamed.mcps`), and the ones this run prunes.
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps), legacyMcpsDue: legacyDue,
             // What this run took out of the servers an earlier release shipped, said once at the end of the retire step.
@@ -632,7 +643,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
-            data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept, secrets: secretsAt },
+            data: { secrets: secretsAt },
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
@@ -708,7 +719,7 @@ function runLayers(ctx)
         let engineText = null;
         try { engineText = fs.readFileSync(path.join(ctx.source.dir, 'stack', 'hooks', 'docs.js'), 'utf8'); }
         catch { /* an unreadable engine keeps the way back dormant */ }
-        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), engineText, log: ctx.log });
+        docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), engineText, log: ctx.log });
         // After the .gitignore names the new folder, so a raw transcript copy never lands unignored.
         try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, dataPath: ctx.dataInfo.root, log: ctx.log }); }
         catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
@@ -816,9 +827,9 @@ function runLayers(ctx)
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, docsPath, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
     // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
-    // skips nothing of it (final review M8): every run checks - after the data root layer, so a --data-path move's old root
-    // is pruned before the walk reads the project's files (R097: it counted them, and the next update rewrote the result).
-    docs.lspCoverageLines(ctx.projectRoot, ctx.log, { dataPath: ctx.dataInfo.root });
+    // skips nothing of it (final review M8): every run checks - after the data root layer, so an older root's leftovers
+    // are pruned before the walk reads the project's files (R097: it counted them, and the next update rewrote the result).
+    docs.lspCoverageLines(ctx.projectRoot, ctx.log);
     mcp.keepMcpOrder({ mcpFile: ctx.mcpFile, before: mcpBefore });
 }
 
@@ -886,22 +897,13 @@ function variablesStep(ctx)
     ctx.variablesFile = null;
     ctx.variablesHeld = null;
     ctx.childEnv = workspace.envPlan(ctx);
-    if (ctx.dataInfo.invalid) return;
     const root = ctx.dataInfo.root;
     const file = variables.fileOf(ctx.projectRoot, { env: {}, dataRoot: root });
-    // A root change carries the file first; at local scope a file the team tracks stays where the team keeps it.
-    const prior = ctx.dataInfo.prior;
-    const before = prior && prior !== root ? variables.fileOf(ctx.projectRoot, { env: {}, dataRoot: prior }) : null;
-    if (before && !(ctx.args.scope === 'local' && fs.existsSync(before) && variables.tracked(before)))
-    {
-        try { variables.carry({ projectRoot: ctx.projectRoot, from: prior, to: root, log: ctx.log }); }
-        catch (err) { ctx.note(`${prior}/.variables could not be moved (${err.code || err.message}) - move it to ${root}/ by hand, then update`); }
-    }
     if (ctx.args.scope === 'local')
     {
         if (!fs.existsSync(file) || !variables.tracked(file)) { ctx.variablesFile = file; return; }
         ctx.variablesHeld = variables.read(file).values;
-        const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir } }).values;
+        const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir }, dataRoot: root }).values;
         const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
         const current = (key) => now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '');
         for (const [flag, key, value] of [['memory', 'ALFRED_CODE_MEMORY', ctx.args.memory], ['autoCompact', 'ALFRED_CODE_AUTO_COMPACT', ctx.args.autoCompact && (ctx.args.autoCompact === 'on' ? '1' : '0')],
@@ -950,7 +952,7 @@ function secretsStep({ projectRoot, info, log })
 {
     const sid = process.env.CLAUDE_CODE_SESSION_ID || '';
     const rec = info.recorded.secrets;
-    const roots = [...new Set([info.prior, info.root].filter(Boolean))];
+    const roots = [info.root];
     if (rec && (!sid || rec.by !== sid))
     {
         for (const r of dataRoot.renameSecrets({ projectDir: projectRoot, roots }))
@@ -989,7 +991,7 @@ function secretsRecord(ctx, secrets)
         at = plugins.fieldOf(listing, `${CORE}@${ctx.market}`, 'version') || '';
     }
     const ok = !ctx.routes.hooks || (semver(at) && semver(want) && compareVersions(at, want) >= 0);
-    if (legacyStoreAt(ctx.projectRoot, [...new Set([ctx.dataInfo.prior, ctx.dataInfo.root].filter(Boolean))]))
+    if (legacyStoreAt(ctx.projectRoot, [ctx.dataInfo.root]))
         ctx.log(ok ? '  sensitive: .sensitive-data becomes .secrets at the next update'
             : `  sensitive: .sensitive-data stays - the core plugin reads back at ${at || 'nothing'}, not ${want || 'this release'} or later; the rename waits for an update that finds it there`);
     return ok ? { by: secrets.by } : null;
@@ -1015,104 +1017,11 @@ function dataRootLayer(ctx, docsPath)
         catch (err) { note(`the run book could not be re-pointed at ${root}/${dataRoot.SECRETS_FILE} (${err.code || err.message}) - edit its credentials line by hand`); }
         if (n) log(`  sensitive: run book re-pointed at ${root}/${dataRoot.SECRETS_FILE} (${n})`);
     }
-    // The workspace file follows a root change (planDataMove carries only the sensitive store), on or off.
-    if (ctx.dataInfo.prior && ctx.dataInfo.prior !== root) workspace.moveWorkspace({ projectRoot, from: ctx.dataInfo.prior, to: root, log });
     // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file. A joined
     // child at local scope never edits a file its team tracks.
     const tracked = (file) => ctx.rt.spawnCommand('git', ['ls-files', '--error-unmatch', '--', path.relative(projectRoot, file)], { cwd: projectRoot, stdio: 'ignore' }).status === 0;
     ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note,
         skipTracked: ctx.args.scope === 'local' && Boolean(ctx.workspace && ctx.workspace.members.length), tracked });
-    for (const old of new Set([ctx.dataInfo.prior, ...ctx.dataPlan.left].filter((r) => r && r !== root)))
-        docs.pruneDataRoot({ projectRoot, root: old, log });
-    if (ctx.dataPlan.moved.length) log(`data root: ${root} - ${ctx.dataPlan.moved.length} moved now`);
-}
-
-// THE DATA ROOT this run lays the project's data under (stack/mcp/data-root.js): the settings value this
-// install reads (settings.local.json over settings.json - never a shell export), else the root the last
-// stamp recorded, else `.alfred`. `--data-path` changes it only where no data would be stranded: with
-// `--data-move move`, or when the current root holds nothing. `prior` is where the data may still be - the
-// root this run leaves, or one the stamp names that a hand edit replaced.
-function resolveDataRoot({ args, claudeDir, projectRoot, log })
-{
-    const stampRead = stampLayer.stampFiles({ projectRoot }).read;
-    const recorded = stampRead ? stampLayer.readDataLines(stampRead) : { root: '', pending: [], kept: false, secrets: null };
-    let current = recorded.root || dataRoot.DATA_ROOT_DEFAULT;
-    let invalid = false;
-    for (const name of ['settings.local.json', 'settings.json'])
-    {
-        const raw = (readJson(path.join(claudeDir, name)).env || {}).ALFRED_CODE_DATA_PATH;
-        if (typeof raw !== 'string' || !raw) continue;
-        const checked = dataRoot.checkDataPath(raw);
-        if (checked.ok) current = checked.value;
-        else { invalid = true; log(`data root: ALFRED_CODE_DATA_PATH '${raw}' in ${name} refused (${checked.why}) - ${current} used; fix or remove the value`); }
-        break;
-    }
-    let root = current;
-    if (args.dataPath && args.dataPath !== current)
-    {
-        const base = path.join(projectRoot, ...current.split('/'));
-        let holds = false;
-        try { holds = fs.readdirSync(base).some((n) => n !== '.gitignore'); } catch { holds = false; }
-        if (holds && args.dataMove !== 'move')
-            log(`data root: --data-path ${args.dataPath} not applied - ${current} holds this project's data; pass --data-move move to carry it there`);
-        else root = args.dataPath;
-    }
-    const prior = root !== current ? current : (recorded.root && recorded.root !== root ? recorded.root : null);
-    return { root, current, prior, recorded, invalid };
-}
-
-// What the data move does this run: the project's sensitive-data file (data-root.js SENSITIVE_FILE) is the one class the
-// stack still moves, inline, when the root changes. `--data-move move` moves it, `keep` marks the layout kept, and no
-// answer moves nothing and names the offer. A `data-pending:` line an earlier release recorded for a server's launcher
-// names data that is no longer the stack's (2.10.1: no server ships) - it is dropped, the data left where it is.
-function planDataMove({ projectRoot, info, answer, stamped, log, note })
-{
-    const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
-    const isFile = (rel) => { try { return fs.lstatSync(abs(rel)).isFile(); } catch { return false; } };
-    const moved = [];
-    const left = [];
-    // A sensitive-data move an earlier run could not make (a clash, a failed rename) is retried; any other class is dropped.
-    // It moves the store its prior root holds now, under that store's name - a pending line recorded before item 3's rename
-    // names `.sensitive-data`, which the rename may have made `.secrets` since.
-    let pending = info.recorded.pending.filter((p) => p.cls === 'sensitive' && dataRoot.rootOfPlace(p.cls, p.to) === info.root).map((p) =>
-    {
-        // a `from` under no data root names no store: never the project root, where a project's own `.secrets` sits
-        const prior = dataRoot.rootOfPlace(p.cls, p.from);
-        const found = prior && dataRoot.findSecretsFile(projectRoot, prior);
-        return found && { cls: p.cls, from: found.rel, to: dataRoot.targetOf(p.cls, info.root, found.name) };
-    }).filter((p) => p && isFile(p.from));
-    let kept = info.recorded.kept && answer !== 'move';
-    if (answer === 'keep') { kept = true; pending = []; }
-    const inline = (row) =>
-    {
-        const r = dataRoot.movePlace({ projectDir: projectRoot, cls: row.cls, from: row.from, to: row.to });
-        if (r.state === 'moved') { moved.push(row); left.push(dataRoot.rootOfPlace(row.cls, row.from)); log(`data root: moved ${row.from} -> ${row.to}`); return true; }
-        log(`data root: ${row.from} not moved yet (${r.why || r.state}) - the next run tries again`);
-        return false;
-    };
-    pending = pending.filter((p) => !inline(p));
-    const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior }) : [];
-    const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
-    // the store a clash found at the target root, under whichever name it has there
-    const heldAt = (row) => (dataRoot.findSecretsFile(projectRoot, info.root) || { rel: row.to }).rel;
-    const open = rows.filter((r) => !pending.some((p) => same(p, r)));
-    if (answer === 'move')
-    {
-        for (const row of open)
-        {
-            if (row.conflict) { note(`data root: ${row.from} not moved - ${heldAt(row)} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); continue; }
-            if (!inline(row)) pending.push({ cls: row.cls, from: row.from, to: row.to });
-        }
-    }
-    else if (open.length && !kept)
-    {
-        // A clash is no offer: a move would overwrite nothing, so it never runs until one side is cleared.
-        for (const row of open.filter((r) => r.conflict))
-            if (!info.recorded.pending.some((p) => same(p, row))) log(`data root: ${row.from} still holds data beside ${heldAt(row)} - remove or merge it; nothing moved`);
-        const offered = open.filter((r) => !r.conflict);
-        if (offered.length) log(`data root: ${offered.map((r) => r.from).join(', ')} sit outside ${info.root} - /alfred-code:update offers the move to ${info.root} (--data-move move|keep); nothing moved`);
-    }
-    return { pending, kept, moved, rows, left: [...new Set(left.filter((r) => r && r !== info.root))] };
 }
 
 // THE DOCS ROOT this run leaves in effect: <data root>/docs (2.8.0, the user's ruling of 2026-10-20 - docs.docsMovePlan).
@@ -1129,7 +1038,9 @@ function docsRootStep(ctx)
     const stamped = (Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile)) || Boolean(ctx.legacyUnstamped);
     const to = `${ctx.dataInfo.root}/docs`;
     const ledgered = Object.values((ctx.ledger && ctx.ledger.env) || {}).map((m) => m && m.ALFRED_CODE_DOCS_PATH).filter(Boolean);
-    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, prior: ctx.dataInfo.prior, ledgered, leave: args.docsRootLeave || [] });
+    // The one-time move carried an older root's docs to `to`: the generated pointer rules still name them there (M11).
+    for (const r of ctx.dataInfo.sources) selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: `${r.replace(/^\.\//, '').replace(/\/+$/, '')}/docs`, to, log, note });
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir }), scope: args.scope, stamped, to, moved: ctx.dataInfo.sources, ledgered, leave: args.docsRootLeave || [] });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;
     ctx.docsRootPending = false;
@@ -2030,10 +1941,7 @@ function installHooksAndRules(ctx)
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }),
         },
         docsPath: ctx.docsPath,
-        // The data root this run lays the data under: written when it differs from the file's value - a
-        // root a move carried the data to, or a first install's chosen one - never over a value the run
-        // refused (resolveDataRoot says so), which stays the user's to fix.
-        dataPath: ctx.dataInfo.invalid ? null : { value: ctx.dataInfo.root, why: ctx.dataInfo.root !== ctx.dataInfo.current ? '--data-path' : 'the data root' },
+        // The data root, still written until the key's writes go (the fixed root, Task 2).
         // No server is trusted: every name the stack ever registered leaves enabledMcpjsonServers - except one kept as the
         // user's own under that name, which keeps its approval (A-M3).
         mcpOff: retiredApprovals(ctx),
@@ -2267,7 +2175,7 @@ function navContextUser(ctx)
 // THE UNINSTALL ORDER (uninstall.js holds the decisions): plugin rows, then .mcp.json and the local- and
 // user-scope registrations, then the settings entries, then the copies, then the stamp - last, and only
 // when nothing failed.
-function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed = '', log, note, err, failures })
+function runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile, accountUnread, backupDirs, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, instructionsSeed = '', log, note, err, failures })
 {
     const file = stampLayer.stampFiles({ projectRoot }).read;
     const raw = stampLayer.readStampScope(file).toLowerCase();
@@ -2306,7 +2214,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     if (backup) { lostLine(); return 1; }
     // workspace.json: a record the release below would write that reads garbage holds uninstall back before any change -
     // run past it, a garbage child would be filed as stale and a garbage parent fail after the files were removed.
-    const garbled = workspace.garbageOnLeave({ projectRoot, env, dataRoot: stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root });
+    const garbled = workspace.garbageOnLeave({ projectRoot, env, dataRoot: dataInfo.root });
     if (garbled.length)
     {
         for (const rel of garbled) err(`error: ${rel} is not valid JSON - the workspace links it records cannot be released; nothing was removed - fix it by hand, then run uninstall again\n`);
@@ -2337,8 +2245,10 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
         const names = stampLayer.readMcpDenied(file).filter((e) => e.scope === at).map((e) => e.name);
         if (names.length) settings.applyMcpDeny({ file: path.join(claudeDir, at === 'local' ? 'settings.local.json' : 'settings.json'), lift: names, log, note });
     }
-    // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
-    const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
+    // The folder the data is in, read before the settings pass removes the key that named it. Uninstall never moves the
+    // user's data, and with the key and the stamp gone no later run would know a folder outside `.alfred`.
+    const keptRoot = dataInfo.root;
+    for (const r of dataInfo.sources) log(`data root: ${r} is left where it is - a later install uses .alfred`);
     // F26: the docs root the generated rules name - read before removeManagedFiles takes the docs-root rule it reads.
     const docsPath = copy.stampedDocsRoot(projectRoot) || `${keptRoot}/docs`;
     // An earlier release's D2 copies stay as the user's registrations (spec D8): only their record goes.
@@ -2356,8 +2266,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     uninstallLayer.removeSessionStatus({ projectRoot, dataRoot: keptRoot, log, note });
     // A child leaves its parent, and D5's account key goes with the last project on the account that records it. This
-    // project's own file sits under the root the stamp records - the settings pass above already took
-    // ALFRED_CODE_DATA_PATH out.
+    // project's own file sits under the root the reader found (`keptRoot`).
     workspace.leaveParent({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
     for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(path.join(__dirname, '..', '..')), compare: compareVersions, env })) log(`  ${line}`);
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];

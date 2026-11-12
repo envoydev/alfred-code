@@ -1730,3 +1730,29 @@ test('swap 1 ask: a SECRET-READ-ALLOW receipt opens nothing', () => {
   for (const f of ['guard-secret-value.js', 'guard-stop-contract.js'])
     assert.ok(!fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8').includes(receiptName), `${f} names no receipt`);
 });
+
+// The fixed root (2026-11-11): Cursor hands a hook no CLAUDE_PROJECT_DIR and no ALFRED_CODE_ value, and the store is
+// still found - it is always <project>/.alfred's.
+test('fixed root Cursor: the secret guard finds the store with no ALFRED_CODE value and no CLAUDE_PROJECT_DIR', () => {
+  const fx = coreProject({ '.alfred/.secrets': `STORE_KEY=${STORE_VAL}\n`, 'src/a.ts': 'export const a = 1;\n' });
+  require('node:child_process').execFileSync('git', ['init', '-q'], { cwd: fx.project });
+  const env = { ...process.env, HOME: fx.home, USERPROFILE: fx.home };
+  for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_') || k === 'CLAUDE_PROJECT_DIR') delete env[k];
+  const cwd = path.join(fx.project, 'src');
+  const call = (payload) => spawnSync(process.execPath, [HOOK], { cwd, encoding: 'utf8', env,
+    input: JSON.stringify({ cursor_version: '2.1.0', hook_event_name: 'preToolUse', session_id: 'cursor-fixed', cwd, ...payload }) });
+  // The shell route on Cursor is the core's deny on the name: nothing ran, and the presence route is named.
+  for (const command of ['cat ../.alfred/.secrets', `cat ${path.join(fx.project, '.alfred', '.secrets')}`]) {
+    const r = call({ tool_name: 'Bash', tool_input: { command } });
+    assert.strictEqual(r.status, 2, `${command}: ${r.stderr}`);
+    assert.match(r.stderr, /^Blocked: this command names a credential file \(\.secrets\)/, command);
+    assert.match(r.stderr, /--presence/, command);
+    assert.ok(!(r.stdout + r.stderr).includes(STORE_VAL), 'no value is printed');
+  }
+  // The Read route knows the file as the store - the plain deny, never the ask's fallback - by <project>/.alfred alone.
+  const read = call({ tool_name: 'Read', tool_input: { file_path: path.join(fx.project, '.alfred', '.secrets') } });
+  assert.strictEqual(read.status, 2, read.stderr);
+  assert.match(read.stderr, /^Blocked: Read of /);
+  assert.doesNotMatch(read.stderr, /nobody can answer/);
+  assert.ok(!(read.stdout + read.stderr).includes(STORE_VAL), 'no value is printed');
+});

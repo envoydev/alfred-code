@@ -3643,8 +3643,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const on = String(envOf(variablesOf(root, { env: process.env }).values, 'TURN_CHECK') || '').trim() === '1' || profile === 'strict';
   // 2.8.0: the ledgers live in the data root's statistics/ (stack/hooks/layout.js); a session's file not moved there yet
   // is read from the pre-2.8.0 docs root
-  const { dataRoot } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
-  const dataRel = dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') });
+  const dataRel = '.alfred';
   const blockDirs = [path.resolve(root, dataRel, 'statistics', 'hook-blocks'),
     path.resolve(root, String(setting('DOCS_PATH') || `${dataRel}/docs`), 'hook-blocks')];
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))

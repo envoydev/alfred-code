@@ -56,8 +56,8 @@ test('install-scope: at local scope the stack\'s own settings writes go to setti
     });
     assert.strictEqual(result.hasShared, false, 'a local-scope install must not write the shared settings.json');
     assert.strictEqual(result.hasLocal, true, 'a local-scope install must write settings.local.json');
-    assert.strictEqual(result.local.env.ALFRED_CODE_DATA_PATH, '.alfred', 'the env seed landed in the local file');
-    assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');
+    assert.strictEqual(typeof result.local.env.ALFRED_CODE_HOOKS_OFF, 'string', 'the env seed landed in the local file');
+    for (const key of ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.strictEqual(result.local.env[key], undefined, `${key}: no path key is ever written`);
 });
 
 // C8 (R100, R101), after the memory server left (2026-10-24): a project or user install writes the shared

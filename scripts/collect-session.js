@@ -154,13 +154,14 @@ function resolveContext(opts, deps = {})
     if (env.USERPROFILE) stripped.USERPROFILE = env.USERPROFILE;
     stripped.CLAUDE_CONFIG_DIR = configDir;
 
-    const raw = opts.dataRoot || layout.settingFrom({ env: stripped, projectDir: project, suffix: 'DATA_PATH' });
-    const dataRootValue = layout.dataRoot({ ALFRED_CODE_DATA_PATH: raw });
+    // The data root is always .alfred; --data-root names another folder (an older install's, a harness's scratch).
+    const dataRootValue = toPosix(String(opts.dataRoot || '.alfred')).replace(/\/+$/, '') || '.alfred';
     const dataRoot = path.resolve(project, dataRootValue);
     // docsRootOf splits its dataRoot on '/', so an absolute root is handed over relative to the project.
-    const rel = path.isAbsolute(dataRootValue) ? toPosix(path.relative(project, dataRoot)) : dataRootValue;
-    const docsRoot = layout.docsRootOf(project, { env: stripped, dataRoot: rel });
-    const ctxEnv = { ...stripped, ALFRED_CODE_DATA_PATH: dataRootValue, ALFRED_CODE_DOCS_PATH: docsRoot };
+    const dataRootRel = path.isAbsolute(dataRootValue) ? toPosix(path.relative(project, dataRoot)) : dataRootValue;
+    const docsRoot = layout.docsRootOf(project, { env: stripped, dataRoot: dataRootRel });
+    // The hooks' path helpers take a folder other than .alfred only as an absolute value.
+    const ctxEnv = { ...stripped, ...(opts.dataRoot ? { ALFRED_CODE_DATA_PATH: toPosix(dataRoot) } : {}), ALFRED_CODE_DOCS_PATH: docsRoot };
 
     let tmpDirs;
     if (opts.tmp) tmpDirs = opts.tmp.map((d) => path.resolve(d));
@@ -183,7 +184,7 @@ function resolveContext(opts, deps = {})
     const lastMs = Date.parse(scan.lastTs);
     const toMs = lastMs + TAIL_MS;
     return {
-        sid, transcript, out: path.resolve(opts.out), project, configDir, env: ctxEnv, stripped, dataRootValue, dataRoot,
+        sid, transcript, out: path.resolve(opts.out), project, configDir, env: ctxEnv, stripped, dataRootValue, dataRootRel, dataRoot,
         docsRoot, tmpDirs, window: { from: scan.firstTs, to: new Date(toMs).toISOString(), fromMs, toMs }, lastMs,
         written: scan.written, opts, fs: fsx, now, platform, cache: {},
     };

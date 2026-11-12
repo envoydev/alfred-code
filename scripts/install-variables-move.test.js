@@ -15,7 +15,7 @@ const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
 const stampLib = require('./install/stamp.js');
 const { DATA_IGNORE_HEAD } = require('../stack/mcp/data-root.js');
-const { seedRun, POSIX_ONLY, releaseExport, skipWithout } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, releaseExport, skipWithout, plantOlderRoot } = require('./seed-sandbox.js');
 
 const ROOT = path.join(__dirname, '..');
 const SEL = 'skill markdown-style\n';
@@ -23,7 +23,7 @@ const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', 
 const CATALOG = require('../meta/environment.json').env.map((r) => r.key);
 // [key, the stack's old seed, the value it resets to] - the env pass's reseed list
 const { reseed: RESEEDS, retired: RETIRED } = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json'));
-const SETTINGS_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_HOOKS_OFF'];
+const SETTINGS_KEYS = ['ALFRED_CODE_HOOKS_OFF'];
 // A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
 const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
 const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && !UNSEEDED.includes(k));
@@ -77,7 +77,7 @@ function treeHash(dir)
 
 for (const scope of ['project', 'user', 'local'])
 {
-    test(`AC7: a fresh install at ${scope} scope writes every moved key but WORKSPACE into .variables, leaves DATA_PATH and HOOKS_OFF in settings, and git ${scope === 'local' ? 'ignores' : 'tracks'} the file`, POSIX_ONLY, () =>
+    test(`AC7: a fresh install at ${scope} scope writes every moved key but WORKSPACE into .variables, leaves HOOKS_OFF alone in settings, and git ${scope === 'local' ? 'ignores' : 'tracks'} the file`, POSIX_ONLY, () =>
     {
         const { result } = seedRun('install', SEL, {
             plugins: PLUGINS, args: ['--scope', scope],
@@ -85,7 +85,7 @@ for (const scope of ['project', 'user', 'local'])
         });
         assert.deepStrictEqual(Object.keys(result.vars).sort(), [...SEEDED].sort());
         assert.strictEqual(result.vars.ALFRED_CODE_SCORER_LEVEL, '80');
-        assert.strictEqual(result.env.ALFRED_CODE_DATA_PATH, '.alfred');
+        assert.strictEqual(result.env.ALFRED_CODE_DATA_PATH, undefined, 'no path key is written');
         assert.deepStrictEqual(catalogIn(result.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(result.env));
         assert.strictEqual(result.ignored, scope === 'local' ? 0 : 1);
         assert.strictEqual(result.effective.ALFRED_CODE_MAXIMUM_RUN_AGENTS, '5');
@@ -491,33 +491,22 @@ test('variables.ignoreVerdict reads -q for the verdict and -v only for the rule\
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a --data-path move carries .variables to the new root with its values; a file already there is kept and the old one named', POSIX_ONLY, () =>
+test('the one-time move of an older data root carries .variables to .alfred with its values; a re-run changes nothing', POSIX_ONLY, () =>
 {
-    const move = ['--scope', 'project', '--installed-only', '--data-path', '.data', '--data-move', 'move'];
+    const update = ['--scope', 'project', '--installed-only'];
     const level = (repo, rel) => ((layout.readDotenv(path.join(repo, ...rel.split('/'), '.variables')) || {}).values || {}).ALFRED_CODE_SCORER_LEVEL;
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], move, ['--scope', 'project', '--installed-only']],
+        plugins: PLUGINS, args: [['--scope', 'project'], update, update],
         each: (repo, i) =>
         {
-            if (i === 0) variables.set(repo, ['ALFRED_CODE_SCORER_LEVEL=95'], { env: acctEnv(repo), log: () => {} });
-            return { old: level(repo, '.alfred'), now: level(repo, '.data'), effective: effective(repo).ALFRED_CODE_SCORER_LEVEL, tree: treeHash(repo) };
+            if (i === 0) { variables.set(repo, ['ALFRED_CODE_SCORER_LEVEL=95'], { env: acctEnv(repo), log: () => {} }); plantOlderRoot(repo, '.data'); }
+            return { old: level(repo, '.data'), now: level(repo, '.alfred'), effective: effective(repo).ALFRED_CODE_SCORER_LEVEL, tree: treeHash(repo) };
         },
     });
-    assert.deepStrictEqual(steps[0], { ...steps[0], old: '95', now: undefined });
+    assert.deepStrictEqual([steps[0].old, steps[0].now, steps[0].effective], ['95', undefined, '95'], 'before the move the older root is read');
     assert.deepStrictEqual([steps[1].old, steps[1].now, steps[1].effective], [undefined, '95', '95'], outs[1]);
-    assert.match(outs[1], /variables: moved \.alfred\/\.variables -> \.data\/\.variables/);
-    // The files the move writes; the root move's own state files are not this case's.
-    const rows = (tree) => tree.split('\n').filter((r) => /^(\.data|\.alfred)\/\.variables |^\.claude\/(settings(\.local)?\.json|alfred-code\.stamp) /.test(r));
-    assert.ok(rows(steps[1].tree).length >= 3, steps[1].tree);
-    assert.deepStrictEqual(rows(steps[2].tree), rows(steps[1].tree), 'a re-run changed a file');
-
-    const clash = seedRun(['install', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], move],
-        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.data'), { recursive: true }); fs.writeFileSync(path.join(repo, '.data', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\n'); },
-        inspect: (repo) => ({ old: level(repo, '.alfred'), now: level(repo, '.data') }),
-    });
-    assert.deepStrictEqual(clash.result, { old: '80', now: '70' });
-    assert.match(clash.out, /!! variables: \.alfred\/\.variables left in place - \.data\/\.variables already exists/);
+    assert.match(outs[1], /data root: moved \.data to \.alfred/);
+    assert.strictEqual(steps[2].tree, steps[1].tree, 'a re-run changed a file');
 });
 
 test('at local scope a key typed into settings.local.json after the move goes into .variables with its value - the value the loader read', POSIX_ONLY, () =>
@@ -578,12 +567,12 @@ test('uninstall removes the stack\'s .variables rows at their recorded hash and 
 // ---------- the burn-down of 2026-11-04 (R097, R098, R169) ----------
 // R097: the move run wrote <new root>/state/lsp-coverage.json while the old root still sat on disk, so the next update
 // rewrote it - the whole tree, state files included, is equal from the run after the move.
-test('a --data-path move leaves the whole tree identical on the next update', POSIX_ONLY, () =>
+test('the one-time move of an older data root leaves the whole tree identical on the next update', POSIX_ONLY, () =>
 {
-    const move = ['--scope', 'project', '--installed-only', '--data-path', '.data', '--data-move', 'move'];
+    const update = ['--scope', 'project', '--installed-only'];
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], move, ['--scope', 'project', '--installed-only']],
-        each: (repo) => treeHash(repo),
+        plugins: PLUGINS, args: [['--scope', 'project'], update, update],
+        each: (repo, i) => { if (i === 0) plantOlderRoot(repo, '.data'); return treeHash(repo); },
     });
     assert.strictEqual(steps[2], steps[1], outs[2]);
 });

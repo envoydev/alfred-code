@@ -54,9 +54,9 @@ const varsOf = (root, env = ON) => layout.variablesOf(root, { env: { ...env } })
 const K = (s) => `ALFRED_CODE_${s}`;
 const setVars = (root, text) => fs.writeFileSync(path.join(root, '.alfred', '.variables'), text);
 
-test('VARIABLE_KEYS equals the catalog minus DATA_PATH and HOOKS_OFF', () =>
+test('VARIABLE_KEYS equals the catalog minus the hook switch-offs', () =>
 {
-    const catalog = require('../meta/environment.json').env.map((r) => r.key).filter((k) => k !== K('DATA_PATH') && k !== K('HOOKS_OFF'));
+    const catalog = require('../meta/environment.json').env.map((r) => r.key).filter((k) => k !== K('HOOKS_OFF'));
     assert.deepStrictEqual([...layout.VARIABLE_KEYS].sort(), catalog.sort());
 });
 
@@ -262,12 +262,13 @@ test('AC20: values of 0, 1 and 2 characters; a bare ALFRED_CODE_ key is ignored'
     assert.deepStrictEqual(v.notes, []);
 });
 
-test('Review Focus 2: a moved data root', () =>
+// The fixed root (3.11.0): a settings key moves nothing for a hook - the loader reads .alfred/.variables.
+test('Review Focus 2: a settings key naming another folder is not read', () =>
 {
     const at = tree({ 'p': { stamp: true, data: 'tools/data', settings: { env: { [K('DATA_PATH')]: 'tools/data' } }, vars: `${K('HISTORY')}=5\n` } });
     fs.mkdirSync(path.join(at('p'), '.alfred'), { recursive: true });
     setVars(at('p'), `${K('HISTORY')}=9\n`);
-    assert.strictEqual(varsOf(at('p'), UNSET).values[K('HISTORY')], '5');
+    assert.strictEqual(varsOf(at('p'), UNSET).values[K('HISTORY')], '9');
 });
 
 test('Review Focus 5: a CRLF file and a project path with a space', () =>

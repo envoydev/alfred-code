@@ -804,3 +804,21 @@ read is refused for it too. It reports what must change and the main session han
 
 Nothing to do by hand. A project that relied on a subagent writing into a tree you allowed for the session: add that
 tree to `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, or let the main session make that write.
+
+## after 3.10.0 - the data root is always .alfred
+
+The data root is always `.alfred`, beside `.claude/` - the docs, the hooks' `state/` and `statistics/`, the variables
+file and the secrets file all live there, and no settings file names a path any more. An update removes
+`ALFRED_CODE_DATA_PATH` from `.claude/settings.json` and `.claude/settings.local.json` and the stamp's data lines.
+
+A project that had moved its data to another folder: the update moves the stack's own entries of that folder into
+`.alfred` once, before its first write, and prints `data root: moved <folder> to .alfred`. What is not the stack's stays
+in the old folder, still kept out of git by that folder's own `.gitignore`, and the line names it. `state/` and `statistics/` merge file by file. Any other entry both folders
+hold is a clash: the update stops with nothing changed and a `!! data root:` line that says to merge the two into
+`.alfred` by hand, then run `/alfred-code:update` again. A folder git tracks for the team moves on a project-scope
+update only; a local-scope run says so and changes nothing.
+
+`--data-path` and `--data-move` are ignored (one line says so), and configure asks no data-root question.
+
+Restart a session left open across the update: its hooks already read `.alfred`, so until the update has moved the
+folder they see none of the old one's state, variables or workspace record.

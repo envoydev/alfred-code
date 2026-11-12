@@ -656,7 +656,7 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     where its path, as written or real, ends in `<data root>/.secrets`, so a project's own one elsewhere - nektos/act's
     default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`; both names and the data root
     in any letter case, since a case-insensitive disk opens `.ALFRED/.SECRETS` too - final review 2026-10-25 C2), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
-    `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
+    `projectRootOf`; the root is always `.alfred` - an absolute `ALFRED_CODE_DATA_PATH`, a harness's scratch, is the one value kept). Its kind is `sensitive` by
     NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and
     `--redacted` of it masks every value; the masker's line pass reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit

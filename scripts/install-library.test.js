@@ -298,18 +298,23 @@ test('the copy-route rule carries no MCP tool name and is hashed as written - it
 // docs root) is a write, and a log line.
 test('alfred-docs-root is logged as rewritten only when its content changed', POSIX_ONLY, () =>
 {
-    // The docs root is <data root>/docs (2.8.0), so a new docs root is a new data root.
+    // The docs root is always .alfred/docs, so the changed content here is a rule left naming another root.
     const rulePath = (repo) => path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
     const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
-        args: [[], [], ['--data-path', 'docs-moved', '--data-move', 'move']],
-        each: (repo) => fs.readFileSync(rulePath(repo), 'utf8'),
+        args: [[], [], []],
+        each: (repo, i) =>
+        {
+            const text = fs.readFileSync(rulePath(repo), 'utf8');
+            if (i === 1) fs.writeFileSync(rulePath(repo), text.split('.alfred/docs').join('stale/docs'));
+            return text;
+        },
     });
     const said = (out) => /rule \[library\]: alfred-docs-root|rule stamped: alfred-docs-root/.test(out);
     assert.ok(said(outs[0]), `the first install writes it:\n${outs[0]}`);
     assert.strictEqual(steps[1], steps[0], 'an update with the same docs root leaves the rule as it was');
     assert.ok(!said(outs[1]), `an unchanged rule was logged as rewritten:\n${outs[1].split('\n').filter((l) => /docs-root/.test(l)).join('\n')}`);
-    assert.ok(said(outs[2]), 'a new docs root is a rewrite, and says so');
-    assert.match(steps[2], /This install's root: `docs-moved\/docs`/);
+    assert.ok(said(outs[2]), 'a rule naming another root is a rewrite, and says so');
+    assert.match(steps[2], /This install's root: `\.alfred\/docs`/);
 });
 
 // R111 (Task 8a concern a): on the copy route the tool-name re-spelling rewrote each rule carrying a

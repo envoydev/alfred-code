@@ -337,8 +337,7 @@ from a compose file, the run book's entries are:
 
 ## The keys in the sensitive data
 
-The project's sensitive data, `<data root>/.secrets` (`.alfred` unless `ALFRED_CODE_DATA_PATH` names another
-root; `.sensitive-data` on an install no update has renamed yet, the same file under its old name), exists from the install on - one comment line, no key - so a capture normally finds it present and hands
+The project's sensitive data, `<data root>/.secrets` (`<data root>` is `.alfred`; `.sensitive-data` on an install no update has renamed yet, the same file under its old name), exists from the install on - one comment line, no key - so a capture normally finds it present and hands
 each key as a `KEY=` line the user adds. Present, it is the user's - never read, rewritten or appended to (the
 secret guard denies a Read or a copy of it and masks what a shell read prints); the session's `Sensitive data:` line lists its keys, and a key the doc needs that it
 lacks is a `KEY=` line the report hands the user to add.

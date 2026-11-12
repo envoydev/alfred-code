@@ -108,7 +108,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   walks without it and says the inherited rows could not be marked.
 
   Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
-  --offers --root .` prints a `data-move:` line (step 8's data question) - `offer ...` or `none (<why>)` - then an
+  --offers --root .` prints an
   `instructions:` line and an `instructions-file:` line (step 11's place and name asks). It prints no
   `docs-move:` line: a docs root set by hand is moved by `/alfred-code:update` alone, never here (audit 2026-10-21 C-Q1).
 
@@ -244,8 +244,7 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 ## 8. Environment - the stack env values (when picked)
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
-release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_DATA_PATH` and
-`ALFRED_CODE_HOOKS_OFF` stay in the scope's settings file `env`; a key `.claude/settings.local.json` also holds is read
+release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_HOOKS_OFF` stays in the scope's settings file `env`; a key `.claude/settings.local.json` also holds is read
 from, and written back to, that file, since it applies over `.variables`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
 front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
@@ -260,38 +259,8 @@ absent its `mode:` line falls back to the same rule) - and offer THAT probed val
 (`git`/`local`, the bare `git (docs are not kept out of git - ...)` or `overlay (docs are kept out of
 git - ...)` line names it and why) as the recommended answer, never the catalog default.
 
-Two behaviours live here rather than in the catalog, because they are about what this step DOES. The
-DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
-hooks' state and the sensitive-data file - so changing it MOVES that data, and it goes through the installer, never `variables.js set`. It is ONE question about
-plugin data storage as a whole, the current value shown with what it holds. Step 1's `data-move:` line
-says whether any of it still sits outside the root (the same line update reads). On `data-move: offer <root> ...` the
-MOVE is the recommendation, whatever the current value: every Alfred Code file belongs under the data
-root, and the data at `from=` (an earlier root's sensitive-data file) is outside it. The docs are no part of it: they always sit at `<data root>/docs`, and every run moves them unasked. It is asked even when step 2 left the
-Environment area out (the data question alone, no other row). Ask this form then, and pass
-`--data-move move` on step 11's installer call (a yes is a change on its own, so the installer runs):
-
-```ask
-Move this project's Alfred Code data into <root>? From <from places>: the sensitive-data file, moved by this run.
-- '<root> - move everything (Recommended)' - one folder outside .claude/, nothing overwritten
-- 'Keep the current layout' - nothing moves; the hooks keep reading the file where it is
-```
-
-A `conflicts=<n>` field means data already sits at the new place: name it and do not ask. With
-`data-move: none (...)` the question is the keep-or-change one below:
-
-```ask
-Where should Alfred Code keep this project's data - its docs, the hooks' state and the seats' handoff notes, and its sensitive-data file? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
-- 'Keep <current> (Recommended)' - nothing moves
-- 'Move everything into .alfred' - one folder at the project root, outside .claude/ - leave this option out when <current> is already .alfred
-```
-
-A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
-The current state is always the recommended answer (the walk's own rule): a custom root the user chose is
-kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.alfred` or to another
-folder - rides step 11's ONE installer call as `--data-path <folder> --data-move move` (a
-change on its own, so that call runs); report its
-`docs root:` and `data root:` lines verbatim - the docs and the sensitive-data file move at once. The docs root is always `<data root>/docs`, so a
-data-root change carries the docs with it and re-stamps the rule. Claude Code's own
+The data root is no row here: it is always `.alfred`, no question offers another folder, and the docs root is always
+`.alfred/docs`. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
@@ -435,7 +404,7 @@ the user never picked - report it as 'stays switched off; pick it in the walk to
 as added; `keep-parked plugin <name>` is a parked plugin the read-back would otherwise enable -
 pass it as a `--drop` whenever the installer runs, but it is no reason to run it. When it prints `none` AND no removals were accepted AND no env,
 permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
-install, nothing to remove` - and skip to step 12 (a rename, place or data-move answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
+install, nothing to remove` - and skip to step 12 (a rename or place answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
 installer pass whose only real effect was resetting the agent model/effort pins).
 
@@ -455,7 +424,7 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|docs|custom [--memory-copy]] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|docs|custom [--memory-copy]] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

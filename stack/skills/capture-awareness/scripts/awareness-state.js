@@ -469,31 +469,8 @@ function routingMap()
     return map;
 }
 
-// THE DATA ROOT a row names (`<data root>`): ALFRED_CODE_DATA_PATH, read like every launcher setting - the
-// shell env, then settings.local.json, settings.json and the account settings.json - and refused back to
-// `.alfred` where stack/mcp/data-root.js (checkDataPath) refuses it. That module is the one home, but this
-// script ships inside a skill copy with no stack/mcp beside it, so the read is inline; a parity test
-// (scripts/capabilities-rule.test.js) holds the two to one answer.
-const DATA_ROOT_DEFAULT = '.alfred';
-function dataRoot(projectRoot, env = process.env)
-{
-    let raw = String(env.ALFRED_CODE_DATA_PATH || '').trim();
-    if (!raw)
-    {
-        const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-        for (const file of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), path.join(account, 'settings.json')])
-        {
-            try { raw = String(((JSON.parse(readText(file) || 'null') || {}).env || {}).ALFRED_CODE_DATA_PATH || '').trim(); }
-            catch { raw = ''; }
-            if (raw) break;
-        }
-    }
-    const value = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
-    const parts = value.split('/');
-    const refused = !value || value.startsWith('/') || /^[A-Za-z]:/.test(value) || /\s/.test(value) || /[$%`"'*?<>|:]/.test(value)
-        || parts.some((p) => p === '.' || p === '..') || parts[0] === '.claude' || parts[0] === '.git';
-    return refused ? DATA_ROOT_DEFAULT : value;
-}
+// THE DATA ROOT a row names (`<data root>`): always `.alfred` under the project root (the fixed root, 3.11.0).
+const dataRoot = () => '.alfred';
 
 // The literal values a row carries into the rule: the generated rule is a pointer and cannot itself hold
 // the slot it exists to resolve (a desktop row told the model to write `<data root>/...`).

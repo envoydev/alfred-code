@@ -1643,18 +1643,19 @@ test('check 68: lint-skills.js runs the conformance marker check, and the live c
     assert.deepStrictEqual(cf.lintConformance(cf.loadClaims()), []);
 });
 
-// init-install.md is already past the Bash output cap init's one `cat` of it meets, so it is pinned at its size of
-// 2026-10-27 and screen B's second call lives in init-env-more.md (ALFRED_CODE_MAXIMUM_RUN_AGENTS, AC10).
-test('check 61: init-install.md is held at 31,960 bytes, and init-env-more.md carries one ask template', () =>
+// init-install.md is already past the Bash output cap init's one `cat` of it meets, so it is pinned at its size (first
+// on 2026-10-27; lowered on 2026-11-12, when the data-root question left it) and screen B's second call lives in
+// init-env-more.md (ALFRED_CODE_MAXIMUM_RUN_AGENTS, AC10).
+test('check 61: init-install.md is held at 30,491 bytes, and init-env-more.md carries one ask template', () =>
 {
     const { lintSetupAskPresence, SETUP_ASK_TEMPLATES } = require('./lint-skills.js');
     const rel = 'setup-plugin/references/init-install.md';
     const sized = (bytes) => lintSetupAskPresence([{ skill: 'setup-plugin', file: rel, text: 'x'.repeat(bytes) }])
         .filter((f) => /bytes/.test(f));
-    assert.deepStrictEqual(sized(31960), []);
-    assert.ok(sized(31961).some((f) => /init-install\.md is 31961 bytes, past its pin of 31960/.test(f)));
+    assert.deepStrictEqual(sized(30491), []);
+    assert.ok(sized(30492).some((f) => /init-install\.md is 30492 bytes, past its pin of 30491/.test(f)));
     assert.strictEqual(SETUP_ASK_TEMPLATES['setup-plugin/references/init-env-more.md'], 1);
-    assert.strictEqual(SETUP_ASK_TEMPLATES[rel], 8);
+    assert.strictEqual(SETUP_ASK_TEMPLATES[rel], 7);
 });
 
 // F12 (2026-10-28 workspace run): a skill script copied into a "type": "module" project died on its first require, so

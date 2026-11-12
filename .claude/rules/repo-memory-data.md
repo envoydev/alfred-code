@@ -58,14 +58,14 @@ The stores and what each holds, where the docs root and the data root live, and 
   and is rewritten; any other text is the project's and kept. THE DRAIN (2.8.0, `docs.docsMovePlan`,
   `alfred-code.js docsRootStep`): every run moves the stack's docs, unasked, to `<data root>/docs` - from the root a
   leftover key names (settings.local.json over settings.json, Claude Code's merge), else on a stamped install with no key
-  from the earlier data root's `docs/` (a data-root change) or the pre-2.0.0 `.claude/docs` - then removes the key from
-  both settings files (`settings.js applyEnv` 3b). The docs are no part of the data-move offer. A HAND-SET root (`handSet`: a value no release seeded - not `<data root>/docs`, `.alfred/docs`, `.claude/docs` or
+  from an older install's folder's `docs/` (the one-time move carries it) or the pre-2.0.0 `.claude/docs` - then removes the key from
+  both settings files (`settings.js applyEnv` 3b). A HAND-SET root (`handSet`: a value no release seeded - not `<data root>/docs`, `.alfred/docs`, `.claude/docs` or
   the earlier data root's `docs/` - and no ledger row records) holding the stack's docs is the one exception (the user's
   answer of 2026-10-20 to a side note: it may be the team's own `docs/`, and the entries are picked by name): the preflight
   prints `docs-move: offer <from> -> <to> moves=<names> stack=<n> own=<names>`, update asks it naming every moving entry, and
   it moves only on `--docs-root-move move`, `--docs-root-leave <entries>` naming the team's own, which stay (a name that is
-  none of the stack's moves nothing). No keep - every docs file of the stack's belongs under the data root, and a user
-  who wants it elsewhere changes the data root (the user's answer of 2026-10-20); unattended takes the recommended move
+  none of the stack's moves nothing). No keep - every docs file of the stack's belongs under the data root, which is always `.alfred`
+  (the user's answers of 2026-10-20 and 2026-11-11); unattended takes the recommended move
   all; no answer (an installer run outside the walk) moves nothing yet, a `!!` line, and the next update asks.
   A kept key carries its ledger row as recorded. Only the stack's own top-level entries move (`STACK_DOCS`: the domains and work folders, every older home a
   migration still moves, the loose legacy `ORIENTATION.md`, `.branches`, any folder holding a `watch.json`): a hand-set root may be a
@@ -79,13 +79,18 @@ The stores and what each holds, where the docs root and the data root live, and 
   settings.json key under a local-scope run, which does not write that file (a `!!` line each). A settings.json root
   that settings.local.json hid is named, never moved. An unreadable settings file moves nothing, and the rule keeps the
   root it was stamped with. The launch environment is never read.
-- **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
-  default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
-  checkDataPath`; every hook reads a relative value it refuses as `.alfred` - a hand-set `.` had put `statistics/` and
-  `state/` in the project root - and keeps an absolute one, a test harness's scratch: `layout.js dataRoot`, pinned as
-  `data-root-reader`, run C) - holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
+- **One data root for the project's data, always `.alfred`** (2.1.0, the user's decision of 2026-09-29; fixed by the
+  user's ruling of 2026-11-11, so no settings file names a path) - `.alfred` at the project root, beside `.claude/`.
+  A RUNTIME reader (a hook, a copied engine, a skill script, a repo tool) answers `.alfred` and reads no settings
+  file; the env reader `layout.js dataRoot`, pinned as `data-root-reader` at 20 homes, keeps only an ABSOLUTE
+  `ALFRED_CODE_DATA_PATH` (a test harness's scratch) and reads every relative value as `.alfred`. The INSTALLER
+  SIDE (the installer, `update-preflight.js`, `scripts/workspace.js`, `install/variables.js`, `init-plan.js`,
+  `git-hygiene.js`, `stamp-docs-root.js`) asks the ONE reader `data-root.js dataRootOf({ projectDir, stampFile })`:
+  it reads no env and finds a folder an EARLIER release left elsewhere - named by the key in either settings file or
+  the stamp's `data-root:` line, and holding a stack entry (`ROOT_ENTRIES`) - so the mover can bring it in (THE MOVE
+  below). The root holds the docs (`<root>/docs`), the hooks' state and ledgers (`<root>/state`, `<root>/statistics`,
   `stack/hooks/layout.js`), the stack's variables (`<root>/.variables`, 3.0.0: every catalog `ALFRED_CODE_*` key but
-  `DATA_PATH` and the guard key `HOOKS_OFF`, which stay in the settings files; written by the installer and
+  the guard key `HOOKS_OFF`, which stays in the settings files; written by the installer and
   `scripts/variables.js set`, ledgered as `.variables` rows; tracked by git at project and user scope, whose
   `<root>/.gitignore` carries `!/.variables` - D6, `data-root.js dataIgnoreText` - and kept out at local scope; the
   hooks' loader `layout.variablesOf` reads it) and the project's sensitive data (`<root>/.secrets`, a dotenv the user fills by hand -
@@ -107,16 +112,20 @@ The stores and what each holds, where the docs root and the data root live, and 
   dataIgnoreText`, header-marked, a project's own text kept): a bare `*` would make `git check-ignore` answer yes for the
   docs and the versioning seed would read every fresh project as `local` (a `preferences/` domain holding only the git
   doc the install seeds casts no vote either - `docs.docsVersioningSeed`), and the file re-includes itself so it is
-  committed and a teammate's clone has it. The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE: the docs
-  move inline and unasked (the drain above); the secrets file (either name) is the one other class that moves, inline with a
-  root change, into a root whose `.gitignore` is written first. `update-preflight.js` prints `data-move: offer <root>
-  from=...` when an earlier root the stamp names still holds it; update asks ONE question (move recommended, keep, or a
-  typed folder), the answer is `--data-move move|keep` (`--docs-move` read for one release) and `--data-path <folder>`;
-  keep writes `data-move: kept` and no later update offers again; configure's data question passes `--data-path <new>
-  --data-move move`. A `--data-path` over a root that holds data without `--data-move move` is not applied. A refused
-  move stays as `data-pending: sensitive <from> -> <to>` for the next run; a `data-pending:` line an earlier release
-  wrote for a server's launcher is dropped, the data left where it is. The stamp's `data-root:` line is the next run's
-  baseline, so a root changed by hand is still found.
+  committed and a teammate's clone has it. The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE
+  (`scripts/install/fixed-root.js`, deleted whole at the support floor): every installer run but `--print-plan` and
+  `uninstall` plans from what the reader found and moves the stack's own entries of such a folder - `ROOT_ENTRIES`,
+  plus a `.gitignore` carrying the stack's header - into `.alfred` before the run's first write. Entry by entry,
+  never one rename of a folder onto `.alfred`; `state/` and `statistics/` merge file by file; `.alfred/.gitignore`
+  is written first and the secrets file moves last, only where git ignores its target. Anything else stays in the
+  old folder and the run's line names it; the old folder's `.gitignore` is then COPIED, not moved, so what it kept
+  out of git (an older server's browser profile) stays out. Any other entry both folders hold is a clash and stops the run before its
+  first write (`!! data root: ... merge them into .alfred by hand`); at local scope a folder the team owns (named in
+  `.claude/settings.json`, or tracked by git) stops the same way. The run then removes the key from both settings
+  files and writes no data line into the stamp. `--data-path`, `--data-move` and `--docs-move` are ignored with one
+  line each (`args.js RETIRED_FLAGS`). THE SKEW WINDOW: until an older custom-root install runs
+  `/alfred-code:update`, the new hooks read `.alfred` - defaults, no chain, the old folder's store known only by
+  content - so a session left open across the update is restarted (the release note says so).
 - **The workspace record and the load check live in the data root** (workspace layering, release 1, 2026-10-26;
   JSON since the workspace.json design, 2026-11-10): `<data root>/workspace.json` holds the project's `parent` (a `..`
   run) or `role` (`root` | `standalone`), `above` (a `..` run or `none` - the tree its role was asked against),
@@ -126,10 +135,10 @@ The stores and what each holds, where the docs root and the data root live, and 
   until the support floor - alone, or beside the JSON as a union - and the installer's next write of the record
   converts it (`install/workspace.js writeWorkspace`, through `workspace.lock` beside it), naming each older-release
   member that still reads the old file. A garbage `workspace.json` is never written over: the installer refuses, and
-  the session start says it once (`docs-session.js`). Both files move with the
-  root on every run that changes it, on or off (`workspace.moveWorkspace` - `planDataMove` carries only the store), a parent's file is read under the parent's own root, and an ancestor's
-  is read with an env that keeps only the account (`ancestorEnv`), so this project's `ALFRED_CODE_DATA_PATH` never
-  points into a parent. `workspace.js check-loads` writes its last result, whatever the state, to `<data root>/state/
+  the session start says it once (`docs-session.js`). Both files move into `.alfred` with the
+  rest of an older folder (`fixed-root.js`). The hooks read a member's record under `<member>/.alfred` alone; the
+  installer's `chain()` reads a member through the reader, so a child's lone update still finds a parent whose data
+  sits in its older folder, and an ancestor is read with an env that keeps only the account. `workspace.js check-loads` writes its last result, whatever the state, to `<data root>/state/
   workspace-check.json`, which `status` reads. Both stay out of git through the root's `/*`. Uninstall takes out the
   `parent` and the `children` entry on both sides (`leaveParent`, `releaseChildren`, which first writes each child's
   inherited values into its own `.variables`) and leaves the rest of the file, as it leaves the data root.

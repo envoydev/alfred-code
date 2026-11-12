@@ -70,9 +70,6 @@ function makeSession(opts = {})
         execCommand('git', ['init', '-q', project], { stdio: 'ignore' });
         if (opts.gitignore !== undefined) write(path.join(project, '.gitignore'), opts.gitignore);
     }
-    const settings = {};
-    if (opts.dataPath) settings.ALFRED_CODE_DATA_PATH = opts.dataPath;
-    if (Object.keys(settings).length) write(path.join(project, '.claude', 'settings.json'), JSON.stringify({ env: settings }, null, 2));
     fs.mkdirSync(dataRoot, { recursive: true });
     if (opts.instrument !== undefined) write(path.join(dataRoot, '.variables'), `ALFRED_CODE_INSTRUMENT=${opts.instrument}\n`);
 

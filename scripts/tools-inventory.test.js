@@ -289,7 +289,7 @@ test('no CLI answer: the stack plugins come from enabledPlugins', async () =>
     finally { s.done(); }
 });
 
-test('the CLI writes the inventory under the data root it reads', { skip: process.platform === 'win32' && 'a sh stub stands in for claude' }, () =>
+test('the CLI writes the inventory under .alfred', { skip: process.platform === 'win32' && 'a sh stub stands in for claude' }, () =>
 {
     const s = sandbox();
     try
@@ -297,16 +297,15 @@ test('the CLI writes the inventory under the data root it reads', { skip: proces
         const bin = path.join(s.work, 'bin');
         s.write(path.join(bin, 'claude'), '#!/bin/sh\necho "[]"\n');
         fs.chmodSync(path.join(bin, 'claude'), 0o755);
-        s.write(path.join(s.root, '.claude', 'settings.json'), { env: { ALFRED_CODE_DATA_PATH: 'data' } });
         s.write(path.join(s.work, 'session.txt'), 'mcp__claude_ai_Claude_Docs__batch\nmcp__claude_ai_Claude_Docs__guide\n');
         const r = spawnSync(process.execPath, [TOOLS, 'inventory', '--project', s.root, '--session-tools', path.join(s.work, 'session.txt')],
             { encoding: 'utf8', env: { ...s.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
         assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-        const file = path.join(s.root, 'data', 'state', 'tools-inventory.json');
+        const file = path.join(s.root, '.alfred', 'state', 'tools-inventory.json');
         const inv = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.strictEqual(inv.version, 1);
         assert.ok(inv.servers.mcp__claude_ai_Claude_Docs__);
-        assert.match(r.stdout, /tools: inventory written - data\/state\/tools-inventory\.json/);
+        assert.match(r.stdout, /tools: inventory written - \.alfred\/state\/tools-inventory\.json/);
         assert.deepStrictEqual(fs.readdirSync(path.dirname(file)), ['tools-inventory.json'], 'no temp file is left');
     }
     finally { s.done(); }

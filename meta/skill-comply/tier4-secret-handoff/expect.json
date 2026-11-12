@@ -29,7 +29,7 @@
       "id": "names-the-default-root",
       "session": false,
       "from": "stack/rules/alfred-docs-root.md",
-      "quote": "`ALFRED_CODE_DATA_PATH` (default `.alfred`)",
+      "quote": "where `<data root>` is `.alfred`",
       "graders": [
         { "type": "regex", "name": "the answer names the file at its default path", "target": "last_message", "pattern": "\\.alfred/\\.secrets\\b", "match": "contains" }
       ]

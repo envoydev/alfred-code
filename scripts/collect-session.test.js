@@ -115,10 +115,14 @@ test('the auditing env\'s ALFRED_CODE_DATA_PATH is ignored', (t) =>
     assert.strictEqual(rc.docsRoot, '.alfred/docs');
 });
 
-test('a custom data root in settings.json and an absolute --data-root are both taken', (t) =>
+// The fixed root (3.11.0): no settings key names the data root - it is .alfred unless --data-root names another folder.
+test('fixed root: a settings key names no data root; --data-root is taken, relative or absolute', (t) =>
 {
     const fx = makeSession({ dataPath: '.data' }); t.after(fx.cleanup);
-    assert.strictEqual(run(fx).dataRoot, '.data');
+    fs.mkdirSync(path.join(fx.project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(fx.project, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.data' } }));
+    assert.strictEqual(run(fx).dataRoot, '.alfred');
+    assert.strictEqual(run(fx, ['--out', path.join(fx.root, 'out1'), '--data-root', '.data']).dataRoot, '.data');
     const abs = path.join(fx.root, 'scratch-data');
     fs.mkdirSync(abs);
     const rc = run(fx, ['--out', path.join(fx.root, 'out2'), '--data-root', abs]);

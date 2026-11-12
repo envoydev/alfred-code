@@ -96,7 +96,7 @@ Read `references/diagnosis-discipline.md` now, before the first authored row of 
 
 **Gather with the reader, never a helper script.** Each bundle starts with `node <snapshot>/stack/skills/capture-usage-report/scripts/transcript-view.js pack <transcript> <usage json> --out <tmp>/<sid>-evidence.md`: the typed prompts, every ask with its answer, the skill, command and dispatch runs, the errored tool results (the seats' too), and each moment the analyzer flagged with the rows before it - every line an `L<n>` locator. It quotes the transcript, so it stays in `<tmp>`, out of the bundle. A row it does not hold comes from the same script - `timeline`, `show <L>`, `grep <regex>` - never one written for the occasion.
 
-Everything for a session lands in `<data root>/statistics/usage-report/<session-id>/` (`<data root>`: `.alfred`, or `ALFRED_CODE_DATA_PATH`):
+Everything for a session lands in `<data root>/statistics/usage-report/<session-id>/` (`<data root>`: `.alfred`):
 
 - `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).

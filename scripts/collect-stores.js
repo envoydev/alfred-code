@@ -209,7 +209,7 @@ function contextBody(ctx)
 }
 const variables = (ctx) =>
 {
-    if (!ctx.cache.variables) ctx.cache.variables = layout.variablesOf(ctx.project, { env: { ...ctx.stripped, ALFRED_CODE_DATA_PATH: ctx.dataRootValue }, layers: 'files' });
+    if (!ctx.cache.variables) ctx.cache.variables = layout.variablesOf(ctx.project, { env: ctx.stripped, layers: 'files', dataRoot: ctx.dataRootRel });
     return ctx.cache.variables;
 };
 

@@ -1,16 +1,16 @@
 'use strict';
-// THE PROJECT DATA ROOT - one folder, `.alfred` by default, for what the stack keeps for a project: the docs, the hooks'
+// THE PROJECT DATA ROOT - one folder, always `.alfred`, for what the stack keeps for a project: the docs, the hooks'
 // state and statistics (stack/hooks/layout.js) and the project's sensitive data. The ONE home of where each lives, read by
 // the installer, init's plan, the preflight and the hooks, so none can disagree.
 //
-//   ALFRED_CODE_DATA_PATH   the root, relative to the project, never under `.claude/` (Claude Code prompts for every
-//                           write there). Read like every stack setting outside a session: the shell env, then
-//                           settings.local.json, settings.json and the account settings.json (settingFrom).
+//   An install from before 3.11.0 could name another folder (a settings key, a stamp line). `dataRootOf` below is the
+//   one reader of those names, for the installer side alone, so an update finds the folder the data still sits in and
+//   moves it (scripts/install/fixed-root.js). The hooks read `.alfred` and nothing else.
 //
 // What moves, and who moves it: the docs move inline with the installer (docs.docsMovePlan), and the sensitive-data file
-// with a root change, into a root whose .gitignore is written first. The stack ships no MCP server since 2.10.1, so no
-// server's data is moved: what an older release's navigation index, browser profiles or memory database left under the
-// root stays where it is, kept out of git by the root's own .gitignore.
+// with the one-time move, into a root whose .gitignore is written first. The stack ships no MCP server since 2.10.1, so
+// no server's data is moved: what an older release's navigation index, browser profiles or memory database left under
+// an older folder stays there, kept out of git by that folder's own .gitignore, which the move copies and leaves.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -83,29 +83,75 @@ function checkDataPath(raw)
     return { ok: true, value };
 }
 
-// The root in effect for a project: { root, source: 'setting' | 'default' | 'invalid', why? }.
-function dataRootOf({ env = process.env, projectDir } = {})
+// THE FIXED ROOT (2026-11-11): the data root is always `.alfred`. What follows finds a folder an EARLIER release left
+// elsewhere, so the installer can move it (scripts/install/fixed-root.js) - until the support floor takes both out.
+// The top-level entries the stack owns in a data root, by name; anything else in such a folder is the project's own.
+const ROOT_ENTRIES = Object.freeze(['docs', '.variables', 'workspace.json', 'workspace', 'state', 'statistics', ...SECRET_FILES]);
+// The names in `dir` the stack owns: ROOT_ENTRIES, plus a `.gitignore` carrying the stack's header. [] for no folder.
+function stackEntries(dir)
 {
-    const raw = settingFrom({ env, projectDir, suffix: 'DATA_PATH' });
-    if (!raw) return { root: DATA_ROOT_DEFAULT, source: 'default' };
-    const checked = checkDataPath(raw);
-    return checked.ok ? { root: checked.value, source: 'setting' } : { root: DATA_ROOT_DEFAULT, source: 'invalid', why: checked.why };
+    let names;
+    try { names = fs.readdirSync(dir); } catch { return []; }
+    return names.filter((n) =>
+    {
+        if (n !== '.gitignore') return ROOT_ENTRIES.includes(n);
+        try { return fs.readFileSync(path.join(dir, n), 'utf8').includes(DATA_IGNORE_HEAD); } catch { return false; }
+    });
+}
+// The stamp's `data-root:` value when it is a usable root, else ''.
+function readRootLine(stampText)
+{
+    const raw = (/^data-root: *(\S+) *$/m.exec(String(stampText || '')) || [])[1] || '';
+    return checkDataPath(raw).ok ? raw : '';
+}
+// Two root names are one folder when both exist and resolve to the same place, else when they spell the same - without
+// case where the disk has none (the rule layout.js uses for its chain keys).
+function sameRoot(projectDir, a, b)
+{
+    const abs = (r) => path.join(projectDir, ...r.split('/'));
+    try { return fs.realpathSync.native(abs(a)) === fs.realpathSync.native(abs(b)); } catch { /* one of them is absent */ }
+    const fold = (v) => (process.platform === 'win32' || process.platform === 'darwin' ? v.toLowerCase() : v);
+    return fold(a) === fold(b);
+}
+// { root, sources, refused, candidates } for a project. `candidates` is every usable name, in order - the key in
+// settings.local.json, the key in settings.json, the stamp's line - as { root, from }; a name checkDataPath refuses goes
+// to `refused` ({ raw, file, why }). `sources` is each distinct candidate that is not `.alfred` and whose folder holds
+// an entry the stack owns (its ignore file counts only alone); `root` is the first of them, else `.alfred`. No shell env, no account file, nothing written.
+function dataRootOf({ projectDir, stampFile } = {})
+{
+    const out = { root: DATA_ROOT_DEFAULT, sources: [], refused: [], candidates: [] };
+    if (!projectDir) return out;
+    const { readJson } = require('../../scripts/install/json-file.js');
+    const named = [];
+    for (const file of ['settings.local.json', 'settings.json'])
+    {
+        const raw = String(envOf((readJson(path.join(projectDir, '.claude', file)) || {}).env || {}, 'DATA_PATH') || '').trim();
+        if (raw) named.push({ raw, file });
+    }
+    let stampText = '';
+    try { stampText = fs.readFileSync(stampFile || path.join(projectDir, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { /* no stamp */ }
+    const line = readRootLine(stampText);
+    if (line) named.push({ raw: line, file: 'stamp' });
+    for (const { raw, file } of named)
+    {
+        const checked = checkDataPath(raw);
+        if (!checked.ok) { out.refused.push({ raw, file, why: checked.why }); continue; }
+        out.candidates.push({ root: checked.value, from: file });
+        if ([DATA_ROOT_DEFAULT, ...out.sources].some((r) => sameRoot(projectDir, r, checked.value))) continue;
+        // The stack's ignore file beside only the project's own entries is what the one-time move leaves: no source.
+        const dir = path.join(projectDir, ...checked.value.split('/'));
+        const owned = stackEntries(dir);
+        if (owned.some((e) => e !== '.gitignore') || (owned.length && fs.readdirSync(dir).length === 1)) out.sources.push(checked.value);
+    }
+    out.root = out.sources[0] || DATA_ROOT_DEFAULT;
+    return out;
 }
 
-// Where a class of the stack's data lives under a root: only `sensitive` (the secrets FILE, which a root change takes
-// along) since 2.10.1 - null for any other class. `name` is the store's name where one was found (findSecretsFile).
+// Where a class of the stack's data lives under a root: only `sensitive` (the secrets FILE, which the one-time move
+// takes along) since 2.10.1 - null for any other class. `name` is the store's name where one was found (findSecretsFile).
 function targetOf(cls, root = DATA_ROOT_DEFAULT, name = SECRETS_FILE)
 {
     return cls === 'sensitive' ? `${root}/${name}` : null;
-}
-// The data root a class's place sits under - the inverse of targetOf, either store name; null for a 2.0.0 place or a
-// foreign one.
-function rootOfPlace(cls, rel)
-{
-    if (cls !== 'sensitive') return null;
-    const name = SECRET_FILES.find((n) => String(rel || '').endsWith(`/${n}`));
-    const root = name ? rel.slice(0, -(name.length + 1)) : '';
-    return root && checkDataPath(root).ok ? root : null;
 }
 // The store under a root, `.secrets` before `.sensitive-data`: { rel, name }, or null when neither is a regular file - a
 // folder or a link under the name is no store.
@@ -238,18 +284,6 @@ function moveEntry(from, to, { file = false } = {})
         return { state: 'moved' };
     }
     catch (err) { return { state: 'failed', why: err.code || err.message }; }
-}
-
-// The sensitive-data file from `from` to `to` (both project-relative), into a root whose .gitignore is written first - it
-// never lands in a root its .gitignore does not cover yet, not even for one moment. { state (moveEntry's), why? }.
-function movePlace({ projectDir, cls, from, to })
-{
-    if (cls !== 'sensitive') return { state: 'absent' };
-    const abs = (rel) => path.join(projectDir, ...rel.split('/'));
-    const root = rootOfPlace(cls, to);
-    try { if (root) ensureRootIgnore({ projectDir, root }); }
-    catch (err) { return { state: 'failed', why: `${to} has no .gitignore yet (${err.code || err.message})` }; }
-    return moveEntry(abs(from), abs(to), { file: true });
 }
 
 // ------------------------------------------------------------------ the project's sensitive data
@@ -413,22 +447,11 @@ function gitIgnores(projectDir, rel)
     return r.status === 0 ? true : r.status === 1 ? false : null;
 }
 
-// ------------------------------------------------------------------ the move plan and the pending record
-
-// One row when the secrets file sits under the PRIOR root (a root change) - the one thing a root change moves, under the
-// name it has. `conflict` when the target root already holds a store of either name.
-function dataMovePlan({ projectRoot, root, prior = null })
-{
-    if (!prior || prior === root) return [];
-    const found = findSecretsFile(projectRoot, prior);
-    if (!found) return [];
-    return [{ cls: 'sensitive', from: found.rel, to: targetOf('sensitive', root, found.name), conflict: Boolean(findSecretsFile(projectRoot, root)) }];
-}
+// ------------------------------------------------------------------ the pending record
 
 // `data-pending: sensitive <from> -> <to>` - a sensitive-data move an earlier run could not make, retried by the next. Read
 // back strictly: two relative paths that stay inside the project. A line an older release recorded for a server's data
 // (serena, memory, an engine) is no move any more and is not read.
-const renderPending = (rows) => rows.map((r) => `data-pending: ${r.cls} ${r.from} -> ${r.to}`);
 function readPending(text)
 {
     const out = [];
@@ -443,7 +466,7 @@ function readPending(text)
 
 module.exports = {
     DATA_ROOT_DEFAULT, SENSITIVE_FILE, SECRETS_FILE, LEGACY_SECRETS_FILE, SECRET_FILES, findSecretsFile, renameSecrets, repointRunBooks, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
-    checkDataPath, dataRootOf, targetOf, rootOfPlace,
+    checkDataPath, dataRootOf, ROOT_ENTRIES, stackEntries, readRootLine, sameRoot, gitIgnores, targetOf,
     DATA_IGNORE_HEAD, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile, storeValues,
-    writeText, moveEntry, movePlace, dataMovePlan, renderPending, readPending,
+    writeText, moveEntry, readPending,
 };

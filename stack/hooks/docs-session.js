@@ -54,9 +54,8 @@ let partOff = (hook, part) => envOf(process.env, LEGACY_PART[part]) === '0';
 try { partOff = require('./hook-prelude.js').partOff || partOff; } catch { /* an install without the prelude reads the old keys */ }
 const docsOff = (part) => partOff('docs-session', part);
 
-// layout.js's reader when it is beside this file, so an inline DATA_PATH spelling ('./') names the root every other
-// hook reads (E-batch ab-HO5); an older copy route without layout.js keeps the old expression.
-const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
+// layout.js's reader when it is beside this file; an older copy route without layout.js reads the fixed root itself.
+const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
 // 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
 // the 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;
@@ -477,7 +476,7 @@ function main() {
 // blocked their git add). guard-ungated-commit.js reads the session's pointer first.
 const UNTRACKED_CAP = 20000;
 
-// A docs move (`--data-move move`) can leave the old default behind holding hook state: the move's own tool call
+// A docs move can leave the old default behind holding hook state: the move's own tool call
 // ends in PostToolUse hooks that still read the session's old docs root, and their recursive mkdir rebuilds the
 // folder the move just emptied (2.2.0 upgrade: one monitor row in .claude/docs/flow). The next session start folds
 // it into the live root - a .jsonl appends, any other file moves when the live root lacks it and is dropped when it

@@ -11,7 +11,7 @@ const path = require('node:path');
 const rt = require('./install/runtime.js');
 const wsLib = require('./install/workspace.js');
 const stampLib = require('./install/stamp.js');
-const { seedRun, POSIX_ONLY, releaseExport, skipWithout } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, releaseExport, skipWithout, plantOlderRoot } = require('./seed-sandbox.js');
 const layoutLib = require('../stack/hooks/layout.js');
 const variablesLib = require('./install/variables.js');
 
@@ -277,7 +277,7 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     assert.deepStrictEqual(after.effective, reseeded(before.effective), r.outs[4]);
     assert.strictEqual(after.vars[LEVEL], '95', 'the own-env key landed in the child\'s file');
     assert.ok(!Object.hasOwn(after.vars, SC), 'a copy never lands in the child\'s file');
-    assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== 'ALFRED_CODE_DATA_PATH' && k !== OFF), [], JSON.stringify(after.local));
+    assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== OFF), [], JSON.stringify(after.local));
     assert.strictEqual(after.ownEnv, null, 'the own-env line went');
     assert.strictEqual(after.local[OFF], 'docs-session:gate', 'HOOKS_OFF keeps only the child\'s own entries');
     assert.deepStrictEqual(after.off, ['docs-session:gate', 'guard-ungated-commit:push'], 'the root\'s part entry still reaches the child');
@@ -643,33 +643,34 @@ test('a parent none project handed --parent-plan gets nothing, and a plan whose 
     assert.match(r.outs[7], /!! workspace: the read-back of \.\. failed \(the plan is from /);
 });
 
-test('a data-root move at the root carries its workspace file, and the child\'s chain still finds the root', POSIX_ONLY, () =>
+test('an older custom root at the workspace root is carried to .alfred with its workspace file, and the child\'s chain still finds the root', POSIX_ONLY, () =>
 {
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
-        { at: 'api' },
-        update('.', { args: ['--data-path', '.ws-data', '--data-move', 'move'], after: (work) => [readWorkspaceValues(at(work), { dataRoot: '.ws-data' }), readWorkspaceRecord(at(work)).state !== 'absent'] }),
+        { at: 'api', after: (work) => void plantOlderRoot(at(work), '.ws-data') },
+        update('.', { after: (work) => [readWorkspaceValues(at(work)), fs.existsSync(path.join(at(work), '.ws-data'))] }),
         update('.', { args: ['--add', `skill ${X}`] }),
         update('api', { after: (work) => hasSkill(work, 'api', X) }),
     ]);
     assert.deepStrictEqual((r.steps[2][0] || {}).children, ['api'], r.outs[2]);
-    assert.strictEqual(r.steps[2][1], false);
+    assert.strictEqual(r.steps[2][1], false, 'the emptied older root is gone');
     assert.strictEqual(r.steps[4], true, r.outs[4]);
 });
 
-test('a joined child that moves its data root and adds an own pick in the same run keeps its chain and records the pick', POSIX_ONLY, () =>
+test('a joined child whose older custom root is carried to .alfred while it adds an own pick keeps its chain and records the pick', POSIX_ONLY, () =>
 {
-    // prepare read the workspace file at the new root before moveWorkspace carried it there: no chain, the own lines
-    // carried unchanged, and the pick dropped by the next update's delta (the final review, finding 2).
+    // The move runs before the workspace read: a read at .alfred ahead of it found no chain, carried the own lines
+    // unchanged, and the pick was dropped by the next update's delta (the final review, finding 2).
     const r = scenario([
         { at: '.', after: (work) => join(work, 'api') },
-        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n` },
-        update('api', { args: ['--data-path', '.kid-data', '--data-move', 'move', '--add', `skill ${X}`], after: (work) => ({
-            own: lineOf(stampOf(work, 'api'), 'own-picks'), file: readWorkspaceValues(at(work, 'api'), { dataRoot: '.kid-data' }),
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => void plantOlderRoot(at(work, 'api'), '.kid-data') },
+        update('api', { args: ['--add', `skill ${X}`], after: (work) => ({
+            own: lineOf(stampOf(work, 'api'), 'own-picks'), file: readWorkspaceValues(at(work, 'api')), old: fs.existsSync(path.join(at(work, 'api'), '.kid-data')),
         }) }),
         update('api', { after: (work) => ({ x: hasSkill(work, 'api', X), js: hasSkill(work, 'api', 'javascript') }) }),
     ]);
     assert.strictEqual((r.steps[2].file || {}).parent, '..', r.outs[2]);
+    assert.strictEqual(r.steps[2].old, false, r.outs[2]);
     assert.match(r.steps[2].own || '', new RegExp(`skill/${X}`), r.outs[2]);
     assert.deepStrictEqual(r.steps[3], { x: true, js: true }, r.outs[3]);
 });
@@ -707,31 +708,6 @@ test('a child install with --parent-plan takes the parent\'s set even when its s
     ]);
     assert.deepStrictEqual([r.steps[2].js, r.steps[2].x], [true, false], r.outs[2]);
     assert.strictEqual(r.steps[2].own, `skill/${OWN}`);
-});
-
-test('a child registered under a chosen data root installs with that root and inherits', POSIX_ONLY, () =>
-{
-    const r = scenario([
-        { at: '.', sel: `${ROOT_SEL}skill ${X}\n`, after: (work) =>
-        {
-            setVar(work, '.', { [SC]: '1' });
-            join(work, 'api', { dataRoot: '.kid-data' });
-            edit(work, 'api', (m) => wsLib.addIgnore(m, 'skill', X), '.kid-data');
-        } },
-        planStep('root.json'),
-        { at: 'api', args: (work) => ['--data-path', '.kid-data', '--parent-plan', path.join(work, 'root.json')], after: (work) => ({
-            root: lineOf(stampOf(work, 'api'), 'data-root'), file: readWorkspaceValues(at(work, 'api'), { dataRoot: '.kid-data' }),
-            alfred: fs.existsSync(path.join(at(work, 'api'), '.alfred')), x: hasSkill(work, 'api', X), js: hasSkill(work, 'api', 'javascript'),
-            sc: effectiveOf(work, 'api')[SC],
-        }) },
-    ]);
-    const got = r.steps[2];
-    assert.strictEqual(got.root, '.kid-data', r.outs[2]);
-    assert.doesNotMatch(r.outs[2], /not applied/);
-    assert.strictEqual(got.file.parent, '..');
-    assert.ok(got.file.ignore.skill.includes(X), JSON.stringify(got.file));
-    assert.strictEqual(got.alfred, false);
-    assert.deepStrictEqual([got.x, got.js, got.sc], [false, true, '1']);
 });
 
 test('a D5 decline, a managed-account row and the own lines survive an update', POSIX_ONLY, () =>
@@ -855,36 +831,19 @@ test('cascade: a deleted child is gone and loses its line (AC6)', POSIX_ONLY, ()
 
 test('cascade applies one project\'s answer and no other\'s', POSIX_ONLY, () =>
 {
-    // A store an earlier root left behind: the stamp names .old as the data root, and .old holds the secrets file.
-    const strand = (work, rel) =>
-    {
-        const dir = at(work, rel);
-        fs.mkdirSync(path.join(dir, '.old'), { recursive: true });
-        fs.renameSync(path.join(dir, '.alfred', '.secrets'), path.join(dir, '.old', '.secrets'));
-        const file = path.join(dir, '.claude', 'alfred-code.stamp');
-        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^data-root: .*$/m, 'data-root: .old'));
-    };
     const answers = (work) => path.join(work, 'answers.json');
-    const has = (work, rel, file) => fs.existsSync(path.join(at(work, rel), ...file.split('/')));
     const r = scenario([
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
         { at: 'api' },
         { at: 'web' },
-        update('api'),
-        update('web', { after: (work) => { strand(work, 'api'); strand(work, 'web'); } }),
-        cli('plan'),
         cli('cascade', {
-            before: (work) => fs.writeFileSync(answers(work), JSON.stringify({ web: ['--data-move', 'move'] })),
+            before: (work) => fs.writeFileSync(answers(work), JSON.stringify({ web: ['--add', `skill ${X}`] })),
             args: (work) => ['--answers', answers(work)],
-            after: (work) => ({ webMoved: has(work, 'web', '.alfred/.secrets') && !has(work, 'web', '.old/.secrets'), apiStray: has(work, 'api', '.old/.secrets') }),
+            after: (work) => ({ web: hasSkill(work, 'web', X), api: hasSkill(work, 'api', X) }),
         }),
     ]);
-    const offer = /^ {2}data-move: offer \.alfred\tfrom=\.old\/\.secrets$/;
-    const asksOf = (out, rel) => out.split(/^project: /m).find((b) => b.startsWith(`${rel}\t`)).split('\n').slice(1);
-    assert.ok(asksOf(r.outs[5], 'api').some((l) => offer.test(l)), r.outs[5]);
-    assert.ok(asksOf(r.outs[5], 'web').some((l) => offer.test(l)), r.outs[5]);
-    // api had no entry, so its run got no --data-move and its stray store stayed where it was.
-    assert.deepStrictEqual(r.steps[6], { webMoved: true, apiStray: true }, r.outs[6]);
+    // api had no entry, so its run got no --add and took nothing more.
+    assert.deepStrictEqual(r.steps[3], { web: true, api: false }, r.outs[3]);
 });
 
 test('a mid-level parent with an unknown workspace key still cascades', POSIX_ONLY, () =>
@@ -1530,4 +1489,23 @@ test('uninstall refuses before any change over a garbage workspace record', POSI
         assert.ok(!(r.steps[3].api || {}).parent, `${label}: api still names its parent\n${r.outs[3]}`);
         assert.ok(!(r.steps[3].root || {}).children, `${label}: the root still lists api\n${r.outs[3]}`);
     }
+});
+
+// ------------------------------------------------------------------ the fixed root (2026-11-11)
+// A parent an older release left on a custom root R: its folder, the key and the stamp's line name R until its own next
+// run moves it. A child's run reads the parent where it is and writes nothing under the parent's `.alfred`.
+test('fixed root: a child\'s run reads its parent\'s unmoved folder', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { plantOlderRoot(at(work)); join(work, 'api'); } },
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => ({
+            own: lineOf(stampOf(work, 'api'), 'own-picks'), js: hasSkill(work, 'api', 'javascript'),
+            record: fs.existsSync(path.join(at(work), 'var', 'data', 'workspace.json')), alfred: fs.existsSync(path.join(at(work), '.alfred')),
+        }) },
+    ]);
+    const got = r.steps[1];
+    assert.strictEqual(got.own, `skill/${OWN}`, r.outs[1]);
+    assert.ok(got.js, 'the parent\'s set reached the child');
+    assert.ok(got.record, 'the parent\'s record stays under R');
+    assert.strictEqual(got.alfred, false, 'nothing is written under the parent\'s .alfred');
 });

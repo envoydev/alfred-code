@@ -56,7 +56,7 @@ touches no committed file). The lines, minus anything the project already covers
   `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include. Where the install's name answer
   was CLAUDE.md, the re-include names `.claude/CLAUDE.md`. With the instruction file at the root (init's or configure's
   place answer), the re-include keeps nothing and `.claude/*` stands alone.
-- `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
+- `.alfred/` - the data root, always this folder, outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the hooks' state and the seats' handoff notes
   (`.alfred/state/`) and the project's sensitive data (`.alfred/.secrets`). Its ONE `.gitignore` keeps everything but `docs/` out
   of git, so while the docs are committed it needs no line here, and it carries the docs' rules too, written

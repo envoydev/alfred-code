@@ -158,9 +158,8 @@ test('guard-read-whole-file: no navigation remedy for a tree no symbol lookup in
   fs.writeFileSync(inSerena, LONG_JS);
   assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/,
     "the old .serena tree either");
-  // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds the docs, the state and an old server's data: no
-  // navigation remedy there either - the default and a custom root alike.
-  for (const [root, env] of [['.alfred', {}], ['.data', { ALFRED_CODE_DATA_PATH: '.data' }]])
+  // The data root (.alfred) holds the docs, the state and an old server's data: no navigation remedy there either.
+  for (const [root, env] of [['.alfred', {}]])
   {
     const inData = path.join(ROOT, root, 'serena', 'home', 'big.ts');
     fs.mkdirSync(path.dirname(inData), { recursive: true });

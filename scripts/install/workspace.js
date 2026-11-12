@@ -100,15 +100,10 @@ function workspaceOn({ env = {}, projectRoot })
 
 // ------------------------------------------------------------------ the file
 
-// The env an ANCESTOR's data root is read with: only the account, so the run's own ALFRED_CODE_DATA_PATH never
-// names another project's root, while settingFrom still reads the account this run uses - an empty env would read
-// the real ~/.claude/settings.json inside a throwaway-account run.
-const ancestorEnv = (env = {}) => ({ CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR });
-
 // { root, dir, file, legacy, lock } for the project's record - `file` workspace.json, `legacy` the old line file - or
-// { why } when a handed data root is refused. A handed `dataRoot` is the root init's walk chose before any setting names
-// it (`register --data-path`).
-function locate(projectRoot, { env = {}, dataRoot } = {})
+// { why } when a handed data root is refused. A handed `dataRoot` is the root the caller's reader already
+// found (an older install's folder, until its update moves it).
+function locate(projectRoot, { dataRoot } = {})
 {
     let root;
     if (dataRoot !== undefined && dataRoot !== null && dataRoot !== '')
@@ -117,7 +112,7 @@ function locate(projectRoot, { env = {}, dataRoot } = {})
         if (!checked.ok) return { why: checked.why };
         root = checked.value;
     }
-    else root = dataRootMod.dataRootOf({ env, projectDir: projectRoot }).root;
+    else root = dataRootMod.dataRootOf({ projectDir: projectRoot }).root;
     const dir = path.join(projectRoot, ...root.split('/'));
     return { root, dir, file: path.join(dir, JSON_NAME), legacy: path.join(dir, LEGACY_NAME), lock: path.join(dir, LOCK_NAME) };
 }
@@ -173,11 +168,11 @@ const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v 
 // garbage workspace.json is never written over (`why: 'garbage'`). `runRoot` is the run's own project (default
 // `projectRoot`): the log lines name paths from it, and a conversion of another project's record is named by
 // olderProjectLines.
-function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
+function writeWorkspace(projectRoot, mutate, { dataRoot, runRoot, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
 {
     const empty = viewOf(emptyRecord());
     const fail = (why, view = empty) => ({ ok: false, why, view, wrote: false, changed: false, converted: false });
-    const at = locate(projectRoot, { env, dataRoot });
+    const at = locate(projectRoot, { dataRoot });
     if (!at.file) return fail('unwritable');
     try { fs.mkdirSync(at.dir, { recursive: true }); }
     catch { return fail('unwritable'); }
@@ -236,16 +231,6 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log 
     }
 }
 
-// The data root holding the run's own record: the `--data-path` choice once init registered there; on a root change the
-// record is still at the current root until moveWorkspace carries it after the run's install, so an absent record there
-// reads the current root's (undefined).
-function ownDataRootOf({ projectRoot, env = process.env, args = {} })
-{
-    const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
-    const chosen = checked && checked.ok ? checked.value : undefined;
-    return chosen !== undefined && readWorkspace(projectRoot, { env, dataRoot: chosen }).state === 'absent' ? undefined : chosen;
-}
-
 // The run's own record converted to workspace.json before the workspace pass reads it - whatever ALFRED_CODE_WORKSPACE
 // says: the conversion carries every value, so the switch's freeze still holds for the content. Writes nothing on a
 // converted project. { ok, why, converted }.
@@ -290,30 +275,6 @@ function olderProjectLines({ conversions: list = [], release, compare, env = pro
         }
     }
     return out;
-}
-
-// A data-root move carries the record along (planDataMove moves only the secrets store, and leaves the old root in place
-// while it holds anything else): workspace.json and a still-present old file as ONE record. Never over a record the new
-// root already holds under either name - moved one by one, a workspace.json could land beside a stale old file.
-function moveWorkspace({ projectRoot, from, to, log = () => {} })
-{
-    const dirOf = (root) => path.join(projectRoot, ...String(root).split('/'));
-    const names = [JSON_NAME, LEGACY_NAME];
-    const here = names.filter((n) => fs.existsSync(path.join(dirOf(from), n)));
-    if (!here.length) return 'absent';
-    const there = names.filter((n) => fs.existsSync(path.join(dirOf(to), n)));
-    if (there.length)
-    {
-        log(`  !! workspace: ${here.map((n) => `${from}/${n}`).join(' and ')} left in place - ${to} already holds a workspace record (${there.join(', ')})`);
-        return 'clash';
-    }
-    fs.mkdirSync(dirOf(to), { recursive: true });
-    for (const n of here)
-    {
-        fs.renameSync(path.join(dirOf(from), n), path.join(dirOf(to), n));
-        log(`  workspace: moved ${from}/${n} -> ${to}/${n}`);
-    }
-    return 'moved';
 }
 
 // ------------------------------------------------------------------ the tree
@@ -384,7 +345,7 @@ function roleOf(projectRoot, { env = process.env, log = printLine } = {})
     if (read.state === 'garbage') { sayGarbage(read.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const view = read.view;
     // So is a parent whose own record is garbage: the chain cannot say whether it still lists this project.
-    const parentRead = view.parent ? readWorkspace(path.resolve(realOf(projectRoot), ...view.parent.split('/')), { env: ancestorEnv(env) }) : null;
+    const parentRead = view.parent ? readWorkspace(path.resolve(realOf(projectRoot), ...view.parent.split('/'))) : null;
     if (parentRead && parentRead.state === 'garbage') { sayGarbage(parentRead.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const children = view.children.length;
     const asked = Boolean(view.role || view.parent || view.above);
@@ -423,7 +384,7 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     if (own.state === 'garbage') { sayGarbage(own.file, root, log); return null; }
     if (own.view.parent)
     {
-        const parentRead = readWorkspace(path.resolve(root, ...own.view.parent.split('/')), { env: ancestorEnv(env) });
+        const parentRead = readWorkspace(path.resolve(root, ...own.view.parent.split('/')));
         if (parentRead.state === 'garbage') { sayGarbage(parentRead.file, root, log); return null; }
     }
     const v = joinVerdict(projectRoot, { env, exec });
@@ -476,10 +437,9 @@ function register(projectRoot, { env = process.env, exec = runtime.execCommand, 
     if (!v.parent) return { ok: false, code: 2, lines: [`!! workspace: no installed folder above ${root} - nothing to join`] };
     if (!v.ok) return { ok: false, code: 2, lines: [`!! workspace: ${v.parent.rel} cannot take this folder as a child (${v.why})`] };
     const childRel = relPosix(v.parent.root, root);
-    const upEnv = ancestorEnv(env);
     const said = [];
     const log = (l) => said.push(l);
-    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { env: upEnv, runRoot: root, log });
+    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { runRoot: root, log });
     if (!up.ok && up.why === 'locked') return { ok: false, code: 3, lines: [...said, `!! workspace: the workspace file in ${v.parent.rel} is locked by another run - nothing was written; the join is offered again at the next update`] };
     if (!up.ok && up.why === 'garbage') return { ok: false, code: 1, lines: [...said, `!! workspace: the workspace record in ${v.parent.rel} is garbage (not valid JSON) - nothing was joined; fix it by hand, then join again`] };
     if (!up.ok) return { ok: false, code: 1, lines: [...said, `!! workspace: the workspace file in ${v.parent.rel} could not be written (${up.why}) - nothing was joined`] };
@@ -488,7 +448,7 @@ function register(projectRoot, { env = process.env, exec = runtime.execCommand, 
     {
         // The parent's line alone is a child the chain never reaches: take it back, unless it was there before (a
         // conversion alone writes the parent's file without adding the line).
-        if (up.changed) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv, runRoot: root });
+        if (up.changed) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { runRoot: root });
         const state = here.why === 'locked' ? 'locked by another run' : here.why === 'garbage' ? 'garbage (not valid JSON)' : 'not writable';
         return { ok: false, code: here.why === 'locked' ? 3 : 1, lines: [...said, `!! workspace: this project's workspace file is ${state} - nothing was joined; the join is offered again at the next update`] };
     }
@@ -665,14 +625,14 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
 // holds a stamp and whose own file lists this folder as `child` (the N1 rule): project text alone can never pull an
 // unrelated folder - or its secrets - into the chain. The first refused hop ends it with one `!!` note, returned for
 // the caller to log (never through the installer's `note`, which counts a failure).
-function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {})
+function chain(projectRoot, { maxDepth = 8, ownDataRoot } = {})
 {
     const start = realOf(projectRoot);
     const members = [];
     const notes = [];
     const seen = new Set([realKey(start)]);
     let current = start;
-    let read = readWorkspace(start, { env, dataRoot: ownDataRoot });
+    let read = readWorkspace(start, { dataRoot: ownDataRoot });
     while (members.length < maxDepth && read.view.parent)
     {
         const value = read.view.parent;
@@ -684,7 +644,7 @@ function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {
         const up = path.relative(realKey(parent), realKey(current));
         if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
         if (!isStamped(parent)) { refuse(`${label} holds no Alfred install`); break; }
-        const parentRead = readWorkspace(parent, { env: ancestorEnv(env) });
+        const parentRead = readWorkspace(parent);
         if (parentRead.state === 'garbage') { refuse(`${relPosix(start, parentRead.file)} is not valid JSON`); break; }
         if (!parentRead.view.children.some((c) => realKey(path.join(parent, ...c.split('/'))) === realKey(current)))
         {
@@ -694,7 +654,7 @@ function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {
         const key = realKey(parent);
         if (seen.has(key)) { refuse(`${label} is already in the chain`); break; }
         seen.add(key);
-        const dataRoot = dataRootMod.dataRootOf({ env: ancestorEnv(env), projectDir: parent }).root;
+        const dataRoot = dataRootMod.dataRootOf({ projectDir: parent }).root;
         members.push({ root: realOf(parent), rel: label, dataRoot, view: parentRead.view });
         current = parent;
         read = parentRead;
@@ -710,7 +670,7 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine
     const rows = [{ root: top, rel: '.', depth: 0, parentRel: null, state: 'ok' }];
     const seen = new Set([realKey(top)]);
     // A garbage record is named, and nothing below it is read.
-    const viewAt = (dir, readEnv) => { const r = readWorkspace(dir, { env: readEnv }); if (r.state !== 'garbage') return r.view; sayGarbage(r.file, top, log); return null; };
+    const viewAt = (dir) => { const r = readWorkspace(dir); if (r.state !== 'garbage') return r.view; sayGarbage(r.file, top, log); return null; };
     const walk = (dir, rel, depth, view) =>
     {
         if (depth >= maxDepth || !view) return;
@@ -723,10 +683,10 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine
             const childRel = rel === '.' ? c : `${rel}/${c}`;
             const ok = isDir(child) && isStamped(child);
             rows.push({ root: ok ? realOf(child) : child, rel: childRel, depth: depth + 1, parentRel: rel, state: ok ? 'ok' : 'gone' });
-            if (ok) walk(child, childRel, depth + 1, viewAt(child, ancestorEnv(env)));
+            if (ok) walk(child, childRel, depth + 1, viewAt(child));
         }
     };
-    walk(top, '.', 0, viewAt(top, env));
+    walk(top, '.', 0, viewAt(top));
     return rows;
 }
 
@@ -738,7 +698,7 @@ const RESCAN_SKIP = new Set(['.git', 'node_modules', '.claude']);
 function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine } = {})
 {
     const top = realOf(projectRoot);
-    const dataRoot = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const dataRoot = dataRootMod.dataRootOf({ projectDir: top }).root.split('/')[0];
     const found = [];
     const walk = (dir, depth) =>
     {
@@ -751,7 +711,7 @@ function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine 
             const child = path.join(dir, d.name);
             if (isStamped(child))
             {
-                const read = readWorkspace(child, { env: ancestorEnv(env) });
+                const read = readWorkspace(child);
                 // a garbage record is no project to offer: named, and left to be fixed by hand
                 if (read.state === 'garbage') sayGarbage(read.file, top, log);
                 else if (!read.view.parent && !read.view.parentNone) found.push(relPosix(top, child));
@@ -817,14 +777,15 @@ function chainValues(projectRoot, { env = process.env } = {})
     const layout = require('../../stack/hooks/layout.js');
     const out = {};
     if (!layout.workspaceOn({ env, projectRoot })) return out;
-    const { members, ignores } = layout.workspaceChain(projectRoot, { env });
-    const skip = new Set((ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
+    // The installer's own chain: a member whose data an update has not moved yet is read where it sits.
+    const { members } = chain(projectRoot);
+    const skip = new Set((readWorkspace(realOf(projectRoot)).view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
     for (const member of members)
     {
         const read = layout.readDotenv(path.join(member.root, ...member.dataRoot.split('/'), '.variables'));
         for (const [key, value] of Object.entries((read && read.values) || {}))
             if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !skip.has(key) && !Object.hasOwn(out, key)) out[key] = value;
-        for (const i of member.ignores || []) if (i.category === 'env') skip.add(i.name);
+        for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
     return out;
 }
@@ -846,7 +807,7 @@ function envPlan(ctx)
     const w = ctx.workspace;
     if (!w || ctx.args.action === 'uninstall') return null;
     const linked = Boolean(w.on && w.members.length);
-    const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
+    const dataRoot = w.fileRoot ?? (ctx.dataInfo ? ctx.dataInfo.root : undefined);
     let view = { ignores: w.ignores };
     if (!linked)
     {
@@ -981,7 +942,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     const top = realOf(projectRoot);
-    const ownData = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const ownData = dataRootMod.dataRootOf({ projectDir: top }).root.split('/')[0];
     const below = [];
     const walk = (dir, depth) =>
     {
@@ -998,9 +959,9 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
     };
     walk(top, 0);
     const out = { refreshed: [], current: [], skipped: [] };
-    // Another project's data root and workspace file are read with the account alone (ancestorEnv): this run's own
-    // ALFRED_CODE_DATA_PATH is not the child's. A launch `0` still freezes the child's switch, as it would its own run.
-    const childEnv = { ...ancestorEnv(env), ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
+    // A child's switch and its ancestors are read with the account alone: this run's launch values are not the child's.
+    // A launch `0` still freezes the child's switch, as it would its own run.
+    const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR, ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
     const isExclude = (row) => { const m = MEMBER_PATH.exec(row); return Boolean(m) && m[1] === 'claudeMdExcludes'; };
     for (const child of below.sort())
     {
@@ -1010,7 +971,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         try { on = workspaceOn({ env: childEnv, projectRoot: child }); }
         catch { on = false; }
         if (!on) { skip(''); continue; }
-        const ownRead = readWorkspace(child, { env: ancestorEnv(env) });
+        const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
@@ -1023,12 +984,12 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         try
         {
             const ignores = ownRead.view.ignores || [];
-            const ancestors = stampedAncestors(child, { env: ancestorEnv(env) });
+            const ancestors = stampedAncestors(child, { env: childEnv });
             want = uniqSorted(excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: ignores })), process.platform));
         }
         catch (e) { skip(`- its excludes could not be worked out (${e.message}); left as it is`); continue; }
         if (!want.length && !Object.keys(prior).some(isExclude)) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
-        const at = locate(child, { env: ancestorEnv(env) });
+        const at = locate(child);
         if (!at.file) { skip(`- its data root is refused (${at.why}); left as it is`); continue; }
         let held = false;
         try
@@ -1103,12 +1064,11 @@ function settingsEnv(root)
 // project's ignores and own lines, and the parent's lines - read from `--parent-plan`, or from the parent's own
 // `update --installed-only --print-plan` (never inside a plan run, which reads nothing it would not print).
 // `parentLines` stays null whenever the parent's set cannot be trusted, so nothing inherited is added or dropped.
-function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir() })
+function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir(), dataRoot: ownDataRoot })
 {
     const read = stamp.stampFiles({ projectRoot }).read;
     const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
     if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
-    const ownDataRoot = ownDataRootOf({ projectRoot, env, args });
     const own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
     // The run's own record is garbage: the workspace part is frozen, as at the switch's 0 - no members, nothing inherited
     // added or dropped, the own lines carried.
@@ -1569,11 +1529,11 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         if (!isDir(child) || !isStamped(child)) continue;
         const points = (record) => { const v = record.parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
-        const held = readWorkspace(child, { env: ancestorEnv(env) });
+        const held = readWorkspace(child);
         if (!points(held.record)) { stale.push(rel); continue; }
-        const kept = keepOnLeave(child, { env: ancestorEnv(env), log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
+        const kept = keepOnLeave(child, { env: { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR }, log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
         if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - run uninstall again`); continue; }
-        const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env), runRoot: root, log });
+        const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { runRoot: root, log });
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
         // Its D2 copies stay as the user's own registrations: the rows and the parent hashes they were made from go.
@@ -1598,7 +1558,7 @@ function leaveParent({ projectRoot, env = process.env, dataRoot, log = () => {},
     if (isDir(parent))
     {
         const childRel = relPosix(realOf(parent), root);
-        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { env: ancestorEnv(env), runRoot: root, log });
+        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { runRoot: root, log });
         if (!up.ok) return failed(up.why, `workspace: the workspace file in ${own.view.parent} could not be changed (${up.why}) - nothing was removed`);
         if (up.changed) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
     }
@@ -1618,7 +1578,7 @@ function garbageOnLeave({ projectRoot, env = process.env, dataRoot })
     const own = readWorkspace(root, { env, dataRoot });
     if (own.state === 'garbage') return [relPosix(root, own.file)];
     const out = [];
-    const check = (dir) => { const r = readWorkspace(dir, { env: ancestorEnv(env) }); if (r.state === 'garbage') out.push(relPosix(root, r.file)); };
+    const check = (dir) => { const r = readWorkspace(dir); if (r.state === 'garbage') out.push(relPosix(root, r.file)); };
     if (own.view.parent)
     {
         const parent = path.resolve(root, ...own.view.parent.split('/'));
@@ -1779,7 +1739,7 @@ module.exports = {
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
-    ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace, garbageLine, sayGarbage, convertOwn, ownDataRootOf, takeConversions, olderProjectLines, JSON_SINCE,
+    workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE,
     realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,

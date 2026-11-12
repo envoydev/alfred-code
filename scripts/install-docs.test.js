@@ -1132,36 +1132,6 @@ test('the language-server check runs the snapshot\'s tools.js lsp on every run, 
     assert.deepStrictEqual(stopped, ['!! lsp: the language-server check stopped (exit 1) - the last result stands; the next run checks again']);
 });
 
-// Fix-pass review m1: an ALFRED_CODE_DATA_PATH the session exported outranks the settings files in the child, and during a
-// --data-path move it names the old root - both children get the root this run resolved.
-test('the tools.js children read the data root this run resolved, over an exported one', () =>
-{
-    const calls = [];
-    const answer = (cmd, args, opts) => { calls.push({ args, opts }); return { status: 0, stdout: '' }; };
-    const was = process.env.ALFRED_CODE_DATA_PATH;
-    process.env.ALFRED_CODE_DATA_PATH = '.old-root';
-    try
-    {
-        const root = project({ files: { '.new-root/state/tools-inventory.json': TABLE_ONLY() } });
-        docs.lspCoverageLines(root, () => {}, { spawn: answer, dataPath: '.new-root' });
-        docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs', dataPath: '.new-root', log: () => {}, spawn: answer });
-        for (const job of ['lsp', 'refresh'])
-        {
-            const call = calls.find((x) => x.args[1] === job);
-            assert.ok(call, `${job} spawned`);
-            assert.strictEqual(call.opts.env.ALFRED_CODE_DATA_PATH, '.new-root', job);
-        }
-        calls.length = 0;
-        docs.lspCoverageLines(root, () => {}, { spawn: answer });
-        assert.strictEqual(calls[0].opts.env.ALFRED_CODE_DATA_PATH, '.old-root', 'no root handed over: the inherited env as before');
-    }
-    finally
-    {
-        if (was === undefined) delete process.env.ALFRED_CODE_DATA_PATH;
-        else process.env.ALFRED_CODE_DATA_PATH = was;
-    }
-});
-
 test('tickets/ is a stack docs folder (item 5)', () => { assert.ok(docs.STACK_DOCS.has('tickets')); });
 
 test('explanations/ and the old tutorial/ are stack docs folders (item 6)', () => {

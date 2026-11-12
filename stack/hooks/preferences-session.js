@@ -78,8 +78,8 @@ try { forgeLib = require(path.join(__dirname, 'forge.js')); } catch { /* no clas
 const prelude = () => { try { return require('./hook-prelude.js'); } catch { return null; } };
 
 const envOf = (env, suffix) => { const v = env[`ALFRED_CODE_${suffix}`]; return v === '' ? undefined : v; };
-const dataRootRel = () => (layout ? layout.dataRoot() : String(envOf(process.env, 'DATA_PATH') || '.alfred'));
-const docsRootRel = () => (layout ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
+const dataRootRel = () => (layout ? layout.dataRoot() : '.alfred');
+const docsRootRel = () => (layout ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
 
 const PREFS = 'preferences';
 // The hand-over order is the priority order: the user's own two docs first, the captured project doc after them.

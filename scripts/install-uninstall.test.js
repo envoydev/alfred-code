@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, plantOlderRoot } = require('./seed-sandbox.js');
 const uninstall = require('./install/uninstall.js');
 const { hashItem } = require('./install/library.js');
 
@@ -629,9 +629,9 @@ test('uninstall over a replaced account file refuses before any change and names
 
 // M4: the kept-data line read ALFRED_CODE_DATA_PATH after the settings pass had removed it, so a custom root was
 // named as the default .alfred/ - the folder the user would then look in is the wrong one.
-test('uninstall: the kept data root is the one in effect - a custom root named, never the default', POSIX_ONLY, () =>
+test('uninstall: the kept data root is the one in effect - an older custom root named, never the default', POSIX_ONLY, () =>
 {
-    const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project', '--data-path', '.data'], []] });
+    const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project'], []], each: (repo, i) => (i === 0 ? void plantOlderRoot(repo, '.data') : null) });
     assert.match(outs[1], /kept, yours or your data: .*the data root \.data\/ - /, outs[1]);
     assert.doesNotMatch(outs[1], /navigation index|browser profiles|memory database/, 'the kept line names no server data');
 });
@@ -789,14 +789,15 @@ test('F26: a legacy name is kept and named; an absent rule writes no line', () =
     assert.deepStrictEqual(genProject({}).lines, []);
 });
 
-test('F26: uninstall under a custom data root removes the awareness rule the capture wrote under .data/docs', POSIX_ONLY, () =>
+test('F26: uninstall under an older custom data root removes the awareness rule the capture wrote under .data/docs', POSIX_ONLY, () =>
 {
     const { result, outs } = seedRun(['install', 'uninstall'], 'skill csharp\n', {
         plugins: LISTING,
-        args: [['--data-path', '.data'], []],
+        args: [[], []],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
+            plantOlderRoot(repo, '.data');
             put(path.join(repo, '.data', 'docs', 'awareness', 'PROJECT-AWARENESS.md'), '# Project awareness\n\nRun `npm test`.\n');
             put(path.join(repo, '.claude', 'rules', 'alfred-awareness.md'), inventory.composeAwarenessRule({ projectRoot: repo, docs: '.data/docs' }).text);
             return null;

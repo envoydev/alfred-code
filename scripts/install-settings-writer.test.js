@@ -408,14 +408,14 @@ test('settings-env: a joined child\'s copies leave its settings and its HOOKS_OF
     assert.strictEqual(data.env[OFF], 'docs-session:gate');
 });
 
-test('settings-env: a joined child seeds no chained key - only DOCS_VERSIONING, the settings keys and its ignore env keys', () =>
+test('settings-env: a joined child seeds no chained key - only DOCS_VERSIONING, the hook switch-offs and its ignore env keys', () =>
 {
     const file = settingsFile({});
     const { data } = write(file, { docsVersioning: { seed: 'git' }, childEnv: { ignored: ['ALFRED_CODE_HISTORY'], copies: [], hooksOffDrop: [] } });
     assert.ok(!Object.hasOwn(data.env, SC), 'a chained key was seeded over the chain');
     assert.strictEqual(data.env.ALFRED_CODE_HISTORY, '3', 'an ignore env key takes the catalog default');
     assert.strictEqual(data.env.ALFRED_CODE_DOCS_VERSIONING, 'git');
-    assert.ok(Object.hasOwn(data.env, 'ALFRED_CODE_DATA_PATH') && Object.hasOwn(data.env, OFF), JSON.stringify(data.env));
+    assert.ok(Object.hasOwn(data.env, OFF) && !Object.hasOwn(data.env, 'ALFRED_CODE_DATA_PATH'), JSON.stringify(data.env));
 });
 
 test('settings-env: the retired sentry auth key goes, and the SENTRY_* keys stay', () =>

@@ -530,7 +530,7 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // `seeds` (a joined child, workspace.js envPlan): the keys a seed may fill - the workspace hands a child the rest (D4 step
 // 5), and a decision this run took (a flag, the hooks walk's answer) is written whatever it says. `seedLabel` names the
 // file a seed is said to land in (writeSettings moves the stack's variables into .variables).
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, seeds = null, seedLabel = null, chain = null })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {}, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, seeds = null, seedLabel = null, chain = null })
 {
     // Where a seed is said to land: a moved key goes to .variables (writeSettings' split), the rest to this file.
     const seedAt = (key) => (seedLabel ? seedLabel(key) : label);
@@ -568,20 +568,6 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
             if (mine) changed = true;
         }
 
-    // 3c. THE DATA ROOT DECISION (alfred-code.js dataRootStep) - a root this run moved the data to, or a
-    // fresh install's chosen one; the absent-only seed below writes the default otherwise.
-    if (dataPath && dataPath.value)
-    {
-        const { into, lab, mine } = at('ALFRED_CODE_DATA_PATH');
-        const old = into.ALFRED_CODE_DATA_PATH;
-        if (old !== dataPath.value)
-        {
-            into.ALFRED_CODE_DATA_PATH = dataPath.value;
-            if (mine) changed = true;
-            log(`  ${lab} env: ALFRED_CODE_DATA_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${dataPath.value}' (${dataPath.why})`);
-        }
-    }
-
     // F10 (the 2026-10-28 workspace run): a linked child (`chain`, the members' values) given the value the workspace
     // already hands it writes nothing - an own copy would freeze it against a later change at the root. A key no member
     // sets is handed the catalog default, which the hooks read then; an `ignore env` key is the child's own (seeded below).
@@ -597,7 +583,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath
     };
 
     // 3d. COMPACT INSTEAD OF A FRESH SESSION (`--auto-compact on|off`, setup's screen-B answer), written over a value
-    // already there like the two roots above; without the flag the absent-only seed below writes `0`. The window pass
+    // already there; without the flag the absent-only seed below writes `0`. The window pass
     // in writeSettings reads the value this leaves.
     if (autoCompact && autoCompact.value && !fromChain('ALFRED_CODE_AUTO_COMPACT', 'auto-compact', autoCompact.value))
     {
@@ -869,7 +855,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
         agentDeny = [], agentAllow = [],
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
-        docsVersioning, docsPath = null, dataPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        docsVersioning, docsPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
         variablesFile = null, childEnv = null, log = () => {}, note = () => {},
     } = opts;
@@ -1090,7 +1076,7 @@ function writeSettings(opts)
         const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
         return names.some((n) => rows[n] === valueHash(value));
     };
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, autoCompact, memory, hooksOff, hooksAnswered, renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined, stackWrote,
         seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) || Object.hasOwn(fileValues, key) ? '.variables' : label) : null,
         chain: childEnv && childEnv.linked ? { values: memberEnv, ignored: childEnv.ignored || [] } : null }) && !vars) changed = true;

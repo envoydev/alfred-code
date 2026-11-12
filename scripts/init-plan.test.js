@@ -607,7 +607,10 @@ test('--mode names an earlier install\'s leftovers: the data root with no stamp'
     assert.strictEqual(mode(root), 'leftovers: .alfred/ (docs, state)');
     const moved = project();
     fs.mkdirSync(path.join(moved, 'data', 'docs'), { recursive: true });
-    assert.strictEqual(mode(moved, { ALFRED_CODE_DATA_PATH: 'data' }), 'leftovers: data/ (docs)', 'the data root the settings name');
+    assert.strictEqual(mode(moved, { ALFRED_CODE_DATA_PATH: 'data' }), 'leftovers: none', 'the shell env names no folder');
+    fs.mkdirSync(path.join(moved, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(moved, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'data' } }));
+    assert.strictEqual(mode(moved), 'leftovers: data/ (docs)', 'the folder an older install\'s settings key names');
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 3.9.2\n');
     assert.strictEqual(mode(root), 'leftovers: none', 'a stamp: an install, not leftovers');
 });

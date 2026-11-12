@@ -10,9 +10,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-// The keys that move into `.variables`: the catalog minus the two that stay in the settings (spec D3).
+// The keys that move into `.variables`: the catalog minus the one that stays in the settings (spec D3).
 const MOVED = require('../meta/environment.json').env.map((r) => r.key)
-    .filter((k) => k !== 'ALFRED_CODE_DATA_PATH' && k !== 'ALFRED_CODE_HOOKS_OFF')
+    .filter((k) => k !== 'ALFRED_CODE_HOOKS_OFF')
     .map((k) => k.slice('ALFRED_CODE_'.length));
 
 // Readers still to convert, as `<file>:<key suffix | env-lookup>` - none since T12c: every reader goes through the loader.

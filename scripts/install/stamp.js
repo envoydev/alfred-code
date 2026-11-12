@@ -49,11 +49,9 @@
 // settings scope). The file cannot tell that entry from the user's own, so this line is what a later run lifts when
 // the server is picked again, and what uninstall lifts.
 //
-// `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
-// the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of the
-// secrets file a run could not make inline (`sensitive <from> -> <to>`), kept until the file has left `from`;
-// an earlier release's server-data line is no longer read. `data-move: kept` is the user's answer to keep the old
-// layout - no later update offers the move again (configure still can).
+// The data root is always `.alfred`, so no run writes a data line. An older stamp's `data-root:` (a custom root that
+// release left in effect) and `data-pending:` (`sensitive <from> -> <to>`, a secrets file it could not move) are still
+// read - they name what the next update carries into `.alfred` (scripts/install/fixed-root.js).
 //
 // `initialised` is the one line only /alfred-code:init writes (its bootstrap phase): a date. A fresh install writes `pending`, every
 // later run carries the value forward, and nothing but init turns `pending` into a date - so an update
@@ -297,9 +295,6 @@ function renderStamp(fields)
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         ...(Object.keys(toolIgnores || {}).length ? [`tool-ignores: ${Object.entries(toolIgnores).map(([f, how]) => `${f}=${how}`).join(',')}`] : []),
         ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
-        ...(data && data.root ? [`data-root: ${data.root}`] : []),
-        ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
-        ...(data && data.kept ? ['data-move: kept'] : []),
         ...(data && data.secrets ? [secretsLine(data.secrets.by, installedMs)] : []),
         ...(MEMORY_LIFT_FILES.includes(memoryLift) ? [`memory-lift: pending ${memoryLift}`] : []),
         ...(Array.isArray(untrackTold) && untrackTold.length ? [`untrack-told: ${[...new Set(untrackTold)].filter((p) => p && !/[,\r\n]/.test(p)).sort().join(',')}`] : []),
@@ -538,17 +533,15 @@ function readMcpDenied(file)
     if (!m) return [];
     return m[1].split(',').map((s) => /^(project|local):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
-// The data lines - { root: '' when none, pending: [], kept, secrets } with no stamp or none of them. `secrets` is item 3's
+// The data lines - { root: '' when none, pending: [], secrets } with no stamp or none of them. `secrets` is item 3's
 // `secrets: dual <by>` as { by } (`by` '' for a bare line), null with none or any other value.
 function readDataLines(file)
 {
     let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], kept: false, secrets: null }; }
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], secrets: null }; }
     const dr = require('../../stack/mcp/data-root.js');
-    const root = (/^data-root: *(\S+) *$/m.exec(text) || [])[1] || '';
     const dual = /^secrets: *dual(?: +(\S+))? *$/m.exec(text);
-    return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text),
-        secrets: dual ? { by: dual[1] || '' } : null };
+    return { root: dr.readRootLine(text), pending: dr.readPending(text), secrets: dual ? { by: dual[1] || '' } : null };
 }
 
 // E-batch mcp-A6: `memory-lift: pending <file>` - the 2.10.1 lift of Claude's own memory switch-off could not read that

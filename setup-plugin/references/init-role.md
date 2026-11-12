@@ -19,6 +19,5 @@ Root - an install of its own that projects below can join. Unattended, take the 
 - **Child of `<rel>`** - read `$TMP/repo/setup-plugin/references/init-child.md` now: the child install's
   changes to every step, its scope ask among them. Its join runs `role --answer child` before the install call.
 - **Standalone** or **Root** - every step runs as `init-install.md` writes it. In the call before the install (step 10),
-  run `node "$TMP/repo/scripts/workspace.js" role --root . --answer <standalone|root>`, with `--data-path <folder>`
-  when screen B's data question took a folder other than `.alfred`, so the answer lands in this project's data root.
+  run `node "$TMP/repo/scripts/workspace.js" role --root . --answer <standalone|root>`.
   A `!!` line it prints is pasted and the install goes on: the role is asked again at configure.

@@ -290,15 +290,17 @@ test('a waiter outlasts a live holder that spends its whole rename budget (W1)',
     assert.ok(clock >= 6000 && clock < 6100, `the wait is three rename budgets: ${clock}`);
 });
 
-test('set writes under the moved root (Review Focus 2)', (t) =>
+// An older install's folder, still named by its key and holding the stack's docs, until an update moves it into .alfred.
+test('fixed root: variables set over a custom root writes into it', (t) =>
 {
     const { dir, env } = sandbox(t);
     const root = project(dir);
     put(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'data/al' } }));
+    put(path.join(root, 'data', 'al', 'docs', 'x.md'), '# x\n');
     assert.strictEqual(variables.fileOf(root, { env }), varsOf(root, 'data/al'));
     variables.set(root, ['ALFRED_CODE_HISTORY=3'], { env, log: () => {} });
     assert.strictEqual(read(varsOf(root, 'data/al')), 'ALFRED_CODE_HISTORY=3\n');
-    assert.strictEqual(read(varsOf(root)), null);
+    assert.ok(!fs.existsSync(path.join(root, '.alfred')), 'no .alfred folder is made');
 });
 
 test('a linked worktree with no own file reads and writes the main worktree\'s', (t) =>

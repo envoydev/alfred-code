@@ -205,9 +205,9 @@ test('a table before a compaction summary is not judged (Review Focus 2)', () =>
 });
 
 // 2.8.0: the block row goes to the data root's statistics/ (stack/hooks/layout.js's home, read here by its pinned
-// data-root reader - setup-plugin/hooks/ ships apart from the stack's copy), ALFRED_CODE_DATA_PATH honoured.
+// data-root reader - setup-plugin/hooks/ ships apart from the stack's copy); a relative key is not read.
 test('2.8.0: the block row lands in <data root>/statistics/hook-blocks/', () => {
-  for (const [data, env] of [['.alfred', {}], ['.data', { ALFRED_CODE_DATA_PATH: '.data' }]]) {
+  for (const [data, env] of [['.alfred', {}], ['.alfred', { ALFRED_CODE_DATA_PATH: '.data' }]]) {
     const proj = fs.mkdtempSync(path.join(TMP, 'rows-'));
     fs.mkdirSync(path.join(proj, '.claude'));
     fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'version: 2.8.0\n');
@@ -219,6 +219,7 @@ test('2.8.0: the block row lands in <data root>/statistics/hook-blocks/', () => 
     const rows = fs.readFileSync(path.join(proj, data, 'statistics', 'hook-blocks', 'lt.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((x) => [x.hook, x.event]), [['guard-layer-table.js', 'PostToolUse']], `${data}: one row`);
     assert.ok(!fs.existsSync(path.join(proj, '.alfred', 'docs', 'hook-blocks')), `${data}: none under the docs root`);
+    assert.ok(!fs.existsSync(path.join(proj, '.data')), 'nothing under the folder a key names');
   }
 });
 

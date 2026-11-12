@@ -34,15 +34,15 @@ if (require.main === module) {
 //
 // Output: one JSONL row per matched call at
 //   $ALFRED_CODE_INSTRUMENT_LOG  (default: <data root>/statistics/tools-usage/<session-or-agent-id>.jsonl,
-//   the data root resolved from ALFRED_CODE_DATA_PATH - stack/hooks/layout.js)
+//   the data root is .alfred - stack/hooks/layout.js)
 // Coverage note: PreToolUse fires for the session's tool calls; where the running Claude
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
 
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
-// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
-const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+// data-root-reader (meta/shared-rules.json): the data root is always .alfred. An absolute ALFRED_CODE_DATA_PATH is a
+// harness's scratch and is kept; anything else is .alfred.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 
 // `1` only, as environment.json reads it: `true` once switched this hook on where the copy route's shell gate kept it

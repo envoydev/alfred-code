@@ -723,10 +723,10 @@ test('env-keys: the before-state is the file the run writes - settings.local.jso
 });
 
 // Task 3 (2.1.0): an unstamped legacy copy-route install (`stamp.js state` reads `legacy-unstamped`) takes
-// update's normal path. A tree with no stack signature stays a fresh project with nothing to offer. Since 2.8.0 the docs
-// are no part of the offer (they move unasked), and since 2.10.1 an old server's data is none either: the stack ships no
-// server, so its `.serena` stays where it is.
-test('data-move: an unstamped legacy install takes update\'s path, and its old server data is no offer; a tree with no stack signature is no install', () => {
+// update's normal path. A tree with no stack signature stays a fresh project. No data move is offered to either: the docs
+// move unasked since 2.8.0, the stack ships no server since 2.10.1 (so its `.serena` stays where it is), and the data
+// root is always `.alfred` (2026-11-11), so the preflight prints no `data-move:` line at all.
+test('an unstamped legacy install takes update\'s path with no data-move line, and its old server data stays; a tree with no stack signature is the same', () => {
     const legacyKey = { ALFRED_CODE_DOCS_PATH: '.claude/docs' };
     const { snap, install, fixtureFile } = scaffold({ stamp: null, settings: { env: legacyKey } });
     fs.mkdirSync(path.join(install, '.claude', 'docs', 'architecture'), { recursive: true });
@@ -734,12 +734,12 @@ test('data-move: an unstamped legacy install takes update\'s path, and its old s
     fs.mkdirSync(path.join(install, '.serena'), { recursive: true });
     fs.writeFileSync(path.join(install, '.serena', 'project.yml'), 'project_name: x\n');
     const bare = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
-    assert.match(bare.out, /^data-move: none \(no install record - a fresh install lays the data under the root\)$/m, 'one signature is no install');
+    assert.doesNotMatch(bare.out, /^data-move:/m, bare.out);
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'guard-catastrophic-rm.js'), '// old\n');
     const legacy = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
-    assert.match(legacy.out, /^data-move: none \(nothing to move\)$/m, legacy.out);
+    assert.doesNotMatch(legacy.out, /^data-move:/m, legacy.out);
     assert.ok(fs.existsSync(path.join(install, '.serena', 'project.yml')), 'the old server data is left where it is');
 });
 
@@ -1096,4 +1096,35 @@ test('R063: a declined release-added item the parent holds stays declined in a c
     putWorkspace(install, { parent: '..' });
     putWorkspace(parent, { role: 'root' });
     assert.match(rows().find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\tleave$/, 'an unlinked project inherits nothing');
+});
+
+// The fixed root: an older install's folder R is read through the one reader until an update moves it. The preflight
+// names R/docs, reads R's workspace record and its .variables, prints no data-move line and makes no .alfred.
+test('fixed root: the preflight prints no data-move line and reads a custom root\'s files', () =>
+{
+    const R = 'var/data';
+    const migrations = [{ id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORER_LEVEL', equals: '70' } } }];
+    const { snap, install, fixtureFile } = scaffold({ migrations, settings: { env: { ALFRED_CODE_DATA_PATH: R, ALFRED_CODE_DOCS_PATH: 'legacy/docs' } } });
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    execFileSync('git', ['init', '-q', install]);
+    putWorkspace(parent, {});
+    putWorkspace(install, { parent: '..' }, { dataRoot: R });
+    fs.writeFileSync(path.join(install, ...R.split('/'), '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\n');
+    fs.mkdirSync(path.join(install, 'legacy', 'docs', 'architecture'), { recursive: true });
+    fs.writeFileSync(path.join(install, 'legacy', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
+    env.ALFRED_CODE_WORKSPACE = '1';
+    const full = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out;
+    const asks = run(['--asks', '--root', install], env).out;
+    const offers = run(['--offers', '--root', install], env).out;
+    for (const [name, out] of [['the full read', full], ['--asks', asks], ['--offers', offers]]) assert.doesNotMatch(out, /^data-move:/m, `${name}\n${out}`);
+    for (const out of [full, asks]) assert.match(out, /^docs-move: offer legacy\/docs -> \.alfred\/docs\t/m, out);     // where the run lands them, once it has moved var/data
+    assert.match(full, /^workspace: role-ask rejoin \.\.$/m, full);
+    assert.match(asks, /^workspace: role-ask rejoin \.\.$/m, asks);
+    assert.match(full, /^migration: level-reseed\tsettings_env_value$/m, full);
+    assert.match(offers, /^instructions: /m, offers);
+    assert.ok(!fs.existsSync(path.join(install, '.alfred')), 'no .alfred folder is made');
 });

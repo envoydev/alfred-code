@@ -62,16 +62,6 @@ test('register writes the parent line here and the child line in the parent, the
     assert.match(refused.out, /^!! workspace: /m);
 });
 
-test('register --data-path writes this project\'s line under that folder; the parent\'s by its own setting', () =>
-{
-    const at = tree({ ws: { stamp: true }, 'ws/api': { git: true } });
-    assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '.kid-data').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api'), '.kid-data'), { parent: '..' });
-    assert.strictEqual(wsFile(at('ws/api')), null, 'the default root was written too');
-    assert.deepStrictEqual(wsFile(at('ws')), { children: ['api'] });
-    assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '../out').code, 2, 'a refused data root is bad input');
-});
-
 test('a held parent lock exits 3 and leaves neither file written', () =>
 {
     const at = tree({ ws: { stamp: true, record: {} }, 'ws/api': { git: true } });
@@ -290,8 +280,6 @@ test('ignore --add and --remove edit this project\'s ignore lines', () =>
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--remove', 'skill sqlite').code, 0);
     assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'colour blue').code, 2);
-    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--data-path', '.kid-data', '--add', 'skill x').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api'), '.kid-data'), { ignore: { skill: ['x'] } });
 });
 
 test('children prints each direct child as ok or gone', () =>
@@ -370,28 +358,28 @@ test('answer merges, replaces and refuses', () =>
 {
     const file = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
     const ans = (...a) => cli('answer', '--file', file, ...a);
-    assert.strictEqual(ans('--project', '.', '--', '--data-move', 'keep').code, 0);
-    assert.strictEqual(ans('--project', 'api', '--', '--data-move', 'keep', '--instructions-file', 'agents').code, 0);
-    assert.strictEqual(ans('--project', 'api', '--', '--data-move', 'move', '--add', 'skill sqlite').code, 0);
+    assert.strictEqual(ans('--project', '.', '--', '--instructions-at', 'root').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--instructions-at', 'root', '--instructions-file', 'agents').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--instructions-at', 'claude', '--add', 'skill sqlite').code, 0);
     assert.strictEqual(ans('--project', 'api', '--', '--add', 'rule alfred-docs').code, 0);
     assert.strictEqual(ans('--project', 'api/tool', '--', '--docs-root-move', 'move', '--docs-root-leave', 'adr,notes').code, 0);
     const want = {
-        '.': ['--data-move', 'keep'],
-        api: ['--data-move', 'move', '--instructions-file', 'agents', '--add', 'skill sqlite', '--add', 'rule alfred-docs'],
+        '.': ['--instructions-at', 'root'],
+        api: ['--instructions-at', 'claude', '--instructions-file', 'agents', '--add', 'skill sqlite', '--add', 'rule alfred-docs'],
         'api/tool': ['--docs-root-move', 'move', '--docs-root-leave', 'adr,notes'],
     };
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), want);
     const before = fs.readFileSync(file, 'utf8');
-    for (const refused of [['--scope', 'user'], ['--data-move', 'maybe'], ['--docs-root-leave', 'a'], ['--add', 'colour blue'], ['--data-move'], []])
+    for (const refused of [['--scope', 'user'], ['--instructions-at', 'maybe'], ['--docs-root-leave', 'a'], ['--add', 'colour blue'], ['--instructions-at'], ['--data-move', 'move'], []])
     {
         const r = ans('--project', 'api', '--', ...refused);
         assert.strictEqual(r.code, 2, `${refused.join(' ')}: ${r.out}`);
         assert.match(r.out, /^!! workspace: /m);
         assert.strictEqual(fs.readFileSync(file, 'utf8'), before, refused.join(' '));
     }
-    assert.strictEqual(ans('--project', '../out', '--', '--data-move', 'move').code, 2);
+    assert.strictEqual(ans('--project', '../out', '--', '--instructions-at', 'claude').code, 2);
     fs.writeFileSync(file, '{ not json');
-    assert.strictEqual(ans('--project', '.', '--', '--data-move', 'move').code, 2, 'an answers file that does not parse is refused, never replaced');
+    assert.strictEqual(ans('--project', '.', '--', '--instructions-at', 'claude').code, 2, 'an answers file that does not parse is refused, never replaced');
     assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ not json');
 });
 
@@ -482,11 +470,11 @@ test('cascade refuses an answers entry outside the allow-list before that projec
 {
     const at = cascadeTree();
     const answers = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
-    fs.writeFileSync(answers, JSON.stringify({ web: ['--scope', 'user'], api: ['--data-move', 'keep'] }));
+    fs.writeFileSync(answers, JSON.stringify({ web: ['--scope', 'user'], api: ['--instructions-at', 'root'] }));
     const { src, runs } = fakeSource();
     const r = cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers);
     assert.match(r.out, /^!! cascade: the answers for web hold --scope - not an answer the cascade passes; skipped\ncascade: web\tskipped$/m, r.out);
-    assert.ok(runs().some((l) => l.startsWith(`${at('ws/api')} `) && l.endsWith(' --data-move keep')));
+    assert.ok(runs().some((l) => l.startsWith(`${at('ws/api')} `) && l.endsWith(' --instructions-at root')));
     assert.ok(!runs().some((l) => l.startsWith(`${at('ws/web')} `)));
     fs.writeFileSync(answers, '[1, 2]');
     assert.strictEqual(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).code, 2);
@@ -518,11 +506,11 @@ test('answer --hold records \'only this project\' in the answers file, and the c
 {
     const at = cascadeTree();
     const answers = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
-    fs.writeFileSync(answers, JSON.stringify({ api: ['--data-move', 'keep'] }));
+    fs.writeFileSync(answers, JSON.stringify({ api: ['--instructions-at', 'root'] }));
     const w = cli('answer', '--file', answers, '--hold');
     assert.strictEqual(w.code, 0, w.out);
     assert.strictEqual(w.out, 'answer: . hold - the cascade runs nothing below\n');
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(answers, 'utf8')), { api: ['--data-move', 'keep'], '.': 'hold' });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(answers, 'utf8')), { api: ['--instructions-at', 'root'], '.': 'hold' });
     const { src, runs } = fakeSource('==> done\n');
     const r = cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers);
     assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: done 0 updated, 0 failed, 0 skipped, 3 held\n');

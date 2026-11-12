@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, plantOlderRoot } = require('./seed-sandbox.js');
 const memoryDir = require('./install/memory-dir.js');
 const { putWorkspace } = require('./workspace-fixture.js');
 const layout = require('../stack/hooks/layout.js');
@@ -352,22 +352,30 @@ test('docs: a moved repo folder is re-pointed on update', POSIX_ONLY, () =>
     assert.strictEqual(r.result.row, rowHash(r.result.want));
 });
 
-test('docs: a data-root move carries memory/ and re-points the row', POSIX_ONLY, () =>
+test('docs: the one-time move of an older data root carries memory/ and re-points the row', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, {
-        args: [['--memory', 'docs'], ['--data-path', '.data', '--data-move', 'move']],
+        args: [['--memory', 'docs'], []],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
             fs.mkdirSync(path.join(repo, '.alfred', 'docs', 'memory'), { recursive: true });
             fs.writeFileSync(path.join(repo, '.alfred', 'docs', 'memory', 'MEMORY.md'), '# Memory\n- a lesson\n');
+            // As the older run left it: the folder under .data, the setting and its ledger row naming that place.
+            plantOlderRoot(repo, '.data');
+            const was = memOf(repo, '.data');
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            fs.writeFileSync(file, JSON.stringify({ ...json(file), autoMemoryDirectory: was }, null, 2));
+            const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/settings\.local\.json:autoMemoryDirectory=[0-9a-f]{64}/, `settings.local.json:autoMemoryDirectory=${rowHash(was)}`));
             return null;
         },
-        inspect: (repo) => ({ local: localOf(repo), want: memOf(repo, '.data'), text: readOr(path.join(repo, '.data', 'docs', 'memory', 'MEMORY.md')), row: stampRow(repo) }),
+        inspect: (repo) => ({ local: localOf(repo), want: memOf(repo), text: readOr(path.join(repo, '.alfred', 'docs', 'memory', 'MEMORY.md')), row: stampRow(repo), old: fs.existsSync(path.join(repo, '.data')) }),
     });
     assert.strictEqual(r.result.text, '# Memory\n- a lesson\n', r.outs[1]);
-    assert.strictEqual(r.result.local.autoMemoryDirectory, r.result.want);
+    assert.strictEqual(r.result.local.autoMemoryDirectory, r.result.want, r.outs[1]);
     assert.strictEqual(r.result.row, rowHash(r.result.want));
+    assert.strictEqual(r.result.old, false, 'the emptied older root is gone');
 });
 
 test('docs: local scope writes the same file and keeps it across a switch to project scope', POSIX_ONLY, () =>

@@ -28,10 +28,6 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   data-move: offer <root>\tfrom=<places>[\tconflicts=<n>] | none (<why>)
-//                                           (the project's secrets file under an earlier data root;
-//                                           a project install only. The docs move unasked since 2.8.0, and
-//                                           the stack ships no server whose data could move since 2.10.1)
 //   docs-move: offer <from> -> <to>\tmoves=<names>\tstack=<n>\town=<names|none> | none (<why>)
 //                                           (a leftover ALFRED_CODE_DOCS_PATH the user set by hand - no release seeded
 //                                           it and the ledger does not record it - holding the stack's docs: it moves
@@ -50,14 +46,13 @@
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
 //
-// `--offers` prints the `data-move:` line alone (no --snapshot, no compare): configure's asks. With it, the place
-// question's fact line and the name question's (init's and configure's `--instructions-at` / `--instructions-file`
-// asks, a project install only):
+// `--offers` prints the place question's fact line and the name question's alone (no --snapshot, no compare): init's and
+// configure's `--instructions-at` / `--instructions-file` asks, a project install only:
 //   instructions: none | <claude|root|split> <file> ...   (the AGENTS.md / CLAUDE.md files at the root and in .claude/)
 //   instructions-file: ...                  (the full read's line above)
 //
-// `--asks` prints the per-project ask lines alone (data-move, docs-move, instructions-file, instructions-both, workspace
-// join - no --snapshot, no compare): the workspace cascade's plan, one call per project.
+// `--asks` prints the per-project ask lines alone (docs-move, instructions-file, instructions-both, workspace join - no
+// --snapshot, no compare): the workspace cascade's plan, one call per project.
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -478,62 +473,30 @@ function runLogMode(logFile)
     const root = arg('--root', '.');
     const stamp = arg('--stamp', stampIn(path.join(root, '.claude')).read || stampIn(root).read);
     const hooksLive = Boolean(running) && running === snapshot && require('./install/stamp.js').readHooksRoute(stamp) === 'plugin';
-    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one.
-    const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* moved now/m.test(text);
+    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one. A folder carried into
+    // .alfred (fixed-root.js): the session's hooks still write under it.
+    const docsMoved = /docs root: moved /.test(text) || /^==> +data root: moved /m.test(text);
     console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
-}
-
-// The data move, from the rules the installer applies (docs.dataOffer): the secrets file a root change left under
-// the earlier root.
-function dataMoveLine({ root, claudeDir, stampFile })
-{
-    const settingsLib = require('./install/settings.js');
-    const docs = require('./install/docs.js');
-    const stampLib = require('./install/stamp.js');
-    const dataRoot = require('../stack/mcp/data-root.js');
-    const projectRoot = path.resolve(root);
-    let stampText = '';
-    try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
-    const env = settingsLib.readBackSettings(claudeDir, 'local').env || {};
-    const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
-    const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
-    const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
-    return docs.dataOfferLine(docs.dataOffer({
-        projectRoot, stampText, root: dataRootNow,
-        // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take.
-        stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
-    }));
 }
 
 // The docs-move ask (docs.docsMovePlan `handSet`, the user's answer of 2026-10-20): only a hand-set root holding the
 // stack's docs is offered - every other leftover root moves unasked, and a clash is the installer's to name.
-// The data root this run reads: the settings' value, else the stamp's `data-root:` line, else the default.
-function dataRootOf({ claudeDir, stampFile })
-{
-    const docs = require('./install/docs.js');
-    const dataRoot = require('../stack/mcp/data-root.js');
-    let stampText = '';
-    try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
-    const views = docs.docsMoveViews({ claudeDir });
-    const checked = dataRoot.checkDataPath({ ...views.shared, ...views.personal }.ALFRED_CODE_DATA_PATH || '');
-    const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
-    return { views, recorded, now: checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT };
-}
+// The data root this run reads, through the one reader: `.alfred`, or an older install's folder until the update moves it.
+// The docs-move ask plans against that folder, where the docs sit now, and names `.alfred/docs`, where the run lands them.
+const dataRootNow = (root, stampFile) => require('../stack/mcp/data-root.js').dataRootOf({ projectDir: path.resolve(root), stampFile }).root;
 
 function docsMoveLine({ root, claudeDir, stampFile })
 {
     const docs = require('./install/docs.js');
     const stampLib = require('./install/stamp.js');
-    const { views, recorded, now } = dataRootOf({ claudeDir, stampFile });
     const ledger = stampLib.readLedger(stampFile);
     const ledgered = Object.values((ledger && ledger.env) || {}).map((m) => m && m.ALFRED_CODE_DOCS_PATH).filter(Boolean);
     const p = docs.docsMovePlan({
-        projectRoot: path.resolve(root), ...views, scope: stampLib.readStampScope(stampFile) === 'local' ? 'local' : 'project',
-        stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root), to: `${now}/docs`,
-        prior: recorded && recorded !== now ? recorded : null, ledgered,
+        projectRoot: path.resolve(root), ...docs.docsMoveViews({ claudeDir }), scope: stampLib.readStampScope(stampFile) === 'local' ? 'local' : 'project',
+        stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root), to: `${dataRootNow(root, stampFile)}/docs`, ledgered,
     });
     if (p.state === 'move' && p.handSet)
-        return `docs-move: offer ${p.from} -> ${p.to}\tmoves=${p.moves.join(',')}\tstack=${p.tracked.length + p.untracked.length}\town=${p.left.length ? p.left.join(',') : 'none'}`;
+        return `docs-move: offer ${p.from} -> ${require('../stack/mcp/data-root.js').DATA_ROOT_DEFAULT}/docs\tmoves=${p.moves.join(',')}\tstack=${p.tracked.length + p.untracked.length}\town=${p.left.length ? p.left.join(',') : 'none'}`;
     if (p.state === 'move') return 'docs-move: none (the stack\'s own root - it moves unasked)';
     if (p.state === 'clash') return `docs-move: none (${p.why} - the update names the clash)`;
     return `docs-move: none (${p.state === 'none' && !p.keys.length ? 'no leftover ALFRED_CODE_DOCS_PATH' : p.why})`;
@@ -551,7 +514,7 @@ function runRespellMode()
     const docs = require('./install/docs.js');
     // The section keys this release renamed, each only once its doc sits at the new home alone (the update's own gate)
     const claudeDir = path.join(root, '.claude');
-    const docsBase = path.resolve(root, dataRootOf({ claudeDir, stampFile: path.join(claudeDir, 'alfred-code.stamp') }).now, 'docs');
+    const docsBase = path.resolve(root, dataRootNow(root), 'docs');
     const keys = docs.completedKeys(docsBase, 'awareness', docs.KEY_RENAMES);
     const plan = selection.respellOwnPlan({ projectRoot: root, renamed, keys, keyFiles: selection.foreignRefFiles(root, docsBase) });
     if (!plan.length) { console.log('respell: none'); return; }
@@ -620,7 +583,6 @@ function main()
         if (accountDir) return;
         const ws = require('./install/workspace.js');
         const seeds = require('./install/seeds.js');
-        console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         console.log(docsMoveLine({ root, claudeDir, stampFile }));
         console.log(seeds.instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
         const both = ws.instructionsBothLine(ws.instructionsBothState({ projectRoot: path.resolve(root), env: process.env, ...ws.accountPaths(process.env) }));
@@ -629,10 +591,9 @@ function main()
         if (ask) console.log(`workspace: role-ask ${ask.case} ${ask.rel}`);
         return;
     }
-    // configure reads the two offers alone - no compare, no network.
+    // init and configure read the instruction-file facts alone - no compare, no network.
     if (offerOnly)
     {
-        console.log(accountDir ? 'data-move: none (an account install)' : dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         if (!accountDir)
         {
             console.log(require('./install/seeds.js').instructionsLine(path.resolve(root)));
@@ -671,7 +632,7 @@ function main()
     // Since 3.0.0 the stack's variables sit in <data root>/.variables (spec D5): an env detect on one of them reads the
     // project's own files through the hooks' loader too, so a key only .variables holds still fires its migration.
     const loaded = accountDir || arg('--settings') ? null
-        : { env: require('../stack/hooks/layout.js').variablesOf(path.resolve(root), { env: {}, layers: 'files' }).values };
+        : { env: require('../stack/hooks/layout.js').variablesOf(path.resolve(root), { env: {}, layers: 'files', dataRoot: dataRootNow(root, stampFile) }).values };
     let fired = 0;
     for (const e of entries)
     {
@@ -692,7 +653,6 @@ function main()
 
     if (!accountDir)
     {
-        console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
         console.log(docsMoveLine({ root, claudeDir, stampFile }));
         console.log(require('./install/seeds.js').instructionsFileLine(path.resolve(root), require('./install/stamp.js').readInstructionsAnswer(stampFile)));
         // D5 (workspace layering): a joined child with a CLAUDE.md on its path, asked once per account.

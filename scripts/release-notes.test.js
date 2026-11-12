@@ -92,3 +92,15 @@ test('a 3.10.0 install owes the stage 1 guard note, and it names every gate that
         assert.ok(note.text.includes(word), word);
     assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
 });
+
+// The fixed root (the user's ruling of 2026-11-11): an install owes the note that says where its data now lives, what
+// the update moves, and that the two flags are ignored.
+test('fixed root: the release note says the data root is always .alfred', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => /^## after 3\.10\.0 - the data root is always \.alfred/.test(x.text));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    assert.match(note.text, /data root is always `?\.alfred/);
+    for (const word of ['--data-path', '--data-move', 'ALFRED_CODE_DATA_PATH', '!! data root:', 'Restart a session']) assert.ok(note.text.includes(word), word);
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});

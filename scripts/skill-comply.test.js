@@ -623,7 +623,7 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
     const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
-        'tier4-compaction', 'tier4-data-root', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
+        'tier4-compaction', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
     // A fixture added by a prose A/B group is pinned in that group's own scripts/skill-comply-prose-<group>.test.js (the
@@ -692,8 +692,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         for (const b of billed)
         {
             assert.match(b, / -p --output-format stream-json --verbose --max-turns \d+ --permission-mode dontAsk --setting-sources user,project,local /);
-            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_DATA_PATH /);
-            assert.match(b, / -u ALFRED_CODE_DOCS_PATH /, 'a retired key the hooks still read is scrubbed too');
+            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_/);
+            for (const key of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_DATA_PATH']) assert.ok(b.includes(` -u ${key} `), `${key}: a retired key the hooks still read is scrubbed too`);
             // a fixture's own run.model wins over --model (the designer seat's dispatcher runs on haiku)
             const fixture = b.match(/[\\/]([^\\/]+)[\\/](?:explicit|plain|adverse)[\\/]transcript\.jsonl\)$/)[1];
             assert.ok(b.includes(`--max-budget-usd 1.5 --model=${sc.loadExpectation(fixture).data.run.model || 'claude-sonnet-4-5'} > `), fixture);

@@ -40,9 +40,9 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
-// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
-const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+// data-root-reader (meta/shared-rules.json): the data root is always .alfred. An absolute ALFRED_CODE_DATA_PATH is a
+// harness's scratch and is kept; anything else is .alfred.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
@@ -90,7 +90,7 @@ const MODE_WORDS = new Set(['token', 'oauth', 'optional-token']);
 // A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
-// (`env.0.key` = `ALFRED_CODE_DATA_PATH`) and `meta/migrations.json`
+// (`env.0.key` = `ALFRED_CODE_DOCS_VERSIONING`) and `meta/migrations.json`
 // (`detect.settings_env_key` = `ALFRED_CODE_FRESH_SESSION_PCT`) were read as credential files - on the Read
 // route a block, and on the shell route something worse: every `key` in the file the guided walks
 // run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like
@@ -899,7 +899,7 @@ function maskFormatText(text, file, mask, count) {
 
 
 // ---- the project's sensitive data: where it is, and the run that uses it -------------------------
-// `<data root>/.secrets`, else `.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
+// `<data root>/.secrets`, else `.sensitive-data` (the data root is .alfred) in the checkout the command runs in, else in the
 // main worktree beside it - a gitignored file a new worktree does not have. Its values are kept out of the chat by accident:
 // a Read is blocked and a shell dump is masked (the 'sensitive' kind above), and a command that needs them runs through
 // --with-sensitive, which puts them in that command's environment and masks each one's EXACT text in its output - an

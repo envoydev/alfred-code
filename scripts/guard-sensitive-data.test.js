@@ -226,10 +226,11 @@ test(`session start: a store git would commit is said - not ignored, or tracked;
     assert.match(context(started(dir)), /WARNING: git does not ignore .*untrack it with git rm --cached/, 'a tracked store is said even under an ignore rule');
 });
 
-test(`session start and --with-sensitive: a custom data root, and a linked worktree reading its main checkout's store [${FILE}]`, () =>
+// The fixed root (3.11.0): the store is <project>/.alfred's; a key naming another folder is not read.
+test(`session start and --with-sensitive: a relative key names no store, and a linked worktree reads its main checkout's store [${FILE}]`, () =>
 {
     const custom = project('start-custom', { root: 'var/data', file: FILE });
-    assert.match(context(started(custom.dir, { ALFRED_CODE_DATA_PATH: 'var/data' })), new RegExp(`^Sensitive data: var/data/${RE(FILE)} holds API_TOKEN`));
+    assert.strictEqual(started(custom.dir, { ALFRED_CODE_DATA_PATH: 'var/data' }).stdout, '', 'a store in the folder a key names is not this project\'s store');
     assert.strictEqual(started(custom.dir).stdout, '', 'the default root holds none');
     assert.strictEqual(started(custom.dir, { ALFRED_CODE_DATA_PATH: '../outside' }).stdout, '', 'a root outside the project is never read');
     const git = (dir, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: dir, stdio: 'pipe' });
@@ -352,7 +353,6 @@ const wsTree = (spec) =>
     }
     return (rel = '.') => path.join(top, ...rel.split('/'));
 };
-const CUSTOM = { data: 'var/data', local: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }) };
 // The workspace is on by default since 3.0.0 (D9); the chain cases still pin it, so a launch 0 in the caller's env cannot freeze them.
 const WS_ON = { ALFRED_CODE_WORKSPACE: '1' };
 const wsThree = (extra = {}) => wsTree({
@@ -377,14 +377,12 @@ test('workspace chain: --with-sensitive gives the chain\'s values, nearest first
     assert.strictEqual(tool.stdout.replace(/\r/g, ''), `A=${hex('child-a-value')}\nB=${hex('root-b-value')}\n`, 'a grandchild with no store of its own reads both ancestors');
 });
 
-test('workspace chain: a Read of the parent\'s store is denied from the child, at the default and at a custom data root', () =>
+test('workspace chain: a Read or Grep of the parent\'s store is denied from the child', () =>
 {
     const at = wsThree();
     assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: path.join(at('ws'), '.alfred', '.secrets') }, cwd: at('ws/api'), session_id: 'suite' }).status, 2);
-    const custom = wsThree({ ws: CUSTOM });
-    const store = path.join(custom('ws'), 'var', 'data', '.secrets');
-    assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: store }, cwd: custom('ws/api'), session_id: 'suite' }).status, 2, 'a parent\'s custom root is the store by real path');
-    assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'A', path: store, output_mode: 'content' }, cwd: custom('ws/api'), session_id: 'suite' }).status, 2);
+    const store = path.join(at('ws'), '.alfred', '.secrets');
+    assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'A', path: store, output_mode: 'content' }, cwd: at('ws/api'), session_id: 'suite' }).status, 2);
 });
 
 test('workspace chain: a shell command naming the parent\'s store is refused or masked', () =>
@@ -392,11 +390,8 @@ test('workspace chain: a shell command naming the parent\'s store is refused or 
     const at = wsThree();
     assert.notStrictEqual(bash(at('ws/api'), 'cat ../.alfred/.secrets'), 0);
     assert.strictEqual(bash(at('ws/api'), 'source ../.alfred/.secrets'), 2);
-    const custom = wsThree({ ws: CUSTOM });
-    assert.notStrictEqual(bash(custom('ws/api'), 'cat ../var/data/.secrets'), 0, 'a dump of the parent\'s custom-root store is the masked view or refused');
-    assert.strictEqual(bash(custom('ws/api'), 'source ../var/data/.secrets'), 2);
-    assert.strictEqual(bash(custom('ws/api'), 'cp ../var/data/.secrets /tmp/out'), 2);
-    assert.strictEqual(bash(custom('ws/api'), 'ls -la ../var/data'), 0, 'a look passes');
+    assert.strictEqual(bash(at('ws/api'), 'cp ../.alfred/.secrets /tmp/out'), 2);
+    assert.strictEqual(bash(at('ws/api'), 'ls -la ../.alfred'), 0, 'a look passes');
 });
 
 test('workspace chain: the SessionStart line names each source\'s keys and no value', () =>
@@ -410,28 +405,25 @@ test('workspace chain: the SessionStart line names each source\'s keys and no va
     assert.match(context(started(at('ws'), WS_ON)), /^Sensitive data: \.alfred\/\.secrets holds A, B - kept out of the chat/, 'the root holds only its own: today\'s line');
 });
 
-test('workspace chain: a tree verb reaching a parent store is refused, at the default and a custom data root', () =>
+test('workspace chain: a tree verb reaching a parent store is refused', () =>
 {
-    for (const extra of [{}, { ws: CUSTOM }])
-    {
-        const at = wsThree({ api: { store: undefined }, ...extra });
-        const root = extra.ws ? '../var/data' : '../.alfred';
-        for (const command of [`tar cf - ${root}`, `cp -R ${root} x`, 'tar cf - ..', 'zip -r out.zip ..'])
-            for (const how of [above, bash]) assert.strictEqual(how(at('ws/api'), command), 2, `${root}: ${command}`);
-        assert.strictEqual(above(at('ws/api'), `tar cf - .. --exclude ${root.slice(3)}`), 0, 'an exclusion of the parent\'s data root passes');
-    }
+    const at = wsThree({ api: { store: undefined } });
+    const root = '../.alfred';
+    for (const command of [`tar cf - ${root}`, `cp -R ${root} x`, 'tar cf - ..', 'zip -r out.zip ..'])
+        for (const how of [above, bash]) assert.strictEqual(how(at('ws/api'), command), 2, `${root}: ${command}`);
+    assert.strictEqual(above(at('ws/api'), `tar cf - .. --exclude ${root.slice(3)}`), 0, 'an exclusion of the parent\'s data root passes');
 });
 
 test('workspace chain: under the kill switch the parent\'s values do not flow, and a Read or cat of the parent\'s store is still denied', () =>
 {
     for (const [how, env, local] of [['settings', {}, JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } })], ['env', { ALFRED_CODE_WORKSPACE: '0' }, undefined]])
     {
-        const at = wsThree({ ws: CUSTOM, api: { local } });
+        const at = wsThree({ api: { local } });
         const out = wrapped(at('ws/api'), node('hex', 'A', 'B'), env);
         assert.strictEqual(out.stdout.replace(/\r/g, ''), `A=${hex('child-a-value')}\nB=\n`, `${how}: the parent's B does not flow`);
-        const store = path.join(at('ws'), 'var', 'data', '.secrets');
+        const store = path.join(at('ws'), '.alfred', '.secrets');
         assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: store }, cwd: at('ws/api'), session_id: 'suite' }, env).status, 2, `${how}: the Read is denied by real path`);
-        assert.notStrictEqual(verdict(run({ tool_name: 'Bash', tool_input: { command: 'cat ../var/data/.secrets' }, cwd: at('ws/api'), session_id: 'suite' }, env)), 0, `${how}: the cat is masked or refused`);
+        assert.notStrictEqual(verdict(run({ tool_name: 'Bash', tool_input: { command: 'cat ../.alfred/.secrets' }, cwd: at('ws/api'), session_id: 'suite' }, env)), 0, `${how}: the cat is masked or refused`);
         assert.match(context(started(at('ws/api'), env)), /^Sensitive data: \.alfred\/\.secrets holds A - /, `${how}: the start line names the project's own keys alone`);
     }
 });
@@ -450,10 +442,10 @@ const shortAlias = (at, rel = '.') => path.join(shortName(at()), ...rel.split('/
 const hasShort = (at) => shortAlias(at) !== at() && fs.existsSync(shortAlias(at));
 test('workspace chain: a parent\'s store reached through its 8.3 short name is still the store', { skip: !hasShort(wsTree({ x: {} })) && 'no 8.3 short names here' }, () =>
 {
-    const custom = wsThree({ ws: CUSTOM });
-    const store = path.join(shortAlias(custom, 'ws'), 'var', 'data', '.secrets');
+    const custom = wsThree();
+    const store = path.join(shortAlias(custom, 'ws'), '.alfred', '.secrets');
     assert.strictEqual(run({ tool_name: 'Read', tool_input: { file_path: store }, cwd: shortAlias(custom, 'ws/api'), session_id: 'suite' }).status, 2, 'the Read is denied by real path');
-    assert.strictEqual(bash(shortAlias(custom, 'ws/api'), 'tar cf - ../var/data'), 2, 'a tree verb reaching it is refused');
+    assert.strictEqual(bash(shortAlias(custom, 'ws/api'), 'tar cf - ../.alfred'), 2, 'a tree verb reaching it is refused');
     const at = wsThree();
     const out = wrapped(shortAlias(at, 'ws/api'), node('out', 'A', 'B'), WS_ON);
     assert.strictEqual(out.status, 0, out.stderr);

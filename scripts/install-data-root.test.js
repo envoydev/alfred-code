@@ -1,8 +1,8 @@
 'use strict';
-// THE DATA ROOT, END TO END THROUGH THE SEED - ALFRED_CODE_DATA_PATH (default .alfred) holds the stack's own data: the
-// docs, the state and the project's sensitive data. A fresh install lays them there; an update over a 2.0.0 layout moves
-// the docs from .claude/docs unasked; a custom root (`--data-path` with `--data-move move`) carries the docs and the
-// sensitive data there. No server ships since 2.10.1, so an older release's server data (.serena, .playwright/<engine>,
+// THE DATA ROOT, END TO END THROUGH THE SEED - `.alfred`, always, holds the stack's own data: the docs, the state and the
+// project's sensitive data. A fresh install lays them there; an update over a 2.0.0 layout moves the docs from
+// .claude/docs unasked; an older install's custom root is carried into .alfred once (the fixed-root block at the end).
+// No server ships since 2.10.1, so an older release's server data (.serena, .playwright/<engine>,
 // .memory-mcp, or their folders under the root) is the user's: it stays where it is, no move is offered or owed for it,
 // and a `data-pending:` line an earlier release recorded for its launcher goes. The docs root is always <data root>/docs
 // (2.8.0): a leftover ALFRED_CODE_DOCS_PATH is drained unasked - the stack's docs move from the root it names, the
@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, plantOlderRoot } = require('./seed-sandbox.js');
 const { valueHash } = require('./install/stamp.js');
 
 const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
@@ -97,8 +97,8 @@ test('fresh install: the docs, the state and the sensitive data land under .alfr
         args: ['--scope', 'project'],
         inspect: (repo) => ({ ...look(repo), self: ignored(repo, '.alfred/.gitignore'), state: ignored(repo, '.alfred/state/x.json'), docs: ignored(repo, '.alfred/docs/architecture/ARCHITECTURE.md') }),
     });
-    assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred', out);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined, 'no run writes the retired key');
+    assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, undefined, out);
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined, 'no run writes a path key');
     assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, undefined, 'no memory database is named - no server ships');
     assert.strictEqual(r.rule, '.alfred/docs');
     assert.match(r.ignore, /^\/\*$/m);
@@ -106,13 +106,13 @@ test('fresh install: the docs, the state and the sensitive data land under .alfr
     // I1: the root's .gitignore re-includes itself - with `/*` alone it ignored its own file, so it never reached a clone.
     assert.deepStrictEqual([r.self, r.state, r.docs], [false, true, false], r.ignore);
     assert.match(r.text('.alfred/.secrets'), /^# alfred-code: this project's sensitive data/);
-    assert.match(r.stamp, /^data-root: \.alfred$/m);
+    assert.doesNotMatch(r.stamp, /^data-root:/m);
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     for (const made of [...SERVER_DATA_IN_ROOT.map((n) => `.alfred/${n}`), '.serena', '.playwright', '.memory-mcp', '.claude/docs'])
         assert.ok(!r.has(made), `${made} was created`);
 });
 
-for (const [label, answer] of [['no answer', []], ['--data-move move', ['--data-move', 'move']]])
+for (const [label, answer] of [['no answer', []]])
 {
     test(`update over a 2.0.0 layout, ${label}: the docs move, the servers' data stays where it is with no move offered or owed, and a re-run is quiet`, POSIX_ONLY, () =>
     {
@@ -123,7 +123,7 @@ for (const [label, answer] of [['no answer', []], ['--data-move move', ['--data-
         });
         assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/, outs[1]);
         assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined, 'the retired key goes once the docs moved');
-        assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred');
+        assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, undefined);
         assert.strictEqual(r.rule, '.alfred/docs');
         assert.ok(r.has('.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md') && !r.has('.claude/docs'));
         for (const rel of SERVER_DATA_2_0) assert.ok(r.has(rel), `${rel} was moved or removed:\n${outs[1]}`);
@@ -161,18 +161,6 @@ test('update: a server-data pending line an earlier release recorded goes, and i
     assert.doesNotMatch(outs[1], /not moved yet|next start|restart/i, outs[1]);
 });
 
-test('update --data-move keep: the docs still move to the data root, the answer is stamped, and no later update offers a move', POSIX_ONLY, () =>
-{
-    const { result: r, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
-        args: [['--scope', 'project'], [...UPDATE, '--data-move', 'keep'], UPDATE],
-        each: (repo, i) => (i === 0 ? twoZeroLayout(repo) : null), inspect: look,
-    });
-    assert.match(r.stamp, /^data-move: kept$/m);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined);
-    assert.ok(r.has('.serena/project.yml') && r.has('.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md') && !r.has('.claude/docs'));
-    assert.doesNotMatch(outs[2], /offers the move/, outs[2]);
-});
-
 // 2.1.0-2.3.x kept the browser profiles at <root>/browser/<engine>, and 2.4.0-2.10.0 at <root>/<engine>-control. No engine
 // ships since 2.10.1: an update over either moves nothing and owes nothing, and the root's .gitignore still keeps the
 // profiles - session cookies - out of git.
@@ -195,59 +183,10 @@ test('update over an older release\'s browser profiles under the root: nothing m
     assert.deepStrictEqual([steps[1], steps[2]], [[], []]);
 });
 
-// A custom root: --data-path with --data-move move carries the stack's own data - the docs and the sensitive data - and
-// re-points the docs rule. An older release's server folders under the old root are the user's: they stay, and so do the
-// old root and its .gitignore, which still keeps them out of git. A root holding only the stack's data is removed once
-// the move empties it. A re-run changes nothing.
-test('a custom root: --data-path moves the docs and the sensitive data, leaves a server\'s folder and the ignore beside it, and a re-run changes nothing', POSIX_ONLY, () =>
-{
-    const { result: r, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
-        args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
-        each: (repo, i) =>
-        {
-            if (i === 0)
-            {
-                put(path.join(repo, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), '# a\n');
-                put(path.join(repo, '.alfred', 'chrome-control', 'Cookies'), 'c');
-                put(path.join(repo, '.alfred', 'serena', 'project.yml'), 'p');
-            }
-            return { settings: read(path.join(repo, '.claude', 'settings.json')), pending: pendingOf(look(repo).stamp) };
-        },
-        inspect: (repo) => ({ ...look(repo), cookies: ignored(repo, '.alfred/chrome-control/Cookies') }),
-    });
-    assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.data', outs[1]);
-    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined);
-    assert.strictEqual(r.rule, '.data/docs');
-    assert.ok(r.has('.data/docs/awareness/ARCHITECTURE-AWARENESS.md') && !r.has('.alfred/docs'), outs[1]);
-    assert.ok(r.has('.data/.secrets') && !r.has('.alfred/.secrets'), 'the sensitive data moved with the root');
-    assert.strictEqual(r.text('.alfred/chrome-control/Cookies'), 'c', 'a server\'s folder was moved');
-    assert.ok(r.has('.alfred/serena/project.yml') && !r.has('.data/serena') && !r.has('.data/chrome-control'));
-    assert.strictEqual(r.cookies, true, 'the old root\'s .gitignore went, and the cookies with it into git');
-    // One .gitignore for the new root: it carries the docs rules, and the docs root has none of its own.
-    assert.match(r.text('.data/.gitignore'), /^# alfred-code: the data root[^\n]*\n\/\*\n!\/\.gitignore\n!\/\.variables\n!\/docs\/\n(?:[^\n]*\n)*\/docs\/flow\/\n/);
-    assert.ok(!r.has('.data/docs/.gitignore'), 'the docs root keeps no .gitignore of its own under the data root');
-    assert.deepStrictEqual(steps[2], steps[1], 'a re-run rewrote settings.json or the pending lines');
-
-    const empty = seedRun(['install', 'update'], SELECTION, { args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move']], inspect: look });
-    assert.ok(!empty.result.has('.alfred'), `the emptied old root is gone:\n${empty.outs[1]}`);
-    assert.ok(empty.result.has('.data/.secrets'));
-});
-
-test('--data-path over existing data with no --data-move changes nothing and says what would', POSIX_ONLY, () =>
-{
-    const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
-        args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data']],
-        each: (repo, i) => (i === 0 ? put(path.join(repo, '.alfred', 'docs', 'x.md'), 'x') : null), inspect: look,
-    });
-    assert.match(outs[1], /--data-path \.data not applied - .* --data-move move/, outs[1]);
-    assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred');
-    assert.ok(r.has('.alfred/docs/x.md') && !r.has('.data'));
-});
-
 test('a docs root the user set, moved on the answer to update\'s ask: the stack\'s docs go to <data root>/docs, the project\'s own files stay, the key goes', POSIX_ONLY, () =>
 {
     const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
-        env: COPY_ENV, args: [['--scope', 'project'], [...UPDATE, '--data-move', 'move', '--docs-root-move', 'move']],
+        env: COPY_ENV, args: [['--scope', 'project'], [...UPDATE, '--docs-root-move', 'move']],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
@@ -316,27 +255,33 @@ const writePointers = (repo, root) =>
 };
 const rulesOf = (repo) => Object.fromEntries([...Object.keys(POINTERS), 'my-own-rule.md'].map((n) => [n, read(path.join(repo, '.claude', 'rules', n))]));
 
-test('M11 a data move re-stamps every generated rule that names the docs root - a custom root, and the 2.0.0 move', POSIX_ONLY, () =>
+test('M11 a data move re-stamps every generated rule that names the docs root - an older custom root, and the 2.0.0 move', POSIX_ONLY, () =>
 {
     const custom = seedRun(['install', 'update', 'update'], SELECTION, {
-        args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
+        args: [['--scope', 'project'], UPDATE, UPDATE],
         each: (repo, i) =>
         {
-            if (i === 0) { put(path.join(repo, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), '# a\n'); writePointers(repo, '.alfred/docs'); }
+            if (i === 0)
+            {
+                plantR(repo);
+                const rule = path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
+                fs.writeFileSync(rule, read(rule).split('.alfred/docs').join('var/data/docs'));   // as the older run stamped it
+                writePointers(repo, 'var/data/docs');
+            }
             return rulesOf(repo);
         },
         inspect: (repo) => ({ ...look(repo), rules: rulesOf(repo) }),
     });
-    assert.strictEqual(custom.result.rule, '.data/docs', custom.outs[1]);
+    assert.strictEqual(custom.result.rule, '.alfred/docs', custom.outs[1]);
     for (const [name, text] of Object.entries(POINTERS))
-        assert.strictEqual(custom.result.rules[name], text('.data/docs'), `${name} still names the old root:\n${custom.outs[1]}`);
-    assert.strictEqual(custom.result.rules['my-own-rule.md'], MINE('.alfred/docs'), 'a rule of the project\'s own is never rewritten');
-    assert.match(custom.outs[1], /generated rule\(s\) re-stamped: .*\.alfred\/docs -> \.data\/docs/, custom.outs[1]);
+        assert.strictEqual(custom.result.rules[name], text('.alfred/docs'), `${name} still names the old root:\n${custom.outs[1]}`);
+    assert.strictEqual(custom.result.rules['my-own-rule.md'], MINE('var/data/docs'), 'a rule of the project\'s own is never rewritten');
+    assert.match(custom.outs[1], /generated rule\(s\) re-stamped: var\/data\/docs -> \.alfred\/docs/, custom.outs[1]);
     assert.deepStrictEqual(custom.steps[2], custom.steps[1], 'a re-run rewrote a rule');
     assert.doesNotMatch(custom.outs[2], /re-stamped/);
 
     const twoZero = seedRun(['install', 'update'], SELECTION, {
-        args: [['--scope', 'project'], [...UPDATE, '--data-move', 'move']],
+        args: [['--scope', 'project'], UPDATE],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
@@ -389,54 +334,27 @@ test('an update moves the loose orientation doc into awareness/ and re-points it
 // The project's sensitive data (<root>/.secrets, `.sensitive-data` before item 3 - the user's ruling of 2026-10-13) is the user's file, not a server's:
 // a root change takes it along inline on EVERY route - no launcher owes it a move - into a root whose .gitignore is
 // written first, and every install denies the Read tool on it.
-test('sensitive data: a root change moves the store inline on the plugin and the copy route; a re-run is quiet; the Read deny is written', POSIX_ONLY, () =>
+test('sensitive data: an older custom root\'s store is carried to .alfred on the plugin and the copy route; a re-run is quiet; the Read deny is written', POSIX_ONLY, () =>
 {
     for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
     {
         const { result: r, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
-            env, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
+            env, args: [['--scope', 'project'], UPDATE, UPDATE],
             each: (repo, i) =>
             {
-                if (i === 0) put(path.join(repo, '.alfred', '.secrets'), 'API_TOKEN=tok-abcdef123456\n');
+                if (i === 0) { put(path.join(repo, '.alfred', '.secrets'), 'API_TOKEN=tok-abcdef123456\n'); plantR(repo); }
                 return { settings: read(path.join(repo, '.claude', 'settings.json')), stamp: pendingOf(read(path.join(repo, '.claude', 'alfred-code.stamp')) || '') };
             },
             inspect: (repo) => ({ ...look(repo), deny: (json(path.join(repo, '.claude', 'settings.json')).permissions || {}).deny || [] }),
         });
-        assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.data', `${route}:\n${outs[1]}`);
-        assert.strictEqual(r.text('.data/.secrets'), 'API_TOKEN=tok-abcdef123456\n', `${route}: moved as it was`);
-        assert.ok(!r.has('.alfred/.secrets'), route);
-        assert.match(outs[1], /data root: moved \.alfred\/\.secrets -> \.data\/\.secrets/, route);
-        assert.ok(!/data-pending: sensitive/.test(r.stamp), `${route}: no launcher owes it a move`);
+        assert.strictEqual(r.text('.alfred/.secrets'), 'API_TOKEN=tok-abcdef123456\n', `${route}: moved as it was\n${outs[1]}`);
+        assert.ok(!r.has('var/data'), `${route}: the emptied folder is gone`);
+        assert.doesNotMatch(r.stamp, /^data-root:/m, route);
+        assert.ok(!/data-pending: sensitive/.test(r.stamp), `${route}: nothing is owed`);
         assert.ok(r.deny.includes('Read(.secrets)') && r.deny.includes('Read(.sensitive-data)'), `${route}: ${JSON.stringify(r.deny)}`);
         assert.ok(!outs.join('\n').includes('tok-abcdef123456'), `${route}: a value was printed`);
         assert.deepStrictEqual(steps[2], steps[1], `${route}: a re-run changed settings.json or the pending lines`);
     }
-});
-
-test('sensitive data: a store alone holds the root - --data-path without --data-move changes nothing; a store at both places is a clash', POSIX_ONLY, () =>
-{
-    const alone = seedRun(['install', 'update'], SELECTION, {
-        args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data']],
-        each: (repo, i) =>
-        {
-            if (i !== 0) return;
-            const root = path.join(repo, '.alfred');
-            for (const name of fs.readdirSync(root)) if (name !== '.gitignore') fs.rmSync(path.join(root, name), { recursive: true, force: true });
-            put(path.join(root, '.sensitive-data'), 'K=v1234\n');
-        },
-        inspect: look,
-    });
-    assert.match(alone.outs[1], /--data-path \.data not applied - \.alfred holds this project's data/, alone.outs[1]);
-    assert.strictEqual(alone.result.text('.alfred/.sensitive-data'), 'K=v1234\n');
-    const both = seedRun(['install', 'update'], SELECTION, {
-        env: COPY_ENV, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move']],
-        each: (repo, i) => { if (i === 0) { put(path.join(repo, '.alfred', '.secrets'), 'K=old\n'); put(path.join(repo, '.data', '.sensitive-data'), 'K=new\n'); } },
-        inspect: look,
-    });
-    assert.match(both.outs[1], /data root: \.alfred\/\.secrets not moved - \.data\/\.sensitive-data already holds data/, both.outs[1]);
-    assert.strictEqual(both.result.text('.alfred/.secrets'), 'K=old\n');
-    assert.strictEqual(both.result.text('.data/.sensitive-data'), 'K=new\n', 'neither side touched - a store under either name is a clash');
-    assert.ok(!both.result.has('.data/.secrets'));
 });
 
 // The run book's credentials file from before 2026-10-13 moves into the store on any run, both routes - keys named,
@@ -561,17 +479,17 @@ test('a second run in the session that wrote the dual stamp renames nothing; ano
     assert.ok(steps[3].has('.alfred/.secrets') && !steps[3].has('.alfred/.sensitive-data'), 'a stamp of S0 read by S1 renames');
 });
 
-test('a root change moves the store under the name it has; after the dual stamp it is renamed at the prior root first (item 3)', POSIX_ONLY, () =>
+test('the one-time move carries the store under the name it has (item 3)', POSIX_ONLY, () =>
 {
-    const { steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+    const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
         env: NO_SESSION,
         plugins: CORE_HERE,
-        args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], [...UPDATE, '--data-path', '.store', '--data-move', 'move']],
-        each: (repo, i) => { if (i === 0) oldSecrets(repo, 'K=v\n'); return { has: look(repo).has }; },
+        args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) => { if (i === 0) { oldSecrets(repo, 'K=v\n'); plantR(repo); } return null; },
         inspect: look,
     });
-    assert.ok(steps[1].has('.data/.sensitive-data') && !steps[1].has('.data/.secrets') && !steps[1].has('.alfred/.sensitive-data'));
-    assert.ok(steps[2].has('.store/.secrets') && !steps[2].has('.data/.sensitive-data') && !steps[2].has('.data/.secrets'));
+    assert.strictEqual(r.text('.alfred/.sensitive-data'), 'K=v\n', outs[1]);
+    assert.ok(!r.has('.alfred/.secrets') && !r.has('var/data'), 'the move renames nothing, and the emptied folder is gone');
 });
 
 // M9 (final review): a first dual line on the plugin route needs the core read back at this release or later - an update
@@ -624,14 +542,226 @@ test('M9: no core row, or one with no version, records no dual line; the copy ro
     assert.match(copy.outs[1], /\.sensitive-data becomes \.secrets at the next update/);
 });
 
-test('a pending move recorded under the old name lands under whichever name the prior root holds (item 3)', POSIX_ONLY, () =>
+// ------------------------------------------------------------------ the fixed root (2026-11-11)
+// The data root is always `.alfred`. An older install whose data sits under R is this seed's own install with its folder
+// renamed to R, the key and the stamp's line naming it - what a 3.10.0 run with a custom root left.
+function plantR(repo, R = 'var/data', { docsKey = null } = {})
 {
-    const { result: r } = seedRun(['install', 'update'], SELECTION, {
-        env: NO_SESSION,
-        args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move']],
-        each: (repo, i) => { if (i === 0) { oldSecrets(repo); addStampLines(repo, ['secrets: dual S0', 'data-pending: sensitive .alfred/.sensitive-data -> .data/.sensitive-data']); } return null; },
+    const to = plantOlderRoot(repo, R);
+    if (docsKey)
+    {
+        const file = path.join(repo, '.claude', 'settings.json');
+        const settings = json(file);
+        settings.env.ALFRED_CODE_DOCS_PATH = docsKey;
+        fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+    }
+    put(path.join(to, 'docs', 'awareness', 'NOTES.md'), '# notes\n');
+    put(path.join(to, 'state', 'approvals', 'a.json'), '{}\n');
+    return null;
+}
+const under = (snap, prefix) => [...snap].filter(([k]) => k.startsWith(`${prefix}/`)).map(([k, v]) => `${k}=${v}`).sort();
+const withoutDates = (snap) => [...snap].map(([k, v]) => `${k}=${k.endsWith('alfred-code.stamp') ? String(v).replace(/^installed(-ms)?: .*$/gm, '') : v}`).sort();
+
+test('fixed root: an update over a custom root moves it and prints the line', POSIX_ONLY, () =>
+{
+    const { result: r, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
+        args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) => (i === 0 ? plantR(repo) : i === 1 ? withoutDates(snapshot(repo)) : null),
         inspect: look,
     });
-    assert.ok(r.has('.data/.secrets') && !r.has('.alfred/.sensitive-data') && !r.has('.alfred/.secrets'));
-    assert.deepStrictEqual(pendingOf(r.stamp), []);
+    assert.match(outs[1], /^==> {3}data root: moved var\/data to \.alfred$/m, outs[1]);
+    for (const rel of ['.alfred/docs/awareness/NOTES.md', '.alfred/state/approvals/a.json', '.alfred/.variables', '.alfred/.secrets', '.alfred/.gitignore'])
+        assert.ok(r.has(rel), `${rel} under .alfred`);
+    assert.ok(!r.has('var/data'), 'the old folder is gone');
+    assert.notStrictEqual(r.env.ALFRED_CODE_DATA_PATH, 'var/data', 'the key no longer names the old folder');
+    assert.doesNotMatch(r.stamp, /^data-root: var\/data$/m);
+    assert.strictEqual(r.rule, '.alfred/docs');
+    assert.doesNotMatch(outs[2], /data root: moved/, 'a second run moves nothing');
+});
+
+// Review C1, end to end: what the old folder keeps stays ignored, and no later step of the run reads that folder as the
+// data root again (its ignore file is the only thing of the stack's left in it).
+test('fixed root: an update over a custom root that keeps an older server\'s folder leaves it ignored and writes nothing back', POSIX_ONLY, () =>
+{
+    const { result: r, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
+        args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) => { if (i === 0) { plantR(repo); put(path.join(repo, 'var', 'data', 'serena', 'project.yml'), 'p\n'); } return null; },
+        inspect: (repo) => ({
+            left: fs.readdirSync(path.join(repo, 'var', 'data')).sort(),
+            ignored: require('node:child_process').spawnSync('git', ['check-ignore', '-q', '--', 'var/data/serena/project.yml'], { cwd: repo }).status,
+            docs: fs.existsSync(path.join(repo, '.alfred', 'docs', 'awareness', 'NOTES.md')),
+        }),
+    });
+    assert.match(outs[1], /^==> {3}data root: moved var\/data to \.alfred, var\/data keeps serena - not the stack's, still under its \.gitignore$/m, outs[1]);
+    assert.deepStrictEqual(r.left, ['.gitignore', 'serena'], 'no later step wrote into the old folder');
+    assert.strictEqual(r.ignored, 0, 'git still ignores what the old folder keeps');
+    assert.ok(r.docs, 'the docs are under .alfred');
+    assert.doesNotMatch(outs[2], /data root:/, outs[2]);
+});
+
+test('fixed root: --print-plan and uninstall over a custom root move nothing and print their line', POSIX_ONLY, () =>
+{
+    const { result, steps, outs } = seedRun(['install', 'update', 'uninstall'], SELECTION, {
+        args: [['--scope', 'project'], [...UPDATE, '--print-plan'], []],
+        each: (repo, i) => { if (i === 0) plantR(repo); return { tree: under(snapshot(repo), 'var/data'), alfred: fs.existsSync(path.join(repo, '.alfred')) }; },
+        inspect: (repo) => under(snapshot(repo), 'var/data'),
+    });
+    assert.match(outs[1], /^==> data root: var\/data moves to \.alfred at the next update$/m, outs[1]);
+    assert.deepStrictEqual(steps[1].tree, steps[0].tree, 'a plan moves nothing');
+    assert.strictEqual(steps[1].alfred, false, 'a plan makes no .alfred');
+    assert.match(outs[2], /^==> data root: var\/data is left where it is - a later install uses \.alfred$/m, outs[2]);
+    // The uninstall takes back the values its ledger records in .variables, under this folder as under .alfred; the rest
+    // of the folder - the docs, the state, the store, the ignore file - is the user's and stays byte for byte.
+    const kept = (tree) => tree.filter((row) => !row.startsWith('var/data/.variables='));
+    assert.deepStrictEqual(kept(result), kept(steps[0].tree), 'the uninstall leaves the folder where it is');
+    assert.ok(result.some((row) => row.startsWith('var/data/docs/awareness/NOTES.md=')));
+});
+
+test('fixed root: --data-path and --data-move are ignored with one line each', POSIX_ONLY, () =>
+{
+    const run = (extra) => seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], [...UPDATE, ...extra]],
+        inspect: (repo) => withoutDates(snapshot(repo)),
+    });
+    const flagged = run(['--data-path', 'x', '--data-move', 'move']);
+    assert.match(flagged.outs[1], /--data-path ignored - the data root is always \.alfred/);
+    assert.match(flagged.outs[1], /--data-move ignored - the data root is always \.alfred/);
+    assert.strictEqual(flagged.code, 0);
+    assert.deepStrictEqual(flagged.result, run([]).result, 'the tree equals a run without them');
+});
+
+test('fixed root: validate\'s checks, init\'s plan and --print-plan over a custom root read R/docs', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], [...UPDATE, '--print-plan']],
+        each: (repo, i) =>
+        {
+            if (i === 0) plantR(repo);
+            // library-check, agents-md-check, init-plan, the preflight and stamp-docs-root all resolve through this one.
+            return require('./install/copy.js').resolveDocsRoot(repo, 'project');
+        },
+    });
+    assert.deepStrictEqual(steps, ['var/data/docs', 'var/data/docs']);
+    assert.doesNotMatch(outs[1], /\.alfred\/docs/);
+});
+
+test('fixed root: a leftover docs key under a moved source is drained from its new place', POSIX_ONLY, () =>
+{
+    const { result: r, outs } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) => (i === 0 ? plantR(repo, 'var/data', { docsKey: 'var/data/docs' }) : null),
+        inspect: look,
+    });
+    assert.ok(r.has('.alfred/docs/awareness/NOTES.md'), outs[1]);
+    assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, undefined, 'the docs key goes');
+    assert.strictEqual(r.rule, '.alfred/docs');
+    assert.ok(!r.has('var/data'));
+});
+
+// The key's writes are gone: no run puts a path into a settings file, an update takes the retired key out of both
+// project files, and the stamp names no folder.
+const PATH_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_PATH'];
+const SCOPES = ['project', 'user', 'local'];
+const settingsOf = (repo) => ({
+    shared: read(path.join(repo, '.claude', 'settings.json')),
+    local: read(path.join(repo, '.claude', 'settings.local.json')),
+    account: read(path.join(path.dirname(repo), 'acct', 'settings.json')),
+});
+// A settings file's parsed object without the retired key - and without an `env` the key was alone in.
+const minusKey = (text) =>
+{
+    const data = JSON.parse(text || '{}');
+    if (data.env) { delete data.env.ALFRED_CODE_DATA_PATH; if (!Object.keys(data.env).length) delete data.env; }
+    return data;
+};
+
+test('fixed root: no installer run writes a path key', POSIX_ONLY, () =>
+{
+    for (const scope of SCOPES)
+    {
+        const { result } = seedRun('install', SELECTION, { args: ['--scope', scope], inspect: settingsOf });
+        for (const [name, text] of Object.entries(result))
+            for (const key of PATH_KEYS) assert.ok(!String(text || '').includes(key), `${scope}: ${name} holds ${key}`);
+    }
+});
+
+test('fixed root: an update removes the key from both project files at every scope', POSIX_ONLY, () =>
+{
+    for (const scope of SCOPES)
+    {
+        const { steps, result } = seedRun(['install', 'update'], SELECTION, {
+            args: [['--scope', scope], ['--scope', scope, '--installed-only']],
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                for (const name of ['settings.json', 'settings.local.json'])
+                {
+                    const file = path.join(repo, '.claude', name);
+                    const data = json(file);
+                    data.env = { ...(data.env || {}), ALFRED_CODE_DATA_PATH: '.alfred' };
+                    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+                }
+                return settingsOf(repo);
+            },
+            inspect: settingsOf,
+        });
+        for (const name of ['shared', 'local'])
+        {
+            assert.ok(!String(result[name] || '').includes('ALFRED_CODE_DATA_PATH'), `${scope}: ${name} still holds the key`);
+            assert.deepStrictEqual(minusKey(result[name]), minusKey(steps[0][name]), `${scope}: ${name} - every other key and hook as it was`);
+        }
+    }
+});
+
+// Review I1: the update routes pass no --scope, so the scope is the stamp's - and it must be read before the move, or a
+// local-scope update takes the folder the team's settings file names.
+test('fixed root: an update with no --scope takes the stamp\'s scope before the move - a local install leaves the team\'s folder', POSIX_ONLY, () =>
+{
+    const { steps, result, outs, code } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) plantR(repo); return under(snapshot(repo), 'var/data'); },
+        inspect: (repo) => ({ tree: under(snapshot(repo), 'var/data'), alfred: fs.existsSync(path.join(repo, '.alfred')), stamp: read(path.join(repo, '.claude', 'alfred-code.stamp')) }),
+        failOk: true,
+    });
+    assert.match(result.stamp, /^scope: local$/m, 'the install under test is a local-scope one');
+    assert.match(outs[1], /!! data root: var\/data is the team's \(named in \.claude\/settings\.json\) - a project-scope update moves it; nothing changed/, outs[1]);
+    assert.notStrictEqual(code, 0, 'the run stops');
+    assert.deepStrictEqual(result.tree, steps[0], 'the folder is byte-identical');
+    assert.strictEqual(result.alfred, false, 'and no .alfred was made');
+});
+
+test('fixed root: the stamp carries no data line', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', SELECTION, { args: ['--scope', 'project'], inspect: look });
+    assert.doesNotMatch(result.stamp, /^data-(root|pending|move):/m);
+    const { readDataLines } = require('./install/stamp.js');
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'older-stamp-'));
+    try
+    {
+        const older = path.join(dir, 'alfred-code.stamp');
+        fs.writeFileSync(older, 'version: 3.10.0\ndata-root: var/data\ndata-move: kept\n');
+        const lines = readDataLines(older);
+        assert.strictEqual(lines.root, 'var/data', 'an older stamp\'s line is still read');
+        assert.ok(!('kept' in lines), 'the kept line names no root and is dropped unread');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Review Focus 1: once the move ran nothing names the old folder, so a file that appears there later is the user's.
+test('fixed root: a folder nothing names is never a source', POSIX_ONLY, () =>
+{
+    const { steps, result, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
+        args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0) return plantR(repo);
+            put(path.join(repo, 'var', 'data', 'state', 'x.json'), '{}\n');
+            return under(snapshot(repo), 'var/data');
+        },
+        inspect: (repo) => under(snapshot(repo), 'var/data'),
+    });
+    assert.match(outs[1], /data root: moved var\/data to \.alfred/, outs[1]);
+    assert.doesNotMatch(outs[2], /data root:/, outs[2]);
+    assert.deepStrictEqual(result, steps[1], 'the folder is byte-identical');
+    assert.ok(result.some((row) => row.startsWith('var/data/state/x.json=')));
 });

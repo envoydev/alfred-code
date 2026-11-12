@@ -17,10 +17,6 @@
 const ENUMS = {
     scope: { values: ['', 'project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
-    // The answer to the data move (docs.dataOffer): 'move' carries the secrets file under the data root;
-    // 'keep' leaves it where it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
-    // 2.0.0 spelling, read for one release.
-    dataMove: { values: ['', 'move', 'keep'], text: "--data-move must be 'move' or 'keep'" },
     // The answer to update's docs-move ask (docs.docsMovePlan `handSet`, 2.8.0): a docs root the user set by hand moves
     // to <data root>/docs only on 'move', `--docs-root-leave` naming what stays. No keep: every docs file of the stack's
     // belongs under the data root (the user's answer of 2026-10-20). Not given, nothing moves and the next update asks.
@@ -47,7 +43,7 @@ const ENUMS = {
 const VALUED = new Map([
     ['--scope', 'scope'],
     ['--docs-versioning', 'docsVersioning'],
-    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'], ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'], ['--memory', 'memory'],
+    ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'], ['--memory', 'memory'],
     ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'], ['--parent-plan', 'parentPlan'],
 ]);
@@ -67,15 +63,19 @@ const REMOVED = new Map([
     ['--sentry-auth', 'the sentry server left the stack'],
 ]);
 
-// The flags 2.10.1 took out with the servers they configured (the stack ships no MCP server): ACCEPTED with their
-// value and ignored, one line each (`ignored`, which the installer logs) - not refused like the 2.0.0 ones, because a
-// session started before the update still runs the older command body, which passes them to this snapshot's installer.
+// The flags a release took out with what they configured - the servers in 2.10.1 (the stack ships no MCP server), the
+// data root's folder after 3.10.0 (it is always `.alfred`): ACCEPTED with their value and ignored, one line each
+// (`ignored`, which the installer logs) - not refused like the 2.0.0 ones, because a session started before the update
+// still runs the older command body, which passes them to this snapshot's installer.
 const RETIRED_FLAGS = new Map([
-    ['--memory-level', 'the memory server left the stack'],
-    ['--browsers', 'the browser servers left the stack'],
-    ['--browser-enabled', 'the browser servers left the stack'],
-    ['--playwright-browsers', 'the browser servers left the stack'],
-    ['--playwright-enabled', 'the browser servers left the stack'],
+    ['--memory-level', 'the memory server left the stack in 2.10.1'],
+    ['--browsers', 'the browser servers left the stack in 2.10.1'],
+    ['--browser-enabled', 'the browser servers left the stack in 2.10.1'],
+    ['--playwright-browsers', 'the browser servers left the stack in 2.10.1'],
+    ['--playwright-enabled', 'the browser servers left the stack in 2.10.1'],
+    ['--data-path', 'the data root is always .alfred'],
+    ['--data-move', 'the data root is always .alfred'],
+    ['--docs-move', 'the data root is always .alfred'],
 ]);
 
 // 2.2.0: the OPTIONAL items, each installed at its own scope - global (the CLI's `user`, every project on the
@@ -90,10 +90,10 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 // An old spelling and the flag it now is. `--github-cli` named --forge-cli before the forge-neutral rename (E-batch fn-11): a
 // walk copied before it still passes the old one, which reads as the new and says so on a `notes` line.
-const ALIASES = new Map([['--docs-move', '--data-move'], ['--github-cli', '--forge-cli']]);
+const ALIASES = new Map([['--github-cli', '--forge-cli']]);
 const NOTED_ALIASES = new Set(['--github-cli']);
 
-const FLAG_LIST = '--scope, --docs-versioning, --data-path, --data-move, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --memory-copy, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
+const FLAG_LIST = '--scope, --docs-versioning, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --memory-copy, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -111,7 +111,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', scope: '',
-        docsVersioning: '', dataMove: '', dataPath: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
+        docsVersioning: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
         selection: '', source: '', planOut: '', parentPlan: '',
         forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false, memoryCopy: false,
         add: [], drop: [], scopeOf: {}, ignored: [], notes: [],
@@ -139,7 +139,7 @@ function parseArgs(argv)
         if (RETIRED_FLAGS.has(name))
         {
             if (!(eq > -1 && name !== arg)) i++;
-            out.ignored.push(`${name} ignored - ${RETIRED_FLAGS.get(name)} in 2.10.1`);
+            out.ignored.push(`${name} ignored - ${RETIRED_FLAGS.get(name)}`);
             continue;
         }
 
@@ -205,7 +205,6 @@ function parseArgs(argv)
     // and it is aliased here so nothing downstream ever sees a fourth spelling.
     if (out.scope === 'global') out.scope = 'user';
     out.docsVersioning = lower(out.docsVersioning);
-    out.dataMove = lower(out.dataMove);
     out.docsRootMove = lower(out.docsRootMove);
     out.autoCompact = lower(out.autoCompact);
     out.memory = lower(out.memory);
@@ -213,14 +212,6 @@ function parseArgs(argv)
     out.instructionsFile = lower(out.instructionsFile);
     out.instructionsSeed = lower(out.instructionsSeed);
     if (out.instructionsSeed && out.action !== 'uninstall') fail('--instructions-seed is uninstall\'s answer - install and update never remove the seed');
-    // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
-    // and why) - refused here, before a path that would prompt or escape the project lands.
-    if (out.dataPath)
-    {
-        const checked = require('../../stack/mcp/data-root.js').checkDataPath(out.dataPath);
-        if (!checked.ok) fail(`--data-path: ${checked.why}`);
-        out.dataPath = checked.value;
-    }
 
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);
