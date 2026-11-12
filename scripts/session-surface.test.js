@@ -430,7 +430,7 @@ test('4c surface: a store rule is named from the project as given when the loade
     let rows;
     try { rows = rowsAt(fx.run(), 'session-start'); }
     finally { fs.realpathSync.native = native; }
-    assert.ok(rows.some((r) => r.source === path.join('.alfred', 'stack', 'rules', 'alfred-security.md')), JSON.stringify(rows.map((r) => r.source)));
+    assert.ok(rows.some((r) => r.source === '.alfred/stack/rules/alfred-security.md'), JSON.stringify(rows.map((r) => r.source)));
 });
 test('4c surface: the status floor counts the rules the loader sends, a root\'s included, and a native rule once', () =>
 {
@@ -447,12 +447,12 @@ test('4c surface: the status floor counts the rules the loader sends, a root\'s 
     const start = rowsAt(fx.run(), 'session-start');
     assert.equal(start.filter((r) => /alfred-git\.md$/.test(r.source)).length, 1, 'a native rule is counted once');
     assert.ok(start.some((r) => r.source === '.claude/rules/alfred-git.md'), 'the native copy is the one counted');
-    const store = start.find((r) => r.source === path.join('.alfred', 'stack', 'rules', 'alfred-security.md'));
+    const store = start.find((r) => r.source === '.alfred/stack/rules/alfred-security.md');
     assert.ok(store, `a store rule is a session-start row: ${JSON.stringify(start.map((r) => r.source))}`);
     assert.equal(store.owner, 'project', 'owned by the inventory, which lists no alfred-security here');
     assert.equal(store.chars, 'Never print a credential.'.length);
     assert.equal(rowsAt(fx.run(), 'path-scoped').find((r) => /ts-conventions/.test(r.source)).owner, 'house', 'a listed rule is the house\'s');
-    assert.ok(rowsAt(fx.run(), 'path-scoped').some((r) => r.source === path.join('.alfred', 'stack', 'rules', 'ts-conventions.md')), 'a scoped store rule');
+    assert.ok(rowsAt(fx.run(), 'path-scoped').some((r) => r.source === '.alfred/stack/rules/ts-conventions.md'), 'a scoped store rule');
 
     const root = fx.proj;
     write(root, { '.alfred/workspace.json': JSON.stringify({ parent: 'root', children: ['api'] }) });
