@@ -572,26 +572,54 @@ test('check 41: a long reference opens with a table of contents', () => {
 });
 
 // 42. An ENUMERATED component array and its directory are two lists that must say the same thing.
-test('check 42: the plugin manifest\'s commands array equals the commands directory', () => {
+test('check 42: an enumerated component array equals its directory', () => {
     const { lintPluginComponents } = require('./lint-skills.js');
-    const onDisk = { commands: ['setup.md', 'status.md', 'update.md'] };
+    const onDisk = { agents: ['setup.md', 'status.md', 'update.md'] };
 
-    const clean = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md', './commands/update.md'] }, onDisk);
+    const clean = lintPluginComponents({ agents: ['./agents/setup.md', './agents/status.md', './agents/update.md'] }, onDisk);
     assert.deepStrictEqual(clean, [], clean.join('\n'));
 
-    const missing = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md', './commands/update.md', './commands/gone.md'] }, onDisk);
+    const missing = lintPluginComponents({ agents: ['./agents/setup.md', './agents/status.md', './agents/update.md', './agents/gone.md'] }, onDisk);
     assert.strictEqual(missing.length, 1, missing.join('\n'));
-    assert.match(missing[0], /names 'commands\/gone\.md', which is not on disk/);
+    assert.match(missing[0], /names 'agents\/gone\.md', which is not on disk/);
 
-    const dead = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md'] }, onDisk);
+    const dead = lintPluginComponents({ agents: ['./agents/setup.md', './agents/status.md'] }, onDisk);
     assert.strictEqual(dead.length, 1, dead.join('\n'));
-    assert.match(dead[0], /setup-plugin\/commands\/update\.md is not in plugin\.json's `commands` array/);
+    assert.match(dead[0], /setup-plugin\/agents\/update\.md is not in plugin\.json's `agents` array/);
     assert.match(dead[0], /ships dead in every install/, 'the message says what the cost of the miss is');
 
     // A field the manifest leaves out is the default directory scan - nothing to reconcile.
     assert.deepStrictEqual(lintPluginComponents({}, onDisk), []);
     // The `./` prefix is the manifest's own spelling, not a difference.
-    assert.deepStrictEqual(lintPluginComponents({ commands: ['commands/setup.md', 'commands/status.md', 'commands/update.md'] }, onDisk), []);
+    assert.deepStrictEqual(lintPluginComponents({ agents: ['agents/setup.md', 'agents/status.md', 'agents/update.md'] }, onDisk), []);
+});
+
+// 42, the commands half (2026-11-12): the manifest lists the commands FOLDER, so a new command file - one folder down
+// too (`commands/mode/scoring.md` is /alfred-code:mode:scoring) - is found with no list to keep.
+test('check 42: the commands key is the folder, so no command file can ship dead', () => {
+    const { lintPluginComponents } = require('./lint-skills.js');
+    const nine = ['configure.md', 'init.md', 'mode/auto-compact.md', 'mode/auto-run.md', 'mode/scoring.md', 'status.md', 'uninstall.md', 'update.md', 'validate.md'];
+    assert.deepStrictEqual(lintPluginComponents({ commands: ['./commands/'] }, { commands: nine }), []);
+    const listed = lintPluginComponents({ commands: ['./commands/init.md'] }, { commands: nine });
+    assert.strictEqual(listed.length, 1, listed.join('\n'));
+    assert.match(listed[0], /lists files, not the folder/);
+    assert.strictEqual(lintPluginComponents({ commands: ['./commands/', './commands/mode/'] }, { commands: nine }).length, 1, 'the folder alone: a second entry would list a command twice');
+});
+
+test('commandFiles: every .md under the folder, one level of sub-folders, sorted with forward slashes', () => {
+    const { commandFiles, setupAskFiles } = require('./lint-skills.js');
+    const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'alfred-cmdfiles-'));
+    try
+    {
+        const dir = path.join(tmp, 'setup-plugin', 'commands');
+        fs.mkdirSync(path.join(dir, 'mode', 'deeper'), { recursive: true });
+        for (const rel of ['init.md', 'notes.txt', 'mode/scoring.md', 'mode/auto-run.md', 'mode/deeper/too-deep.md']) fs.writeFileSync(path.join(dir, rel), "```ask\nGo?\n- 'Go (Recommended)' - why\n- 'Stop' - why\n```\n");
+        assert.deepStrictEqual(commandFiles(dir), ['init.md', 'mode/auto-run.md', 'mode/scoring.md']);
+        assert.deepStrictEqual(commandFiles(path.join(tmp, 'absent')), [], 'a missing folder is no command');
+        const asks = setupAskFiles(tmp).map((f) => f.file).sort();
+        assert.deepStrictEqual(asks, ['setup-plugin/commands/init.md', 'setup-plugin/commands/mode/auto-run.md', 'setup-plugin/commands/mode/scoring.md'], 'setupAskFiles reads a command one folder down');
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
 // 37 (extension). A BARE plugin name is the same class as a bare plugin skill, one level up.

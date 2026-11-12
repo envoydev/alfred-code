@@ -32,6 +32,7 @@ const ALLOWED = {
     'scripts/lint-skills.js:DOCS_VERSIONING': 'a lint check that the seed special-cases the catalog key - no settings read',
     'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
     'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/hooks/hook-prelude.js:AUTO_COMPACT': 'compactCause reads the env it is handed - the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORER': 'switchOn reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORER_LEVEL': 'reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORER_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',

@@ -100,7 +100,11 @@ test('I9: every setup-plugin/evals case invokes a command or skill the core entr
     const dir = path.join(ROOT, 'setup-plugin', 'evals');
     const cases = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'results').map((e) => e.name);
     assert.ok(cases.length >= 2, cases.join(','));
-    const commands = new Map(core.commands.map((c) => [`alfred-code:${path.basename(c, '.md')}`, c]));
+    // The core lists its commands FOLDER: a file one folder down is one more `:` segment (/alfred-code:mode:scoring).
+    const { commandFiles } = require('./lint-skills.js');
+    const carried = core.commands.flatMap((c) => (c.endsWith('/') ? commandFiles(path.join(ROOT, c)).map((f) => [f, path.join(c, f)]) : [[path.basename(c), c]]));
+    const commands = new Map(carried.map(([f, rel]) => [`alfred-code:${f.replace(/\.md$/, '').replace(/\//g, ':')}`, rel]));
+    assert.ok(commands.has('alfred-code:status') && commands.has('alfred-code:mode:scoring'), [...commands.keys()].join(','));
     const skills = new Map(core.skills.map((s) => [path.basename(s), path.join(s, 'SKILL.md')]));
     for (const name of cases)
     {
@@ -128,7 +132,8 @@ test('I9: the size-first cases live with the library cases, where the eval bundl
             assert.ok(fs.existsSync(path.join(out, 'skills', call, 'SKILL.md')), `${c}: the bundle does not carry /${call}`);
         }
         // The bundle's commands and router name their scripts under ${CLAUDE_PLUGIN_ROOT}: each must resolve.
-        const bodies = [...fs.readdirSync(path.join(out, 'commands')).map((f) => path.join(out, 'commands', f)), path.join(out, 'skills', 'alfred-code', 'SKILL.md')];
+        const bodies = [...require('./lint-skills.js').commandFiles(path.join(out, 'commands')).map((f) => path.join(out, 'commands', f)), path.join(out, 'skills', 'alfred-code', 'SKILL.md')];
+        assert.ok(bodies.some((b) => b.endsWith(path.join('mode', 'scoring.md'))), 'the bundle carries a command one folder down');
         for (const body of bodies)
             for (const ref of pluginRefs(fs.readFileSync(body, 'utf8')))
                 assert.ok(fs.existsSync(path.join(out, ref)), `${path.basename(body)} names \${CLAUDE_PLUGIN_ROOT}/${ref}, absent from the bundle`);

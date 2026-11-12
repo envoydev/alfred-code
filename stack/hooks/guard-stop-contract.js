@@ -223,7 +223,11 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
   };
 }
 fresh.use(payload);
-const { FRESH_OFF, COMPACT_INSTEAD, ctxThreshold, coldFloor } = fresh;
+const { ctxThreshold, coldFloor } = fresh;
+// why this session compacts instead of offering a fresh one (hook-prelude.js compactCause): the project's variable, auto-run or its own switch
+const COMPACT_WHY = (() => { try { const pre = require('./hook-prelude.js'); return pre.COMPACT_SAID[pre.compactCause(payload)] || ''; } catch { return fresh.COMPACT_INSTEAD ? 'ALFRED_CODE_AUTO_COMPACT=1' : ''; } })();
+const COMPACT_INSTEAD = Boolean(COMPACT_WHY);
+const FRESH_OFF = fresh.FRESH_OFF || COMPACT_INSTEAD;
 // The cache-aware verdict on one route (fresh-session.js freshVerdict): its probe row goes to the ledger once per
 // session, route and answer, so a suppressed offer is counted beside a made one.
 function paysAt(route, ctx) {
@@ -1285,7 +1289,7 @@ function scorerOwed(state, pre, root) {
       if (o.type !== 'user') return undefined;
       n += 1;
       const text = rowText(o);
-      // a flag-only line (`/mode-output-scorer --mode-output-scorer-off`) switches and starts nothing: no stack (spec section 4)
+      // a mode command (`/alfred-code:mode:scoring off`) switches and starts nothing: no stack (spec section 4)
       const flagOnly = Boolean(modeFlagsOf(text).flagOnly);
       if (text.includes('<command-name>')) {
         const marks = pre.producerMarks(JSON.stringify(o));
@@ -2713,7 +2717,7 @@ if (payload.hook_event_name === 'Stop') {
     if (nth >= AUTO_CONTINUE_CAP) {
       if (nth === AUTO_CONTINUE_CAP) {
         ledgerRow({ tool: '', mode: 'auto', kind: 'auto-continue-cap', detail: { count: nth, marker: autoMarker },
-          reason: `auto-run: the ${AUTO_CONTINUE_CAP}th Stop under this run marker passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the marker stands until the run's close or --mode-auto-run-off` });
+          reason: `auto-run: the ${AUTO_CONTINUE_CAP}th Stop under this run marker passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the marker stands until the run's close or /alfred-code:mode:auto-run off` });
       }
       process.exit(0);
     }
@@ -2721,7 +2725,7 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
       + `print its close and delete ${autoMarker} - that ends this run; auto-run stays on for the session until\n`
-      + '--mode-auto-run-off. If it waits on work this session started, end the turn with one line saying so; if only the\n'
+      + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if only the\n'
       + 'user can decide the next step (an ask with no Recommended option, a push), put that ask now.');
     process.exit(2);
   }
@@ -2883,7 +2887,7 @@ if (payload.hook_event_name === 'Stop') {
   // older than the hook has no triggerText and the bare number stands
   const _triggerSaid = (() => { try { return fresh.triggerText(fresh.ctxThresholdWhy()) || `${Math.round(_trigger / 1000)}k`; } catch { return `${Math.round(_trigger / 1000)}k`; } })();
   const freshLine = COMPACT_INSTEAD
-    ? 'This project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1), so no resume option belongs in the ask.\n'
+    ? `This session compacts instead of offering a fresh session (${COMPACT_WHY}), so no resume option belongs in the ask.\n`
     : _trigger === null
     ? 'The fresh-session offer is switched off on this install, so no resume option is expected.\n'
     : (_carry
@@ -3298,7 +3302,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // 12. A SMALL CLOSE WITH NO REVIEW RECEIPT (smallCloseOwesReview, below) - denied once per ask text: the verifier runs
     // before the close is put to the user, not after the answer.
     const noReview = (() => { try { const f = flowState(); return f.flow ? smallCloseOwesReview(f, `${turnProseBeforeAsk()}\n${askText}`) : null; } catch { return null; } })();
-    // 13. A FRESH-SESSION OPTION WHERE THE PROJECT COMPACTS INSTEAD (fresh-session.js COMPACT_INSTEAD, the user's ruling of
+    // 13. A FRESH-SESSION OPTION WHERE THE SESSION COMPACTS INSTEAD (hook-prelude.js compactCause, the user's ruling of
     // 2026-10-14). The flows' stop asks offer the hand-off from their own text; here the session compacts and goes on, so
     // the option is dropped - mechanical, so the fix is handed back: a '(Recommended)' mark it carried moves to the first
     // option left, listed first.
@@ -3393,7 +3397,7 @@ if (payload.tool_name === 'AskUserQuestion') {
       // would leave with one option, or any reason with no mechanical fix, still denies once below.
       if (fixesInPlace) {
         askFixed = fixed;
-        const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this project compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : '', dropHandoff ? 'the fresh-session hand-off dropped (a fresh session does not pay back here)' : ''].filter(Boolean);
+        const what = [voice.length ? 'its dashes and double quotes' : '', numbers ? 'the fresh option\'s measured numbers' : '', compactFresh ? 'the fresh-session option dropped (this session compacts instead)' : '', pointsAbove ? 'its pointer at a resume block above (none is on screen) reworded' : '', dropHandoff ? 'the fresh-session hand-off dropped (a fresh session does not pay back here)' : ''].filter(Boolean);
         pendAskFixed({ tool: 'AskUserQuestion', mode: 'rewrite', kind: 'ask-fixed', reason: `ask fixed in place: ${what.join(', ')}`, detail: { voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, compactFresh, pointsAbove, dropHandoff } });
         notes.push(`The ask just answered went out with ${what.join(' and ')} fixed in place by the hook - the user saw the fixed text. `
           + (voice.length ? 'Keep the house voice (alfred-interaction.md) in every later ask: single dashes, single quotes. ' : '')
@@ -3402,7 +3406,7 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (pointsAbove ? 'If the user picks the fresh session, this turn ends with the resume block in its own fenced block. ' : ''));
       } else if (first && (mechanical || typeIntoOther || unmarked || misMarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
-        if (compactFresh) reasons.push('a fresh-session option, while this project compacts instead (ALFRED_CODE_AUTO_COMPACT=1)');
+        if (compactFresh) reasons.push(`a fresh-session option, while this session compacts instead (${COMPACT_WHY})`);
         if (noReview) reasons.push(noReview.from === 'text' ? 'a small solve-task close whose `Result:` line has no `review:` field'
           : `a solve-task close that states no \`Size:\` (this cycle's ${noReview.from === 'floor' ? `spec-check \`size floor:\` is ${noReview.size}` : `\`Size:\` was ${noReview.size}`}) and whose \`Result:\` line has no \`review:\` field`);
         if (blind) reasons.push(`${blind.pointer ? 'a pointer at' : 'an approval of'} ${blind.noun ? `the ${blind.noun}` : 'something'} ${blind.pointer ? 'above that ' : ''}the chat has not shown since the user's last message`);

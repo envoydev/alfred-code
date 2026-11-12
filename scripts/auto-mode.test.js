@@ -1,10 +1,11 @@
-// auto-run (stack-modes spec, 2026-10-27; was auto-mode, the user's ruling of 2026-10-14): `--mode-auto-run-on` right after a
-// task, capture, loop, issue or mode command turns auto-run on for the SESSION. The fresh-session hook writes the AUTO
-// stamp naming the session, and each typed family command under it opens a run marker; the stop contract answers each ask
-// that marks one Recommended option and sends a Stop back while the marker stands, until the run's close deletes it.
-// `--mode-auto-run-off` alone ends the mode. The installer seeds each model's auto-compact window at its fresh-session
-// trigger, because Claude Code reads that key at session start only (measured 2026-10-14: written mid-session it changed
-// nothing; set before the start it compacted at 76k of a 100k window). Every hook case runs through the hook's real entry.
+// auto-run (the mode-commands spec, 2026-11-12; stack-modes before it, 2026-10-27; was auto-mode, the user's ruling of
+// 2026-10-14): `/alfred-code:mode:auto-run on`, typed alone on its line, turns auto-run on for the SESSION. The
+// fresh-session hook writes the AUTO stamp naming the session, and each typed family command under it opens a run marker;
+// the stop contract answers each ask that marks one Recommended option and sends a Stop back while the marker stands,
+// until the run's close deletes it. `/alfred-code:mode:auto-run off` alone ends the mode. The installer seeds each
+// model's auto-compact window at its fresh-session trigger, because Claude Code reads that key at session start only
+// (measured 2026-10-14: written mid-session it changed nothing; set before the start it compacted at 76k of a 100k
+// window). Every hook case runs through the hook's real entry.
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
@@ -46,8 +47,8 @@ function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
     const at = new Date(Date.now() - 60000).toISOString();
     const base = [
         // The typed turns a live AUTO stamp is proven by (audit 2026-10-30 HK-03, hook-prelude.js autoStampVerified): the
-        // user's flag-only mode line, in the harness's tagged shape, and the hand-written waiver's words.
-        { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: '<command-message>mode-auto-run</command-message>\n<command-name>/mode-auto-run</command-name>\n<command-args>--mode-auto-run-on</command-args>' } },
+        // user's mode command, in the harness's tagged shape, and the hand-written waiver's words.
+        { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>' } },
         { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: [{ type: 'text', text: 'take every recommendation' }] } },
         { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: [{ type: 'text', text: 'go' }] } },
         { type: 'assistant', entrypoint: 'cli', timestamp: at, message: { id: `m${++n}`, model, role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_creation_input_tokens: 20000 } } },
@@ -62,7 +63,7 @@ const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_
 const run = (hook, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
 const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
-const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality --mode-auto-run-on"\nsession: ${sid}\nskill: loop-code-quality\ntranscript-size: 0\n${extra}`);
+const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n${extra}`);
 // The run marker (stack-modes spec section 2): open while a run in auto-run goes; the Stop hold and the dispatch guard read it.
 const marker = (p, sid) => path.join(p.root, '.alfred', 'state', 'sessions', `AUTO-RUN-${sid}`);
 const openRun = (p, sid, skill = 'loop-code-quality') => { fs.mkdirSync(path.dirname(marker(p, sid)), { recursive: true });
@@ -121,116 +122,78 @@ const expand = (p, sid, prompt, t, extra = {}) => run('guard-fresh-session-start
 }, { CLAUDE_PROJECT_DIR: p.root });
 const context = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
 
-test('auto-mode start: the typed command writes the stamp and the run marker before the run, and the fresh-session offer never fires', () =>
+test('auto-run start: after the mode command a typed flow command opens the run marker and gets the contract, and the fresh-session offer never fires', () =>
 {
     const p = project();
-    // 450k of a 1M window over a 20k first message: the size offer is due, and without the flag it is made
+    // 450k of a 1M window over a 20k first message: the size offer is due, and without auto-run it is made
     const big = transcript([], 'claude-opus-5-5', 450000);
     const plain = expand(p, 's1', '/loop-code-quality src/', big);
     assert.match(context(plain), /Do NOT start the run yet/, 'the offer, without auto-run');
     assert.ok(!fs.existsSync(p.gate), 'and no stamp');
-    const auto = expand(p, 's2', '/loop-code-quality --mode-auto-run-on src/', big);
+    autoOn(p, 's2', big);
+    const before = fs.readFileSync(p.gate, 'utf8');
+    assert.match(before, /^AUTO - "\/alfred-code:mode:auto-run on"\nsession: s2\nskill: alfred-code:mode:auto-run\nat: \d{4}-/, 'the mode command writes its stamp to state/approvals/APPROVAL');
+    const auto = expand(p, 's2', '/loop-code-quality src/', big);
     assert.strictEqual(auto.status, 0);
     const said = context(auto);
     assert.match(said, /^auto-run is ON for this \/loop-code-quality run/);
     assert.doesNotMatch(said, /Do NOT start the run yet/, 'the offer is never made under auto-run');
     for (const rule of [/\(Recommended\) option/, /Do not end a turn between steps/, /never push, merge, deploy or send anything out/, /fresh-session hand-off is never taken/,
         /never write an APPROVED or AUTO line over it/, /an unpushed commit is a Leftovers line/,
-        /delete \.alfred\/state\/sessions\/AUTO-RUN-s2 if its `skill:` line names this run - that ends this run; auto-run stays on for the session until --mode-auto-run-off/])
+        /delete \.alfred\/state\/sessions\/AUTO-RUN-s2 if its `skill:` line names this run - that ends this run; auto-run stays on for the session until \/alfred-code:mode:auto-run off/])
         assert.match(said, rule);
     assert.doesNotMatch(said, /delete \.alfred\/state\/approvals\/APPROVAL/, 'the close never deletes the stamp');
-    const stamp = fs.readFileSync(p.gate, 'utf8');
-    assert.match(stamp, /^AUTO - "\/loop-code-quality --mode-auto-run-on src\/"\nsession: s2\nskill: loop-code-quality\nat: \d{4}-/, 'the flag writes its stamp to state/approvals/APPROVAL');
     assert.match(fs.readFileSync(marker(p, 's2'), 'utf8'), /^skill: loop-code-quality\nprompt: [0-9a-f]{12}\nat: \d{4}-/, 'and the run marker');
     assert.ok(!fs.existsSync(p.legacy), 'and nothing to the legacy flow/');
-    assert.ok(rows(p, 's2').some((r) => r.mode === 'auto' && r.kind === 'auto-start'), 'one auto-start row');
+    assert.ok(rows(p, 's2').some((r) => r.mode === 'auto' && r.kind === 'auto-start' && r.detail.kept === true), 'the run rides the stamp: a kept auto-start row');
     // a second flow in the same session rides the live stamp: its words and time stay
-    const before = fs.readFileSync(p.gate, 'utf8');
-    assert.match(context(expand(p, 's2', '/task-solve --mode-auto-run-on fix the cache', big)), /auto-run is ON for this \/task-solve run/);
+    assert.match(context(expand(p, 's2', '/task-solve fix the cache', big)), /auto-run is ON for this \/task-solve run/);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the live stamp is kept');
     // another session's stamp is never overwritten while that session is still RUNNING (its own transcript, beside this
-    // one, written in the last 10 minutes): this run asks as usual, the banner says why and how to take over
+    // one, written in the last 10 minutes): the mode command says why and how to take over, and the run asks as usual
     const live = path.join(path.dirname(big), 's2.jsonl');
     fs.writeFileSync(live, '{}\n');
-    const refused = context(expand(p, 's3', '/task-solve-cross --mode-auto-run-on', big));
-    assert.doesNotMatch(refused, /auto-run is ON/);
-    assert.match(refused, /auto-run did NOT start: another session \(s2\) is running a stamped run in this checkout right now, and \.alfred\/state\/approvals\/APPROVAL is its approval - it ends with --mode-auto-run-off there, or delete \.alfred\/state\/approvals\/APPROVAL to take over/);
+    const refused = modeLine(p, 's3', `${AUTO_CMD} on`, big);
+    assert.match(refused, /^\[mode\] auto-run did not start: another session \(s2\) is running a stamped run in this checkout right now, and \.alfred\/state\/approvals\/APPROVAL is its approval - it ends with \/alfred-code:mode:auto-run off there, or delete \.alfred\/state\/approvals\/APPROVAL to take over/);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the running session\'s stamp is left as it is');
     assert.ok(rows(p, 's3').some((r) => r.kind === 'auto-start-refused'), 'one refused row');
+    assert.doesNotMatch(context(expand(p, 's3', '/task-solve-cross', big)), /auto-run is ON/);
     assert.ok(!fs.existsSync(marker(p, 's3')), 'and no marker');
     // the session went quiet: the new start takes over, and the stamp says whose it was
     const quiet = new Date(Date.now() - 11 * 60 * 1000);
     fs.utimesSync(live, quiet, quiet);
-    assert.match(context(expand(p, 's3', '/task-solve-cross --mode-auto-run-on', big)), /auto-run is ON for this \/task-solve-cross run/);
-    assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\nskill: task-solve-cross\nat: [^\n]+\ntaken-from: s2\n/);
+    autoOn(p, 's3', big);
+    assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\nskill: alfred-code:mode:auto-run\nat: [^\n]+\n[\s\S]*taken-from: s2\n/);
+    assert.match(context(expand(p, 's3', '/task-solve-cross', big)), /auto-run is ON for this \/task-solve-cross run/);
     // no transcript for the stamp's session at all (another machine's, or cleared): no live run, replaced
-    fs.writeFileSync(p.gate, 'AUTO - "/task-solve --mode-auto-run-on x"\nsession: gone-session\nskill: task-solve\nat: 2026-10-20T00:00:00Z\n');
-    assert.match(context(expand(p, 's4', '/task-solve --mode-auto-run-on y', big)), /auto-run is ON/);
+    fs.writeFileSync(p.gate, 'AUTO - "/alfred-code:mode:auto-run on"\nsession: gone-session\nskill: alfred-code:mode:auto-run\nat: 2026-10-20T00:00:00Z\n');
+    autoOn(p, 's4', big);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s4\n[\s\S]*\ntaken-from: gone-session\n/);
     fs.rmSync(live, { force: true });
 });
 
-test('auto-mode start: a task, capture, loop, issue or mode command, only --mode-auto-run-on in the leading run, never a seat, and the model\'s Skill call only on the user\'s typed auto-run command', () =>
+test('auto-run start: a retired flag, a prose word, a seat and a payload with no session start nothing; every family command runs under the session\'s stamp', () =>
 {
     const t = transcript();
     const none = (prompt, extra) => { const p = project(); const r = expand(p, 'sx', prompt, t, extra); return !fs.existsSync(p.gate) && !/auto-run is ON/.test(context(r)); };
-    // the old flag and the bare word start nothing: the old flag gets its pointer at UserPromptSubmit (spec section 5)
-    assert.ok(none('/task-solve --auto-mode fix it'), 'the old flag');
-    assert.ok(none('/task-solve auto-mode fix it'), 'the bare word of 2.4.0-2.5.0');
-    assert.ok(none('/loop-code-quality --mode-auto-run'), 'the flag is exact');
-    assert.ok(none('/loop-code-quality -mode-auto-run-on'), 'two dashes');
-    assert.ok(none('/loop-code-quality --mode-auto-run-ons'), 'and whole');
-    assert.ok(none('/loop-code-quality --MODE-AUTO-RUN-ON'), 'and lower case');
-    // only in the leading run right after the command
-    assert.ok(none('/task-solve fix the --mode-auto-run-on flag wording'), 'the flag inside the request is the request');
-    assert.ok(none('/loop-code-quality src/ --mode-auto-run-on'), 'and trailing it starts nothing');
-    assert.ok(none('/loop-code-quality --mode-auto-run-on --mode-auto-run-off'), 'off wins');
-    assert.ok(none('/loop-code-quality --mode-auto-run-on', { agent_id: 'seat-1' }), 'a seat never starts one');
-    assert.ok(none('/loop-code-quality --mode-auto-run-on', { session_id: '' }), 'no session, nothing to name');
-    const p = project();
-    assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage-quality --mode-output-scorer-on --mode-auto-run-on', t)), /auto-run is ON/, 'a scoped name, any order in the run');
-    const cap = project();
-    assert.match(context(expand(cap, 'sc', '/capture-awareness --mode-auto-run-on', t)), /auto-run is ON for this \/capture-awareness run/);
-    assert.match(fs.readFileSync(cap.gate, 'utf8'), /^AUTO - "\/capture-awareness --mode-auto-run-on"\nsession: sc\nskill: capture-awareness\n/);
-    // an issue command, the flag on its own line as typed in a real session
-    const iss = project();
-    assert.match(context(expand(iss, 'si', '/issue-diagnoser --mode-auto-run-on\n\nthe login 500', t)), /auto-run is ON for this \/issue-diagnoser run/);
-    assert.match(fs.readFileSync(iss.gate, 'utf8'), /^AUTO - "\/issue-diagnoser --mode-auto-run-on the login 500"\nsession: si\nskill: issue-diagnoser\n/);
-    // the model's own Skill call, the flag leading its args: it writes or keeps the stamp only when the user's newest
-    // TYPED prompt is a family command whose leading run turns auto-run on (spec section 2, round-3 M1)
-    const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
-    const skillCall = (skill, args, tp, sid = 'sz') => { const pr = project(); const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill',
-        tool_input: { skill, args }, session_id: sid, cwd: pr.root, transcript_path: tp }, { CLAUDE_PROJECT_DIR: pr.root }); return { pr, r }; };
-    const { pr: q, r: call } = skillCall('task-design', '--mode-auto-run-on the cache plan', transcript([typed('/task-design --mode-auto-run-on the cache plan')]));
-    assert.strictEqual(call.status, 0, call.stderr);
-    assert.strictEqual(JSON.parse(call.stdout).hookSpecificOutput.hookEventName, 'PreToolUse');
-    assert.match(context(call), /auto-run is ON for this \/task-design run/);
-    assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design --mode-auto-run-on the cache plan"\nsession: sz\n/);
-    assert.ok(!fs.existsSync(marker(q, 'sz')), 'the Skill route never writes a marker');
-    const cmdRow = (name, args) => typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`);
-    assert.match(context(skillCall('task-implement', '--mode-auto-run-on', transcript([cmdRow('task-solve', '--mode-auto-run-on\n\nfix it')])).r), /auto-run is ON/, 'a typed slash run');
-    assert.match(context(skillCall('issue-signatures-runtime', '--mode-auto-run-on', transcript([cmdRow('issue-diagnoser', '--mode-auto-run-on the 500')])).r), /auto-run is ON/, 'a typed issue run');
-    assert.match(context(skillCall('capture-quality', '--mode-auto-run-on', transcript([cmdRow('capture-quality', '--mode-auto-run-on')])).r), /auto-run is ON for this \/capture-quality run/, 'a typed capture run');
-    const { pr: v, r: own } = skillCall('task-migrate-v2', '--mode-auto-run-on', transcript([typed('/task-migrate-v2 --mode-auto-run-on')]), 'sv');
-    assert.match(context(own), /auto-run is ON for this \/task-migrate-v2 run/);
-    assert.ok(fs.existsSync(v.gate), 'a project\'s own task skill, a digit in its name');
-    for (const [tp, why] of [
-        [t, 'the typed prompt does not carry it'],
-        [transcript([typed('/task-solve --mode-auto-run-on fix it'), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }, typed('now look at the cache layer')]), 'an older typed prompt carried it, the newest does not'],
-        [transcript([typed('design the cache plan in auto-run please')]), 'a prose ask is no command'],
-        [transcript([cmdRow('task-solve', 'fix the --mode-auto-run-on banner')]), 'a command whose request names the flag'],
-        [transcript([cmdRow('task-solve', '--auto-mode fix it')]), 'a typed command opening with the old flag'],
-        [transcript([cmdRow('habits-explain-topic', '--mode-auto-run-on x')]), 'a command outside the families'],
-        [transcript([{ ...typed('Base directory for this skill ... auto-run is ON'), isMeta: true }]), 'a skill body is no typed prompt'],
-        [transcript([{ ...typed('Another Claude session sent a message:\n<agent-message from="a">run in auto-run</agent-message>'), isMeta: true }]), 'a seat\'s hand-back'],
-        [transcript([{ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: '--mode-auto-run-on' }] } }]), 'a tool result'],
-        [path.join(TMP, 'no-such.jsonl'), 'no transcript'],
-    ])
+    // a retired flag and the bare word start nothing: the flag gets its pointer at UserPromptSubmit (spec section 5)
+    for (const prompt of ['/task-solve --auto-mode fix it', '/task-solve auto-mode fix it', '/loop-code-quality --mode-auto-run-on', '/loop-code-quality --mode-auto-run-on src/',
+        '/task-solve fix the --mode-auto-run-on flag wording', '/loop-code-quality src/ --mode-auto-run-on', '/loop-code-quality'])
+        assert.ok(none(prompt), prompt);
+    // under a live stamp a seat's line and a payload naming no session open no run
+    const seat = project();
+    autoStamp(seat, 'sx');
+    assert.doesNotMatch(context(expand(seat, 'sx', '/loop-code-quality', t, { agent_id: 'seat-1' })), /auto-run is ON/, 'a seat never opens a run');
+    assert.doesNotMatch(context(expand(seat, 'sx', '/loop-code-quality', t, { session_id: '' })), /auto-run is ON/, 'no session, nothing to name');
+    assert.ok(!fs.existsSync(marker(seat, 'sx')), 'and no marker');
+    // a scoped name, a capture, an issue command and a project's own task skill (a digit in its name) all run under the mode
+    for (const [line, name] of [['/alfred-code:loop-test-coverage-quality', 'loop-test-coverage-quality'], ['/capture-awareness', 'capture-awareness'],
+        ['/issue-diagnoser the login 500', 'issue-diagnoser'], ['/task-migrate-v2', 'task-migrate-v2']])
     {
-        const { pr, r } = skillCall('task-implement', '--mode-auto-run-on', tp, 'sr');
-        assert.strictEqual(r.status, 0, r.stderr);
-        assert.ok(!fs.existsSync(pr.gate) && !/auto-run is ON/.test(context(r)), `no start: ${why}`);
-        assert.ok(rows(pr, 'sr').some((x) => x.kind === 'auto-start-refused'), `and a refused row: ${why}`);
+        const p = project();
+        autoOn(p, 'sy', t);
+        assert.match(context(expand(p, 'sy', line, t)), new RegExp(`^auto-run is ON for this /${name} run`), line);
+        assert.match(fs.readFileSync(marker(p, 'sy'), 'utf8'), new RegExp(`^skill: ${name}\\n`), line);
     }
     // the typed route's matcher reaches every family name, a project's own and a digit included (audit HK06)
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
@@ -242,7 +205,7 @@ test('auto-mode start: a task, capture, loop, issue or mode command, only --mode
         assert.ok(!matcher.test(name), `and not for ${name}`);
 });
 
-test('mode start: --mode-auto-run-on writes the stamp and a run marker; a later flagless family command writes a new marker and keeps the stamp (AC2)', () =>
+test('mode start: the mode command writes the stamp; each typed family command under it writes a new marker and keeps the stamp (AC2)', () =>
 {
     const t = transcript();
     const ends = [];
@@ -251,25 +214,28 @@ test('mode start: --mode-auto-run-on writes the stamp and a run marker; a later 
     {
         const p = project();
         const both = (prompt) => { if (submitFirst) sub(p, 'm1', prompt, t); const r = expand(p, 'm1', prompt, t); if (!submitFirst) sub(p, 'm1', prompt, t); return r; };
-        assert.match(context(both('/task-solve --mode-auto-run-on fix A')), /^auto-run is ON for this \/task-solve run/);
+        autoOn(p, 'm1', t);
         const stamp = fs.readFileSync(p.gate, 'utf8');
-        assert.match(stamp, /^AUTO - "\/task-solve --mode-auto-run-on fix A"\nsession: m1\nskill: task-solve\n/);
+        assert.match(stamp, /^AUTO - "\/alfred-code:mode:auto-run on"\nsession: m1\nskill: alfred-code:mode:auto-run\n/);
+        assert.ok(!fs.existsSync(marker(p, 'm1')), 'the mode command opens no run');
+        assert.match(context(both('/task-solve fix A')), /^auto-run is ON for this \/task-solve run/);
+        assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), stamp, 'the stamp is kept');
         const first = fs.readFileSync(marker(p, 'm1'), 'utf8');
         assert.match(first, /^skill: task-solve\nprompt: [0-9a-f]{12}\n/);
         const b = both('/capture-awareness');
-        assert.match(context(b), /^auto-run is ON for this \/capture-awareness run/, 'a flagless family command under the mode gets the contract');
+        assert.match(context(b), /^auto-run is ON for this \/capture-awareness run/, 'the next family command under the mode gets the contract');
         assert.match(bannerOf(b)[0], /^\*\*Auto-run: ON\*\* for \/capture-awareness /);
         assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), stamp, 'the stamp is kept');
         const second = fs.readFileSync(marker(p, 'm1'), 'utf8');
         assert.match(second, /^skill: capture-awareness\n/, 'a new marker');
         assert.notStrictEqual(second.split('\n')[1], first.split('\n')[1], 'for the new prompt');
         // each typed prompt carries its own prompt_id, which the marker records (R096)
-        ends.push([stamp, second].map((s) => s.replace(/\nat: [^\n]*/, '').replace(/\nprompt-id: [^\n]*/, '')));
+        ends.push([stamp, second].map((x) => x.replace(/\nat: [^\n]*/, '').replace(/\nprompt-id: [^\n]*/, '')));
     }
     assert.deepStrictEqual(ends[0], ends[1], 'both event orders end in the same files');
 });
 
-test('mode prompt: a plain prompt or "stop auto-mode" keeps the stamp; --mode-auto-run-off deletes the stamp and the marker with one auto-end row (AC3, AC4)', () =>
+test('mode prompt: a plain prompt or "stop auto-mode" keeps the stamp; the off command deletes the stamp and the marker with one auto-end row (AC3, AC4)', () =>
 {
     const t = transcript();
     const p = project();
@@ -284,40 +250,31 @@ test('mode prompt: a plain prompt or "stop auto-mode" keeps the stamp; --mode-au
         assert.doesNotMatch(context(r), /auto-run is OFF/, `and nothing says it ended: ${prompt}`);
     }
     assert.ok(!rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'no auto-end row');
-    sub(p, 'e2', '/task-solve --mode-auto-run-off x', t);
-    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'e1')), 'another session\'s -off leaves this session\'s files');
-    for (const submitFirst of [true, false])
-    {
-        const pr = project();
-        autoStamp(pr, 'e3');
-        openRun(pr, 'e3');
-        const prompt = '/task-solve --mode-auto-run-off X';
-        const before = submitFirst ? sub(pr, 'e3', prompt, t) : null;
-        const x = expand(pr, 'e3', prompt, t);
-        const s = before || sub(pr, 'e3', prompt, t);
-        assert.doesNotMatch(context(x), /auto-run is ON for this/, `no contract (${submitFirst ? 'submit first' : 'expansion first'})`);
-        assert.match(bannerOf(x)[0], /^\*\*Auto-run: OFF\*\* for \/task-solve /);
-        assert.ok(!fs.existsSync(pr.gate) && !fs.existsSync(marker(pr, 'e3')), 'both files deleted');
-        assert.match(context(s), /auto-run is OFF for this session/);
-        assert.strictEqual(rows(pr, 'e3').filter((r) => r.kind === 'auto-end').length, 1, 'one auto-end row');
-        // AC4: after -off the next asks wait
-        const next = expand(pr, 'e3', '/task-solve Y', t);
-        assert.match(bannerOf(next)[0], /^\*\*Auto-run: OFF\*\* for \/task-solve - each question waits for your answer\.$/);
-        assert.doesNotMatch(context(next), /auto-run is ON/);
-        assert.ok(!fs.existsSync(marker(pr, 'e3')), 'no marker without the mode');
-        assert.strictEqual(answered(ask(pr, 'e3', [q('Build it?', ['Yes (Recommended)', 'No'])])), null, 'the ask waits');
-        const stopped = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'e3', cwd: pr.root, transcript_path: t,
-            last_assistant_message: 'Result: done\nProgress: 4 of 4\nLeftovers: none' }, { CLAUDE_PROJECT_DIR: pr.root });
-        assert.doesNotMatch(stopped.stderr, /its run is not closed/, 'and Stop is not held');
-    }
+    sub(p, 'e2', `${AUTO_CMD} off`, t);
+    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'e1')), 'another session\'s off leaves this session\'s files');
+    const pr = project();
+    autoStamp(pr, 'e3');
+    openRun(pr, 'e3');
+    assert.strictEqual(modeLine(pr, 'e3', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.ok(!fs.existsSync(pr.gate) && !fs.existsSync(marker(pr, 'e3')), 'both files deleted');
+    assert.strictEqual(rows(pr, 'e3').filter((r) => r.kind === 'auto-end').length, 1, 'one auto-end row');
+    // AC4: after the off command the next asks wait
+    const next = expand(pr, 'e3', '/task-solve Y', t);
+    assert.match(bannerOf(next)[0], /^\*\*Auto-run: OFF\*\* for \/task-solve - each question waits for your answer\.$/);
+    assert.doesNotMatch(context(next), /auto-run is ON/);
+    assert.ok(!fs.existsSync(marker(pr, 'e3')), 'no marker without the mode');
+    assert.strictEqual(answered(ask(pr, 'e3', [q('Build it?', ['Yes (Recommended)', 'No'])])), null, 'the ask waits');
+    const stopped = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'e3', cwd: pr.root, transcript_path: t,
+        last_assistant_message: 'Result: done\nProgress: 4 of 4\nLeftovers: none' }, { CLAUDE_PROJECT_DIR: pr.root });
+    assert.doesNotMatch(stopped.stderr, /its run is not closed/, 'and Stop is not held');
     // a stamp written by hand (a solve flow's no-stops waiver, no session line) is no auto-run of this hook's
     const h = project();
     fs.writeFileSync(h.gate, 'AUTO - "take every recommendation"\n');
-    sub(h, 'e4', '/task-solve --mode-auto-run-off x', t);
+    sub(h, 'e4', `${AUTO_CMD} off`, t);
     assert.ok(fs.existsSync(h.gate), 'a hand-written stamp stays');
 });
 
-test('mode texts: the Stop hold stderr and the auto-input note name the run marker and --mode-auto-run-off, never the stamp path; a typed /task-solve B gets the contract and no auto-input note', () =>
+test('mode texts: the Stop hold stderr and the auto-input note name the run marker and the off command, never the stamp path; a typed /task-solve B gets the contract and no auto-input note', () =>
 {
     const p = project();
     const t = transcript();
@@ -325,13 +282,13 @@ test('mode texts: the Stop hold stderr and the auto-input note name the run mark
     openRun(p, 'x1');
     const note = context(sub(p, 'x1', 'use the v2 endpoint instead', t));
     assert.match(note, /^auto-run stays ON: the user typed this message while the run goes on, so it is INPUT to the run/);
-    assert.match(note, /If this message asks to stop or pause the run, print its close and delete \.alfred\/state\/sessions\/AUTO-RUN-x1 - that ends this run; auto-run stays on until --mode-auto-run-off\./);
+    assert.match(note, /If this message asks to stop or pause the run, print its close and delete \.alfred\/state\/sessions\/AUTO-RUN-x1 - that ends this run; auto-run stays on until \/alfred-code:mode:auto-run off\./);
     assert.doesNotMatch(note, /approvals\/APPROVAL/, 'the note never names the stamp');
     assert.ok(rows(p, 'x1').some((r) => r.kind === 'auto-input'), 'an auto-input row');
     const held = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'x1', cwd: p.root, transcript_path: t,
         last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root });
     assert.strictEqual(held.status, 2);
-    assert.match(held.stderr, /If the run is finished,\s+print its close and delete \S*AUTO-RUN-x1 - that ends this run; auto-run stays on for the session until\s+--mode-auto-run-off\./);
+    assert.match(held.stderr, /If the run is finished,\s+print its close and delete \S*AUTO-RUN-x1 - that ends this run; auto-run stays on for the session until\s+\/alfred-code:mode:auto-run off\./);
     assert.doesNotMatch(held.stderr, /APPROVAL/, 'the hold never names the stamp');
     assert.strictEqual(context(sub(p, 'x1', '/task-solve B', t)), '', 'a typed family command gets no auto-input note');
     const contract = context(expand(p, 'x1', '/task-solve B', t));
@@ -370,22 +327,24 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
 {
     const p = project();
     const t = transcript();
-    const on = typedRun(p, 'b1', '/loop-code-quality --mode-auto-run-on src/', t);
+    autoOn(p, 'b1', t);
+    const on = typedRun(p, 'b1', '/loop-code-quality src/', t);
     assert.strictEqual(on.status, 0, on.stderr);
     const said = context(on);
     assert.match(said, /^auto-run is ON for this \/loop-code-quality run/, 'the contract first, its shape unchanged');
     assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
     assert.deepStrictEqual(bannerOf(on), [
-        '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/mode-auto-run --mode-auto-run-off`.',
+        '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/alfred-code:mode:auto-run off`.',
         "**Context:** no fresh-session hand-off - the session auto-compacts at Claude Code's own point in its 1M context window (claude-opus-5-5) and the run goes on from the summary and its state files.",
     ]);
     // the second flow of the same run rides the live stamp, and says so too
-    assert.match(bannerOf(typedRun(p, 'b1', '/task-solve --mode-auto-run-on fix the cache', t))[0], /^\*\*Auto-run: ON\*\* for \/task-solve /);
+    assert.match(bannerOf(typedRun(p, 'b1', '/task-solve fix the cache', t))[0], /^\*\*Auto-run: ON\*\* for \/task-solve /);
     // the window the installer seeded for this model (ALFRED_CODE_AUTO_COMPACT=1) is the one named
     const q = project();
     fs.mkdirSync(path.join(q.root, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(q.root, '.claude', 'settings.json'), JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
-    assert.strictEqual(bannerOf(typedRun(q, 'b2', '/task-solve --mode-auto-run-on x', t))[1],
+    autoOn(q, 'b2', t);
+    assert.strictEqual(bannerOf(typedRun(q, 'b2', '/task-solve x', t))[1],
         '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.');
 });
 
@@ -404,16 +363,19 @@ test('mode banner: auto-mode OFF says each ask waits, then the fresh-session ref
         "**Context:** auto-compact is on (ALFRED_CODE_AUTO_COMPACT=1) - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5) instead of offering a fresh session.");
     assert.strictEqual(bannerOf(typedRun(p, 'c4', '/issue-diagnoser the login 500', t, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }))[1],
         "**Context:** the fresh-session offers are off - the session compacts at Claude Code's own point in its 1M context window (claude-sonnet-5-5).");
-    // a mode flag past the leading run starts nothing there, and the banner says so (spec section 1, `late`)
-    const HINT = ' (mode flags count only right after the command: `--mode-auto-run-on` there starts auto-run.)';
-    assert.strictEqual(bannerOf(typedRun(p, 'c8', '/task-solve fix the cache --mode-auto-run-on', t))[0],
-        `**Auto-run: OFF** for /task-solve - each question waits for your answer.${HINT}`);
+    // a retired flag, in the leading run or past it, starts nothing: plain OFF (its pointer comes at submit)
+    for (const line of ['/task-solve fix the cache --mode-auto-run-on', '/task-solve --mode-auto-run-on fix the cache'])
+        assert.strictEqual(bannerOf(typedRun(p, 'c8', line, t))[0], '**Auto-run: OFF** for /task-solve - each question waits for your answer.', line);
     // the bare word of 2.4.0-2.5.0 and the old flag are no mode-like token past the run: plain OFF (the old flag's pointer comes at submit)
     assert.strictEqual(bannerOf(typedRun(p, 'c5', '/capture-awareness auto-mode', t))[0], '**Auto-run: OFF** for /capture-awareness - each question waits for your answer.');
     assert.strictEqual(bannerOf(typedRun(p, 'c11', '/task-solve fix the auto-mode banner', t))[0], '**Auto-run: OFF** for /task-solve - each question waits for your answer.');
-    assert.match(bannerOf(typedRun(project(), 'c12', '/capture-awareness --mode-auto-run-on', t))[0], /^\*\*Auto-run: ON\*\* for \/capture-awareness - /);
+    const onC = project();
+    autoOn(onC, 'c12', t);
+    assert.match(bannerOf(typedRun(onC, 'c12', '/capture-awareness', t))[0], /^\*\*Auto-run: ON\*\* for \/capture-awareness - /);
     assert.strictEqual(bannerOf(typedRun(p, 'c9', '/issue-diagnoser the login 500', t))[0], '**Auto-run: OFF** for /issue-diagnoser - each question waits for your answer.');
-    assert.match(bannerOf(typedRun(project(), 'c10', '/issue-diagnoser --mode-auto-run-on the login 500', t))[0], /^\*\*Auto-run: ON\*\* for \/issue-diagnoser - /);
+    const onI = project();
+    autoOn(onI, 'c10', t);
+    assert.match(bannerOf(typedRun(onI, 'c10', '/issue-diagnoser the login 500', t))[0], /^\*\*Auto-run: ON\*\* for \/issue-diagnoser - /);
     // an unknown model and no window: no number is invented for the window, and the default is said as the trigger it is
     const bare = project();
     assert.strictEqual(bannerOf(typedRun(bare, 'c6', '/task-design', path.join(TMP, 'no-such.jsonl')))[1],
@@ -446,16 +408,20 @@ test('mode banner: the model SessionStart recorded gives the window before any r
     // the auto-compact window is quoted against the model's own capacity, never against the default
     fs.writeFileSync(path.join(p.root, '.claude', 'settings.json'), JSON.stringify({ model: 'sonnet', autoCompactWindow: 350000 }));
     start('r2', 'claude-sonnet-5-5');
-    assert.strictEqual(bannerOf(typedRun(p, 'r2', '/capture-awareness --mode-auto-run-on', none))[1],
+    autoOn(p, 'r2', none);
+    assert.strictEqual(bannerOf(typedRun(p, 'r2', '/capture-awareness', none))[1],
         '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 350k auto-compact window (of 1M, claude-sonnet-5-5) and the run goes on from the summary and its state files.');
     // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
     // the auto-compact window', verified 2026-10-21), so after a /model switch to a smaller model the banner never quotes
     // a compaction point past that model's capacity
     start('r4', 'claude-sonnet-5-5');
     run('guard-fresh-session-start.js', { hook_event_name: 'PostModelSwitch', session_id: 'r4', cwd: p.root, from_model: 'claude-sonnet-5-5', to_model: 'claude-haiku-4-5' }, { CLAUDE_PROJECT_DIR: p.root });
-    assert.strictEqual(bannerOf(typedRun(p, 'r4', '/capture-awareness --mode-auto-run-on', none))[1],
+    autoOn(p, 'r4', none);
+    assert.strictEqual(bannerOf(typedRun(p, 'r4', '/capture-awareness', none))[1],
         '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 200k context window (its 350k auto-compact window is capped there, claude-haiku-4-5) and the run goes on from the summary and its state files.');
-    assert.strictEqual(bannerOf(typedRun(project(), 'r3', '/capture-awareness --mode-auto-run-on', none))[1].includes('of 300k'), false, 'no default window is quoted');
+    const bare = project();
+    autoOn(bare, 'r3', none);
+    assert.strictEqual(bannerOf(typedRun(bare, 'r3', '/capture-awareness', none))[1].includes('of 300k'), false, 'no default window is quoted');
 });
 
 test('mode banner: never for another command, a seat, a print-mode run or the model\'s Skill call', () =>
@@ -467,10 +433,11 @@ test('mode banner: never for another command, a seat, a print-mode run or the mo
     assert.strictEqual(bannerOf(typedRun(p, 'd2', '/task-solve x', t, {}, { agent_id: 'seat-1' })), null, 'a seat');
     assert.strictEqual(bannerOf(typedRun(p, 'd3', '/task-solve x', t, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' })), null, 'claude -p: nobody to read it');
     assert.strictEqual(bannerOf(typedRun(p, 'd4', '/task-solve x', t, { ALFRED_CODE_UNATTENDED: '1' })), null, 'an unattended launch');
-    const typed = { type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: '/task-design --mode-auto-run-on' }] } };
-    const call = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--mode-auto-run-on' },
-        session_id: 'd5', cwd: p.root, transcript_path: transcript([typed]) }, { CLAUDE_PROJECT_DIR: p.root });
-    assert.match(context(call), /auto-run is ON/);
+    autoStamp(p, 'd5');
+    openRun(p, 'd5', 'task-solve');
+    const call = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: 'x' },
+        session_id: 'd5', cwd: p.root, transcript_path: t }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(call.status, 0, call.stderr);
     assert.ok(!context(call).includes(BANNER_HEAD), 'a Skill call is a phase of a run, never a typed command');
 });
 
@@ -587,7 +554,7 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
 test('auto-mode asks: the upgrade hard stop waits when put unmarked with its reason, as task-version-upgrade says', () =>
 {
     const p = project();
-    fs.writeFileSync(p.gate, 'AUTO - "/task-version-upgrade --mode-auto-run-on"\nsession: u1\nskill: task-version-upgrade\ntranscript-size: 0\n');
+    autoStamp(p, 'u1');
     const labels = ['Re-plan from this stage', "Roll back to the last stage's rollback point", 'Stop here'];
     const marked = q('Stage 3 stays red after its resolver pass. How do we go on?', [`${labels[0]} (Recommended)`, ...labels.slice(1)]);
     assert.deepStrictEqual(answered(ask(p, 'u1', [marked])), { [marked.question]: 'Re-plan from this stage (Recommended)' },
@@ -739,7 +706,7 @@ test('auto-mode Stop: the 50th Stop under one run marker passes with one auto-co
     assert.strictEqual(capRows()[0].detail.count, 50);
     assert.strictEqual(stop().status, 0, '51: passes');
     assert.strictEqual(capRows().length, 1, 'still the one row');
-    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'c1')), 'the stamp and the marker stand - only the run\'s close or --mode-auto-run-off ends them');
+    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'c1')), 'the stamp and the marker stand - only the run\'s close or the off command ends them');
     // a new typed run writes a new marker: its count starts over
     openRun(p, 'c1', 'task-solve');
     const past = new Date(Date.now() - 30000);
@@ -947,7 +914,7 @@ test('compact instead: no fresh-session offer at Stop, at a run\'s start or afte
     assert.match(context(start(false, 's0')), /Do NOT start the run yet/, 'the offer, with the offers on');
     const told = context(start(true, 's1'));
     assert.doesNotMatch(told, /Do NOT start the run yet/);
-    assert.match(told, /^This project compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\)/);
+    assert.match(told, /^This session compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\)/);
     assert.match(told, /puts no fresh-session option in any ask/);
     const again = context(start(true, 's1'));
     assert.doesNotMatch(again, /compacts instead of offering a fresh session \(ALFRED_CODE_AUTO_COMPACT=1\): past/, 'the note is said once per session');
@@ -1044,17 +1011,16 @@ test('mode-auto-run: an empty request starts nothing and says why; with a reques
     assert.ok(!fs.existsSync(oldFlag.gate), 'the old flag alone starts nothing');
     // another session's running stamp: the refusal and its banner line
     const p8 = project();
-    fs.writeFileSync(p8.gate, `AUTO - "/task-solve --mode-auto-run-on x"\nsession: oth1\nskill: task-solve\nat: ${new Date().toISOString()}\n`);
+    fs.writeFileSync(p8.gate, `AUTO - "/alfred-code:mode:auto-run on"\nsession: oth1\nskill: alfred-code:mode:auto-run\nat: ${new Date().toISOString()}\n`);
     const live = path.join(path.dirname(t), 'oth1.jsonl'); fs.writeFileSync(live, '{}\n');
     assert.match(context(typedRun(p8, 'ta8', '/mode-auto-run y', t, cfg())), /auto-run did NOT start: another session \(oth1\) is running a stamped run/);
     assert.match(fs.readFileSync(p8.gate, 'utf8'), /\nsession: oth1\n/);
     fs.rmSync(live, { force: true });
 });
 
-test('mode-auto-run: the model never calls it, the flow\'s step calls ride its stamp, and a typed /mode-auto-run mid-run keeps the mode until -off', () =>
+test('mode-auto-run: the model never calls it, and a typed /mode-auto-run mid-run keeps the mode until the off command', () =>
 {
     const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
-    const cmdRow = (name, args) => typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`);
     // the model's own Skill(mode-auto-run) is denied by its disable-model-invocation flag and writes no stamp
     const p = project();
     fs.cpSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-auto-run'), path.join(p.root, '.claude', 'skills', 'mode-auto-run'), { recursive: true });
@@ -1063,17 +1029,7 @@ test('mode-auto-run: the model never calls it, the flow\'s step calls ride its s
     assert.strictEqual(self.status, 2);
     assert.match(self.stderr, /mode-auto-run is marked disable-model-invocation/);
     assert.ok(!fs.existsSync(p.gate));
-    // a step skill the flow calls with the flag behind a typed /mode-auto-run keeps the stamp; behind an empty one it is refused
-    const step = (tp) => { const pr = project(); fs.writeFileSync(pr.gate, `AUTO - "/mode-auto-run x"\nsession: tb2\nskill: mode-auto-run\nat: ${new Date().toISOString()}\ntranscript-size: 0\n`);
-        const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--mode-auto-run-on x' },
-            session_id: 'tb2', cwd: pr.root, transcript_path: tp }, { CLAUDE_PROJECT_DIR: pr.root }); return { pr, r }; };
-    const { pr: kept, r: rk } = step(transcript([cmdRow('mode-auto-run', 'x')]));
-    assert.match(context(rk), /auto-run is ON for this \/task-design run/);
-    assert.ok(rows(kept, 'tb2').some((x) => x.kind === 'auto-start' && x.detail && x.detail.kept === true), 'a kept auto-start row');
-    assert.ok(!rows(kept, 'tb2').some((x) => x.kind === 'auto-start-refused'), 'and no refused row');
-    const { pr: bare } = step(transcript([cmdRow('mode-auto-run', '')]));
-    assert.ok(rows(bare, 'tb2').some((x) => x.kind === 'auto-start-refused'), 'an empty /mode-auto-run backs nothing');
-    // mid-run: a typed /mode-auto-run with a request opens a new run under the mode; an empty one ends nothing; -off ends it
+    // mid-run: a typed /mode-auto-run with a request opens a new run under the mode; an empty one ends nothing; the off command ends it
     const q3 = project();
     const t = transcript();
     autoStamp(q3, 'tb3');
@@ -1085,9 +1041,8 @@ test('mode-auto-run: the model never calls it, the flow\'s step calls ride its s
     sub(q3, 'tb3', '/mode-auto-run', t);
     assert.ok(fs.existsSync(q3.gate), 'an empty /mode-auto-run ends nothing');
     assert.ok(!rows(q3, 'tb3').some((x) => x.kind === 'auto-end'), 'no auto-end row');
-    const off = sub(q3, 'tb3', '/mode-auto-run --mode-auto-run-off', t);
-    assert.ok(!fs.existsSync(q3.gate) && !fs.existsSync(marker(q3, 'tb3')), 'ended: -off');
-    assert.match(context(off), /auto-run is OFF for this session/);
+    assert.strictEqual(modeLine(q3, 'tb3', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.ok(!fs.existsSync(q3.gate) && !fs.existsSync(marker(q3, 'tb3')), 'ended: the off command');
     assert.ok(rows(q3, 'tb3').some((x) => x.kind === 'auto-end'), 'an auto-end row');
 });
 
@@ -1128,128 +1083,82 @@ test('mode takeover: another session idle 10 minutes is replaced with taken-from
     fs.writeFileSync(live, '{}\n');
     autoStamp(p, 'tk-old-session');
     assert.strictEqual(autoStampLive({ session_id: 'tk-new-session', transcript_path: t }, env), false, 'another session\'s stamp is not live here');
-    assert.match(context(expand(p, 'tk-new-session', '/task-solve --mode-auto-run-on x', t)), /auto-run did NOT start: another session \(tk-old-s\) is running/);
+    assert.match(modeLine(p, 'tk-new-session', `${AUTO_CMD} on`, t), /^\[mode\] auto-run did not start: another session \(tk-old-s\) is running/);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: tk-old-session\n/, 'kept while it runs');
     const quiet = new Date(Date.now() - 11 * 60 * 1000);
     fs.utimesSync(live, quiet, quiet);
-    assert.match(context(expand(p, 'tk-new-session', '/task-solve --mode-auto-run-on x', t)), /auto-run is ON/);
+    autoOn(p, 'tk-new-session', t);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: tk-new-session\n[\s\S]*\ntaken-from: tk-old-session\n/);
     const takeovers = rows(p, 'tk-new-session').filter((r) => r.kind === 'auto-takeover');
     assert.strictEqual(takeovers.length, 1, 'one auto-takeover row');
     assert.match(takeovers[0].reason, /tk-new-s.*tk-old-s|tk-old-s.*tk-new-s/, 'naming both sessions');
-    const notice = "auto-run is OFF here - session tk-new-s took it; `--mode-auto-run-on` after a command takes it back";
+    const notice = 'auto-run is OFF here - session tk-new-s took it; `/alfred-code:mode:auto-run on` takes it back';
     assert.ok(context(sub(p, 'tk-old-session', 'carry on', t)).includes(notice), 'the losing session is told');
     assert.ok(!context(sub(p, 'tk-old-session', 'carry on', t)).includes('took it'), 'once');
     assert.ok(!context(sub(p, 'tk-new-session', 'carry on', t)).includes('took it'), 'never the winner');
     fs.rmSync(live, { force: true });
 });
 
-test('mode pointers: --auto-mode, --score-on and --score-off each get their pointer line and start nothing; --mode-x gets its reason (AC9)', () =>
-{
-    const p = project();
-    const t = transcript();
-    const pointer = "'--auto-mode' is now '--mode-auto-run-on' - this run is attended: ask as usual and take no (Recommended) option unasked";
-    const old = context(sub(p, 'pt', '/task-solve --auto-mode X', t));
-    assert.ok(old.includes(pointer), old);
-    expand(p, 'pt', '/task-solve --auto-mode X', t);
-    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(marker(p, 'pt')), 'the old flag starts nothing');
-    for (const [flag, now] of [['--score-on', '--mode-output-scorer-on'], ['--score-off', '--mode-output-scorer-off']])
-    {
-        const said = context(sub(p, 'pt', `/task-solve ${flag} X`, t));
-        assert.ok(said.includes(`'${flag}' is now '${now}'`), said);
-        assert.doesNotMatch(said, /attended/, 'no attended clause on the scorer pointers');
-    }
-    // a new flag in the same run still works
-    const mixed = project();
-    assert.ok(context(sub(mixed, 'pm', '/task-solve --auto-mode --mode-auto-run-on X', t)).includes(pointer));
-    assert.match(context(expand(mixed, 'pm', '/task-solve --auto-mode --mode-auto-run-on X', t)), /^auto-run is ON for this \/task-solve run/);
-    const unknown = context(sub(p, 'pt', '/task-solve --mode-x X', t));
-    assert.ok(unknown.includes("'--mode-x' is no mode flag - the four are --mode-auto-run-on|off and --mode-output-scorer-on|off"), unknown);
-    assert.ok(rows(p, 'pt').some((r) => r.kind === 'mode-flag-old') && rows(p, 'pt').some((r) => r.kind === 'mode-flag-unknown'), 'one row per token');
-    assert.strictEqual(rows(p, 'pt').filter((r) => r.kind === 'mode-flag-old').length, 3, 'one per old token');
-});
-
-test('mode non-family: /habits-explain-topic --mode-output-scorer-on X gets the count-only-after line and switches nothing (AC9)', () =>
-{
-    const p = project();
-    const t = transcript();
-    const line = 'mode flags count only after a task-, capture-, loop-, issue- or mode- command - stack /mode-output-scorer to grade this request';
-    const said = context(sub(p, 'nf', '/habits-explain-topic --mode-output-scorer-on X', t));
-    assert.ok(said.includes(line), said);
-    const both = context(sub(p, 'nf', '/habits-explain-topic --auto-mode --mode-auto-run-on X', t));
-    assert.ok(both.includes(line) && both.includes("'--auto-mode' is now '--mode-auto-run-on'"), 'its old flags still get their pointer');
-    assert.doesNotMatch(both, /is no mode flag/);
-    assert.ok(!fs.existsSync(p.gate), 'nothing starts');
-    assert.strictEqual(context(sub(p, 'nf', 'what does --mode-auto-run-on do?', t)), '', 'prose names a flag and says nothing');
-});
-
-test('mode flag-only: /mode-auto-run --mode-auto-run-on writes the stamp and no AUTO-RUN- file; /mode-auto-run --mode-auto-run-off and /mode-output-scorer --mode-output-scorer-on switch and start nothing; /loop-code-quality --mode-auto-run-on and /capture-awareness --mode-auto-run-on run over the whole project with a marker and the contract (spec section 6, AC2)', () =>
+test('mode whole-project runs: /loop-code-quality and /capture-awareness with no request open a marker and get the contract under the mode (spec section 6, AC2)', () =>
 {
     const t = transcript();
-    const p = project();
-    const on = expand(p, 'fo', '/mode-auto-run --mode-auto-run-on', t);
-    assert.match(fs.readFileSync(p.gate, 'utf8'), /^AUTO - "\/mode-auto-run --mode-auto-run-on"\nsession: fo\n/);
-    assert.ok(!fs.existsSync(marker(p, 'fo')), 'no marker');
-    assert.doesNotMatch(context(on), /\(7\)/, 'no run contract');
-    assert.match(context(on), /auto-run is ON for this session \(\.alfred\/state\/approvals\/APPROVAL\) - no run started/);
-    assert.doesNotMatch(context(expand(p, 'fo', '/mode-output-scorer --mode-output-scorer-on', t)), /\(7\)/, 'a scorer switch starts nothing');
-    assert.ok(!fs.existsSync(marker(p, 'fo')));
-    sub(p, 'fo', '/mode-auto-run --mode-auto-run-off', t);
-    expand(p, 'fo', '/mode-auto-run --mode-auto-run-off', t);
-    assert.ok(!fs.existsSync(p.gate), 'switched off');
     for (const cmd of ['loop-code-quality', 'capture-awareness'])
     {
         const pr = project();
-        const r = expand(pr, 'fw', `/${cmd} --mode-auto-run-on`, t);
+        autoOn(pr, 'fw', t);
+        const r = expand(pr, 'fw', `/${cmd}`, t);
         assert.match(context(r), new RegExp(`^auto-run is ON for this /${cmd} run`), cmd);
         assert.match(fs.readFileSync(marker(pr, 'fw'), 'utf8'), new RegExp(`^skill: ${cmd}\\n`), `${cmd}: a whole-project run opens a marker`);
     }
 });
 
-test('mode marker: a stacked /mode-output-scorer /task-solve --mode-auto-run-on X writes skill: task-solve, and a second expansion of the same prompt keeps the mtime (AC15)', () =>
+test('mode marker: a stacked /mode-output-scorer /task-solve X writes skill: task-solve, and a second expansion of the same prompt keeps the mtime (AC15)', () =>
 {
     const t = transcript();
     const p = project();
-    const prompt = '/mode-output-scorer /task-solve --mode-auto-run-on X';
+    autoOn(p, 'sk', t);
+    const prompt = '/mode-output-scorer /task-solve X';
     assert.match(context(expand(p, 'sk', prompt, t, { prompt_id: 'pid-ac15' })), /^auto-run is ON for this \/task-solve run/);
     assert.match(fs.readFileSync(marker(p, 'sk'), 'utf8'), /^skill: task-solve\n/);
     const past = new Date(Date.now() - 60000);
     fs.utimesSync(marker(p, 'sk'), past, past);
     const was = fs.statSync(marker(p, 'sk')).mtimeMs;
-    expand(p, 'sk', prompt, t, { command_name: 'task-solve', command_args: '--mode-auto-run-on X', prompt_id: 'pid-ac15' });
+    expand(p, 'sk', prompt, t, { command_name: 'task-solve', command_args: 'X', prompt_id: 'pid-ac15' });
     assert.strictEqual(fs.statSync(marker(p, 'sk')).mtimeMs, was, 'the same skill and prompt leave the file as it is');
 });
 
-test('mode marker writers: /mode-output-scorer --mode-auto-run-on X writes the stamp and no marker; /mode-auto-run fix X writes skill: mode-auto-run', () =>
+test('mode marker writers: /mode-output-scorer X under the mode opens no marker and gets the banner alone; /mode-auto-run fix X writes skill: mode-auto-run', () =>
 {
     const t = transcript();
     const p = project();
-    expand(p, 'mw', '/mode-output-scorer --mode-auto-run-on X', t);
-    assert.ok(fs.existsSync(p.gate), 'the stamp');
-    assert.ok(!fs.existsSync(marker(p, 'mw')), 'and no marker: the grader opens no run');
+    autoOn(p, 'mw', t);
+    const graded = expand(p, 'mw', '/mode-output-scorer grade the plan in docs/plan.md', t);
+    assert.ok(!fs.existsSync(marker(p, 'mw')), 'no marker: the grader opens no run');
+    assert.doesNotMatch(context(graded), /auto-run is ON for this|Do nothing else|no run started/, 'no contract, and the request is not dropped');
+    assert.match(bannerOf(graded)[0], /^\*\*Auto-run: ON\*\* for \/mode-output-scorer /);
     const q2 = project();
     assert.match(context(expand(q2, 'mw', '/mode-auto-run fix X', t)), /^auto-run is ON for this \/mode-auto-run run/);
     assert.match(fs.readFileSync(marker(q2, 'mw'), 'utf8'), /^skill: mode-auto-run\n/);
 });
 
-test('mode runs: a flagless typed /task-solve B under the live stamp gets the full contract naming its marker; a model Skill call to a capture keeps the loop marker (AC15)', () =>
+test('mode runs: a typed /task-solve B under the live stamp gets the full contract naming its marker; a model Skill call to a capture keeps the loop marker and gets no contract (AC15)', () =>
 {
-    const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
     const t = transcript();
     const p = project();
-    expand(p, 'rn', '/task-solve --mode-auto-run-on A', t);
+    autoOn(p, 'rn', t);
+    expand(p, 'rn', '/task-solve A', t);
     const b = context(expand(p, 'rn', '/task-solve B', t));
     for (const item of ['(1)', '(2)', '(3)', '(4)', '(5)', '(6)', '(7)', '(8)']) assert.ok(b.includes(item), `item ${item}`);
     assert.match(b, /\.alfred\/state\/sessions\/AUTO-RUN-rn/, 'naming its marker');
     const loop = project();
-    const lt = transcript([typed('/loop-code-quality --mode-auto-run-on src/')]);
-    expand(loop, 'ln', '/loop-code-quality --mode-auto-run-on src/', lt);
+    autoOn(loop, 'ln', t);
+    expand(loop, 'ln', '/loop-code-quality src/', t);
     const before = fs.readFileSync(marker(loop, 'ln'), 'utf8');
-    const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'capture-quality', args: '--mode-auto-run-on' },
-        session_id: 'ln', cwd: loop.root, transcript_path: lt }, { CLAUDE_PROJECT_DIR: loop.root });
-    assert.match(context(r), /auto-run is ON for this \/capture-quality run/);
+    const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'capture-quality', args: '' },
+        session_id: 'ln', cwd: loop.root, transcript_path: t }, { CLAUDE_PROJECT_DIR: loop.root });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.doesNotMatch(context(r), /auto-run is ON for this/, 'a phase of the run, never a start');
     assert.strictEqual(fs.readFileSync(marker(loop, 'ln'), 'utf8'), before, 'the loop\'s marker stands');
-    assert.match(context(r), /delete \.alfred\/state\/sessions\/AUTO-RUN-ln if its `skill:` line names this run/, 'and the capture\'s close leaves it, since it names the loop');
 });
 
 test('M1: the solve-flow mark arms only on /mode-auto-run with a request and disarms at the next typed prompt', () =>
@@ -1266,7 +1175,7 @@ test('M1: the solve-flow mark arms only on /mode-auto-run with a request and dis
         try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
     assert.match(note([cmd('add a status route'), readSolve(), said]), /`Size: /, 'a request arms it');
     assert.doesNotMatch(note([cmd(''), readSolve(), said]), /`Size: /, 'an empty /mode-auto-run arms nothing');
-    assert.doesNotMatch(note([cmd('--mode-auto-run-off'), readSolve(), said]), /`Size: /, 'a flag-only line arms nothing');
+    assert.doesNotMatch(note([cmd('--mode-auto-run-off'), readSolve(), said]), /`Size: /, 'a retired flag is no request: it arms nothing');
     assert.doesNotMatch(note([cmd('add a status route'), typed('never mind, just explain the cache'), readSolve(), said]), /`Size: /, 'the next typed prompt disarms it');
     assert.match(note([cmd('add a status route'), { ...typed('Base directory for this skill: x'), isMeta: true }, readSolve(), said]), /`Size: /, 'the skill body row is no typed prompt');
 });
@@ -1285,21 +1194,6 @@ test('final review I3: a /mode- line that starts no run gets no fresh-session of
     for (const line of ['/mode-auto-run --mode-auto-run-off', '/mode-auto-run --mode-output-scorer-on', '/mode-auto-run --auto-mode', '/mode-auto-run --mode-auto-run-on'])
         assert.doesNotMatch(context(typedRun(project(), 'i3', line, big)), /Do NOT start the run yet/, line);
     assert.match(context(typedRun(project(), 'i3b', '/mode-auto-run fix X', big)), /auto-run is ON for this \/mode-auto-run run/, 'a request still runs, under the contract');
-});
-
-test('final review I2: an -on line carrying a request with no flow command keeps its request; the flag-only line still starts nothing', () =>
-{
-    const t = transcript();
-    for (const line of ['/mode-output-scorer --mode-auto-run-on grade the plan in docs/plan.md', '/habits-explain-topic /mode-output-scorer --mode-auto-run-on explain closures'])
-    {
-        const p = project();
-        const r = expand(p, 'i2', line, t, { command_name: 'mode-output-scorer', command_args: '--mode-auto-run-on x' });
-        const said = context(r);
-        assert.ok(fs.existsSync(p.gate), `${line}: the stamp`);
-        assert.doesNotMatch(said, /Do nothing else|no run started/, `${line}: the request is not dropped`);
-        assert.match(said, /auto-run is ON for this session \(\.alfred\/state\/approvals\/APPROVAL\) - this line's request runs under it/, line);
-    }
-    assert.match(context(expand(project(), 'i2f', '/mode-output-scorer --mode-auto-run-on', t)), /no run started: .*Do nothing else for this line\./, 'flag-only keeps its line');
 });
 
 test('M8: task-solve switched off by skillOverrides reads "switched off here"', () =>
@@ -1331,7 +1225,7 @@ test('mode sweep: an AUTO-RUN- or AUTO-TAKEN- file untouched for 8 days is swept
     assert.ok(fs.existsSync(fresh), 'inside it: kept');
 });
 
-test('mode dispatch: a live stamp and no marker lets a generic seat and an implementer seat through as with no stamp; with a marker the generic block fires naming --mode-auto-run-off; a capture-usage-report marker passes its authors (AC16)', () =>
+test('mode dispatch: a live stamp and no marker lets a generic seat and an implementer seat through as with no stamp; with a marker the generic block fires naming the off command; a capture-usage-report marker passes its authors (AC16)', () =>
 {
     const p = project();
     const disp = (seat, prompt = 'x') => run('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt }, session_id: 'ds', cwd: p.root, transcript_path: transcript() },
@@ -1340,12 +1234,13 @@ test('mode dispatch: a live stamp and no marker lets a generic seat and an imple
     assert.strictEqual(disp('general-purpose').status, 0, 'between runs a generic seat goes, as with no stamp');
     const impl = disp('aspnet-implementer', 'build it');
     assert.strictEqual(impl.status, 2, 'and an implementer needs its plan stamp, as with no stamp');
-    assert.match(impl.stderr, /--mode-auto-run-on/, 'the denial names the new flag');
-    assert.doesNotMatch(impl.stderr, /--auto-mode/);
+    assert.match(impl.stderr, /'\/alfred-code:mode:auto-run on' before the command/, 'the denial names the mode command');
+    assert.doesNotMatch(impl.stderr, /--auto-mode|--mode-auto-run/);
     openRun(p, 'ds', 'task-solve');
     const generic = disp('general-purpose');
     assert.strictEqual(generic.status, 2, 'a run open: the generic block fires');
-    assert.match(generic.stderr, /--mode-auto-run-off/);
+    assert.match(generic.stderr, /\/alfred-code:mode:auto-run off/);
+    assert.doesNotMatch(generic.stderr, /--mode-auto-run/);
     assert.doesNotMatch(generic.stderr, /clears the stamp/);
     assert.strictEqual(disp('aspnet-implementer', 'build it').status, 0, 'and the run approves its implementer');
     openRun(p, 'ds', 'capture-usage-report');
@@ -1379,20 +1274,6 @@ test('final review I4/I5: the catalog and the solve flow describe the marker lif
     const mechanics = fs.readFileSync(path.join(root, 'stack', 'skills', 'task-solve', 'references', 'step-mechanics.md'), 'utf8');
     const lifetime = mechanics.split('\n').findIndex((l) => l.includes('**Lifetime.**'));
     assert.match(mechanics.split('\n').slice(lifetime, lifetime + 3).join(' '), /hook's session stamp is never deleted/, 'step-mechanics says which stamp a close deletes');
-});
-
-test('final review m9 (re-graded): a mode flag typed alone gets the pointer to its command and switches nothing', () =>
-{
-    const p = project();
-    const t = transcript();
-    autoStamp(p, 'bf');
-    openRun(p, 'bf');
-    const said = context(sub(p, 'bf', '--mode-auto-run-off', t));
-    assert.match(said, /'--mode-auto-run-off' typed alone switches nothing: mode flags count only right after a command - `\/mode-auto-run --mode-auto-run-off` ends auto-run for the session/);
-    assert.ok(fs.existsSync(p.gate), 'the stamp stands: the grammar is unchanged');
-    assert.ok(rows(p, 'bf').some((r) => r.kind === 'mode-flag-bare'), 'one mode-flag-bare row');
-    assert.match(context(sub(project(), 'bf2', '--mode-output-scorer-on now', t)), /'--mode-output-scorer-on' typed alone switches nothing/, 'with no stamp too');
-    assert.strictEqual(context(sub(project(), 'bf3', 'what does --mode-auto-run-off do?', t)), '', 'a flag inside prose says nothing');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1429,31 +1310,20 @@ test('R093: two expansions of one typed prompt get the contract and the banner o
 {
     const t = transcript();
     const p = project();
-    const line = '/mode-output-scorer /task-solve --mode-auto-run-on X';
+    autoOn(p, 'r93', t);
+    const line = '/mode-output-scorer /task-solve X';
     const first = context(expand(p, 'r93', line, t, { prompt_id: 'pid-1' }));
     assert.match(first, /^auto-run is ON for this \/task-solve run/);
     assert.strictEqual(first.split(BANNER_HEAD).length, 2, 'the banner once');
-    const again = context(expand(p, 'r93', line, t, { prompt_id: 'pid-1', command_name: 'task-solve', command_args: '--mode-auto-run-on X' }));
+    const again = context(expand(p, 'r93', line, t, { prompt_id: 'pid-1', command_name: 'task-solve', command_args: 'X' }));
     assert.doesNotMatch(again, /auto-run is ON/, 'no second contract');
     assert.ok(!again.includes(BANNER_HEAD), 'no second banner');
     assert.match(context(expand(p, 'r93', line, t, { prompt_id: 'pid-2' })), /^auto-run is ON for this \/task-solve run/, 'the line typed again is a new prompt');
     // no prompt_id (a Claude Code that sends none): the prompt and the session key it, for a few seconds
     const q = project();
+    autoOn(q, 'r93b', t);
     assert.match(context(expand(q, 'r93b', line, t, { prompt_id: undefined })), /^auto-run is ON/);
     assert.strictEqual(context(expand(q, 'r93b', line, t, { prompt_id: undefined })), '', 'the same prompt expanded again at once');
-});
-
-test('R094: a Skill-route start with no open run marker names none and promises no Stop hold', () =>
-{
-    const typed = (text) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text }] } });
-    const p = project();
-    const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--mode-auto-run-on the cache plan' },
-        session_id: 'r94', cwd: p.root, transcript_path: transcript([typed('/task-design --mode-auto-run-on the cache plan')]) }, { CLAUDE_PROJECT_DIR: p.root });
-    const said = context(r);
-    assert.match(said, /^auto-run is ON for this \/task-design run/);
-    assert.doesNotMatch(said, /AUTO-RUN-/, 'no marker named');
-    assert.doesNotMatch(said, /sends you back/, 'no Stop hold promised');
-    assert.ok(!fs.existsSync(marker(p, 'r94')));
 });
 
 // A folder's mode bits do not make it read-only on Windows, and root writes through them.
@@ -1462,12 +1332,13 @@ test('R095: a run marker that cannot be written is said in one !! line, and the 
 {
     const p = project();
     const t = transcript();
+    autoStamp(p, 'r95');
     const dir = path.dirname(marker(p, 'r95'));
     fs.mkdirSync(dir, { recursive: true });
     fs.chmodSync(dir, 0o555);
     try
     {
-        const said = context(typedRun(p, 'r95', '/loop-code-quality --mode-auto-run-on src/', t));
+        const said = context(typedRun(p, 'r95', '/loop-code-quality src/', t));
         assert.strictEqual(said.split('\n').filter((l) => l.startsWith('!!')).length, 1, said);
         assert.match(said, /^!! the run marker could not be written/m);
         assert.match(said, /auto-run is ON for this \/loop-code-quality run/);
@@ -1481,7 +1352,8 @@ test('R096: the run marker records prompt_id - the line typed again moves its mt
 {
     const t = transcript();
     const p = project();
-    const line = '/loop-code-quality --mode-auto-run-on src/';
+    autoOn(p, 'r96', t);
+    const line = '/loop-code-quality src/';
     expand(p, 'r96', line, t, { prompt_id: 'pid-a' });
     assert.match(fs.readFileSync(marker(p, 'r96'), 'utf8'), /^prompt-id: pid-a$/m);
     const past = new Date(Date.now() - 60000);
@@ -1491,4 +1363,335 @@ test('R096: the run marker records prompt_id - the line typed again moves its mt
     assert.strictEqual(fs.statSync(marker(p, 'r96')).mtimeMs, was, 'one prompt expanded twice');
     expand(p, 'r96', line, t, { prompt_id: 'pid-b' });
     assert.notStrictEqual(fs.statSync(marker(p, 'r96')).mtimeMs, was, 'the line typed again');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the mode commands (the mode-commands spec, 2026-11-12, section 3): typed alone on their line, handled at UserPromptSubmit
+// ---------------------------------------------------------------------------------------------
+const AUTO_CMD = '/alfred-code:mode:auto-run';
+const COMPACT_CMD = '/alfred-code:mode:auto-compact';
+const modeLine = (p, sid, line, t, env = {}) => context(run('guard-fresh-session-start.js',
+    { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: line }, { CLAUDE_PROJECT_DIR: p.root, ...env }));
+const AUTO_ON_LINE = '[mode] auto-run is ON for this session: each ask takes its (Recommended) option, and no fresh-session ask is made';
+const autoOn = (p, sid, t, env) => assert.strictEqual(modeLine(p, sid, `${AUTO_CMD} on`, t, env), AUTO_ON_LINE);
+const TYPE_ALONE = '[mode] type the command alone on its line, then on or off';
+const compactSwitch = (p, sid) => path.join(p.root, '.alfred', 'state', 'sessions', `AUTO-COMPACT-${sid}`);
+// A transcript with no row that turns auto-run on: the stamp a mode command writes is proven by its own typed row alone.
+function bareTranscript()
+{
+    const p = path.join(TMP, `bare-${++n}.jsonl`);
+    const at = new Date(Date.now() - 60000).toISOString();
+    fs.writeFileSync(p, [{ type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: 'go' } },
+        { type: 'assistant', entrypoint: 'cli', timestamp: at, message: { id: `m${++n}`, model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 30000 } } }]
+        .map((r) => JSON.stringify(r)).join('\n') + '\n');
+    return p;
+}
+const typedRow = (t, text) => fs.appendFileSync(t, `${JSON.stringify({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: text } })}\n`);
+
+test('mode command: auto-run on writes the session\'s stamp, opens no run marker, says the ON line', () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    const size = fs.statSync(t).size;
+    assert.strictEqual(modeLine(p, 'm1', `${AUTO_CMD} on`, t), AUTO_ON_LINE);
+    const stamp = fs.readFileSync(p.gate, 'utf8');
+    assert.match(stamp, /^AUTO - "\/alfred-code:mode:auto-run on"\nsession: m1\nskill: alfred-code:mode:auto-run\nat: \d{4}-[\d:.TZ-]+\n/);
+    assert.match(stamp, new RegExp(`^transcript-size: ${size}$`, 'm'));
+    assert.ok(!fs.existsSync(marker(p, 'm1')), 'no run marker: the next typed flow command opens it');
+    assert.strictEqual(rows(p, 'm1').filter((r) => r.kind === 'auto-start').length, 1);
+    const env = { CLAUDE_PROJECT_DIR: p.root };
+    assert.strictEqual(approvalStamp({ session_id: 'm1', transcript_path: t }, env).live, false, 'no typed row yet proves it');
+    typedRow(t, '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>');
+    assert.strictEqual(approvalStamp({ session_id: 'm1', transcript_path: t }, env).live, true, 'live once the typed row is on disk');
+    assert.strictEqual(approvalStamp({ session_id: 'm2', transcript_path: t }, env).live, false, 'never for another session');
+});
+
+test('mode command: the next typed flow command runs under the stamp and opens the marker', () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    modeLine(p, 'm3', `${AUTO_CMD} on`, t);
+    typedRow(t, `${AUTO_CMD} on`);
+    const x = expand(p, 'm3', '/task-solve fix X', t);
+    assert.match(context(x), /^auto-run is ON for this \/task-solve run/);
+    assert.match(context(x), /only the user's \/alfred-code:mode:auto-run off ends auto-run/);
+    assert.match(fs.readFileSync(marker(p, 'm3'), 'utf8'), /^skill: task-solve$/m);
+    assert.match(fs.readFileSync(p.gate, 'utf8'), /^AUTO - "\/alfred-code:mode:auto-run on"/, 'the stamp keeps the mode command\'s words');
+});
+
+test('mode command: auto-run on typed again keeps the stamp and an open run marker', () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    modeLine(p, 'm4', `${AUTO_CMD} on`, t);
+    typedRow(t, `${AUTO_CMD} on`);
+    expand(p, 'm4', '/task-solve fix X', t);
+    const old = (Date.now() - 3600 * 1000) / 1000;
+    fs.utimesSync(p.gate, old, old);
+    fs.utimesSync(marker(p, 'm4'), old, old);
+    const before = [fs.statSync(p.gate).mtimeMs, fs.statSync(marker(p, 'm4')).mtimeMs, fs.readFileSync(p.gate, 'utf8')];
+    assert.strictEqual(modeLine(p, 'm4', `${AUTO_CMD} on`, t), AUTO_ON_LINE);
+    assert.deepStrictEqual([fs.statSync(p.gate).mtimeMs, fs.statSync(marker(p, 'm4')).mtimeMs, fs.readFileSync(p.gate, 'utf8')], before);
+    assert.strictEqual(rows(p, 'm4').filter((r) => r.kind === 'auto-start' && r.detail && r.detail.kept).length >= 1, true, 'the kept start is a row');
+});
+
+test('mode command: auto-run off deletes the stamp and the marker', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'm5');
+    openRun(p, 'm5');
+    assert.strictEqual(modeLine(p, 'm6', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'm5')), 'another session\'s off leaves this session\'s files');
+    assert.strictEqual(modeLine(p, 'm5', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(marker(p, 'm5')), 'both files deleted');
+    assert.strictEqual(rows(p, 'm5').filter((r) => r.kind === 'auto-end').length, 1, 'one auto-end row');
+    assert.strictEqual(modeLine(p, 'm5', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session', 'typed again: the same line');
+    assert.strictEqual(rows(p, 'm5').filter((r) => r.kind === 'auto-end').length, 1, 'and no second row');
+    // a stamp written by hand (a solve flow's no-stops waiver, no session line) is no auto-run of this hook's
+    const h = project();
+    fs.writeFileSync(h.gate, 'AUTO - "take every recommendation"\n');
+    modeLine(h, 'm7', `${AUTO_CMD} off`, t);
+    assert.ok(fs.existsSync(h.gate), 'a hand-written stamp stays');
+});
+
+test('mode command: auto-run on is refused while another session\'s run is live', () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    const other = `live-${++n}`;
+    autoStamp(p, other);
+    fs.writeFileSync(path.join(path.dirname(t), `${other}.jsonl`), '');
+    const before = fs.readFileSync(p.gate, 'utf8');
+    const said = modeLine(p, 'm8', `${AUTO_CMD} on`, t);
+    assert.match(said, new RegExp(`^\\[mode\\] auto-run did not start: another session \\(${other.slice(0, 8)}\\) is running a stamped run`));
+    assert.match(said, /it ends with \/alfred-code:mode:auto-run off there/);
+    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the other session\'s stamp stands');
+    assert.strictEqual(rows(p, 'm8').filter((r) => r.kind === 'auto-start-refused').length, 1);
+    assert.ok(!rows(p, 'm8').some((r) => r.kind === 'auto-start'));
+});
+
+test('mode command: auto-compact on and off write the session\'s file', () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    assert.strictEqual(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), '[mode] auto-compact is ON for this session: no fresh-session ask is made, the session compacts instead');
+    assert.match(fs.readFileSync(compactSwitch(p, 'c1'), 'utf8'), /^on\nat: \d{4}-[\d:.TZ-]+\n$/);
+    assert.strictEqual(modeLine(p, 'c1', `${COMPACT_CMD} off`, t), '[mode] auto-compact is OFF for this session');
+    assert.match(fs.readFileSync(compactSwitch(p, 'c1'), 'utf8'), /^off\nat: \d{4}-[\d:.TZ-]+\n$/);
+    assert.deepStrictEqual(rows(p, 'c1').filter((r) => r.kind === 'compact-flag').map((r) => r.reason), ['auto-compact on for this session', 'auto-compact off for this session']);
+    assert.ok(!fs.existsSync(p.gate), 'auto-compact writes no auto-run stamp');
+});
+
+test('mode command: auto-compact off under the project variable, and under a live auto-run, says it stays on and why', () =>
+{
+    const p = project();
+    const t = transcript();
+    assert.strictEqual(modeLine(p, 'c2', `${COMPACT_CMD} off`, t, { ALFRED_CODE_AUTO_COMPACT: '1' }), '[mode] auto-compact stays ON: ALFRED_CODE_AUTO_COMPACT=1');
+    assert.match(fs.readFileSync(compactSwitch(p, 'c2'), 'utf8'), /^off\n/, 'the session\'s own switch is still written');
+    autoStamp(p, 'c2');
+    assert.strictEqual(modeLine(p, 'c2', `${COMPACT_CMD} off`, t), '[mode] auto-compact stays ON: auto-run is on');
+    assert.strictEqual(modeLine(p, 'c2', COMPACT_CMD, t), '[mode] auto-compact is ON: auto-run is on');
+    assert.strictEqual(modeLine(p, 'c2', COMPACT_CMD, t, { ALFRED_CODE_AUTO_COMPACT: '1' }), '[mode] auto-compact is ON: ALFRED_CODE_AUTO_COMPACT=1');
+});
+
+test('mode command: a bare command reports and changes nothing', () =>
+{
+    const p = project();
+    const t = transcript();
+    assert.strictEqual(modeLine(p, 'b1', AUTO_CMD, t), '[mode] auto-run is OFF for this session');
+    assert.strictEqual(modeLine(p, 'b1', COMPACT_CMD, t), '[mode] auto-compact is OFF for this session');
+    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 'b1')) && !rows(p, 'b1').length, 'no file, no row');
+    autoStamp(p, 'b1');
+    fs.mkdirSync(path.dirname(compactSwitch(p, 'b2')), { recursive: true });
+    fs.writeFileSync(compactSwitch(p, 'b2'), 'on\n');
+    const before = [fs.readFileSync(p.gate, 'utf8'), fs.statSync(p.gate).mtimeMs, fs.statSync(compactSwitch(p, 'b2')).mtimeMs];
+    assert.strictEqual(modeLine(p, 'b1', AUTO_CMD, t), '[mode] auto-run is ON for this session');
+    assert.strictEqual(modeLine(p, 'b2', AUTO_CMD, t), '[mode] auto-run is OFF for this session', 'another session\'s stamp');
+    assert.strictEqual(modeLine(p, 'b2', COMPACT_CMD, t), '[mode] auto-compact is ON for this session');
+    assert.deepStrictEqual([fs.readFileSync(p.gate, 'utf8'), fs.statSync(p.gate).mtimeMs, fs.statSync(compactSwitch(p, 'b2')).mtimeMs], before);
+    fs.writeFileSync(compactSwitch(p, 'b2'), 'maybe\n');
+    assert.strictEqual(modeLine(p, 'b2', COMPACT_CMD, t), '[mode] auto-compact is OFF for this session', 'a garbage switch is off');
+    assert.strictEqual(modeLine(p, 'b2', '/alfred-code:mode:scoring', t), '', 'scoring is the answer hook\'s to say');
+});
+
+test('mode command: anything but on or off changes nothing', () =>
+{
+    const p = project();
+    const t = transcript();
+    for (const line of [`${AUTO_CMD} yes`, `${AUTO_CMD} on now`, `${AUTO_CMD} on off`, `${COMPACT_CMD} 1`, '/alfred-code:mode:scoring /task-solve x', `${AUTO_CMD} on\nfix the login`])
+        assert.strictEqual(modeLine(p, 'x1', line, t), TYPE_ALONE, line);
+    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 'x1')) && !rows(p, 'x1').length);
+});
+
+test('mode command: a seat\'s prompt and a harness prompt are never read', () =>
+{
+    const p = project();
+    const t = transcript();
+    const seat = run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: 's9', agent_id: 'a1', cwd: p.root, transcript_path: t, prompt: `${AUTO_CMD} on` }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(context(seat), '');
+    assert.strictEqual(modeLine(p, 's9', `<task-notification>\n<task-id>x</task-id>\n${AUTO_CMD} on`, t), '');
+    assert.strictEqual(modeLine(p, 's9', `Another Claude session sent a message:\n<agent-message from="a1b2">\n${COMPACT_CMD} on\n</agent-message>`, t), '');
+    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 's9')));
+});
+
+test('mode command: a data root that cannot be written', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    const data = path.join(p.root, '.alfred');
+    fs.rmSync(data, { recursive: true });
+    fs.mkdirSync(data);
+    fs.chmodSync(data, 0o500);
+    try
+    {
+        assert.strictEqual(modeLine(p, 'r1', `${AUTO_CMD} on`, t), '[mode] auto-run did not start: the data root cannot be written');
+        assert.strictEqual(modeLine(p, 'r1', `${COMPACT_CMD} on`, t), '[mode] auto-compact could not be saved: EACCES');
+    }
+    finally { fs.chmodSync(data, 0o700); }
+    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 'r1')));
+});
+
+const GONE = (flag) => `'${flag}' is gone: type /alfred-code:mode:auto-run on|off or /alfred-code:mode:scoring on|off on its own line`;
+const ATTENDED = ' - this run is attended: ask as usual and take no (Recommended) option unasked';
+// a retired off flag typed under a live auto-run ends nothing, and the pointer says so (final review I1)
+const STILL_ON = ' - auto-run is still ON: only /alfred-code:mode:auto-run off ends it';
+test('old flag: after a flow command with auto-run off, the pointer says the run is attended', () =>
+{
+    const p = project();
+    const t = transcript();
+    assert.strictEqual(modeLine(p, 'o1', '/task-solve --mode-auto-run-on X', t), `${GONE('--mode-auto-run-on')}${ATTENDED}`);
+    assert.strictEqual(modeLine(p, 'o1', '/task-solve --auto-mode --mode-output-scorer-on --mode-x X', t),
+        ['--auto-mode', '--mode-output-scorer-on', '--mode-x'].map((f) => `${GONE(f)}${ATTENDED}`).join('\n'));
+    assert.strictEqual(modeLine(p, 'o1', '/habits-explain-topic --score-on X', t), `${GONE('--score-on')}${ATTENDED}`, 'after any command');
+    assert.ok(!fs.existsSync(p.gate), 'no stamp');
+    assert.strictEqual(rows(p, 'o1').filter((r) => r.kind === 'mode-flag-old').length, 5);
+    const x = expand(p, 'o1', '/task-solve --mode-auto-run-on X', t);
+    assert.doesNotMatch(context(x), /auto-run is ON for this/, 'and the expansion starts nothing');
+    assert.match(bannerOf(x)[0], /^\*\*Auto-run: OFF\*\* for \/task-solve - each question waits for your answer\.$/);
+    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(marker(p, 'o1')));
+    assert.strictEqual(modeLine(p, 'o1', '/task-solve X --mode-auto-run-on', t), '', 'past the leading run it is the request\'s text');
+});
+
+test('old flag: under a live auto-run, and on /mode-auto-run <request>, the pointer has no attended clause', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'o2');
+    assert.strictEqual(modeLine(p, 'o2', '/task-solve --mode-auto-run-on X', t), GONE('--mode-auto-run-on'));
+    assert.strictEqual(modeLine(p, 'o2', '/task-solve --mode-auto-run-off X', t), `${GONE('--mode-auto-run-off')}${STILL_ON}`);
+    assert.strictEqual(modeLine(p, 'o2', '/task-solve --mode-output-scorer-off --mode-auto-run-off X', t),
+        `${GONE('--mode-output-scorer-off')}\n${GONE('--mode-auto-run-off')}${STILL_ON}`, 'only the auto-run off flag carries it');
+    assert.ok(fs.existsSync(p.gate), 'a retired off flag ends nothing');
+    const q2 = project();
+    assert.strictEqual(modeLine(q2, 'o3', '/mode-auto-run --mode-auto-run-on fix X', t), GONE('--mode-auto-run-on'));
+});
+
+test('old flag: typed with no command before it gets the same pointer', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'o4');
+    assert.strictEqual(modeLine(p, 'o4', '--mode-auto-run-off', t), `${GONE('--mode-auto-run-off')}${STILL_ON}`);
+    assert.ok(fs.existsSync(p.gate), 'and switches nothing');
+    assert.strictEqual(modeLine(p, 'o5', '  --auto-mode fix it', t), `${GONE('--auto-mode')}${ATTENDED}`);
+    assert.strictEqual(modeLine(p, 'o5', '--dry-run fix it', t), '');
+    assert.strictEqual(modeLine(p, 'o5', 'pass --mode-auto-run-on to it', t), '');
+});
+
+test('old flag: a stamp whose only on-row is a retired flag is not live (R5)', () =>
+{
+    const p = project();
+    const t = bareTranscript();
+    typedRow(t, '/task-solve --mode-auto-run-on X');
+    fs.writeFileSync(p.gate, 'AUTO - "/task-solve --mode-auto-run-on X"\nsession: o6\nskill: task-solve\ntranscript-size: 0\n');
+    const env = { CLAUDE_PROJECT_DIR: p.root };
+    const pre = require('../stack/hooks/hook-prelude.js');
+    assert.strictEqual(pre.autoRunFor({ session_id: 'o6', transcript_path: t, cwd: p.root }, env, null), false);
+    const said = JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: 'o6', cwd: p.root, transcript_path: t, prompt: 'go on' }, env).stdout || '{}');
+    assert.doesNotMatch(String(said.systemMessage || ''), /auto-run/, 'the ON line lists no auto-run');
+    typedRow(t, `${AUTO_CMD} on`);
+    assert.strictEqual(pre.autoRunFor({ session_id: 'o6', transcript_path: t, cwd: p.root }, env, null), true, 'the mode command\'s row proves it');
+});
+
+test('old flag: the answer hook\'s scorer switch and ON line read no retired flag (AC7, AC9)', () =>
+{
+    const p = project();
+    const t = transcript();
+    const copy = path.join(p.root, '.claude', 'skills', 'mode-output-scorer');
+    fs.mkdirSync(copy, { recursive: true });
+    fs.writeFileSync(path.join(copy, 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
+    const answer = (sid, text, scorer) => JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: text },
+        { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_SCORER: scorer }).stdout || '{}');
+    const said = (sid, text, scorer) => String((answer(sid, text, scorer).hookSpecificOutput || {}).additionalContext || '');
+    const { scorerFile } = require('../stack/hooks/hook-prelude.js');
+    const switches = () => ['g1', 'g2', 'g3', 'g4'].filter((sid) => fs.existsSync(scorerFile(p.root, sid)));
+    for (const text of ['go --mode-output-scorer-on', '/task-solve fix x --mode-output-scorer-on', '/task-solve --mode-output-scorer-on x', '/mode-output-scorer --mode-output-scorer-on',
+        '/review-code --mode-output-scorer-on x', 'what does `/task-solve --mode-output-scorer-on` do', '--score-on', '/task-solve --score-on x'])
+        assert.doesNotMatch(said('g1', text, '0'), /scorer: on|\[mode\]/, text);
+    assert.deepStrictEqual(switches(), [], 'no scorer switch written');
+    assert.match(said('g1', '/task-solve --mode-output-scorer-off x', '1'), /scorer: on \(level 80, rounds 3, env\)/, 'a retired off flag leaves the scorer on');
+    assert.doesNotMatch(said('g2', '/mode-output-scorer --mode-output-scorer-on', '0'), /scorer: stacked/, 'a retired flag alone is no stacked request');
+    assert.match(said('g2', '/mode-output-scorer --mode-output-scorer-on explain x', '0'), /scorer: stacked for this request/, 'a request behind it still is');
+    for (const line of ['/review-code --mode-auto-run-on X', '/task-solve --mode-auto-run-on X', '/habits-explain-topic --mode-output-scorer-on X', '/task-solve --auto-mode --score-on X'])
+        assert.strictEqual(answer('g3', line, '0').systemMessage, undefined, line);
+    autoStamp(p, 'g4');
+    assert.strictEqual(answer('g4', '/task-solve --mode-auto-run-off x', '0').systemMessage, 'Modes ON: auto-run, auto-compact', 'a retired off flag ends nothing');
+    assert.deepStrictEqual(switches(), []);
+});
+
+test('a model\'s Skill call never starts auto-run', () =>
+{
+    const p = project();
+    const t = transcript();
+    const call = (sid, args) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', session_id: sid, cwd: p.root, transcript_path: t,
+        tool_input: { skill: 'task-implement', args } }, { CLAUDE_PROJECT_DIR: p.root });
+    const cold = call('k1', '--mode-auto-run-on X');
+    assert.doesNotMatch(context(cold), /auto-run is ON/);
+    assert.ok(!fs.existsSync(p.gate), 'no stamp');
+    autoStamp(p, 'k1');
+    openRun(p, 'k1');
+    const before = fs.readFileSync(p.gate, 'utf8');
+    for (const args of ['--mode-auto-run-on X', 'X'])
+    {
+        const live = call('k1', args);
+        assert.doesNotMatch(context(live), /auto-run is ON for this/, `no contract under the live stamp (${args})`);
+    }
+    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before);
+    assert.ok(!rows(p, 'k1').some((r) => r.kind === 'auto-start' || r.kind === 'auto-start-refused'), 'no start row');
+});
+
+test('fresh-session offers: off under each cause, and each string names the cause', () =>
+{
+    const p = project();
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    const log = fs.mkdtempSync(path.join(TMP, 'fc-'));
+    const env = { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log };
+    const close = (sid) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: big,
+        last_assistant_message: 'The loop is closed: four stages done, nothing pending on my side.' }, env);
+    const start = (sid) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: big,
+        expansion_type: 'slash_command', command_name: 'loop-code-quality', command_args: 'src/', prompt: '/loop-code-quality src/', prompt_id: randomUUID() }, env);
+    const asked = (sid, labels) => run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Stage 1 is closed. Next?', labels)] },
+        session_id: sid, cwd: p.root, transcript_path: big }, env);
+    const MINE = '\\/alfred-code:mode:auto-compact on';
+    assert.strictEqual(modeLine(p, 'f1', `${COMPACT_CMD} on`, big, { ALFRED_CODE_HOOK_LOG_DIR: log }).startsWith('[mode] auto-compact is ON'), true);
+    assert.strictEqual(close('f1').status, 0, 'the session\'s switch: the close ends the turn');
+    const told = start('f1');
+    assert.doesNotMatch(context(told), /Do NOT start the run yet/);
+    assert.match(context(told), new RegExp(`^This session compacts instead of offering a fresh session \\(${MINE}\\): past its window's trigger`));
+    assert.match(bannerOf(start('f1'))[1], new RegExp(`^\\*\\*Context:\\*\\* auto-compact is on \\(${MINE}\\) - the session compacts `));
+    const lone = asked('f1', ['Resume in a fresh session (Recommended)', 'Run stage 2 here']);
+    assert.strictEqual(lone.status, 2);
+    assert.match(lone.stderr, new RegExp(`a fresh-session option, while this session compacts instead \\(${MINE}\\)`));
+    const dropped = asked('f1', ['Resume in a fresh session (Recommended)', 'Run stage 2 here', 'Stop here']);
+    assert.match(JSON.parse(dropped.stdout).hookSpecificOutput.additionalContext, /fresh-session option dropped \(this session compacts instead\)/);
+    // the project's variable keeps its own words
+    const project1 = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here'])] },
+        session_id: 'f2', cwd: p.root, transcript_path: big }, { ...env, ALFRED_CODE_AUTO_COMPACT: '1' });
+    assert.match(project1.stderr, /while this session compacts instead \(ALFRED_CODE_AUTO_COMPACT=1\)/);
+    // with nothing set, and after the switch goes off, the offers are back
+    assert.strictEqual(close('f3').status, 2, 'another session: the Stop offer holds the close');
+    assert.match(context(start('f3')), /Do NOT start the run yet/);
+    modeLine(p, 'f1', `${COMPACT_CMD} off`, big, { ALFRED_CODE_HOOK_LOG_DIR: log });
+    assert.match(context(start('f1')), /Do NOT start the run yet/, 'switched off: the offer is back');
 });

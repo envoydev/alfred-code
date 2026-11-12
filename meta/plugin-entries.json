@@ -30,12 +30,7 @@
         }
       },
       "commands": [
-        "./setup-plugin/commands/init.md",
-        "./setup-plugin/commands/update.md",
-        "./setup-plugin/commands/configure.md",
-        "./setup-plugin/commands/validate.md",
-        "./setup-plugin/commands/status.md",
-        "./setup-plugin/commands/uninstall.md"
+        "./setup-plugin/commands/"
       ],
       "skills": [
         "./setup-plugin/skills/alfred-code"

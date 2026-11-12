@@ -104,3 +104,15 @@ test('fixed root: the release note says the data root is always .alfred', () =>
     for (const word of ['--data-path', '--data-move', 'ALFRED_CODE_DATA_PATH', '!! data root:', 'Restart a session']) assert.ok(note.text.includes(word), word);
     assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
 });
+
+// The mode commands (the owner's request of 2026-11-12): an install owes the note that names the three commands, the
+// two settings that last, and what a typed flag does now.
+test('mode commands: the release note names the three commands and says the flags are gone', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - modes are commands'));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    for (const word of ['/alfred-code:mode:auto-run', '/alfred-code:mode:scoring', '/alfred-code:mode:auto-compact', 'on|off', '--mode-auto-run-on',
+        'attended', 'a retired off flag ends nothing', 'ALFRED_CODE_SCORER', 'ALFRED_CODE_AUTO_COMPACT', '/mode-auto-run <request>']) assert.ok(note.text.includes(word), word);
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});

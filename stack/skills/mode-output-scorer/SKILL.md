@@ -13,7 +13,7 @@ A drafted output is graded by a fresh, read-only output-scorer seat that never s
 - A `scorer: on (level <n>, rounds <r>, ...)` line is in context and a producer is about to release an output it names - a designer plan file, a root-cause verdict, an inline plan.
 - A `scorer: stacked for this request (...)` line is in context: whatever this request releases is graded, under its own rubric, or as `custom` when no producer ran.
 - No such line in context: do nothing; the producer releases as today.
-- The switch: `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task-, capture-, loop-, issue- or mode- command turns the scorer on or off for the session. Typed with only mode flags (`/mode-output-scorer --mode-output-scorer-on`), this skill grades nothing: say in one line what the flag switched, and stop.
+- The switch: `/alfred-code:mode:scoring on` / `/alfred-code:mode:scoring off`, typed on its own line, turns the scorer on or off for the session. Typed with only a `--mode-*` token (a retired flag), this skill grades nothing: say in one line that the mode command replaced it, and stop.
 - Each producer carries the line that brings it here, in one of two shapes:
   - automatic outputs: 'Where a `scorer: on` line naming <output> or a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scorer` Skill call with output `<name>`.'
   - typed-only outputs: 'Where a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scorer` Skill call with output `<name>`.'

@@ -1190,6 +1190,7 @@ test('qualityPart reads the topic word', () => {
         }
     assert.strictEqual(qualityPart('capture-quality', 'coverage src/api'), 'test-coverage-quality');
     assert.strictEqual(qualityPart('capture-quality', '--mode-auto-run-on code'), 'code-quality');
+    assert.strictEqual(qualityPart('capture-quality', '--auto-mode --mode-x coverage'), 'test-coverage-quality', 'every mode-like word is skipped');
     for (const args of ['', '--mode-auto-run-on', 'coverage/', 'coverages', 'src/api', undefined])
         assert.strictEqual(qualityPart('capture-quality', args), 'chain', String(args));
     assert.strictEqual(qualityPart('alfred-code:capture-quality', 'code'), 'code-quality');
@@ -1207,6 +1208,27 @@ test('the coverage loop is a review skill of its own kind', () => {
     assert.strictEqual(reviewKind('loop-test-coverage-quality'), 'loop-test-coverage-quality');
     assert.ok(REVIEW_SKILL.test('loop-test-coverage-quality'));
     assert.ok(REVIEW_SKILL.test('alfred-code:loop-test-coverage-quality'));
+});
+
+// The one typed read every judge of auto-run shares: a mode command row or a `/mode-auto-run <request>` row, never a
+// retired flag (the run it rode on was attended).
+test('typedAutoEvent: the mode command and the typed request are events, a retired flag and another mode are none', () =>
+{
+    const { typedAutoEvent } = require(PRELUDE);
+    const row = (content, extra = {}) => JSON.stringify({ type: 'user', sessionId: 's1', message: { role: 'user', content }, ...extra });
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run on'), ''), 'on');
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run off'), ''), 'off');
+    assert.strictEqual(typedAutoEvent(row('<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>'), 's1'), 'on');
+    assert.strictEqual(typedAutoEvent(row('/mode-auto-run fix the login'), ''), 'on');
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:scoring on'), ''), null);
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-compact on'), ''), null);
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run'), ''), null, 'the bare command reports, it switches nothing');
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run on now'), ''), null);
+    assert.strictEqual(typedAutoEvent(row('/task-solve --mode-auto-run-on X'), ''), null, 'a retired flag is no event (R5)');
+    assert.strictEqual(typedAutoEvent(row('/task-solve --mode-auto-run-off X'), ''), null);
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run on'), 's2'), null, 'another session\'s row');
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run on', { isMeta: true }), ''), null, 'a meta row is not typed');
+    assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run on', { isCompactSummary: true }), ''), null);
 });
 
 // Session status file (2026-10-29, plan task 1): one auto-run decision for guard-answer's prompt and the status file.
@@ -1229,9 +1251,11 @@ test('autoRunFor matches autoRunNow\'s cases (T10)', () =>
         stamp('AUTO - "x"\nsession: s1\n');
         assert.strictEqual(autoRunFor(s1, env, { autoRun: 'off' }), false, 'the run\'s -off wins over a live stamp');
         fs.rmSync(file);
-        assert.strictEqual(autoRunFor(s1, env, modeFlags('/task-solve --mode-auto-run-on fix x')), true);
-        assert.strictEqual(autoRunFor(s1, env, modeFlags('/mode-auto-run --mode-auto-run-on')), true, 'a run flag is there, nothing refused');
-        assert.strictEqual(autoRunFor({ session_id: 's1', agent_id: 'a1' }, env, modeFlags('/task-solve --mode-auto-run-on x')), false, 'a seat never starts auto-run');
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/alfred-code:mode:auto-run on')), true);
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/mode-auto-run fix x')), true, 'the typed request is its own start');
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/task-solve --mode-auto-run-on fix x')), false, 'a retired flag starts nothing');
+        assert.strictEqual(autoRunFor(s1, env, modeFlags('/alfred-code:mode:scoring on')), false, 'another mode\'s command starts nothing');
+        assert.strictEqual(autoRunFor({ session_id: 's1', agent_id: 'a1' }, env, modeFlags('/alfred-code:mode:auto-run on')), false, 'a seat never starts auto-run');
         stamp('AUTO - "x"\nsession: s1\n');
         assert.strictEqual(autoRunFor(s1, env, null), true);
         assert.strictEqual(autoRunFor({ session_id: 's2' }, env, null), false);

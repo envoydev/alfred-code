@@ -213,7 +213,7 @@ test('SYS-01: GUARD-OFF-ALLOW is a security receipt - this session, under 8h, af
   assert.equal(configWrite(p, f, content).status, 2, 'an answer before the last denial');
   p.write([typed('switch it off'), denial('GUARD-OFF-ALLOW'), asked('Switch the rm guard off?', options, 'Keep the guards on (Recommended)')]);
   assert.equal(configWrite(p, f, content).status, 2, 'the keep answer');
-  p.write([command('task-solve', '--mode-auto-run-on tidy'), denial('GUARD-OFF-ALLOW'), asked('Switch the rm guard off?', options, LABEL)]);
+  p.write([command('alfred-code:mode:auto-run', 'on'), denial('GUARD-OFF-ALLOW'), asked('Switch the rm guard off?', options, LABEL)]);
   assert.match(configWrite(p, f, content).stderr, /hard stop/, 'an allow given under auto-run');
   p.write([typed('switch it off'), denial('GUARD-OFF-ALLOW'), asked('Switch the rm guard off?', options, LABEL, 'Bash')]);
   assert.equal(configWrite(p, f, content).status, 2, 'an answers-shaped result under another tool (FA-4)');
@@ -406,7 +406,7 @@ test('SYS-01b: GUARD-OFF-ALLOW opens it after the user\'s own allow; the ask hol
     .receipt('GUARD-OFF-ALLOW', `session: ${S}\nclaude plugin disable alfred-code@envoydev\n`);
   assert.equal(configShell(p, cmd).status, 0, 'the user\'s allow opens it');
   assert.equal(configShell(p, 'claude plugin uninstall alfred-code@envoydev').status, 2, 'only the act the receipt names');
-  p.write([command('task-solve', '--mode-auto-run-on tidy'), denial('GUARD-OFF-ALLOW', 'Bash'), asked('Switch the Alfred Code plugin off?', options, LABEL)]);
+  p.write([command('alfred-code:mode:auto-run', 'on'), denial('GUARD-OFF-ALLOW', 'Bash'), asked('Switch the Alfred Code plugin off?', options, LABEL)]);
   assert.equal(configShell(p, cmd).status, 2, 'an allow given under auto-run opens nothing');
   p.write([typed('go')]);
   for (const env of [{ ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }, { ALFRED_CODE_CONFIG_PROTECT: '0' }])
@@ -552,7 +552,7 @@ test('U21: no effect from a keep pick, another file, an answer before the last t
   deny([typed('go'), asked('Revert src/auth/b.ts?', [['Revert it', ''], ['Keep (Recommended)', '']], 'Revert it')], 'git restore a.txt', 'another file named');
   deny([typed('go'), asked('Revert ba.txt?', [['Revert it', ''], ['Keep (Recommended)', '']], 'Revert it')], 'git restore a.txt', 'a longer name holding the basename');
   deny([typed('go'), asked('Revert a.txt?', REVERT, 'Revert a.txt'), typed('actually wait')], 'git restore a.txt', 'a typed message since the answer');
-  deny([command('task-solve', '--mode-auto-run-on tidy'), asked('Revert a.txt?', REVERT, 'Revert a.txt')], 'git restore a.txt', 'answered under auto-run');
+  deny([command('alfred-code:mode:auto-run', 'on'), asked('Revert a.txt?', REVERT, 'Revert a.txt')], 'git restore a.txt', 'answered under auto-run');
   deny([typed('go'), asked('Revert a.txt?', REVERT, 'Revert a.txt', 'Bash')], 'git restore a.txt', 'an answers-shaped result under another tool (FA-4)');
   deny([typed('go'), said('Revert a.txt? -> Revert a.txt')], 'git restore a.txt', 'the model\'s own prose');
   p.file('answers.json', JSON.stringify({ answers: { 'Revert a.txt?': 'Revert a.txt' } }));

@@ -504,7 +504,7 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
 test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the user under it', () => {
     const t = flat(skill('task-version-upgrade'));
     assert.strictEqual((t.match(/--auto\b(?!-)/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
-    assert.doesNotMatch(t, /--auto-mode/, 'the old flag is gone');
+    assert.doesNotMatch(t, /--auto-[a-z]/, 'the old flag is gone');
     assert.doesNotMatch(t, /Auto mode (skips|still stops|\(explicitly requested\))|auto mode included|skipping the approval gate/, 'the legacy mode is folded');
     assert.match(t, /\*\*Under auto-run the gate is answered, not skipped - and only when the user turned auto-run on, the hook's contract in context\.\*\*/);
     assert.match(t, /the old `--auto`, 'auto mode' or `auto-mode` wording starts nothing, and the gate stands/);
@@ -512,18 +512,18 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
     assert.match(t, /Under auto-run put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-run' - the hook answers only a marked ask, so this one waits\./);
     // the attended ask keeps its mark, and the modes paragraph is untouched
     assert.match(t, /- 'Re-plan from this stage \(Recommended\)' - .* - 'Roll back to the last stage's rollback point' - .* - 'Stop here' - /);
-    assert.match(t, /\*\*Modes\.\*\* Mode flags right after the command - `--mode-auto-run-on`/);
+    assert.match(t, /\*\*Modes\.\*\* Auto-run and output scoring are session modes the user turns on and off with the mode commands/);
 });
 
-// ---- stack-modes (spec 2026-10-27 sections 7, 8): the flows read the four mode flags, never an old one ------------
-const MODE_FLAG_NAMES = ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off'];
-test('every flow paragraph names the four mode flags and no old flag (AC10)', () => {
+// ---- mode commands (2026-11-12): the flows name the two mode commands, and a `--mode-*` token switches nothing ----
+const MODES_PARAGRAPH = "**Modes.** Auto-run and output scoring are session modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.";
+test('every flow paragraph names the mode commands and no flag', () => {
     const files = copiesOf(shared()['auto-mode-contract']);
     assert.strictEqual(files.length, 14, 'the owner and its 13 sites (the five capture parts read their router\'s paragraph, audit 2026-10-30 SKC-06)');
     for (const file of files) {
         const t = read(file);
-        for (const flag of MODE_FLAG_NAMES) assert.ok(t.includes(flag), `${file} names ${flag}`);
-        assert.doesNotMatch(t, /--auto-mode|--score-(?:on|off)/, `${file} names no old flag`);
+        assert.ok(t.includes(MODES_PARAGRAPH), `${file} carries the modes paragraph on one line`);
+        assert.doesNotMatch(t, /--mode-[a-z]|--auto-[a-z]|--score-[a-z]/, `${file} names no flag`);
     }
     assert.deepStrictEqual(registryFindings('auto-mode-contract', 'no-stops-points-to-auto-mode', 'approval-stamp-auto-carve-out'), []);
 });
@@ -531,5 +531,5 @@ test('M2: mode-auto-run says auto-run did not start because no hook ran when no 
     const t = flat(skill('mode-auto-run'));
     assert.match(t, /no hook ran/);
     assert.match(t, /no `auto-run is ON` contract line is in context[^.]*no hook ran[^.]*stop/i);
-    assert.doesNotMatch(t, /--auto-mode/);
+    assert.doesNotMatch(t, /--auto-[a-z]/);
 });

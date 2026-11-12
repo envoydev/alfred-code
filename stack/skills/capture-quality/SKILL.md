@@ -30,14 +30,13 @@ one part, and the typed command with no topic word runs all three behind one ask
   its answer. A bare 'is this code any good?' measured no load (0 of 10), so the code part runs from its topic word or
   a request that names the code assessment.
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
+**Modes.** Auto-run and output scoring are session modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.
 
 ## 1. The topic word
 
 Read the arguments in this order.
 
-1. Strip the mode flags (`--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`,
-   `--mode-output-scorer-off`).
+1. Drop a `--mode-*` token (a retired flag).
 2. Take the first remaining word, compared whole and case-insensitively against the table's topic words. A word
    holding `/`, `\` or `.` never matches, because it is a path.
 3. A match picks that part. A mode word next (section 4) marks a calling flow; every word after it is the part's own
@@ -61,8 +60,7 @@ Read the arguments in this order.
 | `Coverage src/api` | the coverage part, target `src/api` |
 | `coverage/` | the chain, target `coverage/` |
 | `coverages` | the chain, target `coverages` |
-| `--mode-auto-run-on code` | the code part, with auto-run on |
-| empty, or flags only, the user's message the typed command | the chain, no target |
+| empty, or a `--mode-*` token only, the user's message the typed command | the chain, no target |
 | empty, a description match on 'what is our test coverage?' | the coverage part, no target, its run gate asked |
 | `test coverage`, a description match on 'how is our test coverage?' | the coverage part, no target (no path named `test`) |
 | empty, a description match on 'assess the quality of this service' | ONE question: code-quality (Recommended), architecture-quality, test-coverage-quality |
@@ -189,7 +187,7 @@ Run the chosen parts through their analyzer seats or in this session?
   exclusions) in ONE more AskUserQuestion call, right after the chain ask and before any part runs - never deferred to
   the middle of the run.
 - The mode answer reaches the coverage part only on a first capture: its update analysis is INLINE by its own rule.
-- Under auto-run (the hook's contract, or `--mode-auto-run-on` with no hook line), each question takes its Recommended
+- Under auto-run (the hook's contract, or the user's word with no hook line), each question takes its Recommended
   option.
 - The chain is one skill load. The parts are read, not re-invoked: no fresh-session gate fires between parts.
 

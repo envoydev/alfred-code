@@ -672,13 +672,13 @@ test('scorer backstop: a typed stack (T4) is held once with the switch off; the 
   }
   assert.strictEqual(scorer([typed('what does `/mode-output-scorer` do')], 'it grades', { session_id: 'T4c' }, { ALFRED_CODE_SCORER: '0' }), 0);
 });
-test('scorer backstop: a flag-only /mode-output-scorer line is no stack and owes no Scored line (AC7, spec section 4)', () => {
-  for (const [i, t] of [typed('/mode-output-scorer --mode-output-scorer-off'),
-    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-on</command-args>'),
-    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-off</command-args>')].entries())
+test('scorer backstop: a mode command, and a /mode-output-scorer line of mode-like tokens alone, is no stack and owes no Scored line (AC7, spec section 4)', () => {
+  for (const [i, t] of [typed('/alfred-code:mode:scoring off'),
+    typed('<command-name>/alfred-code:mode:scoring</command-name><command-args>on</command-args>'),
+    typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-x</command-args>')].entries())
     assert.strictEqual(scorer([t], 'switched', { session_id: `T4f-${i}` }, { ALFRED_CODE_SCORER: '0' }), 0, rowText(t));
-  assert.strictEqual(scorer([typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-output-scorer-on explain x</command-args>')],
-    'here', { session_id: 'T4f-x' }, { ALFRED_CODE_SCORER: '0' }), 2, 'a request after the run is a stack');
+  assert.strictEqual(scorer([typed('<command-name>/mode-output-scorer</command-name><command-args>--mode-x explain x</command-args>')],
+    'here', { session_id: 'T4f-x' }, { ALFRED_CODE_SCORER: '0' }), 2, 'a request after the tokens is a stack');
 });
 test('scorer backstop: a stacked cycle with the switch off owes a T1 draft too; an unstacked one does not (spec 5.9)', () => {
   const off = { ALFRED_CODE_SCORER: '0' };

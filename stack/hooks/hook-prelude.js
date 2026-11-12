@@ -473,11 +473,11 @@ function transcriptField(file, key)
 // seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
 // overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
 const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
-// A stamp an auto-run start writes (guard-fresh-session-start.js, `--mode-auto-run-on` in a family command's leading run,
-// or a typed `/mode-auto-run <request>`) names its session on a `session: <id>` line. It is live for THAT session for as
+// A stamp an auto-run start writes (guard-fresh-session-start.js, at a typed `/alfred-code:mode:auto-run on` or a typed
+// `/mode-auto-run <request>`) names its session on a `session: <id>` line. It is live for THAT session for as
 // long as the session runs - an unattended loop outlives the 8h a hand-written stamp gets - and never for another session
 // in the same project, which the age and birth checks cannot tell apart from it. A week is the backstop for a stamp whose
-// session died without its `--mode-auto-run-off`.
+// session died without its `/alfred-code:mode:auto-run off`.
 const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 // The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
 // With `planId`, that plan's own stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); without
@@ -544,9 +544,9 @@ function autoStampLive(input, env)
 // - receiptAnswered: for the three SECURITY receipts (DISCARD, CROSS-WRITE, GUARD-OFF; SECRET-READ left in swap 1) the transcript must
 //   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
 //   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
-//   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run
-//   on (modeFlags) puts every later answer under auto-run until a typed off-flag, so deleting the stamp or typing the
-//   off-flag afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
+//   given while auto-run was off - judged at the answer's place: a typed line that turns auto-run on (modeFlags: the
+//   mode command, or `/mode-auto-run <request>`) puts every later answer under auto-run until a typed off command, so
+//   deleting the stamp or typing the off command afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
 //   seat (`agent_id`) is anchored at its time in the seat's own transcript, and the answer must land after it.
 // A payload with no transcript (a CLI run, a test fixture) keeps the time rule alone: every real session carries one.
 const RECEIPT_MAX_MS = 8 * 60 * 60 * 1000;
@@ -615,7 +615,7 @@ function typedRowText(row)
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
     return text.trim() && !harnessPrompt(text) && !LOCAL_ONLY_RE.test(text) ? text : '';
 }
-// 'on' / 'off' when a typed line's leading run switches auto-run (the one parser), else null.
+// 'on' / 'off' when a typed line switches auto-run (the one parser), else null.
 const autoEventOf = (text) => { const f = modeFlags(text); return f.family && f.autoRun ? f.autoRun : null; };
 const normLabel = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/["'“‘”’]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 const tsOfRow = (row) => { const t = Date.parse(row && row.timestamp); return Number.isFinite(t) ? t : 0; };
@@ -636,11 +636,11 @@ function deniedIn(row, marker)
     return Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.is_error === true && contentText(b.content).includes(marker));
 }
 const ANSWER_NEEDLE = '"answers":';
-const AUTO_NEEDLE = 'mode-auto-run';
+const AUTO_NEEDLE = 'auto-run';
 // An AskUserQuestion call in an assistant row, as Claude Code serializes it (compact JSON, the needles above alike).
 const ASK_NEEDLE = '"name":"AskUserQuestion"';
 const isTypedCandidate = (line) => line.includes('"type":"user"') && !line.includes('"tool_result"');
-// 'on' / 'off' when a transcript line is a typed row switching auto-run, else null: the one typed-flag read every judge of
+// 'on' / 'off' when a transcript line is a typed row switching auto-run, else null: the one typed-line read every judge of
 // auto-run shares. With `session`, a row naming another session is none.
 function typedAutoEvent(line, session)
 {
@@ -748,7 +748,7 @@ function receiptShutText(r, rel)
 {
     if (!r || r.live) return '';
     return `The receipt at ${rel} is not honoured: ${r.why}.` + (r.autoRun
-        ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`--mode-auto-run-off`).'
+        ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`/alfred-code:mode:auto-run off`).'
         : ' Rewrite it only on a fresh answer.') + '\n';
 }
 
@@ -757,7 +757,7 @@ function receiptShutText(r, rel)
 // compaction summary, a sidechain or a harness prompt), with the text the harness lays inside such a row cut out (a
 // reminder or an IDE note it appends, a typed command's own name and message line, a `!` command's output), and each
 // AskUserQuestion answer that is the result of an AskUserQuestion call in the same file (FA-4), with whether auto-run was
-// on when it was given (the typed flag rows, receiptAnswered's read). Only the transcript decides, so no file the model
+// on when it was given (the typed mode rows, receiptAnswered's read). Only the transcript decides, so no file the model
 // writes can (HK-03). No transcript: null. Kept per file size and mtime within one process.
 const USER_NEEDLE = '"type":"user"';
 const HARNESS_SPANS_RE = /<(system-reminder|command-name|command-message|bash-stdout|bash-stderr|local-command-stdout|local-command-stderr|local-command-caveat|ide_[a-z_]+)\b[^>]*>[\s\S]*?<\/\1>/g;
@@ -873,7 +873,7 @@ function typedPaths(text, { platform = process.platform, home = homeDir(), nativ
 // lastTypedPrompt's 4MB tail after the row - read by position - AND no typed row turns auto-run off after the newest such
 // row (the final review of 2026-10-30 FA-1: a stamp the model rewrote over an old on-row, after the user typed the
 // off-flag, got the model's own SHOW ask answered and opened the secret receipt). The off read is receiptAnswered's
-// typed-flag read from that row to the end, and an off-row of any session in this file counts.
+// typed-line read from that row to the end, and an off-row of any session in this file counts.
 // Its quoted words are the typed line's or, on the Skill route, the model's args, so they are never matched. A stamp with
 // no `session:` line is task-solve's hand-written waiver: its quoted words (the text after `AUTO -` when unquoted;
 // whitespace collapsed, double quotes single, the first 400 characters, at least 8 - a shorter quote matches any turn)
@@ -989,44 +989,46 @@ function autoStampVerified(stamp, payload)
     return ok;
 }
 
-// --- the mode flags (stack-modes spec section 1): ONE parser every reader of a mode calls -------------------------
-// A typed line opens with a command group - the first `/name` plus up to five more right after it, the terminal's
-// skill stacking as far as a hook can tell it (a `/word` that is no skill still joins; that only moves where the
-// request starts). The leading run is the mode-like tokens right after the group: the four flags, the old ones
-// (`--auto-mode`, `--score-on`, `--score-off` - a pointer, never a switch) and any other `--mode-*` (unknown). The
-// first other token ends it, so `--dry-run` and prose stay in the request; a mode-like token past it only marks the
-// line `late`. Off wins over on for one mode. A reader acts on the run only when `family` holds.
+// --- the modes: ONE parser every reader of a mode calls --------------------------------------------------------------
+// A MODE COMMAND LINE is `/alfred-code:mode:<scoring|auto-run|auto-compact>` first on the line: with exactly `on` or
+// `off` after it the mode's field is set, bare it only names the mode, and anything else is `extra` - nothing switches.
+// It reads as a flag-only `mode-` line (`family`, `flagOnly`, no request), so it opens no run. Any other typed line
+// opens with a command group - the first `/name` plus up to five more right after it, the terminal's skill stacking
+// as far as a hook can tell it (a `/word` that is no skill still joins; that only moves where the request starts).
+// The mode-like tokens right after the group are retired flags: stripped into `old`, they switch nothing. The first
+// other token ends that run, so `--dry-run` and prose stay in the request.
 const FLOW_FAMILY_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue|mode)-[a-z][a-z0-9-]*$/;
-const MODE_FLAGS = { '--mode-auto-run-on': ['autoRun', 'on'], '--mode-auto-run-off': ['autoRun', 'off'], '--mode-output-scorer-on': ['scorer', 'on'], '--mode-output-scorer-off': ['scorer', 'off'] };
-const OLD_MODE_FLAGS = new Set(['--auto-mode', '--score-on', '--score-off']);
+const MODE_COMMAND_RE = /^\/alfred-code:mode:(scoring|auto-run|auto-compact)$/i;
+const MODE_FIELD = { scoring: 'scorer', 'auto-run': 'autoRun', 'auto-compact': 'compact' };
 const MODE_LIKE_RE = /^--(?:mode-[a-z][a-z0-9-]*|auto-mode|score-(?:on|off))$/;
 const COMMAND_TOKEN_RE = /^\/[A-Za-z0-9:_-]+$/;
 const COMMAND_GROUP_MAX = 6;
 const commandSkill = (command) => bareSkill(String(command).replace(/^\//, ''));
 function modeFlags(text)
 {
-    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scorer: null, flagOnly: false, old: [], unknown: [], late: false };
+    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scorer: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
     if (typeof text !== 'string') return flags;
     const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
     const line = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : text;
     const tokens = [...line.matchAll(/\S+/g)];
     if (!tokens.length || !COMMAND_TOKEN_RE.test(tokens[0][0])) return flags;
+    const mode = MODE_COMMAND_RE.exec(tokens[0][0]);
+    if (mode)
+    {
+        const word = tokens.length === 2 ? tokens[1][0].toLowerCase() : '';
+        Object.assign(flags, { commands: [tokens[0][0]], family: true, flagOnly: true, mode: mode[1].toLowerCase(), extra: tokens.length > 1 && word !== 'on' && word !== 'off' });
+        if (!flags.extra && word) flags[MODE_FIELD[flags.mode]] = word;
+        return flags;
+    }
     let i = 0;
     while (i < tokens.length && flags.commands.length < COMMAND_GROUP_MAX && COMMAND_TOKEN_RE.test(tokens[i][0])) flags.commands.push(tokens[i++][0]);
     while (i < tokens.length && MODE_LIKE_RE.test(tokens[i][0])) flags.run.push(tokens[i++][0]);
     flags.request = i < tokens.length ? line.slice(tokens[i].index).trim() : '';
-    flags.late = tokens.slice(i).some((t) => MODE_LIKE_RE.test(t[0]));
     flags.family = flags.commands.some((c) => FLOW_FAMILY_RE.test(c.slice(1).toLowerCase()));
-    for (const token of flags.run)
-    {
-        const flag = MODE_FLAGS[token];
-        if (flag) flags[flag[0]] = flags[flag[0]] === 'off' ? 'off' : flag[1];
-        else if (OLD_MODE_FLAGS.has(token)) { if (!flags.old.includes(token)) flags.old.push(token); }
-        else if (!flags.unknown.includes(token)) flags.unknown.push(token);
-    }
+    flags.old = [...new Set(flags.run)];
     flags.flagOnly = flags.run.length > 0 && flags.request === '';
-    // `/mode-auto-run <request>`: the typed request is its own waiver, so the line reads as its own -on (round-3 M3).
-    if (flags.autoRun === null && flags.request && flags.commands.some((c) => commandSkill(c) === 'mode-auto-run')) flags.autoRun = 'on';
+    // `/mode-auto-run <request>`: the typed request is its own waiver, so the line reads as an auto-run start (round-3 M3).
+    if (flags.request && flags.commands.some((c) => commandSkill(c) === 'mode-auto-run')) flags.autoRun = 'on';
     return flags;
 }
 // Another session is RUNNING when its own transcript, beside this one, was written within the last ten minutes - the
@@ -1052,7 +1054,7 @@ function autoRunRefusal(input, env, flags)
     const f = flags && typeof flags === 'object' ? flags : modeFlags('');
     if (payload.agent_id) return 'a seat never starts auto-run';
     const commands = Array.isArray(f.commands) ? f.commands : [];
-    if (!f.request && !(Array.isArray(f.run) && f.run.length) && commands.some((c) => commandSkill(c) === 'mode-auto-run')) return 'type the request after /mode-auto-run';
+    if (!f.request && commands.some((c) => commandSkill(c) === 'mode-auto-run')) return 'type the request after /mode-auto-run';
     const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
     if (!root) return '';
     const current = approvalStamp({ ...payload, cwd: root }, source);
@@ -1061,7 +1063,7 @@ function autoRunRefusal(input, env, flags)
     {
         const rel = path.relative(root, current.file).split(path.sep).join('/') || current.file;
         return `another session (${current.session.slice(0, 8)}) is running a stamped run in this checkout right now, and ${rel} is its approval - `
-            + `it ends with --mode-auto-run-off there, or delete ${rel} to take over, then type the command again`;
+            + `it ends with /alfred-code:mode:auto-run off there, or delete ${rel} to take over, then type the command again`;
     }
     let dir = layout ? path.dirname(layout.statePath(root, 'approvals', 'APPROVAL', source)) : path.resolve(root, '.alfred');
     while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
@@ -1084,6 +1086,26 @@ function autoRunFor(input, env, flags)
         return Boolean(stamp && stamp.live && stamp.session && stamp.session === String(payload.session_id || '') && /^AUTO\b/.test(stamp.first));
     }
     catch { return false; }
+}
+// Why no fresh-session ask is made for this payload, else '': the project's variable, this session's live auto-run, the
+// session's own switch (`/alfred-code:mode:auto-compact on` writes `on` as the file's first line) - in that order. This
+// prompt's typed line is read before the file, since the hook that writes the file runs beside its readers; a typed
+// `on` counts only while that writer runs. A file saying anything else, a folder or an unreadable one adds no cause.
+const COMPACT_SAID = { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on', mode: '/alfred-code:mode:auto-compact on' };
+const compactFile = (root, sessionId, env = process.env) => (layout && root && sessionId ? layout.statePath(root, 'sessions', `AUTO-COMPACT-${safeSession(sessionId)}`, env) : null);
+function compactCause(input, env = process.env, flags = null)
+{
+    try
+    {
+        const payload = input && typeof input === 'object' ? input : {};
+        if (String(envOf(env, 'AUTO_COMPACT') || '').trim() === '1') return 'project';
+        if (autoRunFor(payload, env, flags)) return 'auto-run';
+        const typed = flags && flags.compact;
+        if (typed === 'on' && !hookDisabled('guard-fresh-session-start', env)) return 'mode';
+        const file = typed === 'off' ? null : compactFile(env.CLAUDE_PROJECT_DIR || payload.cwd, payload.session_id, env);
+        return file && fs.readFileSync(file, 'utf8').split(/\r?\n/)[0] === 'on' ? 'mode' : '';
+    }
+    catch { return ''; }
 }
 // The run marker: one per session, open while a run in auto-run goes (spec section 2). The Stop hold, its cap and the
 // dispatch guard's run-active reads key on it; the mode itself lives in the root APPROVAL stamp for the session.
@@ -1535,7 +1557,7 @@ function safeSession(id)
     return /^\.*$/.test(s) ? '_' : s;
 }
 const scorerPath = (prefix) => (root, sessionId, env = process.env) => (layout ? layout.statePath(root, 'sessions', `${prefix}${safeSession(sessionId)}`, env) : null);
-// The session's switch (`on` / `off` from --mode-output-scorer-on / -off), the backstop's one-hold-per-cycle marker, and the
+// The session's switch (`on` / `off` from `/alfred-code:mode:scoring on|off`), the backstop's one-hold-per-cycle marker, and the
 // names an ignored ALFRED_CODE_SCORER_OUTPUTS entry was already reported under - one sweep prefix takes all three.
 const scorerFile = scorerPath('SCORER-');
 const scorerHeldFile = scorerPath('SCORER-HELD-');
@@ -1767,7 +1789,7 @@ function qualityPart(skill, args)
         const hit = OLD_CAPTURE.test(b) && OLD_PART.find(([, re]) => re.test(b));
         return hit ? hit[0] : '';
     }
-    const word = (String(args || '').trim().split(/\s+/).filter((w) => !Object.hasOwn(MODE_FLAGS, w))[0] || '').toLowerCase();
+    const word = (String(args || '').trim().split(/\s+/).filter((w) => !MODE_LIKE_RE.test(w))[0] || '').toLowerCase();
     if (!word || /[/\\.]/.test(word)) return 'chain';
     return Object.keys(QUALITY_TOPICS).find((part) => QUALITY_TOPICS[part].includes(word)) || 'chain';
 }
@@ -1940,4 +1962,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactFile, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };

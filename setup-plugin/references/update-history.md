@@ -822,3 +822,33 @@ update only; a local-scope run says so and changes nothing.
 
 Restart a session left open across the update: its hooks already read `.alfred`, so until the update has moved the
 folder they see none of the old one's state, variables or workspace record.
+
+## after 3.10.0 - modes are commands
+
+The four mode flags are gone. A mode is switched by its own command, typed alone on its line, with `on|off` after it:
+
+| Command | What it does |
+|---|---|
+| `/alfred-code:mode:auto-run` | Auto-run: each question takes its recommended option, and no fresh-session question is asked |
+| `/alfred-code:mode:scoring` | A fresh grader scores plans and root-cause verdicts before they are released |
+| `/alfred-code:mode:auto-compact` | No fresh-session question: the session compacts instead |
+
+```text
+/alfred-code:mode:auto-run on
+/task-solve add paging to GET /api/loans
+```
+
+A mode lasts the session; the command with no word after it says whether the mode is on. `auto-run on` also stops the
+fresh-session question, and `auto-compact on` stops it alone. The settings that last are `ALFRED_CODE_SCORER` and
+`ALFRED_CODE_AUTO_COMPACT`, set in `/alfred-code:configure` (the Environment area).
+
+`--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on` and `--mode-output-scorer-off` now print a
+pointer to the commands and switch nothing. While auto-run is off the run is attended, so each question waits for
+you; while it is on, a retired off flag ends nothing - type `/alfred-code:mode:auto-run off`. A session started
+with a flag before the update and resumed after it is attended again - type `/alfred-code:mode:auto-run on`.
+
+`/mode-auto-run <request>` is unchanged: it turns auto-run on and runs the request in one go. An install with no core
+plugin has no mode command: there `ALFRED_CODE_SCORER` and `ALFRED_CODE_AUTO_COMPACT` are the switches,
+`/mode-auto-run <request>` starts auto-run, and it ends with the session. A headless one-call run (`claude -p`) turns
+auto-run on with `/mode-auto-run <request>`, or types the mode command as the session's first call and resumes that
+session with the flow command.

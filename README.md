@@ -91,7 +91,8 @@ The first time: **init**, restart, **init** again. After that: **update** when a
 | `/alfred-code:validate` | Match the install to the project again |
 | `/alfred-code:uninstall` | Remove what the install wrote, nothing else |
 
-Not sure which one? Type `/alfred-code` and it names the command to run.
+Not sure which one? Type `/alfred-code` and it names the command to run. Three more commands switch a mode for the
+session: see [Modes](#modes).
 
 ## Workflows
 
@@ -119,22 +120,33 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 ## Modes
 
-A mode stays on for the rest of the session once you turn it on. Its flag goes right after a `/task-*`,
-`/capture-*`, `/loop-*`, `/issue-*` or `/mode-*` command, before the request:
+A mode is a switch for the session. Type its command alone on a line, with `on` or `off`:
 
-| Flag | What it does |
-| --- | --- |
-| `--mode-auto-run-on` | Auto-run: each question takes its recommended option, so runs go on without you |
-| `--mode-auto-run-off` | Auto-run off: each question waits for your answer again |
-| `--mode-output-scorer-on` | A fresh grader scores plans and root-cause verdicts before they are released |
-| `--mode-output-scorer-off` | The grader is off again |
+| Command | What it does | How it ends |
+| --- | --- | --- |
+| `/alfred-code:mode:auto-run on` | Each question takes its recommended option, so runs go on without you. No fresh-session question either: the session compacts instead | `/alfred-code:mode:auto-run off`, or the session ends |
+| `/alfred-code:mode:scoring on` | A fresh grader scores plans and root-cause verdicts before they are released | `/alfred-code:mode:scoring off`, or the session ends |
+| `/alfred-code:mode:auto-compact on` | Only stops the fresh-session question: a long session compacts and goes on | `/alfred-code:mode:auto-compact off`, or the session ends |
 
 ```text
-/task-solve --mode-auto-run-on add paging to GET /api/loans
+/alfred-code:mode:auto-run on
+/task-solve add paging to GET /api/loans
 ```
 
 Nothing outward happens unasked under auto-run: no push, merge, deploy or publish. `/mode-auto-run <request>` turns
-auto-run on and runs the request in one go. Each prompt shows the modes that are on (`Modes ON: auto-run`).
+auto-run on and runs the request in one go. A mode command with no word after it says whether that mode is on, and
+each prompt shows the modes that are on (`Modes ON: auto-run, scoring (level 80), auto-compact`).
+
+**Settings that last.** A mode command holds for one session. To keep a choice for every session of a project, set
+its variable in `/alfred-code:configure` (the Environment area; the values live in `.alfred/.variables`):
+
+| Variable | Value | What it does |
+| --- | --- | --- |
+| `ALFRED_CODE_SCORER` | `1` (the default) or `0` | The grader is on, or off, in every session |
+| `ALFRED_CODE_AUTO_COMPACT` | `1` | No session asks about a fresh session; each compacts instead |
+
+Auto-run has no lasting setting: it is always your word for one session. The `--mode-*` flags of 3.0 to 3.10 are gone -
+typed after a command they print a pointer to the commands above and switch nothing.
 
 ## Supported stacks
 

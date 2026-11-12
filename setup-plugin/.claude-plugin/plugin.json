@@ -7,12 +7,7 @@
     "url": "https://github.com/envoydev"
   },
   "commands": [
-    "./commands/init.md",
-    "./commands/update.md",
-    "./commands/configure.md",
-    "./commands/validate.md",
-    "./commands/status.md",
-    "./commands/uninstall.md"
+    "./commands/"
   ],
   "homepage": "https://github.com/envoydev/alfred-code",
   "repository": "https://github.com/envoydev/alfred-code",

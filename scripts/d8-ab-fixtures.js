@@ -44,7 +44,7 @@ function list()
         .map((e) => e.name).sort();
 }
 
-const DEFAULTS = { from: null, also: [], skills: [], base: null, second: null, size: null, rest: '', acceptance: '', oracle: [], acceptanceCount: 0, generate: null };
+const DEFAULTS = { from: null, also: [], skills: [], base: null, first: null, second: null, size: null, rest: '', acceptance: '', oracle: [], acceptanceCount: 0, generate: null };
 
 function loadTask(id)
 {

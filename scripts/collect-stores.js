@@ -321,7 +321,7 @@ const HISTORY_DAYS_MS = 15552000000;
 // One row per name prefix under state/sessions/, in the spec's order (4.3). The forge store (ACTS-, REFS-, NOTE-, PAUSE-)
 // left with the ref watch (complexity stage 1 B9).
 const SESSION_PREFIXES = [
-    ['AUTO-RUN-', 'meta'], ['AUTO-TAKEN-', 'meta'], ['AUTO-SAID-', 'meta'], ['COMPACT-STATE-', 'meta'], ['twins-', 'meta'],
+    ['AUTO-RUN-', 'meta'], ['AUTO-TAKEN-', 'meta'], ['AUTO-SAID-', 'meta'], ['AUTO-COMPACT-', 'meta'], ['COMPACT-STATE-', 'meta'], ['twins-', 'meta'],
     ['review-snapshot-', 'meta'], ['trivial-', 'meta'], ['untracked-', 'meta'], ['turn-check-', 'text'],
     ['AGENT-CAP-', 'meta'], ['SCORER-', 'text'], ['preferences-', 'text'],
 ];

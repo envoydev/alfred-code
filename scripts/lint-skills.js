@@ -106,7 +106,7 @@ const NON_SKILL_TOKENS = new Set([
     'prefers-color-scheme',
     'aria-labelledby',
     'data-right',
-    // the old mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --mode-auto-run-on` is the flag now) - not a skill.
+    // the old mode word the task, capture and loop skills name as starting nothing (`/alfred-code:mode:auto-run on` is the command now) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
@@ -1334,6 +1334,26 @@ const SETUP_ASK_TEMPLATES = {
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).
     'setup-plugin/commands/validate.md': 6,
 };
+// Every command file a commands folder holds: the `.md` files at its top and ONE folder down (a sub-folder is one more
+// `:` segment of the typed name - `mode/scoring.md` is /alfred-code:mode:scoring), as sorted paths relative to `dir`
+// with forward slashes. The manifest lists the folder, so this walk is the one list of the commands.
+function commandFiles(dir, fsLike = fs)
+{
+    const out = [];
+    let entries = [];
+    try { entries = fsLike.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+    for (const e of entries)
+    {
+        if (e.isFile() && e.name.endsWith('.md')) out.push(e.name);
+        else if (e.isDirectory())
+        {
+            let inner = [];
+            try { inner = fsLike.readdirSync(path.join(dir, e.name), { withFileTypes: true }); } catch { inner = []; }
+            for (const f of inner) if (f.isFile() && f.name.endsWith('.md')) out.push(`${e.name}/${f.name}`);
+        }
+    }
+    return out.sort();
+}
 // The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
 function setupAskFiles(root, fsLike = fs)
 {
@@ -1347,7 +1367,7 @@ function setupAskFiles(root, fsLike = fs)
     {
         const d = path.join(root, 'setup-plugin', dir);
         if (!fsLike.existsSync(d)) continue;
-        for (const f of fsLike.readdirSync(d))
+        for (const f of dir === 'commands' ? commandFiles(d, fsLike) : fsLike.readdirSync(d))
         {
             const rel = `setup-plugin/${dir}/${f}`;
             if (f.endsWith('.md') && !files.some((x) => x.file === rel)) files.push({ skill: 'setup-plugin', file: rel, text: fsLike.readFileSync(path.join(d, f), 'utf8') });
@@ -1442,6 +1462,8 @@ function lintFlowAskPresence(texts)
 // user - while an array row whose file is gone fails the plugin's load. Neither is visible from
 // either list alone, and the package has no test that would notice. A field the manifest leaves out
 // is the default directory scan and has nothing to reconcile, so it is skipped rather than flagged.
+// COMMANDS are the exception (2026-11-12): the manifest lists the FOLDER, which Claude Code scans a sub-folder deep,
+// so no list can fall behind - and a listed file would drop its folder segment from the typed name.
 function lintPluginComponents(manifest, listings)
 {
     const findings = [];
@@ -1449,6 +1471,12 @@ function lintPluginComponents(manifest, listings)
     for (const [field, actual] of Object.entries(listings))
     {
         if (!Array.isArray(manifest[field])) continue;
+        if (field === 'commands')
+        {
+            if (manifest.commands.length !== 1 || norm(manifest.commands[0]) !== 'commands/')
+                findings.push("setup-plugin/.claude-plugin/plugin.json `commands` lists files, not the folder - it must be exactly ['./commands/'], so every command file ships and a sub-folder stays a segment of its name");
+            continue;
+        }
         const declared = new Set(manifest[field].map(norm));
         const onDisk = new Set(actual.map(f => `${field}/${f}`));
         for (const d of [...declared].sort())
@@ -2203,7 +2231,7 @@ function main()
     for (const field of ['commands', 'agents', 'hooks'])
     {
         const dir = path.join(ROOT, 'setup-plugin', field);
-        if (fs.existsSync(dir)) pluginComponentDirs[field] = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort();
+        if (fs.existsSync(dir)) pluginComponentDirs[field] = field === 'commands' ? commandFiles(dir) : fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort();
     }
 
     for (const finding of lintPluginComponents(pluginManifest, pluginComponentDirs)) flag(finding);
@@ -3602,6 +3630,7 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 
 module.exports = {
     hiddenChars,
+    commandFiles,
     checkSkillScriptMarkers,
     lintSkillHeadings,
     lintWorkflows,

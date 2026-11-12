@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
 const { foreignEntry } = require('./install/plugins.js');
+const { commandFiles } = require('./lint-skills.js');
 
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
@@ -18,8 +19,9 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     // live under stack/, outside that folder.
     const core = mp.plugins.find(x => x.name === 'alfred-code');
     assert.ok(core, 'the core entry must survive every generator run');
-    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided commands ship from the core - init and uninstall among them');
-    assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && !core.commands.includes('./setup-plugin/commands/setup.md'), 'setup merged into init (2026-10-17)');
+    assert.deepStrictEqual(core.commands, ['./setup-plugin/commands/'], 'the commands ship from the core as the commands FOLDER, so no command file can ship dead');
+    const shipped = commandFiles(path.join(PLUGIN_DIR, 'commands'));
+    assert.ok(shipped.includes('init.md') && shipped.includes('uninstall.md') && !shipped.includes('setup.md'), 'init and uninstall among them; setup merged into init (2026-10-17)');
     // preferred-tools is fetched from its own repo (plugins.js foreignEntry): the marketplace's plugin, not the stack's.
     for (const p of mp.plugins.filter((x) => !foreignEntry(x)))
     {
@@ -69,7 +71,7 @@ test('preferred-tools follows its own main branch, and every foreign entry carri
     }
 });
 
-test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the commands folder is listed (nine commands), and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'alfred-code');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -77,7 +79,10 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
     // Plugin COMMANDS display namespaced-only (/alfred-code:init); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /alfred-code, no /alfred-code:alfred-code stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md', './commands/uninstall.md']);
+    // The FOLDER is listed (2026-11-12): a sub-folder is one more `:` segment of the name (/alfred-code:mode:scoring).
+    assert.deepStrictEqual(pj.commands, ['./commands/']);
+    assert.deepStrictEqual(commandFiles(path.join(PLUGIN_DIR, 'commands')),
+        ['configure.md', 'init.md', 'mode/auto-compact.md', 'mode/auto-run.md', 'mode/scoring.md', 'status.md', 'uninstall.md', 'update.md', 'validate.md']);
     for (const name of ['init', 'update', 'configure', 'validate', 'status', 'uninstall'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /alfred-code:${name} command exists`);
@@ -85,6 +90,24 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'setup.md')), 'no setup command - it merged into init (2026-10-17)');
     assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md')), 'the /alfred-code router skill exists');
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'alfred-code.md')), 'no router COMMAND - a command named like the plugin displays as the /alfred-code:alfred-code stutter');
+});
+
+// The three mode commands (2026-11-12): typed by the user alone, `on|off`, a short body that repeats the hook's
+// `[mode]` line and names no stack skill (a command ships in the core, a skill may be absent).
+test('the three mode commands: user-typed only, on|off, a short body around the [mode] line', () => {
+    for (const name of ['scoring', 'auto-run', 'auto-compact'])
+    {
+        const text = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'mode', `${name}.md`), 'utf8');
+        const fm = (/^---\n([\s\S]*?)\n---\n/.exec(text) || ['', ''])[1];
+        const body = text.slice(text.indexOf('\n---\n', 4) + 5);
+        assert.match(fm, /^disable-model-invocation: true$/m, `${name}: only the user types it`);
+        assert.match(fm, /^argument-hint: on\|off$/m, `${name}: the argument hint`);
+        assert.match(fm, new RegExp(`^description: .*/alfred-code:mode:${name} on\\|off`, 'm'), `${name}: the description names the typed form`);
+        assert.ok(body.split('\n').filter((l) => l.trim()).length <= 12, `${name}: a body of at most 12 lines`);
+        assert.ok(body.includes('[mode]'), `${name}: the body acts on the hook's [mode] line`);
+        assert.ok(body.includes(`/alfred-code:mode:${name} $ARGUMENTS`), `${name}: the body shows what was typed`);
+        assert.doesNotMatch(body, /mode-(auto-run|output-scorer)\b/, `${name}: names no stack skill`);
+    }
 });
 
 // Task 18a, then 2026-10-17: init is ONE command with two phases - the install (the selection walk and the install,
@@ -649,7 +672,8 @@ test(`source-protocol.md, read whole by every command, stays under ${PROTOCOL_CA
 });
 
 test('the command bodies read stack entries under the key the core is listed under, never a literal @envoydev', () => {
-    const files = ['references/source-protocol.md', 'references/source-protocol-powershell.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    const files = ['references/source-protocol.md', 'references/source-protocol-powershell.md', ...commandFiles(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    assert.ok(files.includes('commands/mode/scoring.md'), 'a command one folder down is read too');
     for (const file of files)
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
@@ -1225,7 +1249,7 @@ test('superpowers is on no stack selection surface', () => {
     for (const rel of ['meta/recommendations.json', 'meta/evidence.json'])
         assert.doesNotMatch(read(rel), /superpowers/, rel);
     assert.ok(!JSON.parse(read('meta/stack-graph.json')).catalog.plugins.includes('superpowers'), 'the graph catalog');
-    for (const f of fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((c) => `setup-plugin/commands/${c}`).concat('setup-plugin/references/walk.md'))
+    for (const f of commandFiles(path.join(PLUGIN_DIR, 'commands')).map((c) => `setup-plugin/commands/${c}`).concat('setup-plugin/references/walk.md'))
         assert.doesNotMatch(read(f), /`superpowers`/, f);
     const html = read('docs/alfred-code.html');
     assert.doesNotMatch(html, /pluginOrder = \[[^\]]*superpowers/, 'the HTML plugin order');

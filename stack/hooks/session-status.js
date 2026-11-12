@@ -137,9 +137,9 @@ function buildStatus(payload, fields, deps) {
     else if (d.prelude && d.prelude.autoRunFor) out.autoRun = Boolean(d.prelude.autoRunFor(p, d.env, null));   // R118
   } catch { out.autoRun = false; }
   // Auto-run offers no fresh session - the session compacts (guard-fresh-session-start's context line) - whatever the
-  // trigger; nor does a session nobody attends (hook-prelude.js unattended: the gate leaves the pointer, never the offer).
+  // trigger; nor does a session nobody attends (hook-prelude.js unattended) or one that compacts instead (compactCause).
   let noOffer = out.autoRun;
-  try { noOffer = noOffer || Boolean(d.prelude && d.prelude.unattended && d.prelude.unattended(p, d.env)); } catch { /* attended */ }
+  try { noOffer = noOffer || Boolean(d.prelude && ((d.prelude.unattended && d.prelude.unattended(p, d.env)) || (d.prelude.compactCause && d.prelude.compactCause(p, d.env)))); } catch { /* attended */ }
   if (noOffer) out.fullContext = 'compact';
   try {
     const F = d.fresh;

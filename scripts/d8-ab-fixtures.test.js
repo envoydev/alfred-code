@@ -19,7 +19,10 @@ test('every task.json loads and is complete', () =>
     {
         const t = fx.loadTask(id);
         assert.strictEqual(t.id, id);
-        assert.match(t.prompt, /^\/[a-z][a-z-]* --mode-auto-run-on \S/, `${id} prompt`);
+        assert.match(t.prompt, /^\/[a-z][a-z-]* \S/, `${id} prompt`);
+        // auto-run is its own first call since the mode commands: the prompt is then sent with --resume, as `second` is
+        assert.strictEqual(t.first, '/alfred-code:mode:auto-run on', `${id} first`);
+        assert.doesNotMatch(`${t.prompt}\n${t.second || ''}`, /--mode-/, `${id} types no mode flag`);
         assert.ok(typeof t.suite === 'string' && t.suite.trim(), `${id} suite`);
         if (NO_ACCEPTANCE.has(id))
         {
@@ -59,7 +62,7 @@ test('a task that reads rows 1-3 floors at standard by its request alone', () =>
     {
         const t = fx.loadTask(id);
         if (!t.prompt.startsWith('/task-solve ') || !t.rows.some((r) => r <= 3)) continue;
-        const floor = classify(t.prompt.replace(/^\/\S+ --mode-auto-run-on /, '')).sizeFloor;
+        const floor = classify(t.prompt.replace(/^\/\S+ /, '')).sizeFloor;
         assert.strictEqual(floor, 'standard', `${id} floors at ${floor}`);
     }
 });

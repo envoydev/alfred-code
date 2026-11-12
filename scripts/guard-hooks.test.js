@@ -1661,7 +1661,7 @@ test('guard-unapproved-dispatch: a hand-written AUTO waiver is spent by a plan c
   // unchanged: an APPROVED root stamp and a session-named AUTO
   fs.writeFileSync(stamp, 'APPROVED legacy - "go"\n'); ago(stamp, 600);
   assert.equal(disp('aspnet-implementer').status, 0, 'an APPROVED root stamp is not a waiver - a completed plan leaves it');
-  fs.writeFileSync(stamp, 'AUTO - "/task-solve --mode-auto-run-on fix it"\nsession: tp-d6\n'); ago(stamp, 600);
+  fs.writeFileSync(stamp, 'AUTO - "/alfred-code:mode:auto-run on"\nsession: tp-d6\n'); ago(stamp, 600);
   assert.doesNotMatch(disp('aspnet-implementer').stderr, /predates/, 'a session-named AUTO is the run marker\'s, never spent here');
 });
 
@@ -4637,7 +4637,7 @@ test('H5: a session-named auto-run whose run marker names a skill that dispatche
   const marker = path.join(root, '.alfred', 'state', 'sessions', 'AUTO-RUN-h5-sess');
   fs.mkdirSync(path.dirname(marker), { recursive: true });
   const stamp = (skill, session = 'h5-sess') => {
-    fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/${skill} --mode-auto-run-on"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${session}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
     fs.writeFileSync(marker, `skill: ${skill}\nprompt: 0123456789ab\nat: ${new Date().toISOString()}\n`);
   };
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', session_id: 'h5-sess', cwd: root, tool_input: { subagent_type: seat, prompt: 'write the bundle', model: 'sonnet' } },
@@ -4668,23 +4668,26 @@ test('H10: a bare built-in name is never a plugin command, the scoped one still 
   const home = fs.mkdtempSync(path.join(TMP, 'h10-'));
   const plugin = path.join(home, 'plugins', 'cache', 'envoydev', 'alfred-code', '9.9.9');
   for (const [rel, body] of [['setup-plugin/commands/init.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
+    ['setup-plugin/commands/mode/scoring.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
     ['stack/skills/loop-code-quality/SKILL.md', '---\nname: loop-code-quality\ndisable-model-invocation: true\n---\nbody\n']]) {
     fs.mkdirSync(path.dirname(path.join(plugin, rel)), { recursive: true });
     fs.writeFileSync(path.join(plugin, rel), body);
   }
-  const call = (skill) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`h10-${skill.replace(':', '-')}`, ctxRows('h10', 1000)) },
+  const call = (skill) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`h10-${skill.replace(/:/g, '-')}`, ctxRows('h10', 1000)) },
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home } });
   assert.equal(call('init').status, 0, 'the built-in /init is no plugin command');
   assert.equal(call('alfred-code:init').status, 2, 'the core command under its own namespace is still denied');
+  assert.equal(call('alfred-code:mode:scoring').status, 2, 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
+  assert.equal(call('mode:scoring').status, 0, 'with no plugin before it the same name is no plugin command');
   assert.equal(call('loop-code-quality').status, 2, 'a plugin skill still answers to its bare name');
   fs.rmSync(home, { recursive: true, force: true });
 });
 
 // Ruling S3 (2026-10-20): an APPROVAL stamp written after an ask the idle timeout closed records no one's approval -
 // the implementer dispatch is denied once ('the question timed out - re-ask'), the marker spent; a stamp written before
-// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names --mode-auto-run-on for a no-stops run
+// the timeout, or with no timeout marker, passes. Ruling S1: the unapproved denial names the mode command for a no-stops run
 // and keeps a hand-written AUTO waiver to the two solve flows.
-test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names --mode-auto-run-on', () => {
+test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved denial names the mode command', () => {
   const root = fs.mkdtempSync(path.join(TMP, 's3d-'));
   const logDir = fs.mkdtempSync(path.join(TMP, 's3d-log-'));
   const flow = path.join(root, '.alfred', 'docs', 'flow');
@@ -4695,7 +4698,7 @@ test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved deni
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const unapproved = disp();
   assert.equal(unapproved.status, 2);
-  assert.match(unapproved.stderr, /--mode-auto-run-on/, 'S1: a no-stops run is the typed flag');
+  assert.match(unapproved.stderr, /'\/alfred-code:mode:auto-run on' before the command/, 'S1: a no-stops run is the typed mode command');
   assert.match(unapproved.stderr, /only under task-solve and task-solve-cross/, 'S1: a hand-written AUTO is the solve flows\' alone');
   const past = new Date(Date.now() - 60000);
   fs.writeFileSync(marker, past.toISOString()); fs.utimesSync(marker, past, past);
@@ -5566,10 +5569,10 @@ test('audit 2026-10-30 HK-03: a security receipt opens only on the user\'s own a
   timedOut.toolUseResult.afkTimeoutMs = 60000;
   shut([ask, no(), timedOut], 'an ask the idle timeout closed');
   // auto-run, judged at the answer's place in the transcript - never by the stamp or the ledger at read time
-  const on = rc.command('task-solve', '--mode-auto-run-on wire the client');
+  const on = rc.command('alfred-code:mode:auto-run', 'on');
   const stampFile = path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL');
   const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${RC}.jsonl`);
-  fs.writeFileSync(stampFile, `AUTO - "/task-solve --mode-auto-run-on wire the client"\nsession: ${RC}\nskill: task-solve\ntranscript-size: 0\n`);
+  fs.writeFileSync(stampFile, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${RC}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`);
   fs.mkdirSync(path.dirname(ledger), { recursive: true });
   fs.writeFileSync(ledger, JSON.stringify({ mode: 'auto', kind: 'auto-answer', session: RC }) + '\n');
   const autoAnswered = [on, no(), rc.said('Asking for the write.'), rc.answer(`${ALLOW} (Recommended)`)];
@@ -5578,11 +5581,11 @@ test('audit 2026-10-30 HK-03: a security receipt opens only on the user\'s own a
   shut(autoAnswered, 'the same with the auto-answer ledger row deleted');
   fs.rmSync(stampFile);
   shut(autoAnswered, 'the stamp deleted after the answer opens nothing');
-  shut([...autoAnswered, rc.command('task-solve', '--mode-auto-run-off')], 'nor does the off-flag typed after it');
-  shut([rc.command('mode-auto-run', 'wire the client'), no(), rc.answer(ALLOW)], 'a typed /mode-auto-run <request> is its own -on');
-  opens([on, rc.command('mode-auto-run', '--mode-auto-run-off'), no(), rc.answer(ALLOW)], 'an answer after the typed off-flag counts');
-  opens([rc.typed('what does --mode-auto-run-on do?'), no(), rc.answer(ALLOW)], 'a prose mention of the flag switches nothing');
-  opens([rc.typed('/fix-this --mode-auto-run-on now'), no(), rc.answer(ALLOW)], 'a flag after a non-family command switches nothing');
+  shut([...autoAnswered, rc.command('alfred-code:mode:auto-run', 'off')], 'nor does the off command typed after it');
+  shut([rc.command('mode-auto-run', 'wire the client'), no(), rc.answer(ALLOW)], 'a typed /mode-auto-run <request> turns auto-run on too');
+  opens([on, rc.command('alfred-code:mode:auto-run', 'off'), no(), rc.answer(ALLOW)], 'an answer after the typed off command counts');
+  opens([rc.typed('what does /alfred-code:mode:auto-run on do?'), no(), rc.answer(ALLOW)], 'a prose mention of the command switches nothing');
+  opens([rc.typed('/alfred-code:mode:auto-run on now'), no(), rc.answer(ALLOW)], 'a command with more than on or off after it switches nothing');
   // no transcript in the payload (a CLI run, an older fixture): the session and time rules alone, as before
   stateReceipt(root, CROSS, mine);
   assert.equal(write(null).status, 0, 'no transcript');
@@ -5775,7 +5778,7 @@ test('audit 2026-10-30 HK-03 / HK-16: DISCARD and CROSS-WRITE are this session\'
     tp = session(home, [rc.typed('tidy up'), rc.denial('DISCARD-ALLOW', 'Bash')]);
     stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\na.txt\n`);
     assert.equal(rm(tp).status, 2, 'HK-03: no Discard it answered');
-    tp = session(home, [rc.command('task-solve', '--mode-auto-run-on tidy up'), rc.denial('DISCARD-ALLOW', 'Bash'), rc.answer('Discard it')]);
+    tp = session(home, [rc.command('alfred-code:mode:auto-run', 'on'), rc.denial('DISCARD-ALLOW', 'Bash'), rc.answer('Discard it')]);
     stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\na.txt\n`);
     const auto = rm(tp);
     assert.equal(auto.status, 2, 'HK-03: a Discard it given under auto-run');
@@ -5803,7 +5806,7 @@ test('audit 2026-10-30 HK-03 / HK-16: DISCARD and CROSS-WRITE are this session\'
   }
 });
 
-test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript shows the user typing it - the hook\'s two routes and task-solve\'s waiver', () => {
+test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript shows the user typing it - the mode command\'s stamp and task-solve\'s waiver', () => {
   const { approvalStamp } = require('../stack/hooks/hook-prelude.js');
   let k = 0;
   const fresh = () => {
@@ -5813,27 +5816,28 @@ test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript sho
   };
   const live = (p, sid = RC) => { const s = approvalStamp({ session_id: sid, transcript_path: p.tp, cwd: p.root }, { CLAUDE_PROJECT_DIR: p.root }); return Boolean(s && s.live); };
   const env = (p) => ({ ...process.env, CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'rc-log-')) });
-  const expand = (p, prompt) => runIn('guard-fresh-session-start.js', { hook_event_name: 'UserPromptExpansion', session_id: RC, cwd: p.root, transcript_path: p.tp,
-    expansion_type: 'slash_command', command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt }, { env: env(p) });
-  const typedOn = rc.command('task-solve', '--mode-auto-run-on fix A');
-  // the typed route, the prompt row written before the hook and after it
+  // the mode command, typed alone on its line: the start hook writes the stamp at UserPromptSubmit
+  const modeOn = (p) => runIn('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: RC, cwd: p.root, transcript_path: p.tp,
+    prompt: '/alfred-code:mode:auto-run on' }, { env: env(p) });
+  const typedOn = rc.command('alfred-code:mode:auto-run', 'on');
+  // the prompt row written before the hook and after it
   {
     const p = fresh();
     rcFile(p.tp, [rc.typed('go'), typedOn]);
-    expand(p, '/task-solve --mode-auto-run-on fix A');
+    modeOn(p);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\ntranscript-size: \d+\n/, 'the writer records the transcript\'s size');
     assert.equal(live(p), true, 'the row before the hook');
     const q = fresh();
     rcFile(q.tp, [rc.typed('go')]);
-    expand(q, '/task-solve --mode-auto-run-on fix A');
+    modeOn(q);
     assert.equal(live(q), false, 'no typed row yet: unproven');
     const r = fresh();
     rcFile(r.tp, [rc.typed('go')]);
-    expand(r, '/task-solve --mode-auto-run-on fix A');
+    modeOn(r);
     fs.appendFileSync(r.tp, rcLine(typedOn));
     assert.equal(live(r), true, 'the row after the hook');
   }
-  // the flagged turn one byte inside and one byte past lastTypedPrompt's 4MB tail, both orders - the read is positioned
+  // the typed row one byte inside and one byte past a 4MB tail, both orders - the read is positioned, never a tail read
   const TAIL = 4 * 1024 * 1024;
   const filler = (bytes) => {
     const empty = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '' }] } });
@@ -5845,32 +5849,30 @@ test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript sho
       rcFile(p.tp, [rc.typed('go')]);
       const row = rcLine(typedOn);
       if (order === 'before') fs.appendFileSync(p.tp, row);
-      expand(p, '/task-solve --mode-auto-run-on fix A');
+      modeOn(p);
       if (order === 'after') fs.appendFileSync(p.tp, row);
       fs.appendFileSync(p.tp, filler(gap - Buffer.byteLength(row)));
       assert.equal(fs.statSync(p.tp).size - fs.readFileSync(p.tp).indexOf(Buffer.from(row)), gap, `fixture: the row starts ${gap} bytes from the end`);
       assert.equal(live(p), true, `the row ${where} the tail, written ${order} the hook`);
     }
   }
-  // the Skill route: the stamp quotes the model's args, never matched; the typed row up to the tail's depth before it counts
+  // a model's Skill call writes no stamp, and a stamp in the hook's shape is proven only by a row the user typed
   {
     const p = fresh();
-    rcFile(p.tp, [rc.typed('go'), rc.command('task-solve', '--mode-auto-run-on fix B')]);
-    fs.appendFileSync(p.tp, filler(TAIL - 4096));
-    const r = runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: '--mode-auto-run-on the cache' },
+    rcFile(p.tp, [rc.typed('go'), rc.command('task-solve', 'fix B')]);
+    const r = runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: 'the cache' },
       session_id: RC, cwd: p.root, transcript_path: p.tp }, { env: env(p) });
     assert.equal(r.status, 0, r.stderr);
-    assert.match(fs.readFileSync(p.gate, 'utf8'), /^AUTO - "\/task-design --mode-auto-run-on the cache"\n/, 'the Skill route quotes the model\'s args');
-    assert.equal(live(p), true, 'proven by the typed row, never by the quoted args');
+    assert.equal(fs.existsSync(p.gate), false, 'the Skill route writes no stamp');
     const forged = fresh();
-    rcFile(forged.tp, [rc.typed('go'), rc.skill('task-design', '--mode-auto-run-on the cache')]);
+    rcFile(forged.tp, [rc.typed('go'), rc.skill('alfred-code:mode:auto-run', 'on')]);
     pause(5);
-    fs.writeFileSync(forged.gate, `AUTO - "/task-design --mode-auto-run-on the cache"\nsession: ${RC}\nskill: task-design\nat: ${new Date().toISOString()}\ntranscript-size: ${fs.statSync(forged.tp).size}\n`);
+    fs.writeFileSync(forged.gate, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${RC}\nskill: alfred-code:mode:auto-run\nat: ${new Date().toISOString()}\ntranscript-size: ${fs.statSync(forged.tp).size}\n`);
     assert.equal(live(forged), false, 'a stamp in the hook\'s shape over a Skill call alone');
-    fs.writeFileSync(forged.gate, `AUTO - "/task-design --mode-auto-run-on the cache"\nsession: ${RC}\nskill: task-design\n`);
+    fs.writeFileSync(forged.gate, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${RC}\nskill: alfred-code:mode:auto-run\n`);
     assert.equal(live(forged), false, 'one with no transcript-size at all');
     const other = fresh();
-    rcFile(other.tp, [rc.command('task-solve', '--mode-auto-run-on fix A', 'someone-else')]);
+    rcFile(other.tp, [rc.command('alfred-code:mode:auto-run', 'on', 'someone-else')]);
     pause(5);
     fs.writeFileSync(other.gate, `AUTO - "x"\nsession: ${RC}\nskill: task-solve\ntranscript-size: 0\n`);
     assert.equal(live(other), false, 'a typed row of another session');
@@ -5884,7 +5886,7 @@ test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript sho
     assert.equal(hand([rc.typed('go')], WAIVER), false, 'words the user never typed');
     assert.equal(hand([rc.typed('go'), rc.skill('task-solve', 'run all recommended without \'asking\' me')], WAIVER), false, 'a Skill call alone');
     assert.equal(hand([rc.typed('go'), rc.answer('Start AUTO here (Recommended)')], WAIVER), true, 'the user answered Start AUTO here');
-    assert.equal(hand([rc.command('task-solve', '--mode-auto-run-on x'), rc.answer('Start AUTO here (Recommended)')], WAIVER), false, 'an answer auto-run gave');
+    assert.equal(hand([rc.command('alfred-code:mode:auto-run', 'on'), rc.answer('Start AUTO here (Recommended)')], WAIVER), false, 'an answer auto-run gave');
     assert.equal(hand([rc.typed('yes, go ahead')], 'AUTO - "go ahead"'), true, 'eight characters: at the floor');
     assert.equal(hand([rc.typed('proceed')], 'AUTO - "proceed"'), false, 'seven: under it');
   }
@@ -5914,7 +5916,7 @@ test('audit 2026-10-30 HK-03 / HK-16: the two bounds the receipts brought - a re
   assert.match(over.why, /stale - older than 8h/);
   // the window: a typed auto-run row counts while the newline before it sits inside 5MB of the recorded offset
   const WINDOW = 5 * 1024 * 1024;
-  const typedOn = rcLine(rc.command('task-solve', '--mode-auto-run-on fix A'));
+  const typedOn = rcLine(rc.command('alfred-code:mode:auto-run', 'on'));
   const head = rcLine(rc.typed('go'));
   const empty = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '' }] } });
   const filler = (bytes) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'a'.repeat(bytes - 1 - empty.length) }] } }) + '\n';
@@ -5926,7 +5928,7 @@ test('audit 2026-10-30 HK-03 / HK-16: the two bounds the receipts brought - a re
     pause(5);
     const gate = path.join(dir, '.alfred', 'state', 'approvals', 'APPROVAL');
     fs.mkdirSync(path.dirname(gate), { recursive: true });
-    fs.writeFileSync(gate, `AUTO - "/task-solve --mode-auto-run-on fix A"\nsession: ${RC}\nskill: task-solve\ntranscript-size: ${newline + WINDOW + shift}\n`);
+    fs.writeFileSync(gate, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${RC}\nskill: alfred-code:mode:auto-run\ntranscript-size: ${newline + WINDOW + shift}\n`);
     const s = approvalStamp({ session_id: RC, transcript_path: tp, cwd: dir }, { CLAUDE_PROJECT_DIR: dir });
     return Boolean(s && s.live);
   };

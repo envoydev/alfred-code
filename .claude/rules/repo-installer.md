@@ -22,7 +22,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
   `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57 - and a row's ', max <n> turns'
   to its `maxTurns`, 2.1.6 M59).
 
-- `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
+- `setup-plugin/` - the Alfred Code plugin: nine COMMANDS - the six guided ones below and the three mode switches under
+  `commands/mode/` (`/alfred-code:mode:auto-run`, `:scoring`, `:auto-compact`; the manifest lists the commands FOLDER, so
+  the sub-folder becomes the name's `mode:` segment; their mechanics are the auto-run passage of `repo-hooks.md`) - and one router SKILL.
   - `/alfred-code:init` is ONE command in two phases (setup merged into it, the user's ruling of 2026-10-17): its first
     call (`stamp.js state`) routes. `not-installed` runs the INSTALL phase (`references/init-install.md` - the selection
     walk and the install, reporting `derive-state.js`'s `written` block first), which ends on 'restart, then
@@ -147,7 +149,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     core's prelude gates from the plugin root (2.1.5 M4: the csv, `hook_profile: minimal`, the alias and a Cursor payload
     stand them down; GATE 4 is skipped, `setUp: false`, since the gate serves init's install phase), and a layer-table denial writes a
     block row where the repo is set up; the Cursor-gate test takes its file list from the commands the core launches.
-  - None of the six carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
+  - None of the nine carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
 
 ## The stack's delivery surfaces

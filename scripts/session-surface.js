@@ -143,13 +143,27 @@ function pluginComponents(spec, account, projectRoot)
     const field = (k) => (entry[k] !== undefined ? entry[k] : manifest[k]);
     const asList = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
     const inRoot = (p) => path.join(root, String(p).replace(/^\.\//, ''));
-    const mdFiles = (paths, fallback) =>
+    // `names`, for commands: a file one folder down is listed with its folder as one more segment (`mode/b.md` is
+    // `<plugin>:mode:b`), as Claude Code names it when the commands FOLDER is listed or scanned by default.
+    const commandNames = {};
+    const mdFiles = (paths, fallback, names = null) =>
     {
         const list = asList(paths);
         const from = list.length ? list.map(inRoot) : [path.join(root, fallback)];
         const out = [];
         for (const p of from)
-            if (isDir(p)) for (const f of listMd(p)) out.push(path.join(p, f));
+            if (isDir(p))
+            {
+                for (const f of listMd(p)) out.push(path.join(p, f));
+                if (!names) continue;
+                let subs = [];
+                try { subs = fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(); } catch { subs = []; }
+                for (const sub of subs) for (const f of listMd(path.join(p, sub)))
+                {
+                    out.push(path.join(p, sub, f));
+                    names[path.join(p, sub, f)] = `${sub}:${f.slice(0, -3)}`;
+                }
+            }
             else if (p.endsWith('.md') && fs.existsSync(p)) out.push(p);
         return out;
     };
@@ -167,7 +181,8 @@ function pluginComponents(spec, account, projectRoot)
     return {
         name, market, root, version: row.version || '',
         skills: [...new Set(skillDirs)].map((d) => path.join(d, 'SKILL.md')),
-        commands: mdFiles(field('commands'), 'commands'),
+        commands: mdFiles(field('commands'), 'commands', commandNames),
+        commandNames,
         agents: mdFiles(field('agents'), 'agents'),
         hooks: hookMaps.map((h) => (h && h.hooks && typeof h.hooks === 'object' && !Array.isArray(h.hooks) ? h.hooks : h)),
         servers: servers.mcpServers || servers,
@@ -382,7 +397,7 @@ function surface(projectRoot, options = {})
         const text = readSoft(file);
         if (text === null) return;
         const fm = frontmatterOf(text);
-        const name = frontmatterValue(fm, 'name') || (command ? path.basename(file, '.md') : path.basename(path.dirname(file)));
+        const name = frontmatterValue(fm, 'name') || (command ? (plugin.commandNames || {})[file] || path.basename(file, '.md') : path.basename(path.dirname(file)));
         installedSkillNames.add(name);
         skillEntries.push({ file, owner, name, listed: plugin.name ? `${plugin.name}:${name}` : name, fm, body: bodyOf(text), source: shown(file, plugin.name, plugin.root) });
     };

@@ -488,6 +488,14 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     assert.strictEqual(prompt(off, off.transcript(rows(19)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).stdout, '', '0 switches the route off');
     const w = project();
     assert.strictEqual(prompt(w, w.transcript(rows(19, 100000))).stdout, '', 'a carry mostly the cold floor is no offer');
+    // the session's own auto-compact switch (/alfred-code:mode:auto-compact on): no fresh-session ask is made
+    const sw = project();
+    const mine = path.join(sw.sessions, `AUTO-COMPACT-${sw.sid}`);
+    fs.mkdirSync(sw.sessions, { recursive: true });
+    fs.writeFileSync(mine, 'on\n');
+    assert.strictEqual(prompt(sw, sw.transcript(rows(19))).stdout, '', 'auto-compact on: no idle-gap offer');
+    fs.writeFileSync(mine, 'off\n');
+    assert.match(prompt(sw, sw.transcript(rows(19))).stdout, /sat idle 19\.0h/, 'switched off again: the offer is back');
     const n = project();
     assert.strictEqual(prompt(n, n.transcript(rows(19)), { prompt: '<task-notification><task-id>b1</task-id></task-notification>' }).stdout, '', 'a harness notice is no return');
     const s = project();

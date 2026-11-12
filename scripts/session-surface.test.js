@@ -162,6 +162,21 @@ test("the user's own hook and MCP server stay the project's; a shared event and 
     assert.match(ep[0].detail, /~config\/plugins\/cache/);
 });
 
+test('a plugin that lists its commands folder: a command one folder down is on the surface', () =>
+{
+    const command = (description) => `---\ndescription: ${description}\n---\n\nDo it.\n`;
+    const fx = install({
+        plugins: {
+            'alfred-code@envoydev': {
+                files: { 'commands/a.md': command('Use when testing a.'), 'commands/mode/b.md': command('Use when testing b.'), 'commands/mode/deeper/c.md': command('Too deep.') },
+                entry: { commands: ['./commands/'] },
+            },
+        },
+    });
+    const listing = rowsAt(fx.run(), 'session-start').filter((r) => r.listing === 'skill').map((r) => r.note.replace(/^skill listing /, '')).sort();
+    assert.deepEqual(listing, ['alfred-code:a', 'alfred-code:mode:b'], 'a sub-folder is one more segment of the name; two levels down is no command');
+});
+
 test('an empty project maps to no rows and exits 0', () =>
 {
     const fx = install();

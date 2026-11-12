@@ -1288,7 +1288,7 @@ test('R124: a typed capture-quality expansion carrying only the prompt reads its
     {
         const layout = require(path.join(HOOKS, 'layout.js'));
         const marks = (s) => JSON.parse(fs.readFileSync(layout.statePath(p.root, 'sessions', `preferences-${s}-main.json`), 'utf8'));
-        for (const [prompt, part] of [['/capture-quality code', 'code-quality'], ['/capture-quality --mode-auto-run-on coverage', 'test-coverage-quality'], ['/capture-quality', 'chain']])
+        for (const [prompt, part] of [['/capture-quality code', 'code-quality'], ['/capture-quality --mode-x coverage', 'test-coverage-quality'], ['/capture-quality', 'chain']])
         {
             const s = sid();
             p.hook({ hook_event_name: 'UserPromptExpansion', session_id: s, expansion_type: 'slash_command', command_name: 'capture-quality', prompt });

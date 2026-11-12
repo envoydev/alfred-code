@@ -151,9 +151,9 @@
     },
     {
       "id": "D1", "area": "decisions",
-      "claim": "A plan executed has its APPROVAL receipt - an APPROVED or AUTO stamp written to state/approvals/ - before the first implementer dispatch; a run under auto-run (`--mode-auto-run-on`, a typed `/mode-auto-run <request>`, or `--auto-mode` in a session recorded before 2026-10-27), whose stamp the hook writes, opens no window.",
+      "claim": "A plan executed has its APPROVAL receipt - an APPROVED or AUTO stamp written to state/approvals/ - before the first implementer dispatch; a run under auto-run (`/alfred-code:mode:auto-run on`, a typed `/mode-auto-run <request>`, or a flag in a session recorded before the mode commands - `--mode-auto-run-on` until 2026-11-12, `--auto-mode` before 2026-10-27), whose stamp the hook writes, opens no window.",
       "source": { "file": "stack/hooks/guard-unapproved-dispatch.js", "marker": "it runs only after the user's explicit approval" },
-      "window": { "opens": { "event": { "ref": "implementer" }, "first": true, "lookback": "session", "unless": { "typed": "--auto-mode|--mode-auto-run-on|/mode-auto-run\\s+(?!--)\\S" } } },
+      "window": { "opens": { "event": { "ref": "implementer" }, "first": true, "lookback": "session", "unless": { "typed": "--auto-mode|--mode-auto-run-on|/alfred-code:mode:auto-run\\s+on|/mode-auto-run\\s+(?!--)\\S" } } },
       "steps": [ { "id": "stamp-first", "type": "tool_order", "after": { "ref": "implementer" }, "before": { "any": [
         { "all": [ { "tool": "Write", "field": "file_path", "text_match": "approvals[\\\\/](?:[^\\\\/]+[\\\\/])?APPROVAL$" }, { "tool": "Write", "field": "content", "text_match": "^(?:APPROVED|AUTO)\\b" } ] },
         { "all": [ { "tool": "Bash", "field": "command", "text_match": "approvals[\\\\/](?:[^\\\\/\\s]+[\\\\/])?APPROVAL" }, { "tool": "Bash", "field": "command", "text_match": "\\b(?:APPROVED|AUTO)\\b" } ] }

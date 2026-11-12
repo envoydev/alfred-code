@@ -367,7 +367,7 @@ const rootStamp = readStamp(gate);
 const stampState = rootStamp.state;
 // AUTO-RUN (stack-modes spec section 2, 2026-10-27): a session-named AUTO stamp is the session's MODE, and a run is
 // active only while that session's run marker is open (<data root>/state/sessions/AUTO-RUN-<session>, written by each
-// typed family command, deleted by the run's close or --mode-auto-run-off). Between runs the mode answers asks but
+// typed family command, deleted by the run's close or /alfred-code:mode:auto-run off). Between runs the mode answers asks but
 // approves no seat: the stamp reads as absent here. A torn or garbage marker still counts as open; its `skill:` line is
 // the run's skill. A hand-written AUTO (no `session:` line) and the plan stamps are read as before.
 let runSkill = null;
@@ -474,9 +474,9 @@ if (isImplementer) {
         ? `Blocked: dispatch of ${seat} - its brief names plan ${planId}, and no stamp records the user's approval of THAT plan (${rootStamp.file} is another run's, or a pre-2.8.0 one).\n`
         : `Blocked: dispatch of ${seat} without an approval gate.\n`) +
       `Implementer fan-out runs only on the user's explicit approval, or a no-stops run - never on an\n` +
-      `inferred or ambiguous go-ahead. A no-stops run is the user's '--mode-auto-run-on' right after the command (the hook\n` +
-      `stamps it and opens the run); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the\n` +
-      `user's typed words - anywhere else the user re-runs the command with --mode-auto-run-on.\n` +
+      `inferred or ambiguous go-ahead. A no-stops run is the user's '/alfred-code:mode:auto-run on' before the command (the hook\n` +
+      `stamps it, and the command opens the run); a hand-written AUTO waiver exists only under task-solve and task-solve-cross, in the\n` +
+      `user's typed words - anywhere else the user types /alfred-code:mode:auto-run on, then the command again.\n` +
       `If the user approved THIS plan in THIS conversation, write ${planWrite}\n` +
       `with one first line - APPROVED ${planId || '<plan id>'} - "<their words, verbatim>" - and give every implementer brief the line\n` +
       `plan: ${planId || '<plan id>'} (the plan file's name without .md), then retry the dispatch. Under those two solve flows only,\n` +
@@ -520,7 +520,7 @@ process.stderr.write(
     `Never delete or edit the stamp to get past this - it is the user's consent to the run. If this\n` +
     `generic dispatch is deliberate work outside that run, ask the user through ONE AskUserQuestion\n` +
     `whether the run is over: 'Keep the run going (Recommended)' - use a named seat instead; 'End the run' -\n` +
-    `the run's own close then deletes its run marker (auto-run itself ends only with the user's --mode-auto-run-off),\n` +
+    `the run's own close then deletes its run marker (auto-run itself ends only with the user's /alfred-code:mode:auto-run off),\n` +
     `and the dispatch goes after it.`,
 );
 process.exit(2);
