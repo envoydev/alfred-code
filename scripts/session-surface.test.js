@@ -448,7 +448,7 @@ test('4c surface: the status floor counts the rules the loader sends, a root\'s 
     assert.equal(start.filter((r) => /alfred-git\.md$/.test(r.source)).length, 1, 'a native rule is counted once');
     assert.ok(start.some((r) => r.source === '.claude/rules/alfred-git.md'), 'the native copy is the one counted');
     const store = start.find((r) => r.source === path.join('.alfred', 'stack', 'rules', 'alfred-security.md'));
-    assert.ok(store, 'a store rule is a session-start row');
+    assert.ok(store, `a store rule is a session-start row: ${JSON.stringify(start.map((r) => r.source))}`);
     assert.equal(store.owner, 'project', 'owned by the inventory, which lists no alfred-security here');
     assert.equal(store.chars, 'Never print a credential.'.length);
     assert.equal(rowsAt(fx.run(), 'path-scoped').find((r) => /ts-conventions/.test(r.source)).owner, 'house', 'a listed rule is the house\'s');
