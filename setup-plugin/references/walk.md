@@ -276,11 +276,12 @@ windows-service sets; ionic-angular, data, browser-extension, js), plus one ques
 ## Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Recommended (FRESH) = all seventeen: the eleven always-on guards, the
-four session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
+cascade never reaches here. Recommended (FRESH) = all eighteen: the eleven always-on guards, the
+five session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
 preferences docs handed over before the first edit and the first git write, the tool order and the
 host's shell lines at every start - `history-session` - what the last sessions on this branch
-did and ruled - and `forge-session` - the forge line at session and seat start), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
+did and ruled - `forge-session` - the forge line at session and seat start - and `rules-session` - the
+project's own rules from `.alfred/stack/rules` at session and seat start and on a matching file touch), the turn-end build check (`check-turn-build` - run inside history-session's Stop, inert until
 `ALFRED_CODE_TURN_CHECK` flips to `1`, seeded `0`), plus the env-gated `instrument-tool-usage` (wired
 like the guards, but inert until `ALFRED_CODE_INSTRUMENT` flips to `1` - so keeping it costs nothing
 idle, and dropping it leaves the install unable to record a measured run without a manual re-wire).
@@ -288,7 +289,7 @@ idle, and dropping it leaves the install unable to record a measured run without
 The whole set ships together inside the core `alfred-code` plugin, so nothing is copied and nothing
 is wired per project: the answer is written as `ALFRED_CODE_HOOKS_OFF` in the scope's settings file
 env - the rows dropped are the ones named there, re-adding a row removes its name, and **None** names
-all seventeen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
+all eighteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
 prerequisite check is what writes it). It can be changed later by editing that value, no reinstall.
 An install on the hooks copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the old behaviour -
 dropping a hook removes its file and its wiring - and, while the core is on for the skills, names
@@ -300,7 +301,7 @@ FRESH ask:
 
 ```ask
 Hooks: keep all 18 on? The build check and the instrumenter stay inert until switched on.
-- 'Keep all 18 on (Recommended)' - the guards, four session engines, the build check, the instrumenter
+- 'Keep all 18 on (Recommended)' - the guards, five session engines, the build check, the instrumenter
 - 'Pick hooks to switch off' - next call lists them in groups of 4
 - 'Guards only' - switch off the session engines, the build check and the instrumenter
 - 'None - every hook off' - writes `hook none`
@@ -308,7 +309,8 @@ Hooks: keep all 18 on? The build check and the instrumenter stay inert until swi
 
 Step 2, on a `groups` line: multi-select questions of 4 - session (docs-session, preferences-session, history-session, forge-session), optional (check-turn-build, instrument-tool-usage, guard-answer,
 guard-fresh-session-start) and the guards in groups of 4, the last group padded from the
-neighbouring one so no question has fewer than 2 options.
+neighbouring one so no question has fewer than 2 options. `rules-session` is in no group: it carries the
+project's rules and is not offered there.
 
 
 ## Plugins

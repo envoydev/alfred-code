@@ -248,9 +248,9 @@ test('init bootstrap phase: the order - read, plan, one machine ask, memory and 
     const init = bootstrapBody();
     // 2.10.1: no server runtime to install and no memory import - the stack ships no MCP server.
     assert.doesNotMatch(init, /\buvx?\b|memory\.js|--level/, 'no uv, no memory step');
-    // The hook count, stated once per table: the manifest ships seventeen (forge-session joined 2026-10-23, memory-session
-    // retired 2026-10-24, guard-desktop-exec retired in complexity stage 1 B12).
-    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all seventeen:.*\*\*None\*\* names all seventeen/);
+    // The hook count, stated once per table: the manifest ships eighteen (forge-session joined 2026-10-23, memory-session
+    // retired 2026-10-24, guard-desktop-exec retired in complexity stage 1 B12, rules-session joined in workspace stage 4a).
+    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
     const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory and navigation', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     // Spec P1 + P2: the step reads tools.js modes, asks the two templates, and applies a changed memory mode in one call.

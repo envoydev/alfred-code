@@ -323,7 +323,7 @@ const HISTORY_DAYS_MS = 15552000000;
 const SESSION_PREFIXES = [
     ['AUTO-RUN-', 'meta'], ['AUTO-TAKEN-', 'meta'], ['AUTO-SAID-', 'meta'], ['AUTO-COMPACT-', 'meta'], ['COMPACT-STATE-', 'meta'], ['twins-', 'meta'],
     ['review-snapshot-', 'meta'], ['trivial-', 'meta'], ['untracked-', 'meta'], ['turn-check-', 'text'],
-    ['AGENT-CAP-', 'meta'], ['SCORER-', 'text'], ['preferences-', 'text'],
+    ['AGENT-CAP-', 'meta'], ['SCORER-', 'text'], ['preferences-', 'text'], ['rules-', 'meta'],
 ];
 // `dir` is <data root>/state/<kind> of the root that held it, so that data root is the item's source root.
 const stateItem = (kind, dir, name) => ({ to: `data/state/${kind}/${name}`, from: path.join(dir, name), root: path.dirname(path.dirname(dir)) });

@@ -68,3 +68,20 @@ node meta/probes/hook-delivery.js <project> <label> --approve --inject --inject-
 
 Each prints `SESSION-INJECT-MARK: main-1` while the stand-in still drives the installed release and the cap has not
 moved under 9,999. Run both on each Claude Code release before a stage is built on these rows.
+
+## Stage 4a - G1
+
+The rule loader's rows, from the core entry's own generated hooks block, against the local stand-in ($0). Claude Code
+2.1.322, macOS, 2026-11-12. The fixture is built by hand: a stamped root `ws` with `.alfred/stack/rules/g1-a.md`
+(`G1-ROOT-A`), `g1-b.md` (`G1-ROOT-B`) and `g1-ts.md` (`paths: ["**/*.ts"]`, `G1-PATH`), and a joined child `ws/api`
+with `g1-c.md` (`G1-CHILD`). 'Once' is counted over the request's JSON text.
+
+| Cell | Result | What was read |
+| --- | --- | --- |
+| a main request | `yes` | `G1-ROOT-A` and `G1-ROOT-B` each once in the first request, inside `Project rules, part 1 of 1`; `G1-CHILD` absent |
+| a subagent's request | `yes` | The two root markers each once in the subagent's first request |
+| a child session's request | `yes` | `G1-ROOT-A`, `G1-ROOT-B` and `G1-CHILD` each once in the first request |
+| a path rule | `yes` | `G1-PATH` absent from the first request, once in the request after the Read of `src/a.ts` |
+| the request after a compaction | `NOT RUN` | One try: the session resumed with `/compact` passed to the probe's fixed prompt gave one `SessionStart` with source `resume` and no `compact` event. The unit tests of the `compact` source stand in; one live session is the open cell |
+| the inert state | `yes` | The same root with `.alfred/stack/rules` moved aside: no `Project rules` text in the first request |
+| the rows' cost | macOS 31-34 ms, Linux 20-23 ms, Windows on the leg | Medians of 20 starts each: macOS (Node 24) `--part 1` 33.9 / 31.1 ms with and without the store, PostToolUse 32.9 / 31.1; Linux (`node:22` container) 22.3 / 20.0 and 22.7 / 19.9 |

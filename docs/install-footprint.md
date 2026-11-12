@@ -7,7 +7,7 @@ Everything an Alfred Code run writes, starts and costs. The [README](../README.m
 Written at every scope:
 
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
-- **`.claude/hooks/`** - only the four engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`) and the model-window table. The seventeen wired hooks come from the core `alfred-code` plugin.
+- **`.claude/hooks/`** - only the four engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
 - **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin.
 - **`.claude/settings.json`**
   - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick.
@@ -50,7 +50,7 @@ At install:
 
 At every session start: the enabled plugins load, an LSP plugin starts its language server, and the hooks run. No package is downloaded or launched by the stack.
 
-Nothing else executes from the package itself. The package itself is nine command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and nineteen hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the seventeen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
+Nothing else executes from the package itself. The package itself is nine command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
 
 ## What you install by hand
 
@@ -64,6 +64,6 @@ The whole per-message floor - Claude Code's own prompt and tools, every plugin's
 
 - **`strictKnownMarketplaces`** - the allowlist registers nothing, and Claude Code refuses to register a managed marketplace whose source it does not admit (code.claude.com/docs/en/plugins/org). Allow each source the stack installs from - `{ "source": "github", "repo": "envoydev/alfred-code" }`, `{ "source": "github", "repo": "anthropics/claude-plugins-official" }` for the `*-lsp` pair, and `{ "source": "github", "repo": "jarrodwatts/claude-hud" }` if you keep claude-hud (optional, recommended) - and register the same marketplaces in `extraKnownMarketplaces`: `envoydev`, `claude-plugins-official` and `claude-hud`, each with its matching `source`.
 - **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` always, `claude-hud@claude-hud` when you keep it.
-- **`allowManagedHooksOnly`** - silently disables all seventeen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
+- **`allowManagedHooksOnly`** - silently disables all eighteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
 
 `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off.

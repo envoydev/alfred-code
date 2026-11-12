@@ -135,7 +135,7 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
 // CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the project's csv still wins over it.
 const PROFILE = 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE';
 const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-ungated-commit',
-    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build'];
+    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build', 'rules-session'];
 
 test('profile minimal keeps only the rm, secret and force-push guards; every other hook stands down', () => {
     const { PROTECTIVE } = require(PRELUDE);
@@ -496,6 +496,8 @@ test('cursorStandDown: a Cursor payload stands a non-protective hook down and ne
     for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'preferences-session'])
         assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
     for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
+    // The rule loader answers a Cursor payload in Cursor's own shape (CURSOR_RUNS), so it is let through.
+    assert.strictEqual(cursorStandDown(input, '/p/rules-session.js'), false, 'rules-session');
     assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js', ['node', 'x.js', '--flag']), false, 'a CLI is never gated');
 });
 

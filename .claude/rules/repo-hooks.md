@@ -9,9 +9,9 @@ paths:
 
 # Hooks
 
-The seventeen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+The eighteen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
-- `stack/hooks/` - seventeen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
+- `stack/hooks/` - eighteen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
@@ -1886,6 +1886,26 @@ The seventeen hooks folded into the core plugin: gates, guards, engines and what
     older install still wires answers exit 0 with no output, and no migration unwires it. `ALFRED_CODE_FORGE_WATCH` and
     `forge-session:watch` are read by nothing; the `forge-watch-retired` migration takes the key out of an install. The
     verified routes the classifier is tested against are `scripts/fixtures/forge-corpus.js`.
+  - `rules-session.js` (workspace stage 4a; five `SessionStart` and five `SubagentStart` rows, `--part 1` to `--part 5`,
+    and one PostToolUse row on Read/Edit/Write/MultiEdit/NotebookEdit) - the rule loader: a project's own rules from
+    `.alfred/stack/rules/*.md`, and each linked workspace member's, sent as context. The project is the first checkout of
+    the start folder (`CLAUDE_PROJECT_DIR`, else the payload's `cwd`) holding `.alfred`; a repository never set up below a
+    stamped folder is served from that folder (`setUp: false`, the owner's answer 4). The nearest holder wins a name, a
+    native `.claude/rules` file at one holder first (Claude Code only - it loads that file itself, so the name is listed as
+    `loaded natively:` and not sent; on Cursor native files count for nothing); an `ignore rule` drops a rule held above
+    unless it is one of `LOCKED_RULES` (recommendations.json `always.rules`, check 73), and a root's `member-picks:` rule
+    reaches only the members whose stamps pick it. A file that is a link or over 64 KB is skipped. Pathless rules go out
+    at session and seat start, packed first fit into at most five parts of 9,500 characters (the harness caps one hook's
+    context at 10,000), a rule too long for one part cut at line ends, past part 5 named on an unsent line; `resume` and
+    `fork` send nothing, `Explore` and `Plan` seats nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
+    the first time a touched file matches one of its globs (`**/`, a trailing `/**`, `*`; a glob with `? [ { !` matches
+    nothing and check 73 fails a shipped one), the file's path read from the rule's project, else from its own checkout;
+    once per session and actor, recorded in `<data root>/state/sessions/rules-<session>-<actor>.json` (temp file and
+    rename; `compact` and `clear` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
+    (`mode: probe`, chars, parts, unsent) to the session's `hook-blocks` ledger. It reads its gates through the prelude
+    (`ALFRED_CODE_HOOKS_OFF` and the profiles switch it off until stage 4c) and two itself: no `.alfred/stack/rules` in the
+    chain prints and writes nothing, and a `--part` argument is never read as a CLI call. Limits: a seat's own compaction
+    is unmeasured, and the Cursor live cells are NOT RUN. `always-on-surface.js` counts check 33 with its `render`.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.

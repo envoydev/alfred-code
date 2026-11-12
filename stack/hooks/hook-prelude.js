@@ -417,6 +417,8 @@ function isCliInvocation(argv)
 // itself and skips its block row there instead. The desktop exec gate that joined them (final review IM2) left in
 // complexity stage 1 (B12): 0 fires in 442 sessions, and the stack ships no desktop server since 2.10.1.
 const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']);
+// The hooks that answer a Cursor payload in Cursor's own shape, so GATE 6 lets them through (the rule loader, workspace stage 4a).
+const CURSOR_RUNS = new Set(['rules-session']);
 
 // UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
 // the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine
@@ -1322,7 +1324,7 @@ function cursorStandDown(input, file, argv)
     {
         if (isCliInvocation(argv)) return false;
         const name = baseName(path.basename(String(file || '')));
-        if (!name || PROTECTIVE.has(name)) return false;
+        if (!name || PROTECTIVE.has(name) || CURSOR_RUNS.has(name)) return false;
         return cursorHost(input);
     }
     catch { return false; }

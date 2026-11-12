@@ -1022,6 +1022,72 @@
       "note": "a typed run emits no Skill call (code.claude.com/docs/en/hooks: typing /name bypasses PreToolUse) - its expansion records the run, and a typed review is handed the code docs as a judge's start is, the rest with the main session's first reads; the matcher keeps every other prompt from spawning the hook; a typed design run (task-design, issue-diagnoser, task-build-from-scratch) is handed them the same way, never held"
     },
     {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 1",
+      "note": "the project's always-on rules from .alfred/stack/rules, part 1 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 2",
+      "note": "the project's always-on rules from .alfred/stack/rules, part 2 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 3",
+      "note": "the project's always-on rules from .alfred/stack/rules, part 3 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 4",
+      "note": "the project's always-on rules from .alfred/stack/rules, part 4 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 5",
+      "note": "the project's always-on rules from .alfred/stack/rules, part 5 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SubagentStart",
+      "event": "--part 1",
+      "note": "the same always-on rules, part 1, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SubagentStart",
+      "event": "--part 2",
+      "note": "the same always-on rules, part 2, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SubagentStart",
+      "event": "--part 3",
+      "note": "the same always-on rules, part 3, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SubagentStart",
+      "event": "--part 4",
+      "note": "the same always-on rules, part 4, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SubagentStart",
+      "event": "--part 5",
+      "note": "the same always-on rules, part 5, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@PostToolUse:Read|Edit|Write|MultiEdit|NotebookEdit",
+      "event": "",
+      "note": "a path rule (its paths: globs) the first time a touched file matches it, once per session and actor; prints nothing until a chain member holds .alfred/stack/rules"
+    },
+    {
       "file": "check-turn-build.js",
       "matcher": "@Stop",
       "event": "",

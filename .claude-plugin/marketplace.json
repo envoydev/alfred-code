@@ -435,6 +435,19 @@
                 "timeout": 10
               }
             ]
+          },
+          {
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js"
+                ],
+                "timeout": 10
+              }
+            ]
           }
         ],
         "SessionStart": [
@@ -482,6 +495,56 @@
                 "command": "node",
                 "args": [
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "1"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "2"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "3"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "4"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "5"
                 ],
                 "timeout": 10
               },
@@ -556,6 +619,56 @@
                 "command": "node",
                 "args": [
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "1"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "2"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "3"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "4"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "5"
                 ],
                 "timeout": 10
               },

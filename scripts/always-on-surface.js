@@ -26,47 +26,8 @@ function frontmatterValue(frontmatter, key)
     return m ? m[1].trim().replace(/^(["'])(.*)\1$/, '$2') : '';
 }
 
-function injectedRuleText(text)
-{
-    const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-    let i = 0;
-    if (lines[0] === '---')
-    {
-        const end = lines.indexOf('---', 1);
-        if (end > 0) i = end + 1;
-    }
-    const out = [];
-    let fence = null;
-    let inComment = false;
-    const afterClose = (line) => line.slice(line.indexOf('-->') + 3);
-    for (; i < lines.length; i++)
-    {
-        const line = lines[i];
-        if (inComment)
-        {
-            if (!line.includes('-->')) continue;
-            inComment = false;
-            if (afterClose(line).trim()) out.push(afterClose(line));
-            continue;
-        }
-        const f = /^\s*(```|~~~)/.exec(line);
-        if (f)
-        {
-            if (!fence) fence = f[1];
-            else if (line.trim().startsWith(fence)) fence = null;
-            out.push(line);
-            continue;
-        }
-        if (!fence && /^\s*<!--/.test(line))
-        {
-            if (!line.includes('-->')) inComment = true;
-            else if (afterClose(line).trim()) out.push(afterClose(line));
-            continue;
-        }
-        out.push(line);
-    }
-    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
+// What a rule sends lives in the rule loader, so the loader and this count can never drift.
+const { render } = require('../stack/hooks/rules-session.js');
 
 // The fixed text every generated capabilities rule carries: the usage-policy section of the skill's
 // copy target (its policy-rev stamp is a comment, stripped). The locked servers' shared routing row left with the
@@ -81,7 +42,7 @@ function capabilitiesFixedText(skillText)
         if (i > at && (/^## /.test(skill[i]) || /^```/.test(skill[i]))) break;
         policy.push(skill[i]);
     }
-    return { policy: injectedRuleText(policy.join('\n')) };
+    return { policy: render(policy.join('\n')) };
 }
 
 // The map line the awareness script writes into that rule when the map exists - read from the skill's own script, so
@@ -103,7 +64,7 @@ function awarenessRuleText(skillText, mapLine = awarenessMapLine())
     const open = marker === -1 ? -1 : lines.findIndex((l, i) => i > marker && /^```markdown\s*$/.test(l));
     const close = open === -1 ? -1 : lines.findIndex((l, i) => i > open && /^```\s*$/.test(l));
     if (close === -1) return '';
-    return injectedRuleText(lines.slice(open + 1, close).filter((l) => !/^<the script's import lines/.test(l))
+    return render(lines.slice(open + 1, close).filter((l) => !/^<the script's import lines/.test(l))
         .map((l) => (/^<the script's map line/.test(l) ? mapLine : l)).join('\n'));
 }
 
@@ -121,7 +82,7 @@ function alwaysOnSurface({
         if (!f.endsWith('.md')) continue;
         const text = read(path.join(rulesDir, f));
         if (/^paths:/m.test(frontmatterOf(text))) continue;   // path-scoped: lazy, not always-on
-        rules += injectedRuleText(text).length;
+        rules += render(text).length;
     }
     let agents = 0;
     let agentTools = 0;
@@ -169,4 +130,5 @@ const alwaysOnParts = (s) => `pathless rules ${s.rules} (as injected), agent des
     + ` (${s.manualOnly} manual-only not in context), generated capabilities fixed text ${s.generated}`
     + `, agent tools lists ${s.agentTools} (listed beside each description)`;
 
-module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, awarenessRuleText, awarenessMapLine, alwaysOnSurface, alwaysOnParts, listedTools };
+module.exports = { frontmatterOf, frontmatterValue, injectedRuleText: render, capabilitiesFixedText, awarenessRuleText, awarenessMapLine,
+    alwaysOnSurface, alwaysOnParts, listedTools };

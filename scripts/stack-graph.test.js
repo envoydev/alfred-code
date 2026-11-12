@@ -75,7 +75,7 @@ test('capture-awareness documents every MCP without pulling a single edge (doc-m
 
 test('the hook catalog carries the installer HOOKS block basenames', () => {
     assert.deepStrictEqual(graph.catalog.hooks,
-        ['check-turn-build', 'docs-session', 'forge-session', 'guard-answer', 'guard-catastrophic-rm', 'guard-config-protection', 'guard-cross-project-write', 'guard-fresh-session-start', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-secret-value', 'guard-stop-contract', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'history-session', 'instrument-tool-usage', 'preferences-session'],
+        ['check-turn-build', 'docs-session', 'forge-session', 'guard-answer', 'guard-catastrophic-rm', 'guard-config-protection', 'guard-cross-project-write', 'guard-fresh-session-start', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-secret-value', 'guard-stop-contract', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'history-session', 'instrument-tool-usage', 'preferences-session', 'rules-session'],
         'catalog.hooks mirrors HOOKS=( ... ) sans .js, sorted');
 });
 

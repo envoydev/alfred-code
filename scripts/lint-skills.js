@@ -2639,6 +2639,29 @@ function main()
         flag(`the always-on surface measurement could not run: ${err.message}`);
     }
 
+    // 73. The rule loader (rules-session.js) carries what ships: the shipped pathless rules fit three of its five parts,
+    //     every shipped glob compiles, and its locked list is recommendations.json's `always.rules`.
+    try
+    {
+        const loader = require('../stack/hooks/rules-session.js');
+        const files = fs.readdirSync(CLAUDE_RULES_DIR).filter((f) => f.endsWith('.md')).sort();
+        const texts = files.map((f) => [f, fs.readFileSync(path.join(CLAUDE_RULES_DIR, f), 'utf8')]);
+        const always = texts.filter(([, t]) => !loader.pathsOf(t).length)
+            .map(([f, t]) => ({ name: f.replace(/\.md$/, ''), rel: `.alfred/stack/rules/${f}`, text: loader.render(t) }));
+        const n = loader.parts(always).parts.length;
+        if (n > 3) flag(`the shipped pathless rules take ${n} rule-loader parts, over 3 of its 5 - trim a rule (check 73)`);
+        for (const [f, t] of texts)
+            for (const g of loader.pathsOf(t))
+                if (!loader.pathGlob(g)) flag(`${f}: glob '${g}' uses ? [ { or !, which the rule loader cannot match (check 73)`);
+        const locked = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8')).always.rules;
+        if ([...locked].sort().join() !== [...loader.LOCKED_RULES].sort().join())
+            flag(`rules-session.js LOCKED_RULES (${loader.LOCKED_RULES.join(', ')}) differs from recommendations.json always.rules (check 73)`);
+    }
+    catch (err)
+    {
+        flag(`the rule-loader check could not run: ${err.message} (check 73)`);
+    }
+
     // 44 + 45. Plugin placement is computed: the core is the only plugin, and the generated entries are current.
     // 46. The repo root carries no name a shared-source marketplace entry auto-discovers (spike S9c).
     // 47. The marketplace manifest passes `claude plugin validate --strict`.

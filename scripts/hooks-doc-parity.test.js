@@ -70,14 +70,15 @@ test('I4 and I5: CLAUDE.md states the narrowed loop sweep and the identifier rul
 });
 
 test('I10 / stage 1 B12: the desktop gate is retired, and the hooks are counted as the manifest wires them', () => {
-  // The desktop exec guard left in complexity stage 1 (B12): no row, no file, and the count everywhere is seventeen.
+  // The desktop exec guard left in complexity stage 1 (B12): no row, no file; the rule loader joined in workspace stage 4a,
+  // so the count everywhere is eighteen.
   assert.strictEqual(manifestRows().filter((r) => r.file === 'guard-desktop-exec.js').length, 0);
-  assert.match(claude(), /`stack\/hooks\/` - seventeen hooks/);
-  assert.match(claude(), /all seventeen, generated from the manifest's `hooks\[\]`/);
+  assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
+  assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
   assert.doesNotMatch(claude(), /`guard-desktop-exec\.js` \(PreToolUse/);
   // The stale hook count, never the word itself: the footprint counts seventeen references.
-  assert.doesNotMatch(read('README.md'), /eighteen (?:wired |stack )?hooks/);
-  assert.doesNotMatch(read('docs/install-footprint.md'), /eighteen (?:wired |stack |house )?hooks/);
+  assert.doesNotMatch(read('README.md'), /seventeen (?:wired |stack )?hooks/);
+  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen (?:wired |stack |house )?hooks/);
   // The walk's own count follows the manifest's hook files (hooks track H6, 2026-10-21: the pin forbade 'all eighteen'
   // from the days eighteen was stale, and preferences-session made it right again).
   const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',

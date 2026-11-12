@@ -1157,7 +1157,8 @@
       "guard-ungated-commit",
       "history-session",
       "instrument-tool-usage",
-      "preferences-session"
+      "preferences-session",
+      "rules-session"
     ]
   },
   "mcps": {}
