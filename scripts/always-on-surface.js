@@ -73,6 +73,7 @@ function alwaysOnSurface({
     agentsDir = path.join(STACK, 'agents'),
     skillsDir = path.join(STACK, 'skills'),
     capabilitiesDir = path.join(skillsDir, 'capture-awareness'),
+    canaryFile = path.join(path.dirname(rulesDir), 'alfred-rules.canary.md'),   // workspace stage 4c: a native rule every set-up root keeps
 } = {})
 {
     const read = (file) => fs.readFileSync(file, 'utf8');
@@ -104,6 +105,7 @@ function alwaysOnSurface({
         skills += frontmatterValue(fm, 'description').length + frontmatterValue(fm, 'when_to_use').length;
     }
     const readSoft = (file) => { try { return read(file); } catch { return ''; } };
+    rules += render(readSoft(canaryFile)).length;
     // The agents reference holds the stamped usage policy in its copy target.
     const fixed = capabilitiesFixedText(readSoft(path.join(capabilitiesDir, 'references', 'agents.md')));
     const generated = fixed.policy.length + awarenessRuleText(readSoft(path.join(capabilitiesDir, 'SKILL.md')), awarenessMapLine(capabilitiesDir)).length;

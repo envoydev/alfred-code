@@ -73,7 +73,8 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     // Review finding 4: whatever the stamp named, nothing outside its own .claude folder is ever removed -
     // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file). The one exception
     // is the seed at the project root - that exact file, at the hash the stack wrote.
-    const home = { skill: skillsDir, agent: agentsDir, rule: [path.join(claudeDir, 'rules'), path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules')], hook: path.join(claudeDir, 'hooks'), file: claudeDir };
+    const home = { skill: skillsDir, agent: agentsDir, rule: [path.join(claudeDir, 'rules'), path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules')],
+        hook: path.join(claudeDir, 'hooks'), file: claudeDir };
     const seedPaths = new Set([...seeds.values()].map((at) => path.resolve(at)));
     const isSeed = (label, at) => label === 'file' && seedPaths.has(path.resolve(at));
     const inside = (label, at) => [].concat(home[label] || []).some((d) => path.dirname(path.resolve(at)) === path.resolve(d)) || isSeed(label, at);
@@ -102,7 +103,8 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     try { left = fs.readdirSync(hooksDir).filter((f) => f !== 'package.json'); } catch { left = []; }
     if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
     else if (isMarker(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - it scopes ${left.join(', ')}, left in .claude/hooks as yours`);
-    for (const dir of [skillsDir, agentsDir, ...['skills', 'agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d)), ...['stack/rules', 'stack'].map((d) => path.join(path.dirname(claudeDir), '.alfred', d))])
+    const stackDirs = ['stack/rules', 'stack'].map((d) => path.join(path.dirname(claudeDir), '.alfred', d));
+    for (const dir of [skillsDir, agentsDir, ...['skills', 'agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d)), ...stackDirs])
     {
         try { if (!fs.readdirSync(dir).length) fs.rmdirSync(dir); } catch { /* absent, or not ours to empty */ }
     }

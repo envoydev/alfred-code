@@ -901,9 +901,10 @@ function ancestorExcludes(ancestorRoot, { childIgnores = [], nearer = [] } = {})
     const out = [];
     const library = stamp.readLibrary(stampFile);
     // A library rule only while it loads natively here and the child ignores it or a nearer member holds that name (4c).
-    const nearerHolds = (f) => nearer.some((r) => ['.claude', '.alfred/stack'].some((d) => fs.existsSync(path.join(r, d, 'rules', f))));
+    const dropped = (f) => childIgnores.some((i) => i.category === 'rule' && `${i.name}.md` === f)
+        || nearer.some((r) => ['.claude', '.alfred/stack'].some((d) => fs.existsSync(path.join(r, d, 'rules', f))));
     for (const f of Object.keys((library && library.rules) || {}).map((n) => `${n}.md`))
-        if (fs.existsSync(path.join(rulesDir, f)) && (childIgnores.some((i) => i.category === 'rule' && `${i.name}.md` === f) || nearerHolds(f))) out.push(path.join(rulesDir, f));
+        if (fs.existsSync(path.join(rulesDir, f)) && dropped(f)) out.push(path.join(rulesDir, f));
     for (const name of GENERATED_FILES)
     {
         const file = path.join(rulesDir, `${name}.md`);
@@ -925,6 +926,8 @@ function ancestorExcludes(ancestorRoot, { childIgnores = [], nearer = [] } = {})
     }
     return [...new Set(out)];
 }
+const chainExcludes = (ancestors, self, childIgnores) =>
+    ancestors.flatMap((root, i) => ancestorExcludes(root, { childIgnores, nearer: [self, ...ancestors.slice(0, i)] }));
 
 const GLOB_META = new Set(['*', '?', '[', '{', '}', '(', ')']);
 
@@ -968,7 +971,7 @@ function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
         const file = path.join(dir, '.claude', brand.BRAND.stamp);
         const picks = stamp.readOwnPicks(file);
         if (!picks) { notes.push(`member ${relPosix(top, dir)} not counted: its stamp holds no own-picks line`); return; }
-        for (const l of picks) if (l.startsWith('skill ') || l.startsWith('rule ') || (l.startsWith('agent ') && stamp.readSeatsRoute(file) === seatsRoute)) lines.add(l);
+        for (const l of picks) if (/^(skill|rule) /.test(l) || (l.startsWith('agent ') && stamp.readSeatsRoute(file) === seatsRoute)) lines.add(l);
     };
     const walk = (dir, depth) =>
     {
@@ -1004,7 +1007,7 @@ function addToStore({ root, kind, name, copy, route = 'plugin', from = root, log
         const file = path.join(root, '.claude', brand.BRAND.stamp);
         const hash = require('./library.js').hashItem(item);
         const pairs = (map) => Object.entries(map).map(([n, h]) => `${n}=${h}`).join(',');
-        if (route === 'plugin' || kind === 'rules') stamp.markLine(file, `library-${kind}`, pairs({ ...((stamp.readLibrary(file) || {})[kind] || {}), [name]: hash }));
+        if (route === 'plugin' || kind === 'rules') stamp.markLine(file, `library-${kind}`, pairs({ ...stamp.readLibrary(file)?.[kind], [name]: hash }));
         else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${links.fileOf(kind, name)}`]: hash }));
         const line = `${kind.slice(0, -1)} ${name}`;
         const own = ((stamp.readPicked(file) || {})[kind] || []).some((e) => e.split('@')[0] === name);
@@ -1106,7 +1109,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         {
             const ignores = ownRead.view.ignores || [];
             const ancestors = stampedAncestors(child, { env: childEnv });
-            want = uniqSorted(excludeGlobs(ancestors.flatMap((root, i) => ancestorExcludes(root, { childIgnores: ignores, nearer: [child, ...ancestors.slice(0, i)] })), process.platform));
+            want = uniqSorted(excludeGlobs(chainExcludes(ancestors, child, ignores), process.platform));
         }
         catch (e) { skip(`- its excludes could not be worked out (${e.message}); left as it is`); continue; }
         if (!want.length && !Object.keys(prior).some(isExclude)) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
@@ -1279,7 +1282,7 @@ function workspaceStep(ctx)
     ctx.ownPicks = w.ownPrior;
     if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
-    const want = excludeGlobs(ancestors.flatMap((root, i) => ancestorExcludes(root, { childIgnores: w.ignores, nearer: [ctx.projectRoot, ...ancestors.slice(0, i)] })), process.platform);
+    const want = excludeGlobs(chainExcludes(ancestors, ctx.projectRoot, w.ignores), process.platform);
     const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     // A standalone project - nothing stamped above, nothing recorded - leaves settings.local.json alone.
@@ -1808,7 +1811,7 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
     const skip = authLayer(root, managedFile);
     if (skip) return finish({ state: 'skipped', misses: [], why: skip });
     const ignores = readWorkspace(root, { env }).view.ignores;
-    const excluded = new Map(ancestors.flatMap((a, i) => ancestorExcludes(a, { childIgnores: ignores, nearer: [root, ...ancestors.slice(0, i)] })).map((p) => [realKey(p), realOf(p)]));
+    const excluded = new Map(chainExcludes(ancestors, root, ignores).map((p) => [realKey(p), realOf(p)]));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-check-loads-'));
     try
     {

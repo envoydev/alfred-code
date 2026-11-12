@@ -148,7 +148,7 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md')))
         if (ours('agents', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
     const ruleFile = (d) => d.isFile() && d.name.endsWith('.md');
-    for (const f of new Set([...listDir(path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules'), ruleFile), ...listDir(path.join(claudeDir, 'rules'), ruleFile)]))
+    for (const f of new Set([path.join(path.dirname(claudeDir), '.alfred', 'stack'), claudeDir].flatMap((d) => listDir(path.join(d, 'rules'), ruleFile))))
     {
         const name = f.replace(/\.md$/, '');
         if (!RULE_EXCLUDE.test(name) && ours('rules', name)) lines.push(`rule ${name}`);
@@ -229,7 +229,9 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
 // carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
-function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
+function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
+    stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
+    committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).

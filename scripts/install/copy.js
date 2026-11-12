@@ -298,4 +298,5 @@ function commonJsScope({ dir, stackFiles = [], log = () => {}, note = () => {} }
     return 'written';
 }
 
-module.exports = { installFromSource, ruleAt, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER };
+module.exports = { installFromSource, ruleAt, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent,
+    removeDropped, commonJsScope, COMMONJS_MARKER };

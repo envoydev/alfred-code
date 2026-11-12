@@ -141,8 +141,8 @@ const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
 // The copies that sit directly in .claude: the seeded AGENTS.md (a 2.1.6 ledger still names it CLAUDE.md - read, never written),
-// and the full copy route's serena context (I12).
-const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml', '.gitignore'];
+// the full copy route's serena context (I12) and the rules canary, the one rules row.
+const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml', '.gitignore', 'rules/alfred-rules.md'];
 // A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys; custom memory's
 // switch-off is a top-level key.
 // A workspace row is one MEMBER of an array (settings.js syncMembers), keyed by the member's own hash, so two members never
@@ -403,7 +403,8 @@ const readLinks = (file) => (lineOf(file, 'links') || []).map((s) => /^(skills\/
 function readMemberPicks(file)
 {
     const items = lineOf(file, 'member-picks');
-    return items && items.map((s) => s.split('/')).filter((p) => p.length === 2 && ['skill', 'agent', 'rule'].includes(p[0]) && validItemName(p[1])).map(([c, n]) => `${c} ${n}`);
+    return items && items.map((s) => s.split('/')).filter((p) => p.length === 2 && ['skill', 'agent', 'rule'].includes(p[0]) && validItemName(p[1]))
+        .map(([c, n]) => `${c} ${n}`);
 }
 
 function readOwnEnv(file)

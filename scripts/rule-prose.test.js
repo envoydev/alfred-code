@@ -541,3 +541,24 @@ test('alfred-interaction: a question at an open ask is answered and the turn end
 {
     assert.ok(injected('alfred-interaction').includes(squash('When the user meets an open ask with a question - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.')));
 });
+
+// Workspace stage 4c: the canary is native, so check 33 counts it, and it quotes the loader's own block lines.
+test('surface: check 33 counts the canary\'s text', () =>
+{
+    const { alwaysOnSurface } = require('./always-on-surface.js');
+    const without = alwaysOnSurface({ canaryFile: path.join(ROOT, 'no-such-canary.md') });
+    const withIt = alwaysOnSurface();
+    assert.strictEqual(withIt.rules - without.rules, injectedRuleText(read('stack/alfred-rules.canary.md')).length);
+    assert.strictEqual(withIt.total - without.total, withIt.rules - without.rules);
+});
+
+test('canary: the text names both block lines the loader prints', () =>
+{
+    const text = squash(read('stack/alfred-rules.canary.md'));
+    const loader = read('stack/hooks/rules-session.js');
+    for (const phrase of ['Project rules, part', 'End of project rules, part'])
+    {
+        assert.ok(loader.includes(phrase), `the loader prints '${phrase}'`);
+        assert.ok(text.includes(phrase), `the canary names '${phrase}'`);
+    }
+});

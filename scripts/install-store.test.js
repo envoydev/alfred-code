@@ -761,7 +761,7 @@ test('rules: an update moves the stamped rules, re-copies an edited one as today
     assert.match(outs[1], /overwriting a hand-edited copy: rule alfred-security$/m, 'the edited copy is refreshed as an update does today');
     assert.strictEqual(result.interaction, sourceRule('alfred-interaction'));
     for (const n of ALWAYS_RULES) assert.ok(result.inStore.includes(n), n);
-    assert.deepStrictEqual(result.native.sort(), ['alfred-awareness', 'mine']);
+    assert.deepStrictEqual(result.native.sort(), ['alfred-awareness', 'alfred-rules', 'mine'], 'the canary is native too');
     assert.deepStrictEqual(result.kept, [mine, mine]);
 });
 
@@ -803,7 +803,7 @@ test('rules: a rule held in both folders - the .claude copy at its stamped hash 
         inspect: (repo) => ({ native: ruleNames(claude(repo, 'rules')), store: fs.readFileSync(store(repo, 'rules', 'alfred-interaction.md'), 'utf8'),
             edited: fs.readFileSync(claude(repo, 'rules', 'alfred-security.md'), 'utf8') }),
     });
-    assert.deepStrictEqual(result.native, ['alfred-security']);
+    assert.deepStrictEqual(result.native, ['alfred-rules', 'alfred-security']);
     assert.strictEqual(result.store, sourceRule('alfred-interaction'));
     assert.match(result.edited, /my edit/);
     assert.match(outs[1], /rule alfred-security is held in \.claude\/rules too: yours is kept and loads first/);
@@ -853,7 +853,7 @@ test('copy: ruleAt names the store file when it exists, else the .claude/rules o
 // Workspace stage 4c: a joined child holds no copy of a rule its parent holds; its own rule pick goes to the root's store.
 const RULE_PICK = 'csharp-conventions';
 const kidRules = (ws) => ({ kidStore: ruleNames(store(path.join(ws, 'api'), 'rules')).sort(), kidNative: ruleNames(claude(path.join(ws, 'api'), 'rules')).sort(),
-    rootStore: ruleNames(store(ws, 'rules')).sort(), root: fs.readFileSync(stampOf(ws), 'utf8') });
+    rootStore: ruleNames(store(ws, 'rules')).sort(), root: fs.readFileSync(stampOf(ws), 'utf8'), rootCanary: fs.existsSync(claude(ws, 'rules', 'alfred-rules.md')) });
 const trackRules = (ws) =>
 {
     gitInit(ws);
@@ -871,6 +871,8 @@ test('child: a joined child copies no rule its parent holds', POSIX_ONLY, () =>
     assert.ok(got.rootStore.includes('alfred-security') && got.rootStore.includes('alfred-docs-root'), outs[0]);
     assert.deepStrictEqual(got.kidStore, [], outs[1]);
     assert.deepStrictEqual(got.kidNative.filter((n) => got.rootStore.includes(n)), [], outs[1]);
+    assert.ok(!got.kidNative.includes('alfred-rules'), 'canary: not written below a stamped root - the root\'s reaches it');
+    assert.ok(got.rootCanary, 'the root keeps its canary');
 });
 
 for (const tracked of [false, true])
@@ -940,4 +942,27 @@ test('child: the two rendered rules stay the child\'s own when its docs root dif
     ]);
     assert.deepStrictEqual(steps[1].kidStore, ['alfred-docs-root', 'alfred-preferences'], outs[1]);
     assert.ok(!steps[1].text.includes('elsewhere/docs') && /This install's root: `[^`_]+`/.test(steps[1].text), steps[1].text);
+});
+
+test('canary: written beside a fresh install as a files row of the ledger, never a rules entry, and the move does not take it', () =>
+{
+    const { steps } = seedRun(['install', 'update'], RULE_SEL, {
+        each: (repo) => ({ text: fs.readFileSync(claude(repo, 'rules', 'alfred-rules.md'), 'utf8'), hash: hashItem(claude(repo, 'rules', 'alfred-rules.md')),
+            row: (stamp.readLedger(stampOf(repo)).files || {})['rules/alfred-rules.md'], lib: Object.keys(stamp.readLibrary(stampOf(repo)).rules), inStore: ruleNames(store(repo, 'rules')) }),
+    });
+    for (const got of steps)
+    {
+        assert.strictEqual(got.text, fs.readFileSync(path.join(__dirname, '..', 'stack', 'alfred-rules.canary.md'), 'utf8'));
+        assert.strictEqual(got.row, got.hash, 'its ledger row holds its hash');
+        assert.ok(!got.lib.includes('alfred-rules') && !got.inStore.includes('alfred-rules'), 'never a library rule, never moved');
+    }
+});
+
+test('canary: not written on a run whose rules stayed in .claude, and an untouched one from an earlier run is removed', () =>
+{
+    const { result } = seedRun(['install', 'update'], RULE_SEL, {
+        each: (repo, i) => { if (i === 0) { unmove(repo); fs.rmdirSync(store(repo, 'rules')); fs.writeFileSync(store(repo, 'rules'), 'a file'); } return null; },
+        inspect: (repo) => ({ canary: fs.existsSync(claude(repo, 'rules', 'alfred-rules.md')), row: (stamp.readLedger(stampOf(repo)).files || {})['rules/alfred-rules.md'] }),
+    });
+    assert.deepStrictEqual(result, { canary: false, row: undefined });
 });

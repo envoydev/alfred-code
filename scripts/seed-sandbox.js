@@ -237,7 +237,7 @@ function plantOlderRoot(repo, R = 'var/data')
     const { valueHash } = require('./install/stamp.js');
     const to = path.join(repo, ...R.split('/'));
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    // An older release kept its copies in `.claude`: each stored item goes back over its link (a rule as a plain file), and the store goes.
+    // An older release kept its copies in `.claude`: each stored item goes back over its link, and the store goes.
     for (const kind of ['skills', 'agents', 'rules'])
     {
         const store = path.join(repo, '.alfred', 'stack', kind);

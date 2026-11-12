@@ -98,8 +98,8 @@ function renderTree(dir, render)
 // project's: kept byte for byte, named once with the `!!` marker every update body surfaces, never recorded
 // (`foreign` lists it for the stamp's picks), so the next run finds it unclaimed again. No `claims` is the old
 // behaviour: every copy is the stack's.
-function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, claims = null, log = () => {}, note = () => {},
-    ruleAt = (name) => path.join(rulesDir, `${name}.md`) })
+function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, claims = null,
+    log = () => {}, note = () => {}, ruleAt = (name) => path.join(rulesDir, `${name}.md`) })
 {
     const out = { skills: {}, agents: {}, rules: {}, foreign: [] };
     const plan = [

@@ -106,6 +106,19 @@ function seedAgentsMd({ projectRoot, sourceDir, at = '', kind = 'agents', log = 
     return true;
 }
 
+// Workspace stage 4c: the canary rule where no stamped folder is above; one at another hash is the user's. Its hash, or null.
+function seedCanary({ projectRoot, sourceDir, on, priorHash = '', log = () => {} })
+{
+    const { hashItem } = require('./library.js');
+    const at = path.join(projectRoot, '.claude', 'rules', 'alfred-rules.md');
+    const [have, text] = [fs.existsSync(at) ? hashItem(at) : null, fs.readFileSync(path.join(sourceDir, 'stack', 'alfred-rules.canary.md'))];
+    if (have && have !== priorHash) return null;
+    if (!on && have) { fs.unlinkSync(at); log('  canary removed: .claude/rules/alfred-rules.md - the rules are not sent from this folder\'s store'); }
+    if (!on) return null;
+    if (!have || !fs.readFileSync(at).equals(text)) { fs.mkdirSync(path.dirname(at), { recursive: true }); fs.writeFileSync(at, text); }
+    return hashItem(at);
+}
+
 // UPDATE: a seed the stack still owns - unedited since the run that wrote it (the caller checks the ledger's hash) - is
 // the template's until init fills it in, so it is rewritten from THIS release's template. Re-spelling the old body
 // alone left the 2.5.0 seed's three capture steps as three lines naming the one capture that replaced them (the
@@ -338,4 +351,5 @@ function instructionsLine(projectRoot)
     return `instructions: ${inClaude === have.length ? 'claude' : inClaude ? 'split' : 'root'} ${have.join(' ')}`;
 }
 
-module.exports = { seedAgentsMd, seededAgentsMdPath, locateSeed, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, respellReinclude, seedRowAfterRename, placeInstructionFiles, renameInstructionFiles, instructionName, instructionsLine, instructionsFileLine };
+module.exports = { seedAgentsMd, seedCanary, seededAgentsMdPath, locateSeed, refreshSeededAgentsMd, agentsMdBody, moveSeededClaudeMd, respellReinclude,
+    seedRowAfterRename, placeInstructionFiles, renameInstructionFiles, instructionName, instructionsLine, instructionsFileLine };

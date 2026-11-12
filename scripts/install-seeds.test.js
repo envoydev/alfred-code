@@ -531,3 +531,54 @@ test('name: the seed\'s ledger row follows a rename - its hash folds in the file
     assert.strictEqual(seeds.seedRowAfterRename('', now), '', 'no row, none made');
     assert.strictEqual(seeds.seedRowAfterRename(held, path.join(projectRoot, 'absent.md')), held, 'a missing file changes nothing');
 });
+
+// Workspace stage 4c: the canary - one native rule saying the loader's blocks are missing, kept where no stamped folder is above.
+const { hashItem } = require('./install/library.js');
+const SRC = path.join(__dirname, '..');
+const CANARY_TEXT = () => fs.readFileSync(path.join(SRC, 'stack', 'alfred-rules.canary.md'), 'utf8');
+const canaryAt = (root) => path.join(root, '.claude', 'rules', 'alfred-rules.md');
+const putCanary = (root, text) => { fs.mkdirSync(path.dirname(canaryAt(root)), { recursive: true }); fs.writeFileSync(canaryAt(root), text); return hashItem(canaryAt(root)); };
+
+test('canary: written at .claude/rules/alfred-rules.md when no stamped folder is above, byte-equal to the source', () =>
+{
+    const root = dir();
+    const h = seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: true });
+    assert.strictEqual(fs.readFileSync(canaryAt(root), 'utf8'), CANARY_TEXT());
+    assert.strictEqual(h, hashItem(canaryAt(root)));
+    assert.strictEqual(seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: true, priorHash: h }), h, 'a re-run keeps it and its row');
+});
+
+test('canary: not written below a stamped root', () =>
+{
+    const root = dir();
+    assert.strictEqual(seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: false }), null);
+    assert.ok(!fs.existsSync(canaryAt(root)));
+});
+
+test('canary: rewritten when the file still has its ledger hash, left alone when the user edited it', () =>
+{
+    const root = dir();
+    const old = putCanary(root, 'an older canary text\n');
+    const h = seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: true, priorHash: old });
+    assert.strictEqual(fs.readFileSync(canaryAt(root), 'utf8'), CANARY_TEXT(), 'the stack\'s older text is rewritten');
+    fs.appendFileSync(canaryAt(root), '\nmy note\n');
+    assert.strictEqual(seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: true, priorHash: h }), null, 'an edited one is the user\'s - no row');
+    assert.match(fs.readFileSync(canaryAt(root), 'utf8'), /my note/);
+    const mine = dir();
+    putCanary(mine, 'my own file under that name\n');
+    assert.strictEqual(seeds.seedCanary({ projectRoot: mine, sourceDir: SRC, on: true }), null, 'a file the ledger never held is the user\'s');
+    assert.strictEqual(fs.readFileSync(canaryAt(mine), 'utf8'), 'my own file under that name\n');
+});
+
+test('canary: a project that joined a workspace loses an untouched canary and keeps an edited one', () =>
+{
+    const root = dir();
+    const h = seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: true });
+    assert.strictEqual(seeds.seedCanary({ projectRoot: root, sourceDir: SRC, on: false, priorHash: h }), null);
+    assert.ok(!fs.existsSync(canaryAt(root)), 'the untouched canary goes');
+    const edited = dir();
+    const e = seeds.seedCanary({ projectRoot: edited, sourceDir: SRC, on: true });
+    fs.appendFileSync(canaryAt(edited), '\nmy note\n');
+    assert.strictEqual(seeds.seedCanary({ projectRoot: edited, sourceDir: SRC, on: false, priorHash: e }), null);
+    assert.match(fs.readFileSync(canaryAt(edited), 'utf8'), /my note/, 'an edited one stays');
+});

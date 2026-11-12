@@ -241,7 +241,8 @@ const ITEM_PATHS = [
 ];
 // A rename (`renamed\t<new>\t<- <old>`) keeps its old name as `from`, and whether the old COPY is
 // on disk - that is what decides that the update carries it rather than offering it.
-const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`), rule: (d, n) => require('./install/copy.js').ruleAt(path.dirname(d), n), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
+const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`),
+    rule: (d, n) => require('./install/copy.js').ruleAt(path.dirname(d), n), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
 // A name the snapshot's `renamed` map (meta/stack-manifest.json) carries is the same item continuing
 // even when the compare saw only an add - git reports a rewritten folder as added plus removed.
 const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules' };

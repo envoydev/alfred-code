@@ -808,3 +808,17 @@ test('F26: uninstall under an older custom data root removes the awareness rule 
     assert.match(outs[1], /rule removed: alfred-awareness \(generated\)/);
     assert.doesNotMatch(outs[1], /edited since it was generated/);
 });
+
+// Workspace stage 4c: the canary is a files row of the ledger, living in .claude/rules.
+test('uninstall: the canary goes at its hash and stays when edited; .claude/rules stays when the user\'s rule is in it', POSIX_ONLY, () =>
+{
+    const at = (repo, f) => path.join(repo, '.claude', 'rules', f);
+    for (const edit of [false, true])
+    {
+        const { result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+            each: (repo, i) => { if (i !== 0) return; put(at(repo, 'mine.md'), '# my own rule\n'); if (edit) fs.appendFileSync(at(repo, 'alfred-rules.md'), '\nmy note\n'); },
+            inspect: (repo) => ({ canary: fs.existsSync(at(repo, 'alfred-rules.md')), mine: fs.existsSync(at(repo, 'mine.md')) }),
+        });
+        assert.deepStrictEqual(result, { canary: edit, mine: true }, outs[1]);
+    }
+});
