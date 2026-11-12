@@ -406,6 +406,19 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             if (links.moveIn({ projectRoot, kind: k, names: [...Object.keys(stampedLib[k] || {}), ...rows], home: homes[k], log }).failed.length) homes[k] = { ...homes[k], dir: path.join(claudeDir, k), store: false };
         }
         const [skillsDir, agentsDir] = [homes.skills.dir, homes.agents.dir];
+        // Workspace stage 4c: the library rules live in the store, sent by the loader; a store folder that cannot be made or a move
+        // that fails leaves every rule in .claude/rules this run, natively loaded.
+        let rulesDir = links.storeOf(projectRoot, 'rules');
+        if (writes)
+        {
+            const made = (() => { try { fs.mkdirSync(rulesDir, { recursive: true }); return true; } catch (err) { log(`  !! rules stay in .claude this run: ${err.code}`); return false; } })();
+            // The stamped rules, and a pre-stamp copy the stack claims.
+            const claimed = ruleClaim({ manifest, source: resolved, claudeDir, rulesDir: path.join(claudeDir, 'rules') });
+            const names = [...new Set([...Object.keys(stampedLib.rules || {}), ...manifest.rules.map((f) => f.replace(/\.md$/, '')).filter(claimed)])];
+            if (!made || links.moveIn({ projectRoot, kind: 'rules', names, home: { store: true, dir: rulesDir }, log }).failed.length) rulesDir = path.join(claudeDir, 'rules');
+            else for (const n of Object.keys(stampedLib.rules || {})) heldTwice({ at: path.join(claudeDir, 'rules', `${n}.md`), hash: stampedLib.rules[n], name: n, rulesDir, log });
+        }
+        else if (!fs.statSync(rulesDir, { throwIfNoEntry: false })?.isDirectory()) rulesDir = path.join(claudeDir, 'rules');
         // A joined child: what its parent holds of a linked kind is linked from the chain, never copied here. Its parent's set in
         // doubt, or the workspace switched off over links into a chain, what it links (links.inherited) stands in for that set.
         const recorded = stampFile ? stampLayer.readLinks(stampFile) : [];
@@ -608,7 +621,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             : walked.filter((n) => versionDue.includes(n) || stillHeld(n));
         const ctx = {
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
-            projectRoot, claudeDir, skillsDir, agentsDir, homes, child, configDir, mcpFile, home, stampFile,
+            projectRoot, claudeDir, skillsDir, agentsDir, rulesDir, homes, child, configDir, mcpFile, home, stampFile,
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
             dataInfo,
@@ -639,7 +652,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         copy.removeDropped({
             drop: args.dropApplied || [], log, keep: (category, name) => category === 'skill' && foreignSkill(ctx, name),
-            dirs: { skill: skillsDir, agent: agentsDir, rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks') },
+            dirs: { skill: skillsDir, agent: agentsDir, rule: rulesDir, hook: path.join(claudeDir, 'hooks') },
             shipped: {
                 skill: manifest.catalogs.skills.map((e) => e.split('|').pop()),
                 agent: manifest.agents.map((e) => e.replace(/\.md$/, '')),
@@ -1248,6 +1261,13 @@ function retiredKeep(ctx, kind, dir)
 // is still the stack's, and so is one copied before the stamp recorded skills; a project's own skill has words of its
 // own). Any other folder under a catalog name is the project's (`foreign`): never overwritten, pruned, dropped or read
 // back as a pick - named, and left out of the stamp. Read once per run, from the stamp as the run found it.
+// A stamped rule the store holds that .claude/rules holds too: at its stamped hash it goes, else it is the user's and named.
+function heldTwice({ at, hash, name, rulesDir, log })
+{
+    if (!fs.existsSync(path.join(rulesDir, `${name}.md`)) || !fs.lstatSync(at, { throwIfNoEntry: false })?.isFile()) return;
+    if (library.hashItem(at) === hash) fs.unlinkSync(at);
+    else log(`  !! rule ${name} is held in .claude/rules too: yours is kept and loads first`);
+}
 function skillTest({ skillsDir, stampFile, manifest, sourceDir })
 {
     const lib = stampLayer.readLibrary(stampFile) || {};
@@ -1283,11 +1303,14 @@ const ruleOpening = (file) =>
     try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
     catch { return null; }
 };
+// Where a rule is read and written: the store, unless only .claude/rules holds it - a project's own file the move left there.
+const ruleHome = (ctx, name) => [ctx.rulesDir, path.join(ctx.claudeDir, 'rules')].map((d) => path.join(d, `${name}.md`))
+    .find((f, i) => i === 1 || fs.existsSync(f) || !fs.existsSync(path.join(ctx.claudeDir, 'rules', `${name}.md`)));
 const ruleClaim = (ctx) => (name) =>
 {
     if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
     const past = (ctx.ruleOpenings ||= ruleOpenings.pastOpenings(ctx.source.dir));
-    return ruleOpenings.stackOpening(name, readText(path.join(ctx.claudeDir, 'rules', `${name}.md`)),
+    return ruleOpenings.stackOpening(name, readText(ruleHome(ctx, name)),
         readText(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`)), past);
 };
 // A RENAMED rule's old copy the stamp holds no hash for. Under a stamp that records no rule (a 0.2.x or 1.x stamp predates
@@ -2006,20 +2029,22 @@ function installHooksAndRules(ctx)
     const ruleNames = ctx.lists.rules.map((f) => f.replace(/\.md$/, ''));
     const render = Object.fromEntries(ROOTED_RULES.map((name) => [`rules/${name}`, (text) => text.split('__DOCS_ROOT__').join(docsRoot)]));
     const rulesLibrary = library.copyLibrary({
-        sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
+        sourceDir: ctx.source.dir, rulesDir: ctx.rulesDir, ruleAt: (n) => ruleHome(ctx, n),
         rules: ruleNames,
         render,
         stamped: stampLayer.readLibrary(ctx.stampFile), claims: (kind, name) => kind !== 'rules' || ruleClaim(ctx)(name), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
     // After the new copies landed: a throw before this point leaves the old rules loading, never none.
-    pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream', { keep: retiredKeep(ctx, 'rule', path.join(ctx.claudeDir, 'rules')) });
+    // An old install's retired copies sit in .claude/rules whether or not this run moved the rest (workspace stage 4c).
+    for (const dir of new Set([ctx.rulesDir, path.join(ctx.claudeDir, 'rules')]))
+        pruneCopies(ctx, dir, ctx.manifest.retired.rules, 'rule', 'retired upstream', { keep: retiredKeep(ctx, 'rule', dir) });
     // A copy this run did not write may still hold the placeholder: stampDocsRoot substitutes it IN
     // PLACE, after copyLibrary already hashed it - re-hash the one file it touches, or `drift` fires
     // on every check from here on.
     copy.stampDocsRoot(ctx.projectRoot, { scope: ctx.args.scope, value: docsRoot, log: ctx.log, note: ctx.note });
     if (Object.hasOwn(ctx.library.rules, DOCS_ROOT_RULE))
-        ctx.library.rules[DOCS_ROOT_RULE] = library.hashItem(path.join(ctx.claudeDir, 'rules', `${DOCS_ROOT_RULE}.md`));
+        ctx.library.rules[DOCS_ROOT_RULE] = library.hashItem(copy.ruleAt(ctx.projectRoot, DOCS_ROOT_RULE));
 
     const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
     const migrations = envMigrations(readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')));

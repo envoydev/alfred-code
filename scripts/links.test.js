@@ -363,6 +363,36 @@ test('links: moveIn moves real items, passes over a link and a name the store ho
     assert.ok(fs.existsSync(at(t, 'skills/a/SKILL.md')) && !fs.existsSync(path.join(t, '.alfred', 'stack', 'skills', 'a')));
 });
 
+test('links: moveIn moves a stamped rule file into the store and leaves an unlisted one', () =>
+{
+    const p = fresh();
+    fs.mkdirSync(at(p, 'rules'), { recursive: true });
+    for (const x of ['a', 'mine']) fs.writeFileSync(at(p, `rules/${x}.md`), x);
+    const dir = links.storeOf(p, 'rules');
+    const log = lines();
+    const r = links.moveIn({ projectRoot: p, kind: 'rules', names: ['a'], home: { store: true, dir }, log });
+    assert.deepStrictEqual(r, { moved: ['a'], failed: [] });
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'a.md'), 'utf8'), 'a');
+    assert.ok(!fs.existsSync(at(p, 'rules/a.md')) && fs.existsSync(at(p, 'rules/mine.md')));
+    assert.ok(log.out.includes('rule moved to the store: a'), log.out.join('\n'));
+});
+
+test('links: a rule that cannot be moved puts back what this call moved', () =>
+{
+    const p = fresh();
+    fs.mkdirSync(at(p, 'rules'), { recursive: true });
+    for (const x of ['a', 'b']) fs.writeFileSync(at(p, `rules/${x}.md`), x);
+    const realRename = fs.renameSync;
+    let calls = 0;
+    fs.renameSync = (from, to) => { calls += 1; if (calls === 2) throw Object.assign(new Error('busy'), { code: 'EBUSY' }); return realRename(from, to); };
+    let r;
+    try { r = links.moveIn({ projectRoot: p, kind: 'rules', names: ['a', 'b'], home: { store: true, dir: links.storeOf(p, 'rules') }, log: () => {} }); }
+    finally { fs.renameSync = realRename; }
+    assert.deepStrictEqual(r, { moved: [], failed: ['b'] });
+    assert.ok(fs.existsSync(at(p, 'rules/a.md')) && fs.existsSync(at(p, 'rules/b.md')));
+    assert.ok(!fs.existsSync(path.join(links.storeOf(p, 'rules'), 'a.md')));
+});
+
 test('stamp: links and member-picks round trip; a bad path, kind or name is dropped', () =>
 {
     const p = fresh();

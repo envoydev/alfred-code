@@ -181,6 +181,10 @@ function resolveDocsVersioning(projectRoot, scope)
     return value === 'git' || value === 'local' ? value : null;
 }
 
+// An installed rule's file: the store's (workspace stage 4c) when it is there, else the .claude/rules one.
+const ruleAt = (projectRoot, name) => ['.alfred/stack', '.claude'].map((d) => path.join(projectRoot, d, 'rules', `${name.replace(/\.md$/, '')}.md`))
+    .find((f, i) => i === 1 || fs.existsSync(f));
+
 // The root the installed docs-root rule is stamped with now, or null (no rule, or still the placeholder).
 function stampedDocsRoot(projectRoot)
 {
@@ -189,7 +193,7 @@ function stampedDocsRoot(projectRoot)
     {
         try
         {
-            const m = /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(projectRoot, '.claude', 'rules', name), 'utf8'));
+            const m = /This install's root: `([^`]*)`/.exec(fs.readFileSync(ruleAt(projectRoot, name), 'utf8'));
             if (m && m[1] !== '__DOCS_ROOT__') return m[1];
         }
         catch { /* absent: try the next name */ }
@@ -204,7 +208,7 @@ function stampedDocsRoot(projectRoot)
 // placeholder. The two halves are one behaviour; neither works alone.
 function stampDocsRoot(projectRoot, { scope, value: given, log = () => {}, note = () => {} } = {})
 {
-    const rule = path.join(projectRoot, '.claude', 'rules', DOCS_ROOT_RULE);
+    const rule = ruleAt(projectRoot, DOCS_ROOT_RULE);
     if (!fs.existsSync(rule)) return false;
     // `value`: the root a run decided before its settings write lands (a docs-root move) - else the file's.
     const value = given || resolveDocsRoot(projectRoot, scope);
@@ -294,4 +298,4 @@ function commonJsScope({ dir, stackFiles = [], log = () => {}, note = () => {} }
     return 'written';
 }
 
-module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER };
+module.exports = { installFromSource, ruleAt, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER };

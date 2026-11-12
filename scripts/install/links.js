@@ -7,7 +7,7 @@ const path = require('node:path');
 const { hashItem } = require('./library.js');
 const { validItemName } = require('./stamp.js');
 const KINDS = ['skills', 'agents'];
-const fileOf = (kind, name) => (kind === 'agents' ? `${name}.md` : name);
+const fileOf = (kind, name) => (kind === 'skills' ? name : `${name}.md`);
 const lstat = (p) => { try { return fs.lstatSync(p); } catch { return null; } };
 const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
 const isItem = (kind, st) => Boolean(st) && !st.isSymbolicLink() && (kind === 'skills' ? st.isDirectory() : st.isFile());
@@ -148,4 +148,4 @@ function checkLinks({ projectRoot, record = [], members = [], rt })
         return { path: e.path, state: holder && hashItem(holder) !== e.hash ? 'stale' : 'ok' };
     });
 }
-module.exports = { KINDS, fileOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };
+module.exports = { KINDS, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };

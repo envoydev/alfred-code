@@ -177,6 +177,16 @@ test('install-stamp: installedAlways reads the always rules on disk, and nothing
     assert.deepStrictEqual(got, { rules: ['alfred-security'] });
 });
 
+test('install-stamp: installedAlways lists the always-on rules found in the store after the move', () =>
+{
+    const p = project({ rules: [] });
+    const store = path.join(p.base, '.alfred', 'stack', 'rules');
+    fs.mkdirSync(store, { recursive: true });
+    fs.writeFileSync(path.join(store, 'alfred-security.md'), 'x');
+    const got = installedAlways({ recommendations: path.join(p.src, 'meta', 'recommendations.json'), rulesDir: [store, path.join(p.base, '.claude', 'rules')] });
+    assert.deepStrictEqual(got, { rules: ['alfred-security'] });
+});
+
 // T3: the skills and seats this run installed, so the next --installed-only can read back an item a
 // release MOVED into an entry this project has not enabled - the new placement alone loses it.
 test('install-stamp: picked-skills / picked-agents record what this run installed, and read back', () =>

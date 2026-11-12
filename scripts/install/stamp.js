@@ -125,7 +125,7 @@ function installedAlways({ recommendations, rulesDir })
 {
     const always = (readJson(recommendations).always) || {};
     const list = (x) => (Array.isArray(x) ? x : []);
-    return { rules: list(always.rules).filter((r) => rulesDir && fs.existsSync(path.join(rulesDir, `${r}.md`))) };
+    return { rules: list(always.rules).filter((r) => [].concat(rulesDir || []).some((d) => fs.existsSync(path.join(d, `${r}.md`)))) };
 }
 
 // --- the ledger (R10) ----------------------------------------------------------------------------
@@ -344,7 +344,7 @@ function writeStamp(opts)
 
     const always = installedAlways({
         recommendations: path.join(source.dir, 'meta', 'recommendations.json'),
-        rulesDir: path.join(projectRoot, '.claude', 'rules'),
+        rulesDir: [path.join(projectRoot, '.alfred', 'stack', 'rules'), path.join(projectRoot, '.claude', 'rules')],
     });
 
     try

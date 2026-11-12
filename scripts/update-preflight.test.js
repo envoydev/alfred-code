@@ -1128,3 +1128,17 @@ test('fixed root: the preflight prints no data-move line and reads a custom root
     assert.match(offers, /^instructions: /m, offers);
     assert.ok(!fs.existsSync(path.join(install, '.alfred')), 'no .alfred folder is made');
 });
+
+test('update-preflight: changed-here counts a store rule; OLD_COPY finds a rule in either folder (workspace stage 4c)', () => {
+    const fixture = { files: [{ status: 'modified', filename: 'stack/rules/markdown-docs.md' },
+        { status: 'renamed', filename: 'stack/rules/sql-conventions.md', previous_filename: 'stack/rules/old-sql.md' }] };
+    const { snap, install, fixtureFile } = scaffold({ fixture, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: copy\nhooks-route: copy\n', settings: { env: {} } });
+    const store = path.join(install, '.alfred', 'stack', 'rules');
+    fs.mkdirSync(store, { recursive: true });
+    for (const n of ['markdown-docs', 'old-sql']) fs.writeFileSync(path.join(store, `${n}.md`), '# r\n');
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.match(out, /^changed-here: skills=0 agents=0 rules=1 hooks=0$/m, out);
+    assert.match(out, /^new: rule sql-conventions\trenamed\t-\tfrom=old-sql\told-on-disk$/m, out);
+});

@@ -131,7 +131,9 @@ function restampLibraryHash(claudeDir, ruleFile)
 // its scope; the account-dir mode reads that dir's settings.json alone.
 function stampDir(claudeDir, value)
 {
-    const ruleFile = path.join(claudeDir, 'rules', 'alfred-docs-root.md');
+    // A project install's rule sits in the store from workspace stage 4c; the account-dir mode has none.
+    const inStore = path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules', 'alfred-docs-root.md');
+    const ruleFile = fs.existsSync(inStore) ? inStore : path.join(claudeDir, 'rules', 'alfred-docs-root.md');
     if (!fs.existsSync(ruleFile))
     {
         console.log(`stamp-docs-root: no ${ruleFile} - nothing to stamp`);

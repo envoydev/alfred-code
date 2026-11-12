@@ -378,3 +378,20 @@ test('an unrecorded copy under a heading the stack shipped is reported unrecorde
     fs.rmSync(path.join(f.src, 'meta'), { recursive: true });
     assert.equal(run(f).code, 0, 'a source with no headings file reports none');
 });
+
+test('a rule in the store (workspace stage 4c) is read, changed and missing each reported', () =>
+{
+    const f = fx();
+    const store = path.join(f.project, '.alfred', 'stack', 'rules');
+    fs.mkdirSync(path.dirname(store), { recursive: true });
+    fs.renameSync(f.rules, store);
+    let r = run(f);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /library: clean \(4 copies\)/);
+    fs.appendFileSync(path.join(store, 'alfred-git.md'), 'x');
+    r = run(f);
+    assert.match(r.out, /drift: rule alfred-git/);
+    fs.rmSync(path.join(store, 'alfred-git.md'));
+    r = run(f);
+    assert.match(r.out, /missing: rule alfred-git/);
+});

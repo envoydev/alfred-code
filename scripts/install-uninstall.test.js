@@ -365,7 +365,7 @@ test('uninstall: a stamp from before the ledger is refused with the route to tak
             const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
             fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').split('\n').filter((l) => !l.startsWith('managed-')).join('\n'));
         },
-        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md')) }),
+        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs')) }),
     });
     assert.strictEqual(code, 1);
     assert.match(err, /predates the install ledger.*run \/alfred-code:update once .*then uninstall/);
@@ -418,7 +418,7 @@ test('uninstall with an unreadable plugin listing refuses before any change', PO
     const { code, err, calls, result } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
         plugins: LISTING, failOk: true,
         each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), 'Error: not logged in'); },
-        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md')) }),
+        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs')) }),
     });
     assert.strictEqual(code, 1);
     assert.match(err, /claude plugin list --json.*run uninstall again/);

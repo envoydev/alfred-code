@@ -147,7 +147,8 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
         if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name)) lines.push(`skill ${name}`);
     for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md')))
         if (ours('agents', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
-    for (const f of listDir(path.join(claudeDir, 'rules'), (d) => d.isFile() && d.name.endsWith('.md')))
+    const ruleFile = (d) => d.isFile() && d.name.endsWith('.md');
+    for (const f of new Set([...listDir(path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules'), ruleFile), ...listDir(path.join(claudeDir, 'rules'), ruleFile)]))
     {
         const name = f.replace(/\.md$/, '');
         if (!RULE_EXCLUDE.test(name) && ours('rules', name)) lines.push(`rule ${name}`);

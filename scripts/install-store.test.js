@@ -714,3 +714,138 @@ test('child: on the copy route it links the root\'s agent files and skills, and 
     assert.match(lineOf(got.root, 'managed-files'), /(^|,)agents\/wpf-verifier\.md=/);
     assert.match(outs[2], /workspace: from \.\. - 0 added, 0 dropped/);
 });
+
+// Workspace stage 4c: the library rules live in .alfred/stack/rules, where the rule loader sends them from.
+const ALWAYS_RULES = ['alfred-interaction', 'alfred-preferences', 'alfred-docs-root', 'alfred-security', 'alfred-quality-gates', 'alfred-navigation', 'markdown-docs'];
+const RULE_SEL = `${SELECTION}${ALWAYS_RULES.map((r) => `rule ${r}\n`).join('')}`;
+const sourceRule = (name) => fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', `${name}.md`), 'utf8');
+const ruleNames = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)) : []);
+const ruleTree = (repo) => Object.fromEntries([...ruleNames(store(repo, 'rules')).map((n) => [`st/${n}`, hashItem(store(repo, 'rules', `${n}.md`))]),
+    ...ruleNames(claude(repo, 'rules')).map((n) => [`cl/${n}`, hashItem(claude(repo, 'rules', `${n}.md`))])]);
+// The old shape: every stamped rule back in .claude/rules, as an install before this stage left it.
+const unmove = (repo) => { fs.mkdirSync(claude(repo, 'rules'), { recursive: true }); for (const n of ruleNames(store(repo, 'rules'))) fs.renameSync(store(repo, 'rules', `${n}.md`), claude(repo, 'rules', `${n}.md`)); };
+
+test('rules: a fresh install writes every library rule to .alfred/stack/rules and none to .claude/rules; a second run changes nothing', () =>
+{
+    const { result, steps } = seedRun(['install', 'update', 'update'], RULE_SEL, {
+        each: (repo) => ({ tree: ruleTree(repo), stamp: bare(fs.readFileSync(stampOf(repo), 'utf8')) }),
+        inspect: (repo) => ({ inStore: ruleNames(store(repo, 'rules')), native: ruleNames(claude(repo, 'rules')), lib: stamp.readLibrary(stampOf(repo)),
+            root: fs.readFileSync(store(repo, 'rules', 'alfred-docs-root.md'), 'utf8'), rootHash: hashItem(store(repo, 'rules', 'alfred-docs-root.md')),
+            always: lineOf(fs.readFileSync(stampOf(repo), 'utf8'), 'installed-always-rules') }),
+    });
+    for (const n of ALWAYS_RULES) assert.ok(result.inStore.includes(n), `${n} in the store: ${result.inStore}`);
+    assert.deepStrictEqual(result.native.filter((n) => Object.hasOwn(result.lib.rules, n)), [], 'no stack rule in .claude/rules');
+    assert.match(result.root, /This install's root: `[^`_]+`/);
+    assert.strictEqual(result.lib.rules['alfred-docs-root'], result.rootHash, 'the stamp records the stamped docs-root rule');
+    for (const n of ALWAYS_RULES.slice(0, 6)) assert.ok(result.always.split(',').includes(n), `installed-always-rules lists ${n}: ${result.always}`);
+    assert.deepStrictEqual(steps[2], steps[1], 'a second update changes no rule file and no stamp line');
+});
+
+test('rules: an update moves the stamped rules, re-copies an edited one as today, and leaves a generated and the user\'s own rule', () =>
+{
+    const mine = 'my own rule\n';
+    const { outs, result } = seedRun(['install', 'update'], RULE_SEL, {
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            unmove(repo);
+            fs.appendFileSync(claude(repo, 'rules', 'alfred-security.md'), '\nmy edit\n');
+            for (const n of ['mine', 'alfred-awareness']) fs.writeFileSync(claude(repo, 'rules', `${n}.md`), mine);
+            return null;
+        },
+        inspect: (repo) => ({ inStore: ruleNames(store(repo, 'rules')), native: ruleNames(claude(repo, 'rules')),
+            interaction: fs.readFileSync(store(repo, 'rules', 'alfred-interaction.md'), 'utf8'),
+            kept: ['mine', 'alfred-awareness'].map((n) => fs.readFileSync(claude(repo, 'rules', `${n}.md`), 'utf8')) }),
+    });
+    assert.match(outs[1], /rule moved to the store: alfred-interaction$/m);
+    assert.match(outs[1], /overwriting a hand-edited copy: rule alfred-security$/m, 'the edited copy is refreshed as an update does today');
+    assert.strictEqual(result.interaction, sourceRule('alfred-interaction'));
+    for (const n of ALWAYS_RULES) assert.ok(result.inStore.includes(n), n);
+    assert.deepStrictEqual(result.native.sort(), ['alfred-awareness', 'mine']);
+    assert.deepStrictEqual(result.kept, [mine, mine]);
+});
+
+test('rules: a failed move leaves every rule native this run, the docs-root rule stamped at the hash the stamp records', () =>
+{
+    const { outs, result } = seedRun(['install', 'update'], RULE_SEL, {
+        each: (repo, i) => { if (i === 0) { unmove(repo); fs.rmdirSync(store(repo, 'rules')); fs.writeFileSync(store(repo, 'rules'), 'a file'); } return null; },
+        inspect: (repo) => ({ native: ruleNames(claude(repo, 'rules')), lib: stamp.readLibrary(stampOf(repo)),
+            root: fs.readFileSync(claude(repo, 'rules', 'alfred-docs-root.md'), 'utf8'), rootHash: hashItem(claude(repo, 'rules', 'alfred-docs-root.md')) }),
+    });
+    assert.match(outs[1], / {2}!! rules stay in \.claude this run/);
+    for (const n of ALWAYS_RULES) assert.ok(result.native.includes(n), n);
+    assert.match(result.root, /This install's root: `[^`_]+`/);
+    assert.strictEqual(result.lib.rules['alfred-docs-root'], result.rootHash);
+});
+
+test('rules: a fresh install whose store rules path is a file writes the rules to .claude/rules and says so', () =>
+{
+    const { out, result } = seedRun('install', RULE_SEL, {
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.alfred', 'stack'), { recursive: true }); fs.writeFileSync(store(repo, 'rules'), 'a file'); },
+        inspect: (repo) => ({ native: ruleNames(claude(repo, 'rules')), root: fs.readFileSync(claude(repo, 'rules', 'alfred-docs-root.md'), 'utf8') }),
+    });
+    assert.match(out, / {2}!! rules stay in \.claude this run/);
+    for (const n of ALWAYS_RULES) assert.ok(result.native.includes(n), n);
+    assert.match(result.root, /This install's root: `[^`_]+`/);
+});
+
+test('rules: a rule held in both folders - the .claude copy at its stamped hash goes, an edited one stays and is named', () =>
+{
+    const { outs, result } = seedRun(['install', 'update'], RULE_SEL, {
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            fs.mkdirSync(claude(repo, 'rules'), { recursive: true });
+            for (const n of ['alfred-interaction', 'alfred-security']) fs.copyFileSync(store(repo, 'rules', `${n}.md`), claude(repo, 'rules', `${n}.md`));
+            fs.appendFileSync(claude(repo, 'rules', 'alfred-security.md'), '\nmy edit\n');
+            return null;
+        },
+        inspect: (repo) => ({ native: ruleNames(claude(repo, 'rules')), store: fs.readFileSync(store(repo, 'rules', 'alfred-interaction.md'), 'utf8'),
+            edited: fs.readFileSync(claude(repo, 'rules', 'alfred-security.md'), 'utf8') }),
+    });
+    assert.deepStrictEqual(result.native, ['alfred-security']);
+    assert.strictEqual(result.store, sourceRule('alfred-interaction'));
+    assert.match(result.edited, /my edit/);
+    assert.match(outs[1], /rule alfred-security is held in \.claude\/rules too: yours is kept and loads first/);
+});
+
+test('rules: an uninstall takes the store rules at their hash, keeps an edited one, and takes the old shape too', () =>
+{
+    for (const old of [false, true])
+    {
+        const { result } = seedRun(['install', 'uninstall'], RULE_SEL, {
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                if (old) unmove(repo);
+                fs.appendFileSync(old ? claude(repo, 'rules', 'alfred-security.md') : store(repo, 'rules', 'alfred-security.md'), '\nmy edit\n');
+                return null;
+            },
+            inspect: (repo) => ({ inStore: ruleNames(store(repo, 'rules')), native: ruleNames(claude(repo, 'rules')) }),
+        });
+        assert.deepStrictEqual(old ? result.native : result.inStore, ['alfred-security'], `old shape ${old}`);
+        assert.deepStrictEqual(old ? result.inStore : result.native, [], `old shape ${old}`);
+    }
+});
+
+test('rules: the read-back lists the rules found in the store', () =>
+{
+    const { outs } = seedRun(['install', 'update'], RULE_SEL, { args: [[], ['--installed-only', '--print-plan']] });
+    const plan = (/^plan rules: (.*)$/m.exec(outs[1]) || [])[1] || '';
+    for (const n of ALWAYS_RULES) assert.ok(plan.split(' ').includes(n), `${n} read back: ${plan}`);
+});
+
+test('copy: ruleAt names the store file when it exists, else the .claude/rules one', () =>
+{
+    const { ruleAt } = require('./install/copy.js');
+    const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'rule-at-'));
+    try
+    {
+        assert.strictEqual(ruleAt(root, 'a'), path.join(root, '.claude', 'rules', 'a.md'));
+        fs.mkdirSync(store(root, 'rules'), { recursive: true });
+        fs.writeFileSync(store(root, 'rules', 'a.md'), 'a');
+        assert.strictEqual(ruleAt(root, 'a.md'), store(root, 'rules', 'a.md'));
+        assert.strictEqual(ruleAt(root, 'b'), path.join(root, '.claude', 'rules', 'b.md'));
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

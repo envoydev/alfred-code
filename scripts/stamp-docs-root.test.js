@@ -466,3 +466,13 @@ test('the stamped root line names the data root it sits under, and no installer 
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a docs-root rule in the store (workspace stage 4c) is the one re-stamped', () => {
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    const store = path.join(root, '.alfred', 'stack', 'rules');
+    fs.mkdirSync(store, { recursive: true });
+    fs.renameSync(path.join(root, '.claude', 'rules', 'alfred-docs-root.md'), path.join(store, 'alfred-docs-root.md'));
+    run(root);
+    assert.match(fs.readFileSync(path.join(store, 'alfred-docs-root.md'), 'utf8'), /This install's root: `docs`/);
+    assert.ok(!fs.existsSync(path.join(root, '.claude', 'rules', 'alfred-docs-root.md')));
+});

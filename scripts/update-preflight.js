@@ -204,7 +204,7 @@ function changedHere(compareLines, { claudeDir, stampFile, settings, routes })
     const here = {
         skills: [...seen.skills].filter((n) => has('skills', n, 'SKILL.md')),
         agents: [...seen.agents].map((f) => f.replace(/\.md$/, '')).filter((n) => has('agents', `${n}.md`) || (seatsOnCore && !denied.has(n))),
-        rules: [...seen.rules].filter((f) => has('rules', f)),
+        rules: [...seen.rules].filter((f) => has('rules', f) || fs.existsSync(path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules', f))),
         hooks: [...seen.hooks].filter((f) => has('hooks', f)
             || (hooksOnPlugin && /\.js$/.test(f) && !hookDisabled(f, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }))),
     };
@@ -241,7 +241,7 @@ const ITEM_PATHS = [
 ];
 // A rename (`renamed\t<new>\t<- <old>`) keeps its old name as `from`, and whether the old COPY is
 // on disk - that is what decides that the update carries it rather than offering it.
-const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`), rule: (d, n) => path.join(d, 'rules', `${n}.md`), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
+const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`), rule: (d, n) => require('./install/copy.js').ruleAt(path.dirname(d), n), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
 // A name the snapshot's `renamed` map (meta/stack-manifest.json) carries is the same item continuing
 // even when the compare saw only an add - git reports a rewritten folder as added plus removed.
 const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules' };
