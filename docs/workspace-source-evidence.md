@@ -224,3 +224,25 @@ sent each always rule once - the edited one from the native file that tree's upd
 edit is kept on disk but not sent. Without the recipe that tree also sent each rule once, from the store. Rolling forward
 again over each case put the rules back in the store. A revert onto 3.10.0 or earlier (no loader) was NOT RUN; there
 the recipe is required.
+
+## Stage 5 - probes
+
+What Claude Code itself sends when a session or an agent touches a file under a child project, against the local
+stand-in ($0). Claude Code 2.1.322, macOS, 2026-11-13. Two hand-made fixtures: `own/ws` (the child `api` its own
+repository, ignored by the root's `.gitignore`) and `one/ws` (`api` a plain sub-folder). Each `api` holds
+`.claude/rules/r1.md` (`R1-RULE-MARK`), `CLAUDE.md` (`R1-CLAUDE-MARK`), `AGENTS.md` (`R1-AGENTS-MARK`) and `src/a.txt`.
+The command is `node meta/probes/hook-delivery.js <ws> <label> --approve <flags> -- <marks>`.
+
+| Row | Flags | Result | What was read |
+| --- | --- | --- | --- |
+| R1 own repository | `--read <ws>/api/src/a.txt` | rule and `CLAUDE.md` loaded, `AGENTS.md` not | `R1-RULE-MARK` and `R1-CLAUDE-MARK` in `main-2`, after the Read; `R1-AGENTS-MARK` absent |
+| R1 control, a sub-folder | the same on `one/ws` | the same | the same |
+| R2 a subagent's Read | `--agent --step '{"sub":true,"name":"Read",...}'` | rule and `CLAUDE.md` loaded in the subagent's turn, `AGENTS.md` not | both marks in `main-4`, a `subagent` request after its Read, on both fixtures |
+| R4 a second-level agent | `--inject --agent --step <Agent 'level two'> --step <its Read>` on `one/ws` | `yes` | the Read's PostToolUse carries the second-level `agent_id` (not the first level's); `PATH-INJECT-MARK` in `main-5`, the request whose first message holds 'level two'. Control (a first-level Read): `main-4` |
+| R5 Cursor, two cells | the root opened, a child's file read; a subagent's read | `NOT RUN - the owner's Cursor run` | steps 10 and 11 of the machine-local Cursor fixture |
+
+What they change: R1 and R2 show Claude Code loads a child's `.claude/rules` and `CLAUDE.md` on its own after a Read
+under it - in its own repository as in a sub-folder - and never `AGENTS.md`, so the block's line 2 (naming `AGENTS.md`)
+and line 3 (the native rule files) stay: on a host that loads them the 'unless it is already in your context' clause
+covers it. R4 `yes`: a sub-agent keys its own markers, so the limit 'a sub-agent shares its parent's markers' is not
+needed.

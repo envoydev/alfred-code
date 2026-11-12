@@ -1035,6 +1035,30 @@ function docsMemoryShare(root, { env = process.env, home = require('os').homedir
 // The folder a checkout's workspace chain is read from: a linked worktree's main counterpart, whose workspace file the
 // worktree lacks (it is gitignored), as resolveVariables reads it.
 const chainProjectOf = (projectRoot) => mainCounterpart(projectRoot) || projectRoot;
+// The joined member a touched file belongs to when it is outside the start's own chain: { root, rel, key, chain } - `chain`
+// its own members the start's chain lacks, top first, itself last, each { root, rel, key }; else null (workspace stage 5).
+function memberOf(file, start, { env = process.env } = {})
+{
+    const from = chainProjectOf(realpathOrSelf(start));
+    if (!workspaceOn({ env, projectRoot: from })) return null;
+    const own = [from, ...workspaceChain(from, { env }).members.map((m) => m.root)].map(dirKey);
+    const top = own[own.length - 1];
+    let at = path.dirname(path.resolve(file));
+    at = realpathOrSelf(mainCounterpart(at) || at);
+    for (; ; at = path.dirname(at))
+    {
+        const rel = path.relative(top, dirKey(at));
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+        if (holdsRecord(at)) break;
+    }
+    if (own.includes(dirKey(at))) return null;
+    const up = [at, ...workspaceChain(at, { env }).members.map((m) => m.root)];
+    const meet = up.findIndex((r, i) => i > 0 && own.includes(dirKey(r)));
+    if (meet < 0 || dirKey(up[up.length - 1]) !== top) return null;
+    const hash = (rel) => require('crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
+    const chain = up.slice(0, meet).reverse().map((root) => { const rel = wsRel(top, dirKey(root)); return { root, rel, key: hash(rel) }; });
+    return { ...chain[chain.length - 1], chain };
+}
 // R3: each linked member's preferences folder, nearest first, read-only, while the switch is on. `skip` holds the files an
 // `ignore doc <file>` here or in a nearer member drops for THAT member (R0); `ignore docs root` drops the member and every
 // one past it, as it drops their docs roots.
@@ -1092,7 +1116,7 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
-    settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain,
+    settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,

@@ -708,3 +708,71 @@ test('fixed root: variablesOf takes a dataRoot option', () =>
     assert.strictEqual(layout.variablesOf(at('p'), { env: env0, dataRoot: 'var/data' }).values.ALFRED_CODE_HISTORY, '5');
     assert.strictEqual(layout.variablesOf(at('p'), { env: env0 }).values.ALFRED_CODE_HISTORY, '9');
 });
+
+// ---- memberOf (workspace stage 5): the joined member a touched file belongs to, outside the start's own chain ----------
+const keyOf = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
+const MEMBERS = {
+    'ws': { stamp: true, git: true, record: { children: ['api', 'web'] } },
+    'ws/api': { stamp: true, git: true, record: { parent: '..', children: ['lib'] } },
+    'ws/web': { stamp: true, git: true, record: { parent: '..' } },
+    'ws/api/lib': { stamp: true, git: true, record: { parent: '..' } },
+    'ws/loose': { stamp: true, git: true },
+    'ws/api/loose': { stamp: true, git: true },
+    'out': {},
+};
+const fileIn = (at, rel) => path.join(at('.'), ...rel.split('/'));
+const brief = (m) => m && { root: m.root, rel: m.rel, key: m.key, chain: m.chain.map((c) => c.rel) };
+
+test('memberOf: a child, a sibling, a grandchild and a grandchild from its parent', () =>
+{
+    const at = tree(MEMBERS);
+    assert.deepStrictEqual(brief(layout.memberOf(fileIn(at, 'ws/api/src/a.ts'), at('ws'), { env: env0 })),
+        { root: at('ws/api'), rel: 'api', key: keyOf('api'), chain: ['api'] });
+    assert.deepStrictEqual(brief(layout.memberOf(fileIn(at, 'ws/web/a.ts'), at('ws/api'), { env: env0 })),
+        { root: at('ws/web'), rel: 'web', key: keyOf('web'), chain: ['web'] });
+    const grand = layout.memberOf(fileIn(at, 'ws/api/lib/a.ts'), at('ws'), { env: env0 });
+    assert.deepStrictEqual(brief(grand), { root: at('ws/api/lib'), rel: 'api/lib', key: keyOf('api/lib'), chain: ['api', 'api/lib'] });
+    assert.deepStrictEqual(grand.chain.map((c) => [c.root, c.key]), [[at('ws/api'), keyOf('api')], [at('ws/api/lib'), keyOf('api/lib')]]);
+    assert.deepStrictEqual(brief(layout.memberOf(fileIn(at, 'ws/api/lib/a.ts'), at('ws/api'), { env: env0 })).chain, ['api/lib']);
+});
+
+test('memberOf: null for the start, a chain ancestor, an unjoined project, outside the workspace and the switch off', () =>
+{
+    const at = tree(MEMBERS);
+    const none = (file, start, env = env0) => assert.strictEqual(layout.memberOf(fileIn(at, file), at(start), { env }), null, file);
+    none('ws/api/a.ts', 'ws/api');
+    none('ws/a.ts', 'ws/api');
+    none('ws/loose/a.ts', 'ws');
+    none('ws/api/loose/a.ts', 'ws');
+    none('out/a.ts', 'ws');
+    assert.strictEqual(layout.memberOf(path.join(os.tmpdir(), 'a.ts'), at('ws'), { env: env0 }), null);
+    none('ws/api/a.ts', 'ws', { ...env0, ALFRED_CODE_WORKSPACE: '0' });
+    const solo = tree({ 'solo': { stamp: true, git: true }, 'solo/sub': { stamp: true, git: true } });
+    assert.strictEqual(layout.memberOf(path.join(solo('solo/sub'), 'a.ts'), solo('solo'), { env: env0 }), null);
+});
+
+test('memberOf: a garbage child record sends nothing; a new path, a .. segment and a link find the member', () =>
+{
+    const at = tree(MEMBERS);
+    fs.writeFileSync(path.join(at('ws/web'), '.alfred', 'workspace.json'), '{');
+    assert.strictEqual(layout.memberOf(fileIn(at, 'ws/web/a.ts'), at('ws'), { env: env0 }), null);
+    const root = (file) => (layout.memberOf(file, at('ws'), { env: env0 }) || {}).root;
+    assert.strictEqual(root(fileIn(at, 'ws/api/new/dir/a.ts')), at('ws/api'));
+    assert.strictEqual(root(path.join(at('ws/web'), '..', 'api', 'a.ts')), at('ws/api'));
+    if (process.platform === 'win32') return;   // a symlink needs rights a Windows runner may lack
+    fs.symlinkSync(at('ws/api'), path.join(at('.'), 'ln'));
+    assert.strictEqual(root(path.join(at('.'), 'ln', 'a.ts')), at('ws/api'));
+});
+
+test('memberOf: a linked worktree of a member, and a sub-folder member in a worktree of the root', () =>
+{
+    const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, stdio: 'ignore' });
+    const at = tree(MEMBERS);
+    g(at('ws/api'), 'commit', '-q', '--allow-empty', '-m', 'x');
+    g(at('ws/api'), 'worktree', 'add', '-q', path.join(at('.'), 'wt-api'));
+    assert.strictEqual((layout.memberOf(path.join(at('.'), 'wt-api', 'src', 'a.ts'), at('ws'), { env: env0 }) || {}).root, at('ws/api'));
+    const one = tree({ 'ws': { stamp: true, git: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    g(one('ws'), 'commit', '-q', '--allow-empty', '-m', 'x');
+    g(one('ws'), 'worktree', 'add', '-q', path.join(one('.'), 'wt'));
+    assert.strictEqual((layout.memberOf(path.join(one('.'), 'wt', 'api', 'a.ts'), one('ws'), { env: env0 }) || {}).root, one('ws/api'));
+});
