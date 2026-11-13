@@ -199,7 +199,7 @@ test('auto-run start: a retired flag, a prose word, a seat and a payload with no
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
     const row = manifest.hooks.find((h) => String(h.matcher || '').startsWith('@UserPromptExpansion:'));
     const matcher = new RegExp(row.matcher.slice('@UserPromptExpansion:'.length));
-    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-awareness', 'issue-diagnoser', 'issue-signatures-ci', 'mode-auto-run', 'mode-output-scorer'])
+    for (const name of ['task-migrate-v2', 'alfred-code:task-solve', 'loop-perf', 'task-solve-cross', 'capture-awareness', 'issue-diagnoser', 'issue-signatures-ci', 'mode-auto-run', 'mode-output-scoring'])
         assert.ok(matcher.test(name), `expansion spawns for ${name}`);
     for (const name of ['review', 'commit', 'tasks', 'my-task-x'])
         assert.ok(!matcher.test(name), `and not for ${name}`);
@@ -809,19 +809,19 @@ test('auto-mode window: install seeds it per model in the project file, ledgers 
     assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { effortLevel: 'high' }, 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
 });
 
-test('settings-writer: uninstall takes the seeded scorer rows back and keeps one the user changed', () =>
+test('settings-writer: uninstall takes the seeded scoring rows back and keeps one the user changed', () =>
 {
-    const dir = fs.mkdtempSync(path.join(TMP, 'scorer-'));
+    const dir = fs.mkdtempSync(path.join(TMP, 'scoring-'));
     fs.mkdirSync(path.join(dir, '.claude'));
     const first = writer(dir);
     const data = read(dir);
-    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORER, data.env.ALFRED_CODE_SCORER_LEVEL], ['1', '80'], 'the install seeded them (on since B1 of the 2026-11-03 usage audit)');
-    data.env.ALFRED_CODE_SCORER_ROUNDS = '6';
+    assert.deepStrictEqual([data.env.ALFRED_CODE_SCORING, data.env.ALFRED_CODE_SCORING_LEVEL], ['1', '80'], 'the install seeded them (on since B1 of the 2026-11-03 usage audit)');
+    data.env.ALFRED_CODE_SCORING_ROUNDS = '6';
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
     settings.removeManagedSettings({ claudeDir: path.join(dir, '.claude'), ledger: throughStamp(first.managed) });
     const env = read(dir).env || {};
-    assert.deepStrictEqual([env.ALFRED_CODE_SCORER, env.ALFRED_CODE_SCORER_LEVEL], [undefined, undefined], 'the seeded rows go');
-    assert.strictEqual(env.ALFRED_CODE_SCORER_ROUNDS, '6', "the user's value stays");
+    assert.deepStrictEqual([env.ALFRED_CODE_SCORING, env.ALFRED_CODE_SCORING_LEVEL], [undefined, undefined], 'the seeded rows go');
+    assert.strictEqual(env.ALFRED_CODE_SCORING_ROUNDS, '6', "the user's value stays");
 });
 
 test('auto-mode window: a window the user set for every model, or for this one elsewhere, is left alone', () =>
@@ -949,7 +949,7 @@ test('compact instead: an ask still carrying a fresh-session option goes out wit
     assert.match(lone.stderr, /A question left with one option is no question/);
 });
 
-test('scorer asks: each option of the continue and withhold-final asks is auto-answered when it is the recommended one (R19)', () =>
+test('scoring asks: each option of the continue and withhold-final asks is auto-answered when it is the recommended one (R19)', () =>
 {
     const p = project();
     autoStamp(p, 'sc1');
@@ -961,7 +961,7 @@ test('scorer asks: each option of the continue and withhold-final asks is auto-a
     {
         const ordered = [options.find(([l]) => l === pick), ...options.filter(([l]) => l !== pick)]
             .map(([label, description], i) => ({ label: i ? label : `${label} (Recommended)`, description }));
-        const r = ask(p, 'sc1', [{ question, header: 'Scorer', multiSelect: false, options: ordered }]);
+        const r = ask(p, 'sc1', [{ question, header: 'Scoring', multiSelect: false, options: ordered }]);
         assert.deepStrictEqual(answered(r), { [question]: ordered[0].label }, pick);
     }
 });
@@ -1112,12 +1112,12 @@ test('mode whole-project runs: /loop-code-quality and /capture-awareness with no
     }
 });
 
-test('mode marker: a stacked /mode-output-scorer /task-solve X writes skill: task-solve, and a second expansion of the same prompt keeps the mtime (AC15)', () =>
+test('mode marker: a stacked /mode-output-scoring /task-solve X writes skill: task-solve, and a second expansion of the same prompt keeps the mtime (AC15)', () =>
 {
     const t = transcript();
     const p = project();
     autoOn(p, 'sk', t);
-    const prompt = '/mode-output-scorer /task-solve X';
+    const prompt = '/mode-output-scoring /task-solve X';
     assert.match(context(expand(p, 'sk', prompt, t, { prompt_id: 'pid-ac15' })), /^auto-run is ON for this \/task-solve run/);
     assert.match(fs.readFileSync(marker(p, 'sk'), 'utf8'), /^skill: task-solve\n/);
     const past = new Date(Date.now() - 60000);
@@ -1127,15 +1127,15 @@ test('mode marker: a stacked /mode-output-scorer /task-solve X writes skill: tas
     assert.strictEqual(fs.statSync(marker(p, 'sk')).mtimeMs, was, 'the same skill and prompt leave the file as it is');
 });
 
-test('mode marker writers: /mode-output-scorer X under the mode opens no marker and gets the banner alone; /mode-auto-run fix X writes skill: mode-auto-run', () =>
+test('mode marker writers: /mode-output-scoring X under the mode opens no marker and gets the banner alone; /mode-auto-run fix X writes skill: mode-auto-run', () =>
 {
     const t = transcript();
     const p = project();
     autoOn(p, 'mw', t);
-    const graded = expand(p, 'mw', '/mode-output-scorer grade the plan in docs/plan.md', t);
+    const graded = expand(p, 'mw', '/mode-output-scoring grade the plan in docs/plan.md', t);
     assert.ok(!fs.existsSync(marker(p, 'mw')), 'no marker: the grader opens no run');
     assert.doesNotMatch(context(graded), /auto-run is ON for this|Do nothing else|no run started/, 'no contract, and the request is not dropped');
-    assert.match(bannerOf(graded)[0], /^\*\*Auto-run: ON\*\* for \/mode-output-scorer /);
+    assert.match(bannerOf(graded)[0], /^\*\*Auto-run: ON\*\* for \/mode-output-scoring /);
     const q2 = project();
     assert.match(context(expand(q2, 'mw', '/mode-auto-run fix X', t)), /^auto-run is ON for this \/mode-auto-run run/);
     assert.match(fs.readFileSync(marker(q2, 'mw'), 'utf8'), /^skill: mode-auto-run\n/);
@@ -1311,7 +1311,7 @@ test('R093: two expansions of one typed prompt get the contract and the banner o
     const t = transcript();
     const p = project();
     autoOn(p, 'r93', t);
-    const line = '/mode-output-scorer /task-solve X';
+    const line = '/mode-output-scoring /task-solve X';
     const first = context(expand(p, 'r93', line, t, { prompt_id: 'pid-1' }));
     assert.match(first, /^auto-run is ON for this \/task-solve run/);
     assert.strictEqual(first.split(BANNER_HEAD).length, 2, 'the banner once');
@@ -1614,25 +1614,25 @@ test('old flag: a stamp whose only on-row is a retired flag is not live (R5)', (
     assert.strictEqual(pre.autoRunFor({ session_id: 'o6', transcript_path: t, cwd: p.root }, env, null), true, 'the mode command\'s row proves it');
 });
 
-test('old flag: the answer hook\'s scorer switch and ON line read no retired flag (AC7, AC9)', () =>
+test('old flag: the answer hook\'s scoring switch and ON line read no retired flag (AC7, AC9)', () =>
 {
     const p = project();
     const t = transcript();
-    const copy = path.join(p.root, '.claude', 'skills', 'mode-output-scorer');
+    const copy = path.join(p.root, '.claude', 'skills', 'mode-output-scoring');
     fs.mkdirSync(copy, { recursive: true });
-    fs.writeFileSync(path.join(copy, 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
-    const answer = (sid, text, scorer) => JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: text },
-        { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_SCORER: scorer }).stdout || '{}');
-    const said = (sid, text, scorer) => String((answer(sid, text, scorer).hookSpecificOutput || {}).additionalContext || '');
-    const { scorerFile } = require('../stack/hooks/hook-prelude.js');
-    const switches = () => ['g1', 'g2', 'g3', 'g4'].filter((sid) => fs.existsSync(scorerFile(p.root, sid)));
-    for (const text of ['go --mode-output-scorer-on', '/task-solve fix x --mode-output-scorer-on', '/task-solve --mode-output-scorer-on x', '/mode-output-scorer --mode-output-scorer-on',
+    fs.writeFileSync(path.join(copy, 'SKILL.md'), '---\nname: mode-output-scoring\n---\n');
+    const answer = (sid, text, scoring) => JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: text },
+        { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_SCORING: scoring }).stdout || '{}');
+    const said = (sid, text, scoring) => String((answer(sid, text, scoring).hookSpecificOutput || {}).additionalContext || '');
+    const { scoringFile } = require('../stack/hooks/hook-prelude.js');
+    const switches = () => ['g1', 'g2', 'g3', 'g4'].filter((sid) => fs.existsSync(scoringFile(p.root, sid)));
+    for (const text of ['go --mode-output-scorer-on', '/task-solve fix x --mode-output-scorer-on', '/task-solve --mode-output-scorer-on x', '/mode-output-scoring --mode-output-scorer-on',
         '/review-code --mode-output-scorer-on x', 'what does `/task-solve --mode-output-scorer-on` do', '--score-on', '/task-solve --score-on x'])
-        assert.doesNotMatch(said('g1', text, '0'), /scorer: on|\[mode\]/, text);
-    assert.deepStrictEqual(switches(), [], 'no scorer switch written');
-    assert.match(said('g1', '/task-solve --mode-output-scorer-off x', '1'), /scorer: on \(level 80, rounds 3, env\)/, 'a retired off flag leaves the scorer on');
-    assert.doesNotMatch(said('g2', '/mode-output-scorer --mode-output-scorer-on', '0'), /scorer: stacked/, 'a retired flag alone is no stacked request');
-    assert.match(said('g2', '/mode-output-scorer --mode-output-scorer-on explain x', '0'), /scorer: stacked for this request/, 'a request behind it still is');
+        assert.doesNotMatch(said('g1', text, '0'), /scoring: on|\[mode\]/, text);
+    assert.deepStrictEqual(switches(), [], 'no scoring switch written');
+    assert.match(said('g1', '/task-solve --mode-output-scorer-off x', '1'), /scoring: on \(level 80, rounds 3, env\)/, 'a retired off flag leaves the scoring on');
+    assert.doesNotMatch(said('g2', '/mode-output-scoring --mode-output-scorer-on', '0'), /scoring: stacked/, 'a retired flag alone is no stacked request');
+    assert.match(said('g2', '/mode-output-scoring --mode-output-scorer-on explain x', '0'), /scoring: stacked for this request/, 'a request behind it still is');
     for (const line of ['/review-code --mode-auto-run-on X', '/task-solve --mode-auto-run-on X', '/habits-explain-topic --mode-output-scorer-on X', '/task-solve --auto-mode --score-on X'])
         assert.strictEqual(answer('g3', line, '0').systemMessage, undefined, line);
     autoStamp(p, 'g4');

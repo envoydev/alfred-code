@@ -235,7 +235,7 @@ const MARKED_ASKS = [
     { file: 'stack/skills/capture-preferences/references/tools-area.md', firstLine: "May agents use <server>?", recommended: "Main session only (Recommended)" },
     { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "This task fits <the flow>: <what it adds for THIS task>. Start it, or proceed here directly?", recommended: "Start <the flow's slash command> (Recommended)" },
     { file: 'stack/skills/habits-execution-strategy/SKILL.md', firstLine: "The plan needs <N> seats / reaches <the scope past the request>. Run the trimmed plan?", recommended: "Run the trimmed plan (Recommended)" },
-    { file: 'stack/skills/mode-output-scorer/SKILL.md', firstLine: "The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, why it stopped, or nothing closable left>. How should it go on?", recommended: "Answer the open decisions (Recommended)" },
+    { file: 'stack/skills/mode-output-scoring/SKILL.md', firstLine: "The <output> scored <S>/100 (level <n>); the next revision can reach at most <ceiling> - <the needs line, why it stopped, or nothing closable left>. How should it go on?", recommended: "Answer the open decisions (Recommended)" },
     { file: 'stack/skills/task-implement/SKILL.md', firstLine: "<task> FAILED: <why>.", recommended: "Stop and report (Recommended)" },
     { file: 'stack/skills/task-implement/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" },
     { file: 'stack/skills/loop-code-quality/SKILL.md', firstLine: "Both write routes refused the approval stamp: <the refusal>.", recommended: "Retry the stamp (Recommended)" }

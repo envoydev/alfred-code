@@ -105,7 +105,7 @@ function statusFile(payload, deps) {
   } catch { return null; }
 }
 
-function scorerField(state) {
+function scoringField(state) {
   return state && typeof state === 'object' && state.usable ? { on: Boolean(state.on), level: state.level, rounds: state.rounds } : null;
 }
 
@@ -155,7 +155,7 @@ function buildStatus(payload, fields, deps) {
   } catch { /* the engine's fields stay null */ }
   try {
     if ('scorer' in f) out.scorer = f.scorer || null;
-    else if (d.prelude && d.prelude.scorerState && root) out.scorer = scorerField(d.prelude.scorerState(root, id, d.env));
+    else if (d.prelude && d.prelude.scoringState && root) out.scorer = scoringField(d.prelude.scoringState(root, id, d.env));
   } catch { out.scorer = null; }
   try {
     if ('handoffPrompt' in f) out.handoffPrompt = typeof f.handoffPrompt === 'string' && f.handoffPrompt ? f.handoffPrompt.slice(0, PROMPT_MAX) : null;
@@ -231,7 +231,7 @@ const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.strin
 // A carried value as the file should hold it: autoRun true only as the boolean, a scorer only as null or an object - a
 // hand-edited "false" read as true (R136).
 const autoRunOf = (s) => s.autoRun === true;
-const scorerOf = (s) => (s.scorer && typeof s.scorer === 'object' && !Array.isArray(s.scorer) ? s.scorer : null);
+const scoringOf = (s) => (s.scorer && typeof s.scorer === 'object' && !Array.isArray(s.scorer) ? s.scorer : null);
 const sameButTime = (a, b) => FIELDS.every((k) => k === 'updatedAt' || same(a[k], b[k]));
 
 // 'always' writes; 'modes' (UserPromptSubmit) compares autoRun and the scorer first and builds only on a difference;
@@ -257,7 +257,7 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
       if (current) f.handoffPrompt = current.handoffPrompt;
     } else if (when === 'changed' && current) {
       f.autoRun = autoRunOf(current);
-      f.scorer = scorerOf(current);
+      f.scorer = scoringOf(current);
     }
     let next = buildStatus(p, f, d);
     if (when === 'changed' && current) {
@@ -268,8 +268,8 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
       }
       const again = readStatusFile(file, id);   // a prompt landing since the first read keeps its values
       // a changed autoRun changes fullContext too: rebuilt, the handoff prompt carried so history is not read twice
-      if (again && autoRunOf(again) !== next.autoRun) next = buildStatus(p, { ...f, autoRun: autoRunOf(again), scorer: scorerOf(again), handoffPrompt: next.handoffPrompt }, d);
-      else if (again) next.scorer = scorerOf(again);
+      if (again && autoRunOf(again) !== next.autoRun) next = buildStatus(p, { ...f, autoRun: autoRunOf(again), scorer: scoringOf(again), handoffPrompt: next.handoffPrompt }, d);
+      else if (again) next.scorer = scoringOf(again);
     } else if (when === 'modes') {
       // A Stop writing the handoff prompt since the first read keeps it: the rename would undo it (R135).
       const again = readStatusFile(file, id);
@@ -525,12 +525,12 @@ function onStop(payload, entry) {
 function onPrompt(payload, modes, gate) {
   try {
     if (!modes || typeof modes.autoRun !== 'boolean') return 'skipped';
-    return writeStatus(payload, { autoRun: modes.autoRun, scorer: scorerField(modes.scorer) }, { when: 'modes', gate: typeof gate === 'function' ? gate : undefined });
+    return writeStatus(payload, { autoRun: modes.autoRun, scorer: scoringField(modes.scoring) }, { when: 'modes', gate: typeof gate === 'function' ? gate : undefined });
   } catch { return 'skipped'; }
 }
 
 module.exports = {
   FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
-  baseOf, rootOf, ownBase, statusFile, scorerField, handoffPrompt, buildStatus, writeStatus, statusBases, pruneStatus,
+  baseOf, rootOf, ownBase, statusFile, scoringField, handoffPrompt, buildStatus, writeStatus, statusBases, pruneStatus,
   ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt,
 };

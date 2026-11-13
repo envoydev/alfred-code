@@ -234,10 +234,13 @@ the children read them through the workspace unless they set their own:
 
 | Key | Default | Means |
 | --- | --- | --- |
-| `ALFRED_CODE_SCORER` | `1` | The grader is on; `0` turns it off |
-| `ALFRED_CODE_SCORER_OUTPUTS` | `designer-plan` | What is graded; add `root-cause,inline-plan` for everything |
-| `ALFRED_CODE_SCORER_LEVEL` | `80` | The score an output must reach, 60-100 |
-| `ALFRED_CODE_SCORER_ROUNDS` | `3` | Most grading runs per output, 1-10 |
+| `ALFRED_CODE_SCORING` | `1` | The grader is on; `0` turns it off |
+| `ALFRED_CODE_SCORING_OUTPUTS` | `designer-plan` | What is graded; add `root-cause,inline-plan` for everything |
+| `ALFRED_CODE_SCORING_LEVEL` | `80` | The score an output must reach, 60-100 |
+| `ALFRED_CODE_SCORING_ROUNDS` | `3` | Most grading runs per output, 1-10 |
+
+3.11.0 renamed these four from `ALFRED_CODE_SCORER`, `_SCORER_LEVEL`, `_SCORER_OUTPUTS` and `_SCORER_ROUNDS`; an update
+renames them in place.
 
 Unattended runs pair the stack's mode with Claude Code's permission mode - print mode without one refuses every Bash
 call: `ALFRED_CODE_UNATTENDED=1 claude -p "/alfred-code:update" --permission-mode auto` (PowerShell: set

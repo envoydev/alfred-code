@@ -323,7 +323,7 @@ const HISTORY_DAYS_MS = 15552000000;
 const SESSION_PREFIXES = [
     ['AUTO-RUN-', 'meta'], ['AUTO-TAKEN-', 'meta'], ['AUTO-SAID-', 'meta'], ['AUTO-COMPACT-', 'meta'], ['COMPACT-STATE-', 'meta'], ['twins-', 'meta'],
     ['review-snapshot-', 'meta'], ['trivial-', 'meta'], ['untracked-', 'meta'], ['turn-check-', 'text'],
-    ['AGENT-CAP-', 'meta'], ['SCORER-', 'text'], ['preferences-', 'text'], ['rules-', 'meta'],
+    ['AGENT-CAP-', 'meta'], ['SCORING-', 'text'], ['preferences-', 'text'], ['rules-', 'meta'],
 ];
 // `dir` is <data root>/state/<kind> of the root that held it, so that data root is the item's source root.
 const stateItem = (kind, dir, name) => ({ to: `data/state/${kind}/${name}`, from: path.join(dir, name), root: path.dirname(path.dirname(dir)) });
@@ -491,16 +491,16 @@ const STORES = [
         held: (ctx) => [`data/state/history/${ctx.sid}.json`],
     },
     {
-        id: 'scorer', cls: 'text', match: 'name', kind: 'sessions', name: 'scorer', sweeps: true, inData: true,
+        id: 'scoring', cls: 'text', match: 'name', kind: 'sessions', name: 'scoring', sweeps: true, inData: true,
         find: (ctx) =>
         {
-            const dir = path.join(layout.statePath(ctx.project, 'sessions', 'scorer', ctx.env), ctx.sid);
+            const dir = path.join(layout.statePath(ctx.project, 'sessions', 'scoring', ctx.env), ctx.sid);
             return { items: isDir(ctx.fs, dir) ? [dataItem(ctx, dir)] : [] };
         },
-        held: (ctx) => [`data/state/sessions/scorer/${ctx.sid}`],
+        held: (ctx) => [`data/state/sessions/scoring/${ctx.sid}`],
     },
     ...SESSION_PREFIXES.map(([prefix, cls]) => prefixRow('sessions', prefix, cls)),
-    unlistedRow('sessions', SESSION_PREFIXES.map(([p]) => p), ['scorer']),
+    unlistedRow('sessions', SESSION_PREFIXES.map(([p]) => p), ['scoring']),
     {
         // session-status.js writes <cwd>/.claude/session-inspector/status/<sid>.json for session-inspector.
         id: 'session-inspector', cls: 'meta', match: 'name',

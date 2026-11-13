@@ -645,7 +645,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoComp
     if (hooksAnswered)
     {
         const { into, lab, mine } = at('ALFRED_CODE_HOOKS_OFF');
-        const parts = String(into.ALFRED_CODE_HOOKS_OFF || '').split(',').map((x) => x.trim()).filter((x) => x.indexOf(':') > 0);
+        const parts = String(into.ALFRED_CODE_HOOKS_OFF || '').split(',').map((x) => x.trim()).filter((x) => x.indexOf(':') > 0).map((x) => renamedHooks[csvEntryKey(x)] || x);
         const off = parts.reduce(addCsvEntry, (hooksOff || []).join(','));
         if (into.ALFRED_CODE_HOOKS_OFF !== off)
         { into.ALFRED_CODE_HOOKS_OFF = off; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
@@ -658,7 +658,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoComp
         {
             const was = into.ALFRED_CODE_HOOKS_OFF;
             if (typeof was !== 'string' || !was.trim()) continue;
-            const now = was.split(',').map((h) => { const bare = h.trim().replace(/\.js$/i, '').toLowerCase(); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
+            const now = was.split(',').map((h) => { const bare = csvEntryKey(h); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
             if (now !== was) { into.ALFRED_CODE_HOOKS_OFF = now; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${now} (a renamed hook re-spelled)`); }
         }
         if (!present('ALFRED_CODE_HOOKS_OFF'))

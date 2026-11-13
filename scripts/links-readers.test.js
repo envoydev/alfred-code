@@ -76,15 +76,15 @@ test('the status floor counts a linked skill copy once', () =>
     assert.strictEqual(floor({ skillsDir: path.join(proj, '.claude', 'skills') }).skills.count, 1);
 });
 
-test('skillCopyState reads a linked skill as on, so the scorer state is usable', () =>
+test('skillCopyState reads a linked skill as on, so the scoring state is usable', () =>
 {
     const proj = linkedProject('copy-state');
-    put(path.join(proj, '.alfred', 'stack', 'skills', 'mode-output-scorer', 'SKILL.md'), skillMd('mode-output-scorer'));
-    linkSkill(proj, 'mode-output-scorer');
+    put(path.join(proj, '.alfred', 'stack', 'skills', 'mode-output-scoring', 'SKILL.md'), skillMd('mode-output-scoring'));
+    linkSkill(proj, 'mode-output-scoring');
     const prelude = require('../stack/hooks/hook-prelude.js');
     const env = { HOME: TMP, CLAUDE_CONFIG_DIR: path.join(TMP, 'copy-state-acct') };
     assert.strictEqual(prelude.skillCopyState(proj, 'linked-skill', env), 'on');
-    assert.strictEqual(prelude.scorerState(proj, 'sess-1', env).usable, true);
+    assert.strictEqual(prelude.scoringState(proj, 'sess-1', env).usable, true);
 });
 
 // A project whose two skills with engine lookups are linked from its store, with stub engines in .claude/hooks that
@@ -92,7 +92,7 @@ test('skillCopyState reads a linked skill as on, so the scorer state is usable',
 function engineProject(label, { copy = false } = {})
 {
     const proj = path.join(TMP, label);
-    for (const skill of ['capture-preferences', 'mode-output-scorer'])
+    for (const skill of ['capture-preferences', 'mode-output-scoring'])
     {
         const home = copy ? path.join(proj, '.claude', 'skills', skill) : path.join(proj, '.alfred', 'stack', 'skills', skill);
         fs.cpSync(path.join(REPO, 'stack', 'skills', skill), home, { recursive: true });
@@ -118,7 +118,7 @@ const LOOKUPS = (proj) => {
     return [
         `const tools = require(${at('capture-preferences', 'tools.js')});`,
         'const a = process.env.LINK_PROBE_APPLIED; delete process.env.LINK_PROBE_APPLIED;',
-        `require(${at('mode-output-scorer', 'scorecard.js')});`,
+        `require(${at('mode-output-scoring', 'scorecard.js')});`,
         `const prefs = require(${at('capture-preferences', 'preferences.js')});`,
         `const chain = tools.hookEngine('secret-chain.js', ${JSON.stringify(proj)});`,
         `console.log([a, process.env.LINK_PROBE_APPLIED, prefs.readDirs(${JSON.stringify(proj)}).some((d) => d.dir === 'ABOVE-MARK'), chain && chain.chainOf().values.MARK].join(' '));`,

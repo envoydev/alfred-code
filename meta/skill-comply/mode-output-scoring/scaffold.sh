@@ -3,7 +3,7 @@
 # order rules, the SQL behind them) with a docs root that holds an architecture map, one architecture
 # preference (A1: routes go through the service) and one recorded weakness (W1: findById builds its SQL
 # by concatenation). The loop's task asks for a plan file under the docs root's work/plans/, so the
-# scorer has a plan to grade before it is written; the scorer is switched on in settings.local.json.
+# scoring has a plan to grade before it is written; the scoring is switched on in settings.local.json.
 # The calibration fixtures beside this file cite these files and lines.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -12,7 +12,7 @@ git config user.name fixture
 mkdir -p src/db/migrations src/orders src/http test .alfred/docs .claude
 printf '.alfred/\n.serena/\n.memory-mcp/\n' >> .gitignore
 cp -R "$HERE/fixtures/inputs/." .alfred/docs/
-node -e "const f='.claude/settings.local.json';const fs=require('fs');let o={};try{o=JSON.parse(fs.readFileSync(f,'utf8'))}catch{}o.env={...(o.env||{}),ALFRED_CODE_SCORER:'1',ALFRED_CODE_SCORER_ROUNDS:'1'};fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
+node -e "const f='.claude/settings.local.json';const fs=require('fs');let o={};try{o=JSON.parse(fs.readFileSync(f,'utf8'))}catch{}o.env={...(o.env||{}),ALFRED_CODE_SCORING:'1',ALFRED_CODE_SCORING_ROUNDS:'1'};fs.writeFileSync(f,JSON.stringify(o,null,2)+'\n')"
 cat > package.json <<'JSON'
 { "name": "orders", "private": true, "scripts": { "test": "node --test" } }
 JSON

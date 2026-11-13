@@ -214,7 +214,7 @@ Report each command's result, then give the user this list exactly, with the rea
 6. One child: the guide's step 5 check - the `secrets-run:` line in the debug log names each key and where it came
    from ('.' the child, '..' the root). No line: the fallback does not work on this machine; report it.
 7. Root: /capture-preferences tools - rank the tools.
-8. Root: /alfred-code:configure > Environment - the mode defaults (ALFRED_CODE_SCORER, _OUTPUTS, _LEVEL, _ROUNDS).
+8. Root: /alfred-code:configure > Environment - the mode defaults (ALFRED_CODE_SCORING, _OUTPUTS, _LEVEL, _ROUNDS).
 9. Each project: /alfred-code:status; /plugin shows '1 mod active · alfred-mods'. Review git diff, commit.
 Write NOT RUN for any step you did not run.
 ```

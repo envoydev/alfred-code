@@ -22,9 +22,9 @@ const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, sco
 const ROOT_SEL = 'skill javascript\nrule alfred-security\nrule alfred-navigation\n';
 const X = 'sqlite';   // outside the closure of the root's always rules (markdown-docs pulls markdown-style and docs-as-code)
 const OWN = 'npm';
-const SC = 'ALFRED_CODE_SCORER';
+const SC = 'ALFRED_CODE_SCORING';
 // [key, the stack's old seed, the value it resets to] - the env pass's reseed list (meta/migrations.json): an update moves
-// the stack's own old seeds (U16's idle wait, B1's scorer pair), and every other value an older install holds stays.
+// the stack's own old seeds (U16's idle wait, B1's scoring pair), and every other value an older install holds stays.
 const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
 const { putWorkspace, readWorkspaceRecord, readWorkspaceValues } = require('./workspace-fixture.js');
 const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
@@ -233,7 +233,7 @@ test('the user\'s own exclude entry, settings key and .mcp.json server survive i
     assert.strictEqual(r.steps[3].stack, 0, `uninstall left the stack's excludes:\n${r.outs[3]}`);
 });
 
-test('env: the root\'s ALFRED_CODE_SCORER=1 reaches a local-scope child through the chain; configure\'s value stays; ignore env seeds the default (D5)', POSIX_ONLY, () =>
+test('env: the root\'s ALFRED_CODE_SCORING=1 reaches a local-scope child through the chain; configure\'s value stays; ignore env seeds the default (D5)', POSIX_ONLY, () =>
 {
     const local = ['--scope', 'local'];
     const read = (rel) => (work) => [effectiveOf(work, rel)[SC], varsOf(work, rel)[SC]];
@@ -258,7 +258,9 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     const old = releaseExport('v2.12.0');
     const oldWs = old && require(path.join(old, 'scripts', 'install', 'workspace.js'));
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
-    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
+    // v2.12.0 writes and records the names 3.11.0 renamed: its side of the scenario spells them
+    const [OLD_SC, OLD_LEVEL] = ['ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_LEVEL'];
     const OFF = 'ALFRED_CODE_HOOKS_OFF';
     const on = (work) => ({ ...acct(work) });
     const api = (work) => ({
@@ -272,19 +274,19 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     const r = scenario([
         { at: '.', ...OLD, after: (work) =>
         {
-            setEnv(work, '.', 'settings.json', { [SC]: '1', [OFF]: 'guard-ungated-commit:push' });
+            setEnv(work, '.', 'settings.json', { [OLD_SC]: '1', [OFF]: 'guard-ungated-commit:push' });
             assert.ok(oldWs.writeWorkspace(at(work, 'api'), (m) => oldWs.setParent(m, '..'), { env: acct(work) }).ok);
             assert.ok(oldWs.writeWorkspace(at(work), (m) => oldWs.addChild(m, 'api'), { env: acct(work) }).ok);
         } },
-        { at: 'api', ...OLD, args: local, after: (work) => setEnv(work, 'api', 'settings.local.json', { [LEVEL]: '95', [OFF]: 'guard-ungated-commit:push,docs-session:gate' }) },
+        { at: 'api', ...OLD, args: local, after: (work) => setEnv(work, 'api', 'settings.local.json', { [OLD_LEVEL]: '95', [OFF]: 'guard-ungated-commit:push,docs-session:gate' }) },
         { at: 'api', ...OLD, act: 'update', args: [...local, '--installed-only'], after: api },
         update('.'),
         update('api', { args: local, after: api }),
     ]);
     const [before, after] = [r.steps[2], r.steps[4]];
-    assert.strictEqual(before.local[SC], '1', `v2.12.0 copied the root's value: ${r.outs[1]}`);
+    assert.strictEqual(before.local[OLD_SC], '1', `v2.12.0 copied the root's value: ${r.outs[1]}`);
     assert.strictEqual(before.local[OFF], 'guard-ungated-commit:push,docs-session:gate', r.outs[2]);
-    assert.ok(before.ownEnv.split(',').includes(LEVEL), `v2.12.0 recorded the child's own value: ${before.ownEnv}`);
+    assert.ok(before.ownEnv.split(',').includes(OLD_LEVEL), `v2.12.0 recorded the child's own value: ${before.ownEnv}`);
     assert.deepStrictEqual(after.effective, reseeded(before.effective), r.outs[4]);
     assert.strictEqual(after.vars[LEVEL], '95', 'the own-env key landed in the child\'s file');
     assert.ok(!Object.hasOwn(after.vars, SC), 'a copy never lands in the child\'s file');
@@ -299,7 +301,7 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
 // next update seeds them as a standalone's.
 test('AC15: leaving keeps every effective value; with ws deleted the child is seeded as standalone and names the keys that went to defaults', POSIX_ONLY, () =>
 {
-    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, ws: readWorkspaceValues(at(work, 'api')) });
     const r = scenario([
         { at: '.', after: (work) => { setVar(work, '.', { [LEVEL]: '90' }); join(work, 'api'); } },
@@ -338,11 +340,11 @@ test('AC15: leaving keeps every effective value; with ws deleted the child is se
 
 // AC24: a 2.12.0 standalone below a 3.0.0 root joins - at update by the Recommended answer, and through configure - and
 // D5's prune leaves it its typed value and DOCS_VERSIONING only; leaving writes the root's value back into its file.
-test('AC24: a 2.12.0 standalone joined at update and through configure reads SCORER_LEVEL=90 from ws, keeps its typed CORRECTION_NUDGE=inject, holds no other seeded key, keeps DOCS_VERSIONING; leaving writes SCORER_LEVEL=90 back', skipWithout('v2.12.0'), () =>
+test('AC24: a 2.12.0 standalone joined at update and through configure reads SCORING_LEVEL=90 from ws, keeps its typed CORRECTION_NUDGE=inject, holds no other seeded key, keeps DOCS_VERSIONING; leaving writes SCORING_LEVEL=90 back', skipWithout('v2.12.0'), () =>
 {
     const old = releaseExport('v2.12.0');
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
-    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
     const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from });
     for (const when of ['update', 'configure'])
@@ -381,7 +383,7 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
 {
     const old = releaseExport('v2.12.0');
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
-    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
     const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: readOr(path.join(at(work, 'api'), '.claude', 'settings.json')), stamp: stampOf(work, 'api') });
     const r = scenario([
@@ -399,7 +401,8 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     assert.strictEqual(joined.vars[NUDGE], 'inject');
     const left = Object.keys(JSON.parse(joined.settings).env || {}).filter((k) => layoutLib.VARIABLE_KEYS.includes(k));
     assert.deepStrictEqual(left, [], 'no stack value left in settings.json');
-    assert.match(r.outs[4], /settings\.json env: ALFRED_CODE_SCORER_LEVEL removed - a stack seed, so the workspace's value reaches this project/);
+    // the file held the 2.12 name: the prune drops it as written, before the rename pass   // legacy
+    assert.match(r.outs[4], /settings\.json env: ALFRED_CODE_SCORER_LEVEL removed - a stack seed, so the workspace's value reaches this project/);   // legacy
     assert.deepStrictEqual(again.vars, joined.vars, `a second update changes nothing: ${r.outs[5]}`);
     assert.ok(!/^join-prune:/m.test(joined.stamp), 'the run consumed the join-prune line');
 });
@@ -410,7 +413,7 @@ test('a 2.12.0 child registered with the switch off keeps every value through th
 {
     const old = releaseExport('v2.12.0');
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
-    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const r = scenario([
         { at: '.', ...OLD },
         { at: 'api', ...OLD, args: ['--auto-compact', 'on'], after: (work) => join(work, 'api') },
@@ -503,7 +506,7 @@ test('a child reading AUTO_COMPACT=1 and MEMORY=custom from its root gets the au
 // AC19: on by default, and a launch 0 still freezes - the child reads a chain of one and an install there removes nothing.
 test('AC19: a launch 0 in ws/api reads a chain of one and an install there removes nothing', POSIX_ONLY, () =>
 {
-    const LEVEL = 'ALFRED_CODE_SCORER_LEVEL';
+    const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const files = (work) => ['.', 'api'].flatMap((rel) => ['workspace', '.variables'].map((f) => readOr(path.join(at(work, rel), '.alfred', f))));
     const r = scenario([
         { at: '.', env: { ALFRED_CODE_WORKSPACE: '' }, after: (work) => { setVar(work, '.', { [LEVEL]: '90' }); join(work, 'api'); } },

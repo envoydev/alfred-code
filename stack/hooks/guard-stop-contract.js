@@ -552,7 +552,7 @@ function registeredWork() {
     return /^(?:subagent|workflow|teammate|cloud session|mcp task|monitor)$/.test(type);
   });
 }
-// Is a seat of the type `re` names still out - a `subagent` entry of the Stop registry not yet settled? The scorer
+// Is a seat of the type `re` names still out - a `subagent` entry of the Stop registry not yet settled? The scoring
 // backstop reads it: a grader still running is the loop's own wait, a diagnoser still running has no verdict yet. A
 // harness that sends no registry is read from the transcript (sc-5): an async Agent / Task launch of that type, not ended.
 function seatLive(re) {
@@ -1220,18 +1220,18 @@ function walkBack(start, fallback) {
   return fallback;
 }
 
-// --- the scorer backstop (mode-output-scorer, spec 5.9) ----------------------------------------------
+// --- the scoring backstop (mode-output-scoring, spec 5.9) ----------------------------------------------
 // What the cycle owes a grade for, read in ONE walk back to the row that opened it: the newest row the user typed (no
 // harness prompt, compaction summary or sibling hook's `Stop hook feedback:` row). The evidence triggers: T1 a draft the
-// loop wrote in this session's scorer folder (on, or the cycle stacked); T2 a plan file under the docs root's
+// loop wrote in this session's scoring folder (on, or the cycle stacked); T2 a plan file under the docs root's
 // work/plans/ (on, designer-plan listed); T3 a findings-file verdict or a diagnoser seat that settled (on, root-cause
 // listed) - neither where a draft was written, T2 not where a plan reader ran or the loop released that target; T4 the
-// cycle stacked /mode-output-scorer. A `Scored:` line after the newest trigger clears it only when a rounds.log the
+// cycle stacked /mode-output-scoring. A `Scored:` line after the newest trigger clears it only when a rounds.log the
 // script wrote holds a release or a final since the cycle opened (R34). Returns the owed trigger's words or null, the
 // cycle's key, and whether the receipt was there but unbacked.
 const SCORED_RE = /(?:^|\n)\s*\**Scored\**:\s*\d+\/100/;
 const DIAGNOSER_RE = /(?:^|:)issue-diagnoser-(?:ci|runtime)$/;
-// A typed stack naming habits-adjust-agents-md grades nothing (mode-output-scorer SKILL.md), so it owes no T4 (sc-8): the
+// A typed stack naming habits-adjust-agents-md grades nothing (mode-output-scoring SKILL.md), so it owes no T4 (sc-8): the
 // slash form, a `<command-name>` row, or the bare name after a usage word - the shape of hook-prelude.js STACK_RE.
 const ADJUST_STACK_RE = /(?:^|[\s(>])(?:\/(?:alfred-code:)?|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)habits-adjust-agents-md(?=[\s.,;:)!?<]|$)/i;
 // a placeholder in bold or backticks (`Cause: **<pending>**`) is no verdict either (final review 2)
@@ -1241,18 +1241,18 @@ const addsVerdict = (next, prev) => {
   const kept = new Set(String(prev || '').split('\n').map((l) => l.trim()));
   return String(next || '').split('\n').some((l) => VERDICT_RE.test(l) && !kept.has(l.trim()));
 };
-const SCORER_TRIGGERS = {
-  T1: 'a scorer draft was written',
+const SCORING_TRIGGERS = {
+  T1: 'a scoring draft was written',
   T2: 'a plan file was written under work/plans/',
   T3: 'a root-cause verdict was written or a diagnoser seat reported',
-  T4: 'the request stacked /mode-output-scorer',
+  T4: 'the request stacked /mode-output-scoring',
 };
-function scorerOwed(state, pre, root) {
+function scoringOwed(state, pre, root) {
   const path = require('path');
   const crypto = require('crypto');
   const layout = require('./layout.js');
   const fwd = (p) => String(p || '').replace(/\\/g, '/');
-  const own = `/state/sessions/scorer/${pre.safeSession(payload.session_id)}/`;
+  const own = `/state/sessions/scoring/${pre.safeSession(payload.session_id)}/`;
   const plans = path.resolve(root, layout.docsRoot(), 'work', 'plans') + path.sep;
   const diagnoses = path.resolve(root, layout.docsRoot(), 'work', 'diagnoses') + path.sep;
   const under = (p, dir) => path.resolve(root, fwd(p)).startsWith(dir);
@@ -1293,7 +1293,7 @@ function scorerOwed(state, pre, root) {
       const flagOnly = Boolean(modeFlagsOf(text).flagOnly);
       if (text.includes('<command-name>')) {
         const marks = pre.producerMarks(JSON.stringify(o));
-        if (marks.includes('mode-output-scorer') && !flagOnly) seen.stacked = true;
+        if (pre.SCORING_SKILLS.some((n) => marks.includes(n)) && !flagOnly) seen.stacked = true;
         if (marks.some((m) => pre.PLAN_READERS.includes(m))) seen.planRead = true;
       }
       if (o.isCompactSummary || !typedMessage(o, row) || /^\s*Stop hook feedback:/.test(text)) return undefined;
@@ -1304,13 +1304,13 @@ function scorerOwed(state, pre, root) {
     };
   }, null);
   if (!found) {
-    // only while the scorer is on: off, the backstop judges nothing whatever the transcript holds (sc-11)
-    if (state.on) ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scorer backstop judged nothing' });
+    // only while the scoring is on: off, the backstop judges nothing whatever the transcript holds (sc-11)
+    if (state.on) ledgerRow({ tool: '', mode: 'probe', kind: 'scoring-cycle-unread', reason: 'probe: no typed prompt in the transcript - the scoring backstop judged nothing' });
     return { owed: null, cycle: null };
   }
-  // the scorer's own folders: this session's, and the SELF route's (R29); a log written before the cycle opened is
+  // the scoring's own folders: this session's, and the SELF route's (R29); a log written before the cycle opened is
   // another cycle's (2s slack for a coarse mtime)
-  const base = layout.statePath(root, 'sessions', 'scorer');
+  const base = layout.statePath(root, 'sessions', 'scoring');
   const logs = (folder) => {
     try { return fs.readdirSync(path.join(base, folder)).map((slug) => path.join(base, folder, slug, 'rounds.log')).filter((f) => fs.existsSync(f)); } catch { return []; }
   };
@@ -1339,15 +1339,15 @@ function scorerOwed(state, pre, root) {
   if (!triggers.length) return { owed: null, cycle: found.key };
   const [name, at] = triggers.reduce((a, b) => (b[1] < a[1] ? b : a));
   const receipt = SCORED_RE.test(typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '') ? 0 : found.receipt;
-  if (receipt === null || receipt >= at) return { owed: SCORER_TRIGGERS[name], cycle: found.key };
+  if (receipt === null || receipt >= at) return { owed: SCORING_TRIGGERS[name], cycle: found.key };
   let selfLogs = [];
-  try { selfLogs = fs.readdirSync(base).filter((d) => /^self-/.test(d)).flatMap(logs); } catch { /* no scorer folder yet */ }
+  try { selfLogs = fs.readdirSync(base).filter((d) => /^self-/.test(d)).flatMap(logs); } catch { /* no scoring folder yet */ }
   const backed = [...ownLogs, ...selfLogs].some((f) => {
     try { if (Number.isFinite(found.at) && fs.statSync(f).mtimeMs < found.at - 2000) return false; } catch { return false; }
     // `asked` is next's own line too: a withheld output waiting on the continue ask printed its Scored line (final review 3)
     return /^(?:released|final|asked)\b/m.test(read(f));
   });
-  return backed ? { owed: null, cycle: found.key } : { owed: SCORER_TRIGGERS[name], cycle: found.key, unbacked: true };
+  return backed ? { owed: null, cycle: found.key } : { owed: SCORING_TRIGGERS[name], cycle: found.key, unbacked: true };
 }
 
 function askJustAnswered() {
@@ -1877,15 +1877,15 @@ function subagentOwnTools(file) {
   }
   return tools;
 }
-// --- the output-scorer's seal (mode-output-scorer, spec 5.11) ------------------------------------------
+// --- the output-scoring's seal (mode-output-scoring, spec 5.11) ------------------------------------------
 // The grader's report names its score file on one of its first three non-empty lines (a line or two of preface is
 // how a seat opens; sc-10), and this hook writes it, sealed: `seal: sha256 <hex of the
 // report>` then the report as delivered, so a card the author typed or edited never grades (scorecard.js sealOf, the
-// same hash). Only into this session's scorer folder - both sides realpathed, so macOS's /var reads as /private/var and
+// same hash). Only into this session's scoring folder - both sides realpathed, so macOS's /var reads as /private/var and
 // a symlinked parent leads nowhere - only a `.score.md`, and only one that does not exist yet (`wx`: a second delivery,
 // the hand-back then SubagentStop, never rewrites the first). Never decides; one probe row either way.
 function sealScorecard(message) {
-  if (!/(?:^|:)output-scorer$/.test(String(payload.agent_type || '')) || partOff('guard-stop-contract', 'scorer')) return;
+  if (!/(?:^|:)output-scoring$/.test(String(payload.agent_type || '')) || partOff('guard-stop-contract', 'scoring')) return;
   const path = require('path');
   let file = null;
   let written = false;
@@ -1896,7 +1896,7 @@ function sealScorecard(message) {
     if (head) {
       const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
       file = path.resolve(root, head[1].replace(/\\/g, '/'));
-      const folder = fs.realpathSync.native(path.join(require('./layout.js').statePath(root, 'sessions', 'scorer'), pre.safeSession(payload.session_id)));
+      const folder = fs.realpathSync.native(path.join(require('./layout.js').statePath(root, 'sessions', 'scoring'), pre.safeSession(payload.session_id)));
       const parent = fs.realpathSync.native(path.dirname(file));
       if ((parent + path.sep).startsWith(folder + path.sep) && file.endsWith('.score.md')) {
         const hash = require('crypto').createHash('sha256').update(text, 'utf8').digest('hex');
@@ -1905,7 +1905,7 @@ function sealScorecard(message) {
       }
     }
   } catch { /* a folder that is not there, a file that already is: nothing written */ }
-  ledgerRow({ tool: payload.tool_name || '', mode: 'probe', kind: 'scorer-seal', reason: `probe: the output-scorer's report ${written ? 'sealed' : 'not sealed'}`, detail: { file, written } });
+  ledgerRow({ tool: payload.tool_name || '', mode: 'probe', kind: 'scoring-seal', reason: `probe: the output-scoring's report ${written ? 'sealed' : 'not sealed'}`, detail: { file, written } });
 }
 if (payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'SubagentHandback') {
   sealScorecard(payload.tool_input && payload.tool_input.message);
@@ -2376,30 +2376,30 @@ if (payload.hook_event_name === 'Stop') {
   try { agentCap = require('./agent-cap.js'); } catch { /* no module: no cap */ }
   if (agentCap) agentCap.stopReconcile(payload, process.env);
   try { settleAskFixed(); } catch { /* the ask-fixed rows wait (below); never decides */ }
-  // The scorer backstop (scorerOwed, above): a close that owes a Scored: line and lacks it is held ONCE per typed prompt
-  // - the SCORER-HELD marker names the cycle - so a grader's notification turn is never held again. It runs before the
+  // The scoring backstop (scoringOwed, above): a close that owes a Scored: line and lacks it is held ONCE per typed prompt
+  // - the SCORING-HELD marker names the cycle - so a grader's notification turn is never held again. It runs before the
   // stopHeld exit (R17): a rewrite after this hook's own hold for another reason is still judged. A grader seat still
   // running is the loop's own wait; a seat's own Stop never owes it. Fail-open: a throw reads as not owed.
-  let scorerOwes = false;
+  let scoringOwes = false;
   if (!payload.agent_id && payload.transcript_path) {
     try {
       const pre = require('./hook-prelude.js');
       const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-      const state = typeof pre.scorerState === 'function' ? pre.scorerState(root, payload.session_id) : { usable: false };
-      if (state.usable && !seatLive(/(?:^|:)output-scorer$/)) {
-        const { owed, cycle, unbacked } = scorerOwed(state, pre, root);
-        scorerOwes = Boolean(owed);
-        const marker = owed ? pre.scorerHeldFile(root, payload.session_id) : null;
+      const state = typeof pre.scoringState === 'function' ? pre.scoringState(root, payload.session_id) : { usable: false };
+      if (state.usable && !seatLive(/(?:^|:)output-scoring$/)) {
+        const { owed, cycle, unbacked } = scoringOwed(state, pre, root);
+        scoringOwes = Boolean(owed);
+        const marker = owed ? pre.scoringHeldFile(root, payload.session_id) : null;
         let held = '';
         try { if (marker) held = fs.readFileSync(marker, 'utf8').trim(); } catch { /* no marker: this session never held */ }
         if (marker && held !== cycle) {
           fs.mkdirSync(require('path').dirname(marker), { recursive: true });
           fs.writeFileSync(marker, `${cycle}\n`);
-          if (unbacked) ledgerRow({ tool: '', mode: 'probe', kind: 'scorer-receipt-unbacked', reason: 'probe: a Scored: line with no rounds.log release or final behind it - held' });
-          blockDetail('scorer', owed);
+          if (unbacked) ledgerRow({ tool: '', mode: 'probe', kind: 'scoring-receipt-unbacked', reason: 'probe: a Scored: line with no rounds.log release or final behind it - held' });
+          blockDetail('scoring', owed);
           process.stderr.write(`Stop: this request owes a grade - ${owed} - and the close carries no Scored: line the loop wrote. `
             + `${unbacked ? 'The Scored: line here has no rounds.log release behind it; only the line scorecard.js next prints after the loop counts. ' : ''}`
-            + 'Run the mode-output-scorer loop on that output now and close with the Scored: line `next` prints; '
+            + 'Run the mode-output-scoring loop on that output now and close with the Scored: line `next` prints; '
             + 'where no seat can grade, its Fallback (a SELF grade) applies. Held once for this request.\n');
           process.exit(2);
         }
@@ -2407,9 +2407,9 @@ if (payload.hook_event_name === 'Stop') {
     } catch { /* fail-open: the backstop never breaks a Stop */ }
   }
   // The agent cap's one continuation: a dispatch the cap denied this prompt, and the count under the cap again - held
-  // once per `.denied` file (deleted first), never while the scorer is owed its grade, before the stopHeld exit as the
+  // once per `.denied` file (deleted first), never while the scoring is owed its grade, before the stopHeld exit as the
   // backstop is. guard-answer off stands it down (capGates' canContinue): that hook scopes `.denied` to its prompt.
-  if (agentCap && !scorerOwes) {
+  if (agentCap && !scoringOwes) {
     const again = agentCap.stopContinue(payload, process.env);
     if (again) {
       blockDetail('agent-cap-continue', again.match(/\d+/)[0]);

@@ -59,10 +59,10 @@ test('ab-Q2: the ten designers and their shared-rules markers name the id of the
 // --- the offline proof: every new step passes a trace that keeps it and fails one that breaks it -----------------
 
 const PLAN = '/work/project/.alfred/docs/work/plans/order-export.md';
-// The output scorer is seeded on: the plan waits as its draft before it reaches work/plans/ (the 2026-11-04 smoke's
+// The output scoring is seeded on: the plan waits as its draft before it reaches work/plans/ (the 2026-11-04 smoke's
 // both arms stopped at the fix offer with the plan only there). The cycle's task.md is never the plan.
-const DRAFT = '/work/project/.alfred/state/sessions/scorer/s1/order-export/65ca8b67.draft.md';
-const TASK = '/work/project/.alfred/state/sessions/scorer/s1/order-export/task.md';
+const DRAFT = '/work/project/.alfred/state/sessions/scoring/s1/order-export/65ca8b67.draft.md';
+const TASK = '/work/project/.alfred/state/sessions/scoring/s1/order-export/task.md';
 // forbid: the other task's files: line forbids the shared file, as the rule asks and both 2026-11-04 re-run plans wrote
 // zeroOrders: the header-row bullet as the empty export's literal ('literal'), or a zero-orders case that names no header ('vague')
 function planText({ verify = ['header row', 'doubled', '403'], secondOwner = false, noOwner = false, quoteExample = false, forbid = false, zeroOrders = null } = {})
@@ -178,7 +178,7 @@ test('group B fixtures: each new step passes its canned pass trace and fails onl
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ secondOwner: true }))), ['one-owner']);
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ noOwner: true }))), ['one-owner']);
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ code: true }))), ['plans-no-code']);
-    // the plan held as the output scorer's draft, its doubled bullet written as the example: both plan steps read it
+    // the plan held as the output scoring's draft, its doubled bullet written as the example: both plan steps read it
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, quoteExample: true }))), []);
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, verify: ['header row', '403'] }))), ['verify-mapped']);
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, secondOwner: true }))), ['one-owner']);

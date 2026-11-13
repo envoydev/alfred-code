@@ -126,9 +126,9 @@ function profileOff(hook, env)
 
 // A hook's own on-switch (`ALFRED_CODE_<suffix>=1`), with the profile applied: strict reads a STRICT_ON
 // switch as on over the seeded 0. The csv needs no case here - a hook it names stood down before this. A DEFAULT_ON
-// switch reads an unset key as its catalog default, on (the scorer since 2026-11-03, B1); only an explicit value but 1
+// switch reads an unset key as its catalog default, on (the scoring since 2026-11-03, B1); only an explicit value but 1
 // turns it off.
-const DEFAULT_ON = new Set(['SCORER']);
+const DEFAULT_ON = new Set(['SCORING']);
 function switchOn(suffix, env)
 {
     const source = env || process.env;
@@ -142,7 +142,8 @@ function switchOn(suffix, env)
 // user's own text, and an update never rewrites it). Old name -> new, the manifest's `renamed.hooks`, copied here so the
 // prelude stays standalone; hook-prelude.test.js holds the two equal. A value may name a PART (`<hook>:<part>`, E-batch B-m6:
 // the retired memory-session.js's host traps live on as preferences-session's `host`): it switches that part off in partOff, never a hook.
-const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer', 'memory-session': 'preferences-session:host' });
+const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer', 'memory-session': 'preferences-session:host',
+    'guard-answer:scorer': 'guard-answer:scoring', 'guard-stop-contract:scorer': 'guard-stop-contract:scoring' });   // until 4.0.0
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
@@ -168,10 +169,9 @@ function partOff(hook, part, env)
     const legacy = PART_SWITCHES[wanted];
     if (legacy && String(envOf(source, legacy) || '').trim() === '0') return true;
     const off = String(envOf(source, 'HOOKS_OFF') || '');
-    return off.split(',').map((entry) => HOOK_RENAMED[baseName(entry)] || entry).some((entry) => {
-        const at = entry.indexOf(':');
-        return at > 0 && `${baseName(entry.slice(0, at))}:${entry.slice(at + 1).trim().toLowerCase()}` === wanted;
-    });
+    // each entry as `<hook>:<part>` with its hook half bare (a `.js` there too), then through the renames
+    return off.split(',').map((e) => { const at = e.indexOf(':'); const k = at > 0 ? `${baseName(e.slice(0, at))}:${e.slice(at + 1).trim().toLowerCase()}` : baseName(e);
+        return HOOK_RENAMED[k] || k; }).includes(wanted);
 }
 
 // Every hook entry in a settings file - its event, its matcher ('' when it has none) and its command - whatever
@@ -1002,15 +1002,17 @@ function autoStampVerified(stamp, payload)
 // The mode-like tokens right after the group are retired flags: stripped into `old`, they switch nothing. The first
 // other token ends that run, so `--dry-run` and prose stay in the request.
 const FLOW_FAMILY_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue|mode)-[a-z][a-z0-9-]*$/;
+// The grader's skill names, the shipped one first: a copy, a typed stack or a run under the old name acts until 4.0.0.
+const SCORING_SKILLS = Object.freeze(['mode-output-scoring', 'mode-output-scorer']);   // legacy name, until 4.0.0
 const MODE_COMMAND_RE = /^\/alfred-code:mode:(scoring|auto-run|auto-compact)$/i;
-const MODE_FIELD = { scoring: 'scorer', 'auto-run': 'autoRun', 'auto-compact': 'compact' };
+const MODE_FIELD = { scoring: 'scoring', 'auto-run': 'autoRun', 'auto-compact': 'compact' };
 const MODE_LIKE_RE = /^--(?:mode-[a-z][a-z0-9-]*|auto-mode|score-(?:on|off))$/;
 const COMMAND_TOKEN_RE = /^\/[A-Za-z0-9:_-]+$/;
 const COMMAND_GROUP_MAX = 6;
 const commandSkill = (command) => bareSkill(String(command).replace(/^\//, ''));
 function modeFlags(text)
 {
-    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scorer: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
+    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
     if (typeof text !== 'string') return flags;
     const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
     const line = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : text;
@@ -1118,7 +1120,7 @@ function runMarkerFile(root, sessionId, env = process.env)
     if (!layout || !root || !sessionId) return null;
     return layout.statePath(root, 'sessions', `AUTO-RUN-${safeSession(sessionId)}`, env);
 }
-// The run a typed line opens: its first flow command, past the scorer (a stack's grader opens no run) and past a
+// The run a typed line opens: its first flow command, past the scoring (a stack's grader opens no run) and past a
 // `/mode-auto-run` with no request (a flag-only mode line switches, it opens nothing).
 function runMarkerSkill(flags)
 {
@@ -1126,7 +1128,7 @@ function runMarkerSkill(flags)
     for (const command of Array.isArray(f.commands) ? f.commands : [])
     {
         const name = commandSkill(command);
-        if (!FLOW_FAMILY_RE.test(name) || name === 'mode-output-scorer' || (name === 'mode-auto-run' && !f.request)) continue;
+        if (!FLOW_FAMILY_RE.test(name) || SCORING_SKILLS.includes(name) || (name === 'mode-auto-run' && !f.request)) continue;
         return name;
     }
     return '';
@@ -1491,7 +1493,7 @@ function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
 }
 
 
-// THE SCORER'S SHARED STATE (mode-output-scorer, 2026-10-25). guard-answer reads it for the injected lines and the
+// THE SCORING'S SHARED STATE (mode-output-scoring, 2026-10-25). guard-answer reads it for the injected lines and the
 // flags, the stop contract for the backstop and the seal, so both judge one state from one reader.
 //
 // Prose only: code blocks, tables, quotes, inline spans and link targets are dropped, so a name the user quotes is talk,
@@ -1531,8 +1533,8 @@ function skillCopyState(root, name, env = process.env)
 const oursLoadable = (root, ours, env = process.env) => skillCopyState(root, ours, env) === 'on';
 
 // The automatic outputs, in the order every list of them is printed, and the phrase the injected line names each by.
-const SCORER_AUTOMATIC = Object.freeze(['designer-plan', 'root-cause', 'inline-plan']);
-const SCORER_PHRASES = Object.freeze({ 'designer-plan': 'designer plan file', 'root-cause': 'root-cause verdict', 'inline-plan': 'inline plan for work started now' });
+const SCORING_AUTOMATIC = Object.freeze(['designer-plan', 'root-cause', 'inline-plan']);
+const SCORING_PHRASES = Object.freeze({ 'designer-plan': 'designer plan file', 'root-cause': 'root-cause verdict', 'inline-plan': 'inline plan for work started now' });
 function wholeIn(value, min, max, otherwise)
 {
     const s = String(value === undefined || value === null ? '' : value).trim();
@@ -1540,63 +1542,63 @@ function wholeIn(value, min, max, otherwise)
     const n = Number(s);
     return n >= min && n <= max ? n : otherwise;
 }
-const scorerLevel = (env = process.env) => wholeIn(envOf(env, 'SCORER_LEVEL'), 60, 100, 80);
-const scorerRounds = (env = process.env) => wholeIn(envOf(env, 'SCORER_ROUNDS'), 1, 10, 3);
+const scoringLevel = (env = process.env) => wholeIn(envOf(env, 'SCORING_LEVEL'), 60, 100, 80);
+const scoringRounds = (env = process.env) => wholeIn(envOf(env, 'SCORING_ROUNDS'), 1, 10, 3);
 // The csv read case-insensitively and trimmed; a name outside the three is reported back. Unset, empty (an empty value is
 // unset, as layout.js valueIn reads it) or a list naming no valid output is the catalog default, plan files only (B1,
 // 2026-11-03): all three names grade every output.
-const SCORER_OUTPUTS_DEFAULT = Object.freeze(['designer-plan']);
-function scorerOutputs(env = process.env)
+const SCORING_OUTPUTS_DEFAULT = Object.freeze(['designer-plan']);
+function scoringOutputs(env = process.env)
 {
-    const names = String(envOf(env, 'SCORER_OUTPUTS') ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const outputs = SCORER_AUTOMATIC.filter((n) => names.includes(n));
-    return { outputs: outputs.length ? outputs : [...SCORER_OUTPUTS_DEFAULT], ignored: [...new Set(names.filter((n) => !SCORER_AUTOMATIC.includes(n)))] };
+    const names = String(envOf(env, 'SCORING_OUTPUTS') ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const outputs = SCORING_AUTOMATIC.filter((n) => names.includes(n));
+    return { outputs: outputs.length ? outputs : [...SCORING_OUTPUTS_DEFAULT], ignored: [...new Set(names.filter((n) => !SCORING_AUTOMATIC.includes(n)))] };
 }
 
 // A session id as a file or folder name: a separator, a space or any other character outside [\w.-] becomes `_`, and a
-// whole `.` or `..` is `_`, so no id names a path outside the scorer's folder (R31).
+// whole `.` or `..` is `_`, so no id names a path outside the scoring's folder (R31).
 function safeSession(id)
 {
     const s = String(id === undefined || id === null ? '' : id).replace(/[^\w.-]/g, '_');
     return /^\.*$/.test(s) ? '_' : s;
 }
-const scorerPath = (prefix) => (root, sessionId, env = process.env) => (layout ? layout.statePath(root, 'sessions', `${prefix}${safeSession(sessionId)}`, env) : null);
+const scoringPath = (prefix) => (root, sessionId, env = process.env) => (layout ? layout.statePath(root, 'sessions', `${prefix}${safeSession(sessionId)}`, env) : null);
 // The session's switch (`on` / `off` from `/alfred-code:mode:scoring on|off`), the backstop's one-hold-per-cycle marker, and the
-// names an ignored ALFRED_CODE_SCORER_OUTPUTS entry was already reported under - one sweep prefix takes all three.
-const scorerFile = scorerPath('SCORER-');
-const scorerHeldFile = scorerPath('SCORER-HELD-');
-const scorerNotedFile = scorerPath('SCORER-NOTED-');
-function readScorerFile(root, sessionId, env = process.env)
+// names an ignored ALFRED_CODE_SCORING_OUTPUTS entry was already reported under - one sweep prefix takes all three.
+const scoringFile = scoringPath('SCORING-');
+const scoringHeldFile = scoringPath('SCORING-HELD-');
+const scoringNotedFile = scoringPath('SCORING-NOTED-');
+function readScoringFile(root, sessionId, env = process.env)
 {
     try
     {
-        const file = scorerFile(root, sessionId, env);
+        const file = scoringFile(root, sessionId, env);
         if (!file) return null;
         const first = fs.readFileSync(file, 'utf8').split('\n')[0].trim();
         return first === 'on' || first === 'off' ? first : 'garbage';
     }
     catch { return null; }
 }
-// Usable first: either hook standing down or its `scorer` part switched off, or no loadable copy of the skill, makes the
-// scorer unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
-// usable but never on by itself. Then the session's flag file, else ALFRED_CODE_SCORER (on when unset, B1); a garbage file
+// Usable first: either hook standing down or its `scoring` part switched off, or no loadable copy of the skill, makes the
+// scoring unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
+// usable but never on by itself. Then the session's flag file, else ALFRED_CODE_SCORING (on when unset, B1); a garbage file
 // reads as absent.
-function scorerState(root, sessionId, env = process.env)
+function scoringState(root, sessionId, env = process.env)
 {
-    const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORER_AUTOMATIC], ignored: [], source: 'env', file: null, copy: null };
+    const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORING_AUTOMATIC], ignored: [], source: 'env', file: null, copy: null };
     try
     {
-        Object.assign(state, { level: scorerLevel(env), rounds: scorerRounds(env), ...scorerOutputs(env) });
-        state.file = readScorerFile(root, sessionId, env);
-        if (standDown('guard-answer', env, []) || partOff('guard-answer', 'scorer', env)
-            || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scorer', env)) return state;
-        const copy = skillCopyState(root, 'mode-output-scorer', env);
+        Object.assign(state, { level: scoringLevel(env), rounds: scoringRounds(env), ...scoringOutputs(env) });
+        state.file = readScoringFile(root, sessionId, env);
+        if (standDown('guard-answer', env, []) || partOff('guard-answer', 'scoring', env)
+            || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scoring', env)) return state;
+        const copy = SCORING_SKILLS.map((n) => skillCopyState(root, n, env)).find((c) => c !== 'absent') || 'absent';
         state.copy = copy;   // the ON line tells a user-invocable-only copy from a switch that is off
         if (copy === 'absent' || copy === 'off') return state;
         state.usable = true;
         if (copy === 'user-invocable-only') return state;
         if (state.file === 'on' || state.file === 'off') { state.source = 'flag'; state.on = state.file === 'on'; }
-        else state.on = switchOn('SCORER', env);
+        else state.on = switchOn('SCORING', env);
         return state;
     }
     catch { return { ...state, usable: false, on: false }; }
@@ -1604,13 +1606,13 @@ function scorerState(root, sessionId, env = process.env)
 
 // A typed stack names the skill as a word of the prose: the slash form anywhere, a `<command-args>` row counting (the `>`
 // and `<`), or the bare name right after a usage word - 'using', 'with', 'via', 'run', 'stack', 'through'. A bare name in
-// other prose ('why did mode-output-scorer not run?') is talk about the tool, never a stack (final review 4).
-const STACK_RE = /(?:^|[\s(>])(?:\/|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)mode-output-scorer(?=[\s.,;:)!?<]|$)/i;
+// other prose ('why did mode-output-scoring not run?') is talk about the tool, never a stack (final review 4).
+const STACK_RE = /(?:^|[\s(>])(?:\/|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)mode-output-scor(?:ing|er)(?=[\s.,;:)!?<]|$)/i;
 const stackNamed = (text) => STACK_RE.test(proseOf(String(text || '')));
 
 // The skills that READ a plan rather than write one (the backstop's T2 exemption), and the names producerMarks looks for.
 const PLAN_READERS = Object.freeze(['task-implement', 'task-verify-plan', 'task-verify-code']);
-const MARKED = Object.freeze([...PLAN_READERS, 'mode-output-scorer']);
+const MARKED = Object.freeze([...PLAN_READERS, ...SCORING_SKILLS]);
 // The names in `names` one raw transcript row marks: an assistant Skill call, or a typed user row (never a tool result)
 // holding a `<command-name>`. A row cut short, or not JSON, marks nothing.
 function producerMarks(line, names = MARKED)
@@ -1633,10 +1635,10 @@ function producerMarks(line, names = MARKED)
 // The draft folders, `<dir>/<session>/<slug>/`, which sweepStale (files only) does not take: a session folder goes once
 // its newest file is older than STALE_MS (an empty one by its own time), at most once a day per dir, inside the same
 // 50ms budget. A symlink is never followed.
-function sweepScorerFolders(dir, { now = Date.now() } = {})
+function sweepScoringFolders(dir, { now = Date.now() } = {})
 {
     if (!dir) return 0;
-    const stamp = sweepStamp(dir, 'scorer');
+    const stamp = sweepStamp(dir, 'scoring');
     try { if (now - fs.statSync(stamp).mtimeMs < SWEEP_EVERY_MS) return 0; } catch { /* no stamp yet - this call sweeps */ }
     try { fs.writeFileSync(stamp, ''); const t = new Date(now); fs.utimesSync(stamp, t, t); } catch { return 0; }
     const deadline = Date.now() + STALE_BUDGET_MS;
@@ -1966,4 +1968,4 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactFile, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactFile, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringFile, scoringHeldFile, scoringNotedFile, readScoringFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };

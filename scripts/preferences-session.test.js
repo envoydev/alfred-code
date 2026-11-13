@@ -937,15 +937,15 @@ test('G6: a second language\'s project section is handed over at its first edit'
     finally { p.rm(); }
 });
 
-test('G5b: the output-scorer seat is handed the code docs at its start, like a designer (AC27)', () =>
+test('G5b: the output-scoring seat is handed the code docs at its start, like a designer (AC27)', () =>
 {
     const p = project();
     try
     {
-        const r = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-9', agent_type: 'alfred-code:output-scorer' });
+        const r = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-9', agent_type: 'alfred-code:output-scoring' });
         assert.match(String(out(r).additionalContext || ''), /a handler validates/);
         assert.match(String(out(r).additionalContext || ''), /put behaviour on the type/);
-        assert.doesNotMatch(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-8', agent_type: 'other:output-scorer' })).additionalContext || ''), /a handler validates/);
+        assert.doesNotMatch(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-8', agent_type: 'other:output-scoring' })).additionalContext || ''), /a handler validates/);
     }
     finally { p.rm(); }
 });

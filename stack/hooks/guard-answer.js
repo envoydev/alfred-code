@@ -15,7 +15,7 @@
 //   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
 //   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
 //   `log`; `inject` adds the save line).
-//   And the modes' lines (stack-modes spec section 3): `/alfred-code:mode:scoring on|off` switches the scorer
+//   And the modes' lines (stack-modes spec section 3): `/alfred-code:mode:scoring on|off` switches the scoring
 //   for the session and gets its `[mode]` line, an on line names what to grade, a typed stack gets the stacked line - the state is
 //   the prelude's, shared with the stop contract; while auto-run is on, its line; and the user-visible ON line, a
 //   `systemMessage` listing the modes on.
@@ -34,13 +34,13 @@ const fs = require('fs');
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
-let scorer = null;   // the prelude, for the modes' state and lines - no prelude, no scorer, no auto-run line, no ON line (R32)
+let pre = null;   // the prelude, for the modes' state and lines - no prelude, no scoring, no auto-run line, no ON line (R32)
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
-    if (prelude.scorerState) scorer = prelude;
+    if (prelude.scoringState) pre = prelude;
     if (prelude.standDown('guard-answer')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -379,23 +379,23 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
 // A mode is switched by its command, typed alone on its line (hook-prelude.js modeFlags). A mode's state for this prompt
 // is that line, else the stored state - computed here, never read back after the start hook's write, since the two
 // hooks run in parallel: an auto-run `on` counts only when autoRunRefusal says '', else the stamp live for this session
-// decides; the scoring command writes the session's SCORER- file, which outranks ALFRED_CODE_SCORER, and gets its
+// decides; the scoring command writes the session's SCORING- file, which outranks ALFRED_CODE_SCORING, and gets its
 // `[mode]` line - the first line of the context, since the command file tells the model to say a line starting so. A
 // seat's prompt and a missing prelude carry no line. Each other line rides after the budget with one leading space.
 const AUTO_LINE = 'auto-run: on for this session - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it';
 const SCORING_UNUSABLE = { absent: 'the scoring skill is not installed in this project', off: 'the scoring skill is switched off in this project' };
-function scorerPhrases(outputs) {
-  const p = outputs.map((o) => scorer.SCORER_PHRASES[o]);
+function scoringPhrases(outputs) {
+  const p = outputs.map((o) => pre.SCORING_PHRASES[o]);
   return p.length > 1 ? `${p.slice(0, -1).join(', ')} or ${p[p.length - 1]}` : p[0];
 }
-function scorerOnLine(s, auto) {
-  return `scorer: on (level ${s.level}, rounds ${s.rounds}, ${s.source}${auto ? ', auto-run' : ''}) - load mode-output-scorer before releasing a ${scorerPhrases(s.outputs)}; /alfred-code:mode:scoring off stops it`;
+function scoringOnLine(s, auto) {
+  return `scoring: on (level ${s.level}, rounds ${s.rounds}, ${s.source}${auto ? ', auto-run' : ''}) - load mode-output-scoring before releasing a ${scoringPhrases(s.outputs)}; /alfred-code:mode:scoring off stops it`;
 }
-// An ignored ALFRED_CODE_SCORER_OUTPUTS name is ledgered once per session and name: the names already reported sit in
-// the session's SCORER-NOTED- file, and a name that file cannot take is not ledgered, so no prompt repeats it (R25).
+// An ignored ALFRED_CODE_SCORING_OUTPUTS name is ledgered once per session and name: the names already reported sit in
+// the session's SCORING-NOTED- file, and a name that file cannot take is not ledgered, so no prompt repeats it (R25).
 function noteIgnored(root, sid, ignored) {
   if (!ignored.length) return;
-  const file = scorer.scorerNotedFile(root, sid, process.env);
+  const file = pre.scoringNotedFile(root, sid, process.env);
   if (!file) return;
   let seen = [];
   try { seen = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean); } catch { /* none noted yet */ }
@@ -406,41 +406,41 @@ function noteIgnored(root, sid, ignored) {
     fs.appendFileSync(file, fresh.map((n) => `${n}\n`).join(''));
   } catch { return; }
   for (const name of fresh) {
-    ledgerRow({ mode: 'probe', kind: 'scorer-outputs-ignored', reason: `probe: ALFRED_CODE_SCORER_OUTPUTS names '${name}', which is no automatic output - ignored`, detail: { name } });
+    ledgerRow({ mode: 'probe', kind: 'scoring-outputs-ignored', reason: `probe: ALFRED_CODE_SCORING_OUTPUTS names '${name}', which is no automatic output - ignored`, detail: { name } });
   }
 }
 // auto-run for this prompt: the typed off, the typed on when nothing refuses it, else the stamp live for this session.
 function autoRunNow(flags) {
   try {
-    if (typeof scorer.autoRunFor === 'function') return scorer.autoRunFor(payload, process.env, flags);
+    if (typeof pre.autoRunFor === 'function') return pre.autoRunFor(payload, process.env, flags);
     // a prelude older than autoRunFor (the copy route mid-update): its body, from the calls that prelude has
     if (flags && flags.autoRun === 'off') return false;
-    if (flags && flags.autoRun === 'on' && !scorer.autoRunRefusal(payload, process.env, flags)) return true;
-    const stamp = scorer.approvalStamp(payload, process.env);
+    if (flags && flags.autoRun === 'on' && !pre.autoRunRefusal(payload, process.env, flags)) return true;
+    const stamp = pre.approvalStamp(payload, process.env);
     return Boolean(stamp && stamp.live && stamp.session && stamp.session === String(payload.session_id || '') && /^AUTO\b/.test(stamp.first));
   } catch { return false; }
 }
-// The scorer for this prompt: the state, then the typed switch written where the scorer can be switched (a command
+// The scoring for this prompt: the state, then the typed switch written where the scoring can be switched (a command
 // where it cannot be used writes nothing); a switch the file cannot take still counts here.
-function scorerNow(flags, root, sid) {
+function scoringNow(flags, root, sid) {
   try {
     const nodePath = require('path');
-    // State hygiene (R11): the SCORER- files and the draft folders, each at most once a day per dir.
+    // State hygiene (R11): the SCORING- files and the draft folders, each at most once a day per dir.
     try {
-      const sessions = nodePath.dirname(scorer.scorerFile(root, 'x', process.env));
-      scorer.sweepStale(sessions, 'SCORER-');
-      scorer.sweepScorerFolders(nodePath.join(sessions, 'scorer'));
+      const sessions = nodePath.dirname(pre.scoringFile(root, 'x', process.env));
+      pre.sweepStale(sessions, 'SCORING-');
+      pre.sweepScoringFolders(nodePath.join(sessions, 'scoring'));
     } catch { /* no layout - nothing of ours to sweep */ }
-    const s = scorer.scorerState(root, sid, process.env);
-    if (s.file === 'garbage') ledgerRow({ mode: 'probe', kind: 'scorer-file-garbage', reason: 'probe: the session\'s scorer file holds neither on nor off - read as absent' });
+    const s = pre.scoringState(root, sid, process.env);
+    if (s.file === 'garbage') ledgerRow({ mode: 'probe', kind: 'scoring-file-garbage', reason: 'probe: the session\'s scoring file holds neither on nor off - read as absent' });
     noteIgnored(root, sid, s.ignored);
-    const flag = flags && s.usable && s.copy !== 'user-invocable-only' ? flags.scorer : null;
-    const file = flag && sid ? scorer.scorerFile(root, sid, process.env) : null;
+    const flag = flags && s.usable && s.copy !== 'user-invocable-only' ? flags.scoring : null;
+    const file = flag && sid ? pre.scoringFile(root, sid, process.env) : null;
     if (file) {
       try {
         fs.mkdirSync(nodePath.dirname(file), { recursive: true });
         fs.writeFileSync(file, `${flag}\nat: ${new Date().toISOString()}\n`);
-        if (s.file !== flag) ledgerRow({ mode: 'probe', kind: 'scorer-flag', reason: `probe: the scorer switched ${flag} for this session`, detail: { state: flag } });
+        if (s.file !== flag) ledgerRow({ mode: 'probe', kind: 'scoring-flag', reason: `probe: the scoring switched ${flag} for this session`, detail: { state: flag } });
       } catch { /* a data root that cannot be written - the switch holds for this prompt only */ }
     }
     if (flag) Object.assign(s, { on: flag === 'on', source: 'flag' });
@@ -456,31 +456,31 @@ function modesText(prompt) {
   cap = cap ? ` ${cap}` : '';
   const none = { context: cap, message: '', line: '' };
   try {
-    if (!scorer || payload.agent_id) return none;
+    if (!pre || payload.agent_id) return none;
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const sid = payload.session_id;
-    const parsed = prompt === null ? null : scorer.modeFlags(String(prompt || ''));
+    const parsed = prompt === null ? null : pre.modeFlags(String(prompt || ''));
     const flags = parsed && parsed.family ? parsed : null;   // a mode command line, or a `/mode-auto-run <request>`
     const auto = autoRunNow(flags);
-    const s = scorerNow(flags, root, sid);
+    const s = scoringNow(flags, root, sid);
     const lines = [];
     if (s && s.usable) {
-      if (s.flag === 'off') lines.push('scorer: off for this session');
-      else if (s.on) lines.push(scorerOnLine(s, auto));
+      if (s.flag === 'off') lines.push('scoring: off for this session');
+      else if (s.on) lines.push(scoringOnLine(s, auto));
       // a mode line switches and starts nothing, so it is no stack (spec section 4, round-0 M7)
-      if (prompt !== null && scorer.stackNamed(prompt) && !(parsed && parsed.flagOnly)) {
-        lines.push(`scorer: stacked for this request (level ${s.level}, rounds ${s.rounds}) - grade this request's output with mode-output-scorer before releasing it`);
+      if (prompt !== null && pre.stackNamed(prompt) && !(parsed && parsed.flagOnly)) {
+        lines.push(`scoring: stacked for this request (level ${s.level}, rounds ${s.rounds}) - grade this request's output with mode-output-scoring before releasing it`);
       }
     }
     if (auto) lines.push(AUTO_LINE);
     const scoring = Boolean(s && s.usable && s.on);
     // auto-compact is a mode someone turned on - auto-run, or the session's own switch - never the project's variable
-    const compact = auto || (typeof scorer.compactCause === 'function' && scorer.compactCause(payload, { ...process.env, ALFRED_CODE_AUTO_COMPACT: '' }, flags) === 'mode');
+    const compact = auto || (typeof pre.compactCause === 'function' && pre.compactCause(payload, { ...process.env, ALFRED_CODE_AUTO_COMPACT: '' }, flags) === 'mode');
     const on = [auto ? 'auto-run' : '', scoring ? `scoring (level ${s.level})` : '', compact ? 'auto-compact' : ''].filter(Boolean);
     const line = !(parsed && parsed.mode === 'scoring') || parsed.extra || !s ? ''
       : !s.usable || s.copy === 'user-invocable-only' ? `[mode] scoring is not available here: ${SCORING_UNUSABLE[s.copy] || (s.usable ? 'the scoring skill is user-invocable-only here' : 'a scoring hook is switched off')}`
         : `[mode] scoring is ${scoring ? `ON for this session (level ${s.level})` : 'OFF for this session'}`;
-    return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '', line, autoRun: auto, scorer: s };
+    return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '', line, autoRun: auto, scoring: s };
   } catch { return none; }
 }
 
@@ -527,9 +527,9 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
     ...(modes.message ? { systemMessage: modes.message } : {}),
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + extra + repeat + nudge + modes.context },
   }));
-  // The session status file (session-status.js): this prompt's autoRun and scorer, under history-session's own gates.
+  // The session status file (session-status.js): this prompt's autoRun and scoring, under history-session's own gates.
   // The stand-down runs as the write's gate, only once the compare says a write is due (R137).
-  try { if (scorer) require('./session-status.js').onPrompt(payload, modes, () => !scorer.standDown('history-session')); } catch { /* the status file never costs the prompt */ }
+  try { if (pre) require('./session-status.js').onPrompt(payload, modes, () => !pre.standDown('history-session')); } catch { /* the status file never costs the prompt */ }
   process.exit(0);
 }
 

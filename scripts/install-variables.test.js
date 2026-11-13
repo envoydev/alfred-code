@@ -44,10 +44,10 @@ test('set writes a catalog key into .variables and reports it', (t) =>
     const { dir, env } = sandbox(t);
     const root = project(dir);
     const log = logger();
-    const got = variables.set(root, ['ALFRED_CODE_SCORER_LEVEL=80'], { env, log });
-    assert.deepStrictEqual(got, { written: ['ALFRED_CODE_SCORER_LEVEL'], toLocal: [], toSettings: [], refused: [] });
-    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORER_LEVEL=80\n');
-    assert.ok(log.lines.some((l) => l.includes('ALFRED_CODE_SCORER_LEVEL') && l.includes('.alfred/.variables')), log.lines.join('\n'));
+    const got = variables.set(root, ['ALFRED_CODE_SCORING_LEVEL=80'], { env, log });
+    assert.deepStrictEqual(got, { written: ['ALFRED_CODE_SCORING_LEVEL'], toLocal: [], toSettings: [], refused: [] });
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORING_LEVEL=80\n');
+    assert.ok(log.lines.some((l) => l.includes('ALFRED_CODE_SCORING_LEVEL') && l.includes('.alfred/.variables')), log.lines.join('\n'));
 });
 
 test('set routes a key settings.local.json holds to that file and prints the variables: ... overrides line', (t) =>
@@ -132,15 +132,15 @@ test('a credential-shaped value is refused, the key named, the value in no outpu
     const { dir, env } = sandbox(t);
     const root = project(dir);
     put(varsOf(root), 'ALFRED_CODE_HISTORY=5\n');
-    const run = cli(['set', '--root', root, `ALFRED_CODE_SCORER_OUTPUTS=${TOKEN}`], env);
+    const run = cli(['set', '--root', root, `ALFRED_CODE_SCORING_OUTPUTS=${TOKEN}`], env);
     assert.strictEqual(run.status, 1);
     const out = run.stdout + run.stderr;
-    assert.match(out, /ALFRED_CODE_SCORER_OUTPUTS/);
+    assert.match(out, /ALFRED_CODE_SCORING_OUTPUTS/);
     assert.ok(!out.includes(TOKEN) && !out.includes(TOKEN.slice(4, 16)), 'the value is in no output');
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=5\n');
     assert.ok(!fs.readdirSync(path.dirname(varsOf(root))).some((f) => (read(path.join(path.dirname(varsOf(root)), f)) || '').includes(TOKEN)), 'nor in any file');
     // A value on more than one line would write a second line: refused too.
-    assert.deepStrictEqual(variables.set(root, [['ALFRED_CODE_HISTORY', '4\nALFRED_CODE_SCORER=1']], { env, log: () => {} }).refused, ['ALFRED_CODE_HISTORY']);
+    assert.deepStrictEqual(variables.set(root, [['ALFRED_CODE_HISTORY', '4\nALFRED_CODE_SCORING=1']], { env, log: () => {} }).refused, ['ALFRED_CODE_HISTORY']);
 });
 
 // Complexity stage 1 B9: the ref watch left, so its key leaves the catalog and a migration takes the seeded line out.
@@ -160,9 +160,9 @@ test('comments and unknown lines survive every write (AC10)', (t) =>
     const root = project(dir);
     const text = '# team values\n; old style\nexport ALFRED_CODE_HISTORY=5\nNOT A LINE\nMY_OWN=1\n\nALFRED_CODE_PUSH_GATE=0\n';
     put(varsOf(root), text);
-    variables.set(root, ['ALFRED_CODE_HISTORY=6', 'ALFRED_CODE_SCORER_LEVEL=70', 'ALFRED_CODE_TURN_CHECK=1'], { env, log: () => {} });
+    variables.set(root, ['ALFRED_CODE_HISTORY=6', 'ALFRED_CODE_SCORING_LEVEL=70', 'ALFRED_CODE_TURN_CHECK=1'], { env, log: () => {} });
     assert.strictEqual(read(varsOf(root)), '# team values\n; old style\nexport ALFRED_CODE_HISTORY=6\nNOT A LINE\nMY_OWN=1\n\nALFRED_CODE_PUSH_GATE=0\n'
-        + 'ALFRED_CODE_TURN_CHECK=1\nALFRED_CODE_SCORER_LEVEL=70\n', 'kept in place, a new key appended in catalog order');
+        + 'ALFRED_CODE_TURN_CHECK=1\nALFRED_CODE_SCORING_LEVEL=70\n', 'kept in place, a new key appended in catalog order');
     // An empty value removes the key's line; the rest stays.
     variables.set(root, ['ALFRED_CODE_TURN_CHECK='], { env, log: () => {} });
     assert.ok(!/ALFRED_CODE_TURN_CHECK/.test(read(varsOf(root))));
@@ -173,21 +173,21 @@ test('comments and unknown lines survive every write (AC10)', (t) =>
     assert.strictEqual(fs.statSync(varsOf(root)).ino, ino);
     // CRLF stays CRLF.
     put(varsOf(root), '# crlf\r\nALFRED_CODE_HISTORY=5\r\n');
-    variables.set(root, ['ALFRED_CODE_HISTORY=7', 'ALFRED_CODE_SCORER=1'], { env, log: () => {} });
-    assert.strictEqual(read(varsOf(root)), '# crlf\r\nALFRED_CODE_HISTORY=7\r\nALFRED_CODE_SCORER=1\r\n');
+    variables.set(root, ['ALFRED_CODE_HISTORY=7', 'ALFRED_CODE_SCORING=1'], { env, log: () => {} });
+    assert.strictEqual(read(varsOf(root)), '# crlf\r\nALFRED_CODE_HISTORY=7\r\nALFRED_CODE_SCORING=1\r\n');
 });
 
 test('a quoted value survives an unrelated set (Review Focus 3)', (t) =>
 {
     const { dir, env } = sandbox(t);
     const root = project(dir);
-    put(varsOf(root), 'ALFRED_CODE_SCORER_OUTPUTS="spec, plan"\nALFRED_CODE_MEMORY=\'on\'\n');
+    put(varsOf(root), 'ALFRED_CODE_SCORING_OUTPUTS="spec, plan"\nALFRED_CODE_MEMORY=\'on\'\n');
     variables.set(root, ['ALFRED_CODE_HISTORY=2'], { env, log: () => {} });
-    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORER_OUTPUTS="spec, plan"\nALFRED_CODE_MEMORY=\'on\'\nALFRED_CODE_HISTORY=2\n');
-    assert.deepStrictEqual(variables.read(varsOf(root)).values.ALFRED_CODE_SCORER_OUTPUTS, 'spec, plan');
+    assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_SCORING_OUTPUTS="spec, plan"\nALFRED_CODE_MEMORY=\'on\'\nALFRED_CODE_HISTORY=2\n');
+    assert.deepStrictEqual(variables.read(varsOf(root)).values.ALFRED_CODE_SCORING_OUTPUTS, 'spec, plan');
     // A value the reader would strip is quoted on the way in, so it reads back as written.
-    variables.set(root, ['ALFRED_CODE_SCORER_OUTPUTS="x"'], { env, log: () => {} });
-    assert.strictEqual(variables.read(varsOf(root)).values.ALFRED_CODE_SCORER_OUTPUTS, '"x"');
+    variables.set(root, ['ALFRED_CODE_SCORING_OUTPUTS="x"'], { env, log: () => {} });
+    assert.strictEqual(variables.read(varsOf(root)).values.ALFRED_CODE_SCORING_OUTPUTS, '"x"');
 });
 
 test('two writers at once both land through the lock (AC11)', async (t) =>
@@ -212,13 +212,13 @@ test('two writers at once both land through the lock (AC11)', async (t) =>
         child.stdout.on('data', (d) => { out += d; });
         child.on('close', () => resolve(Number(out.trim())));
     });
-    const [a, b, partial] = await Promise.all([writer('ALFRED_CODE_HISTORY'), writer('ALFRED_CODE_SCORER_LEVEL'), reader]);
+    const [a, b, partial] = await Promise.all([writer('ALFRED_CODE_HISTORY'), writer('ALFRED_CODE_SCORING_LEVEL'), reader]);
     assert.strictEqual(a.status, 0, a.err);
     assert.strictEqual(b.status, 0, b.err);
     assert.strictEqual(partial, 0, 'no reader saw a partial file');
     const values = variables.read(varsOf(root)).values;
     assert.strictEqual(values.ALFRED_CODE_HISTORY, '50');
-    assert.strictEqual(values.ALFRED_CODE_SCORER_LEVEL, '50');
+    assert.strictEqual(values.ALFRED_CODE_SCORING_LEVEL, '50');
     assert.ok(read(varsOf(root)).startsWith('# shared\n'));
     assert.ok(!fs.existsSync(`${varsOf(root)}.lock`), 'the lock is released');
 });
@@ -324,12 +324,12 @@ test('show names own, from <rel>, settings.local.json and default', (t) =>
     const kid = project(dir, 'ws/kid');
     putWorkspace(parent, { children: ['kid'] });
     putWorkspace(kid, { parent: '..' });
-    put(varsOf(parent), 'ALFRED_CODE_HISTORY=7\nALFRED_CODE_SCORER_LEVEL=60\n');
-    put(varsOf(kid), 'ALFRED_CODE_SCORER_LEVEL=80\n');
+    put(varsOf(parent), 'ALFRED_CODE_HISTORY=7\nALFRED_CODE_SCORING_LEVEL=60\n');
+    put(varsOf(kid), 'ALFRED_CODE_SCORING_LEVEL=80\n');
     put(localOf(kid), JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1' } }));
     const on = { ...env, ALFRED_CODE_WORKSPACE: '1' };
     const rows = Object.fromEntries(variables.show(kid, { env: on }).map((r) => [r.key, r]));
-    assert.deepStrictEqual(rows.ALFRED_CODE_SCORER_LEVEL, { key: 'ALFRED_CODE_SCORER_LEVEL', value: '80', source: 'own' });
+    assert.deepStrictEqual(rows.ALFRED_CODE_SCORING_LEVEL, { key: 'ALFRED_CODE_SCORING_LEVEL', value: '80', source: 'own' });
     assert.deepStrictEqual(rows.ALFRED_CODE_HISTORY, { key: 'ALFRED_CODE_HISTORY', value: '7', source: 'from ..' });
     assert.deepStrictEqual(rows.ALFRED_CODE_TURN_CHECK, { key: 'ALFRED_CODE_TURN_CHECK', value: '1', source: 'settings.local.json' });
     const catalog = require('../meta/environment.json').env;
@@ -337,11 +337,11 @@ test('show names own, from <rel>, settings.local.json and default', (t) =>
     assert.deepStrictEqual(rows.ALFRED_CODE_MEMORY, { key: 'ALFRED_CODE_MEMORY', value: String(memory.default ?? ''), source: 'default' });
     assert.ok(!rows.ALFRED_CODE_HOOKS_OFF && !rows.ALFRED_CODE_DATA_PATH, 'the two settings keys are no variables');
     // The CLI prints the same rows, one per key, and the loader's notes.
-    put(varsOf(kid), 'ALFRED_CODE_SCORER_LEVEL=80\nNOT A LINE\n');
+    put(varsOf(kid), 'ALFRED_CODE_SCORING_LEVEL=80\nNOT A LINE\n');
     const run = cli(['show', '--root', kid], on);
     assert.strictEqual(run.status, 0, run.stderr);
     assert.match(run.stdout, /^ALFRED_CODE_HISTORY=7 \(from \.\.\)$/m);
-    assert.match(run.stdout, /^ALFRED_CODE_SCORER_LEVEL=80 \(own\)$/m);
+    assert.match(run.stdout, /^ALFRED_CODE_SCORING_LEVEL=80 \(own\)$/m);
     assert.match(run.stdout, /^!! variables: \.variables line 2 is not a KEY=value line - not read$/m);
 });
 

@@ -469,10 +469,10 @@ function editVariablesLedger(projectRoot, change)
 }
 
 // A stack seed: the value still at its managed-env ledger hash AND the catalog default, or an old seed a reseed migration
-// moves (the update would reset it anyway - the scorer's 0 and empty list, B1 of the 2026-11-03 usage audit) - an
+// moves (the update would reset it anyway - the scoring's 0 and empty list, B1 of the 2026-11-03 usage audit) - an
 // installer answer off the default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
 let catalogSeeds = null;
-function isSeed(key, value, rows)
+function isSeed(key, value, rows, catalogKey = key)
 {
     if (!catalogSeeds)
     {
@@ -481,7 +481,7 @@ function isSeed(key, value, rows)
         catalogSeeds = new Map(JSON.parse(fs.readFileSync(path.join(meta, 'environment.json'), 'utf8')).env
             .map((r) => [r.key, [r.default ?? '', ...reseed.filter(([k]) => k === r.key).map(([, bad]) => bad)].map(String)]));
     }
-    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && (catalogSeeds.get(key) || []).includes(String(value));
+    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && (catalogSeeds.get(catalogKey) || []).includes(String(value));
 }
 
 // A join's prune (D5): every stack seed (isSeed) in the joiner's `.variables` leaves (with its row) and the members'
@@ -851,18 +851,26 @@ function envPlan(ctx)
     const data = readJson(path.join(ctx.claudeDir, target));
     const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
     const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
+    // until 4.0.0: this runs before the settings pass renames the four scoring keys, so an old key is judged as its new
+    // one (the catalog, the chain) on its own ledger row, and the plan names it as the file holds it, which the pass drops.
+    const newOf = Object.fromEntries(Object.entries(layout.OLD_KEYS).map(([n, o]) => [o, n]));
     if (own === null)
     {
         if (read && stamp.readJoinPrune(read))
             for (const [key, value] of Object.entries(env))
-                if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !plan.ignored.includes(key) && isSeed(key, value, rows)) plan.seeds.push(key);
+            {
+                const name = newOf[key] || key;
+                if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !plan.ignored.includes(name)
+                    && isSeed(key, value, rows, name)) plan.seeds.push(key);
+            }
         return plan;
     }
     const chained = plan.memberEnv;
     for (const [key, value] of Object.entries(env))
     {
-        if (!layout.VARIABLE_KEYS.includes(key) || own.includes(key) || layout.MEMBER_NEVER.has(key)) continue;
-        if (rows[key] === stamp.valueHash(value) && chained[key] === String(value)) plan.copies.push(key);
+        const name = newOf[key] || key;
+        if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name)) continue;
+        if (rows[key] === stamp.valueHash(value) && chained[name] === String(value)) plan.copies.push(key);
     }
     const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
     plan.hooksOffDrop = csv(env.ALFRED_CODE_HOOKS_OFF).filter((e) => e.includes(':') && memberParts.has(e));

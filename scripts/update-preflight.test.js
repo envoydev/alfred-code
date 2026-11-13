@@ -114,18 +114,18 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
 // project's files through the loader, so a value only .variables holds still fires its migration.
 test('a preflight settings_env_value row matches a key only .variables holds', () => {
     const migrations = [
-        { id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORER_LEVEL', equals: '70' } } },
+        { id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORING_LEVEL', equals: '70' } } },
         { id: 'history-retired', detect: { settings_env_key: 'ALFRED_CODE_HISTORY' } },
     ];
     const s = scaffold({ migrations, settings: { env: {} } });
     fs.mkdirSync(path.join(s.install, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\nALFRED_CODE_HISTORY=4\n');
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=70\nALFRED_CODE_HISTORY=4\n');
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(s.install, 'no-account') };
     for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
     const out = run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out;
     assert.match(out, /^migration: level-reseed\tsettings_env_value$/m, out);
     assert.match(out, /^migration: history-retired\tsettings_env_key$/m, out);
-    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=80\n');
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=80\n');
     assert.match(run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out, /^migrations: none detected$/m, 'another value does not fire');
 });
 
@@ -1103,7 +1103,7 @@ test('R063: a declined release-added item the parent holds stays declined in a c
 test('fixed root: the preflight prints no data-move line and reads a custom root\'s files', () =>
 {
     const R = 'var/data';
-    const migrations = [{ id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORER_LEVEL', equals: '70' } } }];
+    const migrations = [{ id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORING_LEVEL', equals: '70' } } }];
     const { snap, install, fixtureFile } = scaffold({ migrations, settings: { env: { ALFRED_CODE_DATA_PATH: R, ALFRED_CODE_DOCS_PATH: 'legacy/docs' } } });
     const parent = path.dirname(install);
     fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
@@ -1111,7 +1111,7 @@ test('fixed root: the preflight prints no data-move line and reads a custom root
     execFileSync('git', ['init', '-q', install]);
     putWorkspace(parent, {});
     putWorkspace(install, { parent: '..' }, { dataRoot: R });
-    fs.writeFileSync(path.join(install, ...R.split('/'), '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\n');
+    fs.writeFileSync(path.join(install, ...R.split('/'), '.variables'), 'ALFRED_CODE_SCORING_LEVEL=70\n');
     fs.mkdirSync(path.join(install, 'legacy', 'docs', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(install, 'legacy', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };

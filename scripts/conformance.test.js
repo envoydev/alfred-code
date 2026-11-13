@@ -120,7 +120,7 @@ test('x_state before: a ledger row orders against the first matching event; no r
     const edit = sc.parseTranscript(jsonl([handed, stamped(user('go'), '2026-10-25T10:00:00Z'),
         stamped(tool('Edit', { file_path: 'a.js', old_string: 'a', new_string: 'b' }), '2026-10-25T10:00:05Z')]));
     const bundle = (ledger, main = edit) => ({ sid: 's', session: { main, seats: [] },
-        state: { history: null, scorer: null, ledger, missing: ledger ? {} : { ledger: 'statistics/hook-blocks/s.jsonl' } } });
+        state: { history: null, scoring: null, ledger, missing: ledger ? {} : { ledger: 'statistics/hook-blocks/s.jsonl' } } });
     const push = (iso) => ({ kind: 'preferences-push', ts: iso && Date.parse(iso) });
     const one = (b) => cf.gradeClaims(b, [P1])[0];
     assert.strictEqual(one(bundle([push('2026-10-25T10:00:01Z')])).held, 1, 'the push before the edit holds');
@@ -138,7 +138,7 @@ test('loadBundle: data/ beside the transcript is the default; a garbage history 
         fs.mkdirSync(path.join(dir, 'data', 'state', 'history'), { recursive: true });
         fs.writeFileSync(path.join(dir, 'data', 'state', 'history', 's.json'), '{ not json');
         const b = cf.loadBundle(path.join(dir, 's.jsonl'));
-        assert.deepStrictEqual([b.sid, b.state.history, b.state.scorer, b.state.ledger], ['s', null, null, null]);
+        assert.deepStrictEqual([b.sid, b.state.history, b.state.scoring, b.state.ledger], ['s', null, null, null]);
         assert.strictEqual(b.state.missing.history, 'state/history/s.json (unreadable)');
         assert.strictEqual(cf.loadBundle(path.join(dir, 's.jsonl'), { dataRoot: path.join(dir, 'nowhere') }).state.missing.history, 'state/history/s.json');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -203,7 +203,7 @@ test('event windows: the lookback counts tool calls, a from anchor starts the wi
         { agentType: 'alfred-code:aspnet-verifier', run: seatRun([user('brief'), tool('Read', { file_path: 'r.md' }), tool('Bash', { command: 'npm start' })]) },
         { agentType: 'alfred-code:aspnet-verifier', run: seatRun([user('brief'), tool('Bash', { command: 'npm start' })]) },
         { agentType: 'alfred-code:aspnet-implementer', run: seatRun([user('brief'), tool('Bash', { command: 'npm start' })]) }] },
-        state: { history: null, scorer: null, ledger: null, missing: {} } };
+        state: { history: null, scoring: null, ledger: null, missing: {} } };
     const g = cf.gradeClaims(b, [claim])[0];
     assert.deepStrictEqual([g.applied, g.held, g.violated], [2, 1, 1], 'the two verifiers graded, the main session and the implementer not');
     assert.match(g.locators.join(' '), /aspnet-verifier/);
@@ -213,13 +213,13 @@ test('event windows: the lookback counts tool calls, a from anchor starts the wi
 const resultOf = (text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${seq}`, content: text }] } });
 const hookContext = (text) => ({ type: 'attachment', attachment: { type: 'hook_additional_context', content: [text], hookName: 'SessionStart', toolUseID: 'SessionStart', hookEvent: 'SessionStart' } });
 const claimOf = (id) => cf.loadClaims().find((c) => c.id === id);
-const withState = (main, state) => ({ sid: 's', session: { main, seats: [] }, state: { history: null, scorer: null, ledger: null, missing: {}, ...state } });
+const withState = (main, state) => ({ sid: 's', session: { main, seats: [] }, state: { history: null, scoring: null, ledger: null, missing: {}, ...state } });
 
 test('M8 S1: the outcome row is the window\'s own slug - a release or a kept final holds, another run\'s release does not', () => {
     const S1 = claimOf('S1');
     const run = (slug) => sc.parseTranscript(jsonl([user('plan it'), tool('Skill', { skill: 'alfred-code:habits-output-scorer' }),
         tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'grade' }), tool('Bash', { command: `node "$S" next --slug ${slug} --level 80` })]));
-    const one = (slug, rows) => cf.gradeClaims(withState(run(slug), { scorer: rows }), [S1])[0];
+    const one = (slug, rows) => cf.gradeClaims(withState(run(slug), { scoring: rows }), [S1])[0];
     assert.strictEqual(one('csv-plan', [{ slug: 'csv-plan', line: 'released d1' }]).held, 1, 'its own release');
     assert.strictEqual(one('csv-plan', [{ slug: 'csv-plan', line: 'final d1' }]).held, 1, 'withheld and kept is an outcome the script recorded');
     assert.strictEqual(one('csv-plan', [{ slug: 'other-plan', line: 'released d1' }]).notVisible, 1, 'another run\'s release says nothing of this one');
@@ -271,8 +271,14 @@ test('S1 and S2 open on the new name too (spec section 10)', () => {
         const transcript = path.join(dir, 's.jsonl');
         const text = fs.readFileSync(transcript, 'utf8');
         assert.ok(text.includes('habits-output-scorer'), `${id}: the fixture names the old skill`);
-        fs.writeFileSync(transcript, text.split('habits-output-scorer').join('mode-output-scorer'));
-        try { assert.strictEqual(cf.gradeClaims(cf.loadBundle(transcript), [claim])[0].held, 1, `${id}: the same session under the new name holds`); }
+        try
+        {
+            for (const [skill, seat] of [['mode-output-scorer', 'output-scorer'], ['mode-output-scoring', 'output-scoring']])
+            {
+                fs.writeFileSync(transcript, text.split('habits-output-scorer').join(skill).split('output-scorer"').join(`${seat}"`));
+                assert.strictEqual(cf.gradeClaims(cf.loadBundle(transcript), [claim])[0].held, 1, `${id}: the same session under ${skill} holds`);
+            }
+        }
         finally { fs.rmSync(dir, { recursive: true, force: true }); }
     }
 });

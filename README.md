@@ -142,7 +142,7 @@ its variable in `/alfred-code:configure` (the Environment area; the values live 
 
 | Variable | Value | What it does |
 | --- | --- | --- |
-| `ALFRED_CODE_SCORER` | `1` (the default) or `0` | The grader is on, or off, in every session |
+| `ALFRED_CODE_SCORING` | `1` (the default) or `0` | The grader is on, or off, in every session |
 | `ALFRED_CODE_AUTO_COMPACT` | `1` | No session asks about a fresh session; each compacts instead |
 
 Auto-run has no lasting setting: it is always your word for one session. The `--mode-*` flags of 3.0 to 3.10 are gone -

@@ -773,13 +773,13 @@ const HASH = (c) => c.repeat(64);
 
 test('install-stamp: own-picks and own-env round-trip; an empty line differs from no line', () =>
 {
-    const { dest, text } = write(project(), { ownPicks: ['skill typescript', 'agent planner'], ownEnv: ['ALFRED_CODE_SCORER'], instructionsBoth: 'declined' });
+    const { dest, text } = write(project(), { ownPicks: ['skill typescript', 'agent planner'], ownEnv: ['ALFRED_CODE_SCORING'], instructionsBoth: 'declined' });
     assert.match(text, /^own-picks: agent\/planner,skill\/typescript$/m, 'the stamp spells a line category/name, sorted');
-    assert.match(text, /^own-env: ALFRED_CODE_SCORER$/m);
+    assert.match(text, /^own-env: ALFRED_CODE_SCORING$/m);
     assert.match(text, /^instructions-both: declined$/m);
     assert.ok(text.indexOf('own-picks:') < text.indexOf('library-skills:'), 'the own lines sit before the library lines');
     assert.deepStrictEqual(stampMod.readOwnPicks(dest), ['agent planner', 'skill typescript']);
-    assert.deepStrictEqual(stampMod.readOwnEnv(dest), ['ALFRED_CODE_SCORER']);
+    assert.deepStrictEqual(stampMod.readOwnEnv(dest), ['ALFRED_CODE_SCORING']);
     assert.strictEqual(stampMod.readInstructionsBoth(dest), 'declined');
     const empty = write(project(), { ownPicks: [], ownEnv: [] });
     assert.match(empty.text, /^own-picks: $/m);

@@ -174,7 +174,7 @@ test('a child settings.local.json env with ANTHROPIC_API_KEY, or CLAUDE_CODE_USE
     assert.strictEqual(local.check().why, '.claude/settings.local.json sets env.ANTHROPIC_API_KEY');
     assert.ok(!local.ran());
     const bedrock = setup();
-    put(path.join(bedrock.child, '.claude', 'settings.json'), { env: { CLAUDE_CODE_USE_BEDROCK: '1', ALFRED_CODE_SCORER: '1' } });
+    put(path.join(bedrock.child, '.claude', 'settings.json'), { env: { CLAUDE_CODE_USE_BEDROCK: '1', ALFRED_CODE_SCORING: '1' } });
     assert.strictEqual(bedrock.check().why, '.claude/settings.json sets env.CLAUDE_CODE_USE_BEDROCK');
     const managed = setup();
     put(managed.managedFile, { awsAuthRefresh: 'aws sso login' });
@@ -184,7 +184,7 @@ test('a child settings.local.json env with ANTHROPIC_API_KEY, or CLAUDE_CODE_USE
     assert.match(dropIn.check().why, /managed-settings\.d.10-team\.json sets env\.GOOGLE_APPLICATION_CREDENTIALS$/);
     for (const s of [bedrock, managed, dropIn]) assert.ok(!s.ran());
     const fine = setup();
-    put(path.join(fine.child, '.claude', 'settings.json'), { env: { ALFRED_CODE_SCORER: '1', ANTHROPIC_MODEL: 'x' } });
+    put(path.join(fine.child, '.claude', 'settings.json'), { env: { ALFRED_CODE_SCORING: '1', ANTHROPIC_MODEL: 'x' } });
     assert.strictEqual(fine.check().state, 'clean', 'a key that neither authenticates nor picks a provider is no skip');
 });
 

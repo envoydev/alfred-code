@@ -578,16 +578,16 @@ test('an execution-strategy trace grades the load before the first edit and no p
     assert.deepStrictEqual(failing(sc.grade(exp, planned, { level: 'plain' })), ['no-plan-file']);
 });
 
-test('an output-scorer trace grades the seat, the script\'s next before the plan, no plan after a withhold and one more attempt', () =>
+test('an output-scoring trace grades the seat, the script\'s next before the plan, no plan after a withhold and one more attempt', () =>
 {
-    const exp = expectOf('mode-output-scorer');
+    const exp = expectOf('mode-output-scoring');
     // Each row is built per use: two rows from one call share a message id and the reader keeps one.
     const plan = () => tool('Write', { file_path: '/w/.alfred/docs/work/plans/cancel-reason.md', content: '# plan' });
-    const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'score-file: /w/s.md' });
+    const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scoring', prompt: 'score-file: /w/s.md' });
     const next = () => tool('Bash', { command: 'node "$S" next --root /w --session s1 --slug cancel --level 80 --rounds 3' });
     // the seat's report graded before next (the 2026-11-04 prose round, sc-13: grade-after-return)
     const graded = () => tool('Bash', { command: 'node "$S" grade /w/s.md --output designer-plan --level 80' });
-    const answers = () => tool('Write', { file_path: '/w/.alfred/state/sessions/scorer/s1/cancel/answers.md', content: 'a' });
+    const answers = () => tool('Write', { file_path: '/w/.alfred/state/sessions/scoring/s1/cancel/answers.md', content: 'a' });
     const good = jsonl([user('plan it'), seat(), graded(), next(), say('Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan'), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
 
@@ -622,7 +622,7 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
-    const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+    const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
         'tier4-compaction', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
@@ -890,7 +890,7 @@ test('run.env of a fixture reaches only its own billed line', POSIX_ONLY, () =>
     assert.ok(withEnv.cmds.filter((c) => c.kind !== 'billed').every((c) => !c.cmd.includes('CLAUDE_CODE_ENTRYPOINT')));
     const [none] = billedLine(replayFor({}).cmds);
     assert.doesNotMatch(none, /CLAUDE_CODE_ENTRYPOINT/);
-    for (const key of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'SENTRY_ACCESS_TOKEN', 'ALFRED_CODE_SCORER', 'HOME', 'lower_case'])
+    for (const key of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'SENTRY_ACCESS_TOKEN', 'ALFRED_CODE_SCORING', 'HOME', 'lower_case'])
         assert.match(replayFor({ env: { [key]: 'x' } }).problems.join('\n'), /run\.env/, key);
     assert.match(replayFor({ env: { A_KEY: 1 } }).problems.join('\n'), /run\.env/, 'a value is a string');
     assert.match(replayFor({ env: ['A=1'] }).problems.join('\n'), /run\.env/, 'run.env is an object');

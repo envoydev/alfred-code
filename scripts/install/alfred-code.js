@@ -756,6 +756,7 @@ function runLayers(ctx)
     try { memoryDir.gate(ctx); }
     catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
     variablesStep(ctx);
+    dropOldScoringState(ctx);
     installHooksAndRules(ctx);
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
     // Each project an older release would now misread, the records this run converted being workspace.json.
@@ -963,6 +964,14 @@ function claudeIgnoreStep(ctx)
 // one git tracks (a teammate's project-scope install committed it) is never written: its values count as set, and a flag
 // that differs is named and not written. Sets ctx.variablesFile (null: no move) and ctx.variablesHeld (values the settings
 // pass must not seed over), and the child's env plan (workspace.js envPlan).
+// until 4.0.0: the session state the grader wrote under its old names (SCORER-*, the sweep stamp, the scorer/ folder) is dead.
+function dropOldScoringState({ projectRoot, dataInfo, log, note })
+{
+    const dir = path.resolve(projectRoot, dataInfo.root, 'state', 'sessions');
+    let names; try { names = fs.readdirSync(dir).filter((n) => /^(?:SCORER-|\.alfred-sweep-SCORER-$|scorer$)/.test(n)); } catch { return; }
+    for (const n of names) try { fs.rmSync(path.join(dir, n), { recursive: true, force: true }); } catch (e) { note(`state: ${n} could not be removed (${e.message})`); }
+    if (names.length) log(`  state: scoring session entries from before the rename removed: ${names.length}`);
+}
 function variablesStep(ctx)
 {
     ctx.variablesFile = null;

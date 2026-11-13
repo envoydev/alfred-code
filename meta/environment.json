@@ -57,10 +57,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_SCORER",
+      "key": "ALFRED_CODE_SCORING",
       "default": "1",
+      "renamed_from": "ALFRED_CODE_SCORER",
       "ask": false,
-      "what": "mode-output-scorer: `1` (the seed) grades each automatic output ALFRED_CODE_SCORER_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scorer` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `/alfred-code:mode:scoring on` / `/alfred-code:mode:scoring off`, typed on its own line, override it for the session, and a typed `/<producer> /mode-output-scorer <request>` stack grades that one request even while it is off.",
+      "what": "mode-output-scoring: `1` (the seed) grades each automatic output ALFRED_CODE_SCORING_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scoring` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `/alfred-code:mode:scoring on` / `/alfred-code:mode:scoring off`, typed on its own line, override it for the session, and a typed `/<producer> /mode-output-scoring <request>` stack grades that one request even while it is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -70,10 +71,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_SCORER_LEVEL",
+      "key": "ALFRED_CODE_SCORING_LEVEL",
       "default": "80",
+      "renamed_from": "ALFRED_CODE_SCORER_LEVEL",
       "ask": false,
-      "what": "mode-output-scorer: the score out of 100 an output must reach to be released, a whole number from 60 to 100 (anything else reads as 80). A target, not a strict bar: when the grade shows the level cannot be reached with what is in hand, the user is asked whether to go on or accept the output below it.",
+      "what": "mode-output-scoring: the score out of 100 an output must reach to be released, a whole number from 60 to 100 (anything else reads as 80). A target, not a strict bar: when the grade shows the level cannot be reached with what is in hand, the user is asked whether to go on or accept the output below it.",
       "validate": {
         "type": "percent",
         "min": 60,
@@ -81,10 +83,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_SCORER_OUTPUTS",
+      "key": "ALFRED_CODE_SCORING_OUTPUTS",
       "default": "designer-plan",
+      "renamed_from": "ALFRED_CODE_SCORER_OUTPUTS",
       "ask": false,
-      "what": "mode-output-scorer: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. `designer-plan` (the seed) grades plan files only, the output the scorer measurably improved; unset, empty or a list naming none of the three reads as the seed - list all three names to grade every output; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
+      "what": "mode-output-scoring: a csv of the automatic outputs to grade - `designer-plan`, `root-cause`, `inline-plan`. `designer-plan` (the seed) grades plan files only, the output the scoring measurably improved; unset, empty or a list naming none of the three reads as the seed - list all three names to grade every output; a name outside them is ignored with one ledger row. The outputs graded only through a typed stack (an explainer answer, a ticket, an upgrade plan, a pick, a custom output) take no part in this list.",
       "validate": {
         "type": "csv",
         "values": [
@@ -95,10 +98,11 @@
       }
     },
     {
-      "key": "ALFRED_CODE_SCORER_ROUNDS",
+      "key": "ALFRED_CODE_SCORING_ROUNDS",
       "default": "3",
+      "renamed_from": "ALFRED_CODE_SCORER_ROUNDS",
       "ask": false,
-      "what": "mode-output-scorer: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
+      "what": "mode-output-scoring: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
       "validate": {
         "type": "int",
         "min": 1,
@@ -257,7 +261,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22), `guard-unapproved-dispatch:cap` (the agent cap, ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27), `guard-layer-table:void` (the paste gate's void of an answer given with no table or banner on screen, 2026-10-28), `guard-stop-contract:fresh-ask` (the drop of a fresh-session hand-off that does not pay back with the cache warm, 2026-10-28) - each but the last four was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `guard-answer:scorer` (the scorer lines and flags) and `guard-stop-contract:scorer` (the scorer backstop and the sealed scorecard) - either one turns the whole scorer off, stacks included.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22), `guard-unapproved-dispatch:cap` (the agent cap, ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27), `guard-layer-table:void` (the paste gate's void of an answer given with no table or banner on screen, 2026-10-28), `guard-stop-contract:fresh-ask` (the drop of a fresh-session hand-off that does not pay back with the cache warm, 2026-10-28) - each but the last four was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `guard-answer:scoring` (the scoring lines and flags) and `guard-stop-contract:scoring` (the scoring backstop and the sealed scorecard) - either one turns the whole scoring off, stacks included.",
       "validate": {
         "type": "csv"
       }

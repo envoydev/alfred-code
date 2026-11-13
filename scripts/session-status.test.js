@@ -272,8 +272,8 @@ test('the prompt\'s auto-run flip rewrites fullContext', () =>
         const { root, P, FILE } = sonnetSession();
         const got = inChild({ CLAUDE_PROJECT_DIR: root, ...env }, `const read = () => JSON.parse(require('fs').readFileSync(${FILE}, 'utf8'));
             const p = { ...${P}, hook_event_name: 'UserPromptSubmit' };
-            const on = S.onPrompt(p, { autoRun: true, scorer: null }); const a = read();
-            const off = S.onPrompt(p, { autoRun: false, scorer: null }); const b = read();
+            const on = S.onPrompt(p, { autoRun: true, scoring: null }); const a = read();
+            const off = S.onPrompt(p, { autoRun: false, scoring: null }); const b = read();
             return [on, a.autoRun, a.fullContext, off, b.autoRun, b.fullContext];`);
         assert.deepStrictEqual(got, ['written', true, 'compact', 'written', false, offValue]);
     }
@@ -283,7 +283,7 @@ test('a Stop keeps compact while the file says auto-run', () =>
 {
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `const fs = require('fs');
-        S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scoring: null });
         const bytes = fs.readFileSync(${FILE}, 'utf8');
         const r = [1, 2].map(() => S.onStop({ ...${P}, hook_event_name: 'Stop' }, null));
         return { r, same: fs.readFileSync(${FILE}, 'utf8') === bytes, s: JSON.parse(bytes) };`);
@@ -300,7 +300,7 @@ test('a 3.3.0 file under auto-run is corrected at the next Stop', () =>
 {
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: true, scorer: null }, { fullContext: 'fresh-session' })}
-        const prompt = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        const prompt = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scoring: null });
         const stop = S.onStop({ ...${P}, hook_event_name: 'Stop' }, null);
         return { prompt, stop, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
     // R116: the prompt no longer leaves an auto-run file reading anything but compact for a turn.
@@ -338,7 +338,7 @@ test('R116: a prompt over a file reading autoRun true and not compact rewrites i
 {
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: true, scorer: null }, { fullContext: 'fresh-session' })}
-        const r = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        const r = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scoring: null });
         return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
     assert.deepStrictEqual([got.r, got.s.fullContext], ['written', 'compact']);
 });
@@ -349,9 +349,9 @@ test('R137: the prompt\'s stand-down runs only when a write is due', () =>
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `let n = 0; const gate = () => { n++; return true; };
         const p = { ...${P}, hook_event_name: 'UserPromptSubmit' };
-        const a = S.onPrompt(p, { autoRun: false, scorer: null }, gate); const na = n;
-        const b = S.onPrompt(p, { autoRun: false, scorer: null }, gate); const nb = n;
-        const c = S.onPrompt({ ...p, session_id: 's2' }, { autoRun: false, scorer: null }, () => false);
+        const a = S.onPrompt(p, { autoRun: false, scoring: null }, gate); const na = n;
+        const b = S.onPrompt(p, { autoRun: false, scoring: null }, gate); const nb = n;
+        const c = S.onPrompt({ ...p, session_id: 's2' }, { autoRun: false, scoring: null }, () => false);
         return [a, na, b, nb, c, require('fs').existsSync(${FILE}.replace('s1.json', 's2.json'))];`);
     assert.deepStrictEqual(got, ['written', 1, 'unchanged', 1, 'skipped', false]);
 });

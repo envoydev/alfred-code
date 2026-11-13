@@ -93,7 +93,7 @@ A simple explanation is only good if it is true.
 
 ## Last check before sending
 
-Where a `scorer: stacked` line is in context, the FIRST action before releasing the answer - after this check - is the `mode-output-scorer` Skill call with output `topic-explainer`.
+Where a `scoring: stacked` line is in context, the FIRST action before releasing the answer - after this check - is the `mode-output-scoring` Skill call with output `topic-explainer`.
 
 Fix any line that fails:
 

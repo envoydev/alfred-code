@@ -232,7 +232,7 @@ test('guard-secret-value: .variables passes a Read and a cat, .secrets stays den
   const vars = path.join(root, '.alfred', '.variables');
   const secrets = path.join(root, '.alfred', '.secrets');
   fs.writeFileSync(secrets, `API_TOKEN=${FAKE_TOKEN}\n`);
-  fs.writeFileSync(vars, 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_DOCS_VERSIONING=git\n');
+  fs.writeFileSync(vars, 'ALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_DOCS_VERSIONING=git\n');
   const env = { CLAUDE_PROJECT_DIR: root };
   assert.equal(read(vars, env), 0, 'a Read of .variables');
   assert.equal(bash(`cat ${vars}`, env), 0, 'a cat of .variables');

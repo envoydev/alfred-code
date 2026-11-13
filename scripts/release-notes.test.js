@@ -113,6 +113,21 @@ test('mode commands: the release note names the three commands and says the flag
     const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - modes are commands'));
     assert.ok(note, 'owed to a 3.10.0 install');
     for (const word of ['/alfred-code:mode:auto-run', '/alfred-code:mode:scoring', '/alfred-code:mode:auto-compact', 'on|off', '--mode-auto-run-on',
-        'attended', 'a retired off flag ends nothing', 'ALFRED_CODE_SCORER', 'ALFRED_CODE_AUTO_COMPACT', '/mode-auto-run <request>']) assert.ok(note.text.includes(word), word);
+        'attended', 'a retired off flag ends nothing', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_AUTO_COMPACT', '/mode-auto-run <request>']) assert.ok(note.text.includes(word), word);
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});
+
+// Mode v2 stage 1 (3.11.0): the grader's names say scoring; the note names each new name beside its old one, and the
+// skill and the seat by their new names only (the upgrade table is the old names' one home).
+test('the scoring rename: the release note names each new name beside its old one', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - the grader\'s names say scoring'));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    for (const word of ['/mode-output-scoring', 'output-scoring', '/alfred-code:update', '4.0.0']) assert.ok(note.text.includes(word), word);
+    for (const k of ['', '_LEVEL', '_OUTPUTS', '_ROUNDS'])
+        assert.match(note.text, new RegExp(`ALFRED_CODE_SCORER${k}\\b.*ALFRED_CODE_SCORING${k}\\b`), `ALFRED_CODE_SCORER${k} beside its new name`);
+    for (const hook of ['guard-answer', 'guard-stop-contract']) assert.match(note.text, new RegExp(`${hook}:scorer\\b.*${hook}:scoring\\b`), hook);
+    assert.doesNotMatch(note.text, /mode-output-scorer\b|output-scorer\b/, 'the old skill and seat names live in the upgrade table only');   // legacy
     assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
 });

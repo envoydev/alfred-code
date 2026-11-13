@@ -85,7 +85,7 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
     DevOps, browser extension);
   - seven read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`,
-    `output-scorer` (mode-output-scorer's grader; both mode skills took their names in the stack-modes rename of
+    `output-scoring` (mode-output-scoring's grader; both mode skills took their names in the stack-modes rename of
     2026-10-27, and the manifest's `renamed` rows hold the old ones).
   Every seat that judges or writes code holds `WebFetch` (alfred-quality-gates sends its outside-world claims to the
   documentation tools the start line ranks, the vendor's own page when nothing else is registered); the five read-only
@@ -119,7 +119,7 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
   branch from HEAD because the installer seeds `worktree.baseRef: "head"` add-only, and fan in as an
-  uncommitted `git apply`). cursor-stack holds twins of all 45 but `output-scorer` (added 2026-10-25,
+  uncommitted `git apply`). cursor-stack holds twins of all 45 but `output-scoring` (added 2026-10-25,
   while its mirror is paused), shipped before this rebrand, and is PENDING the same rename - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).

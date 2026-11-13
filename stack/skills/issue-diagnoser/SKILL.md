@@ -141,11 +141,11 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    symptom, never a plausible guess. Match the evidence to the catalogue's signature and isolate
    where the signature points, which is almost never the line that threw. **Hard cap: 2
    investigation passes.** If the cause stays ambiguous after 2, stop guessing and record the
-   surviving hypotheses RANKED with what would decide between each. Where a `scorer: on` line
-   naming the root-cause verdict or a `scorer: stacked` line is in context, the FIRST action before
-   releasing the verdict - stamping it, or putting the fork below - is the `mode-output-scorer`
+   surviving hypotheses RANKED with what would decide between each. Where a `scoring: on` line
+   naming the root-cause verdict or a `scoring: stacked` line is in context, the FIRST action before
+   releasing the verdict - stamping it, or putting the fork below - is the `mode-output-scoring`
    Skill call with output `root-cause`. Stamp `Cause:` with the file + symbol and the evidence that
-   proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scorer released it where one
+   proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scoring released it where one
    runs (`Cause: <pending>` until then).
    Report a severity and an explicit P0-P3 priority when the ask was to level it rather than fix
    it. **This step ends at the fork below - it never continues into planning on its own.**
@@ -163,8 +163,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    - **4a. REPORT** ('Write a report on the issue') - finish the findings file as a standalone
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
-     Where a `scorer: on` line naming the root-cause verdict or a `scorer: stacked` line is in
-     context, the FIRST action before releasing the report is the `mode-output-scorer`
+     Where a `scoring: on` line naming the root-cause verdict or a `scoring: stacked` line is in
+     context, the FIRST action before releasing the report is the `mode-output-scoring`
      Skill call with output `root-cause`. No task cards. This is the outcome when the fix is someone else's, or not now.
    - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
      tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -

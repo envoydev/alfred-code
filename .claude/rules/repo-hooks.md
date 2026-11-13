@@ -67,7 +67,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   by `hook-prelude.test.js`: `guard-answer-length` still switches guard-answer off - audit 2026-10-20, the hooks track's
   minor list). A value may name a PART (E-batch B-m6): `memory-session` -> `preferences-session:host`, where the retired
   hook's host traps live on - `partOff` reads the old name as that part, `hookDisabled` never as a whole hook, the settings
-  writer re-spells a stored one, and `selection.js` keeps it out of every hook name and selection line. AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
+  writer re-spells a stored one, and `selection.js` keeps it out of every hook name and selection line.
+  3.11.0's scoring rename leaves six old-name readers, each marked `until 4.0.0` so 4.0.0 finds them with one grep
+  (the sixth, `scripts/install/workspace.js envPlan`, judges a 2.12 settings key under its new name before the rename pass):
+  `layout.js OLD_KEYS` (the four variables), the two `guard-answer:scorer` / `guard-stop-contract:scorer` rows of
+  `HOOK_RENAMED`, `hook-prelude.js SCORING_SKILLS` with `STACK_RE` (a copy, a typed stack and a run under the old skill
+  name), the `SETTINGS_PATH` mark in `scripts/install/stamp.js`, and `alfred-code.js dropOldScoringState` (the dead
+  session state an update removes). AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
   its auto-continue timeout itself - `afkTimeoutMs` on the result, 'No response after <N>s - the user may be away from
   keyboard' in the text the model reads, partial picks after it (the 2.1.304 bundle;
   code.claude.com/docs/en/tools-reference, 'Question auto-continue timeout'). `askTimedOut` reads either, and every
@@ -89,9 +95,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   its four `--mode-*` flags, and auto-mode's per-run flag from the rulings of 2026-10-14 to 2026-10-17): three plugin
   commands under `setup-plugin/commands/mode/`, each typed ALONE on its line with `on` or `off` -
   `/alfred-code:mode:auto-run`, `/alfred-code:mode:scoring`, `/alfred-code:mode:auto-compact`. `hook-prelude.js modeFlags`
-  is the ONE parser every reader calls - the start hook, the scorer switch, the ON line, the banner, the dispatch guard
+  is the ONE parser every reader calls - the start hook, the scoring switch, the ON line, the banner, the dispatch guard
   and the stop contract's solve-flow mark. A mode command line gives `mode`, `flagOnly` and the field it switches
-  (`autoRun`, `scorer`, `compact`); anything but one `on` / `off` after it sets `extra`, which switches nothing and is
+  (`autoRun`, `scoring`, `compact`); anything but one `on` / `off` after it sets `extra`, which switches nothing and is
   said with ONE line, `[mode] type the command alone on its line, then on or off`; the bare command says the mode's
   state. After a `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*` command group every leading token shaped like a
   flag (`--mode-*` and the two older 2.x spellings, `MODE_LIKE_RE`) goes to `old` and switches NOTHING; a prose mention
@@ -540,7 +546,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
     relative target with no file at any anchor prints nothing, after a `cd` the guard cannot follow too (it failed
     CLOSED there until complexity stage 1 A5, and never fired); a
-    `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole, and so does one under `<data root>/state/sessions/scorer/` - the output scorer's draft, the grader's mandated input (`guard-read-write.test.js`); a markup template's denial names `grep -n`, never the symbol
+    `.md` under the docs root's `work/plans/` (or the pre-2.8.0 `plans/`) reads whole, and so does one under `<data root>/state/sessions/scoring/` - the output scoring's draft, the grader's mandated input (`guard-read-write.test.js`); a markup template's denial names `grep -n`, never the symbol
     overview; and the convention-rule notice reads no `>` inside quotes and no write target outside the project. Audit
     2026-10-20 H7: a `find <dirs> -name <one literal name> -exec cat` (or `| xargs cat`) is a sweep of whatever files that
     name matches - a bounded walk from the find's start points (`NAMED_FIND_CAP`, 20,000 entries) sizes each match, and
@@ -781,7 +787,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     writes `.denied`. A later rule's exit 2 drops the call's pending file (a second exit wrapper after the shared
     telemetry one). The stop contract's main-session Stop, behind the same `capGates` as the deny, reconciles against
     `background_tasks` right after its sweep (its pendings go; running files matched by id, else the most recent N kept;
-    one `agent-cap-reconciled` row) and, after the scorer backstop and never while it is owed, sends the turn back ONCE
+    one `agent-cap-reconciled` row) and, after the scoring backstop and never while it is owed, sends the turn back ONCE
     per `.denied` file when the count is under the cap again (`agent-cap-continue`); guard-answer's typed prompt deletes
     `.denied` and its context names the number when it is not 5. Stand-downs, writing nothing: the csv or `:cap` opt-out,
     either hook off, `minimal`, a repo never set up, a Cursor payload, cap `0`, no session id; guard-answer off stops the
@@ -969,7 +975,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     statement about the verb refuses it, and only its own gate; 'commit' leading a noun ('commit messages', 'at commit
     description') is the noun and neither consents nor refuses (E-batch U26b). Opening a pull request ('open the PR') is
     consent; a question, a negation or the PR's description / template / page is not (H3).
-  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scorer seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
+  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scoring seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the ask's own SHAPE is FIXED IN PLACE when every reason is
     mechanical (the 2026-10-17 usage audit: a deny for missing numbers cost a red block and a re-sent ask) - the corrected
@@ -1268,35 +1274,35 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     conversation, `/clear`, clearing the context or starting over. The
     numbers check reads hand-offs only. The skills list the in-session option first and mark the fresh one only where a
     hook's text says it pays. The measurements are `docs/fresh-session-cache-evidence.md`.
-    THE SCORER BACKSTOP (mode-output-scorer, spec 2026-10-24 5.9): while `scorerState` is usable (a loadable skill copy,
-    neither hook nor its `scorer` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
+    THE SCORING BACKSTOP (mode-output-scoring, spec 2026-10-24 5.9): while `scoringState` is usable (a loadable skill copy,
+    neither hook nor its `scoring` part off), a close that owes a `Scored:` line and lacks it is held ONCE per typed prompt.
     One `walkBack` pass reads back to the cycle's opening row - the newest typed row that is no harness prompt, compaction
     summary or `Stop hook feedback:` row - so a grader's notification turn stays in the cycle. The evidence: T1 a Write of a
-    `.draft.md` in this session's scorer folder (on, or the cycle stacked); T2 a plan Write under the docs root's
+    `.draft.md` in this session's scoring folder (on, or the cycle stacked); T2 a plan Write under the docs root's
     `work/plans/` (on, `designer-plan` listed; not where a draft was written, a plan reader - `task-implement`,
     `task-verify-plan`, `task-verify-code` - ran, or the loop released that `target:`); T3 a findings write whose `Cause:`
-    is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `mode-output-scorer` (on
-    or off; a `/mode-output-scorer` line carrying only a `--mode-*` token is no stack, nor is a mode command line; nor
+    is set, or a diagnoser seat that settled (on, `root-cause` listed); T4 a typed stack naming `mode-output-scoring` (on
+    or off; a `/mode-output-scoring` line carrying only a `--mode-*` token is no stack, nor is a mode command line; nor
     is one that also names `habits-adjust-agents-md`, which grades nothing - sc-8). A `Scored:` line clears the newest trigger only when a `rounds.log` of this session's folder or a `self-*` one
     holds a `released` / `final` line written since the cycle opened (2s slack); a typed one is no receipt and writes one
-    `scorer-receipt-unbacked` row. The `SCORER-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
+    `scoring-receipt-unbacked` row. The `SCORING-HELD-<session>` marker holds the cycle's key (the row's uuid, else its
     timestamp, else its hash), and the check sits BEFORE the `stopHeld` exit, so a rewrite after this hook's own hold for
-    another reason is still judged while the marker keeps it to one hold. A live `output-scorer` seat in
-    `background_tasks` is the loop's own wait, never held - with no registry sent, an async `output-scorer` launch the
+    another reason is still judged while the marker keeps it to one hold. A live `output-scoring` seat in
+    `background_tasks` is the loop's own wait, never held - with no registry sent, an async `output-scoring` launch the
     transcript holds with no notice that ended it is (sc-5, the launch scan `liveBackgroundWork` reads); a seat's Stop and
-    a transcript-less Stop judge nothing; no opening row writes one `scorer-cycle-unread` row while the scorer is on, none
-    while it is off (sc-11). The hold's block row names `branch: scorer` (AC11, AC14, AC16, AC17,
-    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scorer backstop'). THE SEAL (5.11): an `output-scorer` seat's report
+    a transcript-less Stop judge nothing; no opening row writes one `scoring-cycle-unread` row while the scoring is on, none
+    while it is off (sc-11). The hold's block row names `branch: scoring` (AC11, AC14, AC16, AC17,
+    AC19, AC24, AC25; `guard-stop-closes.test.js`, 'scoring backstop'). THE SEAL (5.11): an `output-scoring` seat's report
     names its score file on one of its first three non-empty lines (`*` and backticks dropped; a line or two of preface,
     sc-10); PreToolUse `SubagentHandback` - or SubagentStop's
     `last_assistant_message` for a run with no hand-back, before that route's `stop_hook_active` exit - writes it as
-    `seal: sha256 <hex>` then the report as delivered, only into this session's scorer folder (both sides realpathed, so
+    `seal: sha256 <hex>` then the report as delivered, only into this session's scoring folder (both sides realpathed, so
     macOS's `/var` is `/private/var` and a symlinked parent leads nowhere), only a `.score.md` that does not exist yet
-    (`wx` - a second delivery never rewrites it), one `scorer-seal` probe row either way; the hand-back is never delayed
+    (`wx` - a second delivery never rewrites it), one `scoring-seal` probe row either way; the hand-back is never delayed
     or denied, and `scorecard.js grade` fails a card whose seal is missing or broken with exit 3 (AC18, AC22). The seal
     is written before a sibling hook's verdict on the same hand-back, so a deny of it would seal an undelivered report:
     docs-session, the one sibling that denies a hand-back, asks only a seat whose own writes changed a watched file, and
-    the scorer seat holds no write tool (audit 2026-10-30 HK-28, ruled not reproduced; the replay is in
+    the scoring seat holds no write tool (audit 2026-10-30 HK-28, ruled not reproduced; the replay is in
     `docs-session.test.js`).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
@@ -1575,17 +1581,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     An ask the idle timeout closed (ruling S3, `hook-prelude.js` `askTimedOut`) gets one `ask-timeout` probe row, the
     session's timeout marker and a note that it is no answer - no approval, consent or pick, re-ask when the user is
     back; the next answered ask or typed prompt clears the marker.
-    THE SCORER'S LINES (mode-output-scorer, spec 2026-10-24 5.2 / 5.12; the switch a command since 2026-11-12):
+    THE SCORING'S LINES (mode-output-scoring, spec 2026-10-24 5.2 / 5.12; the switch a command since 2026-11-12):
     `/alfred-code:mode:scoring on` / `off` (`modeFlags`) writes
-    the session's `SCORER-<session>` file, which outranks `ALFRED_CODE_SCORER`, counts for its own prompt even where
+    the session's `SCORING-<session>` file, which outranks `ALFRED_CODE_SCORING`, counts for its own prompt even where
     the file cannot be written, and is answered with the context's first line - `[mode] scoring is ON for this session
     (level N)`, `[mode] scoring is OFF for this session` or `[mode] scoring is not available here: <reason>`; while on, every typed prompt - and a compaction's start, which drops injected text -
-    carries one `scorer: on (level, rounds, source[, auto-run]) ...` line naming the listed
-    outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scorer: off for this
+    carries one `scoring: on (level, rounds, source[, auto-run]) ...` line naming the listed
+    outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scoring: off for this
     session`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name
     right after a usage word (`using`, `with`, `via`, `run`, `stack`, `through`; final review 4) -
-    adds `scorer: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
-    needs `scorerState` usable: either hook or its `scorer` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
+    adds `scoring: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
+    needs `scoringState` usable: either hook or its `scoring` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
     line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
     `guard-answer.test.js`). A line carrying only a `--mode-*` token is no stack. While auto-run is on, the context also carries `auto-run: on
     for this session - ...`. THE ON LINE (the stack-modes spec section 3): every typed prompt while a mode is on gets one
@@ -1594,7 +1600,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     from the prompt's own mode command (auto-run's `on` only when `autoRunRefusal` says nothing), else the stored state, never read
     back after the start hook's write, since the two run in parallel; a compaction's start re-emits both context lines and
     no `systemMessage`. A seat's prompt carries none: the session that receives its report grades what it acts on.
-    After its stdout write it hands `modesText`'s own `autoRun` and `scorer` to `session-status.js onPrompt`, under
+    After its stdout write it hands `modesText`'s own `autoRun` and `scoring` to `session-status.js onPrompt`, under
     `standDown('history-session')`, which rewrites the status file only when one of the two changed (spec section 4).
     The stand-down runs as the write's gate, after the compare (R137): every prompt pays the module's require and one
     small read (~2.5 ms measured, 2026-11-04) even where history-session is off - the trade for no stand-down stats on
@@ -1660,7 +1666,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `docs.js show` of each of its sections; a `sed -n a,bp`, `head` or `tail` range marks each section it covers from
     heading to last line, every line the whole doc, and a partial, piped or redirected range nothing (usage audit
     2026-11-03 U18: a section read by range was held again and a 21.4k plan Write discarded). A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
-    one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scorer` (the grader is handed the code docs it grades a plan against, AC27) - `alfred-code:<seat>`
+    one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scoring` (the grader is handed the code docs it grades a plan against, AC27) - `alfred-code:<seat>`
     always, a BARE name only where the install stamp's `library-agents:` line records its copy (`copiedSeats`: the copy
     route; none on the plugin route), so another plugin's or the project's own `security-auditor` is no judge: side notes
     of 2026-10-22, the user's rulings 'Alfred's own, all judges' and 'drop the names') holds no edit tool (checked against `meta/seat-tools.json`), so no edit hold reaches it: `SubagentStart` hands it the code
@@ -1846,13 +1852,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
-    `autoStampLive`, the stamp must name the session), `scorerState` and the newest open plan's `Resume:` text from
+    `autoStampLive`, the stamp must name the session), `scoringState` and the newest open plan's `Resume:` text from
     `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). `fullContext` reads `compact` wherever no
     fresh session is offered - `autoRun` true, or nobody at the terminal (`hook-prelude.js unattended`, which also reads
     the hand-written `AUTO` stamp `autoRunFor` refuses) - else fresh-session's rule; a Stop whose second read finds
     `autoRun` changed rebuilds. Written at SessionStart (always), at Stop
     when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
-    guard-answer's prompt when auto-run or the scorer changed - tmp plus rename, a failure swallowed (section 4, 5). A
+    guard-answer's prompt when auto-run or the scoring changed - tmp plus rename, a failure swallowed (section 4, 5). A
     prompt's write re-reads the file just before its rename and keeps a `handoffPrompt` a Stop wrote since its first read
     (R135); a Stop landing between that re-read and the rename (the build-and-write span) is still lost, and the next
     Stop, which recomputes the field from history, writes it back - a stated residual, no lock on every prompt (final

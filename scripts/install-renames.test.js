@@ -55,8 +55,11 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 77, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29), and the code-style and architecture captures capture-awareness merged (2026-10-29)');
-    assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 78, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29), and the code-style and architecture captures capture-awareness merged (2026-10-29), and 3.11.0\'s scoring rename');
+    assert.strictEqual(Object.keys(RENAMED.agents).length, 5, 'the two failure diagnosers, then their alfred- prefix (2.2.0), and 3.11.0\'s scoring rename');
+    assert.strictEqual(RENAMED.skills['mode-output-scorer'], 'mode-output-scoring');    // legacy
+    assert.strictEqual(RENAMED.skills['habits-output-scorer'], 'mode-output-scoring', 're-pointed: one hop');
+    assert.strictEqual(RENAMED.agents['output-scorer'], 'output-scoring');    // legacy
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
         assert.ok(m.retired.skills.includes(from), `${from} is retired, so its copy is pruned`);
@@ -1026,7 +1029,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
         {
             const found = line.match(old);
             if (!found) return;
-            if (recorded && found.every((n) => n === 'habits-output-scorer' || (rel === 'meta/conformance.json' && pairs[n] === 'capture-quality'))) return;
+            if (recorded && found.every((n) => ['habits-output-scorer', 'mode-output-scorer', 'output-scorer'].includes(n) || (rel === 'meta/conformance.json' && pairs[n] === 'capture-quality'))) return;
             // the skew window (the capture-awareness merge, spec 2.3): a code line that must still spell an old name - a
             // retired text kept byte for byte, an older copy a reader still meets - says so with a `// legacy` comment
             if (/\.js$/.test(rel) && /\/\/ legacy\b/.test(line)) return;

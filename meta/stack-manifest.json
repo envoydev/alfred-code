@@ -153,8 +153,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "mode-output-scorer",
-      "note": "grades a producer's draft with the output-scorer seat and releases it only on a pass (ALFRED_CODE_SCORER / /alfred-code:mode:scoring on, or a typed stack)"
+      "name": "mode-output-scoring",
+      "note": "grades a producer's draft with the output-scoring seat and releases it only on a pass (ALFRED_CODE_SCORING / /alfred-code:mode:scoring on, or a typed stack)"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -500,8 +500,8 @@
       "note": "final gate (opus/xhigh): read-only cross-domain integration review - contract consistency, assembled build/test/migration, the commit gate no single-stack verifier is"
     },
     {
-      "file": "output-scorer.md",
-      "note": "mode-output-scorer's grader (sonnet/xhigh): read-only, one draft against one rubric and its producer's docs, a quote per yes"
+      "file": "output-scoring.md",
+      "note": "mode-output-scoring's grader (sonnet/xhigh): read-only, one draft against one rubric and its producer's docs, a quote per yes"
     },
     {
       "file": "aspnet-solution-designer.md",
@@ -815,7 +815,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "SubagentHandback",
       "event": "",
-      "note": "PreToolUse SubagentHandback: seal an output-scorer seat's report into its score file (mode-output-scorer); never decides"
+      "note": "PreToolUse SubagentHandback: seal an output-scoring seat's report into its score file (mode-output-scoring); never decides"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -911,7 +911,7 @@
       "file": "guard-answer.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory); `/alfred-code:mode:scoring on|off` switches the scorer for the session, said as a `[mode]` line, and the `Modes ON:` line names what is on; rewrites the session-inspector status file when auto-run or the scorer changed"
+      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory); `/alfred-code:mode:scoring on|off` switches the scoring for the session, said as a `[mode]` line, and the `Modes ON:` line names what is on; rewrites the session-inspector status file when auto-run or the scoring changed"
     },
     {
       "file": "guard-answer.js",
@@ -1238,6 +1238,7 @@
       "habits-skill-writing",
       "task-auto",
       "habits-output-scorer",
+      "mode-output-scorer",
       "capture-architecture-quality",
       "capture-code-quality",
       "capture-test-coverage",
@@ -1260,7 +1261,8 @@
       "ci-failure-diagnoser.md",
       "runtime-failure-diagnoser.md",
       "alfred-issue-diagnoser-ci.md",
-      "alfred-issue-diagnoser-runtime.md"
+      "alfred-issue-diagnoser-runtime.md",
+      "output-scorer.md"
     ],
     "rules": [
       "baseline-agents-skills.md",
@@ -1347,7 +1349,8 @@
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-topic",
       "task-auto": "mode-auto-run",
-      "habits-output-scorer": "mode-output-scorer",
+      "habits-output-scorer": "mode-output-scoring",
+      "mode-output-scorer": "mode-output-scoring",
       "alfred-capture-agent-capabilities": "capture-awareness",
       "capture-agent-capabilities": "capture-awareness",
       "alfred-capture-architecture": "capture-awareness",
@@ -1401,7 +1404,8 @@
       "ci-failure-diagnoser": "issue-diagnoser-ci",
       "runtime-failure-diagnoser": "issue-diagnoser-runtime",
       "alfred-issue-diagnoser-ci": "issue-diagnoser-ci",
-      "alfred-issue-diagnoser-runtime": "issue-diagnoser-runtime"
+      "alfred-issue-diagnoser-runtime": "issue-diagnoser-runtime",
+      "output-scorer": "output-scoring"
     },
     "rules": {
       "baseline-docs-root": "alfred-docs-root",
@@ -1433,7 +1437,9 @@
     },
     "hooks": {
       "guard-answer-length": "guard-answer",
-      "memory-session": "preferences-session:host"
+      "memory-session": "preferences-session:host",
+      "guard-answer:scorer": "guard-answer:scoring",
+      "guard-stop-contract:scorer": "guard-stop-contract:scoring"
     }
   },
   "renamedTopics": {

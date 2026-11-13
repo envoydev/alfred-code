@@ -26,7 +26,7 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
     // ALFRED_CODE_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
     // 'hours' is a duration the idle-gap offer reads with parseFloat: decimals allowed, 0 meaning off.
-    // 'int' is a whole number in min..max - a count, never a percent (ALFRED_CODE_SCORER_ROUNDS).
+    // 'int' is a whole number in min..max - a count, never a percent (ALFRED_CODE_SCORING_ROUNDS).
     const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv', 'hours', 'int']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
@@ -104,14 +104,14 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     }
 });
 
-test('catalog: the scorer rows carry the validate shapes the walks check', () =>
+test('catalog: the scoring rows carry the validate shapes the walks check', () =>
 {
     const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
     const v = (k) => cat.env.find((r) => r.key === k).validate;
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER'), { type: 'enum', values: ['0', '1'] });
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_LEVEL'), { type: 'percent', min: 60, max: 100 });
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_OUTPUTS'), { type: 'csv', values: ['designer-plan', 'root-cause', 'inline-plan'] });
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_ROUNDS'), { type: 'int', min: 1, max: 10 });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING'), { type: 'enum', values: ['0', '1'] });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING_LEVEL'), { type: 'percent', min: 60, max: 100 });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING_OUTPUTS'), { type: 'csv', values: ['designer-plan', 'root-cause', 'inline-plan'] });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING_ROUNDS'), { type: 'int', min: 1, max: 10 });
     assert.ok(!('values' in v('ALFRED_CODE_HOOKS_OFF')), 'the one csv row of today is unchanged');
 });
 

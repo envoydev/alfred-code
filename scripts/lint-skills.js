@@ -171,7 +171,7 @@ const NON_SKILL_TOKENS = new Set([
     'windows-desktop',
     'macos-desktop',
     'appium-mcp',
-    // mode-output-scorer's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
+    // mode-output-scoring's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
     // seats its outputs table names - outputs, script words and seats, not skills.
     'designer-plan', 'root-cause', 'inline-plan', 'topic-explainer', 'upgrade-plan',
     'ask-continue', 'withhold-final', 'offer-fix',
@@ -3133,7 +3133,7 @@ const REALPATH_PINS = {
     'scripts/guard-read-write.test.js': 7,
     'scripts/guard-secret-value.test.js': 3,
     'scripts/guard-sensitive-data.test.js': 2,
-    'scripts/habits-scorer-card.test.js': 2,
+    'scripts/habits-scoring-card.test.js': 2,
     'scripts/handoff-engine.test.js': 1,
     'scripts/history-session.test.js': 3,
     'scripts/hook-prelude.test.js': 10,
@@ -3263,7 +3263,7 @@ const RETIRED_AWARENESS_FILES = [
     [/(?<![\w-])architecture\/ORIENTATION(?![\w-])/g, '`awareness/ARCHITECTURE-ORIENTATION-AWARENESS`'],
     [/(?<![\w-])alfred-architecture\.md/g, '`alfred-awareness.md`'],
 ].map(([re, use]) => [re, use, 'file']);
-const RETIRED_FILE_EXEMPT = new RegExp([OLD_LOCATION_EXEMPT.source, '^stack/mcp/data-root\\.js$', '^stack/skills/mode-output-scorer/scripts/scorecard\\.js$', '^stack/skills/mode-output-scorer/references/outputs\\.md$',
+const RETIRED_FILE_EXEMPT = new RegExp([OLD_LOCATION_EXEMPT.source, '^stack/mcp/data-root\\.js$', '^stack/skills/mode-output-scoring/scripts/scorecard\\.js$', '^stack/skills/mode-output-scoring/references/outputs\\.md$',
     '^stack/skills/capture-awareness/scripts/awareness-state\\.js$', '^scripts/scan-evidence\\.js$', '^meta/conformance\\.json$', '^meta/skill-comply/[^/]+/fixtures/'].join('|'));
 const RETIRED_QUALITY_EXEMPT = /^stack\/hooks\/layout\.js$|^setup-plugin\/references\/update-history\.md$|\.test\.js$|^scripts\/fixtures\/|^docs\/.*-evidence\.md$|^docs\/[^/]*-\d{4}-\d{2}-\d{2}\.md$|^docs\/superpowers\/|^scripts\/lint-skills\.js$/;
 const RETIRED_QUALITY_WORDS = /older copy|renamed|retired|\blayout\b|legacy/i;

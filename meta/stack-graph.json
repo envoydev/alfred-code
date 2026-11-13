@@ -281,7 +281,7 @@
       "mcps": [],
       "plugins": []
     },
-    "mode-output-scorer": {
+    "mode-output-scoring": {
       "mcps": [],
       "plugins": []
     },
@@ -673,7 +673,7 @@
       "mcps": [],
       "plugins": []
     },
-    "output-scorer": {
+    "output-scoring": {
       "skills": [],
       "skillsSource": "none",
       "agents": [],

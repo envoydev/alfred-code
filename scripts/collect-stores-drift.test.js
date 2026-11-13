@@ -181,7 +181,7 @@ const HELPERS = {
     findState: { kindAt: 1, nameAt: 2 },
     statsPath: { kind: 'statistics', nameAt: 1, array: true },
     findStats: { kind: 'statistics', nameAt: 1, array: true },
-    scorerPath: { kind: 'sessions', nameAt: 1 },
+    scoringPath: { kind: 'sessions', nameAt: 1 },
 };
 // Names that hold no session, each with its reason.
 const DRIFT_EXEMPT = {
@@ -297,8 +297,8 @@ function swept(roots)
                 if (!values.length && arg.length === 1 && arg[0].type === 'word') values = loopValues(tokens, k, arg[0].value);
                 for (const v of values) if (!sweepMatch(v)) problems.push(`sweepStale '${v}' (${path.basename(file)}) maps to no row with sweeps`);
             }
-            else if (t.value === 'sweepScorerFolders' && !STORES.some((r) => r.name === 'scorer' && r.sweeps))
-                problems.push(`sweepScorerFolders (${path.basename(file)}) maps to no scorer row with sweeps`);
+            else if (t.value === 'sweepScoringFolders' && !STORES.some((r) => r.name === 'scoring' && r.sweeps))
+                problems.push(`sweepScoringFolders (${path.basename(file)}) maps to no scoring row with sweeps`);
             else if (t.value === 'prune' && (args[0] || []).some((x) => x.value === 'historyDir') && !STORES.some((r) => r.kind === 'history' && r.prunes))
                 problems.push(`prune of the history dir (${path.basename(file)}) maps to no history row with prunes`);
         }
@@ -365,7 +365,7 @@ test('every name passed to the path helpers is a row or an exemption', () =>
 {
     const roots = rootsUnder(REPO);
     const seen = new Set(names(roots).map((n) => `${n.kind}:${n.name}`));
-    for (const known of ['sessions:AUTO-RUN-', 'sessions:twins-', 'sessions:trivial-', 'sessions:scorer', 'sessions:models.json',
+    for (const known of ['sessions:AUTO-RUN-', 'sessions:twins-', 'sessions:trivial-', 'sessions:scoring', 'sessions:models.json',
         'statistics:hook-blocks', 'statistics:docs-log.jsonl', 'approvals:APPROVAL'])
         assert.ok(seen.has(known), `the scan reads ${known}`);
     assert.deepStrictEqual(scan(roots), []);

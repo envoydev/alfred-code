@@ -367,13 +367,19 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
 // it to the catalog.
 const VARIABLE_KEYS = Object.freeze([
     'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_INSTRUMENT', 'ALFRED_CODE_CORRECTION_NUDGE', 'ALFRED_CODE_TURN_CHECK',
-    'ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_SCORER_OUTPUTS', 'ALFRED_CODE_SCORER_ROUNDS',
+    'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL', 'ALFRED_CODE_SCORING_OUTPUTS', 'ALFRED_CODE_SCORING_ROUNDS',
     'ALFRED_CODE_HISTORY', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_AUTO_COMPACT',
     'ALFRED_CODE_MAXIMUM_RUN_AGENTS', 'ALFRED_CODE_MEMORY', 'ALFRED_CODE_FRESH_SESSION_AFTER_HOURS',
     'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_WORKSPACE',
 ]);
 const VARIABLE_SET = new Set(VARIABLE_KEYS);
+// until 4.0.0: the four keys 3.11.0 renamed are read as their new key wherever that key has no value in the same file
+// (a tracked file a teammate has not updated yet); new key -> old key.
+const OLD_KEYS = Object.freeze({
+    ALFRED_CODE_SCORING: 'ALFRED_CODE_SCORER', ALFRED_CODE_SCORING_LEVEL: 'ALFRED_CODE_SCORER_LEVEL',
+    ALFRED_CODE_SCORING_OUTPUTS: 'ALFRED_CODE_SCORER_OUTPUTS', ALFRED_CODE_SCORING_ROUNDS: 'ALFRED_CODE_SCORER_ROUNDS',
+});
 // Never taken from a member: the docs mode is this project's own layout (release 1's ENV_NEVER), and the chain cannot
 // decide the switch that gates it.
 const MEMBER_NEVER = new Set(['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE']);
@@ -449,6 +455,7 @@ function settingsEnv(file)
 const valueIn = (from, key) =>
 {
     const value = from && Object.hasOwn(from, key) ? from[key] : undefined;
+    if ((value === '' || value === null || value === undefined) && OLD_KEYS[key]) return valueIn(from, OLD_KEYS[key]);
     return value === '' || value === null || value === undefined ? undefined : String(value);
 };
 const csvOf = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -466,7 +473,7 @@ function fileNotes(read, label, secrets)
     const notes = read.bad.map((n) => `!! variables: ${label} line ${n} is not a KEY=value line - not read`);
     for (const key of Object.keys(read.values))
     {
-        if (VARIABLE_SET.has(key)) continue;
+        if (VARIABLE_SET.has(key) || Object.values(OLD_KEYS).includes(key)) continue;
         if (SECRET_KEY_RE.test(key)) { notes.push(`!! variables: ${key} in ${label} looks like a credential - keep it in ${secrets}`); continue; }
         if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key)) continue;
         notes.push(key === HOOKS_OFF_KEY
@@ -1145,5 +1152,5 @@ module.exports = {
     settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
-    VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
+    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };

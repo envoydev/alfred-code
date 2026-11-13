@@ -284,7 +284,9 @@ who asks about a name the log did not print.
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 | `/habits-explain-code` | `/habits-explain-topic` |
 | `/task-auto` | `/mode-auto-run` |
-| `/habits-output-scorer` | `/mode-output-scorer` |
+| `/habits-output-scorer` | `/mode-output-scoring` |
+| `/mode-output-scorer` | `/mode-output-scoring` |
+| seat `output-scorer` | seat `output-scoring` |
 
 ## after 2.9.0 - the stack's own code and security reviews
 
@@ -362,11 +364,11 @@ the card as the user's to run - only when they want that server again.
 ## after 2.10.1 - grade before release: the output scorer
 
 A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
-`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It was seeded OFF
+`output-scoring` seat before they are released (the `mode-output-scoring` skill, always installed). It was seeded OFF
 until 3.6.0 (the section after 3.6.0 says what changed): `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
 outputs (a csv; list all three names to grade every output). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
-stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
+stack - `/habits-explain-topic /mode-output-scoring <request>` - grades that one request's output even while it is off,
 an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
 the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
 `guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
@@ -839,7 +841,7 @@ The four mode flags are gone. A mode is switched by its own command, typed alone
 ```
 
 A mode lasts the session; the command with no word after it says whether the mode is on. `auto-run on` also stops the
-fresh-session question, and `auto-compact on` stops it alone. The settings that last are `ALFRED_CODE_SCORER` and
+fresh-session question, and `auto-compact on` stops it alone. The settings that last are `ALFRED_CODE_SCORING` and
 `ALFRED_CODE_AUTO_COMPACT`, set in `/alfred-code:configure` (the Environment area).
 
 `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on` and `--mode-output-scorer-off` now print a
@@ -848,7 +850,7 @@ you; while it is on, a retired off flag ends nothing - type `/alfred-code:mode:a
 with a flag before the update and resumed after it is attended again - type `/alfred-code:mode:auto-run on`.
 
 `/mode-auto-run <request>` is unchanged: it turns auto-run on and runs the request in one go. An install with no core
-plugin has no mode command: there `ALFRED_CODE_SCORER` and `ALFRED_CODE_AUTO_COMPACT` are the switches,
+plugin has no mode command: there `ALFRED_CODE_SCORING` and `ALFRED_CODE_AUTO_COMPACT` are the switches,
 `/mode-auto-run <request>` starts auto-run, and it ends with the session. A headless one-call run (`claude -p`) turns
 auto-run on with `/mode-auto-run <request>`, or types the mode command as the session's first call and resumes that
 session with the flow command.
@@ -971,3 +973,26 @@ from the root's. Expect one more hold per child per session, and again after a c
 `ALFRED_CODE_HOOKS_OFF` switches its parts off as it does at its own start.
 
 Nothing to do by hand.
+
+## after 3.10.0 - the grader's names say scoring
+
+The output grader is named for what it does: the skill is `/mode-output-scoring` and its seat `output-scoring` (the
+upgrade table above lists the old names). The settings, the switches and the session state follow:
+
+| Before | Now |
+| --- | --- |
+| `ALFRED_CODE_SCORER` | `ALFRED_CODE_SCORING` |
+| `ALFRED_CODE_SCORER_LEVEL` | `ALFRED_CODE_SCORING_LEVEL` |
+| `ALFRED_CODE_SCORER_OUTPUTS` | `ALFRED_CODE_SCORING_OUTPUTS` |
+| `ALFRED_CODE_SCORER_ROUNDS` | `ALFRED_CODE_SCORING_ROUNDS` |
+| `guard-answer:scorer` in `ALFRED_CODE_HOOKS_OFF` | `guard-answer:scoring` |
+| `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` | `guard-stop-contract:scoring` |
+| `state/sessions/SCORER-*` and `state/sessions/scorer/` | `state/sessions/SCORING-*` and `state/sessions/scoring/` |
+
+`/alfred-code:update` renames the four variables in `.variables` and both settings `env` blocks, re-keys a
+`skillOverrides` entry, re-spells a seat deny and a stored part switch, moves the skill copy and removes the old
+session state - so a session's own scoring on / off from before the update is forgotten and the variable decides.
+Until 4.0.0 the old spellings still act where an update has not run yet: the four old keys in a file a teammate has
+not updated, the two old part names, a skill copy under the old folder and the old name typed in a request. A skill
+copy made before the update dispatches a seat the updated plugin no longer has, so its grade does not run - run
+`/alfred-code:update`. The session status file keeps its `scorer` field (schema 1).

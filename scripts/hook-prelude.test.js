@@ -1077,77 +1077,77 @@ test('snapshotReview: one file per call, so calls started together all keep thei
 });
 
 // ---------------------------------------------------------------------------------------------
-// the scorer's shared state (mode-output-scorer): parses, the switch, the skill copy, the stack reader, row marks
+// the scoring's shared state (mode-output-scoring): parses, the switch, the skill copy, the stack reader, row marks
 // ---------------------------------------------------------------------------------------------
-const { skillCopyState, oursLoadable, scorerLevel, scorerRounds, scorerOutputs, scorerState, scorerFile, safeSession, stackNamed, producerMarks, sweepScorerFolders } = require(PRELUDE);
-const scorerWrite = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
-const scorerRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-root-')));
-scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
+const { skillCopyState, oursLoadable, scoringLevel, scoringRounds, scoringOutputs, scoringState, scoringFile, safeSession, stackNamed, producerMarks, sweepScoringFolders } = require(PRELUDE);
+const scoringWrite = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+const scoringRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-root-')));
+scoringWrite(path.join(scoringRoot, '.claude', 'skills', 'mode-output-scoring', 'SKILL.md'), '---\nname: mode-output-scoring\n---\n');
 // no CLAUDE_PLUGIN_ROOT, so neverSetUp is false; an empty config dir, so no account skill or override reaches in
-const scorerBase = { CLAUDE_PROJECT_DIR: scorerRoot, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-cfg-')) };
-const scorerOn = { ...scorerBase, ALFRED_CODE_SCORER: '1' };
+const scoringBase = { CLAUDE_PROJECT_DIR: scoringRoot, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-cfg-')) };
+const scoringOn = { ...scoringBase, ALFRED_CODE_SCORING: '1' };
 const pickState = (s) => ({ usable: s.usable, on: s.on, source: s.source });
 
-test('scorer parses: the level, the run cap and the outputs list', () => {
+test('scoring parses: the level, the run cap and the outputs list', () => {
     for (const [v, want] of [['60', 60], ['80', 80], ['100', 100], ['59', 80], ['101', 80], ['abc', 80], ['', 80], [undefined, 80], ['8.5', 80]])
-        assert.strictEqual(scorerLevel({ ALFRED_CODE_SCORER_LEVEL: v }), want, `level ${v}`);
+        assert.strictEqual(scoringLevel({ ALFRED_CODE_SCORING_LEVEL: v }), want, `level ${v}`);
     for (const [v, want] of [['1', 1], ['10', 10], ['3', 3], ['0', 3], ['11', 3], ['abc', 3], ['', 3], [undefined, 3], ['2.5', 3]])
-        assert.strictEqual(scorerRounds({ ALFRED_CODE_SCORER_ROUNDS: v }), want, `rounds ${v}`);
+        assert.strictEqual(scoringRounds({ ALFRED_CODE_SCORING_ROUNDS: v }), want, `rounds ${v}`);
     const all = ['designer-plan', 'root-cause', 'inline-plan'];
     // B1 (2026-11-03): unset, empty or a list naming no valid output is the catalog default, plan files only (an empty
     // value is unset - the ruling of the run B follow-ups); all three names grade every output
-    assert.deepStrictEqual(scorerOutputs({}), { outputs: ['designer-plan'], ignored: [] }, 'no key at all');
+    assert.deepStrictEqual(scoringOutputs({}), { outputs: ['designer-plan'], ignored: [] }, 'no key at all');
     for (const [v, outputs, ignored] of [[undefined, ['designer-plan'], []], [null, ['designer-plan'], []], ['', ['designer-plan'], []], [' , ', ['designer-plan'], []],
         ['designer-plan,root-cause,inline-plan', all, []], ['designer-plan,root-cause', ['designer-plan', 'root-cause'], []],
         [' Root-Cause , inline-plan', ['root-cause', 'inline-plan'], []], ['topic-explainer', ['designer-plan'], ['topic-explainer']],
         ['foo,Foo,bar', ['designer-plan'], ['foo', 'bar']],
         ['foo,root-cause', ['root-cause'], ['foo']], ['inline-plan,designer-plan,inline-plan', ['designer-plan', 'inline-plan'], []]])
-        assert.deepStrictEqual(scorerOutputs({ ALFRED_CODE_SCORER_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
+        assert.deepStrictEqual(scoringOutputs({ ALFRED_CODE_SCORING_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
 });
 
-test('scorerState: env, the flag file, a garbage file, and every switch that makes it unusable (AC13, AC20)', () => {
-    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', scorerOn)), { usable: true, on: true, source: 'env' });
+test('scoringState: env, the flag file, a garbage file, and every switch that makes it unusable (AC13, AC20)', () => {
+    assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', scoringOn)), { usable: true, on: true, source: 'env' });
     // B1 (2026-11-03): an unset or empty switch is the catalog default, on; only an explicit value but 1 is off
     for (const v of [undefined, ''])
-        assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', { ...scorerBase, ALFRED_CODE_SCORER: v })), { usable: true, on: true, source: 'env' }, `switch ${v}`);
-    assert.deepStrictEqual(scorerState(scorerRoot, 's1', scorerBase).outputs, ['designer-plan'], 'unset outputs: plan files only');
+        assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringBase, ALFRED_CODE_SCORING: v })), { usable: true, on: true, source: 'env' }, `switch ${v}`);
+    assert.deepStrictEqual(scoringState(scoringRoot, 's1', scoringBase).outputs, ['designer-plan'], 'unset outputs: plan files only');
     for (const v of ['0', 'yes', ' 2 '])
-        assert.strictEqual(scorerState(scorerRoot, 's1', { ...scorerBase, ALFRED_CODE_SCORER: v }).on, false, `switch ${v}`);
-    scorerWrite(scorerFile(scorerRoot, 's2', scorerBase), 'on\nat: x\n');
-    assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's2', { ...scorerBase, ALFRED_CODE_SCORER: '0' })), { usable: true, on: true, source: 'flag' }, 'on beats env off');
-    scorerWrite(scorerFile(scorerRoot, 's3', scorerBase), 'off\nat: x\n');
-    assert.strictEqual(scorerState(scorerRoot, 's3', scorerOn).on, false, 'off beats env');
-    scorerWrite(scorerFile(scorerRoot, 's4', scorerBase), 'garbage');
-    assert.deepStrictEqual([scorerState(scorerRoot, 's4', scorerOn).source, scorerState(scorerRoot, 's4', scorerOn).file], ['env', 'garbage']);
-    for (const off of ['guard-answer', 'guard-answer:scorer', 'guard-stop-contract', 'guard-stop-contract:scorer'])
-        assert.deepStrictEqual(pickState(scorerState(scorerRoot, 's1', { ...scorerOn, ALFRED_CODE_HOOKS_OFF: off })), { usable: false, on: false, source: 'env' }, off);
-    const s = scorerState(scorerRoot, 's1', { ...scorerOn, ALFRED_CODE_SCORER_LEVEL: '95', ALFRED_CODE_SCORER_ROUNDS: '5', ALFRED_CODE_SCORER_OUTPUTS: 'root-cause' });
+        assert.strictEqual(scoringState(scoringRoot, 's1', { ...scoringBase, ALFRED_CODE_SCORING: v }).on, false, `switch ${v}`);
+    scoringWrite(scoringFile(scoringRoot, 's2', scoringBase), 'on\nat: x\n');
+    assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's2', { ...scoringBase, ALFRED_CODE_SCORING: '0' })), { usable: true, on: true, source: 'flag' }, 'on beats env off');
+    scoringWrite(scoringFile(scoringRoot, 's3', scoringBase), 'off\nat: x\n');
+    assert.strictEqual(scoringState(scoringRoot, 's3', scoringOn).on, false, 'off beats env');
+    scoringWrite(scoringFile(scoringRoot, 's4', scoringBase), 'garbage');
+    assert.deepStrictEqual([scoringState(scoringRoot, 's4', scoringOn).source, scoringState(scoringRoot, 's4', scoringOn).file], ['env', 'garbage']);
+    for (const off of ['guard-answer', 'guard-answer:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
+        assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_HOOKS_OFF: off })), { usable: false, on: false, source: 'env' }, off);
+    const s = scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_SCORING_LEVEL: '95', ALFRED_CODE_SCORING_ROUNDS: '5', ALFRED_CODE_SCORING_OUTPUTS: 'root-cause' });
     assert.deepStrictEqual([s.level, s.rounds, s.outputs], [95, 5, ['root-cause']]);
 });
 
-test('skillCopyState and scorerState: no copy and off are unusable; user-invocable-only is usable but not on (AC19, R24)', () => {
+test('skillCopyState and scoringState: no copy and off are unusable; user-invocable-only is usable but not on (AC19, R24)', () => {
     for (const name of ['settings.local.json', 'settings.json'])
         for (const [v, state, usable] of [['off', 'off', false], ['user-invocable-only', 'user-invocable-only', true], ['on', 'on', true]]) {
-            scorerWrite(path.join(scorerRoot, '.claude', name), JSON.stringify({ skillOverrides: { 'mode-output-scorer': v } }));
-            assert.strictEqual(skillCopyState(scorerRoot, 'mode-output-scorer', scorerOn), state, `${name} ${v}`);
-            assert.deepStrictEqual([scorerState(scorerRoot, 's1', scorerOn).usable, scorerState(scorerRoot, 's1', scorerOn).on], [usable, v === 'on'], `${name} ${v}`);
-            assert.strictEqual(oursLoadable(scorerRoot, 'mode-output-scorer', scorerOn), v === 'on');
-            fs.rmSync(path.join(scorerRoot, '.claude', name));
+            scoringWrite(path.join(scoringRoot, '.claude', name), JSON.stringify({ skillOverrides: { 'mode-output-scoring': v } }));
+            assert.strictEqual(skillCopyState(scoringRoot, 'mode-output-scoring', scoringOn), state, `${name} ${v}`);
+            assert.deepStrictEqual([scoringState(scoringRoot, 's1', scoringOn).usable, scoringState(scoringRoot, 's1', scoringOn).on], [usable, v === 'on'], `${name} ${v}`);
+            assert.strictEqual(oursLoadable(scoringRoot, 'mode-output-scoring', scoringOn), v === 'on');
+            fs.rmSync(path.join(scoringRoot, '.claude', name));
         }
-    fs.rmSync(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer'), { recursive: true });
-    assert.strictEqual(skillCopyState(scorerRoot, 'mode-output-scorer', scorerOn), 'absent');
-    assert.strictEqual(scorerState(scorerRoot, 's1', scorerOn).usable, false);
-    scorerWrite(path.join(scorerRoot, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\n---\n');
+    fs.rmSync(path.join(scoringRoot, '.claude', 'skills', 'mode-output-scoring'), { recursive: true });
+    assert.strictEqual(skillCopyState(scoringRoot, 'mode-output-scoring', scoringOn), 'absent');
+    assert.strictEqual(scoringState(scoringRoot, 's1', scoringOn).usable, false);
+    scoringWrite(path.join(scoringRoot, '.claude', 'skills', 'mode-output-scoring', 'SKILL.md'), '---\nname: mode-output-scoring\n---\n');
 });
 
 test('stackNamed: the slash form, the bare name after a usage word, a command-args row; code, quotes and talk are not (final review 4)', () => {
-    for (const t of ['/task-version-upgrade /mode-output-scorer upgrade to .NET 10', '/mode-output-scorer explain closures',
-        'using mode-output-scorer, explain closures', 'explain closures with the mode-output-scorer', 'run mode-output-scorer on this plan',
-        '<command-name>/habits-explain-topic</command-name><command-args>/mode-output-scorer explain x</command-args>'])
+    for (const t of ['/task-version-upgrade /mode-output-scoring upgrade to .NET 10', '/mode-output-scoring explain closures',
+        'using mode-output-scoring, explain closures', 'explain closures with the mode-output-scoring', 'run mode-output-scoring on this plan',
+        '<command-name>/habits-explain-topic</command-name><command-args>/mode-output-scoring explain x</command-args>'])
         assert.ok(stackNamed(t), t);
-    for (const t of ['what does `/mode-output-scorer` do', '```\n/mode-output-scorer\n```', '> /mode-output-scorer x',
-        'my-mode-output-scorer-notes', 'mode-output-scorers', '| mode-output-scorer | row |',
-        'why did mode-output-scorer not run?', 'mode-output-scorer graded my plan at 71 - why?', 'is the mode-output-scorer on'])
+    for (const t of ['what does `/mode-output-scoring` do', '```\n/mode-output-scoring\n```', '> /mode-output-scoring x',
+        'my-mode-output-scoring-notes', 'mode-output-scorings', '| mode-output-scoring | row |',
+        'why did mode-output-scoring not run?', 'mode-output-scoring graded my plan at 71 - why?', 'is the mode-output-scoring on'])
         assert.ok(!stackNamed(t), t);
 });
 
@@ -1156,27 +1156,27 @@ test('producerMarks: a Skill call, a typed command, a command inside a tool resu
     const typed = (t) => JSON.stringify({ type: 'user', message: { role: 'user', content: t } });
     assert.deepStrictEqual(producerMarks(skill('task-implement')), ['task-implement']);
     assert.deepStrictEqual(producerMarks(skill('alfred-code:task-verify-plan')), ['task-verify-plan']);
-    assert.deepStrictEqual(producerMarks(typed('<command-name>/mode-output-scorer</command-name>')), ['mode-output-scorer']);
+    assert.deepStrictEqual(producerMarks(typed('<command-name>/mode-output-scoring</command-name>')), ['mode-output-scoring']);
     assert.deepStrictEqual(producerMarks(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: '<command-name>/task-implement</command-name>' }] } })), []);
     assert.deepStrictEqual(producerMarks(skill('javascript')), []);
     assert.deepStrictEqual(producerMarks('{"type":"assistant","mess'), []);
 });
 
-test('safeSession: separators, dot names and spaces never leave the scorer folder (R31)', () => {
+test('safeSession: separators, dot names and spaces never leave the scoring folder (R31)', () => {
     for (const [id, want] of [['abc-1.2', 'abc-1.2'], ['a/../b', 'a_.._b'], ['..', '_'], ['.', '_'], ['a b', 'a_b'], ['a\\b', 'a_b']])
         assert.strictEqual(safeSession(id), want, id);
-    assert.strictEqual(path.dirname(scorerFile(scorerRoot, '../x', scorerBase)), path.dirname(scorerFile(scorerRoot, 'y', scorerBase)));
+    assert.strictEqual(path.dirname(scoringFile(scoringRoot, '../x', scoringBase)), path.dirname(scoringFile(scoringRoot, 'y', scoringBase)));
 });
 
-test('sweepScorerFolders: an 8-day-old session folder goes, a fresh one stays, once a day', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-sweep-'));
+test('sweepScoringFolders: an 8-day-old session folder goes, a fresh one stays, once a day', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-sweep-'));
     const age = (f) => { const s = (Date.now() - 8 * 86400000) / 1000; fs.utimesSync(f, s, s); };
     const old = path.join(dir, 'old', 'x', 'ab12cd34.draft.md'); const fresh = path.join(dir, 'new', 'x', 'cd34ab12.draft.md');
-    scorerWrite(old, 'd'); scorerWrite(fresh, 'd'); age(old);
-    assert.strictEqual(sweepScorerFolders(dir, { now: Date.now() }), 1);
+    scoringWrite(old, 'd'); scoringWrite(fresh, 'd'); age(old);
+    assert.strictEqual(sweepScoringFolders(dir, { now: Date.now() }), 1);
     assert.deepStrictEqual([fs.existsSync(path.join(dir, 'old')), fs.existsSync(fresh)], [false, true]);
-    const later = path.join(dir, 'old2', 'x', 'ef56ab12.draft.md'); scorerWrite(later, 'd'); age(later);
-    assert.strictEqual(sweepScorerFolders(dir, { now: Date.now() }), 0, "the day's stamp holds a second call");
+    const later = path.join(dir, 'old2', 'x', 'ef56ab12.draft.md'); scoringWrite(later, 'd'); age(later);
+    assert.strictEqual(sweepScoringFolders(dir, { now: Date.now() }), 0, "the day's stamp holds a second call");
     assert.ok(fs.existsSync(later));
 });
 
@@ -1669,4 +1669,46 @@ test('prelude: every other hook still follows both', () =>
     const env = { ALFRED_CODE_HOOKS_OFF: 'rules-session,guard-secret-value', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' };
     assert.strictEqual(hookDisabled('guard-secret-value', env), true);
     assert.strictEqual(profileOff('docs-session', env), true);
+});
+
+test('until 4.0.0: a stored part switch under the old name still turns the scoring part off', () => {
+  const prelude = require('../stack/hooks/hook-prelude.js');
+  for (const hook of ['guard-answer', 'guard-stop-contract']) {
+    assert.strictEqual(prelude.HOOK_RENAMED[`${hook}:scorer`], `${hook}:scoring`);
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `history-session, ${hook}:scorer` }), true, 'in a list');
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${hook.toUpperCase()}:SCORER` }), true, 'any case');
+    assert.strictEqual(prelude.hookDisabled(`${hook}.js`, { ALFRED_CODE_HOOKS_OFF: `${hook}:scorer` }), false, 'a part never stands the hook down');
+    assert.strictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_HOOKS_OFF: `${hook}:scorer` })).usable, false);
+  }
+  assert.strictEqual(prelude.partOff('guard-answer', 'scoring', { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' }), false, 'no other hook');
+});
+
+test('until 4.0.0: a copy under the old folder name keeps scoring usable; the new copy decides when both exist', () => {
+    const { SCORING_SKILLS } = require(PRELUDE);
+    assert.deepStrictEqual([...SCORING_SKILLS], ['mode-output-scoring', 'mode-output-scorer']);   // legacy
+    const OLD = SCORING_SKILLS[1];
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-skew-')));
+    const env = { ...scoringOn, CLAUDE_PROJECT_DIR: root };
+    const copy = (name) => scoringWrite(path.join(root, '.claude', 'skills', name, 'SKILL.md'), `---\nname: ${name}\n---\n`);
+    assert.strictEqual(scoringState(root, 's1', env).usable, false, 'no copy');
+    copy(OLD);
+    assert.deepStrictEqual(pickState(scoringState(root, 's1', env)), { usable: true, on: true, source: 'env' }, 'the old copy alone');
+    scoringWrite(path.join(root, '.claude', 'settings.json'), JSON.stringify({ skillOverrides: { [OLD]: 'off' } }));
+    assert.strictEqual(scoringState(root, 's1', env).usable, false, 'switched off under its own name');
+    copy(SCORING_SKILLS[0]);
+    assert.strictEqual(scoringState(root, 's1', env).usable, true, 'the new copy decides; no override names it');
+    for (const t of [`/${OLD} explain closures`, `using ${OLD}, explain closures`, `/task-solve /${OLD} fix it`])
+        assert.strictEqual(stackNamed(t), true, t);
+    assert.strictEqual(stackNamed(`what does \`/${OLD}\` do`), false, 'inline code is talk');
+    assert.strictEqual(stackNamed(`/${OLD}s explain x`), false, 'a near name is no stack');
+});
+
+test('until 4.0.0: a stored part switch spelled with .js on the hook name still turns the scoring part off (review M1)', () => {
+  const prelude = require('../stack/hooks/hook-prelude.js');
+  for (const hook of ['guard-answer', 'guard-stop-contract']) {
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${hook}.js:scorer` }), true, `${hook}.js:scorer`);
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: ` ${hook.toUpperCase()}.JS:Scorer ` }), true, 'any case');
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${hook}.js:scoring` }), true, 'the new part with .js');
+  }
+  assert.strictEqual(prelude.partOff('docs-session', 'block', { ALFRED_CODE_HOOKS_OFF: 'docs-session.js:block' }), true, 'an unrenamed part with .js');
 });

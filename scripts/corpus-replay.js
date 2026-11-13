@@ -59,8 +59,8 @@ const ROUTES = [
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.*',
     tools: ['mcp__github__merge_pull_request', 'mcp__work_forge__accept_merge_request', 'mcp__plugin_acme_ado__repo_pull_request_write'] }, // mcp-fixture
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
-  // The output-scorer's seal (mode-output-scorer): a seat's hand-back is written to its score file, logged, never decided.
-  { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scorer-seal' },
+  // The output-scoring's seal (mode-output-scoring): a seat's hand-back is written to its score file, logged, never decided.
+  { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scoring-seal' },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
@@ -116,10 +116,10 @@ const UNEXERCISED = {
     'takes the pending file a dispatch wrote and prints at most a count line; pinned in agent-cap.test.js',
   'guard-unapproved-dispatch.js::SubagentStop':
     'marks the started agent\'s cap file and prints nothing - no verdict to replay; pinned in agent-cap.test.js',
-  // Wired 2026-10-25 (mode-output-scorer). The seal acts only on an output-scorer seat's hand-back, a seat the corpus
-  // predates; what it writes is pinned in guard-stop-closes.test.js ('scorer seal').
+  // Wired 2026-10-25 (mode-output-scoring). The seal acts only on an output-scoring seat's hand-back, a seat the corpus
+  // predates; what it writes is pinned in guard-stop-closes.test.js ('scoring seal').
   'guard-stop-contract.js::PreToolUse:SubagentHandback':
-    'the corpus predates the output-scorer seat; the seal is pinned in guard-stop-closes.test.js',
+    'the corpus predates the output-scoring seat; the seal is pinned in guard-stop-closes.test.js',
   // The config guard judges one thing since complexity stage 1 B11: a write that switches a protective guard off
   // (SYS-01, 2026-11-03), which the corpus predates. The lint-config judge these routes were measured on (2026-09-23, 820
   // transcripts: 29,058 Bash and 1,523 Write payloads, no fire) left with B11. The gate fires on both routes in

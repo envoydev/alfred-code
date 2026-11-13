@@ -101,7 +101,7 @@ function makeSession(opts = {})
 // session-inspector status file under the project.
 const SESSION_NAMES = (s) => [
     `AUTO-RUN-${s}`, `AUTO-TAKEN-${s}`, `AUTO-SAID-${s}`, `AUTO-COMPACT-${s}`, `COMPACT-STATE-${s}`, `twins-${s}.json`, `review-snapshot-${s}@c1.json`,
-    `trivial-${s}`, `turn-check-${s}`, `AGENT-CAP-${s}-R-a1`, `SCORER-${s}`, `SCORER-HELD-${s}`, `preferences-${s}-main.json`,
+    `trivial-${s}`, `turn-check-${s}`, `AGENT-CAP-${s}-R-a1`, `SCORING-${s}`, `SCORING-HELD-${s}`, `preferences-${s}-main.json`,
 ];
 function plantStores(fx)
 {
@@ -113,7 +113,7 @@ function plantStores(fx)
         fx.write(stats('hook-blocks', `${s}.jsonl`), line({ ts: at, session: s, hook: `guard-read-whole-file.js${mark}` }));
         fx.write(stats('tools-usage', `${s}.jsonl`), line({ ts: at, session: s, tool: 'Read', detail: `x${mark}` }) + line({ ts: at, session: s, tool: 'Bash', detail: `y${mark}` }));
         fx.write(state('history', `${s}.json`), JSON.stringify({ session: s, start: `abc${mark}` }));
-        fx.write(path.join(state('sessions', 'scorer'), s, 'draft.md'), `# draft${mark}`);
+        fx.write(path.join(state('sessions', 'scoring'), s, 'draft.md'), `# draft${mark}`);
         for (const name of SESSION_NAMES(s)) fx.write(state('sessions', name), `${name}${mark}`);
         const record = s === fx.sid ? 'untracked-at-start-abc123' : 'untracked-at-start-def456';
         fx.write(state('sessions', `untracked-session-${s}`), record);

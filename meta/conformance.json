@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "The stack's claims, graded over a real session by scripts/conformance.js (item 7, 2026-10-25) and printed as the usage report's machine-written Conformance section. Each claim cites the line that states its behaviour (source.marker, held to its file by lint check 68) and ships a holding and a violating fixture under scripts/fixtures/conformance/<id>/. A step is one skill-comply grader with an id, a step of an expect.json by reference (from_expect), or an x_state step over the session's state (history, scorer, ledger). A claim whose evidence the session does not carry reads not visible, never held.",
+  "note": "The stack's claims, graded over a real session by scripts/conformance.js (item 7, 2026-10-25) and printed as the usage report's machine-written Conformance section. Each claim cites the line that states its behaviour (source.marker, held to its file by lint check 68) and ships a holding and a violating fixture under scripts/fixtures/conformance/<id>/. A step is one skill-comply grader with an id, a step of an expect.json by reference (from_expect), or an x_state step over the session's state (history, scoring, ledger). A claim whose evidence the session does not carry reads not visible, never held.",
   "matchers": {
     "locate": { "any": [
       { "tool": "LSP" },
@@ -45,22 +45,22 @@
     },
     {
       "id": "S1", "area": "scoring",
-      "claim": "A scorer run's first verdict follows an output-scorer dispatch, and the script recorded that run's outcome - rounds.log `released` (passed, or accepted below the level) or `final` (withheld and kept) in the folder of the slug its `next` call names.",
-      "source": { "file": "stack/skills/mode-output-scorer/SKILL.md", "marker": "A drafted output is graded by a fresh, read-only output-scorer seat that never saw the conversation" },
+      "claim": "A scoring run's first verdict follows an output-scoring dispatch, and the script recorded that run's outcome - rounds.log `released` (passed, or accepted below the level) or `final` (withheld and kept) in the folder of the slug its `next` call names.",
+      "source": { "file": "stack/skills/mode-output-scoring/SKILL.md", "marker": "A drafted output is graded by a fresh, read-only output-scoring seat that never saw the conversation" },
       "window": { "opens": { "event": { "tool": "Bash", "field": "command", "text_match": "(?:scorecard\\.js|\\$S|\\$\\{S\\})\"? next\\b" },
-        "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?(?:habits|mode)-output-scorer$" } } },
+        "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?(?:habits-output-scorer|mode-output-scorer|mode-output-scoring)$" } } },
       "steps": [
-        { "id": "seat-graded", "type": "tool_used", "tool": "Agent", "field": "subagent_type", "text_match": "output-scorer$", "min": 1 },
-        { "id": "released", "type": "x_state", "source": "scorer", "match": { "line": "^(?:released|final) " },
+        { "id": "seat-graded", "type": "tool_used", "tool": "Agent", "field": "subagent_type", "text_match": "output-scor(?:er|ing)$", "min": 1 },
+        { "id": "released", "type": "x_state", "source": "scoring", "match": { "line": "^(?:released|final) " },
           "tie": { "row": "slug", "open": "command", "capture": "--slug[= ][\"']?([\\w.-]+)[\"']?(?:\\s|$)" } }
       ]
     },
     {
       "id": "S2", "area": "scoring",
-      "claim": "No plan file is written after the scorer's NOT PASSED line, up to the run's stop.",
-      "source": { "file": "meta/skill-comply/mode-output-scorer/expect.json", "marker": "the plan file is not written to its real path" },
-      "window": { "opens": { "skill": ["habits-output-scorer", "mode-output-scorer"] } },
-      "steps": [ { "id": "no-plan-after-withhold", "from_expect": "mode-output-scorer" } ]
+      "claim": "No plan file is written after the grader's NOT PASSED line, up to the run's stop.",
+      "source": { "file": "meta/skill-comply/mode-output-scoring/expect.json", "marker": "the plan file is not written to its real path" },
+      "window": { "opens": { "skill": ["habits-output-scorer", "mode-output-scorer", "mode-output-scoring"] } },
+      "steps": [ { "id": "no-plan-after-withhold", "from_expect": "mode-output-scoring" } ]
     },
     {
       "id": "P1", "area": "preferences",

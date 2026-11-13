@@ -65,7 +65,7 @@
         "./stack/agents/issue-diagnoser-ci.md",
         "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/ng-build-error-resolver.md",
-        "./stack/agents/output-scorer.md",
+        "./stack/agents/output-scoring.md",
         "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
         "./stack/agents/test-coverage-analyzer.md",

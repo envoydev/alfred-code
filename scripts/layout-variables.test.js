@@ -62,42 +62,42 @@ test('VARIABLE_KEYS equals the catalog minus the hook switch-offs', () =>
 
 test('the order: step 2 over 3 over 4 over 5', () =>
 {
-    const at = three({ ws: { vars: `${K('SCORER_LEVEL')}=64\n` }, api: { vars: `${K('SCORER_LEVEL')}=62\n`, local: { env: { [K('SCORER_LEVEL')]: '61' } } } });
+    const at = three({ ws: { vars: `${K('SCORING_LEVEL')}=64\n` }, api: { vars: `${K('SCORING_LEVEL')}=62\n`, local: { env: { [K('SCORING_LEVEL')]: '61' } } } });
     const api = at('ws/api');
-    const env = { ...ON, [K('SCORER_LEVEL')]: '63' };
-    const read = () => { const v = varsOf(api, env); return [v.values[K('SCORER_LEVEL')], v.from[K('SCORER_LEVEL')]]; };
+    const env = { ...ON, [K('SCORING_LEVEL')]: '63' };
+    const read = () => { const v = varsOf(api, env); return [v.values[K('SCORING_LEVEL')], v.from[K('SCORING_LEVEL')]]; };
     assert.deepStrictEqual(read(), ['61', 'settings.local.json']);
     fs.rmSync(path.join(api, '.claude', 'settings.local.json'));
     assert.deepStrictEqual(read(), ['62', 'own']);
     setVars(api, '# none\n');
     assert.deepStrictEqual(read(), ['63', 'env']);
-    delete env[K('SCORER_LEVEL')];
+    delete env[K('SCORING_LEVEL')];
     assert.deepStrictEqual(read(), ['64', '..']);
-    assert.ok(varsOf(api, env).notes.every((n) => !n.includes('SCORER_LEVEL')), 'no note for a plain catalog key');
+    assert.ok(varsOf(api, env).notes.every((n) => !n.includes('SCORING_LEVEL')), 'no note for a plain catalog key');
 });
 
 test('a launch 0 freezes: one member read is none', () =>
 {
-    const at = three({ ws: { vars: `${K('SCORER')}=1\n${K('MEMORY')}=custom\n` } });
+    const at = three({ ws: { vars: `${K('SCORING')}=1\n${K('MEMORY')}=custom\n` } });
     const frozen = varsOf(at('ws/api'), { ...UNSET, [K('WORKSPACE')]: '0' });
     assert.deepStrictEqual(frozen.values, { [K('WORKSPACE')]: '0' });
-    assert.strictEqual(varsOf(at('ws/api'), UNSET).values[K('SCORER')], '1', 'unset is on since 3.0.0 (D9)');
-    assert.strictEqual(varsOf(at('ws/api'), ON).values[K('SCORER')], '1');
+    assert.strictEqual(varsOf(at('ws/api'), UNSET).values[K('SCORING')], '1', 'unset is on since 3.0.0 (D9)');
+    assert.strictEqual(varsOf(at('ws/api'), ON).values[K('SCORING')], '1');
 });
 
 test('ignore env K in ws/api stops K from ws for ws/api and ws/api/tool', () =>
 {
     const at = three({
-        ws: { vars: `${K('SCORER_LEVEL')}=70\n${K('MEMORY')}=custom\n` },
-        api: { ws: { parent: '..', children: ['tool'], ignore: { env: [K('SCORER_LEVEL')] } } },
+        ws: { vars: `${K('SCORING_LEVEL')}=70\n${K('MEMORY')}=custom\n` },
+        api: { ws: { parent: '..', children: ['tool'], ignore: { env: [K('SCORING_LEVEL')] } } },
     });
     for (const [rel, up] of [['ws/api', '..'], ['ws/api/tool', '../..']])
     {
         const v = varsOf(at(rel));
-        assert.strictEqual(v.values[K('SCORER_LEVEL')], undefined, rel);
+        assert.strictEqual(v.values[K('SCORING_LEVEL')], undefined, rel);
         assert.deepStrictEqual([v.values[K('MEMORY')], v.from[K('MEMORY')]], ['custom', up], rel);
     }
-    assert.strictEqual(varsOf(at('ws')).values[K('SCORER_LEVEL')], '70', 'the root reads its own file');
+    assert.strictEqual(varsOf(at('ws')).values[K('SCORING_LEVEL')], '70', 'the root reads its own file');
 });
 
 test('DOCS_VERSIONING and WORKSPACE never come from a member', () =>
@@ -128,11 +128,11 @@ test('HOOKS_OFF merges the root\'s guard-ungated-commit:push with the child\'s d
 
 test('a .variables HOOKS_OFF or DATA_PATH line is not read and is named in notes', () =>
 {
-    const at = three({ api: { vars: `${K('HOOKS_OFF')}=guard-catastrophic-rm\n${K('DATA_PATH')}=elsewhere\n${K('SCORER')}=1\n` } });
+    const at = three({ api: { vars: `${K('HOOKS_OFF')}=guard-catastrophic-rm\n${K('DATA_PATH')}=elsewhere\n${K('SCORING')}=1\n` } });
     const v = varsOf(at('ws/api'));
     assert.strictEqual(v.values[K('HOOKS_OFF')], undefined);
     assert.strictEqual(v.values[K('DATA_PATH')], undefined);
-    assert.strictEqual(v.values[K('SCORER')], '1');
+    assert.strictEqual(v.values[K('SCORING')], '1');
     assert.ok(v.notes.includes(`!! variables: ${K('HOOKS_OFF')} in .variables is not read - it lives in .claude/settings.json`), v.notes.join('\n'));
     assert.ok(v.notes.includes(`!! variables: ${K('DATA_PATH')} in .variables is not read - only the stack's variables are; a guard switch stays in .claude/settings.json`), v.notes.join('\n'));
     assert.strictEqual(layout.hooksOffOf(at('ws/api'), { env: { ...ON } }), '', 'the file\'s HOOKS_OFF line switches nothing off');
@@ -151,9 +151,9 @@ test('AC11: no file and a 0-byte file read the process env', () =>
 
 test('AC11: a garbage line is kept out and named', () =>
 {
-    const at = tree({ 'p': { stamp: true, vars: `${K('HISTORY')}=5\nthis is not a pair\n${K('SCORER')}=1\n` } });
+    const at = tree({ 'p': { stamp: true, vars: `${K('HISTORY')}=5\nthis is not a pair\n${K('SCORING')}=1\n` } });
     const v = varsOf(at('p'), UNSET);
-    assert.deepStrictEqual(v.values, { [K('HISTORY')]: '5', [K('SCORER')]: '1' });
+    assert.deepStrictEqual(v.values, { [K('HISTORY')]: '5', [K('SCORING')]: '1' });
     assert.deepStrictEqual(v.notes, ['!! variables: .variables line 2 is not a KEY=value line - not read']);
     assert.deepStrictEqual(layout.readDotenv(path.join(at('p'), '.alfred', '.variables')).bad, [2]);
 });
@@ -173,7 +173,7 @@ test('AC11: a folder named .variables is no file', () =>
     const at = tree({ 'p': { stamp: true } });
     fs.mkdirSync(path.join(at('p'), '.alfred', '.variables'), { recursive: true });
     assert.strictEqual(layout.readDotenv(path.join(at('p'), '.alfred', '.variables')), null);
-    assert.deepStrictEqual(varsOf(at('p'), { ...UNSET, [K('SCORER')]: '1' }).values, { [K('SCORER')]: '1' });
+    assert.deepStrictEqual(varsOf(at('p'), { ...UNSET, [K('SCORING')]: '1' }).values, { [K('SCORING')]: '1' });
 });
 
 test('applyVariables: a launch HOOKS_OFF with no project settings stands; an account entry stands beside a member\'s part entry', () =>
@@ -190,10 +190,10 @@ test('applyVariables: a launch HOOKS_OFF with no project settings stands; an acc
 
 test('applyVariables sets each winner once per env object, and a second call returns []', () =>
 {
-    const at = three({ ws: { vars: `${K('SCORER_LEVEL')}=90\n` }, api: { vars: `${K('HISTORY')}=9\n` } });
+    const at = three({ ws: { vars: `${K('SCORING_LEVEL')}=90\n` }, api: { vars: `${K('HISTORY')}=9\n` } });
     const env = { ...ON, [K('HISTORY')]: '1' };
-    assert.deepStrictEqual(layout.applyVariables(at('ws/api'), env).sort(), [K('HISTORY'), K('SCORER_LEVEL')]);
-    assert.deepStrictEqual([env[K('HISTORY')], env[K('SCORER_LEVEL')]], ['9', '90'], 'the own file wins over the process env');
+    assert.deepStrictEqual(layout.applyVariables(at('ws/api'), env).sort(), [K('HISTORY'), K('SCORING_LEVEL')]);
+    assert.deepStrictEqual([env[K('HISTORY')], env[K('SCORING_LEVEL')]], ['9', '90'], 'the own file wins over the process env');
     setVars(at('ws/api'), `${K('HISTORY')}=2\n`);
     assert.deepStrictEqual(layout.applyVariables(at('ws/api'), env), []);
     assert.strictEqual(env[K('HISTORY')], '9');
@@ -215,12 +215,77 @@ test('out of a session, step 4 reads what a session lays over its launch env: th
     assert.deepStrictEqual([v.values[K('HISTORY')], v.from[K('HISTORY')], v.values[K('MEMORY')]], ['3', 'env', 'custom']);
 });
 
-test('AC13: the prelude loaded in ws/api/tool reads the root\'s SCORER_LEVEL=90', () =>
+test('AC13: the prelude loaded in ws/api/tool reads the root\'s SCORING_LEVEL=90', () =>
 {
-    const at = three({ ws: { vars: `${K('SCORER_LEVEL')}=90\n` } });
-    const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(HOOKS, 'hook-prelude.js'))}); process.stdout.write(String(process.env.${K('SCORER_LEVEL')}))`],
+    const at = three({ ws: { vars: `${K('SCORING_LEVEL')}=90\n` } });
+    const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(HOOKS, 'hook-prelude.js'))}); process.stdout.write(String(process.env.${K('SCORING_LEVEL')}))`],
         { encoding: 'utf8', env: { ...process.env, ...ON, CLAUDE_PROJECT_DIR: at('ws/api/tool') } });
     assert.strictEqual(r.stdout, '90', r.stderr);
+});
+
+test('AC13 skew: the root\'s file still holding the old SCORER_LEVEL=90 is read as SCORING_LEVEL in ws/api/tool', () =>
+{
+    const at = three({ ws: { vars: `${K('SCORER_LEVEL')}=90\n` } });
+    const env = { ...process.env, ...ON, CLAUDE_PROJECT_DIR: at('ws/api/tool') };
+    for (const k of Object.keys(env)) if (/^ALFRED_CODE_SCOR/.test(k)) delete env[k];
+    const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(HOOKS, 'hook-prelude.js'))}); process.stdout.write(String(process.env.${K('SCORING_LEVEL')}))`],
+        { encoding: 'utf8', env });
+    assert.strictEqual(r.stdout, '90', r.stderr);
+});
+
+const OLD = { SCORING: 'SCORER', SCORING_LEVEL: 'SCORER_LEVEL', SCORING_OUTPUTS: 'SCORER_OUTPUTS', SCORING_ROUNDS: 'SCORER_ROUNDS' };   // until 4.0.0
+
+test('old keys: each of the four reads as its new key from every source that holds no value for the new one', () =>
+{
+    for (const [now, old] of Object.entries(OLD))
+    {
+        const sources = {
+            '.variables': tree({ p: { stamp: true, vars: `${K(old)}=7\n` } }),
+            'settings.json': tree({ p: { stamp: true, settings: { env: { [K(old)]: '7' } } } }),
+            'settings.local.json': tree({ p: { stamp: true, local: { env: { [K(old)]: '7' } } } }),
+        };
+        for (const [name, at] of Object.entries(sources))
+        {
+            const got = varsOf(at('p'), UNSET);
+            assert.strictEqual(got.values[K(now)], '7', `${old} in ${name}`);
+            assert.strictEqual(got.values[K(old)], undefined, 'never under the old key');
+        }
+        assert.strictEqual(varsOf(tree({ p: { stamp: true } })('p'), { ...UNSET, [K(old)]: '7' }).values[K(now)], '7', `${old} in the process env`);
+    }
+    const member = three({ ws: { vars: `${K('SCORER_LEVEL')}=90\n` } });
+    assert.strictEqual(varsOf(member('ws/api/tool')).values[K('SCORING_LEVEL')], '90', 'a member\'s file');
+});
+
+test('old keys: the new key wins in its own file; an empty new key lets the old through; an empty old key is no value', () =>
+{
+    const read = (vars) => varsOf(tree({ p: { stamp: true, vars } })('p'), UNSET).values[K('SCORING_LEVEL')];
+    assert.strictEqual(read(`${K('SCORER_LEVEL')}=90\n${K('SCORING_LEVEL')}=70\n`), '70');
+    assert.strictEqual(read(`${K('SCORING_LEVEL')}=\n${K('SCORER_LEVEL')}=90\n`), '90');
+    assert.strictEqual(read(`${K('SCORER_LEVEL')}=\n`), undefined);
+});
+
+test('old keys: the nearer file wins whatever its spelling', () =>
+{
+    const at = tree({ p: { stamp: true, local: { env: { [K('SCORER_ROUNDS')]: '5' } },
+        vars: `${K('SCORING_ROUNDS')}=4\n${K('SCORER_LEVEL')}=90\n`, settings: { env: { [K('SCORING_LEVEL')]: '70' } } } });
+    const got = varsOf(at('p'), UNSET);
+    assert.deepStrictEqual([got.values[K('SCORING_ROUNDS')], got.from[K('SCORING_ROUNDS')]], ['5', 'settings.local.json']);
+    assert.deepStrictEqual([got.values[K('SCORING_LEVEL')], got.from[K('SCORING_LEVEL')]], ['90', 'own']);
+});
+
+test('old keys: one in .variables draws no "is not read" note; a near name still does', () =>
+{
+    const notes = varsOf(tree({ p: { stamp: true, vars: `${K('SCORER')}=0\n${K('SCORERS')}=1\n` } })('p'), UNSET).notes.join('\n');
+    assert.doesNotMatch(notes, new RegExp(`${K('SCORER')} in `));
+    assert.match(notes, new RegExp(`${K('SCORERS')} in \\.variables is not read`));
+});
+
+test('OLD_KEYS is the four rename rows of meta/migrations.json, new key to old', () =>
+{
+    const { renames } = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json'));
+    const want = Object.fromEntries(renames.filter(([from]) => /^ALFRED_CODE_SCORER/.test(from)).map(([from, to]) => [to, from]));
+    assert.strictEqual(Object.keys(want).length, 4);
+    assert.deepStrictEqual({ ...layout.OLD_KEYS }, want);
 });
 
 test('Review Focus 1: a hook started in src/ reads the project\'s file', () =>
@@ -274,8 +339,8 @@ test('Review Focus 2: a settings key naming another folder is not read', () =>
 test('Review Focus 5: a CRLF file and a project path with a space', () =>
 {
     const spaced = fs.mkdtempSync(path.join(TMP, 'with space-'));
-    const at = tree({ 'p q': { stamp: true, vars: `${K('HISTORY')}=6\r\n${K('SCORER')}="1"\r\n` } }, spaced);
-    assert.deepStrictEqual(varsOf(at('p q'), UNSET).values, { [K('HISTORY')]: '6', [K('SCORER')]: '1' });
+    const at = tree({ 'p q': { stamp: true, vars: `${K('HISTORY')}=6\r\n${K('SCORING')}="1"\r\n` } }, spaced);
+    assert.deepStrictEqual(varsOf(at('p q'), UNSET).values, { [K('HISTORY')]: '6', [K('SCORING')]: '1' });
 });
 
 // ---- Review Focus 6: a guard switch in a .variables file is never read ----------------------------------------------
@@ -367,10 +432,10 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         INSTRUMENT: (e) => prelude.switchOn('INSTRUMENT', e),
         CORRECTION_NUDGE: (e) => prelude.envOf(e, 'CORRECTION_NUDGE') || /envOf\(process\.env, 'CORRECTION_NUDGE'\) \|\| '([^']*)'/.exec(source('stack/hooks/guard-answer.js'))[1],
         TURN_CHECK: (e) => prelude.switchOn('TURN_CHECK', e),
-        SCORER: (e) => prelude.switchOn('SCORER', e),
-        SCORER_LEVEL: (e) => prelude.scorerLevel(e),
-        SCORER_OUTPUTS: (e) => prelude.scorerOutputs(e),
-        SCORER_ROUNDS: (e) => prelude.scorerRounds(e),
+        SCORING: (e) => prelude.switchOn('SCORING', e),
+        SCORING_LEVEL: (e) => prelude.scoringLevel(e),
+        SCORING_OUTPUTS: (e) => prelude.scoringOutputs(e),
+        SCORING_ROUNDS: (e) => prelude.scoringRounds(e),
         HISTORY: (e) => history.historyCount(prelude.envOf(e, 'HISTORY')),
         CONTEXT_WINDOW_FOR_1M: (e) => freshAt(K('CONTEXT_WINDOW_FOR_1M'), e),
         CONTEXT_WINDOW_FOR_300K: (e) => freshAt(K('CONTEXT_WINDOW_FOR_300K'), e),
@@ -410,11 +475,11 @@ test('layers files reads settings.local.json, .variables and settings.json only;
     fs.mkdirSync(acct, { recursive: true });
     fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ env: { [K('TURN_CHECK')]: '1' } }));
     const at = three({
-        ws: { vars: `${K('SCORER_LEVEL')}=64\n` },
+        ws: { vars: `${K('SCORING_LEVEL')}=64\n` },
         api: { vars: `${K('HISTORY')}=8\n`, settings: { env: { [K('MEMORY')]: 'custom' } }, local: { env: { [K('HISTORY')]: '5', [K('MEMORY')]: 'default' } } },
     });
     const env = { ...ON, CLAUDE_CONFIG_DIR: acct, [K('INSTRUMENT')]: '0' };
-    const pick = (v) => [v.values[K('HISTORY')], v.values[K('MEMORY')], v.values[K('SCORER_LEVEL')], v.values[K('TURN_CHECK')], v.values[K('INSTRUMENT')]];
+    const pick = (v) => [v.values[K('HISTORY')], v.values[K('MEMORY')], v.values[K('SCORING_LEVEL')], v.values[K('TURN_CHECK')], v.values[K('INSTRUMENT')]];
     assert.deepStrictEqual(pick(layout.variablesOf(at('ws/api'), { env: { ...env } })), ['5', 'default', '64', '1', '0'], 'all: every layer and the member');
     assert.deepStrictEqual(pick(layout.variablesOf(at('ws/api'), { env: { ...env }, layers: 'files' })), ['5', 'default', undefined, undefined, undefined], 'files: no member, account or process env');
     assert.deepStrictEqual(pick(layout.variablesOf(at('ws/api'), { env: { ...env }, layers: 'team' })), ['8', 'custom', undefined, undefined, undefined], 'team: settings.local.json skipped');

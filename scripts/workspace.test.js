@@ -154,8 +154,8 @@ test('the mutators set, add and remove on a record; setParent and setRole exclud
     ws.removeChild(record, 'api');
     ws.addIgnore(record, 'skill', 'x');
     ws.addIgnore(record, 'skill', 'x');
-    ws.addIgnore(record, 'env', 'ALFRED_CODE_SCORER');
-    ws.removeIgnore(record, 'env', 'ALFRED_CODE_SCORER');
+    ws.addIgnore(record, 'env', 'ALFRED_CODE_SCORING');
+    ws.removeIgnore(record, 'env', 'ALFRED_CODE_SCORING');
     ws.addIgnore(record, 'docs', 'root');
     assert.deepStrictEqual(wfLib.viewOf(record), {
         parent: '../..', parentNone: false, role: null, above: null, children: ['web'],
@@ -397,16 +397,16 @@ test('ownPicksAfter, one case per rule', () =>
 const chainTree = () =>
 {
     const at = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
-    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER=1\nALFRED_CODE_HISTORY=0\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_INSTRUMENT=1\n');
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\nALFRED_CODE_HISTORY=0\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_INSTRUMENT=1\n');
     return at;
 };
 
 test('chainValues reads the members\' .variables, never a MEMBER_NEVER key, and stops a key at an ignore env line', () =>
 {
     const at = chainTree();
-    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORER: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
-    putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
-    assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORER'));
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
+    putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORING'] } });
+    assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORING'));
 });
 
 // The fixed root (3.11.0): a child's installer run keeps its chain while its parent's data still sits in the folder an
@@ -588,13 +588,13 @@ test('releaseChildren leaves a listed child that names another parent as it was 
     // ws lists g/x, but x's parent line names g: a stale line in ws, and x is g's child.
     const at = tree({ 'home': {}, 'home/ws': { stamp: true, record: { children: ['g', 'g/x'] } }, 'home/ws/g': { stamp: true, record: { parent: '..', children: ['x'] } }, 'home/ws/g/x': { stamp: true, record: { parent: '..' } } });
     markStamp(at('home/ws/g/x'), 'own-picks: skill/npm');
-    markStamp(at('home/ws/g/x'), 'own-env: ALFRED_CODE_SCORER');
+    markStamp(at('home/ws/g/x'), 'own-env: ALFRED_CODE_SCORING');
     const logs = [];
     const released = ws.releaseChildren({ projectRoot: at('home/ws'), env: {}, log: (l) => logs.push(l) });
     assert.deepStrictEqual(released, ['g']);
     const xStamp = fs.readFileSync(path.join(at('home/ws/g/x'), '.claude', 'alfred-code.stamp'), 'utf8');
     assert.match(xStamp, /^own-picks: skill\/npm$/m);
-    assert.match(xStamp, /^own-env: ALFRED_CODE_SCORER$/m);
+    assert.match(xStamp, /^own-env: ALFRED_CODE_SCORING$/m);
     assert.strictEqual(readWorkspaceValues(at('home/ws/g/x')).parent, '..');
     assert.ok(!logs.some((l) => /released g\/x/.test(l)), logs.join('\n'));
 });
@@ -935,11 +935,11 @@ test('AC5 asks: configure lists Keep first for a standalone, a root and a child'
 test('pruneOnJoin drops each key still at its ledger hash, keeps a typed or changed one, never DOCS_VERSIONING, and names the count kept', () =>
 {
     const H = stampLib.valueHash;
-    const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER_LEVEL=${H('80')},.variables:ALFRED_CODE_HISTORY=${H('5')},.variables:ALFRED_CODE_DOCS_VERSIONING=${H('git')},settings.json:ALFRED_CODE_DATA_PATH=${H('.alfred')}\n`;
-    const at = roleTree({ p: { stamp: stampText, git: true, vars: '# mine\nALFRED_CODE_SCORER_LEVEL=80\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n' } });
+    const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING_LEVEL=${H('80')},.variables:ALFRED_CODE_HISTORY=${H('5')},.variables:ALFRED_CODE_DOCS_VERSIONING=${H('git')},settings.json:ALFRED_CODE_DATA_PATH=${H('.alfred')}\n`;
+    const at = roleTree({ p: { stamp: stampText, git: true, vars: '# mine\nALFRED_CODE_SCORING_LEVEL=80\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n' } });
     const lines = [];
     const got = ws.pruneOnJoin(at('p'), { env: ON, log: (l) => lines.push(l) });
-    assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_SCORER_LEVEL'], own: ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_CORRECTION_NUDGE'] });
+    assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_SCORING_LEVEL'], own: ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_CORRECTION_NUDGE'] });
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), '# mine\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n');
     const ledger = stampLib.readLedger(path.join(at('p'), '.claude', 'alfred-code.stamp'));
     assert.deepStrictEqual(Object.keys(ledger.env['.variables']).sort(), ['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_HISTORY'], 'the dropped key\'s row goes with it');
@@ -956,53 +956,53 @@ test('pruneOnJoin keeps an installer answer off the catalog default (--auto-comp
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_AUTO_COMPACT=1\n');
 });
 
-// B1 of the 2026-11-03 usage audit: the scorer's old seeds (0, empty) are a reseed's old values, so a joiner still holding
+// B1 of the 2026-11-03 usage audit: the scoring's old seeds (0, empty) are a reseed's old values, so a joiner still holding
 // them at their ledger hash drops them like any seed - the workspace's value reaches it; a 0 typed over the new seed stays.
-test('pruneOnJoin drops an old stack seed a reseed migration names (the scorer\'s 0 and empty list), keeps one typed over the new seed', () =>
+test('pruneOnJoin drops an old stack seed a reseed migration names (the scoring\'s 0 and empty list), keeps one typed over the new seed', () =>
 {
     const H = stampLib.valueHash;
-    const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('0')},.variables:ALFRED_CODE_SCORER_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\nALFRED_CODE_SCORER_OUTPUTS=\n' } });
-    assert.deepStrictEqual(ws.pruneOnJoin(old('p'), { env: ON, log: () => {} }), { dropped: ['ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_OUTPUTS'], own: [] });
-    const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\n' } });
-    assert.deepStrictEqual(ws.pruneOnJoin(typed('p'), { env: ON, log: () => {} }), { dropped: [], own: ['ALFRED_CODE_SCORER'] });
+    const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING=${H('0')},.variables:ALFRED_CODE_SCORING_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORING=0\nALFRED_CODE_SCORING_OUTPUTS=\n' } });
+    assert.deepStrictEqual(ws.pruneOnJoin(old('p'), { env: ON, log: () => {} }), { dropped: ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_OUTPUTS'], own: [] });
+    const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORING=0\n' } });
+    assert.deepStrictEqual(ws.pruneOnJoin(typed('p'), { env: ON, log: () => {} }), { dropped: [], own: ['ALFRED_CODE_SCORING'] });
 });
 
 test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
 {
     const H = stampLib.valueHash;
     const at = roleTree({
-        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
         'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
     });
     const before = layoutLib.variablesOf(at('ws/api'), { env: { ...ON } }).values;
     const got = ws.keepOnLeave(at('ws/api'), { env: ON, log: () => {} });
-    assert.deepStrictEqual(got.written.sort(), ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_SCORER_LEVEL']);
+    assert.deepStrictEqual(got.written.sort(), ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_SCORING_LEVEL']);
     assert.deepStrictEqual(got.defaults, []);
-    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
     const ledger = stampLib.readLedger(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'));
     assert.deepStrictEqual(ledger.env['.variables'], { ALFRED_CODE_HISTORY: H('5') }, 'the root\'s seed stays a seed; its typed 90 is the child\'s own now');
     const own = { ...ON, ALFRED_CODE_WORKSPACE: '0' };
-    assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORER_LEVEL, before.ALFRED_CODE_SCORER_LEVEL, 'the value reads the same with the chain cut');
+    assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORING_LEVEL, before.ALFRED_CODE_SCORING_LEVEL, 'the value reads the same with the chain cut');
 
     const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
     const lines = [];
     const g = ws.keepOnLeave(gone('kid'), { env: ON, log: (l) => lines.push(l) });
     assert.deepStrictEqual(g.written, []);
-    assert.ok(g.defaults.includes('ALFRED_CODE_SCORER_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
+    assert.ok(g.defaults.includes('ALFRED_CODE_SCORING_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
     assert.match(lines.join('\n'), /^workspace: \.\. is gone - \d+ values read the stack's defaults here now \(ALFRED_CODE_/m);
 });
 
 test('releaseChildren writes each value a child read from the parent into the child\'s file before its parent line goes (D5)', () =>
 {
     const at = roleTree({
-        ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
         'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
     });
     const before = layoutLib.variablesOf(at('ws/api'), { env: ON }).values;
     const logs = [];
     assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), env: ON, log: (l) => logs.push(l) }), ['api']);
     assert.deepStrictEqual(readWorkspaceValues(at('ws/api')), {});
-    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
     assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: ON }).values, before, 'every value reads the same once released');
     assert.match(logs.join('\n'), /^workspace: api: 2 values this project read from the workspace written into \.alfred\/\.variables/m);
 });

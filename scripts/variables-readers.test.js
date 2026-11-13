@@ -30,13 +30,13 @@ const ALLOWED = {
     'scripts/install/settings.js:env-lookup': 'applyEnv\'s migration and the uninstall read the settings env to move or remove it; `prior.env` is the stamp\'s ledger',
     'scripts/update-preflight.js:env-lookup': 'detects() reads the env object it is handed - a settings file\'s for a settings key, the loader\'s values (layout.variablesOf, layers files) for the stack\'s variables, held by "a preflight settings_env_value row matches a key only .variables holds"',
     'scripts/lint-skills.js:DOCS_VERSIONING': 'a lint check that the seed special-cases the catalog key - no settings read',
-    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
-    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/skills/mode-output-scoring/scripts/scorecard.js:SCORING_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/skills/mode-output-scoring/scripts/scorecard.js:SCORING_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child"',
     'stack/hooks/hook-prelude.js:AUTO_COMPACT': 'compactCause reads the env it is handed - the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER': 'switchOn reads the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER_LEVEL': 'reads the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER_ROUNDS': 'reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING': 'switchOn reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING_LEVEL': 'reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING_ROUNDS': 'reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:TURN_CHECK': 'the strict profile\'s switch list - no read',
     'stack/hooks/check-turn-build.js:TURN_CHECK': 'switchOn reads the process env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_DEFAULT': 'freshAt reads the process env, which applyVariables fills',
@@ -76,7 +76,7 @@ function rowsOn(line)
         const from = /settingFrom\(\{[^}]*suffix:\s*(['"`])([A-Z0-9_]+)\1/.exec(rest);
         if (from && from[2] === s) found.add(s);
     }
-    // (b) a template literal whose head is a moved suffix's start, up to an underscore (`SCORER_${x}`)
+    // (b) a template literal whose head is a moved suffix's start, up to an underscore (`SCORING_${x}`)
     for (const m of rest.matchAll(/`([A-Z0-9_]+_)\$\{/g)) for (const s of MOVED) if (s.startsWith(m[1])) found.add(s);
     // (c) a lookup into some object's env by a computed key
     if (/envOf\((?!process\.env)[^,()]*\.env\b/.test(rest) || /[\w)\]]\.env\[(?!['"`])/.test(rest)) found.add('env-lookup');
@@ -120,13 +120,13 @@ test('the scan sees each access shape and passes over a process env read, a mess
 {
     const rows = (line) => [...rowsOn(line)].sort();
     assert.deepStrictEqual(rows('const v = data.env.ALFRED_CODE_MEMORY;'), ['MEMORY']);
-    assert.deepStrictEqual(rows('if (Object.hasOwn(own, \'ALFRED_CODE_SCORER\')) x();'), ['SCORER']);
+    assert.deepStrictEqual(rows('if (Object.hasOwn(own, \'ALFRED_CODE_SCORING\')) x();'), ['SCORING']);
     assert.deepStrictEqual(rows('const v = envOf(view, \'DOCS_VERSIONING\');'), ['DOCS_VERSIONING']);
-    assert.deepStrictEqual(rows('const k = `SCORER_${name}`;'), ['SCORER_LEVEL', 'SCORER_OUTPUTS', 'SCORER_ROUNDS']);
+    assert.deepStrictEqual(rows('const k = `SCORING_${name}`;'), ['SCORING_LEVEL', 'SCORING_OUTPUTS', 'SCORING_ROUNDS']);
     assert.deepStrictEqual(rows('const v = settingFrom({ env, projectDir, suffix: \'DOCS_VERSIONING\' });'), ['DOCS_VERSIONING']);
     assert.deepStrictEqual(rows('const v = settings.env[row.key];'), ['env-lookup']);
     assert.deepStrictEqual(rows('const v = envOf(data.env, suffix);'), ['env-lookup']);
-    assert.deepStrictEqual(rows('const v = envOf(process.env, \'MEMORY\') || process.env.ALFRED_CODE_SCORER;'), []);
+    assert.deepStrictEqual(rows('const v = envOf(process.env, \'MEMORY\') || process.env.ALFRED_CODE_SCORING;'), []);
     assert.deepStrictEqual(rows('const v = envOf(env || process.env, \'HOOK_LOG_DIR\');'), []);
     assert.deepStrictEqual(rows('const on = envOf(variablesOf(root, { env: process.env }).values, \'TURN_CHECK\') === \'1\';'), [], 'the loader\'s own values');
     assert.deepStrictEqual(rows('return envOf(layout.variablesOf(root, { env: {}, layers: \'team\' }).values, \'DOCS_VERSIONING\');'), []);

@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const { modeFlags, autoRunRefusal, runMarkerFile, runMarkerSkill, writeRunMarker, otherSessionLive, FLOW_FAMILY_RE } = require('../stack/hooks/hook-prelude.js');
 
-const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scorer: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
+const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
 
 // The 2.2.0 old prefix, built at run time: the rename sweep fails any tracked file that spells an old name.
 const OLD_FLOW = ['alfred', 'task-solve'].join('-');
@@ -19,23 +19,23 @@ const SCORING = '/alfred-code:mode:scoring';
 const COMPACT = '/alfred-code:mode:auto-compact';
 const ROWS = [
     // a mode command line: the command alone on its line, then on or off
-    [`${AUTO} on`, { mode: 'auto-run', autoRun: 'on', scorer: null, compact: null, extra: false, family: true, flagOnly: true, request: '', run: [], commands: [AUTO] }],
+    [`${AUTO} on`, { mode: 'auto-run', autoRun: 'on', scoring: null, compact: null, extra: false, family: true, flagOnly: true, request: '', run: [], commands: [AUTO] }],
     [`${AUTO} off`, { mode: 'auto-run', autoRun: 'off', family: true, flagOnly: true }],
-    [`${SCORING} on`, { mode: 'scoring', scorer: 'on', autoRun: null, compact: null, family: true, flagOnly: true, commands: [SCORING] }],
-    [`${SCORING} OFF`, { mode: 'scoring', scorer: 'off', extra: false }],
-    [`${COMPACT} on`, { mode: 'auto-compact', compact: 'on', autoRun: null, scorer: null, family: true, flagOnly: true }],
+    [`${SCORING} on`, { mode: 'scoring', scoring: 'on', autoRun: null, compact: null, family: true, flagOnly: true, commands: [SCORING] }],
+    [`${SCORING} OFF`, { mode: 'scoring', scoring: 'off', extra: false }],
+    [`${COMPACT} on`, { mode: 'auto-compact', compact: 'on', autoRun: null, scoring: null, family: true, flagOnly: true }],
     [`${COMPACT} off`, { mode: 'auto-compact', compact: 'off', extra: false }],
     [`  ${COMPACT}   On  `, { mode: 'auto-compact', compact: 'on', request: '' }],
-    [`${SCORING.toUpperCase()} on`, { mode: 'scoring', scorer: 'on' }],
-    [SCORING, { mode: 'scoring', scorer: null, extra: false, family: true, flagOnly: true, request: '', commands: [SCORING] }],
-    [`${SCORING} yes`, { mode: 'scoring', scorer: null, extra: true, family: true, flagOnly: true, request: '' }],
-    [`${SCORING} on now`, { mode: 'scoring', scorer: null, extra: true }],
-    [`${SCORING} on off`, { mode: 'scoring', scorer: null, extra: true }],
-    [`${SCORING} /task-solve x`, { mode: 'scoring', scorer: null, extra: true, commands: [SCORING], request: '' }],
+    [`${SCORING.toUpperCase()} on`, { mode: 'scoring', scoring: 'on' }],
+    [SCORING, { mode: 'scoring', scoring: null, extra: false, family: true, flagOnly: true, request: '', commands: [SCORING] }],
+    [`${SCORING} yes`, { mode: 'scoring', scoring: null, extra: true, family: true, flagOnly: true, request: '' }],
+    [`${SCORING} on now`, { mode: 'scoring', scoring: null, extra: true }],
+    [`${SCORING} on off`, { mode: 'scoring', scoring: null, extra: true }],
+    [`${SCORING} /task-solve x`, { mode: 'scoring', scoring: null, extra: true, commands: [SCORING], request: '' }],
     [`${AUTO} --mode-auto-run-on`, { mode: 'auto-run', autoRun: null, extra: true, old: [] }],
-    ['/alfred-code:mode:other on', { mode: null, scorer: null, autoRun: null, compact: null, extra: false }],
-    ['/mode:scoring on', { mode: null, scorer: null }],
-    ['/alfred-code:mode:scoring-x on', { mode: null, scorer: null }],
+    ['/alfred-code:mode:other on', { mode: null, scoring: null, autoRun: null, compact: null, extra: false }],
+    ['/mode:scoring on', { mode: null, scoring: null }],
+    ['/alfred-code:mode:scoring-x on', { mode: null, scoring: null }],
     [`/task-solve ${AUTO} on`, { mode: null, autoRun: null, family: true }],
     [`${AUTO} on\nfix the login`, { mode: 'auto-run', autoRun: null, extra: true }],
     ['<command-name>/alfred-code:mode:auto-run</command-name>\n<command-message>alfred-code:mode:auto-run</command-message>\n<command-args>on</command-args>',
@@ -43,10 +43,10 @@ const ROWS = [
     ['<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>off</command-args>', { mode: 'auto-run', autoRun: 'off' }],
     ['<command-name>/alfred-code:mode:auto-compact</command-name>\n<command-args></command-args>', { mode: 'auto-compact', compact: null, extra: false }],
     // a retired flag switches nothing: the leading run is stripped into `old`
-    ['/task-solve --mode-auto-run-on X', { family: true, autoRun: null, scorer: null, mode: null, old: ['--mode-auto-run-on'], run: ['--mode-auto-run-on'], request: 'X', flagOnly: false }],
+    ['/task-solve --mode-auto-run-on X', { family: true, autoRun: null, scoring: null, mode: null, old: ['--mode-auto-run-on'], run: ['--mode-auto-run-on'], request: 'X', flagOnly: false }],
     ['/task-solve --mode-auto-run-off X', { autoRun: null, old: ['--mode-auto-run-off'], request: 'X' }],
-    ['/task-solve --mode-output-scorer-on --auto-mode --mode-x X', { scorer: null, autoRun: null, old: ['--mode-output-scorer-on', '--auto-mode', '--mode-x'], request: 'X' }],
-    ['/task-solve --score-on --score-off --score-on X', { old: ['--score-on', '--score-off'], run: ['--score-on', '--score-off', '--score-on'], scorer: null }],
+    ['/task-solve --mode-output-scorer-on --auto-mode --mode-x X', { scoring: null, autoRun: null, old: ['--mode-output-scorer-on', '--auto-mode', '--mode-x'], request: 'X' }],
+    ['/task-solve --score-on --score-off --score-on X', { old: ['--score-on', '--score-off'], run: ['--score-on', '--score-off', '--score-on'], scoring: null }],
     ['/task-solve X --mode-auto-run-on', { old: [], run: [], autoRun: null, request: 'X --mode-auto-run-on' }],
     ['/task-solve --dry-run --mode-auto-run-on', { old: [], run: [], request: '--dry-run --mode-auto-run-on', autoRun: null }],
     ['/review-code --mode-auto-run-on X', { family: false, old: ['--mode-auto-run-on'], autoRun: null, request: 'X' }],
@@ -63,7 +63,7 @@ const ROWS = [
     ['/mode-auto-run', { family: true, run: [], request: '', flagOnly: false, autoRun: null }],
     ['/mode-auto-run --mode-auto-run-off', { family: true, flagOnly: true, autoRun: null, old: ['--mode-auto-run-off'], request: '' }],
     // command groups, prefixes and spacing
-    ['/habits-explain-topic /mode-output-scorer X', { commands: ['/habits-explain-topic', '/mode-output-scorer'], family: true, scorer: null, request: 'X' }],
+    ['/habits-explain-topic /mode-output-scoring X', { commands: ['/habits-explain-topic', '/mode-output-scoring'], family: true, scoring: null, request: 'X' }],
     ['/a /b /c /d /task-solve X', { commands: ['/a', '/b', '/c', '/d', '/task-solve'], family: true, request: 'X' }],
     ['/a /b /c /d /e /task-solve X', { commands: ['/a', '/b', '/c', '/d', '/e', '/task-solve'], family: true, request: 'X' }],
     ['/task-solve /a /b /c /d /e /f X', { commands: ['/task-solve', '/a', '/b', '/c', '/d', '/e'], run: [], request: '/f X' }],
@@ -148,11 +148,13 @@ test('otherSessionLive: a transcript beside this one written within 10 minutes; 
     assert.strictEqual(otherSessionLive(s.transcript, 'absent'), false);
 });
 
-test('run marker: runMarkerSkill picks the first flow name past mode-output-scorer; writeRunMarker writes skill/prompt/at and leaves the same skill and prompt untouched', () => {
-    assert.strictEqual(runMarkerSkill(modeFlags('/mode-output-scorer /task-solve X')), 'task-solve');
+test('run marker: runMarkerSkill picks the first flow name past mode-output-scoring; writeRunMarker writes skill/prompt/at and leaves the same skill and prompt untouched', () => {
+    assert.strictEqual(runMarkerSkill(modeFlags('/mode-output-scoring /task-solve X')), 'task-solve');
     assert.strictEqual(runMarkerSkill(modeFlags('/alfred-code:loop-code-quality')), 'loop-code-quality');
     assert.strictEqual(runMarkerSkill(modeFlags('/task-solve --mode-auto-run-on X')), 'task-solve', 'a retired flag does not stop the run it rides on');
-    assert.strictEqual(runMarkerSkill(modeFlags('/mode-output-scorer X')), '');
+    assert.strictEqual(runMarkerSkill(modeFlags('/mode-output-scoring X')), '');
+    assert.strictEqual(runMarkerSkill(modeFlags('/mode-output-scorer /task-solve X')), 'task-solve');   // legacy
+    assert.strictEqual(runMarkerSkill(modeFlags('/mode-output-scorer X')), '');   // legacy
     assert.strictEqual(runMarkerSkill(modeFlags('/review-code X')), '');
     assert.strictEqual(runMarkerSkill(modeFlags('/mode-auto-run --mode-auto-run-on')), '');
     assert.strictEqual(runMarkerSkill(modeFlags('/mode-auto-run fix X')), 'mode-auto-run');

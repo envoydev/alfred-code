@@ -596,14 +596,14 @@ test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under
   assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
 });
 
-test('a 61KB draft under state/sessions/scorer/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {
+test('a 61KB draft under state/sessions/scoring/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {
   const dir = capDir();
-  const slug = path.join(dir, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x'); fs.mkdirSync(slug, { recursive: true });
+  const slug = path.join(dir, '.alfred', 'state', 'sessions', 'scoring', 's1', 'x'); fs.mkdirSync(slug, { recursive: true });
   fs.writeFileSync(path.join(slug, 'ab12cd34.draft.md'), '# draft\n' + 'x'.repeat(61 * 1024) + '\n');
   fs.writeFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'other.md'), '# other\n' + 'x'.repeat(61 * 1024) + '\n');
   const envd = { ...process.env, CLAUDE_PROJECT_DIR: dir };
   const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
-  assert.equal(rd('.alfred/state/sessions/scorer/s1/x/ab12cd34.draft.md'), 0, 'the draft is the grader\'s mandated input');
+  assert.equal(rd('.alfred/state/sessions/scoring/s1/x/ab12cd34.draft.md'), 0, 'the draft is the grader\'s mandated input');
   assert.equal(rd('.alfred/state/sessions/other.md'), 2, 'any other 61KB file under state/ still blocks');
 });
 

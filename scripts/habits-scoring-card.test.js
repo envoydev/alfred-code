@@ -1,6 +1,6 @@
 'use strict';
-// The mode-output-scorer card: the grader seat, and (later tasks) the skill, its rubrics, the outputs table and the
-// producers' one line - the files the scorer's behaviour is written in, held to the spec's text.
+// The mode-output-scoring card: the grader seat, and (later tasks) the skill, its rubrics, the outputs table and the
+// producers' one line - the files the scoring's behaviour is written in, held to the spec's text.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -22,8 +22,8 @@ const ATTACHED_RULES = [
     'Be calibrated, not polite. A 90 or above means an agent could execute this as written with known residual risks.',
 ];
 
-test('the output-scorer seat: read-only tools, sonnet/xhigh, one Scope, the attached rules verbatim, the inputs file read', () => {
-    const { front, body } = split(read('stack/agents/output-scorer.md'));
+test('the output-scoring seat: read-only tools, sonnet/xhigh, one Scope, the attached rules verbatim, the inputs file read', () => {
+    const { front, body } = split(read('stack/agents/output-scoring.md'));
     assert.match(front, /^tools: LSP, Read, Grep, Glob, WebFetch$/m);
     assert.match(front, /^model: sonnet$/m); assert.match(front, /^effort: xhigh$/m);
     assert.strictEqual((body.match(/^## Scope$/gm) || []).length, 1);
@@ -41,11 +41,11 @@ test('the output-scorer seat: read-only tools, sonnet/xhigh, one Scope, the atta
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { putWorkspace } = require('./workspace-fixture.js');
-const SCORECARD = path.join(REPO, 'stack', 'skills', 'mode-output-scorer', 'scripts', 'scorecard.js');
+const SCORECARD = path.join(REPO, 'stack', 'skills', 'mode-output-scoring', 'scripts', 'scorecard.js');
 const { grade, parseRubric, sealOf } = require(SCORECARD);
 // Every CLI run and score file sits in a throwaway project; the CLI env drops the stack's keys and the session's project
 // and session ids, so no setting of the machine running the suite reaches a case.
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'scorer-card-'));
+const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-card-'));
 test.after(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 const BASE_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('ALFRED_CODE_') && k !== 'CLAUDE_PROJECT_DIR' && k !== 'CLAUDE_CODE_SESSION_ID'));
 const cli = (args, env = {}, cwd = ROOT) => spawnSync(process.execPath, [SCORECARD, ...args], { cwd, env: { ...BASE_ENV, ...env }, encoding: 'utf8' });
@@ -129,11 +129,11 @@ test('grade: exit 2 on a missing row, an unknown id or no Findings section', () 
 test('grade: a bad --level reads the env level, else 80 (spec 5.4: parsed per 5.1)', () => {
     const file = scoreFile(card100(85));
     assert.match(cli(['grade', file, '--rubric', R100_FILE, '--level', '59']).stdout, /^verdict: pass$/m);                       // 80
-    assert.match(cli(['grade', file, '--rubric', R100_FILE, '--level', 'abc'], { ALFRED_CODE_SCORER_LEVEL: '90' }).stdout, /^verdict: fail$/m);
+    assert.match(cli(['grade', file, '--rubric', R100_FILE, '--level', 'abc'], { ALFRED_CODE_SCORING_LEVEL: '90' }).stdout, /^verdict: fail$/m);
     assert.match(cli(['grade', file, '--rubric', R100_FILE, '--level', '85']).stdout, /^verdict: pass$/m);
 });
 // T12c (AC22, AC13's script half): a workspace child reads the root's level through the loader.
-test('the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child', () => {
+test('the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child', () => {
     const ws = fs.mkdtempSync(path.join(ROOT, 'ws-'));
     const api = path.join(ws, 'api');
     for (const [dir, record] of [[ws, { children: ['api'] }], [api, { parent: '..' }]]) {
@@ -141,7 +141,7 @@ test('the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
         putWorkspace(dir, record);
     }
-    fs.writeFileSync(path.join(ws, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=90\n');
+    fs.writeFileSync(path.join(ws, '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=90\n');
     const env = { CLAUDE_CONFIG_DIR: path.join(ws, 'acct'), ALFRED_CODE_WORKSPACE: '1' };
     const { levelOf } = require(SCORECARD);
     assert.strictEqual(levelOf(undefined, env, fs.realpathSync(api)), 90);
@@ -175,8 +175,8 @@ const kv = (r) => Object.fromEntries(r.stdout.split('\n').map((l) => /^([\w-]+):
 // a score-file path names a file `start` never writes (the hand-back hook creates it with wx, R15), so its folder is resolved
 // native: the CLI and git name a Windows 8.3 temp dir in its long form, which the JS realpath would leave short
 const real = (p) => (fs.existsSync(p) ? fs.realpathSync.native(p) : path.join(fs.realpathSync.native(path.dirname(p)), path.basename(p)));
-const SCORER_DIR = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer');
-const dir = (slug) => path.join(SCORER_DIR, 'S', slug);
+const SCORING_DIR = path.join(ROOT, '.alfred', 'state', 'sessions', 'scoring');
+const dir = (slug) => path.join(SCORING_DIR, 'S', slug);
 const log = (slug) => path.join(dir(slug), 'rounds.log');
 const answers = (slug) => path.join(dir(slug), 'answers.md');
 const at = (slug) => ['--root', ROOT, '--session', 'S', '--slug', slug];
@@ -220,10 +220,10 @@ test('start: the root-cause inputs take the run book by its new name, the old on
     assert.deepStrictEqual(inputs('rb2'), ['.alfred/docs/awareness/ARCHITECTURE-AWARENESS.md', '.alfred/docs/awareness/RUN-AND-DEBUG-AWARENESS.md'],
         'the new name wins over a hand copy left at the old one; the moved map is handed');
 });
-test('start: a scorer run from a store copy finds a skill input in the project\'s .claude/skills', () => {
+test('start: a scoring run from a store copy finds a skill input in the project\'s .claude/skills', () => {
     const root = fs.mkdtempSync(path.join(ROOT, 'store-'));
-    const own = path.join(root, '.alfred', 'stack', 'skills', 'mode-output-scorer');
-    fs.cpSync(path.join(REPO, 'stack', 'skills', 'mode-output-scorer'), own, { recursive: true });
+    const own = path.join(root, '.alfred', 'stack', 'skills', 'mode-output-scoring');
+    fs.cpSync(path.join(REPO, 'stack', 'skills', 'mode-output-scoring'), own, { recursive: true });
     fs.cpSync(path.join(REPO, 'stack', 'hooks'), path.join(root, '.claude', 'hooks'), { recursive: true });
     const book = path.join(root, '.claude', 'skills', 'task-version-upgrade', 'references', 'upgrade-playbooks.md');
     fs.mkdirSync(path.dirname(book), { recursive: true }); fs.writeFileSync(book, 'x\n');
@@ -245,7 +245,7 @@ test('start: one slug, one output; a released or final slug takes no new start (
 test('start: from a subfolder cwd the folder lands under the project root, as the seal expects', () => {
     const sub = path.join(ROOT, 'src', 'deep'); fs.mkdirSync(sub, { recursive: true });
     const s = kv(cli(['start', '--session', 'S', '--slug', 's5', '--output', 'designer-plan'], { CLAUDE_PROJECT_DIR: ROOT }, sub));
-    assert.strictEqual(real(path.dirname(s['score-file'])), real(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', 'S', 's5')));
+    assert.strictEqual(real(path.dirname(s['score-file'])), real(path.join(ROOT, '.alfred', 'state', 'sessions', 'scoring', 'S', 's5')));
 });
 test('start: --root wins over a git top that differs from it; a literal ${CLAUDE_PROJECT_DIR} --root is ignored', () => {
     const repo = gitRepo(); const args = (r) => ['start', '--root', r, '--session', 'S', '--slug', 's7', '--output', 'designer-plan'];
@@ -257,7 +257,7 @@ test('start: a literal ${CLAUDE_SESSION_ID} reads CLAUDE_CODE_SESSION_ID; with n
     assert.strictEqual(path.basename(path.dirname(path.dirname(s['score-file']))), 'from-env');
     const r = cli(['start', '--session', '${CLAUDE_SESSION_ID}', '--slug', 'x', '--output', 'designer-plan'], { CLAUDE_CODE_SESSION_ID: '' });
     assert.strictEqual(r.status, 4); assert.match(r.stdout + r.stderr, /--session self/);
-    assert.ok(!fs.existsSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer', '${CLAUDE_SESSION_ID}')));
+    assert.ok(!fs.existsSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'scoring', '${CLAUDE_SESSION_ID}')));
 });
 test('start: --session self allocates its own self-<hex> folder per call; a separator in a session id stays inside (R31)', () => {
     const args = (sid) => ['start', '--root', ROOT, '--session', sid, '--slug', 's9', '--output', 'designer-plan'];
@@ -265,7 +265,7 @@ test('start: --session self allocates its own self-<hex> folder per call; a sepa
     assert.match(a.session, /^self-[0-9a-f]{8}$/); assert.notStrictEqual(a.session, b.session);
     assert.strictEqual(path.dirname(kv(cli(args(a.session)))['score-file']), path.dirname(a['score-file']));
     const odd = kv(cli(args('../../x')));
-    assert.ok(real(odd['score-file']).startsWith(real(path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer')) + path.sep));
+    assert.ok(real(odd['score-file']).startsWith(real(path.join(ROOT, '.alfred', 'state', 'sessions', 'scoring')) + path.sep));
 });
 // R100 / card100 as the grade tests define them, passed as --rubric. graded(slug, opts) runs `start`, then writes the
 // printed score-file as a card100 with `total` yes rows, the next `ceiling - total` no rows tagged [closable], one more
@@ -353,10 +353,10 @@ test('next: a ceiling under the level, or under 5 above the total, asks instead 
         'Findings: 0 BLOCKER, 0 MATERIAL', `Scored: 60/100 (level 80) - NOT PASSED after 1 run(s) - withheld at ${path.join(dir('k1'), `${id}.draft.md`)}`]);
     const j = graded('k2', { total: 60, ceiling: 64 }); assert.match(next('k2')[0], new RegExp(`^ask-continue ${j} `));
 });
-// sc-6: start holds the cap next holds - --rounds, else ALFRED_CODE_SCORER_ROUNDS, else 3 - over the attempt's grades plus
+// sc-6: start holds the cap next holds - --rounds, else ALFRED_CODE_SCORING_ROUNDS, else 3 - over the attempt's grades plus
 // its bought runs; a retry grades the same round, and a bought run's revision is owed past it
 test('sc-6: start refuses past the run cap', () => {
-    for (const [slug, extra, env, cap] of [['c6a', ['--rounds', '3'], {}, 3], ['c6b', [], {}, 3], ['c6c', [], { ALFRED_CODE_SCORER_ROUNDS: '2' }, 2]]) {
+    for (const [slug, extra, env, cap] of [['c6a', ['--rounds', '3'], {}, 3], ['c6b', [], {}, 3], ['c6c', [], { ALFRED_CODE_SCORING_ROUNDS: '2' }, 2]]) {
         const go = (more = []) => cli(['start', ...at(slug), '--output', 'designer-plan', ...extra, ...more], env);
         let id;
         for (let i = 0; i < cap; i++) { const r = go(); assert.strictEqual(r.status, 0, `${slug} start ${i}: ${r.stderr}`); id = kv(r).id; }
@@ -374,7 +374,7 @@ test('sc-7: the ask at the cap says the cap is reached', () => {
     const out = next('c7');
     assert.match(out[0], /^ask-continue /);
     assert.strictEqual(out[1], 'Ceiling: 100/100 (level 80) - the run cap is reached');
-    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'SKILL.md'), 'utf8');
+    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scoring', 'SKILL.md'), 'utf8');
     const s = start('c7b'); fs.writeFileSync(s['score-file'], card100(60));                          // no unmet check tagged: nothing closable
     assert.deepStrictEqual(next('c7b').slice(0, 2), [`ask-continue ${s.id} recommend accept`, 'Ceiling: 60/100 (level 80) - nothing closable left']);
 });
@@ -390,7 +390,7 @@ test('the stall ask names the stall, and a ceiling under 5 above the total says 
     const tags = {}; for (let n = 79; n <= 81; n++) tags[`c${n}`] = '[closable]';
     fs.writeFileSync(s['score-file'], card100(78, [], { tags }));
     assert.deepStrictEqual(next('st2').slice(0, 2), [`ask-continue ${s.id} recommend accept`, 'Ceiling: 81/100 (level 80) - under 5 points closable']);
-    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scorer', 'SKILL.md'), 'utf8');
+    const skill = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-output-scoring', 'SKILL.md'), 'utf8');
     assert.match(skill, /the next revision can reach at most <ceiling> - <the needs line, why it stopped, or nothing closable left>/);
 });
 test('next --auto: revise first at the cap with a BLOCKER, then keep; accept with no BLOCKER; never answer (AC26, R19)', () => {
@@ -490,7 +490,7 @@ test('next after a fix: the revision goes out only when it passes with fewer MAT
 // { total, flipped } at level 80. tableOf(md) parses outputs.md's one table per R21.
 const { OUTPUTS } = require(SCORECARD);
 const RUBRICS = [['designer-plan', 16], ['root-cause', 10], ['inline-plan', 5], ['topic-explainer', 12], ['ticket', 8], ['upgrade-plan', 8], ['pick', 6], ['custom', 8]];
-const rubricOf = (output) => parseRubric(read(`stack/skills/mode-output-scorer/references/rubric-${output}.md`));
+const rubricOf = (output) => parseRubric(read(`stack/skills/mode-output-scoring/references/rubric-${output}.md`));
 function full(output, na) {
     const rows = Object.keys(rubricOf(output).checks).map((id) => (na.includes(id) ? [id, 'n/a', 'the case the check names'] : [id, 'yes', '"quoted"']));
     const r = kv(cli(['grade', scoreFile(card(rows)), '--output', output, '--level', '80']));
@@ -504,12 +504,12 @@ function tableOf(md) {
         out[output.replace(/`/g, '')] = { skills: cellList(skills), seats: cellList(seats), graded, rubric: rubric.replace(/`/g, ''), runs, automatic, docs: cellList(docs) };
     return out;
 }
-const pickFields = (row) => ({ skills: row.skills, seats: row.seats, rubric: row.rubric, runs: row.runs === '`ALFRED_CODE_SCORER_ROUNDS`' ? 'rounds' : Number(row.runs), automatic: row.automatic === 'yes', docs: row.docs });
+const pickFields = (row) => ({ skills: row.skills, seats: row.seats, rubric: row.rubric, runs: row.runs === '`ALFRED_CODE_SCORING_ROUNDS`' ? 'rounds' : Number(row.runs), automatic: row.automatic === 'yes', docs: row.docs });
 // the map's name since the capture-awareness merge (2026-10-29); scorecard.js reads the legacy name beside it
 const SIX_DOCS = ['ARCHITECTURE-AWARENESS.md', 'PERSONAL-CODE-PREFERENCES.md', 'ARCHITECTURE-PREFERENCES.md', 'PROJECT-CODE-PREFERENCES.md', 'CODE-ASSESSMENT.md', 'ARCHITECTURE-ASSESSMENT.md'];
 
 test('the topic-explainer rubric grades the child level under A2 (item 6)', () => {
-    assert.match(read('stack/skills/mode-output-scorer/references/rubric-topic-explainer.md'), /child level/);
+    assert.match(read('stack/skills/mode-output-scoring/references/rubric-topic-explainer.md'), /child level/);
     assert.ok(rubricOf('topic-explainer').checks.A2, 'A2 still parses');
 });
 test('every rubric parses, sums to 100, and has the spec\'s check count; OUTPUTS names it', () => {
@@ -529,7 +529,7 @@ test('AC12: a code plan and a documentation plan reach 100; so do a proven and a
     assert.deepStrictEqual([full('root-cause', ['D4', 'D9', 'D10']).total, full('root-cause', ['D3', 'D8', 'D9', 'D10']).total], [100, 100]);
 });
 test('AC28: outputs.md and OUTPUTS agree on every name, producer, rubric, run count and doc; a planted difference fails', () => {
-    const md = read('stack/skills/mode-output-scorer/references/outputs.md');
+    const md = read('stack/skills/mode-output-scoring/references/outputs.md');
     const want = (o) => ({ skills: o.skills, seats: o.seats, rubric: o.rubric, runs: o.runs, automatic: o.automatic, docs: o.docs });
     const got = tableOf(md);
     assert.deepStrictEqual(Object.keys(got).sort(), Object.keys(OUTPUTS).sort());
@@ -542,7 +542,7 @@ test('the designer-plan and root-cause docs carry the six code and architecture 
 });
 test('every rubric carries the attached severity, caps and the five-field finding format', () => {
     for (const [output] of RUBRICS) {
-        const text = squash(read(`stack/skills/mode-output-scorer/references/rubric-${output}.md`));
+        const text = squash(read(`stack/skills/mode-output-scoring/references/rubric-${output}.md`));
         assert.ok(text.includes('BLOCKER: as written, the plan fails its goal, corrupts or loses data, breaks a contract, opens a security hole, or cannot be executed.'), output);
         assert.ok(text.includes('Every finding states failure mode, trigger condition, cost, evidence, and a one-line fix. A finding missing any of these is discarded.'), output);
         assert.ok(text.includes('MATERIAL: up to 5 in full, then extras as one line each.'), output);
@@ -550,25 +550,25 @@ test('every rubric carries the attached severity, caps and the five-field findin
 });
 
 test('SKILL.md: the description, the session-id layout line, the roster clause, the asks, the stack form and the auto-mode text', () => {
-    const { front, body } = split(read('stack/skills/mode-output-scorer/SKILL.md'));
-    assert.match(front, /^description: "Use when a 'scorer: on' or 'scorer: stacked' line is in context and a plan, verdict or answer is drafted - grade it with a fresh seat before releasing it\."$/m);
+    const { front, body } = split(read('stack/skills/mode-output-scoring/SKILL.md'));
+    assert.match(front, /^description: "Use when a 'scoring: on' or 'scoring: stacked' line is in context and a plan, verdict or answer is drafted - grade it with a fresh seat before releasing it\."$/m);
     assert.ok(!/^context: fork$/m.test(front), 'never forked - a fork ends a typed stack');
     assert.match(body, /--session "\$\{CLAUDE_SESSION_ID\}"/);
     assert.match(body, /--root "\$\{CLAUDE_PROJECT_DIR\}"/);
     assert.ok(squash(body).includes('exactly as the roster spells it'));
     assert.match(body, /```ask\n[^\n]+\?\n- 'Answer the open decisions \(Recommended\)' - /);
     assert.ok(body.includes("'Keep it withheld'") && body.includes('decide --choice'), 'the continue ask and its record');
-    assert.ok(body.includes('/<producer> /mode-output-scorer <request>'), 'the typed stack form');
+    assert.ok(body.includes('/<producer> /mode-output-scoring <request>'), 'the typed stack form');
     assert.ok(body.includes('the continue question alone') && body.includes('`task:` path') && body.includes('--auto'), 'auto-mode and TASK');
     assert.ok(body.includes('references/outputs.md'), 'the outputs table');
-    assert.ok(read('docs/alfred-code.html').includes('mode-output-scorer/references/outputs.md'), 'the HTML links the table (AC28)');
+    assert.ok(read('docs/alfred-code.html').includes('mode-output-scoring/references/outputs.md'), 'the HTML links the table (AC28)');
 });
 
 // The A/B's phase 3 (2026-10-28): a round-0 finding asked for a repeat cancel to be ruled on, the revision added a reject
 // guard to a card, and the next grade's P11 named it - released anyway at 95, since the revision closed more than it opened.
 // The final review: the line keeps P11's two exceptions and the producer's mark-with-a-reason, as habits-plan-writing words them.
 test('SKILL.md revise step: in a designer plan, a fix that a Decision on today\'s behaviour can meet adds no unasked card work, P11\'s exceptions kept', () => {
-    const body = squash(split(read('stack/skills/mode-output-scorer/SKILL.md')).body);
+    const body = squash(split(read('stack/skills/mode-output-scoring/SKILL.md')).body);
     assert.ok(body.includes("In a designer plan, a finding a Decision on today's behaviour can meet is met that way: a new guard or rule `Asked:` does not name becomes one `## Optional` line, marked Recommended or Not worth it with the reason - a card only when the user asked for it or the request cannot be met safely without it, and a Decision says why (the designer-plan rubric's scope item, P11)."));
     assert.ok(!body.includes('never card work, which fails P11'), 'the earlier wording dropped P11\'s exceptions');
     const producer = squash(read('stack/skills/habits-plan-writing/SKILL.md'));
@@ -580,11 +580,11 @@ const PRODUCER_SITES = [['stack/skills/habits-plan-writing/SKILL.md', 'designer-
     ['stack/skills/issue-diagnoser/SKILL.md', 'root-cause', true], ['stack/skills/task-solve-cross/references/issue-investigation.md', 'root-cause', true],
     ['stack/skills/habits-explain-topic/SKILL.md', 'topic-explainer', false], ['stack/skills/habits-create-ticket/SKILL.md', 'ticket', false],
     ['stack/skills/task-version-upgrade/SKILL.md', 'upgrade-plan', false], ['stack/skills/task-build-from-scratch/SKILL.md', 'pick', false]];
-test('each producer carries the scorer line with its output, in the shape its row takes', () => {
+test('each producer carries the scoring line with its output, in the shape its row takes', () => {
     for (const [file, output, automatic] of PRODUCER_SITES) {
         const text = squash(read(file));
         assert.ok(text.includes('line is in context, the FIRST action before releasing') && text.includes(`Skill call with output \`${output}\``), file);
-        assert.strictEqual(text.includes('`scorer: on` line naming'), automatic, `${file}: automatic ${automatic}`);
+        assert.strictEqual(text.includes('`scoring: on` line naming'), automatic, `${file}: automatic ${automatic}`);
     }
     const diag = read('stack/skills/issue-diagnoser/SKILL.md');
     assert.strictEqual((diag.match(/Skill call with output `root-cause`/g) || []).length, 2);
@@ -602,7 +602,7 @@ test('the designer method, the diagnoser and both diagnoser seats name the six c
 });
 
 test('rubric P11 and the plan template carry the optional list', () => {
-    const rubric = read('stack/skills/mode-output-scorer/references/rubric-designer-plan.md');
+    const rubric = read('stack/skills/mode-output-scoring/references/rubric-designer-plan.md');
     const p11 = (rubric.match(/^- \*\*P11\*\*.*$/m) || [''])[0];
     for (const s of ['`## Optional`', 'Recommended - ', 'Not worth it - ']) assert.ok(p11.includes(s), s);
     assert.match(rubric, /"P11": \{ "points": 5, "na": null \}/);
@@ -621,8 +621,8 @@ test('an extra the user asked for is a card, and the plan audit reads the option
     assert.ok(audit.includes('A `## Optional` line is no scope: it builds nothing'), 'the scope pass names the optional list');
 });
 
-test('the output-scorer seat reads in two batched turns', () => {
-    const { front, body } = split(read('stack/agents/output-scorer.md'));
+test('the output-scoring seat reads in two batched turns', () => {
+    const { front, body } = split(read('stack/agents/output-scoring.md'));
     assert.strictEqual((squash(body).match(/in ONE (?:more )?turn/g) || []).length, 2);
     assert.ok(squash(body).includes('a later turn only for a lookup an earlier read made necessary'));
     assert.match(front, /^tools: LSP, Read, Grep, Glob, WebFetch$/m);

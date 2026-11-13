@@ -621,7 +621,7 @@ test('the chain reads a workspace.json tree, an old-file tree and a mixed tree a
     const records = {
         'ws': { children: ['api'], ignore: { skill: ['tdd'] } },
         'ws/api': { parent: '..', children: ['tool'], ignore: { secret: ['B'] } },
-        'ws/api/tool': { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } },
+        'ws/api/tool': { parent: '..', ignore: { env: ['ALFRED_CODE_SCORING'] } },
     };
     const read = (legacyOf) =>
     {

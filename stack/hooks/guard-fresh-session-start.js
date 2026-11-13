@@ -1148,7 +1148,7 @@ if (IS_SKILL_CALL && skill) {
 // copy - personal or project - never the core's own stack/skills source in the plugin cache.
 // `guard-fresh-session-start:builtin-review` in ALFRED_CODE_HOOKS_OFF switches this part off.
 const BUILTIN_REVIEW = { 'code-review': '/review-code', 'security-review': '/review-security' };
-// The copy and skillOverrides read live in the prelude (skillCopyState, shared with the scorer); no prelude skips the deny.
+// The copy and skillOverrides read live in the prelude (skillCopyState, shared with the scoring); no prelude skips the deny.
 const oursLoadable = (root, ours) => { try { return require('./hook-prelude.js').oursLoadable(root, ours); } catch { return false; } };
 if (IS_SKILL_CALL && Object.prototype.hasOwnProperty.call(BUILTIN_REVIEW, skill.trim().replace(/^\//, ''))) {
   const name = skill.trim().replace(/^\//, '');
@@ -1394,7 +1394,7 @@ function modeBanner(autoOn) {
 // Nobody at the terminal is judged WITHOUT the session's own AUTO stamp (a payload with no session id reads none): that
 // stamp is the auto-run this banner reports ON, and the person who typed the command is there to read it. A print-mode
 // run, ALFRED_CODE_UNATTENDED=1 or a hand-written stamp still reads as nobody.
-// One typed prompt can expand more than once (a stacked `/mode-output-scorer /task-solve X`): the
+// One typed prompt can expand more than once (a stacked `/mode-output-scoring /task-solve X`): the
 // contract and the banner go out on its first expansion only (R093). The mark is the prompt's `prompt_id`
 // (code.claude.com/docs/en/hooks, 'Common input fields'), else the typed line's hash for SAID_FALLBACK_MS - with no id the
 // line typed again cannot be told from one expansion repeated, so the window keeps a retype seconds later said. One file
@@ -1444,7 +1444,7 @@ function solveFlowLine() {
   return state === 'off' ? 'Solve flow: switched off here - a code change goes under Left for you.' : 'Solve flow: not installed here - a code change goes under Left for you.';
 }
 if (auto && !auto.marker && !auto.markerFailed) {
-  // a family command that opens no run (a stacked `/mode-output-scorer X`) rides the live stamp: the banner alone
+  // a family command that opens no run (a stacked `/mode-output-scoring X`) rides the live stamp: the banner alone
   if (SAY) expansionOut('');
   process.exit(0);
 }

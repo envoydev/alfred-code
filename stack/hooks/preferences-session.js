@@ -141,12 +141,12 @@ const PARTIAL_FLAG = /^-(?:TotalCount|Head|Tail|First|Last)$/i;
 // The shell words that print a file's text, as a Read does; `wc` and `ls` print none of it.
 const SHELL_READ = /^(?:cat|bat|less|more|nl|type|get-content|gc|head|tail|grep|egrep|fgrep|rg|sed|awk|cut|select-string|sls)$/i;
 // The read-only judges: a solution designer, a verifier, the three seats whose findings a preference shapes - the
-// code-quality analyzer, the security auditor and the integration reviewer - and the output scorer, which grades a plan
+// code-quality analyzer, the security auditor and the integration reviewer - and the output scoring, which grades a plan
 // against the docs its producer read, handed the code docs. The architecture
 // analyzer, which reports smells, is handed the architecture doc alone (the user's ruling of 2026-10-22). A bare name is
 // the stack's own only where the install stamp records its copy (the copy route); a project's own agent of the same
 // name, or another plugin's, gets nothing.
-const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer|output-scorer)$/;
+const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer|output-scoring)$/;
 const ARCH_SEAT = /^architecture-analyzer$/;
 const STAMP_BYTES = 64 * 1024;
 // The locked keys the seed carries, for an install whose seed is not beside this hook.

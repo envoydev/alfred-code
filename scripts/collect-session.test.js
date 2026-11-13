@@ -166,11 +166,11 @@ test('name-matched stores take this session\'s files and no other session\'s', (
 {
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     const rc = run(fx);
-    for (const id of ['hook-blocks', 'tools-usage', 'history', 'scorer', 'sessions:COMPACT-STATE-', 'sessions:AGENT-CAP-',
-        'sessions:SCORER-', 'sessions:preferences-', 'session-inspector'])
+    for (const id of ['hook-blocks', 'tools-usage', 'history', 'scoring', 'sessions:COMPACT-STATE-', 'sessions:AGENT-CAP-',
+        'sessions:SCORING-', 'sessions:preferences-', 'session-inspector'])
         assert.strictEqual(row(rc, id).status, 'copied', id);
-    assert.strictEqual(row(rc, 'sessions:SCORER-').files, 2, 'SCORER- takes SCORER-HELD-');
-    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', 'scorer', fx.sid, 'draft.md')));
+    assert.strictEqual(row(rc, 'sessions:SCORING-').files, 2, 'SCORING- takes SCORING-HELD-');
+    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', 'scoring', fx.sid, 'draft.md')));
     assert.ok(fs.existsSync(path.join(fx.out, 'data', 'statistics', 'hook-blocks', `${fx.sid}.jsonl`)));
     assert.strictEqual(row(rc, 'hook-blocks').to, `data/statistics/hook-blocks/${fx.sid}.jsonl`);
     assert.strictEqual(row(rc, 'sessions:unlisted').status, 'absent');
@@ -242,7 +242,7 @@ test('no data root and an empty one', (t) =>
     fs.rmSync(fx.dataRoot, { recursive: true, force: true });
     const rc = run(fx);
     assert.ok(fs.existsSync(path.join(fx.out, `${fx.sid}.jsonl`)));
-    const dataRows = rc.stores.filter((s) => /^(hook-blocks|tools-usage|history|scorer|sessions:)/.test(s.id));
+    const dataRows = rc.stores.filter((s) => /^(hook-blocks|tools-usage|history|scoring|sessions:)/.test(s.id));
     assert.ok(dataRows.length >= 15, `${dataRows.length} data-root rows`);
     for (const s of dataRows)
     {
@@ -251,7 +251,7 @@ test('no data root and an empty one', (t) =>
     }
     fs.mkdirSync(fx.dataRoot);
     const rc2 = run(fx, ['--out', path.join(fx.root, 'out2')]);
-    for (const s of rc2.stores.filter((x) => /^(hook-blocks|history|scorer|sessions:)/.test(x.id)))
+    for (const s of rc2.stores.filter((x) => /^(hook-blocks|history|scoring|sessions:)/.test(x.id)))
         assert.strictEqual(s.why, 'not written', s.id);
 });
 
@@ -611,7 +611,7 @@ test('the .secrets marker reaches no bundle file in either mode', (t) =>
 {
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     fx.write(path.join(fx.dataRoot, '.secrets'), 'K=marker-q7\n');
-    fx.write(path.join(fx.dataRoot, 'state', 'sessions', 'scorer', fx.sid, '.secrets'), 'K=marker-q7\n');
+    fx.write(path.join(fx.dataRoot, 'state', 'sessions', 'scoring', fx.sid, '.secrets'), 'K=marker-q7\n');
     for (const mode of ['copy', 'withhold'])
     {
         const out = path.join(fx.root, `out-${mode}`);
@@ -619,9 +619,9 @@ test('the .secrets marker reaches no bundle file in either mode', (t) =>
         assert.ok(!grepBundle(out, 'marker-q7'), mode);
         if (mode === 'copy')
         {
-            assert.ok(fs.existsSync(path.join(out, 'data', 'state', 'sessions', 'scorer', fx.sid, 'draft.md')));
-            assert.deepStrictEqual(skipped(rc, 'scorer').map((s) => [s.status, s.file, s.why]),
-                [['denied', `data/state/sessions/scorer/${fx.sid}/.secrets`, 'never copied: .secrets']]);
+            assert.ok(fs.existsSync(path.join(out, 'data', 'state', 'sessions', 'scoring', fx.sid, 'draft.md')));
+            assert.deepStrictEqual(skipped(rc, 'scoring').map((s) => [s.status, s.file, s.why]),
+                [['denied', `data/state/sessions/scoring/${fx.sid}/.secrets`, 'never copied: .secrets']]);
         }
     }
 });
@@ -633,7 +633,7 @@ test('a symlink is never followed', (t) =>
     const autoRun = path.join(fx.dataRoot, 'state', 'sessions', `AUTO-RUN-${fx.sid}`);
     fs.rmSync(autoRun);
     if (!link(t, outside, autoRun, false)) return;
-    link(t, path.dirname(outside), path.join(fx.dataRoot, 'state', 'sessions', 'scorer', fx.sid, 'linked'), true);
+    link(t, path.dirname(outside), path.join(fx.dataRoot, 'state', 'sessions', 'scoring', fx.sid, 'linked'), true);
     // A docs path whose parent folder is a link resolves outside the docs root.
     fx.write('elsewhere/x.md', 'elsewhere-q9');
     fs.mkdirSync(path.join(fx.docsRoot, 'work'), { recursive: true });
@@ -643,8 +643,8 @@ test('a symlink is never followed', (t) =>
     assert.strictEqual(row(rc, 'sessions:AUTO-RUN-').status, 'denied');
     assert.deepStrictEqual(skipped(rc, 'sessions:AUTO-RUN-').map((s) => [s.status, s.file, s.why]),
         [['denied', `data/state/sessions/AUTO-RUN-${fx.sid}`, 'symlink']]);
-    assert.deepStrictEqual(skipped(rc, 'scorer').map((s) => [s.status, s.file, s.why]),
-        [['denied', `data/state/sessions/scorer/${fx.sid}/linked`, 'symlink']]);
+    assert.deepStrictEqual(skipped(rc, 'scoring').map((s) => [s.status, s.file, s.why]),
+        [['denied', `data/state/sessions/scoring/${fx.sid}/linked`, 'symlink']]);
     assert.deepStrictEqual(skipped(rc, 'docs').map((s) => [s.status, s.file, s.why]),
         [['denied', 'docs/work/linked/x.md', 'outside its root']]);
     assert.ok(!grepBundle(fx.out, 'outside-q8'));
@@ -773,7 +773,7 @@ test('withhold writes no text path and passes the gate', (t) =>
     const out = path.join(fx.project, 'bundles', 'w');
     const rc = run(fx, ['--out', out, '--text', 'withhold']);
     assert.strictEqual(rc.gate, 'withhold');
-    for (const id of ['transcript', 'subagents', 'session-folder', 'history', 'scorer', 'docs', 'tmp'])
+    for (const id of ['transcript', 'subagents', 'session-folder', 'history', 'scoring', 'docs', 'tmp'])
     {
         const r = row(rc, id);
         assert.strictEqual(r.status, 'withheld', id);
@@ -792,7 +792,7 @@ test('swept: a session store older than 7 days', (t) =>
     const past = makeSession({ lastRowAgeMs: 7 * DAY + 1000 }); t.after(past.cleanup);
     const rcAt = run(at7);
     const rcPast = run(past);
-    for (const id of ['sessions:COMPACT-STATE-', 'scorer'])
+    for (const id of ['sessions:COMPACT-STATE-', 'scoring'])
     {
         assert.deepStrictEqual([row(rcAt, id).status, row(rcAt, id).why], ['absent', 'not written'], id);
         assert.deepStrictEqual([row(rcPast, id).status, row(rcPast, id).why], ['absent', 'swept'], id);

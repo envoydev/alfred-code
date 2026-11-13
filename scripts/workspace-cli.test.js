@@ -262,11 +262,11 @@ test('status prints each chain key with its source and no value', () =>
 test('variables.js show run from the project names an inherited value from <rel>, not env', () =>
 {
     const at = joined();
-    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=90\n');
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=90\n');
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_HISTORY=4\n');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'variables.js'), 'show', '--root', '.'], { cwd: at('ws/api'), encoding: 'utf8', env: ENV });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.match(r.stdout, /^ALFRED_CODE_SCORER_LEVEL=90 \(from \.\.\)$/m, r.stdout);
+    assert.match(r.stdout, /^ALFRED_CODE_SCORING_LEVEL=90 \(from \.\.\)$/m, r.stdout);
     assert.match(r.stdout, /^ALFRED_CODE_HISTORY=4 \(own\)$/m);
     assert.match(r.stdout, /^ALFRED_CODE_TURN_CHECK=0 \(default\)$/m, 'a key no file holds reads its default, not the env the prelude filled');
 });
@@ -275,10 +275,10 @@ test('ignore --add and --remove edit this project\'s ignore lines', () =>
 {
     const at = joined();
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'skill sqlite').code, 0);
-    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'env ALFRED_CODE_SCORER').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { skill: ['sqlite'], env: ['ALFRED_CODE_SCORER'] } });
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'env ALFRED_CODE_SCORING').code, 0);
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { skill: ['sqlite'], env: ['ALFRED_CODE_SCORING'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--remove', 'skill sqlite').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORING'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'colour blue').code, 2);
 });
 

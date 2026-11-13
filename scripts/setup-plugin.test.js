@@ -106,7 +106,7 @@ test('the three mode commands: user-typed only, on|off, a short body around the 
         assert.ok(body.split('\n').filter((l) => l.trim()).length <= 12, `${name}: a body of at most 12 lines`);
         assert.ok(body.includes('[mode]'), `${name}: the body acts on the hook's [mode] line`);
         assert.ok(body.includes(`/alfred-code:mode:${name} $ARGUMENTS`), `${name}: the body shows what was typed`);
-        assert.doesNotMatch(body, /mode-(auto-run|output-scorer)\b/, `${name}: names no stack skill`);
+        assert.doesNotMatch(body, /mode-(auto-run|output-scoring)\b/, `${name}: names no stack skill`);
     }
 });
 

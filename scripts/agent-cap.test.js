@@ -729,23 +729,23 @@ test('still at the cap, a seat\'s Stop, the gates off: no continuation (AC15)', 
     assert.deepStrictEqual(names(r), ['AGENT-CAP-s1.denied'], 'guard-answer off: reconciled, not continued');
 });
 
-test('a Stop that owes the scorer its grade does not continue for the cap (AC15)', () =>
+test('a Stop that owes the scoring its grade does not continue for the cap (AC15)', () =>
 {
     const root = project();
-    fs.mkdirSync(path.join(root, '.claude', 'skills', 'mode-output-scorer'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude', 'skills', 'mode-output-scorer', 'SKILL.md'), '---\nname: mode-output-scorer\ndescription: x\n---\n');
+    fs.mkdirSync(path.join(root, '.claude', 'skills', 'mode-output-scoring'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'skills', 'mode-output-scoring', 'SKILL.md'), '---\nname: mode-output-scoring\ndescription: x\n---\n');
     const tp = path.join(root, 'session.jsonl');
-    const draft = path.join(root, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x', 'ab12cd34.draft.md');
+    const draft = path.join(root, '.alfred', 'state', 'sessions', 'scoring', 's1', 'x', 'ab12cd34.draft.md');
     fs.writeFileSync(tp, [
         { type: 'user', uuid: 'u1', message: { role: 'user', content: 'go' } },
         { type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 't1', name: 'Write', input: { file_path: draft, content: 'd' } }] } },
         { type: 'assistant', message: { id: 'm2', content: [{ type: 'text', text: 'Done.' }] } },
     ].map((r) => JSON.stringify(r)).join('\n') + '\n');
     const reg = deniedAt(root);
-    const logEnv = stopEnv(root, { ALFRED_CODE_SCORER: '1' });
+    const logEnv = stopEnv(root, { ALFRED_CODE_SCORING: '1' });
     const held = stopCall(root, { transcript_path: tp, background_tasks: [], logEnv });
     assert.strictEqual(held.status, 2, held.stderr);
-    assert.deepStrictEqual(kinds(root), ['scorer'], 'the scorer holds first');
+    assert.deepStrictEqual(kinds(root), ['scoring'], 'the scoring holds first');
     const again = stopCall(root, { transcript_path: tp, background_tasks: [], stop_hook_active: true, logEnv });
     assert.strictEqual(again.status, 0, again.stderr);
     assert.ok(fs.existsSync(cap.deniedOf(reg)), 'still owed: the cap does not continue');

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scorecard.js - the mode-output-scorer's arithmetic and its loop, so no total, verdict or next move is left to the
+// scorecard.js - the mode-output-scoring's arithmetic and its loop, so no total, verdict or next move is left to the
 // model. `grade` recomputes a sealed scorecard against its rubric's json block and never reads the seat's own sum: a yes
 // with no quote is a no, an n/a counts only where the check allows one, a finding missing a field is discarded and named,
 // a kept BLOCKER caps the total at 60 and a self grade at 99, and the ceiling says how far the draft can still climb.
@@ -12,9 +12,9 @@
 //   node scorecard.js grade <score file> (--output <name> | --rubric <file>) [--level <n>] [--self]
 //   node scorecard.js next [--root <dir>] --session <id> --slug <slug> [--level <n>] [--rounds <n>] [--auto]
 //   node scorecard.js decide [--root <dir>] --session <id> --slug <slug> --choice accept|revise|answer|keep
-// The slug folder is <root>/<data root>/state/sessions/scorer/<session>/<slug>/. --session self allocates a self-<hex>
+// The slug folder is <root>/<data root>/state/sessions/scoring/<session>/<slug>/. --session self allocates a self-<hex>
 // session for the SELF route; an empty or literal ${CLAUDE_SESSION_ID} session reads CLAUDE_CODE_SESSION_ID. The level is
-// --level when it is a whole number 60..100, the run cap --rounds when it is one in 1..10, else ALFRED_CODE_SCORER_LEVEL /
+// --level when it is a whole number 60..100, the run cap --rounds when it is one in 1..10, else ALFRED_CODE_SCORING_LEVEL /
 // _ROUNDS (the environment, then the project's .claude/settings.local.json, then .claude/settings.json), else 80 and 3.
 // A score file opens with the seal the hand-back hook wrote (`seal: sha256 <hex>` over the rest of the file), or
 // `self: <reason>` for a self grade.
@@ -49,7 +49,7 @@ const ID_RE = '[0-9a-f]{8}';
 
 // The docs each output's grader is handed (spec 5.13), as paths under the docs root: a folder ends with `/`, `target` is
 // the --target file, `skill:<name>/<path>` sits beside this skill's folder. references/outputs.md is the same map for
-// people, held equal by scripts/habits-scorer-card.test.js.
+// people, held equal by scripts/habits-scoring-card.test.js.
 const PREFERENCE_DOCS = ['preferences/PERSONAL-CODE-PREFERENCES.md', 'preferences/ARCHITECTURE-PREFERENCES.md', 'preferences/PROJECT-CODE-PREFERENCES.md'];
 const ASSESSMENTS = ['quality/CODE-ASSESSMENT.md', 'quality/ARCHITECTURE-ASSESSMENT.md'];
 // The map under awareness/ since 2026-10-29, at its legacy home in an install not yet updated; the run book under its new
@@ -134,8 +134,8 @@ function setting(suffix, env = process.env, root = projectRoot(undefined, env)) 
   if (!loader) return envOf(env, suffix);
   return envOf(loader.variablesOf(root, { env }).values, suffix);
 }
-const levelOf = (value, env = process.env, root) => wholeIn(value, 60, 100, null) ?? wholeIn(setting('SCORER_LEVEL', env, root), 60, 100, 80);
-const roundsOf = (value, env = process.env, root) => wholeIn(value, 1, 10, null) ?? wholeIn(setting('SCORER_ROUNDS', env, root), 1, 10, 3);
+const levelOf = (value, env = process.env, root) => wholeIn(value, 60, 100, null) ?? wholeIn(setting('SCORING_LEVEL', env, root), 60, 100, 80);
+const roundsOf = (value, env = process.env, root) => wholeIn(value, 1, 10, null) ?? wholeIn(setting('SCORING_ROUNDS', env, root), 1, 10, 3);
 
 // The rubric's first fenced json block: { output, checks: { <id>: { points, na } } }, the points summing to 100 (within
 // a double's rounding, so twelve checks of 8.34 and 8.33 pass).
@@ -333,7 +333,7 @@ function runGrade(args) {
 }
 
 // A session id as a folder name - hook-prelude.js's safeSession, copied (R31): a separator, a space or any other
-// character outside [\w.-] becomes `_`, and a whole `.` or `..` is `_`, so no id names a path outside scorer/.
+// character outside [\w.-] becomes `_`, and a whole `.` or `..` is `_`, so no id names a path outside scoring/.
 function safeSession(id) {
   const s = String(id === undefined || id === null ? '' : id).replace(/[^\w.-]/g, '_');
   return /^\.*$/.test(s) ? '_' : s;
@@ -357,7 +357,7 @@ function slugContext(args, env = process.env, allocate = false) {
   const dataRel = dataRoot(env);
   const self = allocate && session === 'self';
   const sessionId = self ? `self-${hex()}` : session;
-  const folder = path.resolve(root, dataRel, 'state', 'sessions', 'scorer', safeSession(sessionId), slug);
+  const folder = path.resolve(root, dataRel, 'state', 'sessions', 'scoring', safeSession(sessionId), slug);
   return { root, slug, session: sessionId, self, folder, logFile: path.join(folder, 'rounds.log'), dataRel };
 }
 
@@ -447,7 +447,7 @@ function runStart(args) {
     draftId = id;
   }
   // The run cap next holds (sc-6; spec 5.5: every grade line is one run, a regrade included): --rounds, else
-  // ALFRED_CODE_SCORER_ROUNDS, else 3 (inline-plan runs once), plus the attempt's bought runs. A retry of an incomplete
+  // ALFRED_CODE_SCORING_ROUNDS, else 3 (inline-plan runs once), plus the attempt's bought runs. A retry of an incomplete
   // grade is next's own order, and so is a revision next owes - the newest line a `bought`, or the fix-on-pass
   // revision not yet graded - so those start past it.
   const owed = log && (new RegExp(`^bought ${ID_RE}$`).test(log.newest) || (log.fixing && log.grades.length === log.fixing.at));

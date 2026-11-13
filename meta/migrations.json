@@ -422,36 +422,36 @@
    "since": "3.7.0",
    "detect": {
     "settings_env_value": {
-     "key": "ALFRED_CODE_SCORER",
+     "key": "ALFRED_CODE_SCORING",
      "equals": "0"
     }
    },
    "remove": [],
    "clear_settings_env": {
-    "key": "ALFRED_CODE_SCORER",
+    "key": "ALFRED_CODE_SCORING",
     "when_value": "0",
     "to": "1"
    },
    "why": "the output scorer is on by default (the user's ruling, B1 of the 2026-11-03 usage audit): where a plan file was written, scored plans won 14 of 15 pairs (docs/habits-scorer-evidence.md). The stack's old off seed moves to on; a 0 the user set stays",
-   "then": "nothing - set ALFRED_CODE_SCORER to 0 in /alfred-code:configure's environment area to turn it off"
+   "then": "nothing - set ALFRED_CODE_SCORING to 0 in /alfred-code:configure's environment area to turn it off"
   },
   {
    "id": "scorer-outputs-designer-plan",
    "since": "3.7.0",
    "detect": {
     "settings_env_value": {
-     "key": "ALFRED_CODE_SCORER_OUTPUTS",
+     "key": "ALFRED_CODE_SCORING_OUTPUTS",
      "equals": ""
     }
    },
    "remove": [],
    "clear_settings_env": {
-    "key": "ALFRED_CODE_SCORER_OUTPUTS",
+    "key": "ALFRED_CODE_SCORING_OUTPUTS",
     "when_value": "",
     "to": "designer-plan"
    },
    "why": "the scorer on by default grades designer plan files only: inline plans lost 3 of 3 scored pairs (docs/habits-scorer-evidence.md). The stack's old seed, empty (all three outputs before 3.7.0, the seed since), moves to designer-plan; a list the user set stays",
-   "then": "nothing - list all three names in ALFRED_CODE_SCORER_OUTPUTS to grade every output"
+   "then": "nothing - list all three names in ALFRED_CODE_SCORING_OUTPUTS to grade every output"
   },
   {
    "id": "forge-watch-retired",
@@ -478,6 +478,62 @@
    },
    "why": "the data root is always .alfred: no hook, engine or script reads a folder name from a settings file any more, so the key names nothing. It goes whatever it holds - a folder it named is moved into .alfred by the same update, or the update stops and names the hand step.",
    "then": "nothing - the key is gone; the project's data is under .alfred"
+  },
+  {
+   "id": "scoring-renamed",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_SCORER"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_SCORER",
+    "to": "ALFRED_CODE_SCORING"
+   },
+   "why": "the grader's names say scoring everywhere since 3.11.0; the value moves to the new key in every file that holds it",
+   "then": "nothing"
+  },
+  {
+   "id": "scoring-level-renamed",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_SCORER_LEVEL"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_SCORER_LEVEL",
+    "to": "ALFRED_CODE_SCORING_LEVEL"
+   },
+   "why": "the grader's names say scoring everywhere since 3.11.0; the value moves to the new key in every file that holds it",
+   "then": "nothing"
+  },
+  {
+   "id": "scoring-outputs-renamed",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_SCORER_OUTPUTS"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_SCORER_OUTPUTS",
+    "to": "ALFRED_CODE_SCORING_OUTPUTS"
+   },
+   "why": "the grader's names say scoring everywhere since 3.11.0; the value moves to the new key in every file that holds it",
+   "then": "nothing"
+  },
+  {
+   "id": "scoring-rounds-renamed",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_SCORER_ROUNDS"
+   },
+   "remove": [],
+   "rename_settings_env": {
+    "from": "ALFRED_CODE_SCORER_ROUNDS",
+    "to": "ALFRED_CODE_SCORING_ROUNDS"
+   },
+   "why": "the grader's names say scoring everywhere since 3.11.0; the value moves to the new key in every file that holds it",
+   "then": "nothing"
   }
  ]
 }

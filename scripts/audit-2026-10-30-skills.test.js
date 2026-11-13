@@ -230,12 +230,12 @@ test('SKF-22: the diagnoser\'s CI-seat offer dispatches the seat as the roster s
     assert.match(flat(skill('issue-diagnoser')), /offer that dispatch as the recommended option at this stop rather than re-deriving it here, the seat dispatched exactly as the roster spells it/);
 });
 
-test('SKF-23: no dated or opaque token in the code loop example or the scorer revise step', () =>
+test('SKF-23: no dated or opaque token in the code loop example or the scoring revise step', () =>
 {
     assert.doesNotMatch(skill('loop-code-quality'), /1\.x starter/);
-    const scorer = flat(skill('mode-output-scorer'));
-    assert.doesNotMatch(scorer, /says why \(P11\)/);
-    assert.match(scorer, /\(the designer-plan rubric's scope item, P11\)/);
+    const scoring = flat(skill('mode-output-scoring'));
+    assert.doesNotMatch(scoring, /says why \(P11\)/);
+    assert.match(scoring, /\(the designer-plan rubric's scope item, P11\)/);
 });
 
 test('SKF-24: no skill names a shipped rule by its retired baseline name', () =>

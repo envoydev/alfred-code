@@ -8,7 +8,7 @@
    "evidence-gatherer",
    "integration-reviewer",
    "issue-diagnoser-runtime",
-   "output-scorer",
+   "output-scoring",
    "security-auditor",
    "test-coverage-analyzer"
   ],
@@ -71,7 +71,7 @@
    "review-code",
    "review-security",
    "task-version-upgrade",
-   "mode-output-scorer"
+   "mode-output-scoring"
   ]
  },
  "general": {

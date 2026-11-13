@@ -1588,7 +1588,7 @@ test('check 70\'s file tokens', () => {
     assert.deepStrictEqual(of('scripts/x.js', "const OLD = 'ORIENTATION.md'; // legacy\n"), [], 'code outside scripts/install/ and stack/hooks/ saying legacy');
     assert.deepStrictEqual(of('meta/shared-rules.json', `${JSON.stringify({ rules: [{ marker: 'ARCHITECTURE.md, the legacy home' }] }, null, 2)}\n`), [], 'a JSON value saying legacy');
     assert.strictEqual(of('stack/agents/x.md', '- read ARCHITECTURE.md first\n').length, 1, 'the same seat line without the word');
-    for (const file of ['stack/mcp/data-root.js', 'stack/skills/mode-output-scorer/scripts/scorecard.js', 'stack/skills/capture-awareness/scripts/awareness-state.js', 'scripts/scan-evidence.js', 'meta/conformance.json', 'meta/skill-comply/x/fixtures/a.md', 'scripts/install/docs.js'])
+    for (const file of ['stack/mcp/data-root.js', 'stack/skills/mode-output-scoring/scripts/scorecard.js', 'stack/skills/capture-awareness/scripts/awareness-state.js', 'scripts/scan-evidence.js', 'meta/conformance.json', 'meta/skill-comply/x/fixtures/a.md', 'scripts/install/docs.js'])
         assert.deepStrictEqual(of(file, file.endsWith('.json') ? JSON.stringify({ a: 'PROJECT-AWARENESS.md, ORIENTATION.md' }) : 'PROJECT-AWARENESS.md and ORIENTATION.md\n'), [], `${file} is exempt`);
     assert.deepStrictEqual(of('stack/skills/x/SKILL.md', 'ARCHITECTURE-AWARENESS.md, ARCHITECTURE-ORIENTATION-AWARENESS.md, ARCHITECTURE-PREFERENCES.md, ARCHITECTURE-ASSESSMENT.md, RUN-AND-DEBUG-AWARENESS.md, alfred-awareness.md\n'), [], 'the new and the -suffixed names never');
     assert.strictEqual(of('stack/skills/x/SKILL.md', 'the legacy old-code-capture\n').length, 1, 'the word exempts the file tokens alone');
