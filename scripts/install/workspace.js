@@ -489,33 +489,50 @@ function isSeed(key, value, rows, catalogKey = key)
 // own. One line names the count kept. A joiner whose values still sit in settings (a 2.12 project the update walk joins
 // before the installer moves them) gets `join-prune: settings` in its stamp, so the next settings pass prunes them there
 // (envPlan) - a 2.12 child that never answered a join keeps every value (the spec's Migration).
-function pruneOnJoin(projectRoot, { env = process.env, log = () => {} } = {})
+// W1: every run that writes a joined child's `.variables` calls it too, with no `seeds`: a value equal to the chain's leaves.
+function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = false } = {})
 {
     const variables = require('./variables.js');
     const layout = require('../../stack/hooks/layout.js');
     const file = variables.fileOf(projectRoot, { env });
     const values = variables.read(file).values;
+    const chained = chainValues(projectRoot, { env });
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const dropped = [];
     const own = [];
+    // The layers the loader reads after the own file and before the members (layout.js ownLayers' order): the first holding
+    // another value would answer once the own line left, so the line stays, named.
+    const envIn = (f) => { const e = (readJson(f) || {}).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; };
+    // Each read through the loader's own `valueIn`, so a 3.10 name (layout.OLD_KEYS, until 4.0.0) answers as it does there -
+    // the own file's included: with the line gone, its old name is what the loader reads next.
+    const held = [['settings.json', envIn(path.join(projectRoot, '.claude', 'settings.json'))], ['account settings',
+        envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
+    const stays = [];
     for (const [key, value] of Object.entries(values))
     {
         if (!layout.VARIABLE_KEYS.includes(key)) continue;
-        if (!layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
-        else own.push(key);
+        const rest = { ...values };
+        delete rest[key];
+        const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
+        if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
+        else if (chained[key] !== value) own.push(key);
+        else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
+        else dropped.push(key);
     }
     const ledgerEnv = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env || {};
-    if (['settings.json', 'settings.local.json'].some((f) => Object.keys(ledgerEnv[f] || {}).some((k) => layout.VARIABLE_KEYS.includes(k))))
+    if (seeds && ['settings.json', 'settings.local.json'].some((f) => Object.keys(ledgerEnv[f] || {}).some((k) => layout.VARIABLE_KEYS.includes(k))))
         stamp.markLine(stampFile, 'join-prune', 'settings');
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
     if (dropped.length)
     {
         const done = variables.write(file, Object.fromEntries(dropped.map((k) => [k, null])));
-        if (done.why) { log(`!! workspace: ${path.relative(projectRoot, file)} could not be written (${done.why}) - its stack seeds stay and beat the workspace's values until the next join`); return { dropped: [], own }; }
+        if (done.why) { log(`!! workspace: ${rel} could not be written (${done.why}) - nothing was removed from it`); return { dropped: [], own }; }
         editVariablesLedger(projectRoot, (r) => { for (const k of dropped) delete r[k]; return r; });
     }
-    if (dropped.length || own.length)
-        log(`workspace: ${own.length} of this project's values kept as its own (${own.join(', ') || 'none'}) - ${dropped.length} stack seed${dropped.length === 1 ? '' : 's'} dropped, so the workspace's value reaches it`);
+    if (dropped.length || (seeds && own.length) || stays.length)
+        log(`workspace: ${dropped.length} ${seeds ? 'stack seeds and values' : 'values'} equal to the workspace's removed from ${rel} (${dropped.join(', ') || 'none'})`
+            + ` - ${own.length} kept as this project's own (${own.join(', ') || 'none'})${stays.join('')}`);
     return { dropped, own };
 }
 
@@ -617,7 +634,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         const r = register(root, { env, exec, dataRoot, above: true });
         lines.push(...r.lines);
         if (!r.ok) return { ok: false, code: r.code, lines };
-        pruneOnJoin(root, { env, log });
+        pruneChained(root, { env, log, seeds: true });
         return { ok: true, code: 0, lines: [...lines, `role: child of ${r.rel}`] };
     };
     if (answer === 'stay') return write((m) => setAbove(m, nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${roleText(roleOf(root, { env, log }))}`] };
@@ -805,8 +822,13 @@ function chainValues(projectRoot, { env = process.env } = {})
     for (const member of members)
     {
         const read = layout.readDotenv(path.join(member.root, ...member.dataRoot.split('/'), '.variables'));
-        for (const [key, value] of Object.entries((read && read.values) || {}))
-            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !skip.has(key) && !Object.hasOwn(out, key)) out[key] = value;
+        // The loader's own `valueIn`: an empty line is unset and a 3.10 name answers for its new one (until 4.0.0).
+        for (const key of layout.VARIABLE_KEYS)
+        {
+            if (!read || layout.MEMBER_NEVER.has(key) || skip.has(key) || Object.hasOwn(out, key)) continue;
+            const value = layout.valueIn(read.values, key);
+            if (value !== undefined) out[key] = value;
+        }
         for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
     return out;
@@ -818,7 +840,7 @@ function chainValues(projectRoot, { env = process.env } = {})
 // it set itself): each copy still at its ledger hash, and given the same value by the chain now, goes (`copies`); a copy
 // the chain would answer otherwise - a parent not updated yet - stays as the child's own, so no value changes. Its
 // HOOKS_OFF loses the part entries a member's settings hold (`hooksOffDrop`), which the loader merges back at load.
-// A project the role answer joined while its 2.12 values still sat in settings (pruneOnJoin's `join-prune: settings`
+// A project the role answer joined while its 2.12 values still sat in settings (pruneChained's `join-prune: settings`
 // stamp line - the update walk answers BEFORE the installer): each stack seed (isSeed) goes from settings as the prune
 // drops it from `.variables` (`seeds`) - never DOCS_VERSIONING or an `ignore env` key - and the workspace's value
 // reaches it. The stamp the run writes carries no such line, so it prunes once.
@@ -1900,7 +1922,7 @@ module.exports = {
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
+    realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,

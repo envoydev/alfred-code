@@ -1032,3 +1032,15 @@ their local file. The hooks your team switched off in `ALFRED_CODE_HOOKS_OFF` ar
 they run for a teammate until that teammate switches them off in `/alfred-code:configure`. A cloud session reads no
 local file and gets none of the settings. Cursor reads the hook rows from the same file while its Third-Party Imports
 setting is on, which is its default.
+
+## after 3.10.0 - a joined child's .variables keeps only its own values
+
+Every init and update that writes `.variables` in a project joined to a workspace removes from that file each
+value equal to the one the workspace hands it, and prints one `workspace: <n> values equal to the workspace's
+removed from ...` line naming the keys - report it. Nothing the project reads changes: the value comes through
+the workspace from then on and follows a later change there. A value that differs stays. A key that must hold
+whatever the workspace says takes an `ignore env <KEY>` line in the project's workspace record. A key the line
+names as `stays` is equal to the workspace's but sits over another value in a settings file or the launch
+environment; it is left alone. A run that does not write the file - a local-scope run in a project whose
+`.variables` git tracks, or a project whose data folder another ignore rule hides - removes nothing from it and
+prints no line; the next run that writes the file does.
