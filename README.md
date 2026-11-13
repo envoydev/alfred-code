@@ -91,8 +91,8 @@ The first time: **init**, restart, **init** again. After that: **update** when a
 | `/alfred-code:validate` | Match the install to the project again |
 | `/alfred-code:uninstall` | Remove what the install wrote, nothing else |
 
-Not sure which one? Type `/alfred-code` and it names the command to run. Three more commands switch a mode for the
-session: see [Modes](#modes).
+Not sure which one? Type `/alfred-code` and it names the command to run. Three more commands switch a mode on
+until you switch it off: see [Modes](#modes).
 
 ## Workflows
 
@@ -120,33 +120,45 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 ## Modes
 
-A mode is a switch for the session. Type its command alone on a line, with `on` or `off`:
+A mode is a switch you type once. Type its command alone on a line, with `on` or `off`. It stays on - in this
+session and every new one in the same checkout - until you type its `off`:
 
-| Command | What it does | How it ends |
-| --- | --- | --- |
-| `/alfred-code:mode:auto-run on` | Each question takes its recommended option, so runs go on without you. No fresh-session question either: the session compacts instead | `/alfred-code:mode:auto-run off`, or the session ends |
-| `/alfred-code:mode:scoring on` | A fresh grader scores plans and root-cause verdicts before they are released | `/alfred-code:mode:scoring off`, or the session ends |
-| `/alfred-code:mode:auto-compact on` | Only stops the fresh-session question: a long session compacts and goes on | `/alfred-code:mode:auto-compact off`, or the session ends |
+| Command | What it does |
+| --- | --- |
+| `/alfred-code:mode:auto-run on` | Each question takes its recommended option, so runs go on without you. No fresh-session question either: the session compacts instead |
+| `/alfred-code:mode:scoring on` | A fresh grader scores plans and root-cause verdicts before they are released. `on 80` also sets the pass level (60 to 100, default 80) |
+| `/alfred-code:mode:auto-compact on` | Only stops the fresh-session question: a long session compacts and goes on |
 
 ```text
 /alfred-code:mode:auto-run on
 /task-solve add paging to GET /api/loans
 ```
 
-Nothing outward happens unasked under auto-run: no push, merge, deploy or publish. `/mode-auto-run <request>` turns
-auto-run on and runs the request in one go. A mode command with no word after it says whether that mode is on, and
-each prompt shows the modes that are on (`Modes ON: auto-run, scoring (level 80), auto-compact`).
+A mode command with no word after it says whether that mode is on. A new session says the modes left on in its first
+line, and each prompt shows them (`Modes ON: auto-run, scoring (level 80), auto-compact`).
 
-**Settings that last.** A mode command holds for one session. To keep a choice for every session of a project, set
-its variable in `/alfred-code:configure` (the Environment area; the values live in `.alfred/.variables`):
+**Where a mode is kept.** In the `env` of the checkout's own `.claude/settings.local.json`, which git never shares, so
+a teammate's clone starts with every mode off. A project below its repository's top uses the top's file, and a git
+worktree uses its main checkout's. The four keys are `ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`,
+`ALFRED_CODE_SCORING` and `ALFRED_CODE_SCORING_LEVEL`; `/alfred-code:configure` shows them but changes them only
+through the commands.
 
-| Variable | Value | What it does |
-| --- | --- | --- |
-| `ALFRED_CODE_SCORING` | `1` (the default) or `0` | The grader is on, or off, in every session |
-| `ALFRED_CODE_AUTO_COMPACT` | `1` | No session asks about a fresh session; each compacts instead |
+**Auto-run.** `auto-run on` puts every session in the checkout under auto-run, a second window included. Nothing
+outward happens unasked: no push, merge, deploy or publish. A guard's question (a discard, a write outside the
+project, a guard switched off) is still yours: its answer opens the gate only when Claude Code records that a person
+gave it, so on Claude Code older than 2.1.296 no such answer opens anything - update Claude Code. `/mode-auto-run
+<request>` turns auto-run on for one session and runs the request in one go.
 
-Auto-run has no lasting setting: it is always your word for one session. The `--mode-*` flags of 3.0 to 3.10 are gone -
-typed after a command they print a pointer to the commands above and switch nothing.
+**Auto-compact.** `auto-compact on` also turns on Claude Code's own compaction for the checkout
+(`autoCompactEnabled: true`, with a compaction point per model), from the next session. `auto-compact off` writes
+`autoCompactEnabled: false`: Claude Code no longer compacts by itself there, and `/compact` still works. Only the typed
+`off` does that - a `0` you set by hand switches nothing in Claude Code.
+
+**No command here?** Where the core plugin is not installed (or its hooks are off), set the keys by hand in that
+file's `env` (`"ALFRED_CODE_SCORING": "1"`), and add `"autoCompactEnabled": false` beside a hand-set
+`"ALFRED_CODE_AUTO_COMPACT": "0"`. Going back to 3.10 leaves the keys in the file; remove `autoCompactEnabled` and
+`modelSettings` there by hand. The `--mode-*` flags of 3.0 to 3.10 are gone - typed after a command they print a
+pointer to the commands above and switch nothing.
 
 ## Supported stacks
 

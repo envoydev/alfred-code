@@ -188,21 +188,25 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   scope - plugins default to `user`, MCP servers to `local` (the retire path's removes). (8) A managed row is updated (`--scope managed`,
   the one call that scope takes) and never installed beside, uninstalled, disabled, moved or named with a
   `--scope managed` command (`plugins.leftAt`).
-- **The auto-compact window per model (after 2.4.0, the user's rulings of 2026-10-14).** While the project compacts
-  instead of offering a fresh session - `ALFRED_CODE_AUTO_COMPACT=1`, seeded `0`, which init's install phase asks with the fresh-session
-  triggers and passes as `--auto-compact on|off` (written over the value there, `applyEnv` 3d) and configure's env step
-  switches - every run writes
-  `modelSettings.<id>.autoCompactWindow` into the project's own settings file (settings.local.json at every scope since
-  3.11.0 - never the account's) for each `model-windows.json` row, at its window tier's fresh-session trigger
-  (`settings.js compactWindowSeeds`: `ALFRED_CODE_CONTEXT_WINDOW_FOR_200K` / `_FOR_300K` / `_FOR_1M` from the env the file
-  applies, the tier by `fresh-session.js tierKeyOf`, `0` skips the tier, past
-  the window held at 90%, inside 100k-1M), so an auto-mode run compacts where the fresh-session gate would offer a resume
-  and goes on. Claude Code reads the key at session start only. Add-only and ledgered (`managed-settings:
-  <file>:modelSettings.<id>.autoCompactWindow=<hash>`; `stamp.js SETTINGS_PATH` must read the path back, or no update,
-  move or uninstall can take the row back - the 2026-10-14 matrix caught exactly that): an update re-derives a row still at
-  its hash and removes one it no longer seeds (every one once the key goes back to `0`), a hand-changed value is the user's. Nothing is seeded while this file, the
-  sibling project file or the account file sets a top-level `autoCompactWindow`, and a model the sibling or the account
-  file names is left to it.
+- **The mode block (mode commands v2 stage 3, 3.11.0; before it the auto-compact window per model of 2026-10-14).**
+  The four mode keys (`layout.MODE_KEYS`: `ALFRED_CODE_AUTO_RUN`, `_AUTO_COMPACT`, `_SCORING`, `_SCORING_LEVEL`) in the
+  env of the checkout's own settings file (`layout.modeFile`: `<root>/.claude/settings.local.json`; a same-repository
+  child and a worktree resolve to the top's) are the user's typed modes, and ONE writer holds them, `stack/hooks/
+  mode-settings.js writeModes(root, updates, env)`, which also writes Claude Code's `autoCompactEnabled` and
+  `modelSettings.<id>.autoCompactWindow` from the compact key (`1`: `true` and a window per `model-windows.json` row at
+  its tier's fresh-session trigger, `compactWindowSeeds`; `0`: `false`; removed: neither) and refuses a file that is
+  not valid JSON, tracked by git or unwritable. The installer (`scripts/install/modes.js`): the settings pass sets the
+  block aside before its env passes and puts it back as typed (`setAside` - a 3.10 name held under its new one, a value
+  still at the stack's own ledger hash taking its reseed row), and seeds no mode key into a local file with no
+  `.variables`; after the pass one `refresh` call runs `writeModes` - `--auto-compact on` writes `1`, `off` removes the
+  key, else a team's `1` (`.variables`, a chain member's included) is copied once into a file without the key; a
+  refused flag (`ctx.compactHeld`) copies nothing - and uninstall's `remove` takes the four keys out (an emptied file
+  goes). `ALFRED_CODE_AUTO_COMPACT` is never seeded since 3.11.0 (`seed: false`, its `flag` the installer's own), and
+  the `auto-compact-seed-retired` migration takes a seeded `0` out of `settings.json` and `.variables`. The settings
+  pass writes no window any more: rows an earlier release ledgered (`managed-settings: <file>:modelSettings.<id>.
+  autoCompactWindow=<hash>`) leave at their hash, a hand-changed one stays. `scripts/variables.js set` refuses a mode
+  key and names its command. Nothing is written for a model while this file, the sibling project file or the account
+  file sets a top-level `autoCompactWindow`, and a model the sibling or the account file names is left to it.
 - **The project's own tools skip the data root (the user's ruling of 2026-10-14; `install/tool-ignores.js`).** A tool
   that walks the tree reads its own ignore file and at most the ROOT `.gitignore`, never the data root's nested one:
   `prettier --check .` flagged 272 files under a project's `.alfred/` (measured on Prettier 3.9.1 - a browser profile,
@@ -221,7 +225,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   release's rows out, where the ledger or the exact shipped shape vouches for them, and gives the file back its bytes
   (`repo-mcp.md`). Every JSON file the installer parses
   that a person may edit (`.mcp.json`, `settings*.json`, the account's `.claude.json`) goes through ONE reader,
-  `install/json-file.js` (`parseJson` / `readJson`; the scripts that read the same files - `stack-select.js`, `plugin-settings.js`,
+  `stack/hooks/json-file.js` since 3.11.0 (the hooks read the mode file through it; `install/json-file.js` re-exports it) (`parseJson` / `readJson`; the scripts that read the same files - `stack-select.js`, `plugin-settings.js`,
   `analyze-usage.js`, `library-check.js`, `audit-install.js`, `hud-statusline.js`, `agents-md-check.js` - use it too, and all run from
   the whole tree, so it ships beside them): a leading BOM is stripped, and anything else wrong - a BOM plus
   garbage included - still throws, so it is still unreadable. Every installer WRITE of such a file goes back through the

@@ -101,7 +101,8 @@ test('the three mode commands: user-typed only, on|off, a short body around the 
         const fm = (/^---\n([\s\S]*?)\n---\n/.exec(text) || ['', ''])[1];
         const body = text.slice(text.indexOf('\n---\n', 4) + 5);
         assert.match(fm, /^disable-model-invocation: true$/m, `${name}: only the user types it`);
-        assert.match(fm, /^argument-hint: on\|off$/m, `${name}: the argument hint`);
+        // mode commands v2 stage 3: scoring takes a level after on|off
+        assert.match(fm, name === 'scoring' ? /^argument-hint: on\|off \[level\]$/m : /^argument-hint: on\|off$/m, `${name}: the argument hint`);
         assert.match(fm, new RegExp(`^description: .*/alfred-code:mode:${name} on\\|off`, 'm'), `${name}: the description names the typed form`);
         assert.ok(body.split('\n').filter((l) => l.trim()).length <= 12, `${name}: a body of at most 12 lines`);
         assert.ok(body.includes('[mode]'), `${name}: the body acts on the hook's [mode] line`);
@@ -1862,7 +1863,8 @@ test('no body hand-merges a settings env: init and configure set the stack\'s va
 test('no body places a moved key in a settings env', () =>
 {
     const layout = require('../stack/hooks/layout.js');
-    const moved = layout.VARIABLE_KEYS.filter((k) => k !== 'ALFRED_CODE_WORKSPACE').map((k) => new RegExp(`${k}(?![A-Z0-9_])`));
+    // a mode key's home IS the mode file's env (mode commands v2 stage 3), so it is no moved key here
+    const moved = layout.VARIABLE_KEYS.filter((k) => k !== 'ALFRED_CODE_WORKSPACE' && !layout.MODE_KEYS.includes(k)).map((k) => new RegExp(`${k}(?![A-Z0-9_])`));
     const hits = [];
     const walk = (dir) =>
     {

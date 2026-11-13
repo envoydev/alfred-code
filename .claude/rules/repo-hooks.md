@@ -107,12 +107,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   scoring - each answered with one `[mode]` line that the command's body tells the model to say word for word; with
   no such line in context (hooks off, a host that runs none) the body holds the mode by the user's word for the
   conversation. Where the core plugin is absent there is no mode command: the terminal answers an unknown slash line
-  itself and no hook sees it (measured 2.1.322), so `/mode-auto-run <request>` and the two variables are the switches.
-  Two files. The MODE STAMP
+  itself and no hook sees it (measured 2.1.322), so `/mode-auto-run <request>` and the mode keys set by hand are the
+  switches. THE MODE BLOCK (mode commands v2 stage 3, 3.11.0): each command writes its key into the env of the
+  checkout's own settings.local.json through `mode-settings.js writeModes` (`repo-installer.md`, 'The mode block') -
+  `auto-run on` writes `ALFRED_CODE_AUTO_RUN=1` and `ALFRED_CODE_AUTO_COMPACT=1`, `scoring on|off [level]` the two
+  scoring keys - and the mode stays on, new sessions included, until its off; every hook reads it through
+  `layout.applyVariables`, and an auto-run `1` counts only from the checkout's own untracked file
+  (`mode-settings.js autoRunHeld` / `hook-prelude.js autoRunStanding`: a tracked or unvouched one is said, never taken).
+  `mode-settings.js` and `json-file.js` are copied hook modules (`HOOK_MODULES`). The per-session switch files
+  (`AUTO-COMPACT-<session>`, `SCORING-<session>`) are gone, and an ask's answer counts as the user's only when its own
+  row's `permissionDecision.source` opens `user` (`hook-prelude.js byUser`, D25), so under the standing variable no
+  hook-answered ask opens a receipt, a discard or a picked waiver.
+  Two files for a `/mode-auto-run <request>` run. The MODE STAMP
   `<data root>/state/approvals/APPROVAL` (`AUTO - "<the typed words>"`, `session:`, `skill:`, `at:`, `transcript-size:`,
-  `taken-from:` on a takeover) is written by `/alfred-code:mode:auto-run on` (`writeAutoStamp`) or by
-  `/mode-auto-run <request>` (its typed request is its own on), kept while live for the session and deleted only by
-  `/alfred-code:mode:auto-run off`. The RUN MARKER
+  `taken-from:` on a takeover) is written by `/mode-auto-run <request>` (its typed request is its own on), kept while
+  live for the session and deleted by `/alfred-code:mode:auto-run off` typed in any session. The RUN MARKER
   `<data root>/state/sessions/AUTO-RUN-<session>` (`skill:`, `prompt:` the typed line's 12-hex sha1, `at:`, `prompt-id:`
   the payload's `prompt_id` when it has one) is written by each typed family command while the stamp is live - none by a
   mode command line; a writer finding the same `skill:`, `prompt:` and `prompt-id:` leaves the file and its mtime, so
@@ -168,28 +177,25 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   (`UserPromptSubmit`, `modePrompt`; the user's ruling of 2026-10-15), kept with an `auto-input` row and a note saying so;
   when it asks to stop the run, the model prints the close and deletes the marker, and the mode stays on. Only
   `/alfred-code:mode:auto-run off` ends the mode: it deletes this session's stamp and the marker, writes an
-  `auto-end` row and says `[mode] auto-run is OFF for this session` ('stop auto-mode' and a bare 'stop' are plain input
+  `auto-end` row and says `[mode] auto-run is OFF` ('stop auto-mode' and a bare 'stop' are plain input
   since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`
   `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
-  compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
-  (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
+  compacted at 76k of a 100k window), so the mode block's writer sets it per model where the checkout compacts instead
+  (`ALFRED_CODE_AUTO_COMPACT=1`; `mode-settings.js writeModes`, `fresh-session.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
   ruling, 2026-10-14; a cause per call since the mode commands of 2026-11-12): a session compacts instead of offering a
   fresh one for one of three causes, read per call by `hook-prelude.js compactCause` in this order - `project`
   (`ALFRED_CODE_AUTO_COMPACT=1`, still `fresh-session.js` `COMPACT_INSTEAD` for the engine's own readers), `auto-run`
-  (this session's live stamp, so `/alfred-code:mode:auto-run on` turns both on with no second state) and `mode` (the
-  session's own switch `<data root>/state/sessions/AUTO-COMPACT-<session>`, first line `on`, written by
-  `/alfred-code:mode:auto-compact on` at `UserPromptSubmit` with one `compact-flag` row; `off` writes `off` and takes
-  back only that `on` - under the project's variable or a live auto-run it is answered `[mode] auto-compact stays ON:
-  <cause>`; a file saying anything else, a folder or an unreadable one adds no cause, and the prompt's own typed `on`
-  is read before the file, since its writer runs beside its readers). Each hook computes `COMPACT_INSTEAD` and
+  (the standing variable or this session's live stamp) and `mode` (the prompt's own typed `auto-compact on`, read
+  before the file, since its writer runs beside its readers; the command writes the mode block with one `compact-flag`
+  row, and `off` under a live auto-run is answered `[mode] auto-compact stays ON: auto-run is on`). Each hook computes `COMPACT_INSTEAD` and
   `FRESH_OFF` from the cause once it has read the payload, so every offer, ask note and hold below stands down, and
   each text names its cause (`COMPACT_SAID`); `guard-fresh-session-start.js` says so once per session at the first
   orchestration run and at an automatic compaction's start (the summary's 'continue' line stands there, no hold), and
   `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
-  text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left). No
-  cause moves an `autoCompactWindow`: the installer seeds it for the project's variable alone, and a session switch only
-  stops the ask - the session compacts at Claude Code's own point.
+  text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left). Only the
+  mode block's writer moves an `autoCompactWindow` (the typed command, the installer's `refresh`), and it applies from
+  the next session.
   **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
   command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
   lines forbid a repeat, and a prompt expanded twice (a stacked line) gets them and the contract on its first expansion
@@ -1583,19 +1589,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     session's timeout marker and a note that it is no answer - no approval, consent or pick, re-ask when the user is
     back; the next answered ask or typed prompt clears the marker.
     THE SCORING'S LINES (mode-output-scoring, spec 2026-10-24 5.2 / 5.12; the switch a command since 2026-11-12):
-    `/alfred-code:mode:scoring on` / `off` (`modeFlags`) writes
-    the session's `SCORING-<session>` file, which outranks `ALFRED_CODE_SCORING`, counts for its own prompt even where
-    the file cannot be written, and is answered with the context's first line - `[mode] scoring is ON for this session
-    (level N)`, `[mode] scoring is OFF for this session` or `[mode] scoring is not available here: <reason>`; while on, every typed prompt - and a compaction's start, which drops injected text -
+    `/alfred-code:mode:scoring on|off [level]` (`modeFlags`) writes
+    the mode block's `ALFRED_CODE_SCORING` (and `_LEVEL`, 60 to 100), counts for its own prompt, and is answered with the
+    context's first line - `[mode] scoring is ON (level N)`, `[mode] scoring is OFF`, `[mode] scoring could not be saved:
+    <why> - nothing changed` or `[mode] scoring is not available here: <reason>`; while on, every typed prompt - and a compaction's start, which drops injected text -
     carries one `scoring: on (level, rounds, source[, auto-run]) ...` line naming the listed
-    outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scoring: off for this
-    session`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name
+    outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scoring: off`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name
     right after a usage word (`using`, `with`, `via`, `run`, `stack`, `through`; final review 4) -
     adds `scoring: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
     needs `scoringState` usable: either hook or its `scoring` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
     line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
     `guard-answer.test.js`). A line carrying only a `--mode-*` token is no stack. While auto-run is on, the context also carries `auto-run: on
-    for this session - ...`. THE ON LINE (the stack-modes spec section 3): every typed prompt while a mode is on gets one
+    - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it`. THE ON LINE (the stack-modes spec section 3): every typed prompt while a mode is on gets one
     user-visible `systemMessage`, `Modes ON: auto-run, scoring (level N), auto-compact`, listing only the modes on (`auto-compact` for the causes
     `auto-run` and `mode`, never for the project's variable alone) - each computed
     from the prompt's own mode command (auto-run's `on` only when `autoRunRefusal` says nothing), else the stored state, never read

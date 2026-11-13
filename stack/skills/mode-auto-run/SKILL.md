@@ -52,7 +52,7 @@ Say the route in one line before the work, then take it:
 3. **Anything else** - a question, a doc under the docs root: do it directly. A file it writes stays uncommitted and
    is named in the close.
 
-Each `Left for you:` command runs unattended when typed: auto-run stays on for this session, so the line says so.
+Each `Left for you:` command runs unattended when typed: auto-run stays on in this session until `/alfred-code:mode:auto-run off`, so the line says so.
 
 ## The limits
 

@@ -840,9 +840,23 @@ The four mode flags are gone. A mode is switched by its own command, typed alone
 /task-solve add paging to GET /api/loans
 ```
 
-A mode lasts the session; the command with no word after it says whether the mode is on. `auto-run on` also stops the
-fresh-session question, and `auto-compact on` stops it alone. The settings that last are `ALFRED_CODE_SCORING` and
-`ALFRED_CODE_AUTO_COMPACT`, set in `/alfred-code:configure` (the Environment area).
+A mode stays on until its `off`, new sessions included; the command with no word after it says whether the mode is
+on, and `/alfred-code:mode:scoring on 80` sets the grader's level (60 to 100) too. `auto-run on` also stops the
+fresh-session question, and `auto-compact on` stops it alone. In a new session the first notice of a mode left on is
+the session-start line, then the `Modes ON:` line on each prompt.
+
+The commands keep four keys - `ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`,
+`ALFRED_CODE_SCORING_LEVEL` - in the `env` of the checkout's own `.claude/settings.local.json`, which git never shares:
+a project below its repository's top uses the top's file, a worktree the main checkout's. `auto-run on` puts every
+session in the checkout under auto-run. An answer to a guard's ask opens its gate only when Claude Code's own row says
+a person gave it, so on a client older than 2.1.296 no receipt, discard or picked waiver opens. `auto-compact on` also
+writes Claude Code's `autoCompactEnabled: true` and a compaction window per model; only a typed `auto-compact off`
+writes `autoCompactEnabled: false`, so Claude Code stops compacting by itself there (`/compact` still works).
+`/alfred-code:configure` no longer offers the four keys, and `variables.js set` refuses them and names the command.
+
+`ALFRED_CODE_AUTO_COMPACT` is no longer seeded. This update removes a seeded `0` from `settings.json` and
+`.alfred/.variables`; a `1` there is copied into the local file once, and from then on the local file is the switch. A
+`0` already in the local file from before switches nothing until you type `/alfred-code:mode:auto-compact off`.
 
 `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on` and `--mode-output-scorer-off` now print a
 pointer to the commands and switch nothing. While auto-run is off the run is attended, so each question waits for
@@ -850,10 +864,11 @@ you; while it is on, a retired off flag ends nothing - type `/alfred-code:mode:a
 with a flag before the update and resumed after it is attended again - type `/alfred-code:mode:auto-run on`.
 
 `/mode-auto-run <request>` is unchanged: it turns auto-run on and runs the request in one go. An install with no core
-plugin has no mode command: there `ALFRED_CODE_SCORING` and `ALFRED_CODE_AUTO_COMPACT` are the switches,
-`/mode-auto-run <request>` starts auto-run, and it ends with the session. A headless one-call run (`claude -p`) turns
-auto-run on with `/mode-auto-run <request>`, or types the mode command as the session's first call and resumes that
-session with the flow command.
+plugin has no mode command: set the keys by hand in the local file's `env` (with `"autoCompactEnabled": false` beside a
+hand-set `ALFRED_CODE_AUTO_COMPACT` of `0`), and `/mode-auto-run <request>` starts auto-run for its session. A headless
+run (`claude -p`) in the checkout runs under the modes the local file holds. Going back to 3.10.0 leaves the mode keys
+in the local file, where only `ALFRED_CODE_AUTO_COMPACT` is read; remove `autoCompactEnabled` and `modelSettings` there
+by hand.
 
 ## after 3.10.0 - a local install stays out of git; local is the default scope; ignore keys are plural
 

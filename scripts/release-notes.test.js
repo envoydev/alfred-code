@@ -114,6 +114,11 @@ test('mode commands: the release note names the three commands and says the flag
     assert.ok(note, 'owed to a 3.10.0 install');
     for (const word of ['/alfred-code:mode:auto-run', '/alfred-code:mode:scoring', '/alfred-code:mode:auto-compact', 'on|off', '--mode-auto-run-on',
         'attended', 'a retired off flag ends nothing', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_AUTO_COMPACT', '/mode-auto-run <request>']) assert.ok(note.text.includes(word), word);
+    // mode commands v2 stage 3: a mode stays on until its off, in the checkout's own settings.local.json; a 0 left from
+    // before switches nothing; the key is no longer seeded; the session-start line is the first notice
+    for (const word of ['new sessions included', '.claude/settings.local.json', 'no longer seeded', 'autoCompactEnabled',
+        'switches nothing until', 'the session-start line', 'scoring on 80']) assert.ok(note.text.includes(word), word);
+    assert.doesNotMatch(note.text, /A mode lasts the session|ends with the session/, 'a mode no longer ends with the session');
     assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
 });
 
