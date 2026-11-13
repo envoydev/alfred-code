@@ -600,7 +600,8 @@ function jsonPairIn(text, labels) {
 // `.vscode/settings.json`, a devcontainer), a trailing comma, a truncated file - was judged by no reader, so a credential
 // in one passed the Read, Grep and MCP routes, `--presence` said `absent` and `--redacted` printed it. Such a file is
 // read leniently (`jsonDoc`), and one no lenient read parses (a truncated file) by its `"key": "value"` pairs.
-const JSONISH_FILE = /\.jsonc?$/i;
+// `.code-workspace` is VS Code's workspace file, JSONC like `.vscode/settings.json` (review of bb686875, I2).
+const JSONISH_FILE = /\.(?:jsonc?|json5|code-workspace)$/i;
 // JSONC's comments and trailing commas removed OUTSIDE strings. Two string-aware passes, so a `//` or `/*` inside a
 // string (`"https://..."`) and a `,}` inside one stay text. A string ends at its closing quote or, unterminated, at
 // the line's end (JSON allows no raw newline in one), so a torn string swallows no later line. The result may still not

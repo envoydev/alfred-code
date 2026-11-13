@@ -1099,7 +1099,7 @@ Nothing to do by hand.
 
 ## after 3.11.0 - the secret guard reads a .json with comments or a trailing comma
 
-A `.json` or `.jsonc` file the strict JSON parser rejects - a `//` or `/* */` comment (a tsconfig, `.vscode/settings.json`,
-a devcontainer), a trailing comma, a truncated file - is now judged like a valid one: a Read of one holding a credential
+A `.json`, `.jsonc`, `.json5` or VS Code `.code-workspace` file the strict JSON parser rejects - a `//` or `/* */`
+comment (a tsconfig, `.vscode/settings.json`, a devcontainer), a trailing comma, a truncated file - is now judged like a valid one: a Read of one holding a credential
 asks (or is refused where nobody can answer), a content Grep of it is refused, `--presence` answers for its keys and
 `--redacted` masks its values. Such a file with no credential reads as before. Nothing to do by hand.

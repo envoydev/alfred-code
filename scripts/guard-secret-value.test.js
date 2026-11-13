@@ -1836,6 +1836,27 @@ test('SG1-F2: a comment marker or a trailing-comma shape inside a string is text
   assert.ok(view.includes(JSON.stringify(F2_NOTE)), 'and the note');
 });
 
+// review of bb686875, I1: the pairs fallback answers the assertions above from raw text, so a naive stripper passed them.
+// A nested key path and a comment-free re-emitted view need a real parse, which a `//` inside a string breaks naively.
+test('SG1-F2: a JSONC with a comment marker in a string is parsed, not read by pairs (nested path, comment-free view)', () => {
+  const text = '{\n  "$schema": "https://json.schemastore.org/tsconfig", // the schema\n  "outer": {\n    "url": "https://a.test//b /* x */",\n    "inner": "v1v1v1",\n  },\n}\n';
+  const fx = coreProject({ 'nested/settings.jsonc': text });
+  const file = path.join(fx.project, 'nested', 'settings.jsonc');
+  assert.strictEqual(presence(file, 'outer.inner').stdout, 'outer.inner=set (6 chars)\n', 'a nested key path reads through the parse');
+  const view = cli('--redacted', file).stdout;
+  assert.ok(!view.includes('// the schema'), 'the view is re-emitted from the parse, without its comments');
+  assert.ok(view.includes(JSON.stringify('https://a.test//b /* x */')), 'and keeps the string whole');
+});
+
+// review of bb686875, I2: VS Code's workspace file carries settings in JSONC too.
+test('SG1-F2: a .code-workspace with comments and a trailing comma is judged like a .jsonc', () => {
+  const fx = coreProject({ 'proj.code-workspace': `{\n  // ws\n  "settings": { "${F2_KEY}": "${F2_VAL}", },\n}\n` });
+  const file = path.join(fx.project, 'proj.code-workspace');
+  assert.strictEqual(f2Pre('Read', { file_path: file }, fx).status, 2, 'Read');
+  assert.strictEqual(presence(file, `settings.${F2_KEY}`).stdout, `settings.${F2_KEY}=set (${F2_VAL.length} chars)\n`, '--presence');
+  assert.ok(!cli('--redacted', file).stdout.includes(F2_VAL), '--redacted masks it');
+});
+
 test('SG1-F2: a broken or commented .json with no credential stays readable, a valid one is judged as before', () => {
   const fx = f2Fixture();
   for (const rel of Object.keys(F2_CLEAN)) {

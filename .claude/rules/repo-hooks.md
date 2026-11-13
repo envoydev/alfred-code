@@ -604,8 +604,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     JSONC's `//` and `/* */` comments, a trailing comma, a truncated file) is read leniently (`jsonDoc`: `stripJsonc`
     drops comments and trailing commas outside strings), else by its `"key": "value"` pairs (`jsonPairs`), on every
     route that judges content - `secretIn` (Read, Grep, the MCP reads), the masker's `valuesOf`, `--presence` and
-    `--redacted` (a lenient file's view is re-emitted from its parse, without its comments). A commented-out pair is no
-    pair, as a dotenv comment is none; a known shape in one is still masked by the line pass.
+    `--redacted` (a lenient file's view is re-emitted from its parse, without its comments); `.json5` and VS Code's
+    `.code-workspace` take the same path (the review of the fix, I2). In a file the lenient read parses, a commented-out
+    pair is no pair, as a dotenv comment is none; in one it cannot parse, the pairs are read over the raw text, a
+    commented pair included (the stricter side). A known shape in a comment is still masked by the line pass.
     THE SHELL ROUTE (swap 1 of the complexity audit, Task 2, 2026-11-11): nothing is judged by what a command MIGHT
     print and nothing is rewritten - no `updatedInput` is ever written, and the dump, env, variable, git-probe,
     walk-probe, feeder, engine and runtime-code judges left with the rewrite (about 3,000 lines of the guard). Above
