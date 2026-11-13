@@ -2317,16 +2317,18 @@ test('review proof 3.12: a receipt write whose output a pipe cut or hid is prove
     A11: [review, rpAt(cpBash('r1', RP_PIPED), M - 10000), rpAt(cpResult('r1', RP_TAIL3), M - 9000), rpAt(cpBash('r2', RP_PIPED), M - 500), rpAt(cpResult('r2', RP_TAIL3), M + 500)],
   };
   const tps = Object.fromEntries(Object.entries(cases).map(([name, rows]) => [name, writeTranscript(dir, `rp-${name.replace(/\W+/g, '-')}`, rows)]));
-  rpStamp(rpDisk(dir, 'review-code over the change'), M);
-  for (const [name, tp] of Object.entries(tps)) rpPass(rpCommit(dir, tp), name);
-  // A12: a receipt only in the pre-2.8.0 flow/ place, and one in both places - the file the gate judges is the one timed
+  // A12: a receipt only in the pre-2.8.0 flow/ place, and one in both places - the file the gate judges is the one timed.
+  // Its repos and transcripts are made here, before any commit runs: made after the five commits below, their files
+  // were newer than M on Windows (about 6s for the five) and the gate read the receipt as stale.
   const flowOnly = scratchRepo();
   const tpFlow = writeTranscript(flowOnly, 'rp-a12-flow', cases.A1);
+  const both = scratchRepo();
+  const tpBoth = writeTranscript(both, 'rp-a12-both', cases.A1);
+  rpStamp(rpDisk(dir, 'review-code over the change'), M);
+  for (const [name, tp] of Object.entries(tps)) rpPass(rpCommit(dir, tp), name);
   writeReceipt(flowOnly, 'COMMIT-GATE', commitReceipt(headOf(flowOnly), { first: 'VERIFIED review-code over the change' }));
   rpStamp(path.join(flowOnly, '.alfred', 'docs', 'flow', 'COMMIT-GATE'), M);
   rpPass(rpCommit(flowOnly, tpFlow), 'A12 flow/ only');
-  const both = scratchRepo();
-  const tpBoth = writeTranscript(both, 'rp-a12-both', cases.A1);
   writeReceipt(both, 'COMMIT-GATE', commitReceipt(headOf(both), { first: 'VERIFIED review-code over the change' }));
   const flowFile = path.join(both, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   const stateFile = rpDisk(both, 'review-code over the change');
