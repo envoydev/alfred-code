@@ -10,6 +10,7 @@
 // docs/plan-folder-contract.md; scripts/plan-contract.test.js holds the two together.
 const fs = require('fs');
 const path = require('path');
+const layout = require('./layout.js');
 
 const SCHEMA = 1;
 const MAX_BYTES = 1048576;
@@ -163,7 +164,452 @@ function writeWhole(file, text, { rename = fs.renameSync } = {})
     }
 }
 
-module.exports = {
-    SCHEMA, MAX_BYTES, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS,
-    stamp, emptyStatus, validate, readStatus, writeWhole,
+
+// ---- the CLI frame (PF1 D7, D9; the plan's 'engine's rules') ----
+
+const VERBS = {
+    write: ['sync', 'gate', 'approve', 'redesign', 'start', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop', 'cursor',
+        'decide', 'deviate', 'conformance', 'complete'],
+    read: ['resume', 'show', 'list', 'check'],
 };
+const TASK_VERBS = ['start', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop'];
+const STDIN_VERBS = ['gate', 'approve', 'redesign', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop', 'cursor', 'decide',
+    'deviate', 'conformance', 'complete'];
+const VALUE_FLAGS = ['plan', 'task', 'after', 'mode'];
+const BOOL_FLAGS = ['with-open', 'full', 'all'];
+// What each verb takes; `need` lists the flags it cannot run without. A verb the engine has no handler for yet is an
+// unknown verb (HANDLERS below).
+const TAKES = {
+    sync: { flags: ['plan'], need: ['plan'] },
+    gate: { flags: ['plan'], need: ['plan'] },
+    approve: { flags: ['plan', 'mode'], need: ['plan'] },
+    redesign: { flags: ['plan', 'task'], need: ['plan'] },
+    start: { flags: ['plan', 'task'], need: ['plan', 'task'] },
+    done: { flags: ['plan', 'task'], need: ['plan', 'task'] },
+    block: { flags: ['plan', 'task'], need: ['plan', 'task'] },
+    fail: { flags: ['plan', 'task'], need: ['plan', 'task'] },
+    reopen: { flags: ['plan', 'task'], need: ['plan', 'task'] },
+    'add-task': { flags: ['plan', 'after'], need: ['plan'] },
+    drop: { flags: ['plan', 'task'], need: ['plan', 'task'] },
+    cursor: { flags: ['plan'], need: ['plan'] },
+    decide: { flags: ['plan', 'task'], need: ['plan'] },
+    deviate: { flags: ['plan', 'task'], need: ['plan'] },
+    conformance: { flags: ['plan'], need: ['plan'] },
+    complete: { flags: ['plan', 'with-open'], need: ['plan'] },
+    resume: { flags: ['plan'], need: ['plan'] },
+    show: { flags: ['plan', 'full'], need: ['plan'] },
+    list: { flags: [], need: [] },
+    check: { flags: ['plan', 'all'], need: [] },
+};
+const LOCK_RETRY_MS = 20;
+const LOCK_WAIT_MS = 1500;
+const LOCK_STALE_MS = 5000;
+const HELD_CODES = new Set(['EEXIST', 'EPERM', 'EBUSY']);
+
+class Refusal extends Error
+{
+    constructor(code, line) { super(line); this.code = code; this.line = line; }
+}
+const fold = (text) => String(text).replace(/\s*\r?\n\s*/g, ' ');
+const rootOf = (cwd, env) => env.CLAUDE_PROJECT_DIR || layout.projectRootOf(cwd).project;
+const slashed = (p) => p.split(path.sep).join('/');
+function relOf(root, dir)
+{
+    const rel = path.relative(root, dir);
+    return `${slashed(!rel || rel.startsWith('..') || path.isAbsolute(rel) ? dir : rel)}/`;
+}
+
+// A plan ref - a bare id, the folder, its Markdown, either slash - to the plan folder. The folder need not exist.
+function resolvePlan(ref, { cwd = process.cwd(), env = process.env } = {})
+{
+    const text = String(ref || '').replace(/\\/g, '/');
+    if (!text) return { ok: false, why: 'no --plan given' };
+    const root = rootOf(cwd, env);
+    let id;
+    let dir;
+    if (!text.includes('/'))
+    {
+        if (/\.md$/i.test(text)) return { ok: false, why: 'a plan id carries no .md' };
+        if (!layout.planFolderId(text)) return { ok: false, why: `'${text}' is not a plan id` };
+        id = text;
+        dir = path.join(layout.planDirs(root, env)[0], text);
+    }
+    else
+    {
+        const found = layout.planOf(path.resolve(cwd, text));
+        if (!found) return { ok: false, why: 'not a plan folder - a plan is <plans>/<id>/ holding <id>.md' };
+        if (found.shape === 'flat') return { ok: false, why: 'a flat plan has no status.json' };
+        id = found.id;
+        dir = found.dir;
+    }
+    // Review Focus 4: on a case-folding disk the id is the folder's name as the disk spells it.
+    try
+    {
+        const names = fs.readdirSync(path.dirname(dir));
+        if (!names.includes(id))
+        {
+            const listed = names.find((n) => n.toLowerCase() === id.toLowerCase());
+            if (listed) { id = listed; dir = path.join(path.dirname(dir), listed); }
+        }
+    }
+    catch { /* no parent yet: the folder need not exist */ }
+    return { ok: true, id, dir, md: path.join(dir, `${id}.md`), rel: relOf(root, dir), root };
+}
+
+// Spec 3's stdin rule: a label opening its line starts its value once; every other line continues the value above.
+function parseStdin(text, labels)
+{
+    const values = {};
+    let current = null;
+    for (const line of String(text || '').replace(/\r/g, '').split('\n'))
+    {
+        const m = /^([A-Za-z][A-Za-z0-9_-]*):[ \t]*(.*)$/.exec(line);
+        if (m && labels.includes(m[1]) && !(m[1] in values)) { current = m[1]; values[current] = [m[2]]; }
+        else if (current) values[current].push(line);
+    }
+    return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.join('\n').replace(/\s+$/, '')]));
+}
+
+const CARD_RE = /^### Task ([1-9]\d*) - (.+)$/;
+const CARD_LIKE_RE = /^### Task(?: |$)/;
+const ESTIMATE_RE = /^\s*-\s*estimate:\s*(\d+)\s*m\b/i;
+// The title, the cards and their estimates from a plan's Markdown; a fenced block holds no heading and no estimate.
+function parseCards(markdown)
+{
+    const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+    let title = null;
+    const cards = [];
+    const problems = [];
+    let fence = null;
+    let card = null;
+    lines.forEach((line, i) =>
+    {
+        const marker = /^(`{3,}|~{3,})/.exec(line);
+        if (fence) { if (marker && marker[1][0] === fence) fence = null; return; }
+        if (marker) { fence = marker[1][0]; return; }
+        if (title === null && /^# /.test(line)) title = line.slice(2).trim().replace(/ - plan$/, '');
+        if (/^#{2,3} /.test(line)) card = null;
+        const c = CARD_RE.exec(line);
+        if (c) { card = { id: c[1], title: c[2].trim(), estimateMin: null }; cards.push(card); return; }
+        if (CARD_LIKE_RE.test(line)) { problems.push(`line ${i + 1} - a card with no whole-number id`); return; }
+        const e = card && card.estimateMin === null && !card.estimated ? ESTIMATE_RE.exec(line) : null;
+        if (e) { card.estimateMin = Number(e[1]); card.estimated = true; }
+    });
+    const seen = new Set();
+    for (const c of cards)
+    {
+        if (seen.has(c.id) && !problems.includes(`task ${c.id} - two cards carry this id`)) problems.push(`task ${c.id} - two cards carry this id`);
+        seen.add(c.id);
+    }
+    const bare = cards.find((c) => c.estimateMin === null);
+    if (bare && cards.some((c) => c.estimateMin !== null)) problems.push(`estimates on some cards only (none on task ${bare.id})`);
+    return { title, cards: cards.map(({ id, title: t, estimateMin }) => ({ id, title: t, estimateMin })), problems };
+}
+
+function counts(status)
+{
+    const out = { total: 0, done: 0, todo: 0, in_progress: 0, blocked: 0, failed: 0 };
+    for (const t of status.tasks || []) { out.total++; if (t.status in out) out[t.status]++; }
+    return out;
+}
+function resumeText(status)
+{
+    const next = status.resume && status.resume.next ? `next task ${status.resume.next}` : 'no task left';
+    const note = status.resume && status.resume.note;
+    return note ? `${fold(note)} - ${next}` : next;
+}
+const tasksLine = (status, suffix = '') => { const c = counts(status); return `Tasks: ${c.done} of ${c.total} done${suffix}`; };
+
+const newTask = (id, title, estimateMin) => ({ id, title, status: 'todo', estimateMin, startedAt: null, doneAt: null,
+    result: null, needs: null, why: null, card: null, by: null });
+
+// Sync's merge of the Markdown's cards into the tasks (spec 3's sync row and its order rule). Returns a refusal or
+// null; the status is changed in place.
+function syncTasks(status, parsed, at)
+{
+    if (parsed.problems.length) return parsed.problems[0];
+    const retired = new Set(status.retiredIds);
+    const old = status.tasks;
+    const byId = new Map(old.map((t) => [t.id, t]));
+    for (const c of parsed.cards)
+    {
+        if (retired.has(c.id)) return `task ${c.id} - a retired id`;
+        if (byId.has(c.id) && byId.get(c.id).card !== null) return `task ${c.id} - an added task holds this id`;
+    }
+    const next = parsed.cards.map((c) =>
+    {
+        const t = byId.get(c.id);
+        if (!t) return newTask(c.id, c.title, c.estimateMin);
+        if (t.status === 'todo') t.title = c.title;
+        if (t.startedAt === null) t.estimateMin = c.estimateMin;
+        return t;
+    });
+    const carded = new Set(parsed.cards.map((c) => c.id));
+    old.forEach((t, i) =>
+    {
+        if (carded.has(t.id)) return;
+        if (t.card === null && t.status === 'todo')
+        {
+            status.dropped.push({ id: t.id, title: t.title, at, why: 'card removed from the plan' });
+            status.retiredIds.push(t.id);
+            return;
+        }
+        let place = 0;
+        for (let j = i - 1; j >= 0; j--)
+        {
+            const k = next.indexOf(old[j]);
+            if (k >= 0) { place = k + 1; break; }
+        }
+        next.splice(place, 0, t);
+    });
+    status.tasks = next;
+    if (parsed.title !== null) status.title = parsed.title;
+    return null;
+}
+
+// Known keys in file order, then any the engine does not know (R10).
+function ordered(obj, keys)
+{
+    const out = {};
+    for (const k of keys) if (k in obj) out[k] = obj[k];
+    for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];
+    return out;
+}
+const inFileOrder = (status) => ordered({ ...status, tasks: status.tasks.map((t) => ordered(t, TASK_KEYS)) }, KEYS);
+const sameBut = (a, b, skip) => JSON.stringify({ ...a, [skip]: null }) === JSON.stringify({ ...b, [skip]: null });
+
+function takeLock(plan)
+{
+    const lock = path.join(plan.dir, 'status.json.lock');
+    const start = Date.now();
+    for (;;)
+    {
+        try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); return lock; }
+        catch (e)
+        {
+            if (!e || !HELD_CODES.has(e.code)) throw new Refusal(4, `cannot write in ${plan.rel}: ${e && e.code || e}`);
+            let age = 0;
+            try { age = Date.now() - fs.statSync(lock).mtimeMs; }
+            catch { continue; }
+            if (age > LOCK_STALE_MS) { removeQuiet(lock); continue; }
+            if (Date.now() - start >= LOCK_WAIT_MS) throw new Refusal(4, 'status.json.lock is held - run the call again');
+            sleep(LOCK_RETRY_MS);
+        }
+    }
+}
+
+const NOT_SCHEMA = (detail) => `status.json is not a schema 1 status file: ${detail} - fix the file, or delete it and run sync (it rebuilds the tasks at todo)`;
+
+// Steps 3 to 10 of the order of checks: the lock, the read, the common rules, the verb's change on a copy, the write.
+// change(status, ctx) returns { refused } or { lines } (a list, or a function of the status); ctx.created is true
+// when sync made the file.
+function mutate(plan, verb, change, ctx)
+{
+    const refuse = (why) => { throw new Refusal(2, `${verb} refused: ${why}`); };
+    if (!fs.existsSync(plan.dir))
+    {
+        if (verb === 'sync' || verb === 'approve') refuse(`no ${plan.id}.md in the plan folder`);
+        throw new Refusal(2, 'no status yet - run sync');
+    }
+    const lock = takeLock(plan);
+    try
+    {
+        const read = readStatus(plan.dir);
+        let before = null;
+        let status;
+        if (read.ok) { before = read.status; status = JSON.parse(JSON.stringify(read.status)); }
+        else if (read.why === 'absent')
+        {
+            if (!ctx.createIfAbsent) throw new Refusal(2, 'no status yet - run sync');
+            status = emptyStatus(plan.id, ctx.at);
+        }
+        else throw new Refusal(3, NOT_SCHEMA(read.detail));
+        if (before && status.completedAt !== null) refuse('new scope is a new plan');
+        if (before && status.reopenedAt !== null && TASK_VERBS.includes(verb)) refuse('approve the design again first');
+        for (const id of [ctx.flags.task, ctx.flags.after])
+            if (id !== undefined && !status.tasks.some((t) => t.id === id)) refuse(`unknown task ${id}`);
+        const result = change(status, { ...ctx, created: !before });
+        if (result.refused) refuse(result.refused);
+        const firstOpen = status.tasks.find((t) => t.status !== 'done');
+        const next = result.keepNext ? status.resume.next : (firstOpen ? firstOpen.id : null);
+        if (!before || next !== before.resume.next || status.resume.note !== before.resume.note) status.resume = { ...status.resume, next, at: ctx.at };
+        status.resume = ordered(status.resume, ['note', 'next', 'at']);
+        const after = inFileOrder(status);
+        // A verb's middle lines: a list, or a function of the status as written (or as it stands, with nothing to change).
+        const linesOf = (st) => (typeof result.lines === 'function' ? result.lines(st) : result.lines || []);
+        if (before && sameBut(after, inFileOrder(before), 'updatedAt'))
+            return { code: 0, out: [`plan-status: ${verb} - nothing to change - plan ${plan.id} (${plan.rel})`, ...linesOf(before), `Resume: ${resumeText(before)}`] };
+        after.updatedAt = ctx.at;
+        const problems = validate(after);
+        if (problems.length) throw new Refusal(4, `the result is not a valid status file: ${problems[0]}`);
+        try { writeWhole(path.join(plan.dir, 'status.json'), `${JSON.stringify(after, null, 2)}\n`); }
+        catch (e) { throw new Refusal(4, `cannot write in ${plan.rel}: ${e && e.code || e}`); }
+        return { code: 0, out: [`plan-status: ${verb} ok - plan ${plan.id} (${plan.rel})`, ...linesOf(after), `Resume: ${resumeText(after)}`] };
+    }
+    finally { removeQuiet(lock); }
+}
+
+// ---- the verbs ----
+
+function verbSync(plan, ctx)
+{
+    const flat = path.join(path.dirname(plan.dir), `${plan.id}.md`);
+    return mutate(plan, 'sync', (status, c) =>
+    {
+        if (!c.created && status.approvedAt !== null && status.reopenedAt === null) return { refused: 'the plan is approved - redesign reopens it' };
+        if (fs.existsSync(flat)) return { refused: `a flat ${plan.id}.md holds this id` };
+        let md;
+        try { md = fs.readFileSync(plan.md, 'utf8'); }
+        catch { return { refused: `no ${plan.id}.md in the plan folder` }; }
+        const refused = syncTasks(status, parseCards(md), c.at);
+        if (refused) return { refused };
+        return { lines: (st) => [tasksLine(st)] };
+    }, { ...ctx, createIfAbsent: true });
+}
+
+// Every problem of one plan's status.json: null when it has none, or [] when absent.
+function problemsOf(dir)
+{
+    const read = readStatus(dir);
+    if (read.ok) return [];
+    if (read.why === 'absent') return null;
+    if (read.why === 'unreadable') return [`status.json unreadable - ${read.detail}`];
+    try { return validate(JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'))); }
+    catch { return [read.detail]; }
+}
+
+function verbCheck(ctx)
+{
+    const found = [];
+    let checked = 0;
+    let head;
+    if (ctx.flags.all)
+    {
+        for (const p of layout.planFiles(ctx.root, ctx.env).filter((f) => f.shape === 'folder'))
+        {
+            const problems = problemsOf(p.dir);
+            if (problems === null) continue;
+            checked++;
+            for (const pr of problems) found.push(`!! ${p.id}: ${pr}`);
+        }
+        head = `plan-status: check ok - ${checked} checked`;
+    }
+    else
+    {
+        const plan = ctx.plan;
+        const problems = problemsOf(plan.dir);
+        if (problems === null) return { code: 0, out: [`plan-status: check - no status yet - run sync - plan ${plan.id} (${plan.rel})`] };
+        for (const pr of problems) found.push(`!! ${plan.id}: ${pr}`);
+        head = `plan-status: check ok - plan ${plan.id} (${plan.rel})`;
+    }
+    if (!found.length) return { code: 0, out: [head] };
+    return { code: 3, out: found, err: `plan-status: check found ${found.length} problem${found.length === 1 ? '' : 's'}` };
+}
+
+function stampOf(status)
+{
+    if (status.completedAt) return `completed ${status.completedAt}`;
+    if (status.reopenedAt) return `reopened ${status.reopenedAt}`;
+    if (status.approvedAt) return `approved ${status.approvedAt}`;
+    return 'not approved';
+}
+
+function verbList(ctx)
+{
+    const plans = layout.planFiles(ctx.root, ctx.env);
+    const folders = plans.filter((p) => p.shape === 'folder').sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const flat = plans.length - folders.length;
+    const out = ['plan-status: list ok'];
+    for (const p of folders)
+    {
+        const read = readStatus(p.dir);
+        const state = read.ok ? `${stampOf(read.status)} - ${counts(read.status).done} of ${counts(read.status).total} done - ${read.status.resume.next ? `next task ${read.status.resume.next}` : 'no task left'}`
+            : read.why === 'absent' ? 'not synced' : 'unreadable';
+        out.push(`${p.id} - ${state} (${relOf(ctx.root, p.dir)})`);
+    }
+    if (flat) out.push(`flat: ${flat}`);
+    if (!folders.length && !flat) out.push('no plan');
+    return { code: 0, out };
+}
+
+// The verbs this engine answers; a later task adds its own here.
+const HANDLERS = {
+    sync: (ctx) => verbSync(ctx.plan, ctx),
+    check: (ctx) => verbCheck(ctx),
+    list: (ctx) => verbList(ctx),
+};
+
+function parseArgs(argv)
+{
+    const flags = {};
+    const rest = [];
+    for (let i = 0; i < argv.length; i++)
+    {
+        const a = argv[i];
+        if (!a.startsWith('--')) { rest.push(a); continue; }
+        const name = a.slice(2);
+        if (VALUE_FLAGS.includes(name))
+        {
+            const v = argv[i + 1];
+            if (v === undefined || v.startsWith('--')) throw new Refusal(2, `--${name} needs a value`);
+            flags[name] = v;
+            i++;
+        }
+        else if (BOOL_FLAGS.includes(name)) flags[name] = true;
+        else throw new Refusal(2, `unknown flag ${a}`);
+    }
+    return { flags, rest };
+}
+
+// The engine as a function: never throws, never exits.
+function run(argv, { now = () => new Date(), stdin = '', cwd = process.cwd(), env = process.env } = {})
+{
+    const lines = (out) => (out && out.length ? `${out.join('\n')}\n` : '');
+    try
+    {
+        const [verb, ...args] = argv;
+        const all = [...VERBS.write, ...VERBS.read];
+        if (!verb) throw new Refusal(2, `no verb - one of ${all.join(', ')}`);
+        if (!HANDLERS[verb]) throw new Refusal(2, `unknown verb '${verb}'`);
+        const { flags, rest } = parseArgs(args);
+        if (rest.length) throw new Refusal(2, `${verb} takes no argument '${rest[0]}'`);
+        const takes = TAKES[verb];
+        for (const f of Object.keys(flags)) if (!takes.flags.includes(f)) throw new Refusal(2, `${verb} takes no --${f}`);
+        if (verb === 'check' && Boolean(flags.plan) === Boolean(flags.all)) throw new Refusal(2, 'check needs --plan <ref> or --all');
+        for (const f of takes.need) if (flags[f] === undefined) throw new Refusal(2, `${verb} needs --${f} <${f === 'plan' ? 'ref' : 'id'}>`);
+        const ctx = { verb, flags, stdin, cwd, env, at: stamp(now()), root: rootOf(cwd, env) };
+        if (flags.plan !== undefined)
+        {
+            const plan = resolvePlan(flags.plan, { cwd, env });
+            if (!plan.ok) throw new Refusal(2, plan.why);
+            ctx.plan = plan;
+        }
+        const r = HANDLERS[verb](ctx);
+        return { code: r.code, out: lines(r.out), err: r.err ? `${r.err}\n` : '' };
+    }
+    catch (e)
+    {
+        if (e instanceof Refusal) return { code: e.code, out: '', err: `plan-status: ${fold(e.line)}\n` };
+        return { code: 4, out: '', err: `plan-status: ${fold(e && e.message || e)}\n` };
+    }
+}
+
+module.exports = {
+    SCHEMA, MAX_BYTES, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS, VERBS,
+    stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run,
+    // for the verbs a later task adds
+    mutate, syncTasks, HANDLERS, Refusal, tasksLine, newTask,
+};
+
+if (require.main === module)
+{
+    const argv = process.argv.slice(2);
+    let stdin = '';
+    if (STDIN_VERBS.includes(argv[0])) { try { stdin = fs.readFileSync(0, 'utf8'); } catch { /* no stdin */ } }
+    try { layout.applyVariables(process.env.CLAUDE_PROJECT_DIR || layout.projectRootOf(process.cwd()).checkout); }
+    catch { /* the defaults stand */ }
+    const r = run(argv, { stdin });
+    if (r.out) process.stdout.write(r.out);
+    if (r.err) process.stderr.write(r.err);
+    process.exitCode = r.code;
+}
