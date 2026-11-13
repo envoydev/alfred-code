@@ -240,6 +240,22 @@ No. Every write is listed in [`docs/install-footprint.md`](docs/install-footprin
 </details>
 
 <details>
+<summary><strong>A browser login types the key name instead of its value - why?</strong></summary>
+
+The stack ships no browser server since 2.10.1, so a Playwright server is one you registered yourself. Playwright
+puts a value in place of a key name from `.alfred/.secrets` only when it was started with `--secrets <that file>`.
+`/alfred-code:status` names each registration missing it and prints the two args to add, for example:
+
+```json
+"args": ["-y", "@playwright/mcp@latest", "--browser", "chrome", "--secrets", "/abs/path/to/project/.alfred/.secrets"]
+```
+
+Then reconnect the server with `/mcp`. Use the absolute path, and keep the file in place: Playwright reads it when it
+starts and fails to start once it is gone.
+
+</details>
+
+<details>
 <summary><strong>How do I turn a guard off?</strong></summary>
 
 Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.local.json`:

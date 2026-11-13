@@ -1058,3 +1058,19 @@ joined below it - a subtotal and an inventory block per project, the advisory on
 each project the workspace leaves out. Each session's bundle is written in its own project's data root, so a child's
 bundles stay in the child; the root's `SUMMARY.md` lists them all. In a child or a standalone project nothing changes.
 Nothing to do by hand.
+
+## after 3.11.0 - a browser server started without --secrets is named
+
+A Playwright browser server you registered yourself (the stack ships none since 2.10.1) fills a login from the
+project's `.alfred/.secrets` only when it was started with `--secrets <that file>`; without it the key name is typed as
+literal text. While the store exists, `/alfred-code:status` and `/capture-preferences tools` now print one
+`browser: <server> (<scope>, <file>) was started without --secrets ...` line per such registration, with the exact two
+args to add to its `args`; add them and reconnect the server with `/mcp`. Nothing is written for you: Playwright reads
+the file when it starts and fails to start once the file is gone.
+
+## after 3.11.0 - an update re-spells a renamed hook in settings.json's off-list
+
+An update over 3.10.0 left `guard-answer:scorer` in `ALFRED_CODE_HOOKS_OFF` in `.claude/settings.json` when the stack
+had written its own settings there before 3.11.0 moved them to `settings.local.json`. The hooks still read the old
+name until 4.0.0, so nothing switched back on; the update now re-spells it as `guard-answer:scoring` in both files.
+Nothing to do by hand.

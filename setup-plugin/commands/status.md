@@ -371,6 +371,8 @@ node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" m
 
 Paste both outputs as-is in one fenced block - the stack's defaults until `/capture-preferences tools` ranks the user's own,
 then what navigation each actor gets and whether a language server covers the project. No `--lsp`: status changes nothing.
+A `browser:` line names a browser server the user registered without `--secrets` while the project's store exists -
+keep it in the block as printed; it carries the args to add.
 
 ## 5. Close
 

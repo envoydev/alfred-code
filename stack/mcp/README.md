@@ -24,7 +24,10 @@ what it shipped until then, so a server can be added back by hand. Read only - n
 | `macos-control` | `macos-desktop` | macOS desktop control | `macos-mcp` 0.4.6 (PyPI) | none |
 | `mobile-control` | `appium-mcp` | Android / iOS control through Appium | `appium-mcp` 1.97.1 (npm) | `.alfred/mobile-control/` captures |
 
-Ten servers, ten entries in `original-mcps.json` (the four browsers are one package under four profiles). The data stays where it was when an install updates onto 2.10.1 or later; delete it only once no server added
+Ten servers, ten entries in `original-mcps.json` (the four browsers are one package under four profiles). A browser entry
+added back fills a login from the project's store only with `"--secrets", "<absolute path to .alfred/.secrets>"` added to
+its `args` (the stack's launcher added it while the file existed; Playwright fails to start when the file is gone) -
+`/alfred-code:status` names a registration that lacks it. The data stays where it was when an install updates onto 2.10.1 or later; delete it only once no server added
 back and no other project on an older release still reads it.
 
 ## Where it goes now
