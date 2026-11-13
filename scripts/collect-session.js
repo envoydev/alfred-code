@@ -141,7 +141,8 @@ function resolveContext(opts, deps = {})
     // A seat's writes are the session's: its docs are collected beside the main thread's.
     for (const f of walkFiles(fsx, path.join(path.dirname(transcript), sid, 'subagents'), (n) => /^agent-.*\.jsonl$/.test(n)))
         for (const w of scanTranscript(f, { fs: fsx }).written) scan.written.add(w);
-    const project = opts.project ? path.resolve(opts.project) : scan.cwd ? path.resolve(scan.cwd) : null;
+    // W2: the project the session's cwd belongs to - a session started in a sub-folder is still its project's.
+    const project = opts.project ? path.resolve(opts.project) : scan.cwd ? layout.projectRootOf(path.resolve(scan.cwd)).project : null;
     if (!project) throw new Refusal('no project: the transcript names no cwd - pass --project <root>');
 
     // <config>/projects/<encoded project>/<sid>.jsonl - the session's own account, never the auditing one's.

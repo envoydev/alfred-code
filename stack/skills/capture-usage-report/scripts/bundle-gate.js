@@ -2,7 +2,8 @@
 // bundle-gate.js - the usage audit's per-bundle gate: run once after EACH bundle closes, it says whether the batch
 // runs the next bundle or closes here, and (with --summary) rewrites SUMMARY.md's bundle list from the bundles on disk.
 //
-//   node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <n> [--summary <usage-report dir>] [--transcript <file>]
+//   node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <n> [--summary <usage-report dir>] [--bundles <rel>=<dir>]...
+//       [--transcript <file>]
 //
 // The batch closes at 12 bundles, the bound, OR at the first bundle boundary whose context is past this install's
 // fresh-session trigger, or would be after one more bundle at this run's largest growth between boundaries (its own
@@ -20,6 +21,8 @@
 // Everything outside the markers is the run's own and is kept; a file with no block gets it appended, and a missing
 // file is created holding the block alone. A row per bundle is a mechanism, where 'rewrite it after each bundle' was a reminder the same run
 // skipped for 7 bundles (audit 2026-10-11, session ae38c08f).
+// --bundles <rel>=<dir> (repeatable, W2): a run at a workspace root reads each project's own usage-report folder - the rows
+// come from those folders alone, each with a leading project cell, its bundle path written from the SUMMARY's folder.
 //
 // Prints one BUNDLE-GATE line (and a SUMMARY line with --summary); exit 0, or 2 on a usage error. Node built-ins only.
 'use strict';
@@ -30,11 +33,11 @@ const path = require('path');
 const BOUND = 12;
 const BEGIN = '<!-- bundle-gate:bundles begin - rewritten by bundle-gate.js after each bundle; edit outside this block -->';
 const END = '<!-- bundle-gate:bundles end -->';
-const USAGE = 'usage: bundle-gate.js --done <bundles closed this run> [--summary <usage-report dir>] [--transcript <session.jsonl>]';
+const USAGE = 'usage: bundle-gate.js --done <bundles closed this run> [--summary <usage-report dir>] [--bundles <rel>=<dir>]... [--transcript <session.jsonl>]';
 
 function args(argv)
 {
-    const out = {};
+    const out = { bundles: [] };
     for (let i = 0; i < argv.length; i++)
     {
         const k = argv[i];
@@ -42,6 +45,13 @@ function args(argv)
         {
             if (i + 1 >= argv.length) return null;
             out[k.slice(2)] = argv[++i];
+        }
+        else if (k === '--bundles')
+        {
+            const v = i + 1 < argv.length ? argv[++i] : '';
+            const at = v.indexOf('=');
+            if (at <= 0 || at === v.length - 1) return null;
+            out.bundles.push({ rel: v.slice(0, at), dir: path.resolve(v.slice(at + 1)) });
         }
         else return null;
     }
@@ -137,9 +147,10 @@ function sectionRows(lines, heading)
     }
     return rows.slice(1);   // the first row is the header
 }
-function bundleRow(root, sid)
+// `dir` holds the bundle; `root` is the SUMMARY's folder; `rel` the project, given only with --bundles.
+function bundleRow(root, sid, dir = root, rel = undefined)
 {
-    const text = fs.readFileSync(path.join(root, sid, 'report-usage.md'), 'utf8');
+    const text = fs.readFileSync(path.join(dir, sid, 'report-usage.md'), 'utf8');
     const lines = text.split(/\r?\n/);
     const windowRow = lines.find((l) => /^\|\s*Session window\s*\|/.test(l)) || '';
     const date = (windowRow.match(/\|\s*Session window\s*\|\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || '?';
@@ -153,20 +164,37 @@ function bundleRow(root, sid)
             : rows.length === 1 ? rows[0][1]
                 : rows.map((r) => `${r[0]}: ${r[1]}`).join('; ');
     }
-    return { sid, date, open, line: `| \`${cell(sid)}\` | ${date} | ${cell(verdict)} | \`${cell(sid)}/report-usage.md\` |` };
+    const where = cell(path.relative(root, path.join(dir, sid, 'report-usage.md')).split(path.sep).join('/'));
+    const lead = rel === undefined ? '' : ` ${cell(rel)} |`;
+    return { sid, date, open, rel: rel || '', line: `|${lead} \`${cell(sid)}\` | ${date} | ${cell(verdict)} | \`${where}\` |` };
 }
-function writeSummary(root)
+const bundlesIn = (dir) =>
 {
-    let names = [];
-    try { names = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); }
+    const holds = (d) => d.isDirectory() && fs.existsSync(path.join(dir, d.name, 'report-usage.md'));
+    try { return fs.readdirSync(dir, { withFileTypes: true }).filter(holds).map((d) => d.name); }
+    catch { return []; }
+};
+// `bundles`: [{ rel, dir }] from --bundles; none lists the SUMMARY's own folder as before. With some, the SUMMARY's own
+// folder is listed as `.` too unless one of them names it - a run that passes only the other projects keeps its own rows.
+function writeSummary(root, bundles = [])
+{
+    try { if (!fs.statSync(root).isDirectory()) throw new Error('not a folder'); }
     catch { return `SUMMARY: not written - ${root} is not a folder`; }
-    const rows = names.filter((s) => fs.existsSync(path.join(root, s, 'report-usage.md'))).map((s) => bundleRow(root, s))
-        .sort((a, b) => (a.date === b.date ? (a.sid < b.sid ? -1 : 1) : a.date === '?' ? 1 : b.date === '?' ? -1 : a.date < b.date ? -1 : 1));
+    const many = bundles.length > 0;
+    const real = (d) => { try { return fs.realpathSync.native(d); } catch { return path.resolve(d); } };
+    if (many && !bundles.some((b) => real(b.dir) === real(root))) bundles = [{ rel: '.', dir: root }, ...bundles];
+    const cmp = (x, y) => (x === y ? 0 : x < y ? -1 : 1);
+    const listed = many ? bundles.flatMap((b) => bundlesIn(b.dir).map((s) => bundleRow(root, s, b.dir, b.rel)))
+        : bundlesIn(root).map((s) => bundleRow(root, s));
+    const rows = listed
+        .sort((a, b) => (a.date === b.date ? cmp(a.sid, b.sid) || cmp(a.rel, b.rel) : a.date === '?' ? 1 : b.date === '?' ? -1 : cmp(a.date, b.date)));
     const file = path.join(root, 'SUMMARY.md');
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { text = '# Usage audit - SUMMARY\n'; }
     const eol = /\r\n/.test(text) ? '\r\n' : '\n';
-    const block = [BEGIN, '## Bundles', '', '| session | start | verdict | bundle |', '|---|---|---|---|', ...rows.map((r) => r.line), END].join(eol);
+    const head = many ? ['| project | session | start | verdict | bundle |', '|---|---|---|---|---|']
+        : ['| session | start | verdict | bundle |', '|---|---|---|---|'];
+    const block = [BEGIN, '## Bundles', '', ...head, ...rows.map((r) => r.line), END].join(eol);
     const b = text.indexOf(BEGIN);
     const e = b < 0 ? -1 : text.indexOf(END, b);
     const next = b >= 0 && e >= 0 ? text.slice(0, b) + block + text.slice(e + END.length)
@@ -186,7 +214,7 @@ function main()
     const a = args(process.argv.slice(2));
     if (!a || a.done === undefined || !/^\d+$/.test(a.done)) { process.stderr.write(USAGE + '\n'); return 2; }
     const out = [gateLine(parseInt(a.done, 10), liveTranscript(a.transcript))];
-    if (a.summary !== undefined) out.push(writeSummary(path.resolve(a.summary)));
+    if (a.summary !== undefined) out.push(writeSummary(path.resolve(a.summary), a.bundles));
     process.stdout.write(out.join('\n') + '\n');
     return 0;
 }

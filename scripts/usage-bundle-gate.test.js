@@ -149,3 +149,92 @@ test('C40 4d71a1b3#2: a margin under the run\'s largest growth between bundles c
     assert.match(gate(['--done', '4', '--transcript', withReadings('dropped', [395000], 120000)]).out, /^BUNDLE-GATE: next - context 120,000/);
     assert.match(gate(['--done', '1', '--transcript', transcript('first', 398000)]).out, /^BUNDLE-GATE: next - context 398,000/);
 });
+
+// W2 Task 6: --bundles <rel>=<dir> - a run at a workspace root lists every project's bundles in the one SUMMARY.
+function putBundle(dir, sid, { start = '2026-10-05T16:11:59.967Z', verdict = 'partly - the bundles landed', crlf = false } = {})
+{
+    fs.mkdirSync(path.join(dir, sid), { recursive: true });
+    const text = ['# Stack usage report', '', '## Environment', '', '| | |', '|---|---|', `| Session window | ${start} → 2026-10-05T16:56:33.273Z (45m) |`, '',
+        '## Verdict', '', '| skill | worked as intended | biggest strength |', '|---|---|---|', `| task-solve | ${verdict} | x |`, ''].join(crlf ? '\r\n' : '\n');
+    fs.writeFileSync(path.join(dir, sid, 'report-usage.md'), text);
+}
+// Three projects, each its own data root's usage-report folder; the root's folder holds the SUMMARY.
+function threeReports(name)
+{
+    const ws = path.join(TMP, name);
+    const dirs = Object.fromEntries([['.', ''], ['api', 'api'], ['web', 'web']].map(([rel, sub]) => [rel, path.join(ws, sub, '.alfred', 'statistics', 'usage-report')]));
+    putBundle(dirs['.'], 's-root', { start: '2026-10-07T10:00:00.000Z' });
+    putBundle(dirs.api, 's-api', { start: '2026-10-05T10:00:00.000Z' });
+    putBundle(dirs.web, 's-web', { start: '2026-10-06T10:00:00.000Z', verdict: 'FILL IN' });
+    return { root: dirs['.'], dirs, flags: Object.entries(dirs).flatMap(([rel, d]) => ['--bundles', `${rel}=${d}`]) };
+}
+const tableOf = (file) => fs.readFileSync(file, 'utf8').split(/\r?\n/).filter((l) => l.startsWith('|'));
+
+test('--bundles: one row per bundle across three folders, a project column, the path from the SUMMARY\'s folder', () =>
+{
+    const { root, flags } = threeReports('bundles-three');
+    const r = gate(['--done', '3', '--summary', root, ...flags]);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /\nSUMMARY: .*SUMMARY\.md - 2 finished bundle\(s\), 1 in progress$/);
+    assert.deepEqual(tableOf(path.join(root, 'SUMMARY.md')), [
+        '| project | session | start | verdict | bundle |', '|---|---|---|---|---|',
+        '| api | `s-api` | 2026-10-05 | partly - the bundles landed | `../../../api/.alfred/statistics/usage-report/s-api/report-usage.md` |',
+        '| web | `s-web` | 2026-10-06 | in progress - FILL IN sections left | `../../../web/.alfred/statistics/usage-report/s-web/report-usage.md` |',
+        '| . | `s-root` | 2026-10-07 | partly - the bundles landed | `s-root/report-usage.md` |',
+    ]);
+});
+
+test('--bundles for the other projects only: the SUMMARY\'s own folder is still listed, as ., once', () =>
+{
+    const { root, dirs } = threeReports('bundles-others');
+    const r = gate(['--done', '3', '--summary', root, '--bundles', `api=${dirs.api}`, '--bundles', `web=${dirs.web}`]);
+    assert.equal(r.code, 0, r.err);
+    const rows = tableOf(path.join(root, 'SUMMARY.md'));
+    assert.deepEqual(rows.filter((l) => l.includes('`s-root`')), ['| . | `s-root` | 2026-10-07 | partly - the bundles landed | `s-root/report-usage.md` |']);
+    assert.equal(rows.length, 5);
+});
+
+test('--bundles naming a missing folder or one with no bundle adds no row and does not throw', () =>
+{
+    const { root, flags } = threeReports('bundles-missing');
+    const empty = path.join(TMP, 'bundles-empty');
+    fs.mkdirSync(empty, { recursive: true });
+    const r = gate(['--done', '1', '--summary', root, ...flags, '--bundles', `gone=${path.join(TMP, 'no-such')}`, '--bundles', `none=${empty}`]);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(tableOf(path.join(root, 'SUMMARY.md')).length, 5);
+});
+
+test('a --bundles value with no \'=\' or an empty side is a usage error, exit 2, nothing written', () =>
+{
+    const { root } = threeReports('bundles-bad');
+    for (const bad of ['api', `=${root}`, 'api=']) {
+        const r = gate(['--done', '1', '--summary', root, '--bundles', bad]);
+        assert.deepEqual([r.code, r.out], [2, ''], bad);
+        assert.match(r.err, /--bundles <rel>=<dir>/);
+        assert.ok(!fs.existsSync(path.join(root, 'SUMMARY.md')), bad);
+    }
+});
+
+test('--bundles: a rel holding a pipe or a line break cannot break the table', () =>
+{
+    const { root, dirs } = threeReports('bundles-pipe');
+    const r = gate(['--done', '1', '--summary', root, '--bundles', `a|b\nc=${dirs.api}`, '--bundles', `x=${dirs.web}`]);
+    assert.equal(r.code, 0, r.err);
+    const rows = tableOf(path.join(root, 'SUMMARY.md'));
+    assert.equal(rows.length, 5, 'the two named folders and the SUMMARY\'s own');
+    for (const l of rows) assert.equal(l.split('|').length, 7, l);
+    assert.ok(rows.some((l) => l.startsWith('| a/b c | `s-api` |')), rows.join('\n'));
+});
+
+test('--bundles keeps what is outside the markers, and a CRLF file\'s line ends', () =>
+{
+    const { root, flags } = threeReports('bundles-crlf');
+    fs.writeFileSync(path.join(root, 'SUMMARY.md'), '# Usage audit - SUMMARY\r\n\r\nWritten by hand.\r\n');
+    assert.equal(gate(['--done', '1', '--summary', root, ...flags]).code, 0);
+    const text = fs.readFileSync(path.join(root, 'SUMMARY.md'), 'utf8');
+    assert.match(text, /^Written by hand\.\r$/m);
+    assert.ok(!/[^\r]\n/.test(text), 'every line ends CRLF');
+    assert.equal(tableOf(path.join(root, 'SUMMARY.md')).length, 5);
+    gate(['--done', '1', '--summary', root, ...flags]);
+    assert.equal(fs.readFileSync(path.join(root, 'SUMMARY.md'), 'utf8'), text, 'idempotent');
+});

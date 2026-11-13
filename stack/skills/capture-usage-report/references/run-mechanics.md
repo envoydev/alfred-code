@@ -1,6 +1,6 @@
-# Stack usage audit - run mechanics (steps 2-3)
+# Stack usage audit - run mechanics (steps 1 and 3)
 
-Read at step 2, once the snapshot is on disk, and before the first analyzer call; the report's Environment rows carry `Mechanics: read` as the receipt. This file holds the command shapes - the body holds the rules about when each runs.
+Read at step 1, once the snapshot is on disk, and before the first analyzer call; the report's Environment rows carry `Mechanics: read` as the receipt. This file holds the command shapes - the body holds the rules about when each runs.
 
 ## Contents
 
@@ -14,24 +14,25 @@ Read at step 2, once the snapshot is on disk, and before the first analyzer call
 
 The harness's auto-mode classifier blocks a piped compound (`curl | tar || git clone`) verbatim, and a denied pipe costs a cold clone; a loop it reads fine, and at real scope a loop is unavoidable (a per-session command times N sessions is N calls). So write the batch to a file and execute the file - one simple command the classifier reads as one, with the loop inside the file rather than inside the command line.
 
-Each session is one `if`: the collector (`scripts/collect-session.js`) gathers the session's stores, and the analyzer runs only on a copy it wrote. A refused collect prints its own reason on stderr, and the batch names the session and goes on to the next. The raw-transcript answer in the body picks the shape.
+Each session is one `if`: the collector (`scripts/collect-session.js`) gathers the session's stores, and the analyzer runs only on a copy it wrote. The loop reads `<tmp>/sessions.tsv`, one line per audited session written from step 2's `--scope` lines: the `session:` line's file, a tab, then the root of the `project:` line its `<rel>` names. Each collect carries `--project` with that root and writes the bundle under that project's own data root. A refused collect prints its own reason on stderr, and the batch names the session and goes on to the next. The raw-transcript answer in the body picks the shape.
 
-Consent given - git ignores the bundle folder, or the answer was 'Copy the raw transcripts too' (then add `--allow-tracked` to the collect call, and only then):
+Consent given - git ignores the bundle folder, or the answer was 'Copy the raw transcripts too' (then add `--allow-tracked` to the collect call, and only then). At a root where only some projects' folders are ignored, this shape runs too, with no `--allow-tracked` on 'Report and --json dumps only': an ignored project's collect copies, and for a committable one the collector's gate refuses the copy and the `elif` withholds it:
 
 ```bash
 cat > "<tmp>/run.sh" <<'EOF'
-for f in <the session files>; do
+while IFS="$(printf '\t')" read -r f root; do
   sid=$(basename "$f" .jsonl)
-  if node "<snapshot>/scripts/collect-session.js" "$f" --out "<out>/$sid" --move-tool-usage; then
-    node "<snapshot>/scripts/analyze-usage.js" "<out>/$sid/$sid.jsonl" --report-md --out "<out>/$sid/report-usage.md"
-  elif node "<snapshot>/scripts/collect-session.js" "$f" --out "<tmp>/$sid" \
-    && node "<snapshot>/scripts/collect-session.js" "$f" --out "<out>/$sid" --text withhold --move-tool-usage; then
+  out="$root/.alfred/statistics/usage-report"
+  if node "<snapshot>/scripts/collect-session.js" "$f" --project "$root" --out "$out/$sid" --move-tool-usage; then
+    node "<snapshot>/scripts/analyze-usage.js" "$out/$sid/$sid.jsonl" --report-md --out "$out/$sid/report-usage.md"
+  elif node "<snapshot>/scripts/collect-session.js" "$f" --project "$root" --out "<tmp>/$sid" \
+    && node "<snapshot>/scripts/collect-session.js" "$f" --project "$root" --out "$out/$sid" --text withhold --move-tool-usage; then
     echo "text withheld: $sid"
-    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --receipt "<out>/$sid/collected.json" --out "<out>/$sid/report-usage.md"
+    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --receipt "$out/$sid/collected.json" --out "$out/$sid/report-usage.md"
   else
     echo "collect refused: $sid"
   fi
-done
+done < "<tmp>/sessions.tsv"
 EOF
 bash "<tmp>/run.sh"
 ```
@@ -42,22 +43,23 @@ No consent - 'Report and --json dumps only': the text stores are collected into 
 
 ```bash
 cat > "<tmp>/run.sh" <<'EOF'
-for f in <the session files>; do
+while IFS="$(printf '\t')" read -r f root; do
   sid=$(basename "$f" .jsonl)
-  if node "<snapshot>/scripts/collect-session.js" "$f" --out "<tmp>/$sid" \
-    && node "<snapshot>/scripts/collect-session.js" "$f" --out "<out>/$sid" --text withhold --move-tool-usage; then
-    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --receipt "<out>/$sid/collected.json" --out "<out>/$sid/report-usage.md"
+  out="$root/.alfred/statistics/usage-report"
+  if node "<snapshot>/scripts/collect-session.js" "$f" --project "$root" --out "<tmp>/$sid" \
+    && node "<snapshot>/scripts/collect-session.js" "$f" --project "$root" --out "$out/$sid" --text withhold --move-tool-usage; then
+    node "<snapshot>/scripts/analyze-usage.js" "<tmp>/$sid/$sid.jsonl" --report-md --receipt "$out/$sid/collected.json" --out "$out/$sid/report-usage.md"
   else
     echo "collect refused: $sid"
   fi
-done
+done < "<tmp>/sessions.tsv"
 EOF
 bash "<tmp>/run.sh"
 ```
 
 The consent bundle is the collector's whole output: the transcript and `subagents/`, `collected.json` (the receipt), `context.json`, `context/`, the ledgers beside the transcript and under `data/`, the session's state under `data/`, the docs it wrote under `docs/` and the hook temp files under `tmp/`. The no-consent bundle keeps the report, the dumps, `collected.json`, `context.json` and the meta stores - counts, ids, paths, versions, never conversation text; the history row, the scoring drafts and the docs quote the session's own text, so they stay in `<tmp>`, where the analyzer still grades the Conformance claims from them. `--move-tool-usage` takes the session's tools-usage ledger out of the project into the bundle; a session not audited this run keeps its ledger in place.
 
-`<tmp>` is the path step 2's resolve block printed (a shell variable does not outlive its Bash call). `<snapshot>` = `<tmp>/repo` when the plugin cache or the clone fallback supplied it, `<tmp>` when the archive extracted in place.
+`<out>` below is the session's own project's `.alfred/statistics/usage-report`. `<tmp>` is the path step 1's resolve block printed (a shell variable does not outlive its Bash call). `<snapshot>` = `<tmp>/repo` when the plugin cache or the clone fallback supplied it, `<tmp>` when the archive extracted in place.
 
 Two shapes are not style, they are what the harness accepts:
 
@@ -66,18 +68,22 @@ Two shapes are not style, they are what the harness accepts:
 
 ## Which sessions to skip - the previously-audited test
 
-One bound keeps repeated sweeps sane, and the test is the REPORT, not the folder: a session is previously-audited
-when `<data root>/statistics/usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that
+One bound keeps repeated sweeps sane, and the test is the report in the session's own project, not the folder: a session is
+previously-audited when `<project root>/.alfred/statistics/usage-report/<session-id>/report-usage.md` (the `project:` root of
+its `<rel>`) exists AND carries no `FILL IN` section - skip that
 one, list it as previously-audited, and re-audit only on an explicit ask. The folder alone is not the test: it
 becomes true at the SKELETON write, long before the report is authored, so a run resumed after an interruption
 would skip its own unfinished bundles as done.
 
 ## The analyzer calls
 
-- `node <snapshot>/scripts/analyze-usage.js <projects-dir>` - one-line rollup, to confirm which sessions matter (and the SUMMARY.md rollup table). The walk is RECURSIVE, so a whole collection root - `<corpus>/<project>/<session-id>/<session-id>.jsonl` with `subagents/` and the ledgers beside each - is one command, and a flat history folder is the same call. A session is any `*.jsonl` that is not under a `subagents/`, `tools-usage/` or `hook-blocks/` directory and not named `tool-usage-<sid>` / `hook-blocks-<sid>`: a dispatched seat is counted under its parent, and a ledger is not a session (it used to open a row per file with a `?` start).
+- `node <snapshot>/scripts/analyze-usage.js --scope`, from the project root (step 2): `scope: <n> projects`, one `project: <rel>\t<root>\t<sessions>` line per project in scope, one `left-out: <rel>\t<why>` line per project the workspace leaves out (ignored, gone, or joined elsewhere), one `session: <id>\t<rel>\t<file>` line per transcript - kept by the project it was started in, read from the transcript's head alone - and `other-start-folder: <n>` for transcripts started elsewhere.
+- `node <snapshot>/scripts/analyze-usage.js` with no path, run in the start project - the rollup of the scope, to confirm which sessions matter (and the SUMMARY.md rollup table): with more than one project in scope, a leading `project` column, one `SUBTOTAL <rel>` row per project, then `TOTAL` and the `left out:` line, and one `INVENTORY vs USE [<rel>]` block per project. `--scope` instead prints only the scope's lines (step 2). A named folder - `node <snapshot>/scripts/analyze-usage.js <projects-dir>` - is read whole, the same rollup over whatever it holds. The walk is RECURSIVE, so a whole collection root - `<corpus>/<project>/<session-id>/<session-id>.jsonl` with `subagents/` and the ledgers beside each - is one command, and a flat history folder is the same call. A session is any `*.jsonl` that is not under a `subagents/`, `tools-usage/` or `hook-blocks/` directory and not named `tool-usage-<sid>` / `hook-blocks-<sid>`: a dispatched seat is counted under its parent, and a ledger is not a session (it used to open a row per file with a `?` start).
+- Two run modes, opposite expectations: a single-chat skill (the `task-design` / `task-implement` / `task-verify-plan` trio) dispatches NOTHING, so its numbers are tool-result sizes and cache behavior; a dispatch-mode run (`task-solve-cross`, an agents build, a capture fan-out, a DELEGATED loop) EXPECTS subagents, split main-session vs per-seat - the analyzer emits both. The analyzer reads both ledgers from the copy itself - the instrumentation ledger (who fired what) and the session's own guard-block ledger (WHICH guard denied a call) - so no flag is needed.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl>` - full report, once per matching session. `<session.jsonl>` in this call and the two below is the collector's copy (`<out>/<sid>/<sid>.jsonl`, or `<tmp>/<sid>/<sid>.jsonl` in the no-consent shape): the ledgers, the state and the receipt sit beside it, never beside the original.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --json` - machine dump, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --report-md --out <out>/<sid>/report-usage.md` - the report SKELETON: machine-written tables (Environment, Session vintage, Tokens, Subagent dispatches, Skills, Generated docs, MCP, Inventory vs use, Tools, Efficiency scorecard, Context spikes, Hook-log join, Probes, Conformance, Evidence coverage - whichever the run emits; they stay as printed) plus the FILL IN judgment sections. The analyzer finds the ledgers itself - `tool-usage-<sid>.jsonl` / `hook-blocks-<sid>.jsonl` beside the transcript, then the `data/statistics/` copies - and the state under `data/`; the Environment table's `Ledgers read` row names the file it read. A flag still wins (`--hook-log`, `--hook-blocks`, `--data-root`). The Conformance section grades each claim the stack makes (`meta/conformance.json`) and every `meta/skill-comply/` step: the verdict cites the Conformance rows; it never recounts them.
+- `node <snapshot>/stack/skills/capture-usage-report/scripts/bundle-gate.js --done <n> --summary .alfred/statistics/usage-report`, from the start project, plus `--bundles <rel>=<project root>/.alfred/statistics/usage-report` once per project when the scope holds more than one - the SUMMARY's bundle list then carries a `project` column across every project's folder.
 - `node <snapshot>/scripts/analyze-usage.js --check-report <out>/<sid>/report-usage.md` - the LAST call of every bundle. It reads the FILLED report and prints one row per number in a judgment section that appears in no machine table of that same report and carries no `L<n>` locator resolving against the transcript beside it (an out-of-range `L<n>` is named too). Exit 1 while a row prints, 0 on `clean`. The bundle is not done until it prints `clean`.
 - Non-default docs root: add `--docs-root <that root>` to every per-session call. Read the root off the always-on `alfred-docs-root.md` rule text already in this prompt - never grep `.claude/settings.json` for it: that file also holds credentials, so the secret guard blocks the command carrying the read and the round trip costs ~0.19M tokens (measured). The analyzer's Generated-docs table watches only the default `.alfred/docs/` and the pre-2.0.0 `.claude/docs/` by default, so a custom root silently drops every doc touch. The flag covers BOTH routes (the Read/Write calls and the doc I/O routed through Bash); it used to reach only the first, which made the table disagree with itself.
 - `--inventory <.claude dir>` / `--plugins <installed_plugins.json>` - what the INVENTORY vs USE block scores the session against. Both resolve on their own and neither is usually needed: the inventory is resolved PER SESSION from that session's own `cwd`'s `.claude` when that path exists on this machine (cached per cwd, so a one-project folder resolves once), falling back to the stack catalog beside the script (labeled `catalog (installed set unknown)` - it proves the stack SHIPS the artifact, never that this project installed it), and the plugin list to `$CLAUDE_CONFIG_DIR`, then `~/.claude/plugins/installed_plugins.json`. Per session, because a collection spans projects that installed different things: every name carries `installed K/M` beside `used N/M`, and a name no session installed is never reported as unused. Pass them when auditing a bundle collected from ANOTHER machine and that project's `.claude` is reachable here - a catalog-sourced denominator answers 'the stack has 77 skills', a project-sourced one answers 'this install has N'. The MCP side reads the `.mcp.json` beside a project inventory, and the servers seen in tool names otherwise.

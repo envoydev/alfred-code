@@ -625,8 +625,8 @@ node "$TMP/repo/scripts/analyze-usage.js" --turn-check-advice .
 ```
 
 It prints ONE `turn-check: advise - ...` line (done claims over an edit with nothing run after it
-reached 3 in the newest 10 sessions) or nothing. Paste a printed line as-is in the same fenced block;
-nothing printed means no row. It is advisory: never write `ALFRED_CODE_TURN_CHECK` from this command -
+reached 3 in the newest 10 sessions) or nothing. At a workspace root the advisory covers the root and each child, each
+row carrying its `<rel>: `. Paste each printed line as-is in the same fenced block; nothing printed means no row. It is advisory: never write `ALFRED_CODE_TURN_CHECK` from this command -
 the user sets it through `/alfred-code:configure` or by hand.
 
 ## Clean up the temp dir - ALWAYS
