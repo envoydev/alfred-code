@@ -451,20 +451,158 @@ function mutate(plan, verb, change, ctx)
 
 // ---- the verbs ----
 
+// R4: a value longer than its cap keeps its first cap - 3 characters and ends in '...'.
+const cut = (value, cap) => (value.length > cap ? `${value.slice(0, cap - 3)}...` : value);
+// The labelled values a verb reads from stdin, each cut at its cap; a label met with an empty value is missing.
+function labelled(stdin, caps)
+{
+    const got = parseStdin(stdin, Object.keys(caps));
+    return Object.fromEntries(Object.entries(got).filter(([, v]) => v !== '').map(([k, v]) => [k, cut(v, caps[k])]));
+}
+const usage = (line) => { throw new Refusal(2, line); };
+
+// Sync's Markdown read and merge, shared with approve; a refusal text or null.
+function syncFromMarkdown(plan, status, at)
+{
+    if (fs.existsSync(path.join(path.dirname(plan.dir), `${plan.id}.md`))) return `a flat ${plan.id}.md holds this id`;
+    let md;
+    try { md = fs.readFileSync(plan.md, 'utf8'); }
+    catch { return `no ${plan.id}.md in the plan folder`; }
+    return syncTasks(status, parseCards(md), at);
+}
+
 function verbSync(plan, ctx)
 {
-    const flat = path.join(path.dirname(plan.dir), `${plan.id}.md`);
     return mutate(plan, 'sync', (status, c) =>
     {
         if (!c.created && status.approvedAt !== null && status.reopenedAt === null) return { refused: 'the plan is approved - redesign reopens it' };
-        if (fs.existsSync(flat)) return { refused: `a flat ${plan.id}.md holds this id` };
-        let md;
-        try { md = fs.readFileSync(plan.md, 'utf8'); }
-        catch { return { refused: `no ${plan.id}.md in the plan folder` }; }
-        const refused = syncTasks(status, parseCards(md), c.at);
-        if (refused) return { refused };
-        return { lines: (st) => [tasksLine(st)] };
+        const refused = syncFromMarkdown(plan, status, c.at);
+        return refused ? { refused } : { lines: (st) => [tasksLine(st)] };
     }, { ...ctx, createIfAbsent: true });
+}
+
+const GATE_LABELS = ['Oriented', 'Asked', 'Decisions', 'Scope', 'Existence', 'Passes', 'Findings', 'Gated'];
+function verbGate(plan, ctx)
+{
+    const text = String(ctx.stdin).replace(/\r/g, '').replace(/\s+$/, '');
+    const got = parseStdin(text, GATE_LABELS);
+    return mutate(plan, 'gate', (status, c) =>
+    {
+        const missing = GATE_LABELS.find((l) => !(l in got));
+        if (missing) return { refused: `no ${missing}: line` };
+        status.gate = { at: c.at, verdict: got.Gated, block: cut(text, CAPS.gate) };
+        return { lines: (st) => [`Gated: ${fold(st.gate.verdict)}`] };
+    }, ctx);
+}
+
+const approvedLine = (st) => `Approved: ${st.approvedAt} - ${st.approval && st.approval.mode ? `mode ${st.approval.mode}` : `"${fold(st.approval && st.approval.words || '')}"`}`;
+function verbApprove(plan, ctx)
+{
+    const mode = ctx.flags.mode;
+    if (mode !== undefined && mode !== 'session' && mode !== 'agents') usage('--mode is session or agents');
+    const { words } = labelled(ctx.stdin, { words: CAPS.field });
+    if (mode === undefined && words === undefined) usage('approve needs --mode session|agents or a words: line');
+    const approval = { mode: mode || null, words: words || null };
+    return mutate(plan, 'approve', (status, c) =>
+    {
+        if (c.created || status.approvedAt === null || status.reopenedAt !== null)
+        {
+            const refused = syncFromMarkdown(plan, status, c.at);
+            if (refused) return { refused };
+            if (!status.tasks.length) return { refused: 'no task' };
+            status.approvedAt = c.at;
+            status.reopenedAt = null;
+        }
+        status.approval = approval;     // R6: an approval already given only changes its mode or words
+        return { lines: (st) => [approvedLine(st)] };
+    }, { ...ctx, createIfAbsent: true });
+}
+
+function verbRedesign(plan, ctx)
+{
+    const { why } = labelled(ctx.stdin, { why: CAPS.field });
+    const named = ctx.flags.task;
+    return mutate(plan, 'redesign', (status, c) =>
+    {
+        if (status.reopenedAt !== null) return { refused: 'the design is already reopened' };
+        if (status.approvedAt === null) return { refused: 'the plan is not approved' };
+        const flying = status.tasks.filter((t) => t.status === 'in_progress');
+        if (named !== undefined)
+        {
+            if (!flying.some((t) => t.id === named)) return { refused: `task ${named} is not in_progress` };
+            const other = flying.find((t) => t.id !== named);
+            if (other) return { refused: `task ${other.id} is in_progress - finish or block it first` };
+        }
+        else if (flying.length) return { refused: `task ${flying[0].id} is in_progress - name it with --task` };
+        status.reopens.push({ at: c.at, why: why || null, approvedAt: status.approvedAt, gate: status.gate, task: named || null });
+        status.reopenedAt = c.at;
+        status.gate = null;
+        if (named !== undefined) Object.assign(status.tasks.find((t) => t.id === named), { status: 'todo', why: why || null });
+        return { lines: [] };
+    }, ctx);
+}
+
+function verbCursor(plan, ctx)
+{
+    const { note } = labelled(ctx.stdin, { note: CAPS.field });
+    if (note === undefined) usage('cursor needs a note: line');     // R8: never a cleared note
+    return mutate(plan, 'cursor', (status) => { status.resume.note = note; return { lines: [] }; }, ctx);
+}
+
+function verbDecide(plan, ctx)
+{
+    const { choice, precedent } = labelled(ctx.stdin, { choice: CAPS.field, precedent: CAPS.field });
+    if (choice === undefined) usage('decide needs a choice: line');
+    if (precedent === undefined) usage('decide needs a precedent: line');
+    return mutate(plan, 'decide', (status, c) =>
+    {
+        status.decisions.push({ at: c.at, task: ctx.flags.task || null, choice, precedent });
+        return { lines: [] };
+    }, ctx);
+}
+
+function verbDeviate(plan, ctx)
+{
+    const { what, why, asked } = labelled(ctx.stdin, { what: CAPS.field, why: CAPS.field, asked: CAPS.field });
+    if (what === undefined) usage('deviate needs a what: line');
+    if (why === undefined) usage('deviate needs a why: line');
+    return mutate(plan, 'deviate', (status, c) =>
+    {
+        status.deviations.push({ at: c.at, task: ctx.flags.task || null, what, why, asked: asked || null });
+        return { lines: [] };
+    }, ctx);
+}
+
+function verbConformance(plan, ctx)
+{
+    const { verdict, reviewer, skipped } = labelled(ctx.stdin, { verdict: CAPS.field, reviewer: CAPS.field, skipped: CAPS.field });
+    if (reviewer === undefined && skipped === undefined) usage('conformance needs a reviewer: or a skipped: line');
+    if (reviewer !== undefined && verdict === undefined) usage('conformance needs a verdict: line');    // R20
+    return mutate(plan, 'conformance', (status, c) =>
+    {
+        status.conformance = { at: c.at, verdict: verdict || 'skipped', reviewer: reviewer || null, skipped: skipped || null };
+        return { lines: (st) => [`Conformance: ${fold(st.conformance.verdict)}`] };
+    }, ctx);
+}
+
+function verbComplete(plan, ctx)
+{
+    const { suite } = labelled(ctx.stdin, { suite: CAPS.result });
+    if (suite === undefined) usage('complete needs a suite: line');
+    return mutate(plan, 'complete', (status, c) =>
+    {
+        if (status.approvedAt === null) return { refused: 'the plan is not approved' };
+        if (status.reopenedAt !== null) return { refused: 'the design is reopened - approve it again first' };     // R7
+        const flying = status.tasks.find((t) => t.status === 'in_progress');
+        if (flying) return { refused: `task ${flying.id} is in_progress` };
+        const open = status.tasks.filter((t) => t.status !== 'done').map((t) => t.id);
+        if (open.length && !ctx.flags['with-open'])
+            return { refused: `${open.length === 1 ? `task ${open[0]} is` : `tasks ${open.join(', ')} are`} not done - finish or drop them, or pass --with-open` };
+        status.completedAt = c.at;
+        status.completion = { suite, open };
+        status.resume.next = null;
+        return { keepNext: true, lines: (st) => [`Completed: ${st.completedAt}`] };
+    }, ctx);
 }
 
 // Every problem of one plan's status.json: null when it has none, or [] when absent.
@@ -535,6 +673,14 @@ function verbList(ctx)
 // The verbs this engine answers; a later task adds its own here.
 const HANDLERS = {
     sync: (ctx) => verbSync(ctx.plan, ctx),
+    gate: (ctx) => verbGate(ctx.plan, ctx),
+    approve: (ctx) => verbApprove(ctx.plan, ctx),
+    redesign: (ctx) => verbRedesign(ctx.plan, ctx),
+    cursor: (ctx) => verbCursor(ctx.plan, ctx),
+    decide: (ctx) => verbDecide(ctx.plan, ctx),
+    deviate: (ctx) => verbDeviate(ctx.plan, ctx),
+    conformance: (ctx) => verbConformance(ctx.plan, ctx),
+    complete: (ctx) => verbComplete(ctx.plan, ctx),
     check: (ctx) => verbCheck(ctx),
     list: (ctx) => verbList(ctx),
 };
@@ -598,7 +744,7 @@ module.exports = {
     SCHEMA, MAX_BYTES, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS, VERBS,
     stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run,
     // for the verbs a later task adds
-    mutate, syncTasks, HANDLERS, Refusal, tasksLine, newTask,
+    mutate, syncTasks, HANDLERS, Refusal, tasksLine, newTask, labelled, cut, usage,
 };
 
 if (require.main === module)

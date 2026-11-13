@@ -356,3 +356,129 @@ test('the CLI: the exit code is the verb\'s, stdout and stderr carry the lines',
     assert.strictEqual(cli(['sync', '--plan', 'csv']).status, 3);
     assert.strictEqual(fs.readFileSync(p.file, 'utf8'), '{');
 });
+
+const GATE = ['Oriented:  verified', 'Asked:     verified', 'Decisions: 2 entries, each with its precedent', 'Scope:     matches', 'Existence: 6 names checked, 0 unverified',
+    'Passes:    risk pass | scope pass | existence pass | edges pass | soundness pass', 'Findings:  none', 'Gated:     passed'].join('\n');
+const SUITE = 'suite: npm test - 412 passed, 0 failed\n';
+// A plan approved at 10:05 from the three cards.
+function approved(opts) { const p = plan(opts); ok(call(p, ['approve', '--plan', 'csv', '--mode', 'session'], '', '2026-11-13T10:05:00Z')); return p; }
+
+test('gate: stores the eight-field block, its verdict and the time; a missing label is refused', () =>
+{
+    const p = plan();
+    refused(call(p, ['gate', '--plan', 'csv'], GATE), 2, /^plan-status: no status yet - run sync\n$/);
+    ok(call(p, ['sync', '--plan', 'csv']));
+    assert.deepStrictEqual(lines(ok(call(p, ['gate', '--plan', 'csv'], `${GATE}\r\n\r\n`, '2026-11-13T09:58:00Z'))), [`plan-status: gate ok - plan csv (${REL})`, 'Gated: passed', 'Resume: next task 1']);
+    assert.deepStrictEqual(read(p).gate, { at: '2026-11-13T09:58Z', verdict: 'passed', block: GATE });
+    for (const label of ['Oriented', 'Passes', 'Gated']) untouched(p, () => refused(call(p, ['gate', '--plan', 'csv'], GATE.replace(`${label}:`, `${label} -`)), 2, new RegExp(`^plan-status: gate refused: no ${label}: line\\n$`)));
+    ok(call(p, ['gate', '--plan', 'csv'], GATE.replace('none', 'x'.repeat(5000))));
+    const g = read(p).gate;
+    assert.deepStrictEqual([g.block.length, g.block.endsWith('...'), g.verdict], [4000, true, 'passed'], 'the verdict is read before the cut');
+});
+
+test('approve: syncs, stamps the time with the mode or the words; the same approval changes nothing', () =>
+{
+    const p = plan();                                         // no status.json yet: approve syncs first
+    assert.deepStrictEqual(lines(ok(call(p, ['approve', '--plan', 'csv', '--mode', 'session'], '', '2026-11-13T10:05:00Z'))),
+        [`plan-status: approve ok - plan csv (${REL})`, 'Approved: 2026-11-13T10:05Z - mode session', 'Resume: next task 1']);
+    assert.deepStrictEqual([read(p).approvedAt, read(p).approval, read(p).tasks.length], ['2026-11-13T10:05Z', { mode: 'session', words: null }, 3]);
+    untouched(p, () => ok(call(p, ['approve', '--plan', 'csv', '--mode', 'session'], '', '2026-11-13T11:00:00Z'), /^plan-status: approve - nothing to change - /));
+    ok(call(p, ['approve', '--plan', 'csv', '--mode', 'agents'], '', '2026-11-13T11:00:00Z'));
+    assert.deepStrictEqual([read(p).approvedAt, read(p).approval.mode], ['2026-11-13T10:05Z', 'agents'], 'R6: the approval alone');
+    untouched(p, () => refused(call(p, ['sync', '--plan', 'csv']), 2, /^plan-status: sync refused: the plan is approved - redesign reopens it\n$/));
+    const w = plan();
+    ok(call(w, ['approve', '--plan', 'csv'], 'words: go ahead,\n"ship" it\n', '2026-11-13T10:05:00Z'), /^Approved: 2026-11-13T10:05Z - "go ahead, "ship" it"$/m);
+    assert.deepStrictEqual(read(w).approval, { mode: null, words: 'go ahead,\n"ship" it' });
+});
+
+test('approve: refused with neither a mode nor words, a mode that is none, no task, a bad card - and nothing is written', () =>
+{
+    const p = plan();
+    refused(call(p, ['approve', '--plan', 'csv']), 2, /^plan-status: approve needs --mode session\|agents or a words: line\n$/);
+    refused(call(p, ['approve', '--plan', 'csv'], 'words:\n'), 2, /approve needs --mode/);
+    refused(call(p, ['approve', '--plan', 'csv', '--mode', 'auto']), 2, /^plan-status: --mode is session or agents\n$/);
+    const empty = plan({ md: markdown([]) });
+    refused(call(empty, ['approve', '--plan', 'csv', '--mode', 'session']), 2, /^plan-status: approve refused: no task\n$/);
+    const bad = plan({ md: markdown([[1, 'A', 5], [1, 'B', 5]]) });
+    refused(call(bad, ['approve', '--plan', 'csv', '--mode', 'session']), 2, /^plan-status: approve refused: task 1 - two cards carry this id\n$/);
+    assert.deepStrictEqual([p, empty, bad].map((x) => fs.existsSync(x.file)), [false, false, false]);
+});
+
+test('redesign: reopens the design with approvedAt kept, takes the task in flight back to todo; approve closes it', () =>
+{
+    const p = approved();
+    refused(call(plan(), ['redesign', '--plan', 'csv'], 'why: x\n'), 2, /no status yet - run sync/);
+    ok(call(p, ['gate', '--plan', 'csv'], GATE, '2026-11-13T10:05:00Z'));
+    edit(p, (s) => { Object.assign(s.tasks[0], { status: 'in_progress', startedAt: '2026-11-13T10:06Z' }); });
+    untouched(p, () => refused(call(p, ['redesign', '--plan', 'csv'], 'why: x\n'), 2, /^plan-status: redesign refused: task 1 is in_progress - name it with --task\n$/));
+    untouched(p, () => refused(call(p, ['redesign', '--plan', 'csv', '--task', '2'], 'why: x\n'), 2, /redesign refused: task 2 is not in_progress/));
+    ok(call(p, ['redesign', '--plan', 'csv', '--task', '1'], 'why: the export must stream\n', '2026-11-13T10:20:00Z'));
+    const s = read(p);
+    assert.deepStrictEqual([s.reopenedAt, s.approvedAt, s.gate], ['2026-11-13T10:20Z', '2026-11-13T10:05Z', null], 'D5: approvedAt is never cleared');
+    assert.deepStrictEqual(s.reopens, [{ at: '2026-11-13T10:20Z', why: 'the export must stream', approvedAt: '2026-11-13T10:05Z', gate: { at: '2026-11-13T10:05Z', verdict: 'passed', block: GATE }, task: '1' }]);
+    assert.deepStrictEqual([s.tasks[0].status, s.tasks[0].startedAt, s.tasks[0].estimateMin, s.tasks[0].why], ['todo', '2026-11-13T10:06Z', 25, 'the export must stream']);
+    untouched(p, () => refused(call(p, ['redesign', '--plan', 'csv'], 'why: again\n'), 2, /redesign refused: the design is already reopened/));
+    untouched(p, () => refused(call(p, ['complete', '--plan', 'csv', '--with-open'], SUITE), 2, /complete refused: the design is reopened - approve it again first/));
+    fs.writeFileSync(mdOf(p), markdown([[1, 'Export projection, streamed', 60], [2, 'Streamed endpoint', 30], [3, 'Docs page', 10]]));
+    ok(call(p, ['approve', '--plan', 'csv', '--mode', 'session'], '', '2026-11-13T10:40:00Z'));
+    const a = read(p);
+    assert.deepStrictEqual([a.approvedAt, a.reopenedAt, a.reopens.length, a.tasks[0].title, a.tasks[0].estimateMin], ['2026-11-13T10:40Z', null, 1, 'Export projection, streamed', 25], 'the estimate of a started task stays frozen');
+    const fresh = plan();
+    ok(call(fresh, ['sync', '--plan', 'csv']));
+    refused(call(fresh, ['redesign', '--plan', 'csv'], 'why: x\n'), 2, /redesign refused: the plan is not approved/);
+    const two = approved();
+    edit(two, (s) => { s.tasks[0].status = 'in_progress'; s.tasks[1].status = 'in_progress'; });
+    refused(call(two, ['redesign', '--plan', 'csv', '--task', '1'], 'why: x\n'), 2, /redesign refused: task 2 is in_progress - finish or block it first/);
+});
+
+test('cursor, decide, deviate, conformance: what each stores and refuses; a value is cut at its cap', () =>
+{
+    const p = approved();
+    const c = (verb, stdin, at = T0, extra = []) => call(p, [verb, '--plan', 'csv', ...extra], stdin, at);
+    assert.strictEqual(lines(ok(c('cursor', 'note: step 4 BUILD - mode session\n', '2026-11-13T10:10:00Z'))).pop(), 'Resume: step 4 BUILD - mode session - next task 1');
+    assert.deepStrictEqual(read(p).resume, { note: 'step 4 BUILD - mode session', next: '1', at: '2026-11-13T10:10Z' });
+    untouched(p, () => ok(c('cursor', 'note: step 4 BUILD - mode session\n', '2026-11-13T12:00:00Z'), /cursor - nothing to change/));
+    refused(c('cursor', ''), 2, /^plan-status: cursor needs a note: line\n$/);
+    ok(c('decide', 'choice: stream with IAsyncEnumerable\nprecedent: ExportController.cs:41\n', '2026-11-13T10:12:00Z', ['--task', '2']));
+    ok(c('decide', 'choice: a\nprecedent: b\n', '2026-11-13T10:13:00Z'));
+    assert.deepStrictEqual(read(p).decisions, [{ at: '2026-11-13T10:12Z', task: '2', choice: 'stream with IAsyncEnumerable', precedent: 'ExportController.cs:41' }, { at: '2026-11-13T10:13Z', task: null, choice: 'a', precedent: 'b' }]);
+    refused(c('decide', 'choice: a\n'), 2, /^plan-status: decide needs a precedent: line\n$/);
+    refused(c('decide', 'choice: a\nprecedent: b\n', T0, ['--task', '9']), 2, /^plan-status: decide refused: unknown task 9\n$/);
+    ok(c('deviate', 'what: a DTO, not the entity\nwhy: the entity leaks the tenant id\nasked: yes, use a DTO\n', '2026-11-13T10:30:00Z', ['--task', '1']));
+    ok(c('deviate', 'what: w\nwhy: y\n', '2026-11-13T10:31:00Z'));
+    assert.deepStrictEqual(read(p).deviations, [{ at: '2026-11-13T10:30Z', task: '1', what: 'a DTO, not the entity', why: 'the entity leaks the tenant id', asked: 'yes, use a DTO' }, { at: '2026-11-13T10:31Z', task: null, what: 'w', why: 'y', asked: null }]);
+    refused(c('deviate', 'what: w\n'), 2, /^plan-status: deviate needs a why: line\n$/);
+    ok(c('conformance', 'verdict: conforms\nreviewer: aspnet-verifier, pass 1\n', '2026-11-13T11:00:00Z'), /^Conformance: conforms$/m);
+    assert.deepStrictEqual(read(p).conformance, { at: '2026-11-13T11:00Z', verdict: 'conforms', reviewer: 'aspnet-verifier, pass 1', skipped: null });
+    ok(c('conformance', 'skipped: "skip it, I read the diff myself"\n', '2026-11-13T11:05:00Z'), /^Conformance: skipped$/m);
+    assert.deepStrictEqual(read(p).conformance, { at: '2026-11-13T11:05Z', verdict: 'skipped', reviewer: null, skipped: '"skip it, I read the diff myself"' });
+    refused(c('conformance', 'verdict: conforms\n'), 2, /^plan-status: conformance needs a reviewer: or a skipped: line\n$/);
+    refused(c('conformance', 'reviewer: r\n'), 2, /^plan-status: conformance needs a verdict: line\n$/);
+    ok(c('decide', `choice: ${'c'.repeat(1000)}\nprecedent: ${'p'.repeat(1001)}\n`));
+    const d = read(p).decisions.pop();
+    assert.deepStrictEqual([d.choice.length, d.choice.endsWith('c'), d.precedent.length, d.precedent.endsWith('p...')], [1000, true, 1000, true], 'R4: at the cap whole, one over cut');
+});
+
+test('complete: needs the approval, a suite, no task in flight and every task done unless --with-open; then every write is refused', () =>
+{
+    const p = approved();
+    const done = (t) => Object.assign(t, { status: 'done', startedAt: '2026-11-13T10:06Z', doneAt: '2026-11-13T10:30Z', result: 'r' });
+    refused(call(p, ['complete', '--plan', 'csv']), 2, /^plan-status: complete needs a suite: line\n$/);
+    untouched(p, () => refused(call(p, ['complete', '--plan', 'csv'], SUITE), 2, /^plan-status: complete refused: tasks 1, 2, 3 are not done - finish or drop them, or pass --with-open\n$/));
+    edit(p, (s) => { s.tasks[0].status = 'in_progress'; });
+    untouched(p, () => refused(call(p, ['complete', '--plan', 'csv', '--with-open'], SUITE), 2, /^plan-status: complete refused: task 1 is in_progress\n$/));
+    edit(p, (s) => { done(s.tasks[0]); s.tasks[2].status = 'failed'; });
+    assert.deepStrictEqual(lines(ok(call(p, ['complete', '--plan', 'csv', '--with-open'], SUITE, '2026-11-13T12:00:00Z'))), [`plan-status: complete ok - plan csv (${REL})`, 'Completed: 2026-11-13T12:00Z', 'Resume: no task left']);
+    const s = read(p);
+    assert.deepStrictEqual([s.completedAt, s.completion, s.resume.next], ['2026-11-13T12:00Z', { suite: 'npm test - 412 passed, 0 failed', open: ['2', '3'] }, null]);
+    const writes = [['sync'], ['gate', GATE], ['approve', '', '--mode', 'session'], ['redesign', 'why: x\n'], ['cursor', 'note: x\n'], ['decide', 'choice: a\nprecedent: b\n'],
+        ['deviate', 'what: a\nwhy: b\n'], ['conformance', 'verdict: v\nreviewer: r\n'], ['complete', SUITE]];
+    for (const [verb, stdin = '', ...flags] of writes) untouched(p, () => refused(call(p, [verb, '--plan', 'csv', ...flags], stdin), 2, new RegExp(`^plan-status: ${verb} refused: new scope is a new plan\\n$`)));
+    const all = approved();
+    edit(all, (x) => { x.tasks.forEach(done); });
+    ok(call(all, ['complete', '--plan', 'csv'], SUITE));
+    assert.deepStrictEqual(read(all).completion.open, []);
+    const not = plan();
+    ok(call(not, ['sync', '--plan', 'csv']));
+    refused(call(not, ['complete', '--plan', 'csv', '--with-open'], SUITE), 2, /complete refused: the plan is not approved/);
+});
