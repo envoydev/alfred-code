@@ -139,7 +139,8 @@ The stores and what each holds, where the docs root and the data root live, and 
 - **The workspace record and the load check live in the data root** (workspace layering, release 1, 2026-10-26;
   JSON since the workspace.json design, 2026-11-10): `<data root>/workspace.json` holds the project's `parent` (a `..`
   run) or `role` (`root` | `standalone`), `above` (a `..` run or `none` - the tree its role was asked against),
-  `children` and `ignore` (category -> names; the five stack kinds are written plural - `skills`, `agents`, `rules`,
+  `children`, `ignoredChildren` (W3: paths below a root that take nothing from it; an entry in both lists reads ignored)
+  and `ignore` (category -> names; the five stack kinds are written plural - `skills`, `agents`, `rules`,
   `hooks`, `plugins` - and read in either spelling, `workspace-file.js PLURAL`: a file with no plural key stays singular
   until an update's one rewrite in `refreshBelow`, held while a stamped project below is older than `PLURAL_SINCE`).
   ONE reader parses it for the installer and every hook on both routes:

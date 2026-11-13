@@ -17,6 +17,7 @@
 //   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree;
 //               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
+//   ignore-child  a path below this root marked ignored: its joined children keep their values and sent rules, then run their own update
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
 
@@ -152,6 +153,7 @@ function status(out)
     const ownPicks = (stampFile && stamp.readOwnPicks(stampFile)) || [];
     out(`own: ${list(ownPicks)}`);
     out(`ignored: ${list(own.view.ignores.map((i) => `${i.category} ${i.name}`))}`);
+    if (own.view.ignoredChildren.length) out(`ignored-children: ${own.view.ignoredChildren.join(', ')}`);
     // The stage 3 links: whole, or each entry that is not, then the picks this root holds for a member below.
     const record = stampFile ? stamp.readLinks(stampFile) : [];
     const broken = require('./install/links.js').checkLinks({ projectRoot: root, record, members: linked.members, rt }).filter((c) => c.state !== 'ok');
@@ -492,6 +494,10 @@ function treeHash(root)
 }
 
 const FAILED_LINE = /^(?:==>)?\s*\d+ step\(s\) reported a failure above/m;
+// ignore-child's three closing lines (W3 Task 7).
+const IGNORED_RELEASED = (rel) => `workspace: ${rel} ignored - nothing of this workspace reaches it`;
+const IGNORED_STAMPED = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
+const IGNORED_NO_INSTALL = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
 
 function cascade(out)
 {
@@ -590,6 +596,52 @@ function cascade(out)
     out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped`);
 }
 
+// W3 Task 7: a path below this root marked ignored. Each joined child at or below it keeps the values and rules it reads
+// from the workspace first [F12], then the mark is written, then each child runs its own update - which releases it - and
+// the cascade below it. A refusal or a missing --source writes nothing.
+function ignoreChild(out)
+{
+    const root = rootArg();
+    const rel = arg('--add');
+    if (rel === undefined) throw bad('ignore-child takes --add <rel>');
+    const refused = ws.markRefusal(root, rel, { env, exec });
+    if (refused) throw bad(refused);
+    const joinedRows = ws.subtree(root, { env, log: out }).filter((r) => r.depth === 1 && r.state === 'ok' && (r.rel === rel || r.rel.startsWith(`${rel}/`)))
+        .filter((r) => { const first = ws.chain(r.root, { env, maxDepth: 1 }).members[0]; return first && ws.realKey(first.root) === ws.realKey(root); });
+    const source = joinedRows.length ? sourceArg() : null;
+    const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR };
+    for (const r of joinedRows)
+    {
+        const say = (l) => out(l.replace(/^workspace: /, `workspace: ${r.rel}: `));
+        const kept = ws.keepOnLeave(r.root, { env: childEnv, log: say });
+        if (kept.why) throw new Exit(1, `!! workspace: ${r.rel} could not keep its values (${kept.why}) - nothing marked`);
+        ws.keepRules(r.root, { env: childEnv, log: say });
+    }
+    const w = ws.writeWorkspace(root, (m) => ws.addIgnoredChild(m, rel), { env, log: out });
+    if (!w.ok) throw new Exit(w.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${w.why})`);
+    let failed = false;
+    for (const r of joinedRows)
+    {
+        const run = rt.spawnCommand(process.execPath, [installer(source), 'update', '--source', source, '--scope', stamp.installScope(r.root), '--installed-only', '--keep-pins'],
+            { cwd: r.root, encoding: 'utf8', stdio: 'pipe', timeout: 600000 });
+        let ok = !run.error && run.status === 0 && !FAILED_LINE.test(String(run.stdout || ''));
+        if (ok)
+        {
+            const below = rt.spawnCommand(process.execPath, [__filename, 'cascade', '--root', r.root, '--source', source], { encoding: 'utf8', stdio: 'pipe', timeout: 600000, env });
+            for (const l of String(below.stdout || '').split('\n').filter(Boolean)) out(l);
+            ok = !below.error && below.status === 0;
+        }
+        if (!ok) { failed = true; out(`!! workspace: ${r.rel} is ignored but its own update did not finish - run /alfred-code:update there`); continue; }
+        out(IGNORED_RELEASED(r.rel));
+    }
+    if (!joinedRows.length)
+    {
+        const folder = path.join(root, ...rel.split('/'));
+        out(fs.existsSync(path.join(folder, '.claude', BRAND.stamp)) ? IGNORED_STAMPED(rel) : IGNORED_NO_INSTALL(rel));
+    }
+    if (failed) throw new Exit(1, '');
+}
+
 // --claude and --managed-file are the tests' seams; a real run takes `claude` from PATH and the OS's managed file.
 function checkLoadsVerb(out)
 {
@@ -603,7 +655,7 @@ function checkLoadsVerb(out)
     else out(`!! check-loads: the probe failed - ${r.why}`);
 }
 
-const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb };
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()
@@ -619,7 +671,7 @@ function main()
     catch (e)
     {
         if (!(e instanceof Exit)) throw e;
-        out(e.message);
+        if (e.message) out(e.message);
         code = e.code;
     }
     // workspace.json: each project an older release would now misread, the records this verb converted - against the

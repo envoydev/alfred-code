@@ -740,3 +740,136 @@ test('status says the entries are not applied under the minimal profile', () =>
     stored('strict');
     assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, ['models: agents aspnet-verifier = opus (here)']);
 });
+
+// ------------------------------------------------------------------ W3 Task 7: ignore-child
+const LONG_LINE = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
+const MIDDLE_LINE = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
+const recordBytes = (root) => fs.readFileSync(path.join(root, '.alfred', 'workspace.json'), 'utf8');
+// cascadeTree, with a value in the root's .variables and a rule in its store for api to keep.
+const keptTree = () =>
+{
+    const at = cascadeTree();
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\n');
+    fs.mkdirSync(path.join(at('ws'), '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'stack', 'rules', 'alfred-one.md'), '# one\n');
+    return at;
+};
+
+test('ignore-child: a refusal exits 2 and writes nothing; --add missing likewise', () =>
+{
+    const at = cascadeTree();
+    const bytes = recordBytes(at('ws'));
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', '../x'), { out: '!! workspace: ../x is not a project path below this folder\n', err: '', code: 2 });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws')), { out: '!! workspace: ignore-child takes --add <rel>\n', err: '', code: 2 });
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+    assert.ok(!fs.existsSync(path.join(at('ws/api'), '.alfred', '.variables')));
+});
+
+test('ignore-child: a joined child is kept, marked, updated and cascaded, in that order', () =>
+{
+    const at = keptTree();
+    const { src, runs } = fakeSource('==> done\n');
+    // the fake's first run records what it found: the child's values and rule, and the root's record
+    const seen = path.join(src, 'seen.json');
+    const script = path.join(src, 'scripts', 'install', 'alfred-code.js');
+    fs.writeFileSync(script, fs.readFileSync(script, 'utf8').replace("fs.appendFileSync(path.join(process.cwd(), '.claude', 'runs'), 'x');", [
+        `if (!fs.existsSync(${JSON.stringify(seen)})) fs.writeFileSync(${JSON.stringify(seen)}, JSON.stringify({`,
+        `    vars: fs.readFileSync(path.join(process.cwd(), '.alfred', '.variables'), 'utf8'),`,
+        `    rule: fs.existsSync(path.join(process.cwd(), '.alfred', 'stack', 'rules', 'alfred-one.md')),`,
+        `    record: JSON.parse(fs.readFileSync(${JSON.stringify(path.join(at('ws'), '.alfred', 'workspace.json'))}, 'utf8')) }));`,
+        "fs.appendFileSync(path.join(process.cwd(), '.claude', 'runs'), 'x');",
+    ].join('\n')));
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 0, r.out);
+    const got = JSON.parse(fs.readFileSync(seen, 'utf8'));
+    assert.match(got.vars, /^ALFRED_CODE_SCORING=1$/m, 'the value was kept before the run');
+    assert.strictEqual(got.rule, true, 'the rule was kept before the run');
+    assert.deepStrictEqual([got.record.children, got.record.ignoredChildren], [['web'], ['api']], 'the mark is written before the child runs');
+    const varsAt = fs.statSync(path.join(at('ws/api'), '.alfred', '.variables')).mtimeMs;
+    assert.ok(varsAt <= fs.statSync(path.join(at('ws'), '.alfred', 'workspace.json')).mtimeMs, 'the values were kept before the mark');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['web'], ignoredChildren: ['api'] });
+    const calls = runs();
+    assert.strictEqual(calls[0], `${at('ws/api')} update --source ${src} --scope project --installed-only --keep-pins`);
+    assert.deepStrictEqual(calls.slice(1).map((l) => [l.split(' ')[0], l.includes('--print-plan') ? 'plan' : 'run']), [[at('ws/api'), 'plan'], [at('ws/api/tool'), 'run']], 'then the cascade below it');
+    assert.match(r.out, /^workspace: api: 1 values this project read from the workspace written into \.alfred\/\.variables \(ALFRED_CODE_SCORING\)/m);
+    assert.match(r.out, /^workspace: api: 1 rules this project read from the workspace copied into its own store \(alfred-one\)$/m);
+    assert.match(r.out, /^cascade: tool\tupdated$/m);
+    assert.match(r.out, /^workspace: api ignored - nothing of this workspace reaches it$/m);
+});
+
+test('ignore-child: a joined child with no --source exits 2 before anything is written', () =>
+{
+    const at = keptTree();
+    const bytes = recordBytes(at('ws'));
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api');
+    assert.deepStrictEqual([r.code, r.out], [2, '!! workspace: --source <repo> is required\n']);
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+    assert.ok(!fs.existsSync(path.join(at('ws/api'), '.alfred', '.variables')));
+});
+
+test('ignore-child: a child whose values cannot be kept exits 1 with nothing marked', () =>
+{
+    const at = keptTree();
+    const bytes = recordBytes(at('ws'));
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables.lock'), String(process.pid));
+    const { src, runs } = fakeSource();
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^!! workspace: api could not keep its values \(locked\) - nothing marked$/m);
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+    assert.deepStrictEqual(runs(), []);
+});
+
+test('ignore-child: a locked root file exits 3, an unwritable one 1', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true } });
+    const lock = path.join(at('ws'), '.alfred', 'workspace.lock');
+    fs.writeFileSync(lock, String(process.pid));
+    const locked = cli('ignore-child', '--root', at('ws'), '--add', 'solo');
+    assert.deepStrictEqual([locked.code, locked.out], [3, "!! workspace: this project's workspace file could not be written (locked)\n"]);
+    fs.rmSync(lock);
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace.json'), '{ not json');
+    const garbage = cli('ignore-child', '--root', at('ws'), '--add', 'solo');
+    assert.strictEqual(garbage.code, 1, garbage.out);
+    assert.match(garbage.out, /^!! workspace: this project's workspace file could not be written \(garbage\)$/m);
+    assert.strictEqual(fs.readFileSync(path.join(at('ws'), '.alfred', 'workspace.json'), 'utf8'), '{ not json');
+});
+
+test('ignore-child: a failed child run is one !! line and exit 1; the mark stands', () =>
+{
+    const at = keptTree();
+    const { src, runs } = fakeSource('==>   1 step(s) reported a failure above - the rest of the run completed\n');
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^!! workspace: api is ignored but its own update did not finish - run \/alfred-code:update there$/m);
+    assert.doesNotMatch(r.out, /nothing of this workspace reaches it/);
+    assert.deepStrictEqual(wsFile(at('ws')).ignoredChildren, ['api']);
+    assert.ok(!runs().some((l) => l.includes('--print-plan')), 'no cascade below a child whose run failed');
+});
+
+test('ignore-child: the three lines', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true }, 'ws/repo': { git: true } });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo'), { out: `${MIDDLE_LINE('solo')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'repo'), { out: `${LONG_LINE('repo')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'new/x'), { out: `${LONG_LINE('new/x')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual(wsFile(at('ws')), { role: 'root', ignoredChildren: ['solo', 'repo', 'new/x'] });
+});
+
+test('ignore-child: a second run changes nothing', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true } });
+    assert.strictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo').code, 0);
+    const [bytes, files] = [recordBytes(at('ws')), filesOf(at('ws/solo'), ['.git'])];
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo'), { out: `${MIDDLE_LINE('solo')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual([recordBytes(at('ws')), filesOf(at('ws/solo'), ['.git'])], [bytes, files]);
+});
+
+test('status: ignored-children lists the entries; no line with none', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', ignoredChildren: ['legacy', 'old/app'] } }, alone: { stamp: true, record: { role: 'root' } } });
+    const lines = cli('status', '--root', at('ws')).out.split('\n');
+    const i = lines.findIndex((l) => l.startsWith('ignored: '));
+    assert.strictEqual(lines[i + 1], 'ignored-children: legacy, old/app');
+    assert.ok(!cli('status', '--root', at('alone')).out.includes('ignored-children:'));
+});

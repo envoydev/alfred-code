@@ -280,7 +280,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
   writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
   `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `unregister`, `join`, `role`, `ignore`,
-  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`): init reads
+  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`): init reads
   `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
   every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
   child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
@@ -302,6 +302,22 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   launch `0` freezes it whatever the files say, else the project's own value decides (settings.local.json, its
   `.variables`, the settings `env`, so a file `0` beats a launch `1`), else the launch value, and only a `0` turns it
   off; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
+- **A project the workspace ignores (W3, 3.11.0; `install-workspace.test.js`, `workspace-cli.test.js`).** A root's
+  `ignoredChildren` (`workspace.json`) marks a path below it: `workspace-file.js covered` is the one predicate, the
+  walkers (`subtree`, `refreshBelow`, the rescan) cut at a covered folder, and `ignoredBy` answers from the TWO holders -
+  the folder the project's record names as `parent`, then the nearest stamped one. `stampedAncestors` carries the cut:
+  an ignored project writes no ancestor rows for the folders the mark cuts and instead the six names per folder of the
+  range from the ignored path's parent up to the topmost stamped ancestor (`WIDE`: `CLAUDE.md`, `CLAUDE.local.md`,
+  `.claude/CLAUDE.md`, `AGENTS.md`, `.claude/AGENTS.md`, `.claude/rules/` as `<path>/**`), and `mcpJsonIgnores` disables
+  every `.mcp.json` server of that range less the project's own names. `workspace.js ignore-child --add <rel>` (configure's
+  workspace role and update's rescan ask) refuses through `markRefusal` (no path below, another spelling on disk, a
+  folder of the root's repository or a no-checkout project under a no-checkout root, a folder another stamped folder
+  holds), keeps each joined child's values (`keepOnLeave`) and the rules the loader sends it (`keepRules`, [F12]: copied
+  into its store, `addToStore mine`), writes the mark, then runs each child's own update, whose `prepare` releases it
+  (`releaseChildren({ only, keepRules })`: its record written before its links move), and the cascade below it. Three
+  limits: the walkers read the parent's list alone; a root's run refreshes an ignored project's exclude rows, never its
+  server rows, which its own run writes; the lift is a hand edit (the entry out of `ignoredChildren`), after which the
+  project stays standalone until its role ask joins it.
 - **The store and the links (workspace stage 3, 2026-11-12; `install/links.js`, `install-store.test.js`, `links.test.js`).**
   A kind's HOME (`links.homeOf`) is `<project>/.alfred/stack/<kind>` when git cannot commit a link there, else
   `.claude/<kind>` as before. The git state of `.claude/<kind>` (`gitState`): `none` (no repository) and `ignored` are

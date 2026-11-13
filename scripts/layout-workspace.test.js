@@ -37,7 +37,7 @@ const tree = (spec) =>
     }
     return (rel = '.') => fs.realpathSync.native(path.join(top, ...rel.split('/')));
 };
-const shape = (c) => ({ members: c.members.map((m) => [m.root, m.rel, m.dataRoot, m.ignores || m.view.ignores]), notes: c.notes });
+const shape = (c) => ({ members: c.members.map((m) => [m.root, m.rel, m.dataRoot, m.ignores || m.view.ignores]), notes: c.notes, ignoredBy: c.ignoredBy });
 const same = (projectRoot, env = env0) => assert.deepStrictEqual(shape(layout.workspaceChain(projectRoot, { env })), shape(ws.chain(projectRoot, { env })));
 
 test('workspaceChain matches chain() on every tree', () =>
@@ -819,4 +819,72 @@ test('hasMembers: true only where the start\'s chain lists another member', () =
     g(wt('ws'), 'commit', '-q', '--allow-empty', '-m', 'x');
     g(wt('ws'), 'worktree', 'add', '-q', path.join(wt('.'), 'wt'));
     assert.strictEqual(layout.hasMembers(path.join(wt('.'), 'wt'), { env: env0 }), true);
+});
+
+// W3 Task 2: a folder at or below a path the parent's record ignores - both walkers end there, with no note.
+const both = (dir) => { same(dir); return shape(layout.workspaceChain(dir, { env: env0 })); };
+const roots = (c) => c.members.map((m) => m[1]);
+
+test('ignored: the parent\'s list covers the child - no member, no note', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', ignoredChildren: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    assert.deepStrictEqual(both(at('ws/api')), { members: [], notes: [], ignoredBy: '..' });
+});
+
+test('ignored: an entry in both lists reads ignored', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { children: ['api'], ignoredChildren: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    assert.deepStrictEqual(both(at('ws/api')), { members: [], notes: [], ignoredBy: '..' });
+});
+
+test('ignored: a folder under a listed path; a sibling whose name starts with the listed path keeps its chain', () =>
+{
+    const under = tree({ ws: { stamp: true, record: { children: ['legacy/app'], ignoredChildren: ['legacy'] } }, 'ws/legacy/app': { stamp: true, record: { parent: '../..' } } });
+    assert.deepStrictEqual(both(under('ws/legacy/app')), { members: [], notes: [], ignoredBy: '../..' });
+    const sib = tree({ ws: { stamp: true, record: { children: ['app-old'], ignoredChildren: ['app'] } }, 'ws/app-old': { stamp: true, record: { parent: '..' } } });
+    const got = both(sib('ws/app-old'));
+    assert.deepStrictEqual([roots(got), got.ignoredBy], [['..'], null]);
+});
+
+test('ignored: a member that is itself ignored ends the walk above it', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { children: ['api'], ignoredChildren: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..', children: ['lib'] } },
+        'ws/api/lib': { stamp: true, record: { parent: '..' } } });
+    const got = both(at('ws/api/lib'));
+    assert.deepStrictEqual([roots(got), got.ignoredBy], [['..'], '../..']);
+});
+
+test('ignored: an entry in a third folder\'s list does nothing', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { children: ['api'], ignoredChildren: ['api/tools'] } }, 'ws/api': { stamp: true, record: { parent: '..', children: ['tools'] } },
+        'ws/api/tools': { stamp: true, record: { parent: '..' } } });
+    const got = both(at('ws/api/tools'));
+    assert.deepStrictEqual([roots(got), got.ignoredBy], [['..', '../..'], null]);
+});
+
+test('ignored: a garbage holder is named as today', () =>
+{
+    const at = tree({ ws: { stamp: true }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    fs.mkdirSync(path.join(at('ws'), '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace.json'), '{ not json');
+    const got = both(at('ws/api'));
+    assert.match(got.notes.join('\n'), /is not valid JSON/);
+    assert.strictEqual(got.ignoredBy, null);
+});
+
+test('ignored: a mark in a nearer stamped folder\'s list is not read by the walkers (the named limit)', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { children: ['mid/p'] } }, 'ws/mid': { stamp: true, record: { role: 'root', ignoredChildren: ['p'] } },
+        'ws/mid/p': { stamp: true, record: { parent: '../..' } } });
+    const got = both(at('ws/mid/p'));
+    assert.deepStrictEqual([roots(got), got.ignoredBy], [['../..'], null]);
+});
+
+test('ignored: a listed path that is gone, and a hand-typed entry in another case', () =>
+{
+    const gone = tree({ ws: { stamp: true, record: { children: ['api'], ignoredChildren: ['nothing-here'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    assert.deepStrictEqual(roots(both(gone('ws/api'))), ['..']);
+    const cased = tree({ ws: { stamp: true, record: { children: ['api'], ignoredChildren: ['API'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    const fold = process.platform === 'darwin' || process.platform === 'win32';
+    assert.strictEqual(both(cased('ws/api')).ignoredBy, fold ? '..' : null);
 });

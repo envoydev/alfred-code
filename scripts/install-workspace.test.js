@@ -1729,3 +1729,162 @@ test('fixed root: a child\'s run reads its parent\'s unmoved folder', POSIX_ONLY
         }
     });
 }
+
+// W3 Task 3: the canary is seeded where no stamped folder above sends this project rules - an ignored project is cut off
+// from every one above it, so it seeds its own; an unmarked standalone project below a root still seeds none (pinned).
+test('canary: an ignored project below a root seeds its own; an unmarked standalone one below a root seeds none', POSIX_ONLY, () =>
+{
+    const canary = (work, rel) => fs.existsSync(path.join(at(work, rel), '.claude', 'rules', 'alfred-rules.md'));
+    const r = scenario([
+        { at: '.', after: (work) =>
+        {
+            edit(work, '.', (m) => wsLib.addIgnoredChild(wsLib.setRole(m, 'root'), 'web'));
+            for (const rel of ['web', 'api']) fs.writeFileSync(path.join(at(work, rel), '.gitignore'), '.claude/\n.alfred/\n');
+            return { root: canary(work, '.') };
+        } },
+        { at: 'web', after: (work) => ({ web: canary(work, 'web') }) },
+        { at: 'api', after: (work) => ({ api: canary(work, 'api') }) },
+    ]);
+    assert.strictEqual(r.steps[0].root, true, r.outs[0]);
+    assert.strictEqual(r.steps[1].web, true, r.outs[1]);
+    assert.strictEqual(r.steps[2].api, false, r.outs[2]);
+});
+
+// W3 Task 4: D16's wide rows. `legacy` is a plain folder between the root and the ignored project `legacy/app`.
+const putMcpAt = (work, rel, names) => fs.writeFileSync(path.join(at(work, rel), '.mcp.json'),
+    `${JSON.stringify({ mcpServers: Object.fromEntries(names.map((n) => [n, { command: 'node', args: [`${n}.js`] }])) }, null, 2)}\n`);
+const appTree = (work) => { fs.mkdirSync(at(work, 'legacy/app'), { recursive: true }); rt.execCommand('git', ['init', '-q', at(work, 'legacy/app')]); };
+const HAND_ROW = '/my/own/**';
+
+test('an ignored project\'s run writes the wide rows and drops the ancestor rows', POSIX_ONLY, () =>
+{
+    const read = (work) => ({
+        local: json(LOCAL(work, 'legacy/app')) || {}, bytes: readOr(LOCAL(work, 'legacy/app')),
+        stamp: stampOf(work, 'legacy/app').replace(/^installed(-ms)?: .*$/gm, ''),
+        ex: ledgerRowsOf(work, 'legacy/app', 'claudeMdExcludes'), mcp: ledgerRowsOf(work, 'legacy/app', 'disabledMcpjsonServers'),
+        dirs: ledgerRowsOf(work, 'legacy/app', 'permissions.additionalDirectories'), deny: ledgerRowsOf(work, 'legacy/app', 'permissions.deny'),
+        want: wsLib.excludeGlobs(['legacy', '.'].flatMap((rel) => wsLib.WIDE.map((n) => path.join(fs.realpathSync.native(at(work, rel)), ...n.split('/').filter(Boolean)) + (n.endsWith('/') ? path.sep : ''))), process.platform),
+    });
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'legacy/app'); plantGen(work, '.'); putMcpAt(work, '.', ['rootsrv', 'both']); } },
+        { at: 'legacy/app', before: (work) => putMcpAt(work, 'legacy/app', ['both']), after: read },
+        update('legacy/app', { before: (work) =>
+        {
+            edit(work, '.', (m) => wsLib.addIgnoredChild(m, 'legacy/app'));
+            const data = json(LOCAL(work, 'legacy/app'));
+            data.claudeMdExcludes = [...(data.claudeMdExcludes || []), HAND_ROW];
+            fs.writeFileSync(LOCAL(work, 'legacy/app'), `${JSON.stringify(data, null, 2)}\n`);
+        }, after: read }),
+        update('legacy/app', { after: read }),
+    ], { prepare: appTree, account: true });
+    const [joined, cut, again] = r.steps.slice(1);
+    assert.ok(joined.dirs.length > 0 && joined.deny.length > 0, `the joined child held ancestor rows first:\n${r.outs[1]}`);
+    assert.strictEqual(cut.want.length, 12);
+    assert.deepStrictEqual(cut.local.claudeMdExcludes.filter((g) => g !== HAND_ROW).sort(), [...cut.want].sort(), r.outs[2]);
+    assert.ok(cut.local.claudeMdExcludes.includes(HAND_ROW), 'the hand-added row stays');
+    assert.strictEqual(cut.local.claudeMdExcludes.filter((g) => g !== HAND_ROW && /\/\*\*$/.test(g) && /\[rR\]\[uU\]\[lL\]\[eE\]\[sS\]\/\*\*$|rules\/\*\*$/.test(g)).length, 2, 'two rules folders, each as <path>/**');
+    assert.strictEqual(cut.ex.length, 12, cut.ex.join('\n'));
+    assert.deepStrictEqual(cut.local.disabledMcpjsonServers, ['rootsrv']);
+    assert.strictEqual(cut.mcp.length, 1);
+    assert.deepStrictEqual([cut.dirs, cut.deny], [[], []], 'no docs-root or memory row for an ancestor');
+    assert.strictEqual(((cut.local.permissions || {}).additionalDirectories || []).length, 0);
+    assert.deepStrictEqual([again.bytes, again.stamp], [cut.bytes, cut.stamp], 'a second update changes no byte');
+});
+
+test('an unmarked joined child and an unmarked standalone project write today\'s rows and no server row', POSIX_ONLY, () =>
+{
+    // The rows as <BASE> computes them: F3's for every stamped folder above, nothing for a server nobody ignores.
+    const base = (work, rel) =>
+    {
+        const self = fs.realpathSync.native(at(work, rel));
+        const anc = wsLib.stampedAncestors(self, { env: acct(work) });
+        return [...new Set(wsLib.excludeGlobs(anc.flatMap((root, i) => wsLib.ancestorExcludes(root, { childIgnores: [], nearer: [self, ...anc.slice(0, i)] })), process.platform))].sort();
+    };
+    const read = (rel) => (work) => ({ local: json(LOCAL(work, rel)) || {}, base: base(work, rel) });
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); plantGen(work, '.'); putMcpAt(work, '.', ['rootsrv']); fs.writeFileSync(path.join(at(work, 'web'), '.gitignore'), '.claude/\n.alfred/\n'); } },
+        { at: 'api', after: read('api') },
+        { at: 'web', after: read('web') },
+    ], { account: true });
+    for (const [i, rel] of [[1, 'api'], [2, 'web']])
+    {
+        const got = r.steps[i];
+        assert.ok(got.base.length > 0, rel);
+        assert.deepStrictEqual([...(got.local.claudeMdExcludes || [])].sort(), got.base, `${rel}:\n${r.outs[i]}`);
+        assert.strictEqual(got.local.disabledMcpjsonServers, undefined, rel);
+    }
+});
+
+// W3 Task 6: a project the root marks by hand releases itself at its own next update.
+const markApi = (work) => edit(work, '.', (m) => wsLib.addIgnoredChild(m, 'api'));
+const joinedApi = { at: '.', after: (work) => { join(work, 'api'); plantGen(work, '.'); fs.writeFileSync(path.join(at(work, 'api'), '.gitignore'), '.claude/\n.alfred/\n'); } };
+const apiState = (work) =>
+{
+    const store = path.join(at(work, 'api'), '.alfred', 'stack');
+    const stampFile = path.join(at(work, 'api'), '.claude', 'alfred-code.stamp');
+    return {
+        rec: readOr(path.join(at(work, 'api'), '.alfred', 'workspace.json')),
+        stamp: stampOf(work, 'api').replace(/^installed(-ms)?: .*$/gm, ''),
+        local: readOr(LOCAL(work, 'api')),
+        store: fs.existsSync(store) ? treeHash(store) : '',
+        links: lineOf(stampOf(work, 'api'), 'links'),
+        inherited: require('./install/links.js').inherited(at(work, 'api'), stampLib.readLinks(stampFile)).length,
+        canary: fs.existsSync(path.join(at(work, 'api'), '.claude', 'rules', 'alfred-rules.md')),
+        rulesRow: wsLib.excludeGlobs([`${path.join(fs.realpathSync.native(at(work)), '.claude', 'rules')}${path.sep}`], process.platform)[0],
+    };
+};
+
+test('an ignored project releases itself at its own update', POSIX_ONLY, () =>
+{
+    const r = scenario([joinedApi, { at: 'api', after: apiState }, update('api', { before: markApi, after: apiState }), update('api', { after: apiState })]);
+    const [joined, cut, again] = r.steps.slice(1);
+    assert.ok(joined.links && joined.inherited > 0, `the joined child linked from above first:\n${r.outs[1]}`);
+    assert.strictEqual(JSON.parse(cut.rec).parent, undefined, r.outs[2]);
+    for (const key of ['own-picks', 'own-env', 'workspace-mcp']) assert.strictEqual(lineOf(cut.stamp, key), null, key);
+    assert.strictEqual(cut.inherited, 0, 'each link is the project\'s own now');
+    assert.match(r.outs[2], /workspace: \.\. ignores this project - /);
+    assert.match(r.outs[2], /workspace: released api - /);
+    assert.ok(JSON.parse(cut.local).claudeMdExcludes.includes(cut.rulesRow), r.outs[2]);
+    assert.strictEqual(cut.canary, true);
+    assert.doesNotMatch(r.outs[3], /ignores this project|released api/);
+    assert.deepStrictEqual([again.rec, again.stamp, again.local, again.store], [cut.rec, cut.stamp, cut.local, cut.store], 'a second update changes no byte');
+});
+
+test('--print-plan releases nothing', POSIX_ONLY, () =>
+{
+    const r = scenario([joinedApi, { at: 'api', after: apiState },
+        update('api', { before: markApi, args: (work) => ['--print-plan', '--plan-out', path.join(work, 'plan.json')], after: apiState })]);
+    const [before, after] = r.steps.slice(1);
+    assert.deepStrictEqual([after.rec, after.stamp, after.store], [before.rec, before.stamp, before.store], r.outs[2]);
+});
+
+test('a release that cannot finish freezes the workspace part', POSIX_ONLY, () =>
+{
+    const lock = (work) => path.join(at(work, 'api'), '.alfred', 'workspace.lock');
+    const r = scenario([joinedApi, { at: 'api', after: apiState },
+        update('api', { before: (work) => { markApi(work); fs.writeFileSync(lock(work), 'held\n'); }, after: (work) => { const s = apiState(work); fs.unlinkSync(lock(work)); return s; } }),
+        update('api', { after: apiState })]);
+    const [before, held, freed] = r.steps.slice(1);
+    assert.match(r.outs[2], /api could not be released \(.*\) - run \/alfred-code:update there/);
+    assert.strictEqual(JSON.parse(held.rec).parent, '..', 'the parent is still recorded');
+    assert.strictEqual(held.links, before.links, 'no link was replaced');
+    assert.strictEqual(r.codes[2], 0);
+    assert.strictEqual(JSON.parse(freed.rec).parent, undefined, r.outs[3]);
+});
+
+test('the switch at 0, and a same-repository entry, release nothing', POSIX_ONLY, () =>
+{
+    const off = scenario([joinedApi, { at: 'api' },
+        update('api', { before: (work) => { markApi(work); setEnv(work, 'api', 'settings.local.json', { ALFRED_CODE_WORKSPACE: '0' }); }, after: apiState })]);
+    assert.strictEqual(JSON.parse(off.steps[2].rec).parent, '..', off.outs[2]);
+    assert.doesNotMatch(off.outs[2], /released api|ignores this project/);
+    assert.ok(!(JSON.parse(off.steps[2].local).claudeMdExcludes || []).includes(off.steps[2].rulesRow));
+    const lib = (work) => path.join(at(work), 'lib');
+    const same = scenario([
+        { at: '.', after: (work) => { fs.mkdirSync(lib(work), { recursive: true }); } },
+        { at: 'lib', after: (work) => { edit(work, '.', (m) => wsLib.addIgnoredChild(wsLib.setRole(m, 'root'), 'lib')); } },
+        update('lib', { after: (work) => ({ local: json(path.join(lib(work), '.claude', 'settings.local.json')) || {}, rec: readOr(path.join(lib(work), '.alfred', 'workspace.json')) }) }),
+    ], { prepare: (work) => rt.execCommand('git', ['init', '-q', at(work)]) });
+    assert.ok(!(same.steps[2].local.claudeMdExcludes || []).some((g) => /\/\*\*$/.test(g)), same.outs[2]);
+    assert.doesNotMatch(same.outs[2], /released lib|ignores this project/);
+});

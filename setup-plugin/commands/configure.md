@@ -346,6 +346,21 @@ line's answer>`, its lines pasted as they are; a `!!` line (a refusal naming the
 nothing changed. A join's values reach the project at once; the parent's set reaches it at the next
 `/alfred-code:update`.
 
+When the role line reads a root and `workspace.js children` or `status`'s `ignored-children:` line names at least one
+project below (`<n>` is the `child:` rows plus the listed entries, `<m>` the listed entries), ask:
+
+```ask
+This root ignores <m> of the <n> projects below it - change that?
+- 'Keep (Recommended)' - nothing changes
+- 'Ignore a project' - it takes nothing from this workspace: what it links becomes its own copy and its values stay as they read today
+```
+
+'Ignore a project' is ONE multi-select call of up to 4 questions grouped from the `child:` rows, as the walk's 'Pick'
+is. Each pick runs `node "$TMP/repo/scripts/workspace.js" ignore-child --root . --add <rel> --source "$TMP/repo"`
+with `timeout: 600000` (each is one installer run and a cascade), its lines pasted as they are; a `!!` line names what
+was refused or did not finish. Taking a project back is a hand edit - its entry out of `ignoredChildren` in this
+root's `workspace.json`; it stays standalone until its own role ask joins it.
+
 ## 9. Permission mode
 
 Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
