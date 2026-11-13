@@ -1683,6 +1683,21 @@ test('until 4.0.0: a stored scorer part spelled with .js is re-spelled on both b
     assert.strictEqual(b.env.ALFRED_CODE_HOOKS_OFF, 'guard-b,guard-answer:scoring');
 });
 
+// 3.12: since mode v2 stage 2 the run writes settings.local.json, so a part an older install left in settings.json's
+// off-list was renamed in no file (the rename matrix, 2026-11-13: a 3.10.0 project kept guard-answer:scorer there).
+test('until 4.0.0: a renamed hook part in settings.json\'s off-list is re-spelled while the run writes settings.local.json', () =>
+{
+    const renamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed;
+    const p = pair({ env: { ALFRED_CODE_HOOKS_OFF: 'history-session,guard-answer:scorer' } }, {});
+    const logs = [];
+    writeSettings({ file: p.localFile, sharedFile: p.sharedFile, catalog: CATALOG, migrations: MIGRATIONS, renamed, log: (m) => logs.push(m) });
+    assert.strictEqual(p.shared().env.ALFRED_CODE_HOOKS_OFF, 'history-session,guard-answer:scoring', logs.join('\n'));
+    assert.ok(logs.some((l) => /settings\.json env: ALFRED_CODE_HOOKS_OFF = history-session,guard-answer:scoring \(a renamed hook re-spelled\)/.test(l)), logs.join('\n'));
+    const again = fs.readFileSync(p.sharedFile, 'utf8');
+    writeSettings({ file: p.localFile, sharedFile: p.sharedFile, catalog: CATALOG, migrations: MIGRATIONS, renamed, log: () => {} });
+    assert.strictEqual(fs.readFileSync(p.sharedFile, 'utf8'), again, 'a second run changes nothing');
+});
+
 // Mode v2 stage 2, Task 2: the local file must be usable before any settings row is written to it.
 const { localUnusable } = require('./install/settings.js');
 test('localUnusable: absent, empty and a JSON object are usable; garbage, a list and a folder are not', () =>
