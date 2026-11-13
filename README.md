@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/envoydev/alfred-code/releases"><img alt="release" src="https://img.shields.io/github/v/release/envoydev/alfred-code"></a>
   <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="node 22.12 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-339933">
+  <img alt="node 26 recommended" src="https://img.shields.io/badge/node-26%20recommended-339933">
 </p>
 
 <p align="center">
@@ -26,15 +26,19 @@ Alfred Code reads your project, picks what it needs from a catalog of skills, ag
 
 ## Quick start
 
-You need Node 22.12 or newer, the `claude` CLI and git.
+You need Node 26 (update to it - the release is tested on 26; 22.12 is the oldest that still runs), Claude Code 2.1.296
+or newer, the `claude` CLI and git.
 
 **1. Install the plugin** - in your project folder:
 
 ```bash
 claude plugin marketplace add anthropics/claude-plugins-official
 claude plugin marketplace add envoydev/alfred-code
-claude plugin install alfred-code@envoydev --scope project
+claude plugin install alfred-code@envoydev --scope local
 ```
+
+`local` keeps the plugin and everything the stack writes to you alone. Use `--scope project` to give the plugin to
+everyone who clones the project ([which scope?](#faq)).
 
 **2. Set it up** - inside Claude Code:
 
@@ -92,7 +96,8 @@ The first time: **init**, restart, **init** again. After that: **update** when a
 | `/alfred-code:uninstall` | Remove what the install wrote, nothing else |
 
 Not sure which one? Type `/alfred-code` and it names the command to run. Three more commands switch a mode on
-until you switch it off: see [Modes](#modes).
+until you switch it off: see [Modes](#modes). To go back to an earlier release - every project on the machine moves
+with it: [`docs/rolling-back.md`](docs/rolling-back.md).
 
 ## Workflows
 
@@ -160,6 +165,26 @@ file's `env` (`"ALFRED_CODE_SCORING": "1"`), and add `"autoCompactEnabled": fals
 `modelSettings` there by hand. The `--mode-*` flags of 3.0 to 3.10 are gone - typed after a command they print a
 pointer to the commands above and switch nothing.
 
+## Settings
+
+Most projects need none. `/alfred-code:configure` shows each setting and writes it for you; these are the places, if
+you set one by hand:
+
+| File | What goes there | In git? |
+| --- | --- | --- |
+| `.alfred/.variables` | the stack's values, one `KEY=value` per line - e.g. `ALFRED_CODE_INSTRUMENT=1` (record tool use), `ALFRED_CODE_DOCS_VERSIONING=git` (commit the docs), `ALFRED_CODE_WORKSPACE=0` (no workspace) | at `project` scope |
+| `.claude/settings.local.json`, its `env` | `ALFRED_CODE_HOOKS_OFF` (guards switched off), `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` (trees a write may reach), and the mode keys the [mode commands](#modes) write | never |
+| `.alfred/agents.json` | a seat's model for this project: `{ "claude": { "agents": { "aspnet-verifier": { "model": "opus" } } } }` - `sonnet`, `opus`, `haiku` or `fable` | your choice - the installer never writes it |
+| `.alfred/workspace.json` | in a project below a workspace root, what it should not take from the root: `{ "ignore": { "rules": ["csharp-conventions"] } }` | at `project` scope |
+
+Outside the project:
+
+- **Node 26.** Older Node 22.12+ still runs, untested.
+- **Claude Code 2.1.296 or newer.** Older clients record no 'a person answered' mark, so under auto-run no answer to a
+  guard's question opens it.
+- **Cursor.** Keep Cursor Settings -> Agents -> Third-Party Imports ('Include Third-Party Plugins, Skills, and Other
+  Configs') on, its default: that is how Cursor reads the stack's guards from `.claude/settings.local.json`.
+
 ## Supported stacks
 
 | Stack | Covers |
@@ -185,8 +210,8 @@ The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it
 
 | Place | What goes there |
 | --- | --- |
-| `.claude/` in your project | the picked skills and rules, settings, the install stamp |
-| `.alfred/` in your project | docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
+| `.claude/` in your project | a link per picked skill, the generated rules, the install stamp, and the stack's settings in `settings.local.json` |
+| `.alfred/` in your project | the picked skills and rules (`stack/`), docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
 | `~/.claude/` | the plugin cache, the status line |
 
 `/alfred-code:uninstall` removes only what the install recorded. Every file, process and token, in detail: [`docs/install-footprint.md`](docs/install-footprint.md).
@@ -199,6 +224,11 @@ A folder of several projects can share one install's skills, rules, hooks and se
 - In a project below, install with `--scope local` (or `user`): `--scope project` writes the core into the child's committed `.claude/settings.json`.
 - Unattended, init runs only its second (bootstrap) phase: install in an interactive session and restart first, then run `ALFRED_CODE_UNATTENDED=1 claude -p "/alfred-code:init" --permission-mode auto` - print mode without a permission mode refuses every Bash call.
 - Before a project joins, its first session can ask 'allow external imports?' for the root's awareness rule. 'No' is safe: after the join that rule is excluded there.
+- A joined project keeps only its own values in `.alfred/.variables`; the rest it reads from the root. A skill or seat it picks is kept once, in the root's `.alfred/stack/`.
+- A session may write anywhere in the workspace without asking; past it, the main session asks and a subagent is refused.
+- A session started at the root gets a project's own rules and docs the first time it touches a file there.
+- To keep a project below the root out of the workspace, mark it ignored in `/alfred-code:configure` (the workspace role): it keeps what it had and stands alone.
+- At the root, `/alfred-code:status` and the usage audit cover every joined project, one table each; in a project below they cover that project alone.
 
 ## FAQ
 
@@ -225,8 +255,8 @@ Or run `/alfred-code:configure` and it writes the key for you.
 <details>
 <summary><strong>Project, local or user scope?</strong></summary>
 
-- **project** (recommended) - the plugin is enabled for everyone who clones the project, and `.alfred/.variables` and the copies are tracked in git.
-- **local** - the plugin is enabled for you alone, and git ignores the stack's files.
+- **local** (the default) - the plugin is enabled for you alone, and `git status` shows nothing of the stack's.
+- **project** - the plugin is enabled for everyone who clones the project, and `.alfred/.variables` and the copies are tracked in git.
 - **user** - the plugins are enabled for your whole account. The copies and the stamp still live in the project.
 
 The stack writes its settings to `.claude/settings.local.json`, which never leaves your machine. A teammate who clones
@@ -296,6 +326,10 @@ Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-s
 
 <details>
 <summary><strong>How do I see what it actually did?</strong></summary>
+
+`/alfred-code:status` shows what is installed and what the recent sessions used. The usage audit, `/capture-usage-report`
+(add it in `/alfred-code:configure`), audits sessions one by one and writes a report per session plus a `SUMMARY.md`
+under `.alfred/statistics/usage-report/`.
 
 Set `ALFRED_CODE_INSTRUMENT` to `"1"` to record tool, skill and MCP use, then turn a session into a token report:
 
