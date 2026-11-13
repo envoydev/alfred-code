@@ -56,3 +56,12 @@ test('contract: the score file scorecard.js builds has the example\'s keys, in o
     const ended = scoringDoc({ prev: again, output: 'designer-plan', rounds: [round('3c4d5e6f', 70, null)], released: null, accepted: false, final: '3c4d5e6f', at: '2026-11-13T10:05Z' });
     assert.deepStrictEqual([ended.released, ended.releasedBefore, ended.status, ended.rounds[2].at], [2, null, 'released', '2026-11-13T10:00Z']);
 });
+
+test('contract: the session example carries the status file\'s keys, in order, plan last and in its form', () =>
+{
+    const S = require(path.join(__dirname, '..', 'stack', 'hooks', 'session-status.js'));
+    const { session } = examples();
+    assert.deepStrictEqual([Object.keys(session), keyLines().session], [[...S.FIELDS], [...S.FIELDS]]);
+    assert.strictEqual(S.FIELDS[S.FIELDS.length - 1], 'plan');
+    assert.match(session.plan, /^(?!\/|\.\.\/|[A-Za-z]:)[^\\]+\/plans\/[^/\\]+\/$/, 'relative, forward slashes, one trailing slash');
+});

@@ -8,8 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// `plan` came last in 3.12 (PF1 D12): a file without it is still read, and upgraded in place at its next write.
 const FIELDS = Object.freeze(['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'autoCompact',
-  'handoffPrompt']);
+  'handoffPrompt', 'plan']);
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const PRUNE_MS = 7 * 86400000;
 const SLOW_MS = 200;
@@ -24,7 +25,7 @@ const PRUNE_NAME = /^[A-Za-z0-9_-]{1,128}\.json(?:\.\d+\.tmp)?$/;
 const STATUS_PARTS = ['.claude', 'session-inspector', 'status'];
 
 // The engines, each loaded on first use: an unchanged prompt pays one small file read, never fresh-session's load.
-const ENGINE_FILES = { fresh: './fresh-session.js', prelude: './hook-prelude.js', history: './history.js', layout: './layout.js' };
+const ENGINE_FILES = { fresh: './fresh-session.js', prelude: './hook-prelude.js', history: './history.js', layout: './layout.js', planStatus: './plan-status.js' };
 const loaded = {};
 const engine = (name) =>
 {
@@ -127,6 +128,30 @@ function handoffPrompt(root, branch, deps) {
   } catch { return null; }
 }
 
+// The plan the session works on (PF1 D12): its folder relative to the root, forward slashes, one trailing slash - or
+// null for anything that is no plan folder by shape, no directory, outside the root or a plan whose status.json says it
+// is completed. An absent or unreadable status.json, or an engine that did not load, keeps the folder (PF1 F7).
+function planField(root, candidate, deps) {
+  try {
+    if (typeof candidate !== 'string' || !candidate || typeof root !== 'string' || !root) return null;
+    const d = depsOf(deps);
+    const L = d.layout;
+    if (!L || typeof L.planOf !== 'function' || typeof L.realpathOrSelf !== 'function') return null;
+    const abs = path.resolve(root, candidate.replace(/\\/g, '/'));
+    const plan = L.planOf(abs);
+    if (!plan || plan.shape !== 'folder' || path.resolve(plan.dir) !== abs) return null;
+    if (!fs.statSync(abs).isDirectory()) return null;
+    const rel = path.relative(L.realpathOrSelf(root), L.realpathOrSelf(abs));
+    if (!rel || path.isAbsolute(rel) || rel === '..' || rel.startsWith(`..${path.sep}`)) return null;
+    const P = d.planStatus;
+    if (P && typeof P.readStatus === 'function') {
+      const read = P.readStatus(abs);
+      if (read && read.ok && read.status && read.status.completedAt) return null;
+    }
+    return `${posix(rel)}/`;
+  } catch { return null; }
+}
+
 // The schema 1 object. `fields` may carry autoRun, scorer and handoffPrompt as they go in the file, and the history
 // `entry` (undefined: read it); anything it leaves out is computed as at SessionStart.
 function buildStatus(payload, fields, deps) {
@@ -136,7 +161,7 @@ function buildStatus(payload, fields, deps) {
   const id = String(p.session_id || '');
   const root = rootOf(p, d.env);
   const out = { schema: 1, session: id, fullContext: 'off', updatedAt: new Date().toISOString(), model: null, window: null, resumeAt: null,
-    autoRun: false, scorer: null, autoCompact: null, handoffPrompt: null };
+    autoRun: false, scorer: null, autoCompact: null, handoffPrompt: null, plan: null };
   try {
     if ('autoRun' in f) out.autoRun = Boolean(f.autoRun);
     else if (d.prelude && d.prelude.autoRunFor) out.autoRun = Boolean(d.prelude.autoRunFor(p, d.env, null));   // R118
@@ -171,6 +196,7 @@ function buildStatus(payload, fields, deps) {
       out.handoffPrompt = handoffPrompt(root, entry && typeof entry.branch === 'string' ? entry.branch : '', d);
     }
   } catch { out.handoffPrompt = null; }
+  if ('plan' in f) out.plan = planField(root, f.plan, d);
   return out;
 }
 
@@ -231,7 +257,7 @@ function appendBase(root, base, d) {
 const readStatusFile = (file, id) => {
   try {
     const s = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return s && typeof s === 'object' && !Array.isArray(s) && s.schema === 1 && s.session === id && FIELDS.every((k) => k in s) ? s : null;
+    return s && typeof s === 'object' && !Array.isArray(s) && s.schema === 1 && s.session === id && FIELDS.every((k) => k === 'plan' || k in s) ? s : null;
   } catch { return null; }
 };
 const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
@@ -257,9 +283,13 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     t0 = d.clock();
     const current = readStatusFile(file, id);
     const f = { ...(fields && typeof fields === 'object' ? fields : {}) };
+    // PF1 D12: every write carries the plan the file holds, checked again; a file from before the key is written once
+    // whatever else changed, so it gains the key (R2)
+    const upgrade = Boolean(current) && !('plan' in current);
+    if (current && !('plan' in f)) f.plan = current.plan;
     if (when === 'modes') {
       // ...unless the file says auto-run without compact - an older core's file, corrected now, not at the next Stop (R116)
-      if (current && compactSame(current, p, d) && same(current.autoRun, f.autoRun) && same(current.scorer, f.scorer)
+      if (!upgrade && current && compactSame(current, p, d) && same(current.autoRun, f.autoRun) && same(current.scorer, f.scorer)
         && (current.autoRun !== true || current.fullContext === 'compact')) return 'unchanged';
       if (gate && !gate()) return 'skipped';
       if (current) f.handoffPrompt = current.handoffPrompt;
@@ -269,7 +299,7 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     }
     let next = buildStatus(p, f, d);
     if (when === 'changed' && current) {
-      if (sameButTime(next, current)) {
+      if (!upgrade && sameButTime(next, current)) {
         // a live session's file never reaches the prune age
         try { if (Date.now() - fs.statSync(file).mtimeMs > DAY_MS) { const now = new Date(); fs.utimesSync(file, now, now); } } catch { /* the next Stop */ }
         return 'unchanged';
@@ -551,6 +581,6 @@ function onPrompt(payload, modes, gate) {
 
 module.exports = {
   FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
-  baseOf, rootOf, ownBase, statusFile, scoringField, handoffPrompt, buildStatus, writeStatus, statusBases, pruneStatus,
+  baseOf, rootOf, ownBase, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusBases, pruneStatus,
   ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, modesLine,
 };

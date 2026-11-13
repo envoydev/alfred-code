@@ -1873,7 +1873,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `session-status.js`, a module with
     no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<cwd>/.claude/session-inspector/status/<session
     id>.json`, schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
-    `scorer`, `handoffPrompt`, a public contract that only ever gains fields. The base is the live `cwd` (A1), written only
+    `scorer`, `autoCompact`, `handoffPrompt`, `plan`, a public contract that only ever gains fields. `plan` (PF1, 3.12) is
+    `planField`: the plan folder the session works on, relative to the root with one trailing slash, carried by every write and
+    null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the live `cwd` (A1), written only
     when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
