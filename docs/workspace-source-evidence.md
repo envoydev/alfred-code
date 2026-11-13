@@ -369,3 +369,40 @@ The bound - a plain project's median at most 5 ms above BASE - holds for both di
 BASE hooks - Windows 341 tests, 47 failed, 7 skipped; every failure is a new `entry:` or `member:` test.
 
 Not run: the Cursor cells (both hooks stand down on a Cursor payload; stage 5's block names the child's docs there).
+
+## W2 - the usage scope (2026-11-13, macOS, Node 22.23.3; the gate's Windows and Linux legs)
+
+Temp workspaces installed from this tree's clean export (and from v3.10.0 for M15, from the commit W2 is cut from for
+M20), each in its own sandbox: `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR` and the global git config inside it,
+`ANTHROPIC_API_KEY` unset, synthetic transcripts only. The real account's `installed_plugins.json`,
+`known_marketplaces.json` and `settings.json` hashed before and after: unchanged.
+
+| Row | Case | Result |
+| --- | --- | --- |
+| M1 | the three scopes and a standalone project: `--scope` lines, the rollup's columns and blocks | 12 PASS |
+| M2-M5 | the shared tree: a root with joined children, run at the root and in each child | 10 PASS |
+| M6 | an ignored project, a gone child, a child naming another parent; one-child roots; D20's two trees | 18 PASS |
+| M7 | garbage: the root's record, a child's record, the switch at 0, torn and empty transcripts, a broken `.variables` | 6 PASS |
+| M8, M9 | depth (root, child, grandchild); a package inside a larger repository | 4 PASS |
+| M10, M11 | a shared folder name (outsider and two members); a key only in the root's `.variables` | 3 PASS |
+| M12, M13 | the skill's batch by script: bundles per project, one `SUMMARY.md` at the start; consent per project | 8 PASS |
+| M14, M16 | re-run (each command twice, no byte changed); the user's own skill, rule, key and `SUMMARY.md` text kept | 7 PASS |
+| M15 | a 3.10.0 root and child, then this tree | 5 PASS |
+| M17 | boundaries: 2, 3, 4 unexcused claims; `--done 11`, `12`, `13` across three projects | 3 PASS |
+| M18 | an encoded name of 199, 200 and 201 characters, its own git top | 3 PASS on macOS |
+| M19 | the cost, median of 5: `--scope` 76 ms; the rollup 549 ms over 300 sessions; the one-folder run before W2 132 ms over 100 | PASS (`--scope` under 2 s) |
+| M20 | the revert: the analyzer and gate before W2 on the workspace M12 left | 3 PASS |
+| M22, M23 | the probe lines per project; a seat only a child holds | 3 PASS |
+
+Total 88 PASS (the account-hash row and the tree checks included), 0 FAIL, 4 NOT RUN: the typed-case start (the
+Windows leg's unit row), every Cursor cell, a live `/alfred-code:status` render (a model renders the tables), a live
+run of the usage skill (billed). The first full run, before the review's fix pass, read 83 PASS and 5 FAIL; the FAILs
+were the matrix's own setup (M7, M9, M13) and one real gap, M12: with `--bundles` naming only the other projects, the
+gate left the start project's own bundles out of `SUMMARY.md`. Fixed test-first; the gate now lists them always.
+
+The full suite on macOS: 6467 tests, 0 failed, 5 skipped.
+
+The gate at 25317f0f on the eight changed test files: Windows 11 VM 448 tests, 0 failed, 8 skipped (each an older
+POSIX-only test; the typed-case start ran and passed); Linux (Docker) 448 tests, 0 failed, 1 skipped. At 0dfbdd3a the
+Windows leg failed one row: the long-path test's own `git init` cannot stat a folder past MAX_PATH there. The usage
+scope finds a git top with `fs` alone, so the row now makes its `.git` folder by hand.
