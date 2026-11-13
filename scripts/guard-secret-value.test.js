@@ -1855,3 +1855,21 @@ test('SG1-F2: a JSONC past MAX_BYTES is judged by its head, a comment and all', 
   const fx = coreProject({ 'big/settings.jsonc': big });
   assert.strictEqual(f2Pre('Read', { file_path: path.join(fx.project, 'big', 'settings.jsonc') }, fx).status, 2, 'the head holds the credential');
 });
+
+// I3 (deferred from the session issues 2026-11-10): the AC-2R find reader false-blocked a `-path` + `-o` group piped into
+// `xargs grep` whose pattern names a dotenv. Swap 1 removed that reader; above the floor the command runs as written and
+// the masker covers its output. Pinned with a live credential at the root and under src/, so a returning find judge shows.
+test('I3: find -path ... \\( -name -o -name \\) | xargs grep <a dotenv-naming pattern> runs untouched above the floor', () => {
+  const fx = coreProject({ [D7E]: `API_TOKEN=${CREDS_VAL}\n`, [`src/${D7E}`]: `SRC_TOKEN=${SUB_VAL}\n`,
+    'src/a.ts': 'export const url = process.env.API_URL;\n', 'src/b.tsx': 'import "dotenv/config";\n' });
+  const find = "find . -path '*/src/*' \\( -name '*.ts' -o -name '*.tsx' \\) | xargs grep";
+  const shapes = [`${find} -n '${D7E}'`, `${find} -n 'process${D7E}'`, `${find} -n "dotenv\\|\\${D7E}"`, `${find} -ln ${D7E}`];
+  for (const command of shapes) {
+    const r = pre(command, { fx });
+    assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], command);
+  }
+  // Core mode (no masker: a client under the floor, Cursor, a background run) refuses a word that IS an existing
+  // credential file's name, whatever its verb - ruling 3's stated cost; a pattern that only contains the name passes.
+  assert.strictEqual(pre(shapes[0], { fx, ...CORE }).status, REFUSED, 'core: the bare dotenv name as a pattern');
+  assert.strictEqual(pre(shapes[1], { fx, ...CORE }).status, 0, 'core: a pattern holding the name in a longer word');
+});
