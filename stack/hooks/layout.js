@@ -69,7 +69,8 @@ function planIdOf(text)
     const line = /^plan:[ \t]*(.*)$/m.exec(String(text || ''));
     if (!line) return undefined;
     const value = line[1].trim();
-    const name = value.split(/[\\/]/).pop().replace(/\.md$/i, '');
+    // PF1 F1: a plan folder named with a trailing slash reads as its id.
+    const name = value.replace(/[\\/]+$/, '').split(/[\\/]/).pop().replace(/\.md$/i, '');
     return value && !/\s/.test(value) && PLAN_ID.test(name) ? name : null;
 }
 const approvalPath = (root, planId, env = process.env) =>
@@ -93,6 +94,62 @@ function approvalStamps(root, env = process.env)
         if (exists(file)) out.push(file);
     }
     return out;
+}
+
+// PF1 D1: a plan is a folder `plans/<id>/` holding `<id>.md` (and its status.json / scoring.json), or a flat
+// `plans/<name>.md` of an older release. A folder id is a plan id that is no Windows device name and does not end in a
+// dot - handoff.js DEVICE copied, so a folder made on one OS opens on the other.
+const PLAN_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/i;
+const planFolderId = (name) => typeof name === 'string' && PLAN_ID.test(name) && !PLAN_DEVICE.test(name) && !name.endsWith('.');
+const statOf = (file) => { try { return fs.statSync(file); } catch { return null; } };
+// Every plan under each plan dir, in planDirs order, ids ascending inside a dir; a link is followed. Never throws.
+function planFiles(root, env = process.env)
+{
+    const out = [];
+    for (const dir of planDirs(root, env))
+    {
+        let names = [];
+        try { names = fs.readdirSync(dir); }
+        catch { continue; }
+        const found = [];
+        for (const name of names)
+        {
+            const full = path.join(dir, name);
+            const st = statOf(full);
+            if (!st) continue;
+            if (st.isDirectory())
+            {
+                if (!planFolderId(name)) continue;
+                const md = path.join(full, `${name}.md`);
+                const mdSt = statOf(md);
+                if (!mdSt || !mdSt.isFile()) continue;
+                const statusSt = statOf(path.join(full, 'status.json'));
+                const mtimeMs = Math.max(mdSt.mtimeMs, statusSt && statusSt.isFile() ? statusSt.mtimeMs : 0);
+                found.push({ id: name, shape: 'folder', md, dir: full, mtimeMs });
+            }
+            else if (st.isFile() && /\.md$/i.test(name))
+                found.push({ id: name.replace(/\.md$/i, ''), shape: 'flat', md: full, dir: null, mtimeMs: st.mtimeMs });
+        }
+        found.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : x.shape === y.shape ? 0 : x.shape === 'folder' ? -1 : 1));
+        out.push(...found);
+    }
+    return out;
+}
+// The plan a path belongs to, by the path's text alone (either slash), or null. PF1 D1.
+function planOf(file)
+{
+    if (typeof file !== 'string' || !file) return null;
+    const text = file.replace(/[\\/]+$/, '');
+    const segs = text.split(/[\\/]/);
+    const n = segs.length;
+    const folder = (id, dir) => ({ id, shape: 'folder', dir, md: `${dir}${dir.charAt(dir.length - id.length - 1)}${id}.md` });
+    if (n >= 3 && segs[n - 3] === 'plans' && planFolderId(segs[n - 2]) && [`${segs[n - 2]}.md`, 'status.json', 'scoring.json'].includes(segs[n - 1]))
+        return folder(segs[n - 2], text.slice(0, text.length - segs[n - 1].length - 1));
+    if (n >= 2 && segs[n - 2] === 'plans' && /\.md$/i.test(segs[n - 1]))
+        return { id: segs[n - 1].replace(/\.md$/i, ''), shape: 'flat', dir: null, md: file };
+    if (n >= 2 && segs[n - 2] === 'plans' && planFolderId(segs[n - 1]))
+        return folder(segs[n - 1], text);
+    return null;
 }
 
 // The move map, `from` relative to the docs root; `to` relative to `base` - the data root or the docs root.
@@ -1170,7 +1227,7 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
-    PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
+    PLAN_ID, PLAN_DEVICE, planFolderId, planFiles, planOf, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
     settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,

@@ -180,3 +180,57 @@ test('ARCH_RENAME is the map move, frozen', () =>
     });
     assert.ok(Object.isFrozen(layout.ARCH_RENAME));
 });
+
+test('planIdOf reads a plan folder with a trailing slash as its id (F1)', () =>
+{
+    assert.strictEqual(layout.planIdOf('plan: .alfred/docs/work/plans/csv/'), 'csv');
+    assert.strictEqual(layout.planIdOf('plan: .alfred/docs/work/plans/csv//'), 'csv');
+    assert.strictEqual(layout.planIdOf('plan: C:\\repo\\.alfred\\docs\\work\\plans\\csv\\'), 'csv');
+    assert.strictEqual(layout.planIdOf('plan: .alfred/docs/work/plans/csv/csv.md'), 'csv');
+    assert.strictEqual(layout.planIdOf('plan: /'), null, 'nothing left after the slashes');
+});
+
+test('planFolderId: the plan id rule plus the two refusals a folder needs', () =>
+{
+    for (const ok of ['csv', 'v2.1_fix', 'a'.repeat(128), 'console', 'com10']) assert.strictEqual(layout.planFolderId(ok), true, ok);
+    for (const bad of ['con', 'NUL', 'com1', 'lpt9.md', 'aux.x.y', 'csv.', '.csv', 'a'.repeat(129), 'two words', '']) assert.strictEqual(layout.planFolderId(bad), false, bad);
+    const handoff = fs.readFileSync(path.join(path.dirname(LAYOUT), 'handoff.js'), 'utf8');
+    assert.ok(handoff.includes(`const DEVICE = ${layout.PLAN_DEVICE};`), 'the copy equals handoff.js DEVICE');
+});
+
+test('planOf names the plan a path belongs to, by shape alone', () =>
+{
+    const folder = (dir, sep = '/') => ({ id: 'csv', shape: 'folder', dir, md: `${dir}${sep}csv.md` });
+    assert.deepStrictEqual(layout.planOf('.alfred/docs/work/plans/csv/csv.md'), folder('.alfred/docs/work/plans/csv'));
+    assert.deepStrictEqual(layout.planOf('/p/api/.alfred/docs/work/plans/csv/status.json'), folder('/p/api/.alfred/docs/work/plans/csv'));
+    assert.deepStrictEqual(layout.planOf('/p/x/plans/csv/scoring.json'), folder('/p/x/plans/csv'));
+    assert.deepStrictEqual(layout.planOf('/p/x/plans/csv/'), folder('/p/x/plans/csv'));
+    assert.deepStrictEqual(layout.planOf('/p/x/plans/csv'), folder('/p/x/plans/csv'));
+    assert.deepStrictEqual(layout.planOf('C:\\r\\plans\\csv\\status.json'), folder('C:\\r\\plans\\csv', '\\'));
+    assert.deepStrictEqual(layout.planOf('/p/x/plans/old-export.md'), { id: 'old-export', shape: 'flat', dir: null, md: '/p/x/plans/old-export.md' });
+    for (const none of ['/p/x/plans/csv/notes.md', '/p/x/plans/csv/sub/status.json', '/p/x/plans/csv/status.json.lock', '/p/x/plans/con/con.md', '/p/src/a.ts', '/p/x/plans/', '', undefined])
+        assert.strictEqual(layout.planOf(none), null, String(none));
+});
+
+test('planFiles lists both shapes and skips what is no plan', () =>
+{
+    const root = tmp();
+    const [work, legacy] = layout.planDirs(root, {});
+    put(path.join(work, 'csv', 'csv.md'));
+    put(path.join(work, 'csv', 'status.json'), '{}');
+    put(path.join(work, 'old-export.md'));
+    put(path.join(work, 'notes', 'readme.md'));            // a folder with no <id>/<id>.md
+    put(path.join(work, 'bare'));                           // a file where a folder is expected
+    fs.mkdirSync(path.join(work, 'dir', 'dir.md'), { recursive: true });   // a folder where the Markdown is expected
+    put(path.join(work, 'con', 'con.md'));                  // a device name
+    put(path.join(legacy, 'older.md'));
+    const later = new Date(Date.now() + 60000);
+    fs.utimesSync(path.join(work, 'csv', 'status.json'), later, later);
+    const got = layout.planFiles(root, {});
+    assert.deepStrictEqual(got.map((p) => [p.id, p.shape]), [['csv', 'folder'], ['old-export', 'flat'], ['older', 'flat']]);
+    assert.deepStrictEqual([got[0].dir, got[0].md], [path.join(work, 'csv'), path.join(work, 'csv', 'csv.md')]);
+    assert.strictEqual(got[0].mtimeMs, fs.statSync(path.join(work, 'csv', 'status.json')).mtimeMs, 'the newer of the two');
+    assert.deepStrictEqual([got[1].dir, got[1].md], [null, path.join(work, 'old-export.md')]);
+    assert.deepStrictEqual(layout.planFiles(path.join(root, 'absent'), {}), []);
+    fs.rmSync(root, { recursive: true, force: true });
+});
