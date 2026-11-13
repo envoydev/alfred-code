@@ -27,6 +27,25 @@ try { layout = require('./layout.js'); } catch { /* an older copy route: the pre
 // The stack's variables (D4) set on the process env before the first read; an older copy route has no loader.
 try { if (layout && layout.applyVariables) layout.applyVariables(process.env.CLAUDE_PROJECT_DIR || layout.projectRootOf(process.cwd()).checkout); }
 catch { /* the process env as it stands */ }
+// PF1 (D12, D15): a folder plan's state is read from its status.json through the writer script, required on first use;
+// a script that did not load answers as an unreadable status - the path alone, no hold, no write.
+let planStatusMod;
+const planStatus = () => { if (planStatusMod === undefined) { try { planStatusMod = require('./plan-status.js'); } catch { planStatusMod = null; } } return planStatusMod; };
+// A path as a folder plan's Markdown (<id>/<id>.md under plans/), else null.
+function folderPlanOf(file) {
+  if (!layout || !layout.planOf) return null;
+  const p = layout.planOf(String(file));
+  if (!p || p.shape !== 'folder') return null;
+  const norm = (x) => String(x).replace(/\\/g, '/');
+  return norm(file).endsWith(`/${p.id}/${p.id}.md`) || norm(file) === `${p.id}/${p.id}.md` ? p : null;
+}
+// The folder plan's status, or null when the script, the file or its shape is not there.
+function folderStatus(plan, root) {
+  const S = planStatus();
+  if (!S || !root) return null;
+  const read = S.readStatus(path.dirname(planFile(plan, root)));
+  return read && read.ok ? read.status : null;
+}
 const legacyHistoryDir = (root) => path.resolve(root, docsRootEnv(), 'history');
 const historyDir = (root) => (layout ? path.dirname(layout.statePath(root, 'history', 'x.json')) : legacyHistoryDir(root));
 // A session's record: where it already is (a session an older hook started keeps its legacy one), else the new home.
@@ -72,6 +91,7 @@ function readNewRows(transcriptPath, offset) {
   return { rows, next: from + lastNl + 1 };
 }
 
+// PF1 flat plan - until 4.0.0: the plan file test an older copy route without layout.planOf keeps
 const PLAN_FILE = /(^|\/)plans\/[^/]+\.md$/;
 // The plan is kept as the start block shows it: project-relative inside the project, `~/` under the home directory -
 // an absolute path spent the 600-character block on a home folder's name (audit 2026-10-08 row 44).
@@ -95,7 +115,23 @@ function digest(rows, entry, root) {
     if (!Array.isArray(content)) continue;
     for (const b of content) {
       const fp = b && b.type === 'tool_use' && /^(Write|Edit|MultiEdit)$/.test(b.name) && b.input && b.input.file_path;
-      if (fp && PLAN_FILE.test(String(fp).split(path.sep).join('/'))) entry.plan = planPath(fp, root);
+      if (fp && layout && layout.planOf) {
+        // PF1: a plan's Markdown, folder or flat; a status.json or any other file in the folder is not the plan
+        const p = layout.planOf(String(fp));
+        if (p && (p.shape === 'flat' || folderPlanOf(fp))) entry.plan = planPath(fp, root);
+      }
+      // PF1 flat plan - until 4.0.0: with no layout.planOf, the pre-3.12 test
+      else if (fp && PLAN_FILE.test(String(fp).split(path.sep).join('/'))) entry.plan = planPath(fp, root);
+      // PF1: a call of the writer script names its plan; list and check --all name none
+      const cmd = b && b.type === 'tool_use' && /^(Bash|PowerShell|Monitor)$/.test(b.name) && b.input && b.input.command;
+      if (typeof cmd === 'string' && cmd.includes('plan-status.js')) {
+        const S = planStatus();
+        const call = S && S.parseCall(cmd);
+        if (call && call.plan) {
+          const res = S.resolvePlan(call.plan, { cwd: (r && r.cwd) || root, env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+          if (res && res.ok && res.md) entry.plan = planPath(res.md, root);
+        }
+      }
     }
   }
   if (entry.rulings.length > 60) entry.rulings = entry.rulings.slice(-60);
@@ -219,6 +255,19 @@ function planRead(plan, root) {
 function planStates(plan, root) {
   if (!root) return [];
   try {
+    if (folderPlanOf(plan)) {
+      // PF1: the count and the Resume: text from status.json; not readable -> the path alone
+      const st = folderStatus(plan, root);
+      if (!st) return [];
+      if (st.completedAt) return ['(completed)'];
+      const S = planStatus();
+      const c = S.counts(st);
+      let resume = scrub(`Resume: ${S.resumeText(st)}`);
+      if (resume.length > RESUME_CAP) resume = `${resume.slice(0, RESUME_CAP - 3)}...`;
+      const count = c.total ? `${c.done}/${c.total} done` : '';
+      return [[count, resume].filter(Boolean).join('; '), count].filter(Boolean).map((t) => `(${t})`).filter((t, i, all) => all.indexOf(t) === i);
+    }
+    // PF1 flat plan - until 4.0.0
     const read = planRead(plan, root);
     if (!read) return [];
     const { lines } = read;
@@ -248,6 +297,17 @@ function openPlan(root, branch, count) {
       const norm = path.posix.normalize(rel);
       if (norm === '..' || norm.startsWith('../')) continue;
       if (!fs.existsSync(path.resolve(root, rel))) continue;
+      if (folderPlanOf(rel)) {
+        // PF1: the folder plan's status decides; unreadable ends the search as an unreadable flat plan does
+        const st = folderStatus(rel, root);
+        if (!st) return null;
+        if (st.completedAt) continue;
+        let resume = scrub(planStatus().resumeText(st));
+        if (!resume) return null;
+        if (resume.length > RESUME_CAP) resume = `${resume.slice(0, RESUME_CAP - 3)}...`;
+        return { plan: rel, resume, dir: `${path.posix.dirname(rel)}/` };
+      }
+      // PF1 flat plan - until 4.0.0
       const read = planRead(rel, root);
       if (!read) return null;
       if (read.completed) continue;
