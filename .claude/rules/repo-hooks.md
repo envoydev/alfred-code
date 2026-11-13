@@ -905,12 +905,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     reached it however the refusal was worded, and no run committed; with the writer counted, 6 of 6 committed): a
     main-session `Bash` / `PowerShell` call running `node <receipt.js> commit` with a `--findings` value and no
     `--dry-run` - the script by its path, or by a variable the same command set to it (`R=".../receipt.js"` then
-    `node "$R" commit`; node flags, `node.exe` and a continued line allowed) - whose result carries the writer's own
-    `wrote ...COMMIT-GATE` line. Only that line proves the write: `; echo rc=$?` makes a refused writer's call read
-    as no error, and one run hid the output with `>/dev/null`. It closes every review still open before it whose line
-    is `Findings:` - never a loop's `Outcome:` - unless a seat sent after that review had not reported before the
-    call (a foreground result, a completed notification; a call refused with an error result never ran). An echo,
-    another script, a review loaded after it: no close. The refusal names this route, in its own call with its output
+    `node "$R" commit`; node flags, `node.exe` and a continued line allowed). The write is proven by the writer's own
+    `wrote ...COMMIT-GATE` line in its result, or by the COMMIT-GATE file's time inside the call's window - the call
+    row minus 2s to the result row plus 2s (3.12: 22 of 117 receipt calls held no `wrote` line - 28 piped, 8 to
+    `/dev/null`). A refused writer exits before it writes, so `; echo rc=$?` still proves nothing; with no parseable
+    time on either row, or no file, the line alone decides. It closes every open review whose line is `Findings:` -
+    never a loop's `Outcome:` - that it speaks for: `task-verify-code` and `review-code` always, each standing for the
+    other (the checkpoint's own review, fix, re-review flow); `review-security` when the command names it or carries
+    `--security` (all 3 measured did); `task-verify-plan` only when named (about 19 plan reviews were closed by a
+    commit receipt before). Every open review of the kind, not the newest, and no round rule (one refused 13 of 113
+    measured receipts) - unless a seat sent after that review had not reported before the call (a foreground result,
+    a completed notification; a call refused with an error result never ran). A review the receipt followed but does
+    not speak for stays open and keeps only its start time, for the `answered:` order (the earliest review time would
+    have moved at 46 of 113 receipts). The WAIVED refusal's hint lists the three code kinds only; the named-review and
+    freshness refusals carry `branch: review-unproven` / `review-stale` on the block row. An echo, another script, a
+    review loaded after it: no close. Evidence: `docs/commit-guard-review-proof-2026-11-13-evidence.md`. The refusal names this route, in its own call with its output
     shown, when every review it lists is a Findings one. A text block is ONE result line however many `Findings` lines
     it holds (a report's `**Findings:**` header and its closing line are one review's), so two reports need two
     replies.

@@ -1134,3 +1134,13 @@ that never joined. On a disk that folds case, a `children` entry spelled in anot
 update that cannot release an ignored project says the next update retries, and a first install over a record that
 still names a parent says why it leaves the workspace part as it is. An `ignore instructions <folder>` row now covers
 every file below the folder, so `check-loads` stops naming them. Report each line.
+
+## after 3.11.0 - a receipt write counts whatever the shell did with its output
+
+The commit gate now counts the checkpoint's receipt write when its output was piped or hidden (`| tail -n 3`,
+`>/dev/null`): the receipt file's own time, inside that call, proves the write. A receipt also closes only the reviews
+it speaks for - the review of the code always, `review-security` when the command names it or carries `--security`,
+`task-verify-plan` only when the command names it. A commit refused with 'the VERIFIED line names verify-plan' or
+'names review-security' after a receipt was written means that review's report never reached the transcript and the
+receipt did not speak for it: print its report, or name it in the receipt - report the refusal as it reads. Nothing
+to do in an installed project; no file of it changes shape.
