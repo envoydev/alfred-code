@@ -996,3 +996,59 @@ test('install-scope: a stack variable typed into settings.json at project scope 
     });
     assert.deepStrictEqual(result, before);
 });
+
+// Stage 1 I2 (3.12): a local install moved to project or user scope held the stack's own `local` docs seed, so the team's
+// docs stayed out of git. The move reseeds the new scope's default (`git` in a repository whose own rules do not keep the
+// docs out), with one line; a value the user typed, a --docs-versioning answer and a project ignore rule each keep local.
+const DOCS_KEY = 'ALFRED_CODE_DOCS_VERSIONING';
+const docsState = (repo) => ({
+    vars: (require('../stack/hooks/layout.js').readDotenv(path.join(repo, '.alfred', '.variables')) || { values: {} }).values,
+    local: (JSON.parse(read(repo, LOCAL_FILE) || '{}').env || {}),
+    ignore: read(repo, path.join('.alfred', '.gitignore')) || '',
+});
+for (const to of ['project', 'user'])
+{
+    test(`install-scope: a move off local to ${to} reseeds the stack's local docs seed as git, with a line; the re-run changes nothing`, POSIX_ONLY, () =>
+    {
+        const { outs, steps } = seedRun(['install', 'update', 'update'], HOOKS_SEL, {
+            plugins: LOCAL_PLUGINS, args: [['--scope', 'local'], ['--scope', to, '--installed-only'], ['--scope', to, '--installed-only']],
+            each: (repo) => docsState(repo),
+        });
+        assert.strictEqual(steps[0].vars[DOCS_KEY], 'local', 'the local install seeded local');
+        assert.strictEqual(steps[1].vars[DOCS_KEY], 'git', outs[1]);
+        assert.ok(!Object.hasOwn(steps[1].local, DOCS_KEY), JSON.stringify(steps[1].local));
+        assert.match(outs[1], new RegExp(`${DOCS_KEY} 'local' -> 'git' \\(the local scope's own seed, reseeded for ${to} scope\\)`), outs[1]);
+        assert.match(steps[1].ignore, /^!\/docs\/$/m, 'the data root re-includes the docs');
+        assert.deepStrictEqual(steps[2], steps[1], outs[2]);
+        assert.doesNotMatch(outs[2], /reseeded for/, outs[2]);
+    });
+}
+
+test('install-scope: a move off local keeps a docs value the user typed, a --docs-versioning answer and a project ignore rule\'s local', POSIX_ONLY, () =>
+{
+    const typed = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: LOCAL_PLUGINS, args: [['--scope', 'local'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                const s = json(repo, LOCAL_FILE);
+                s.env[DOCS_KEY] = 'local';
+                fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(s, null, 2));
+            }
+            return docsState(repo);
+        },
+    });
+    assert.strictEqual(typed.steps[1].local[DOCS_KEY], 'local', typed.outs[1]);
+    assert.doesNotMatch(typed.outs[1], /reseeded for/, typed.outs[1]);
+    const flag = seedRun(['install', 'update'], HOOKS_SEL, { plugins: LOCAL_PLUGINS, args: [['--scope', 'local'], [...UPDATE, '--docs-versioning', 'local']], each: (repo) => docsState(repo) });
+    assert.strictEqual(flag.steps[1].vars[DOCS_KEY], 'local', flag.outs[1]);
+    assert.doesNotMatch(flag.outs[1], /reseeded for/, flag.outs[1]);
+    const hidden = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: LOCAL_PLUGINS, args: [['--scope', 'local'], UPDATE],
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.alfred/\n'),
+        each: (repo) => docsState(repo),
+    });
+    assert.strictEqual({ ...hidden.steps[1].vars, ...hidden.steps[1].local }[DOCS_KEY], 'local', hidden.outs[1]);
+    assert.doesNotMatch(hidden.outs[1], /reseeded for/, hidden.outs[1]);
+});

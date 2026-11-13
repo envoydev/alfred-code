@@ -1072,3 +1072,10 @@ A hook named whole in a joined project's own `ALFRED_CODE_HOOKS_OFF` (typed by h
 stays off through its updates; before, the workspace's set added the hook back and the update emptied that entry. The
 update prints `workspace: hook <name> stays off here - this project's ALFRED_CODE_HOOKS_OFF names it` - report it.
 Turning the hook back on in `/alfred-code:configure` still works.
+
+## after 3.11.0 - a local install moved to project or user scope commits its docs again
+
+A run that moves a `local`-scope install to `project` or `user` scope now reseeds `ALFRED_CODE_DOCS_VERSIONING` from
+the local scope's own `local` to `git` when the project is a git repository whose own rules do not keep the docs out,
+with one `ALFRED_CODE_DOCS_VERSIONING 'local' -> 'git' (the local scope's own seed, reseeded for <scope> scope)` line -
+report it. Before, the docs stayed out of git after the move. A value typed by hand, or `--docs-versioning`, stays.
