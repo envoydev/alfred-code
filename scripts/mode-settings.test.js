@@ -351,3 +351,33 @@ test('a sub-folder session writes the top\'s windows from the top\'s tier trigge
     assert.strictEqual(obj(top).modelSettings[K1M].autoCompactWindow, 320000, raw(top));
     assert.strictEqual(raw(top), raw(other));
 });
+
+// The per-prompt read's fast path (Task 10's Windows timing: a git spawn there cost ~70 ms a prompt): an index naming no
+// settings.local.json answers 'not tracked' with no git call; every shape it cannot read asks git.
+const holdingOne = (root) => write(file(root), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+const indexed = () => { const d = gitInit(); write(path.join(d, 'a.txt'), 'a'); git(d, ['add', 'a.txt']); return d; };
+const tracking = (rel) => { const d = indexed(); write(path.join(d, ...rel.split('/')), '{}'); git(d, ['add', '-f', rel]); return d; };
+test('the read: an index that names no settings.local.json is own with git off PATH', { skip: !GIT }, () =>
+{
+    const root = indexed();
+    holdingOne(root);
+    assert.strictEqual(M.indexMisses(file(root)), 1);
+    assert.strictEqual(withPath('', () => M.autoRunHeld(root)), 'own');
+});
+test('the read asks git for every index shape it cannot read', { skip: !GIT }, () =>
+{
+    assert.strictEqual(M.indexMisses(file(tracking('x/.claude/settings.local.json'))), null, 'the name at another depth');
+    assert.strictEqual(M.indexMisses(file(tracking('X/.CLAUDE/SETTINGS.LOCAL.JSON'))), null, 'the name in another case');
+    const v4 = indexed();
+    git(v4, ['update-index', '--index-version', '4']);
+    assert.strictEqual(M.indexMisses(file(v4)), null, 'version 4 compresses paths');
+    const split = indexed();
+    git(split, ['update-index', '--split-index']);
+    assert.strictEqual(M.indexMisses(file(split)), null, 'a split index keeps its entries elsewhere');
+    assert.strictEqual(M.indexMisses(file(gitInit())), null, 'no index file');
+    assert.strictEqual(M.indexMisses(file(tree())), null, 'no repository');
+    const tracked = indexed();
+    holdingOne(tracked);
+    git(tracked, ['add', '-f', '.claude/settings.local.json']);
+    assert.strictEqual(M.autoRunHeld(tracked), 'tracked', 'a tracked 1 is still said, never taken');
+});

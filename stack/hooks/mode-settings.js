@@ -101,10 +101,24 @@ function writeModes(root, updates = {}, env = process.env) {
     && localGitStatus(file, ['check-ignore', '-q', '--', '.claude/settings.local.json']) === 1;
   return { ...out, changed: true };
 }
+// The per-prompt read's fast 'not tracked' (a git spawn cost ~70 ms a prompt on Windows): 1 when the index names no
+// settings.local.json at any depth or case; null - git asked - for a linked .git, a split or sparse index, version 4's
+// compressed paths, an index past 8MB or none, or the name found. The typed command's write still asks git (M8).
+function indexMisses(file) {
+  try {
+    const dir = path.join(layout.gitTopOf(path.dirname(path.dirname(file))) || '\0', '.git');
+    if (!fs.statSync(dir).isDirectory() || fs.readdirSync(dir).some((n) => n.startsWith('sharedindex.'))) return null;
+    const idx = path.join(dir, 'index');
+    if (fs.statSync(idx).size > 8 << 20) return null;
+    const text = fs.readFileSync(idx).toString('latin1');
+    if (!text.startsWith('DIRC') || !['\0\0\0\x02', '\0\0\0\x03'].includes(text.slice(4, 8)) || text.includes('sdir')) return null;
+    return /\.claude\/settings\.local\.json/i.test(text) ? null : 1;
+  } catch { return null; }
+}
 // '' unless the mode file's env holds ALFRED_CODE_AUTO_RUN '1'; then its trust - only 'own' is a standing auto-run.
 const autoRunHeld = (root, file = layout.modeFile(root), data = readObj(file)) =>
-  (plain(data) && plain(data.env) && data.env[AUTO_RUN] === '1' ? localTrust(file) : '');
+  (plain(data) && plain(data.env) && data.env[AUTO_RUN] === '1' ? localTrust(file, (f) => indexMisses(f) ?? localGitStatus(f)) : '');
 const said = (r) => [...r.replaced, ...r.left].map((n) => ` - ${n}`).join('')
   + (r.unignored ? ' - .claude/settings.local.json was created and git does not ignore it here: add it to .gitignore' : '');
 
-module.exports = { localGitStatus, localTrust, writeModes, WHY, autoRunHeld, said };
+module.exports = { localGitStatus, localTrust, writeModes, WHY, autoRunHeld, said, indexMisses };
