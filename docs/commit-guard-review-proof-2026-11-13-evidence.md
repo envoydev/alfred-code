@@ -122,11 +122,24 @@ own plugin-route install now).
 
 ## Windows leg
 
+`npm run gate -- --legs win --tests scripts/guard-commit-gate.test.js,scripts/commit-receipt.test.js --ref <sha>`, a
+Windows 11 VM on Node 22 as `ci.yml` pins, found stopped and stopped again after each run.
+
+- RED, 704d7532: 123 tests, 6 failed (tests 113, 114, 116, 118, 122 and 123) - the 'review proof 3.12' tests the
+  guard change answers, the same six as on macOS.
+- GREEN, 17df86fa: one failure, 'a receipt write whose output a pipe cut or hid' at 'A12 flow/ only'. The A12 repos
+  were made after five commits, about 6 s on Windows, so their `a.txt` was newer than the receipt the test stamps 2 s
+  ahead of its start, and the gate read the receipt as stale. The guard was right; the test was timing-dependent.
+- 3d8fffb1 makes both A12 repos and their transcripts before any commit. Rerun on it: 123 tests, 0 failed, 0
+  skipped (node v22.23.3, 14m16s).
+
 ## Commits
 
 - 704d7532 - the tests alone, red by design (6 of the 11 'review proof 3.12' tests): the Windows leg's red ref.
 - 17df86fa - the guard change (`stack/hooks/guard-ungated-commit.js` alone), committed after the matrix ran green.
-- The docs commit that carries this file.
+- 3d8fffb1 - the A12 test setup moved before the commits, so the Windows leg reads it the same as macOS; this file.
+- d6f743f9 - the rule in `repo-hooks.md` and the after-3.11.0 note in `update-history.md`.
+- The docs commit that fills the Windows leg above.
 
 Rollback: revert the guard commit listed here; nothing stored changes shape, so no receipt, ledger or transcript
 needs a fix. `guard-ungated-commit` in `ALFRED_CODE_HOOKS_OFF` is the last resort, since it switches off the whole
