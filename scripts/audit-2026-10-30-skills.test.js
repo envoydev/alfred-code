@@ -75,7 +75,7 @@ test('SKF-06: the loops\' consent stamp, the round cap and task-implement\'s clo
 
 test('SKF-07: task-solve\'s Modes paragraph is in the reference read first, on every size', () =>
 {
-    assert.match(flat(read('stack/skills/task-solve/references/full-spec.md')), /\*\*Modes\.\*\* Auto-run and output scoring are session modes/);
+    assert.match(flat(read('stack/skills/task-solve/references/full-spec.md')), /\*\*Modes\.\*\* Auto-run, auto-compact and output scoring are modes/);
     assert.doesNotMatch(read('stack/skills/task-solve/references/step-mechanics.md'), /\*\*Modes\.\*\*/);
     const sites = [registry()['auto-mode-contract'].owner, ...registry()['auto-mode-contract'].sites].map((c) => c.file);
     assert.ok(sites.includes('stack/skills/task-solve/references/full-spec.md'));
@@ -297,15 +297,16 @@ test('SKC-06: a capture part reached only through its router carries no second M
         assert.doesNotMatch(read(`stack/skills/${p}`), /\*\*Modes\.\*\*/, p);
         assert.ok(!sites.includes(`stack/skills/${p}`), `${p}: off the auto-mode-contract sites`);
     }
-    for (const router of ['capture-awareness', 'capture-quality']) assert.match(skill(router), /^\*\*Modes\.\*\* Auto-run and output scoring are session modes/m, `${router} keeps it`);
+    for (const router of ['capture-awareness', 'capture-quality']) assert.match(skill(router), /^\*\*Modes\.\*\* Auto-run, auto-compact and output scoring are modes/m, `${router} keeps it`);
 });
 
 test('SKC-07/08: the usage report names no dead six-seat limit and keeps headroom under its 19,000 cap', () =>
 {
     const raw = skill('capture-usage-report');
     assert.doesNotMatch(raw, /at most six at a time/);
-    // 18,700 until the mode commands (2026-11-12): the shared Modes paragraph grew 165 chars, the cap stays 19,000
-    assert.ok(raw.length <= 18850, `the body sits ${raw.length} chars, under 18,850`);
+    // 18,700 until the mode commands (2026-11-12): the shared Modes paragraph grew 165 chars, the cap stays 19,000;
+    // 18,850 until mode commands v2 stage 3 (2026-11-13): the paragraph names auto-compact and 'until its off', 41 more
+    assert.ok(raw.length <= 18950, `the body sits ${raw.length} chars, under 18,950`);
     assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /The rows only you know, appended after the machine sections: OS, project stack\(s\), analyzer snapshot revision/);
 });
 

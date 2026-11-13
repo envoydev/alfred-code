@@ -40,8 +40,11 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         // (--memory-level), and asking twice would let the two answers disagree.
         if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
         // A seed:false row is never written into a project, so an answer to it would land nowhere.
-        if (row.seed === false) { assert.strictEqual(row.ask, false, `${row.key} is never written, so it is not asked`); }
-        if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
+        // A row with a `flag` (ALFRED_CODE_AUTO_COMPACT since 3.11.0) is the installer's own: the answer goes to that flag,
+        // never a seed (lint check 3626 reads it the same way). A never-seeded row's empty default is 'not set' - the
+        // mode keys (3.11.0), which only a typed command writes.
+        if (row.seed === false && !row.flag) { assert.strictEqual(row.ask, false, `${row.key} is never written, so it is not asked`); }
+        if (row.validate.type === 'enum' && !(row.seed === false && row.default === '')) { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')
         {
             const n = Number(row.default);
