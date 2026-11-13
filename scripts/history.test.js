@@ -325,6 +325,30 @@ test('PF1: openPlan gives a folder plan its dir and its resume text, skips a com
   fs.writeFileSync(path.join(other, PLANS, 'csv', 'status.json'), '{');
   assert.strictEqual(H.openPlan(other, 'feature/x', 5), null, 'an unreadable status.json ends the search');
 });
+// Final review finding 2: a read-only look at a plan (show, check) is no work on it - the record keeps the plan the session
+// works on, as the fresh-session hook's session plan does; resume and the writing verbs (complete included) name it.
+test('PF1: a show or check call naming a plan sets no record plan; resume and complete do', () => {
+  const bash = (command, cwd) => row({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
+  const cases = [
+    ['show', (root) => bash('node .claude/hooks/plan-status.js show --plan csv', root), null],
+    ['show --full', (root) => bash('node .claude/hooks/plan-status.js show --plan csv --full', root), null],
+    ['check', (root) => bash('node .claude/hooks/plan-status.js check --plan csv', root), null],
+    ['a write then a show of another plan', (root) => bash('node .claude/hooks/plan-status.js cursor --plan csv', root) + bash('node .claude/hooks/plan-status.js show --plan other', root), MD],
+    ['resume', (root) => bash('node .claude/hooks/plan-status.js resume --plan csv', root), MD],
+    ['complete', (root) => bash('node .claude/hooks/plan-status.js complete --plan csv', root), MD],
+  ];
+  for (const [name, rows, want] of cases) {
+    const { root } = project();
+    planFolder(root, 'csv');
+    planFolder(root, 'other');
+    const tr = transcriptFile();
+    fs.writeFileSync(tr, rows(root));
+    H.upsert(root, { session_id: 's1', transcript_path: tr, cwd: root });
+    const e = JSON.parse(fs.readFileSync(path.join(H.historyDir(root), 's1.json'), 'utf8'));
+    assert.strictEqual(e.plan, want, name);
+  }
+});
+
 test('PF1: the record keeps a folder plan from its Markdown write or a plan call; status.json, a list call and another file set nothing', () => {
   const bash = (command, cwd) => row({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
   const cases = [

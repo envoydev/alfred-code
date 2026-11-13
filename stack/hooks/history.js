@@ -122,12 +122,13 @@ function digest(rows, entry, root) {
       }
       // PF1 flat plan - until 4.0.0: with no layout.planOf, the pre-3.12 test
       else if (fp && PLAN_FILE.test(String(fp).split(path.sep).join('/'))) entry.plan = planPath(fp, root);
-      // PF1: a call of the writer script names its plan; list and check --all name none
+      // PF1: a call of the writer script names its plan - resume or a writing verb; a read-only look (show, check) is no
+      // work on it, and list and check --all name none
       const cmd = b && b.type === 'tool_use' && /^(Bash|PowerShell|Monitor)$/.test(b.name) && b.input && b.input.command;
       if (typeof cmd === 'string' && cmd.includes('plan-status.js')) {
         const S = planStatus();
         const call = S && S.parseCall(cmd);
-        if (call && call.plan) {
+        if (call && call.plan && (call.verb === 'resume' || (S.VERBS && S.VERBS.write.includes(call.verb)))) {
           const res = S.resolvePlan(call.plan, { cwd: (r && r.cwd) || root, env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
           if (res && res.ok && res.md) entry.plan = planPath(res.md, root);
         }
