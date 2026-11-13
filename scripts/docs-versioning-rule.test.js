@@ -141,3 +141,29 @@ test('the docs-versioning rule: one table, three homes, one answer', async (t) =
         });
     }
 });
+
+// Stage 1 I2 (3.12): the move off local scope reads the stack's own `local` seed past the data root's local-scope ignore.
+test('docsVersioningOnLeavingLocal: the stack\'s local seed takes git past the stack\'s own ignore; a typed value, no repository or a project rule keep it', () =>
+{
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-leave-'));
+    try
+    {
+        execFileSync('git', ['init', '-q'], { cwd: root });
+        fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+        const { DATA_IGNORE_HEAD } = require('../stack/mcp/data-root.js');
+        fs.writeFileSync(path.join(root, '.alfred', '.gitignore'), `${DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n`);
+        const seedRow = require('./install/stamp.js').valueHash('local');
+        const ask = (held, more = {}) => installDocs.docsVersioningOnLeavingLocal({ projectRoot: root, dataRoot: '.alfred', docsPath: '.alfred/docs', held, ...more });
+        const rows = { ALFRED_CODE_DOCS_VERSIONING: seedRow };
+        assert.strictEqual(ask([{ value: 'local', rows }, { value: undefined, rows: {} }]), 'git');
+        assert.strictEqual(ask([{ value: 'local', rows: null }]), 'git', 'no ledger: an install from before it, read as the seed');
+        assert.strictEqual(ask([{ value: 'local', rows: {} }]), null, 'no row for it: the user typed it');
+        assert.strictEqual(ask([{ value: 'local', rows }, { value: 'local', rows: {} }]), null, 'a typed copy in settings.local.json');
+        assert.strictEqual(ask([{ value: 'git', rows }]), null);
+        assert.strictEqual(ask([]), null, 'nothing held: the seed rule answers as before');
+        assert.strictEqual(ask([{ value: 'local', rows }], { git: { inRepo: () => false } }), null, 'no repository keeps local');
+        fs.writeFileSync(path.join(root, '.gitignore'), '.alfred/\n');
+        assert.strictEqual(ask([{ value: 'local', rows }]), null, 'the project\'s own rule keeps the docs out');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

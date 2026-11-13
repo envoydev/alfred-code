@@ -521,7 +521,8 @@ test('W1: nothing is pruned by --print-plan, with the switch at 0 or by an unins
     });
 });
 
-test('W1: a local-scope run leaves a .variables git tracks as it is', POSIX_ONLY, () =>
+// 3.12: the file is the team's, so a local-scope run never writes it - each equal key is named instead, once per run.
+test('W1: a local-scope run leaves a .variables git tracks as it is and names each value equal to the workspace\'s', POSIX_ONLY, () =>
 {
     const git = (work, ...a) => rt.execCommand('git', ['-C', at(work, 'api'), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a]);
     const status = (work) => String(git(work, 'status', '--porcelain', '--untracked-files=all') || '');
@@ -535,6 +536,49 @@ test('W1: a local-scope run leaves a .variables git tracks as it is', POSIX_ONLY
     assert.strictEqual(after.text, before.text, r.outs[2]);
     assert.ok(!/\.variables/.test(after.status), after.status);
     assert.ok(!W1_PRUNED.test(r.outs[2]), r.outs[2]);
+    assert.match(r.outs[2], new RegExp(`^==>\\s+workspace: \\d+ values? equal to the workspace's stay in \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\) - git tracks it, so this run leaves the team's file as it is`, 'm'), r.outs[2]);
+    assert.ok(!new RegExp(`stay in .*${W1_OWN}`).test(r.outs[2]), r.outs[2]);
+});
+
+test('W1 at local scope: an untracked .variables is trimmed, each key named, and the re-run changes nothing', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', args: ['--scope', 'local'] },
+        { at: 'api', args: ['--scope', 'local'], after: w1Join },
+        update('api', { after: w1Read }),
+        update('api', { after: w1Read }),
+    ]);
+    const [before, first, again] = [r.steps[1], r.steps[2], r.steps[3]];
+    assert.strictEqual(before.vars[W1_EQ], '7', before.text);
+    assert.ok(!Object.hasOwn(first.vars, W1_EQ), `${first.text}\n${r.outs[2]}`);
+    assert.strictEqual(first.vars[W1_OWN], '9');
+    assert.deepStrictEqual(first.effective, before.effective, r.outs[2]);
+    assert.match(r.outs[2], new RegExp(`workspace: \\d+ values equal to the workspace's removed from \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\)`), r.outs[2]);
+    assert.deepStrictEqual([again.text, again.env], [first.text, first.env], r.outs[3]);
+    assert.ok(!W1_PRUNED.test(r.outs[3]), r.outs[3]);
+});
+
+// Stage 6 M6 (3.12): a whole hook a joined child's off-list names by hand stays off through its updates - the parent's
+// set no longer adds it back - while a walk's answer (an --add of the hook) still turns it on.
+const OFF = 'ALFRED_CODE_HOOKS_OFF';
+const offOf = (work, rel) => { const l = envOf(work, rel, 'settings.local.json'); return Object.hasOwn(l, OFF) ? l[OFF] : envOf(work, rel)[OFF]; };
+const handOff = (work) => setEnv(work, 'api', 'settings.local.json', { [OFF]: 'docs-session,preferences-session:host' });
+test('M6: an update of a joined child keeps a whole hook its off-list names by hand, a part entry too, and the re-run changes nothing', POSIX_ONLY, () =>
+{
+    const read = (work) => ({ off: offOf(work, 'api'), stamp: stampOf(work, 'api') });
+    const r = scenario([{ at: '.' }, { at: 'api', after: (work) => { join(work, 'api'); } }, update('api', { before: handOff, after: read }), update('api', { after: read })]);
+    const [first, again] = [r.steps[2], r.steps[3]];
+    assert.deepStrictEqual(String(first.off).split(',').sort(), ['docs-session', 'preferences-session:host'], r.outs[2]);
+    assert.match(r.outs[2], /workspace: hook docs-session stays off here - this project's ALFRED_CODE_HOOKS_OFF names it/, r.outs[2]);
+    assert.ok(!/^picked-hooks:.*\bdocs-session\b/m.test(first.stamp), first.stamp);
+    assert.strictEqual(again.off, first.off, r.outs[3]);
+});
+
+test('M6: a walk answer that turns the hand-switched hook on (--add hook) takes it out of the off-list', POSIX_ONLY, () =>
+{
+    const r = scenario([{ at: '.' }, { at: 'api', after: (work) => { join(work, 'api'); } },
+        update('api', { before: handOff, args: ['--add', 'hook docs-session'], after: (work) => offOf(work, 'api') })]);
+    assert.deepStrictEqual(String(r.steps[2]).split(',').filter(Boolean), ['preferences-session:host'], r.outs[2]);
 });
 
 // F10 (the 2026-10-28 workspace run): a child joined BEFORE its install, given the value its workspace already hands it,
@@ -1865,7 +1909,7 @@ test('a release that cannot finish freezes the workspace part', POSIX_ONLY, () =
         update('api', { before: (work) => { markApi(work); fs.writeFileSync(lock(work), 'held\n'); }, after: (work) => { const s = apiState(work); fs.unlinkSync(lock(work)); return s; } }),
         update('api', { after: apiState })]);
     const [before, held, freed] = r.steps.slice(1);
-    assert.match(r.outs[2], /api could not be released \(.*\) - run \/alfred-code:update there/);
+    assert.match(r.outs[2], /api could not be released \(.*\) - the next update retries/);
     assert.strictEqual(JSON.parse(held.rec).parent, '..', 'the parent is still recorded');
     assert.strictEqual(held.links, before.links, 'no link was replaced');
     assert.strictEqual(r.codes[2], 0);

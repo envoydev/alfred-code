@@ -51,7 +51,7 @@ const runtime = require('./runtime.js');
 const { readJson, formatOf, stringifyLike } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
 const { BRAND, marketOf } = require('./brand.js');
-const { envOf } = require('../../stack/hooks/hook-prelude.js');
+const { envOf, hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 const USAGE = `alfred-code - install or update the Claude Code stack into a project.
 
@@ -332,11 +332,30 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // variable seed the stack wrote there goes, or it would read as this machine's override. `seeds` is what THIS run
         // would seed (the catalog default, the docs-versioning rule's answer), every seed the stack SHIPPED included (N2).
         const leavingLocal = Boolean(stampFile) && stampLayer.readStampScope(stampFile) === 'local' && args.scope !== 'local';
+        // Stage 1 I2 (3.12): the stack's own `local` docs seed takes the new scope's default (docs.js
+        // docsVersioningOnLeavingLocal) - read before leaveLocalScope moves anything; an answered --docs-versioning wins.
+        let docsReseed = null;
         if (leavingLocal && !args.printPlan)
         {
             const rows = readJson(path.join(resolved.dir, 'meta', 'environment.json')).env || [];
             const seeds = Object.fromEntries(rows.filter((r) => r.seed !== false).map((r) => [r.key, [r.default, ...(r.former_defaults || [])]]));
-            seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) })];
+            const docsAt = copy.resolveDocsRoot(projectRoot, args.scope);
+            const ledgerOf = (f) => (priorLedger ? (priorLedger.env || {})[f] || {} : null);
+            const varsFile = variables.fileOf(projectRoot, { env: {}, dataRoot: dataInfo.root });
+            if (!args.docsVersioning)
+            {
+                try
+                {
+                    // An unreadable settings.local.json throws here: leaveLocalScope names it, and nothing is reseeded.
+                    const localEnv = ((readJson(path.join(claudeDir, 'settings.local.json')) || {}).env) || {};
+                    docsReseed = docs.docsVersioningOnLeavingLocal({ projectRoot, dataRoot: dataInfo.root, docsPath: docsAt, held: [
+                        { value: variables.read(varsFile).values.ALFRED_CODE_DOCS_VERSIONING, rows: ledgerOf('.variables') },
+                        { value: typeof localEnv === 'object' && !Array.isArray(localEnv) ? localEnv.ALFRED_CODE_DOCS_VERSIONING : undefined, rows: ledgerOf('settings.local.json') }] });
+                }
+                catch (e) { note(`the docs versioning could not be read for the scope move (${e.message}) - it stays as it is`); }
+            }
+            // The local scope's own seed is `local` whatever the rule answers now: it never reads as the user's value.
+            seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: docsAt }), 'local'];
             const migrations = envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json')));
             for (const [key, shippedSeed] of migrations.reseed) (seeds[key] ??= []).push(shippedSeed);
             settings.leaveLocalScope({
@@ -491,6 +510,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                     wsPrep.ignores = workspace.recordWord({ projectRoot, env, dataRoot: wsPrep.fileRoot, parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, drops: userDrops, adds: userAdds, log });
                 const own = wsPrep.ownPrior ?? back.lines.filter((l) => !wsPrep.parentLines.includes(l));
                 const d = workspace.delta({ effective: workspace.effectiveLists({ parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, own }), installed: back.lines });
+                // Stage 6 M6 (3.12): a whole hook this project's own ALFRED_CODE_HOOKS_OFF names (typed by hand - a walk's
+                // drop writes an `ignore` line) stays off: the parent's set no longer adds it back, so the off-list keeps it.
+                // A walk's --add of the hook is the user's newer word and turns it on.
+                const offHere = { ALFRED_CODE_HOOKS_OFF: String(envOf(readView.env || {}, 'HOOKS_OFF') ?? '') };
+                d.add = d.add.filter((l) =>
+                {
+                    if (!l.startsWith('hook ') || userAdds.includes(l) || !hookDisabled(l.slice(5), offHere)) return true;
+                    log(`  workspace: hook ${l.slice(5)} stays off here - this project's ALFRED_CODE_HOOKS_OFF names it`);
+                    return false;
+                });
                 for (const l of d.add) if (!args.add.includes(l)) args.add.push(l);
                 for (const l of d.drop) if (!args.drop.includes(l) && !userAdds.includes(l)) args.drop.push(l);
                 log(`  workspace: from ${wsPrep.parent.rel} - ${d.add.length} added, ${d.drop.length} dropped`);
@@ -628,7 +657,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, agentsDir, rulesDir, homes, child, configDir, mcpFile, home, stampFile,
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
-            market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
+            market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, docsReseed, ledger: priorLedger, legacyUnstamped,
             dataInfo,
             // The MCP plugin and server names the renames left behind (manifest `renamed.mcps`), and the ones this run prunes.
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps), legacyMcpsDue: legacyDue,
@@ -700,7 +729,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
         });
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
-        if (ctx.childEnv && ctx.childEnv.linked && ctx.variablesFile) workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`) });
+        // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
+        // value is named, none removed (3.12).
+        if (ctx.childEnv && ctx.childEnv.linked)
+        {
+            const own = variables.fileOf(projectRoot, { env: {}, dataRoot: ctx.dataInfo.root });
+            if (ctx.variablesFile || (fs.existsSync(own) && variables.tracked(own)))
+                workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile) });
+        }
 
         if (args.action === 'install' || args.action === 'update') for (const l of workspace.ruleNotes({ projectRoot, env })) log(`  ${l}`);
         // The projects below take this run's excludes now, not at their own next run (workspace.js refreshBelow, 2026-11-10).
@@ -2130,8 +2166,9 @@ function installHooksAndRules(ctx)
         // `--memory default|custom`: init's and configure's answer to 'which memory?' (settings.js applyEnv 3e).
         memory: ctx.args.memory ? { value: ctx.args.memory } : null,
         docsVersioning: {
-            value: ctx.args.docsVersioning || ctx.docsVersioningCarry || '',
-            why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git' : '',
+            value: ctx.args.docsVersioning || ctx.docsVersioningCarry || ctx.docsReseed || '',
+            why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git'
+                : ctx.docsReseed ? `the local scope's own seed, reseeded for ${ctx.args.scope} scope` : '',
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }),
         },
         docsPath: ctx.docsPath,

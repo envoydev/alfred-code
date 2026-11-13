@@ -96,6 +96,25 @@ function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child })
         : { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' };
 }
 
+// Stage 1 I2 (3.12): a run that moves an install off `local` scope over the stack's own local docs seed reseeds the new
+// scope's default. `held`: { value, rows } per file that may hold the key (.variables, settings.local.json), `rows` that
+// file's ledger env (null: no ledger, an install from before it). Every value present must be `local` at its ledger hash -
+// any other, or `local` where the ledger holds no such row, is the user's. The answer is `git` in a repository whose own
+// rules do not keep the docs out: the data root's .gitignore still carries the local scope's text then, and casts no vote
+// (keptOutOfGitHere would read it, and the docs a local install never committed, as kept out). Returns 'git' or null.
+function docsVersioningOnLeavingLocal({ projectRoot, dataRoot, docsPath, held = [], git })
+{
+    const KEY = 'ALFRED_CODE_DOCS_VERSIONING';
+    const local = require('./stamp.js').valueHash('local');
+    const present = held.filter((h) => h.value !== undefined);
+    if (!present.length || !present.every((h) => h.value === 'local' && (!h.rows || h.rows[KEY] === local))) return null;
+    const g = git || realGit(projectRoot);
+    if (typeof g.inRepo === 'function' && !g.inRepo()) return null;
+    const rel = String(docsPath || `${dataRoot}/docs`).replace(/\\/g, '/').replace(/\/+$/, '');
+    const verdict = require('./variables.js').ignoreVerdict(projectRoot, dataRoot, rel);
+    return verdict.ignored && !verdict.own ? null : 'git';
+}
+
 function keptOutOfGitHere({ projectRoot, docsPath, g })
 {
     const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
@@ -2076,7 +2095,7 @@ function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, 
 
 module.exports = {
     migrateArchitecture, KEY_RENAMES, respellTargets, nameForeignRefs, ownFileRef, completedKeys, respellKeys,
-    docsVersioningAdvice,
+    docsVersioningAdvice, docsVersioningOnLeavingLocal,
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, ensureQualityNotOwned, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneNestedIgnores, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
