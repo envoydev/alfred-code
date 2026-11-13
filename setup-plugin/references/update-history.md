@@ -1058,3 +1058,10 @@ joined below it - a subtotal and an inventory block per project, the advisory on
 each project the workspace leaves out. Each session's bundle is written in its own project's data root, so a child's
 bundles stay in the child; the root's `SUMMARY.md` lists them all. In a child or a standalone project nothing changes.
 Nothing to do by hand.
+
+## after 3.11.0 - a local-scope run names the workspace's values in a tracked .variables
+
+A local-scope init or update in a joined project whose `.variables` git tracks still leaves that file as it is - it
+is the team's - but now prints one `workspace: <n> values equal to the workspace's stay in ...` line naming each key
+a project-scope run would remove. Report it; nothing changes until a project-scope update or the team removes them.
+A `.variables` git does not track is trimmed at local scope as at project scope.

@@ -557,7 +557,9 @@ function isSeed(key, value, rows, catalogKey = key)
 // before the installer moves them) gets `join-prune: settings` in its stamp, so the next settings pass prunes them there
 // (envPlan) - a 2.12 child that never answered a join keeps every value (the spec's Migration).
 // W1: every run that writes a joined child's `.variables` calls it too, with no `seeds`: a value equal to the chain's leaves.
-function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = false } = {})
+// `write: false` (3.12 - a run that does not write a file git tracks, a local-scope one) removes nothing and names each
+// value that would leave in one line, so the team's file is never written from one machine.
+function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = false, write = true } = {})
 {
     const variables = require('./variables.js');
     const layout = require('../../stack/hooks/layout.js');
@@ -587,10 +589,16 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
         else dropped.push(key);
     }
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+    if (!write)
+    {
+        if (dropped.length) log(`workspace: ${dropped.length} ${dropped.length === 1 ? 'value' : 'values'} equal to the workspace's stay in ${rel} (${dropped.join(', ')})`
+            + ` - git tracks it, so this run leaves the team's file as it is; a project-scope update removes them`);
+        return { dropped: [], own, kept: dropped };
+    }
     const ledgerEnv = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env || {};
     if (seeds && ['settings.json', 'settings.local.json'].some((f) => Object.keys(ledgerEnv[f] || {}).some((k) => layout.VARIABLE_KEYS.includes(k))))
         stamp.markLine(stampFile, 'join-prune', 'settings');
-    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
     if (dropped.length)
     {
         const done = variables.write(file, Object.fromEntries(dropped.map((k) => [k, null])));

@@ -273,7 +273,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the child's own seeds a member answers, and every installer run in a joined child that writes `.variables` (and the
   join) removes each value equal to the one the chain hands it (`pruneChained`: after the stamp, since the run
   rewrites the ledger; a line stays, named, where the project's `settings.json`, the account's or the launch
-  environment holds another value; never a `MEMBER_NEVER` or `ignore env` key); leaving - configure's leave, or the parent's uninstall
+  environment holds another value; never a `MEMBER_NEVER` or `ignore env` key; a run that does not write a `.variables`
+  git tracks - a local-scope one - removes nothing and names each equal key in one line, `write: false`, 3.12); leaving - configure's leave, or the parent's uninstall
   (`releaseChildren`) - first writes every value the child read through the chain into its own `.variables`
   (`keepOnLeave`), so nothing it reads changes. A child's
   `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it

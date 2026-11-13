@@ -521,7 +521,8 @@ test('W1: nothing is pruned by --print-plan, with the switch at 0 or by an unins
     });
 });
 
-test('W1: a local-scope run leaves a .variables git tracks as it is', POSIX_ONLY, () =>
+// 3.12: the file is the team's, so a local-scope run never writes it - each equal key is named instead, once per run.
+test('W1: a local-scope run leaves a .variables git tracks as it is and names each value equal to the workspace\'s', POSIX_ONLY, () =>
 {
     const git = (work, ...a) => rt.execCommand('git', ['-C', at(work, 'api'), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a]);
     const status = (work) => String(git(work, 'status', '--porcelain', '--untracked-files=all') || '');
@@ -535,6 +536,26 @@ test('W1: a local-scope run leaves a .variables git tracks as it is', POSIX_ONLY
     assert.strictEqual(after.text, before.text, r.outs[2]);
     assert.ok(!/\.variables/.test(after.status), after.status);
     assert.ok(!W1_PRUNED.test(r.outs[2]), r.outs[2]);
+    assert.match(r.outs[2], new RegExp(`^==>\\s+workspace: \\d+ values? equal to the workspace's stay in \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\) - git tracks it, so this run leaves the team's file as it is`, 'm'), r.outs[2]);
+    assert.ok(!new RegExp(`stay in .*${W1_OWN}`).test(r.outs[2]), r.outs[2]);
+});
+
+test('W1 at local scope: an untracked .variables is trimmed, each key named, and the re-run changes nothing', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', args: ['--scope', 'local'] },
+        { at: 'api', args: ['--scope', 'local'], after: w1Join },
+        update('api', { after: w1Read }),
+        update('api', { after: w1Read }),
+    ]);
+    const [before, first, again] = [r.steps[1], r.steps[2], r.steps[3]];
+    assert.strictEqual(before.vars[W1_EQ], '7', before.text);
+    assert.ok(!Object.hasOwn(first.vars, W1_EQ), `${first.text}\n${r.outs[2]}`);
+    assert.strictEqual(first.vars[W1_OWN], '9');
+    assert.deepStrictEqual(first.effective, before.effective, r.outs[2]);
+    assert.match(r.outs[2], new RegExp(`workspace: \\d+ values equal to the workspace's removed from \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\)`), r.outs[2]);
+    assert.deepStrictEqual([again.text, again.env], [first.text, first.env], r.outs[3]);
+    assert.ok(!W1_PRUNED.test(r.outs[3]), r.outs[3]);
 });
 
 // F10 (the 2026-10-28 workspace run): a child joined BEFORE its install, given the value its workspace already hands it,

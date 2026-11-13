@@ -700,7 +700,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
         });
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
-        if (ctx.childEnv && ctx.childEnv.linked && ctx.variablesFile) workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`) });
+        // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
+        // value is named, none removed (3.12).
+        if (ctx.childEnv && ctx.childEnv.linked)
+        {
+            const own = variables.fileOf(projectRoot, { env: {}, dataRoot: ctx.dataInfo.root });
+            if (ctx.variablesFile || (fs.existsSync(own) && variables.tracked(own)))
+                workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile) });
+        }
 
         if (args.action === 'install' || args.action === 'update') for (const l of workspace.ruleNotes({ projectRoot, env })) log(`  ${l}`);
         // The projects below take this run's excludes now, not at their own next run (workspace.js refreshBelow, 2026-11-10).
