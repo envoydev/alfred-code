@@ -3238,6 +3238,23 @@ test('member: a garbage -m- state file and a payload with no session id do not t
   } finally { r.rm(); }
 });
 
+// Stage 6 M7 asked for no state file on a payload with no session id. Kept by ruling: the hook's own next call reads
+// that record back, and it is what ends a hold - with no record every id-less change would be held again.
+test('member: an id-less payload keeps its none record, and that record is what ends its hold', () => {
+  const r = joined();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-none-'));
+  const t = { TMPDIR: tmp, TMP: tmp, TEMP: tmp };
+  try {
+    const none = { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'api/src/a.ts' } };
+    const kept = () => fs.readdirSync(tmp).filter((f) => f.startsWith('docs-session-none'));
+    assert.ok(denied(r.run(none, t)));
+    assert.ok(kept().includes(`docs-session-none-m-${mKey('api')}.json`), kept().join(' '));
+    assert.ok(!denied(r.run(none, t)));
+    for (const f of kept()) fs.unlinkSync(path.join(tmp, f));
+    assert.ok(denied(r.run(none, t)));
+  } finally { r.rm(); fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 test('member: a root shell call in a workspace replies as it does with the workspace off', () => {
   const r = joined();
   try {
