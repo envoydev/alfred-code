@@ -227,7 +227,9 @@ test('dirs: a project past 200 characters that is its own git top is found where
         const rel = longRel(t, 'base', n);
         if (!rel) { ctx.skip(`the temp dir is too deep for a ${n}-character name`); return; }
         fs.mkdirSync(t(rel), { recursive: true });
-        execFileSync('git', ['init', '-q'], { cwd: t(rel), env: gitEnv(t.home) });
+        // A `.git` folder, not `git init`: Git for Windows cannot stat a folder past MAX_PATH (gate 0dfbdd3a), and
+        // gitTopOf reads the folder with fs alone.
+        fs.mkdirSync(path.join(t(rel), '.git'));
         fs.mkdirSync(path.join(t(rel), '.claude'), { recursive: true });
         fs.writeFileSync(path.join(t(rel), '.claude', 'alfred-code.stamp'), 'sha: x\n');
         assert.strictEqual(encode(t(rel)).length, n);
