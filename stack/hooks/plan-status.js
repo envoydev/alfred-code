@@ -605,6 +605,134 @@ function verbComplete(plan, ctx)
     }, ctx);
 }
 
+// ---- the task verbs (spec 3's rows; the plan's Task 5) ----
+
+const minutesBetween = (from, to) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60000));
+// `Tasks: <done> of <total> done - task <id> <word>`, and for done its estimate and the minutes taken.
+function taskLine(st, id, word)
+{
+    const t = st.tasks.find((x) => x.id === id);
+    let suffix = ` - task ${id} ${word}`;
+    if (t && word === 'done')
+    {
+        if (t.estimateMin !== null) suffix += `, ${t.estimateMin}m estimated`;
+        if (t.startedAt && t.doneAt) suffix += `, ${minutesBetween(t.startedAt, t.doneAt)}m taken`;
+    }
+    return tasksLine(st, suffix);
+}
+
+// A task verb: the approval rule, then the verb's own move on the task --task names.
+function taskVerb(plan, ctx, verb, move)
+{
+    const id = ctx.flags.task;
+    return mutate(plan, verb, (status, c) =>
+    {
+        if (status.approvedAt === null) return { refused: 'the plan is not approved' };
+        const t = status.tasks.find((x) => x.id === id);
+        const r = move(t, c, status);
+        if (r && r.refused) return r;
+        return { lines: (st) => [taskLine(st, id, st.tasks.find((x) => x.id === id).status), ...(r && r.warn ? r.warn : [])] };
+    }, ctx);
+}
+
+function verbStart(plan, ctx)
+{
+    const session = ctx.env.CLAUDE_CODE_SESSION_ID || null;
+    return taskVerb(plan, ctx, 'start', (t, c) =>
+    {
+        if (t.status === 'done') return { refused: `task ${t.id} is done - reopen it first` };
+        if (t.status === 'in_progress')
+            return { warn: t.by && session && t.by !== session ? [`!! task ${t.id} was started by another session (${t.by.slice(0, 8)})`] : [] };
+        t.status = 'in_progress';
+        if (t.startedAt === null) t.startedAt = c.at;
+        t.by = session;
+        return null;
+    });
+}
+
+function verbDone(plan, ctx)
+{
+    const { result } = labelled(ctx.stdin, { result: CAPS.result });
+    if (result === undefined) usage('done needs a result: line');
+    return taskVerb(plan, ctx, 'done', (t, c) =>
+    {
+        if (t.status === 'done') return null;        // nothing to change: the stored result is kept
+        if (t.status === 'todo' || t.status === 'failed') return { refused: `task ${t.id} is ${t.status} - start it first` };
+        Object.assign(t, { status: 'done', doneAt: c.at, result });
+        return null;
+    });
+}
+
+function verbBlock(plan, ctx)
+{
+    const { needs } = labelled(ctx.stdin, { needs: CAPS.field });
+    return taskVerb(plan, ctx, 'block', (t) =>
+    {
+        if (t.status !== 'in_progress') return { refused: `task ${t.id} is not in_progress` };
+        Object.assign(t, { status: 'blocked', needs: needs || null });
+        return null;
+    });
+}
+
+function verbFail(plan, ctx)
+{
+    const { why } = labelled(ctx.stdin, { why: CAPS.field });
+    return taskVerb(plan, ctx, 'fail', (t) =>
+    {
+        if (t.status !== 'in_progress' && t.status !== 'blocked') return { refused: `task ${t.id} is not in_progress or blocked` };
+        Object.assign(t, { status: 'failed', why: why || null });
+        return null;
+    });
+}
+
+function verbReopen(plan, ctx)
+{
+    const { why } = labelled(ctx.stdin, { why: CAPS.field });
+    return taskVerb(plan, ctx, 'reopen', (t) =>
+    {
+        if (t.status !== 'done') return { refused: `task ${t.id} is not done` };
+        Object.assign(t, { status: 'in_progress', doneAt: null, why: why || null });
+        return null;
+    });
+}
+
+function verbDrop(plan, ctx)
+{
+    const { why } = labelled(ctx.stdin, { why: CAPS.field });
+    const id = ctx.flags.task;
+    return mutate(plan, 'drop', (status, c) =>
+    {
+        if (status.approvedAt === null) return { refused: 'the plan is not approved' };
+        const t = status.tasks.find((x) => x.id === id);
+        if (t.status !== 'todo' && t.status !== 'failed') return { refused: `task ${id} is not todo or failed` };
+        status.tasks = status.tasks.filter((x) => x !== t);
+        status.dropped.push({ id, title: t.title, at: c.at, why: why || null });
+        status.retiredIds.push(id);
+        return { lines: (st) => [tasksLine(st, ` - task ${id} dropped`)] };
+    }, ctx);
+}
+
+const ADDED_HEADING_RE = /^### Task - (.+)$/;
+function verbAddTask(plan, ctx)
+{
+    const text = String(ctx.stdin).replace(/\r/g, '').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
+    const heading = ADDED_HEADING_RE.exec(text.split('\n')[0] || '');
+    return mutate(plan, 'add-task', (status) =>
+    {
+        if (status.approvedAt === null) return { refused: 'the plan is not approved' };
+        if (!heading) return { refused: "the heading is '### Task - <title>' - the script gives the id" };
+        const parsed = parseCards(text.replace(/^### Task - /, '### Task 1 - '));
+        const estimateMin = parsed.cards.length ? parsed.cards[0].estimateMin : null;
+        if (estimateMin === null && status.tasks.some((t) => t.estimateMin !== null)) return { refused: 'the other tasks carry an estimate and this card has none' };
+        const used = [...status.tasks.map((t) => t.id), ...status.retiredIds, ...status.dropped.map((d) => d.id)].map(Number);
+        const id = String(used.length ? Math.max(...used) + 1 : 1);
+        const added = { ...newTask(id, heading[1].trim(), estimateMin), card: cut(text, CAPS.card) };
+        const after = ctx.flags.after === undefined ? -1 : status.tasks.findIndex((t) => t.id === ctx.flags.after);
+        status.tasks.splice(after < 0 ? status.tasks.length : after + 1, 0, added);
+        return { lines: (st) => [tasksLine(st, ` - task ${id} added`)] };
+    }, ctx);
+}
+
 // Every problem of one plan's status.json: null when it has none, or [] when absent.
 function problemsOf(dir)
 {
@@ -681,6 +809,13 @@ const HANDLERS = {
     deviate: (ctx) => verbDeviate(ctx.plan, ctx),
     conformance: (ctx) => verbConformance(ctx.plan, ctx),
     complete: (ctx) => verbComplete(ctx.plan, ctx),
+    start: (ctx) => verbStart(ctx.plan, ctx),
+    done: (ctx) => verbDone(ctx.plan, ctx),
+    block: (ctx) => verbBlock(ctx.plan, ctx),
+    fail: (ctx) => verbFail(ctx.plan, ctx),
+    reopen: (ctx) => verbReopen(ctx.plan, ctx),
+    'add-task': (ctx) => verbAddTask(ctx.plan, ctx),
+    drop: (ctx) => verbDrop(ctx.plan, ctx),
     check: (ctx) => verbCheck(ctx),
     list: (ctx) => verbList(ctx),
 };

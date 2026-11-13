@@ -482,3 +482,105 @@ test('complete: needs the approval, a suite, no task in flight and every task do
     ok(call(not, ['sync', '--plan', 'csv']));
     refused(call(not, ['complete', '--plan', 'csv', '--with-open'], SUITE), 2, /complete refused: the plan is not approved/);
 });
+
+const CARD = '### Task - Rate limit the export\n\n- files: src/limit.cs\n- estimate: 15m\n';
+const task = (p, id) => read(p).tasks.find((t) => t.id === id);
+
+test('start, done, block, fail, reopen: each move, its fields and its lines', () =>
+{
+    const p = approved();
+    const me = { CLAUDE_CODE_SESSION_ID: 'aaaaaaaa-1111-4222-8333-444444444444' };
+    const c = (verb, id, stdin = '', at = T0, env = me) => call(p, [verb, '--plan', 'csv', '--task', id], stdin, at, env);
+    assert.deepStrictEqual(lines(ok(c('start', '1', '', '2026-11-13T10:06:00Z'))), [`plan-status: start ok - plan csv (${REL})`, 'Tasks: 0 of 3 done - task 1 in_progress', 'Resume: next task 1']);
+    assert.deepStrictEqual([task(p, '1').status, task(p, '1').startedAt, task(p, '1').by], ['in_progress', '2026-11-13T10:06Z', me.CLAUDE_CODE_SESSION_ID]);
+    assert.strictEqual(lines(untouched(p, () => ok(c('start', '1', '', '2026-11-13T10:07:00Z'))))[0], `plan-status: start - nothing to change - plan csv (${REL})`);
+    const foreign = untouched(p, () => ok(c('start', '1', '', T0, { CLAUDE_CODE_SESSION_ID: 'bbbbbbbb-2222' })));
+    assert.ok(lines(foreign).includes('!! task 1 was started by another session (aaaaaaaa)'));
+    assert.ok(!ok(c('start', '1', '', T0, {})).out.includes('!!'), 'a call with no session id cannot tell');
+    const r = ok(c('done', '1', 'result: dotnet test - 4 passed, 0 failed\n  cost $HOME `id`\nresult: quoted\n', '2026-11-13T10:37:00Z'));
+    assert.deepStrictEqual(lines(r).slice(1), ['Tasks: 1 of 3 done - task 1 done, 25m estimated, 31m taken', 'Resume: next task 2']);
+    assert.deepStrictEqual([task(p, '1').status, task(p, '1').doneAt, task(p, '1').result], ['done', '2026-11-13T10:37Z', 'dotnet test - 4 passed, 0 failed\n  cost $HOME `id`\nresult: quoted']);
+    untouched(p, () => ok(c('done', '1', 'result: another\n'), /done - nothing to change/));
+    refused(c('start', '1'), 2, /^plan-status: start refused: task 1 is done - reopen it first\n$/);
+    ok(c('reopen', '1', 'why: a 500 on an empty set\n', '2026-11-13T11:00:00Z'));
+    assert.deepStrictEqual([task(p, '1').status, task(p, '1').startedAt, task(p, '1').doneAt, task(p, '1').why, read(p).resume.next], ['in_progress', '2026-11-13T10:06Z', null, 'a 500 on an empty set', '1']);
+    ok(c('block', '1', 'needs: the staging database\n'));
+    assert.deepStrictEqual([task(p, '1').status, task(p, '1').needs], ['blocked', 'the staging database']);
+    ok(c('done', '1', 'result: r2\n', '2026-11-13T11:30:00Z'));       // the wait is over: blocked goes straight to done
+    ok(c('start', '2', '', '2026-11-13T11:31:00Z'));
+    ok(c('fail', '2', 'why: the SDK lacks the call\n'));
+    assert.deepStrictEqual([task(p, '2').status, task(p, '2').why], ['failed', 'the SDK lacks the call']);
+    refused(c('done', '2', 'result: r\n'), 2, /^plan-status: done refused: task 2 is failed - start it first\n$/);
+    ok(c('start', '2', '', '2026-11-13T12:00:00Z'));
+    assert.strictEqual(task(p, '2').startedAt, '2026-11-13T11:31Z', 'startedAt is written once');
+    refused(c('done', '3', 'result: r\n'), 2, /done refused: task 3 is todo - start it first/);
+    refused(c('block', '3', 'needs: n\n'), 2, /block refused: task 3 is not in_progress/);
+    refused(c('fail', '3', 'why: w\n'), 2, /fail refused: task 3 is not in_progress or blocked/);
+    refused(c('reopen', '3', 'why: w\n'), 2, /reopen refused: task 3 is not done/);
+    refused(c('done', '2', ''), 2, /^plan-status: done needs a result: line\n$/);
+    refused(c('start', '9'), 2, /^plan-status: start refused: unknown task 9\n$/);
+    refused(call(p, ['start', '--plan', 'csv']), 2, /^plan-status: start needs --task <id>\n$/);
+    ok(c('done', '2', `result: ${'r'.repeat(2001)}\n`));
+    assert.deepStrictEqual([task(p, '2').result.length, task(p, '2').result.endsWith('r...')], [2000, true]);
+});
+
+test('done: minutes taken never negative; with no estimate the line carries none', () =>
+{
+    const p = approved({ md: markdown([[1, 'A', null]]) });
+    ok(call(p, ['start', '--plan', 'csv', '--task', '1'], '', '2026-11-13T10:30:00Z'));
+    assert.deepStrictEqual(lines(ok(call(p, ['done', '--plan', 'csv', '--task', '1'], 'result: r\n', '2026-11-13T10:10:00Z'))).slice(1), ['Tasks: 1 of 1 done - task 1 done, 0m taken', 'Resume: no task left']);
+});
+
+test('task verbs wait for the approval and stop while the design is reopened', () =>
+{
+    const p = plan();
+    ok(call(p, ['sync', '--plan', 'csv']));
+    refused(call(p, ['start', '--plan', 'csv', '--task', '1']), 2, /^plan-status: start refused: the plan is not approved\n$/);
+    refused(call(p, ['add-task', '--plan', 'csv'], CARD), 2, /^plan-status: add-task refused: the plan is not approved\n$/);
+    ok(call(p, ['approve', '--plan', 'csv', '--mode', 'session']));
+    ok(call(p, ['redesign', '--plan', 'csv'], 'why: x\n'));
+    for (const [verb, stdin] of [['start', ''], ['done', 'result: r\n'], ['block', 'needs: n\n'], ['fail', 'why: w\n'], ['reopen', 'why: w\n'], ['drop', 'why: w\n']])
+        untouched(p, () => refused(call(p, [verb, '--plan', 'csv', '--task', '1'], stdin), 2, new RegExp(`^plan-status: ${verb} refused: approve the design again first\\n$`)));
+    untouched(p, () => refused(call(p, ['add-task', '--plan', 'csv'], CARD), 2, /add-task refused: approve the design again first/));
+});
+
+test('add-task and drop: the next free id, a retired id never reused, the place', () =>
+{
+    const p = approved();
+    assert.strictEqual(lines(ok(call(p, ['add-task', '--plan', 'csv', '--after', '1'], `\n${CARD}\n\n`)))[1], 'Tasks: 0 of 4 done - task 4 added');
+    assert.deepStrictEqual(read(p).tasks.map((t) => t.id), ['1', '4', '2', '3']);
+    assert.deepStrictEqual([task(p, '4').title, task(p, '4').status, task(p, '4').estimateMin, task(p, '4').card, task(p, '4').startedAt], ['Rate limit the export', 'todo', 15, CARD.trimEnd(), null]);
+    assert.strictEqual(lines(ok(call(p, ['drop', '--plan', 'csv', '--task', '4'], 'why: folded into task 2\n', '2026-11-13T10:25:00Z')))[1], 'Tasks: 0 of 3 done - task 4 dropped');
+    const s = read(p);
+    assert.deepStrictEqual([s.tasks.map((t) => t.id), s.retiredIds, s.dropped], [['1', '2', '3'], ['4'], [{ id: '4', title: 'Rate limit the export', at: '2026-11-13T10:25Z', why: 'folded into task 2' }]]);
+    ok(call(p, ['add-task', '--plan', 'csv'], CARD));
+    assert.deepStrictEqual(read(p).tasks.map((t) => t.id), ['1', '2', '3', '5'], 'last, and never id 4 again');
+    untouched(p, () => refused(call(p, ['add-task', '--plan', 'csv'], '### Task - No estimate\n\n- files: a\n'), 2, /^plan-status: add-task refused: the other tasks carry an estimate and this card has none\n$/));
+    untouched(p, () => refused(call(p, ['add-task', '--plan', 'csv'], '### Task 7 - Numbered\n- estimate: 5m\n'), 2, /add-task refused: the heading is '### Task - <title>' - the script gives the id/));
+    untouched(p, () => refused(call(p, ['add-task', '--plan', 'csv', '--after', '9'], CARD), 2, /add-task refused: unknown task 9/));
+    ok(call(p, ['start', '--plan', 'csv', '--task', '1']));
+    untouched(p, () => refused(call(p, ['drop', '--plan', 'csv', '--task', '1'], 'why: w\n'), 2, /^plan-status: drop refused: task 1 is not todo or failed\n$/));
+    ok(call(p, ['add-task', '--plan', 'csv'], `### Task - Long\n- estimate: 5m\n${'x'.repeat(7000)}\n`));
+    assert.deepStrictEqual([task(p, '6').card.length, task(p, '6').card.endsWith('...')], [6000, true]);
+    const bare = approved({ md: markdown([[1, 'A', null]]) });
+    ok(call(bare, ['add-task', '--plan', 'csv'], '### Task - No estimate anywhere\n'));
+    assert.strictEqual(task(bare, '2').estimateMin, null);
+});
+
+test('sync and approve after a reopen: an added task stays as it was, after the task it followed; a card may not take its id', () =>
+{
+    const p = approved();
+    ok(call(p, ['add-task', '--plan', 'csv', '--after', '1'], CARD));                       // 1, 4, 2, 3
+    edit(p, (s) => { Object.assign(s.tasks[3], { status: 'done', startedAt: '2026-11-13T10:06Z', doneAt: '2026-11-13T10:30Z', result: 'r' }); });
+    const before = task(p, '4');
+    ok(call(p, ['redesign', '--plan', 'csv'], 'why: the order was wrong\n'));
+    fs.writeFileSync(mdOf(p), markdown([[5, 'New first', 5], [1, 'Export projection', 25]]));   // cards 2 and 3 are gone
+    ok(call(p, ['approve', '--plan', 'csv', '--mode', 'session'], '', '2026-11-13T11:00:00Z'));
+    const s = read(p);
+    assert.deepStrictEqual(s.tasks.map((t) => t.id), ['5', '1', '4', '3'], 'the cards in card order; 4 after 1; done task 3 after the task it followed');
+    assert.deepStrictEqual([task(p, '4'), s.retiredIds, s.dropped.map((d) => d.id)], [before, ['2'], ['2']]);
+    ok(call(p, ['redesign', '--plan', 'csv'], 'why: again\n'));
+    fs.writeFileSync(mdOf(p), markdown([[5, 'New first', 5], [1, 'Export projection', 25], [4, 'Clash', 5]]));
+    untouched(p, () => refused(call(p, ['sync', '--plan', 'csv']), 2, /^plan-status: sync refused: task 4 - an added task holds this id\n$/));
+    untouched(p, () => refused(call(p, ['approve', '--plan', 'csv', '--mode', 'session']), 2, /^plan-status: approve refused: task 4 - an added task holds this id\n$/));
+});
