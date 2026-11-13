@@ -1873,3 +1873,27 @@ test('I3: find -path ... \\( -name -o -name \\) | xargs grep <a dotenv-naming pa
   assert.strictEqual(pre(shapes[0], { fx, ...CORE }).status, REFUSED, 'core: the bare dotenv name as a pattern');
   assert.strictEqual(pre(shapes[1], { fx, ...CORE }).status, 0, 'core: a pattern holding the name in a longer word');
 });
+
+// SG1-F1 (seen 2026-11-10 on the 3.9.2 guard): a heredoc wrote a node script that hands the environment whole to a child
+// (`Object.assign({}, <env>, {...})`, `{ env: <env> }`) and ran it; the old env judge replaced the whole command with a
+// masked env listing, so the script was never written or run. Swap 1 removed that judge and every rewrite: the command
+// runs as written on both routes, and the masker answers nothing over output holding no credential.
+test('SG1-F1: a heredoc-written script that passes the environment to a child runs as written', () => {
+  const fx = coreFixture();
+  const node = ["cat > probe-f1.js <<'EOF'", "const { spawnSync } = require('child_process');",
+    "const childEnv = Object.assign({}, process.env, { PROBE_FLAG: '1' });",
+    "const a = spawnSync(process.execPath, ['-e', 'console.log(process.env.PROBE_FLAG)'], { env: childEnv, encoding: 'utf8' });",
+    "const b = spawnSync(process.execPath, ['-e', 'console.log(1)'], { env: process.env, encoding: 'utf8' });",
+    "console.log('flag=' + a.stdout.trim() + ' ' + b.stdout.trim());", 'EOF', 'node probe-f1.js'].join('\n');
+  const py = ["python3 - <<'EOF'", 'import os, subprocess', "env = dict(os.environ, PROBE_FLAG='1')",
+    "subprocess.run(['true'], env=env)", 'EOF'].join('\n');
+  for (const command of [node, py]) {
+    for (const opts of [{}, CORE]) {
+      const r = pre(command, { fx, ...opts });
+      assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], `${JSON.stringify(opts)}: ${command.split('\n')[0]}`);
+    }
+  }
+  // what the script printed comes back as printed: no credential in it, so the masker answers nothing
+  const after = masked(node, { response: said('flag=1 1\n') });
+  assert.deepStrictEqual([after.status, after.out], [0, ''], 'the masker leaves the output alone');
+});
