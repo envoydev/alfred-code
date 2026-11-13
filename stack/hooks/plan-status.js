@@ -382,18 +382,24 @@ function takeLock(plan)
 {
     const lock = path.join(plan.dir, 'status.json.lock');
     const start = Date.now();
+    let denied = 0;
     for (;;)
     {
         try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); return lock; }
         catch (e)
         {
             if (!e || !HELD_CODES.has(e.code)) throw new Refusal(4, `cannot write in ${plan.rel}: ${e && e.code || e}`);
-            let age = 0;
+            let age = null;
             try { age = Date.now() - fs.statSync(lock).mtimeMs; }
-            catch { continue; }
-            if (age > LOCK_STALE_MS) { removeQuiet(lock); continue; }
+            catch
+            {
+                // No lock on disk: EEXIST means it was just let go, so the create runs again; EPERM or EBUSY twice
+                // with no lock is the folder refusing the write (a deny-write ACL, an immutable folder) - exit 4.
+                if (e.code !== 'EEXIST' && ++denied >= 2) throw new Refusal(4, `cannot write in ${plan.rel}: ${e.code}`);
+            }
+            if (age !== null && age > LOCK_STALE_MS) { removeQuiet(lock); continue; }
             if (Date.now() - start >= LOCK_WAIT_MS) throw new Refusal(4, 'status.json.lock is held - run the call again');
-            sleep(LOCK_RETRY_MS);
+            if (age !== null || e.code !== 'EEXIST') sleep(LOCK_RETRY_MS);
         }
     }
 }
@@ -442,7 +448,10 @@ function mutate(plan, verb, change, ctx)
         after.updatedAt = ctx.at;
         const problems = validate(after);
         if (problems.length) throw new Refusal(4, `the result is not a valid status file: ${problems[0]}`);
-        try { writeWhole(path.join(plan.dir, 'status.json'), `${JSON.stringify(after, null, 2)}\n`); }
+        const text = `${JSON.stringify(after, null, 2)}\n`;
+        // readStatus refuses a file over 1 MB, so writing one would leave a file no verb can read: the last good one stays.
+        if (Buffer.byteLength(text) > MAX_BYTES) refuse('status.json would pass 1 MB - complete this plan and start a new one for the rest');
+        try { writeWhole(path.join(plan.dir, 'status.json'), text); }
         catch (e) { throw new Refusal(4, `cannot write in ${plan.rel}: ${e && e.code || e}`); }
         return { code: 0, out: [`plan-status: ${verb} ok - plan ${plan.id} (${plan.rel})`, ...linesOf(after), `Resume: ${resumeText(after)}`] };
     }
@@ -490,7 +499,8 @@ function verbGate(plan, ctx)
     {
         const missing = GATE_LABELS.find((l) => !(l in got));
         if (missing) return { refused: `no ${missing}: line` };
-        status.gate = { at: c.at, verdict: got.Gated, block: cut(text, CAPS.gate) };
+        // The verdict is the Gated: line's own value; anything after it (a blank line, a next step) stays in the block.
+        status.gate = { at: c.at, verdict: cut(got.Gated.split('\n')[0].trim(), CAPS.field), block: cut(text, CAPS.gate) };
         return { lines: (st) => [`Gated: ${fold(st.gate.verdict)}`] };
     }, ctx);
 }
@@ -1020,9 +1030,18 @@ function run(argv, { now = () => new Date(), stdin = '', cwd = process.cwd(), en
     }
 }
 
+// What the CLI hands a verb as stdin: a pipe or a file for a verb that reads one, never a terminal - a read of a
+// terminal waits for Ctrl-D, and approve --mode or block are valid with nothing piped.
+function stdinFor(argv, { isTTY, read })
+{
+    if (!STDIN_VERBS.includes(argv[0]) || isTTY) return '';
+    try { return read(); }
+    catch { return ''; }
+}
+
 module.exports = {
     SCHEMA, MAX_BYTES, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS, VERBS,
-    stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run, parseCall,
+    stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run, parseCall, stdinFor,
     // for the verbs a later task adds
     mutate, syncTasks, HANDLERS, Refusal, tasksLine, newTask, labelled, cut, usage,
 };
@@ -1030,8 +1049,7 @@ module.exports = {
 if (require.main === module)
 {
     const argv = process.argv.slice(2);
-    let stdin = '';
-    if (STDIN_VERBS.includes(argv[0])) { try { stdin = fs.readFileSync(0, 'utf8'); } catch { /* no stdin */ } }
+    const stdin = stdinFor(argv, { isTTY: process.stdin.isTTY, read: () => fs.readFileSync(0, 'utf8') });
     try { layout.applyVariables(process.env.CLAUDE_PROJECT_DIR || layout.projectRootOf(process.cwd()).checkout); }
     catch { /* the defaults stand */ }
     const r = run(argv, { stdin });

@@ -707,3 +707,71 @@ test('race: two processes, fifty writes each - the file parses and holds all hun
     assert.deepStrictEqual(s.decisions.map((d) => d.choice).sort(), want.sort());
     assert.deepStrictEqual(fs.readdirSync(p.dir).sort(), ['csv.md', 'status.json'], 'no lock and no temp file left');
 });
+
+// Review fix pass (PF1): a folder that refuses the lock file with EPERM or EBUSY and holds no lock is exit 4, never a spin.
+test('lock: a create refused with EPERM or EBUSY and no lock on disk is exit 4 within the wait, not a spin', () =>
+{
+    for (const code of ['EPERM', 'EBUSY'])
+    {
+        const p = plan();
+        const script = `const fs = require('node:fs'); const real = fs.writeFileSync;
+            fs.writeFileSync = (f, ...rest) => { if (String(f).endsWith('status.json.lock')) { const e = new Error('${code}'); e.code = '${code}'; throw e; } return real(f, ...rest); };
+            const P = require(${JSON.stringify(ENGINE)});
+            const r = P.run(['sync', '--plan', 'csv'], { cwd: ${JSON.stringify(p.root)}, stdin: '', env: { CLAUDE_PROJECT_DIR: ${JSON.stringify(p.root)} } });
+            process.stdout.write(JSON.stringify(r));`;
+        const started = Date.now();
+        const c = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 6000 });
+        assert.strictEqual(c.signal, null, `${code}: the call ended on its own (${Date.now() - started} ms)`);
+        const r = JSON.parse(c.stdout);
+        refused(r, 4, new RegExp(`^plan-status: cannot write in \\.alfred/docs/work/plans/csv/: ${code}\\n$`));
+        assert.ok(Date.now() - started < 4000, `${code}: inside the wait`);
+        assert.strictEqual(fs.existsSync(p.file), false);
+    }
+});
+
+// Review fix pass (PF1): the engine never writes a file its own read refuses; at 1 MB it writes, one byte over it refuses.
+test('size: a write that would land past 1 MB is refused at exit 2 and the file stays the last good one; at 1 MB it lands', () =>
+{
+    const pad = (p, n) => seed(p, (s) => { s.pad = 'x'.repeat(n); });
+    const step = (p) => call(p, ['decide', '--plan', 'csv'], 'choice: c\nprecedent: p\n');
+    const probe = plan();
+    pad(probe, 0);
+    const before = fs.statSync(probe.file).size;
+    ok(step(probe));
+    const delta = fs.statSync(probe.file).size - before;
+    const at = plan();
+    pad(at, P.MAX_BYTES - before - delta);
+    ok(step(at));
+    assert.strictEqual(fs.statSync(at.file).size, P.MAX_BYTES, 'exactly 1 MB');
+    assert.strictEqual(P.readStatus(at.dir).ok, true, 'and still readable');
+    const over = plan();
+    pad(over, P.MAX_BYTES - before - delta + 1);
+    untouched(over, () => refused(step(over), 2, /^plan-status: decide refused: status\.json would pass 1 MB - /));
+    assert.strictEqual(P.readStatus(over.dir).ok, true);
+});
+
+// Review fix pass (PF1): the verdict is the first line of the Gated: value, cut at the field cap; the block keeps the rest.
+test('gate: the verdict is the first line after Gated:, cut at the field cap; text after it stays in the block alone', () =>
+{
+    const p = plan();
+    ok(call(p, ['sync', '--plan', 'csv']));
+    const text = `${GATE}\n\nApprove the plan to start the build.`;
+    assert.deepStrictEqual(lines(ok(call(p, ['gate', '--plan', 'csv'], text))).slice(1, 2), ['Gated: passed']);
+    assert.deepStrictEqual([read(p).gate.verdict, read(p).gate.block], ['passed', text]);
+    ok(call(p, ['gate', '--plan', 'csv'], GATE.replace('Gated:     passed', `Gated: ${'y'.repeat(1500)}`)));
+    assert.deepStrictEqual([read(p).gate.verdict.length, read(p).gate.verdict.endsWith('...')], [P.CAPS.field, true]);
+});
+
+// Review fix pass (PF1): a terminal on stdin is not read - approve --mode and block are valid with nothing piped. A pipe
+// cannot stand in for the terminal (a read of an open pipe throws EAGAIN rather than waits), so the choice is pinned here.
+test('stdinFor: a stdin verb reads a pipe or a file, never a terminal; any other verb reads nothing', () =>
+{
+    let reads = 0;
+    const read = () => { reads += 1; return 'note: x\n'; };
+    assert.strictEqual(P.stdinFor(['approve', '--mode', 'session'], { isTTY: true, read }), '');
+    assert.strictEqual(P.stdinFor(['block', '--task', '2'], { isTTY: true, read }), '');
+    assert.strictEqual(P.stdinFor(['show'], { isTTY: false, read }), '');
+    assert.strictEqual(reads, 0, 'neither a terminal nor a reading verb was read');
+    assert.strictEqual(P.stdinFor(['decide'], { isTTY: false, read }), 'note: x\n');
+    assert.strictEqual(P.stdinFor(['decide'], { isTTY: undefined, read: () => { throw Object.assign(new Error('again'), { code: 'EAGAIN' }); } }), '');
+});
