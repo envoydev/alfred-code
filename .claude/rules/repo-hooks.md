@@ -15,7 +15,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
-  rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
+  rulings`); `plan-status.js` (PF1, 3.12) is copied the same way, since the plan skills write a plan folder's
+  `status.json` through `node .claude/hooks/plan-status.js`. The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
   gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 70 (10 for each guard a dispatcher runs), from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches in exec form - `"command": "node"`, `"args":

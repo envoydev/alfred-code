@@ -64,9 +64,10 @@ function awarenessDocs(projectRoot, docsPath, { agentsOnly = false } = {})
 }
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = { test: (name) => GENERATED_FILES.has(name) };
-// docs.js / memory.js (retired) / handoff.js / layout.js / workspace-file.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js / forge.js are ENGINES, hook-prelude.js the shared gate
-// module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|handoff|layout|workspace-file|history|hook-prelude|fresh-session|shell-writes|hidden-chars|forge|shell-guards|file-guards)$/;
+// docs.js / memory.js (retired) / handoff.js / layout.js / workspace-file.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js / forge.js /
+// plan-status.js (PF1) are ENGINES, hook-prelude.js the shared gate module and shell-guards.js / file-guards.js the dispatchers that run the picked shell
+// and file guards - none is a hook item.
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|handoff|layout|workspace-file|history|hook-prelude|fresh-session|shell-writes|hidden-chars|forge|plan-status|shell-guards|file-guards)$/;
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
 const nameOfMcp = (entry) => String(entry).split('|')[0];

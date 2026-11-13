@@ -103,6 +103,12 @@ test('derive: skills, agents, rules and hooks are read off disk', () =>
         assert.ok(lines.includes(want), `${want} missing from ${lines.join(', ')}`);
 });
 
+test('derive: the plan-status engine is never read back as a hook pick (PF1)', () =>
+{
+    const dir = target({ hooks: ['docs-session', 'plan-status', 'handoff'] });
+    assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] }).filter((l) => l.startsWith('hook ')), ['hook docs-session']);
+});
+
 test('derive: a link reads as the item it points at; a dangling one is none', { skip: process.platform === 'win32' }, () =>
 {
     const dir = target({});
