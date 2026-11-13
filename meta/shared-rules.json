@@ -4387,7 +4387,7 @@
       "sites": [
         {
           "file": "stack/skills/habits-plan-writing/SKILL.md",
-          "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
+          "marker": "`- \"<the user's words, verbatim>\"`"
         }
       ]
     },

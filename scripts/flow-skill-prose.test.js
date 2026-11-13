@@ -470,3 +470,72 @@ test('item 4: designers orient per task-design step 1; the greenfield design rea
     assert.ok(design.length > 0, 'the DESIGN step is found');
     assert.match(flat(design), /`PERSONAL-CODE-PREFERENCES\.md` and `ARCHITECTURE-PREFERENCES\.md`[^.]*before/);
 });
+
+// ---- PF1 (plan 2, Tasks 7-11): a plan is a folder - every body that sends the model to the plan script names the verbs
+// it calls, states the never-edit rule itself, names no hook, session or tool, and keeps one pointer to the flat shape.
+const PF_ENGINE = 'node .claude/hooks/plan-status.js';
+const PF_NEVER = /never edit `status\.json`, `scoring\.json` or an approved plan/i;
+const PF_FLAT = /Flat plans \(until 4\.0\.0\)/;
+const PF_HUB = 'stack/skills/habits-plan-writing/SKILL.md';
+const PF_CALLS = {
+    'stack/skills/habits-plan-writing/SKILL.md': ['sync', 'gate', 'approve', 'redesign', 'start', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop',
+        'cursor', 'decide', 'deviate', 'conformance', 'complete', 'resume', 'show'],
+};
+const PF_BODIES = [...Object.keys(PF_CALLS)];
+
+test('PF1: each body names the verbs it sends the model to', () => {
+    for (const [file, verbs] of Object.entries(PF_CALLS)) {
+        const text = read(file);
+        for (const verb of verbs)
+            assert.match(text, new RegExp('`' + verb + '[` ]|plan-status\\.js ' + verb + '\\b'), `${file} names \`${verb}\``);
+    }
+});
+
+test('PF1 spec 8, the hooks: a body that names the script states the never-edit rule itself and never says a hook refuses the write', () => {
+    for (const file of PF_BODIES) {
+        const text = read(file);
+        if (!text.includes('plan-status.js')) continue;
+        assert.match(flat(text), PF_NEVER, `${file} states the never-edit rule`);
+        for (const line of text.split('\n').filter((l) => /status\.json|scoring\.json|approved plan/.test(l)))
+            assert.doesNotMatch(line, /\b(?:hook|guard)s?\b[^.\n]*\b(?:refus|den(?:y|ies|ied)|block)/i, `${file}: ${line.trim()}`);
+    }
+});
+
+test('PF1 spec 8, the session: no body names the session status file, a hook event or a session id variable', () => {
+    for (const file of PF_BODIES)
+        assert.doesNotMatch(read(file), /CLAUDE_CODE_SESSION_ID|session status file|\b(?:PreToolUse|PostToolUse|SessionStart|UserPromptSubmit|SubagentStop|PreCompact)\b/, file);
+});
+
+test('PF1 spec 8, the path and the shell: every call is the engine path with text on stdin, and names no tool', () => {
+    for (const file of PF_BODIES) {
+        const text = read(file);
+        for (const m of text.matchAll(/plan-status\.js/g))
+            assert.strictEqual(text.slice(Math.max(0, m.index - 'node .claude/hooks/'.length), m.index), 'node .claude/hooks/', `${file}: a call off the engine path at ${m.index}`);
+        for (const line of text.split('\n').filter((l) => l.includes('plan-status.js')))
+            assert.doesNotMatch(line, /CLAUDE_PLUGIN_ROOT|CLAUDE_SKILL_DIR|\bBash\b|\bPowerShell\b|the shell tool/, `${file}: ${line.trim()}`);
+    }
+    const hub = read(PF_HUB);
+    assert.strictEqual((hub.match(/<<'EOF'/g) || []).length, 1, 'the hub shows one heredoc call');
+    assert.match(flat(hub), /any shell's way of piping text in works/);
+    assert.ok(hub.includes(PF_ENGINE));
+});
+
+test('PF1: each body keeps one flat pointer', () => {
+    for (const file of Object.keys(PF_CALLS)) {
+        const text = read(file);
+        if (file === PF_HUB) assert.strictEqual((text.match(/^## Flat plans \(until 4\.0\.0\)$/gm) || []).length, 1, 'the hub holds the heading once');
+        else assert.strictEqual((text.match(new RegExp(PF_FLAT.source, 'g')) || []).length, 1, `${file} points at the flat section once`);
+    }
+});
+
+test('PF1: the plan template carries no Resume: line and no status: line; the collapse rule is gone', () => {
+    const text = skill('habits-plan-writing');
+    const template = text.slice(text.indexOf('```text'), text.indexOf('## The task card'));
+    assert.doesNotMatch(template, /^Resume:/m);
+    assert.doesNotMatch(template, /^- status:/m);
+    assert.match(flat(text), /`<docs-path>\/work\/plans\/<feature>\/`[ ,].*`<feature>\.md`.*`status\.json`.*`scoring\.json`/);
+    const before = text.slice(0, text.indexOf('## Flat plans (until 4.0.0)'));
+    assert.doesNotMatch(before, /collapses to its title|status: TODO|IN_PROGRESS|Completed: <date>/, 'the flat stamps live in the closing section only');
+    assert.match(section(text, 'Flat plans (until 4.0.0)'), /Resume:.*status:.*Completed:/s);
+    assert.match(description('habits-plan-writing'), /^Use when writing, stamping or resuming a plan file/, 'the description is unchanged (R33)');
+});

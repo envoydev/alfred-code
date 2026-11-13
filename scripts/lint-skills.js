@@ -93,6 +93,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // the plan script's verb (PF1, `node .claude/hooks/plan-status.js add-task`) - a verb, not a skill.
+    'add-task',
     // capture-quality's part names and topic words (its router's topic table) - a part of one skill, not a skill.
     'architecture-quality', 'code-quality', 'test-coverage-quality', 'test-coverage',
     // capture-awareness's hyphenated part names and topic words (2026-10-29), the same way.
