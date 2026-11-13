@@ -56,9 +56,8 @@ checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route inst
 `/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
 the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
-(`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
-scope `settings.json`, with every stack key `settings.local.json` holds laid over it and written back
-there). One installer on
+(`.claude/settings.local.json`, the stack's settings file at every scope, laid over `.claude/settings.json`;
+a stack row is written back to the local file). One installer on
 every OS.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
@@ -217,7 +216,7 @@ entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; re
 applies its `unwire:` edit and puts its `then:` follow-up in the report. (The version and diff
 lines the same call prints are update's business, not validate's - ignore them here; its `policy-rev:` row is the
 post-check's.) An entry acting
-on the settings.json `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
+on the settings `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
 layer instead: a retired key still on disk is a RETIRED row there, reported with its `why`, and
 accepting it drops the key - the installers' own env pass does the same on their next run.
 
@@ -269,7 +268,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   on an install predating its catalog entry (measured: a v0.1.23-era install upgraded to
   v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
   an accepted add is not an install at all: the name is removed from `ALFRED_CODE_HOOKS_OFF` in the
-  scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
+  `env` of `.claude/settings.local.json`, and the apply step reports it as that edit, not as a copied file.
 - **Plugins** - `claude-hud` is the one always-recommended plugin (2.2.0 - an optional pick,
   marked in every walk): never REDUNDANT, and never MISSING either - an install without it is the user's
   choice, so it is at most one `no-evidence:`-style advisory naming `/alfred-code:configure` to add it. A
@@ -292,8 +291,7 @@ the rows from the snapshot's `$TMP/repo/meta/environment.json`; the variables fr
 `settings.local.json` or `default` - then its `!! variables:` notes: a HOOKS_OFF line in `.variables` that is not
 read, a key the loader never reads, a key named like a credential with the `.secrets` to keep it in; paste every note
 under the table, never a value); the two settings keys, and any OLD NAME or RETIRED key an older install left there,
-from the scope's file (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope, else
-`.claude/settings.json` with every `ALFRED_CODE_*` key `settings.local.json` holds laid over it). Then show one
+from the stack's file (`.claude/settings.local.json` laid over `.claude/settings.json`, at every scope). Then show one
 table of the actionable rows only - an install whose env already matches gets the single line
 `environment: nothing to reconcile` and you move on. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus.
 

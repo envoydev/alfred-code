@@ -244,8 +244,8 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 ## 8. Environment - the stack env values (when picked)
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
-release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_HOOKS_OFF` stays in the scope's settings file `env`; a key `.claude/settings.local.json` also holds is read
-from, and written back to, that file, since it applies over `.variables`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
+release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_HOOKS_OFF` stays in the `env` of `.claude/settings.local.json`, the stack's settings file at every scope; a key
+that file also holds is read from, and written back to, it, since it applies over `.variables`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
 front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row `variables.js show` reads as `default` (no file holds it) is one
@@ -351,8 +351,8 @@ nothing changed. A join's values reach the project at once; the parent's set rea
 Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
 question there at 4 options, already spent on rules+agents+skills / hooks / plugins /
 environment). Read the account settings.json (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`)
-`permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json` at
-local scope, else `.claude/settings.json`) already sets one - report both in one line (`account:
+`permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json`, the stack's
+settings file at every scope) already sets one - report both in one line (`account:
 auto · project: unset`). Read the key with ONE call per file, its path in forward slashes inside the script -
 `node -e 'let v;try{v=(JSON.parse(require("fs").readFileSync("<file>","utf8")).permissions||{}).defaultMode}catch{}console.log(v||"unset")'` -
 it prints the mode, or `unset` for an absent key or a missing or unreadable file. The file is read inside the script, never as an argument or through `cat`: the secret guard refuses a credential file named as a command word on hosts it cannot mask (Cursor, an older Claude Code), and the masker covers the output everywhere else; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE
@@ -432,14 +432,12 @@ before it owes a second run when the answer moves an item (audit 2026-10-20 C46,
   key that is present - so it needs no flag.
 - `--scope` is the stamp's own `scope:` line (`project`, `user` or `local`) - pass it unchanged unless
   the user asked to MOVE the install.
-  Moving a `local` install to `project` or `user` clears the stack's own entries out of
-  `settings.local.json` first, or they would keep overriding the shared file: the seat denies move
-  into settings.json, the copied-hook wiring goes, and so does every
-  `ALFRED_CODE_*` key still holding the stack's seed (`<key> removed - the stack's own seed ...`). No
-  env key ever moves into the committed settings.json: a value the user set locally stays in
-  `settings.local.json` and keeps applying (`<key> stays here (your value, <n> chars) - it applies
-  over settings.json ...`), and every later run reads and writes that key there - report each kept key
-  by name and length, as logged, never its value.
+  Moving a `local` install to `project` or `user` keeps the stack's entries in `settings.local.json`,
+  its settings file at every scope - nothing moves into the committed settings.json. A stack variable
+  there still holding the stack's seed is removed, so `.variables` or its seed applies (`<n> stack
+  variable(s) removed - each held the stack's own seed ...`); a value the user set stays and keeps
+  applying (`<key> stays here (your value, <n> chars) - it applies over .variables ...`) - report each
+  kept key by name and length, as logged, never its value.
 
 The run refreshes EVERY installed item, in every category, whether or not its area was walked this
 run - the area picker decides which tables you page through, never which files the installer

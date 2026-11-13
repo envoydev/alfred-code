@@ -160,7 +160,7 @@ function resolveDocsRoot(projectRoot, scope)
     const claudeDir = path.join(projectRoot, '.claude');
     const at = scope || readStampScope(stampFile(claudeDir).read || '');
     // R98: at project and user scope the docs root is settings.json's alone - the stamped rule is shared.
-    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
+    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project').env;
     const view = env && typeof env === 'object' ? env : {};
     // The data root is `.alfred`, or the folder an earlier release left elsewhere until an update moves it (the reader).
     return envOf(view, 'DOCS_PATH') || `${require('../../stack/mcp/data-root.js').dataRootOf({ projectDir: projectRoot }).root}/docs`;

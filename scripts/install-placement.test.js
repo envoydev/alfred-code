@@ -34,13 +34,17 @@ function read(repo)
     const stamp = fs.readFileSync(path.join(claude, 'alfred-code.stamp'), 'utf8');
     const line = (key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(stamp) || [])[1] || '').split(',').filter(Boolean);
     const list = (dir) => { try { return fs.readdirSync(path.join(claude, dir)).sort(); } catch { return []; } };
-    const settings = JSON.parse(fs.readFileSync(path.join(claude, 'settings.json'), 'utf8'));
+    const file = (name) => { try { return JSON.parse(fs.readFileSync(path.join(claude, name), 'utf8')); } catch { return null; } };
+    // Mode v2 stage 2: the stack's seat denies sit in settings.local.json at every scope; settings.json keeps the user's own rows.
+    const settings = file('settings.json');
+    const local = file('settings.local.json') || {};
     return {
         stamp: stamp.replace(/^installed: .*$/m, 'installed: <time>').replace(/^installed-ms: .*$/m, 'installed-ms: <time>'),
         seatsRoute: (/^seats-route: (.*)$/m.exec(stamp) || [])[1] || null,
         pickedSkills: line('picked-skills'), pickedAgents: line('picked-agents'), libraryAgents: line('library-agents'),
-        skills: list('skills'), agents: list('agents'), settings,
-        seatDeny: ((settings.permissions || {}).deny || []).filter((d) => d.startsWith('Agent(')).sort(),
+        skills: list('skills'), agents: list('agents'), settings, local,
+        seatDeny: ((local.permissions || {}).deny || []).filter((d) => d.startsWith('Agent(')).sort(),
+        sharedSeatDeny: (((settings || {}).permissions || {}).deny || []).filter((d) => d.startsWith('Agent(')),
     };
 }
 
@@ -84,14 +88,15 @@ test('update over a 2.0.0 install (the 2.1.0 BLOCKER): picks kept, always skills
     assert.match(outs[0], /agent kept: aspnet-verifier\.md - edited in the project/);
     const want = SEATS.filter((a) => !['aspnet-implementer', 'aspnet-verifier'].includes(a) && !(former.agents.includes(a) && a !== 'code-style-analyzer'));
     assert.deepStrictEqual(first.seatDeny, want.map((a) => `Agent(alfred-code:${a})`).sort(), 'a deny per seat 2.0.0 never ran, and the one the user switched off');
+    assert.deepStrictEqual(first.sharedSeatDeny, [], 'the ledgered seat deny left settings.json for settings.local.json');
     assert.ok(first.settings.permissions.deny.includes('Bash(rm -rf:*)') && first.settings.env.MY_OWN_KEY === 'mine', 'the user\'s own entries stay');
     assert.strictEqual(first.seatsRoute, 'plugin');
     assert.ok(first.pickedAgents.includes('aspnet-implementer@alfred-code') && first.pickedAgents.includes('security-auditor@alfred-code'), first.pickedAgents.join(','));
     assert.ok(!first.pickedAgents.some((e) => /code-style-analyzer|web-angular/.test(e)), first.pickedAgents.join(','));
     assert.ok(first.pickedSkills.includes('csharp') && first.pickedSkills.includes('habits-done-gate') && !first.pickedSkills.some((e) => e.includes('@')), first.pickedSkills.join(','));
     assert.ok(first.libraryAgents.some((e) => e.startsWith('aspnet-verifier=')), 'the kept copy keeps its recorded hash, so it reads as edited');
-    assert.deepStrictEqual([second.stamp.replace(/^sha: .*$/m, ''), second.settings, second.skills, second.agents],
-        [first.stamp.replace(/^sha: .*$/m, ''), first.settings, first.skills, first.agents], 'the re-run changes nothing');
+    assert.deepStrictEqual([second.stamp.replace(/^sha: .*$/m, ''), second.settings, second.local, second.skills, second.agents],
+        [first.stamp.replace(/^sha: .*$/m, ''), first.settings, first.local, first.skills, first.agents], 'the re-run changes nothing');
 });
 
 test('a fresh install then its update: the seat state holds, and an --add of a rule takes the denied seats it requires', POSIX_ONLY, () =>

@@ -10,7 +10,7 @@ how to redo any of it by hand later.
 Most of what the install delivered binds at session start, not mid-session: the enabled plugins load at
 launch (an LSP plugin's language server with them), and skills, agents and the always-on rules are
 inventoried then.
-Two things do NOT wait: the `settings.json` hooks and its `env` values are read per invocation, so
+Two things do NOT wait: the settings files' hooks and `env` values are read per invocation, so
 a newly wired hook fires and a flipped env value applies on the very next tool call (measured in
 one session both ways - a hook installed at 08:12:53 fired at 08:21:15, and an env flip produced
 its first ledger row 7.9 s later, covering 17 of 17 subsequent calls). Exit Claude Code and start it again

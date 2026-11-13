@@ -326,36 +326,24 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes).
         const routes = plugins.committedRoutesAt({ env, claudeDir, scope: args.scope, log });
-        // R78: an install moved off `local` scope carries the stack's own entries out of
-        // settings.local.json first, so the read-back below and every write after it find them in
-        // the file this run writes. A --print-plan moves nothing and reads the local overlay instead.
-        // R96: an env key the stack seeded there goes - `seeds` is what THIS run would seed in its
-        // place (the catalog default, the docs-versioning rule's answer), `written` the keys it writes
-        // every run - and a value the user set stays local; no env key moves into settings.json.
-        // N2: every seed the stack SHIPPED counts, so a reseed migration's old value is one too.
+        // R78, mode v2 stage 2: an install moved off `local` scope keeps the stack's rows in settings.local.json; only a
+        // variable seed the stack wrote there goes, or it would read as this machine's override. `seeds` is what THIS run
+        // would seed (the catalog default, the docs-versioning rule's answer), every seed the stack SHIPPED included (N2).
         const leavingLocal = Boolean(stampFile) && stampLayer.readStampScope(stampFile) === 'local' && args.scope !== 'local';
         if (leavingLocal && !args.printPlan)
         {
             const rows = readJson(path.join(resolved.dir, 'meta', 'environment.json')).env || [];
-            const seeds = Object.fromEntries(rows.filter((r) => !r.written && r.seed !== false).map((r) => [r.key, [r.default, ...(r.former_defaults || [])]]));
+            const seeds = Object.fromEntries(rows.filter((r) => r.seed !== false).map((r) => [r.key, [r.default, ...(r.former_defaults || [])]]));
             seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) })];
-            for (const [key, shippedSeed] of envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json'))).reseed)
-                (seeds[key] ??= []).push(shippedSeed);
-            const move = settings.leaveLocalScope({
-                claudeDir,
-                hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js', 'file-guards.js'),
-                mcpNames: [...manifest.retired.mcps, ...mcp.PW_SERVERS, ...mcp.renamedFrom(manifest.renamed.mcps)],
-                denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
+            const migrations = envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json')));
+            for (const [key, shippedSeed] of migrations.reseed) (seeds[key] ??= []).push(shippedSeed);
+            settings.leaveLocalScope({
+                claudeDir, seeds, renames: migrations.renames, log, note,
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
-                ledgerSettings: priorLedger && priorLedger.settings ? priorLedger.settings['settings.local.json'] || {} : null,
-                ledgerDeny: priorLedger ? priorLedger.deny : null,
                 variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: dataInfo.root }),
                 ledgerVariables: priorLedger && priorLedger.env ? priorLedger.env['.variables'] || {} : null,
             });
-            // Review finding 1: the ledger's deny rows follow what the move carried, so the writer below
-            // claims in settings.json only what landed there - never an entry the team already held.
-            if (move.ledgerDeny) priorLedger.deny = move.ledgerDeny;
         }
 
         // --- the six lists, narrowed to this project -------------------------------
@@ -448,13 +436,19 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const foreign = plugins.foreignEntries(resolved.dir);
             const stackListing = effective(plugins.parsePluginList(raw, projectRoot, { marketplace: market })).filter((r) => !foreign.has(r.name));
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
+            // A9: a file holding none of its ledgered deny rows (a clone's; Claude Code makes it at the first approval) reads as the ledger.
+            const ledgerDeny = (priorLedger && priorLedger.deny) || [], seen = {};
+            const denyOf = (f) => (seen[f] ??= [].concat(((readJson(path.join(claudeDir, f)) || {}).permissions || {}).deny || []));
+            const vouched = new Set(ledgerDeny.filter((d) => denyOf(d.file).includes(d.entry)).map((d) => d.file));
+            const ghost = ledgerDeny.filter((d) => !vouched.has(d.file)).map((d) => d.entry);
+            const readView = settings.readBackSettings(claudeDir, 'local');
             const back = selection.readBack({
                 claudeDir, skillsDir, agentsDir, linked: recorded.map(lineOfLink),
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
-                settings: settings.readBackSettings(claudeDir, leavingLocal && args.printPlan ? 'local' : args.scope),
+                settings: { ...readView, permissions: { ...readView.permissions, deny: [...[].concat((readView.permissions || {}).deny || []), ...ghost] } },
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
@@ -463,14 +457,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // always closure), and the seats whose deny the stack itself wrote (a deny gone from
                 // one of those since is the user's hand-allow).
                 seatsRoute: stampLayer.readSeatsRoute(stampFile),
-                ledgerSeats: [...new Set(((priorLedger && priorLedger.deny) || []).map((d) => stackSeat(d.entry)).filter(Boolean))],
+                ledgerSeats: [...new Set(ledgerDeny.map((d) => stackSeat(d.entry)).filter(Boolean))],
                 // A member's own pick held here is never the root's - a fresh walk too, for an add its last stamp write lost.
                 held: [...((stampFile && stampLayer.readMemberPicks(stampFile)) || []), ...(wsPrep.on && !wsPrep.parent ? workspace.memberPicks(projectRoot, { seatsRoute: stampLayer.readSeatsRoute(stampFile) || 'plugin' }).lines
                     .filter((l) => !((lastPicked || {})[`${l.split(' ')[0]}s`] || []).some((e) => e.split('@')[0] === l.split(' ')[1])) : [])],
                 always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
-                // C5: the copy route's hooks are committed wiring - read from settings.json alone there.
-                committedEnv: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? null : settings.readBackSettings(claudeDir, 'project', { sharedOnly: true }).env || {},
             });
             if (!back.installed)
             {
@@ -2097,18 +2089,23 @@ function installHooksAndRules(ctx)
     // Workspace stage 3: a seat a member below picked is not denied at its root.
     const agentHeld = ctx.held ? ctx.held.seats : [];
     const agentDeny = denied.filter((r) => !agentHeld.includes(stackSeat(r)));
-    // T16/R47 (I1): at `local` scope the stack's own settings writes are machine-personal - they go
-    // to settings.local.json, never the shared settings.json; every other scope keeps the shared
-    // file. settingsTarget is the one helper every write site names.
+    // Mode v2 stage 2: at every scope the stack's settings rows are this machine's - settings.local.json, never the shared
+    // settings.json. The rows an older install ledgered there move first, so every read of it below sees it without them.
     const localSettings = path.join(ctx.claudeDir, 'settings.local.json');
     const hadLocal = fs.existsSync(localSettings);
-    const written = settings.writeSettings({
+    ctx.localBad = settings.localUnusable(localSettings);
+    if (ctx.localBad) ctx.log(`  !! settings: .claude/settings.local.json is ${ctx.localBad} - no settings row was written or moved this run`);
+    const shippedDeny = [...new Set([...SHIPPED_DENY, ...memoryDenyShipped(ctx.source.dir), ...browserDenyShipped(ctx.source.dir)])];
+    const carried = ctx.localBad || !ctx.ledger ? {}
+        : settings.moveToLocal({ claudeDir: ctx.claudeDir, ledger: ctx.ledger, shippedDeny, log: ctx.log, note: ctx.note });
+    const shared = () => settings.readBackSettings(ctx.claudeDir, 'project');
+    const written = ctx.localBad ? { refused: true } : settings.writeSettings({
         // R10: the last run's ledger, and the wirings the RELEASE writes (none on the plugin route) - a
         // hook this run did not select keeps its wiring, one the release dropped loses it.
-        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: [...new Set([...SHIPPED_DENY, ...memoryDenyShipped(ctx.source.dir), ...browserDenyShipped(ctx.source.dir)])] },
-        file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
-        // A local-scope run leaves the stack's stale wiring and 1.x keys in settings.json - it removes them there.
-        sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
+        ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny },
+        file: localSettings, keepOwn: ctx.args.scope !== 'local', carried,
+        // The stack's stale wiring, 1.x keys and renamed skillOverrides keys in settings.json are taken out or re-keyed there.
+        sharedFile: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow, agentHeld,
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
@@ -2132,30 +2129,21 @@ function installHooksAndRules(ctx)
         mcpOff: retiredApprovals(ctx),
         dropEmptyApprovals: serversRetireDue(ctx),
         hooksOff, hooksAnswered,
-        // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
-        // gap for a seed to fill - a local default would hide it.
-        // A .variables this run may not write (tracked at local scope, ignored at project or user) applies over settings.json
-        // all the same (D4 step 3), so its values are no gap either.
-        inheritedEnv: ctx.args.scope === 'local' || ctx.variablesHeld
-            ? { ...(ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).env || {} : {}), ...(ctx.variablesHeld || {}) } : null,
-        // R99: at every other scope settings.local.json applies OVER settings.json, so a stack key it
-        // holds is written back there - where the read-back found it and where it takes effect.
-        localFile: ctx.args.scope === 'local' ? null : path.join(ctx.claudeDir, 'settings.local.json'),
-        // C5: on the hooks copy route HOOKS_OFF mirrors the committed wiring, so it lands in settings.json
-        // even where the runner's local file holds a value of their own (which keeps applying to them).
-        sharedKeys: !ctx.routes.hooks && ctx.args.scope !== 'local' ? ['ALFRED_CODE_HOOKS_OFF'] : [],
+        // N6: settings.json still applies beneath the local file, so what it holds is no gap for a seed to fill - a local
+        // default would hide it. A .variables this run may not write applies over settings.json all the same (D4 step 3).
+        inheritedEnv: { ...(shared().env || {}), ...(ctx.variablesHeld || {}) },
         // C3: at local scope an old skillOverrides key in settings.json is set under its new name here.
-        inheritedOverrides: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).skillOverrides : null,
-        // the git preferences' no-attribution entry, enforced by the setting; at local scope settings.json's own value stays.
-        attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
-        // R6: isolated seats branch from this HEAD; at local scope settings.json's own value stays.
-        worktreeBase: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).worktree : null },
-        // The per-model auto-compact window (settings.js compactWindowSeeds), in this project's own file at every scope (user
-        // scope writes the project's settings.json too, never the account's). At local scope settings.json is the sibling it
-        // never hides; the account file's own window outranks no project file, so a model it names is left to it.
+        inheritedOverrides: ctx.args.scope === 'local' ? shared().skillOverrides : null,
+        // the git preferences' no-attribution entry, enforced by the setting; settings.json's own value stays.
+        attribution: { inherited: shared().attribution },
+        // R6: isolated seats branch from this HEAD; settings.json's own value stays.
+        worktreeBase: { inherited: shared().worktree },
+        // The per-model auto-compact window (settings.js compactWindowSeeds), in this project's own file at every scope, never
+        // the account's. settings.json is the sibling it never hides; the account file's own window outranks no project file,
+        // so a model it names is left to it.
         compactWindows: {
             models: readJson(path.join(ctx.source.dir, 'stack', 'hooks', 'model-windows.json')).models || {},
-            inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }) : null,
+            inherited: shared(),
             account: readJson(path.join(ctx.configDir, 'settings.json')),
         },
         renamed: ctx.manifest.renamed,
@@ -2203,6 +2191,12 @@ function ledgerOf(ctx)
     const still = (name, keys) => (name !== variables.FILE && unreadable(name) ? { ...keys }
         : Object.fromEntries(Object.entries(keys || {}).filter(([k, h]) => Object.hasOwn(envNow(name), k) && stampLayer.valueHash(envNow(name)[k]) === h)));
     const part = ctx.managedSettings || { env: {}, deny: prior.deny || [], hooks: prior.hooks || [], settings: {} };
+    // A deny row or hook wiring the last run recorded in a file this run did not write (settings.json, whose rows the
+    // move takes) is carried while that file still holds it or cannot be read - Ruling 9: the run after the fix moves it.
+    const other = (rows, holds) => (ctx.managedSettings ? (rows || []).filter((r) => r.file !== part.file
+        && (unreadable(r.file) || holds(readJson(path.join(ctx.claudeDir, r.file)) || {}, r))) : []);
+    const deny = [...part.deny, ...other(prior.deny, (d, r) => ((d.permissions || {}).deny || []).includes(r.entry))];
+    const hooks = [...part.hooks, ...other(prior.hooks, (d, r) => settings.wiringsOf(d.hooks).some((w) => w.id === r.id))];
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
     // A workspace array member (claudeMdExcludes[<hash>]) is carried apart from the keyed rows, below.
@@ -2241,7 +2235,7 @@ function ledgerOf(ctx)
         if (Object.keys(now).length) mcpAt[scope] = now;
     }
     return {
-        env, deny: part.deny, hooks: part.hooks,
+        env, deny, hooks,
         // Delta F-UNREAD: a .mcp.json that cannot be read holds no evidence, so its ledger rows stand as the last run recorded them.
         mcp: registrationsAt(ctx, 'project').state === 'unreadable' && prior.mcp ? { ...prior.mcp } : mcp.managedMcp({ servers, prior: prior.mcp || null, written: [], adopt: (name, entry) => stackShaped(ctx, name, entry) }),
         mcpAt,

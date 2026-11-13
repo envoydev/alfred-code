@@ -847,30 +847,38 @@ function envPlan(ctx)
     const read = stamp.stampFiles({ projectRoot: ctx.projectRoot }).read;
     const own = read ? stamp.readOwnEnv(read) : null;
     const layout = require('../../stack/hooks/layout.js');
-    const target = ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json';
-    const data = readJson(path.join(ctx.claudeDir, target));
-    const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
-    const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
+    // The stack's file at every scope since mode v2 stage 2 is settings.local.json; at project and user scope an older
+    // install's rows still sit in settings.json until this run's settings pass carries them there, so both are judged.
+    const files = ctx.args.scope === 'local' ? ['settings.local.json'] : ['settings.json', 'settings.local.json'];
+    const held = files.flatMap((file) =>
+    {
+        const data = readJson(path.join(ctx.claudeDir, file));
+        const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
+        const rows = ((ctx.ledger && ctx.ledger.env) || {})[file] || {};
+        return Object.entries(env).map(([key, value]) => ({ key, value, rows }));
+    });
+    const env = Object.fromEntries(held.map(({ key, value }) => [key, value]));
+    const add = (list, key) => { if (!list.includes(key)) list.push(key); };
     // until 4.0.0: this runs before the settings pass renames the four scoring keys, so an old key is judged as its new
     // one (the catalog, the chain) on its own ledger row, and the plan names it as the file holds it, which the pass drops.
     const newOf = Object.fromEntries(Object.entries(layout.OLD_KEYS).map(([n, o]) => [o, n]));
     if (own === null)
     {
         if (read && stamp.readJoinPrune(read))
-            for (const [key, value] of Object.entries(env))
+            for (const { key, value, rows } of held)
             {
                 const name = newOf[key] || key;
                 if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !plan.ignored.includes(name)
-                    && isSeed(key, value, rows, name)) plan.seeds.push(key);
+                    && isSeed(key, value, rows, name)) add(plan.seeds, key);
             }
         return plan;
     }
     const chained = plan.memberEnv;
-    for (const [key, value] of Object.entries(env))
+    for (const { key, value, rows } of held)
     {
         const name = newOf[key] || key;
         if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name)) continue;
-        if (rows[key] === stamp.valueHash(value) && chained[name] === String(value)) plan.copies.push(key);
+        if (rows[key] === stamp.valueHash(value) && chained[name] === String(value)) add(plan.copies, key);
     }
     const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
     plan.hooksOffDrop = csv(env.ALFRED_CODE_HOOKS_OFF).filter((e) => e.includes(':') && memberParts.has(e));
@@ -1295,7 +1303,8 @@ function workspaceStep(ctx)
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     // A standalone project - nothing stamped above, nothing recorded - leaves settings.local.json alone.
     const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
-    const sync = (arrayPath, list) => (list.length || recorded(arrayPath)
+    // An unusable local file (installHooksAndRules' localBad) gets no row; carryMemberRows keeps what the ledger named.
+    const sync = (arrayPath, list) => (!ctx.localBad && (list.length || recorded(arrayPath))
         ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note })
         : { rows: {}, created: false });
     const r = sync('claudeMdExcludes', want);
@@ -1305,7 +1314,7 @@ function workspaceStep(ctx)
     const access = ancestorAccess(ctx, w);
     const a = sync('permissions.additionalDirectories', access.dirs);
     const n = sync('permissions.deny', access.deny);
-    ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows };
+    if (!ctx.localBad) ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows };
     mcpHint(ctx);
     if (w.members.length)
     {

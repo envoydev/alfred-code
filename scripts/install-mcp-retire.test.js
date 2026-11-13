@@ -569,7 +569,8 @@ test('seed install (plugin route): the skills are copied, no seat is, and every 
         inspect: (repo) => ({
             skills: fs.readdirSync(path.join(repo, '.claude', 'skills')).sort(),
             agents: fs.existsSync(path.join(repo, '.claude', 'agents')) ? fs.readdirSync(path.join(repo, '.claude', 'agents')) : [],
-            deny: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).permissions.deny,
+            // the seat denies land in settings.local.json at every scope (mode v2 stage 2)
+            deny: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).permissions.deny,
             stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
         }),
     });

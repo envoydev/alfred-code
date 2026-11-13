@@ -194,8 +194,12 @@ test('install: rules-session named in the off-list is reported in one line, and 
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            put(path.join(repo, '.claude', 'settings.local.json'), { disableAllHooks: true, env: { ALFRED_CODE_HOOKS_OFF: 'rules-session' } });
-            const project = JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'));
+            // Mode v2 stage 2: the install wrote its rows to settings.local.json and no settings.json - both are laid over.
+            const read = (file) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {});
+            const localFile = path.join(repo, '.claude', 'settings.local.json');
+            const local = read(localFile);
+            put(localFile, { ...local, disableAllHooks: true, env: { ...(local.env || {}), ALFRED_CODE_HOOKS_OFF: 'rules-session' } });
+            const project = read(path.join(repo, '.claude', 'settings.json'));
             put(path.join(repo, '.claude', 'settings.json'), { ...project, disableAllHooks: true });
             put(path.join(path.dirname(repo), 'acct', 'settings.json'), { disableAllHooks: true });
             return null;

@@ -83,9 +83,9 @@ function decided(root, scope)
 }
 
 // Writes the decision through the variables writer: the project's .variables (settings.local.json where a local-scope
-// install holds the key there, settings.json where git ignores the data root), the team's file at project scope even
-// where settings.local.json holds the key (C7). Returns where it landed, or null when it was refused (the writer's
-// `!!` line says why).
+// install holds the key there, or where git ignores the data root), .variables at project scope even where
+// settings.local.json holds the key (C7). Returns where it landed, or null when it was refused (the writer's `!!` line
+// says why).
 function writeDecision(root, scope, value)
 {
     const variables = require('./install/variables.js');
@@ -94,7 +94,7 @@ function writeDecision(root, scope, value)
     for (const l of lines) if (l.startsWith('!!')) console.log(l);
     if (got.refused.length) return null;
     if (got.toLocal.length) return 'settings.local.json env';
-    if (got.toSettings.length) return 'settings.json env';
+    if (got.toSettings.length) return 'settings.local.json env';
     return path.relative(root, variables.fileOf(root)).split(path.sep).join('/');
 }
 

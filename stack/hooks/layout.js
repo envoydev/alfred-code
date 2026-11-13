@@ -477,7 +477,7 @@ function fileNotes(read, label, secrets)
         if (SECRET_KEY_RE.test(key)) { notes.push(`!! variables: ${key} in ${label} looks like a credential - keep it in ${secrets}`); continue; }
         if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key)) continue;
         notes.push(key === HOOKS_OFF_KEY
-            ? `!! variables: ${HOOKS_OFF_KEY} in ${label} is not read - it lives in .claude/settings.json`
+            ? `!! variables: ${HOOKS_OFF_KEY} in ${label} is not read - it lives in .claude/settings.local.json`
             : `!! variables: ${key} in ${label} is not read - only the stack's variables are; a guard switch stays in .claude/settings.json`);
     }
     return notes;

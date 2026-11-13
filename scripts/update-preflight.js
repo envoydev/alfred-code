@@ -637,7 +637,10 @@ function main()
     let fired = 0;
     for (const e of entries)
     {
-        if (!detects(e, root, settings) && !(localStack && isEnvDetect(e) && detects(e, root, localStack))
+        // A wiring or a deny may sit in either file since the local file is the stack's at every scope: a non-env detect
+        // also reads the two laid together (settings.json alone first, so a wiring the local file's hooks shadow still fires).
+        if (!detects(e, root, settings) && !(layered && !isEnvDetect(e) && detects(e, root, layered))
+            && !(localStack && isEnvDetect(e) && detects(e, root, localStack))
             && !(loaded && isEnvDetect(e) && detects(e, root, loaded))) continue;
         fired += 1;
         console.log(`migration: ${e.id}\t${detectKind(e)}`);

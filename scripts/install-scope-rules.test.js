@@ -282,8 +282,9 @@ test('seed uninstall: the deny entries an earlier release wrote are lifted, a ro
         each: (repo, i) =>
         {
             if (i !== 0) return null;
+            // The earlier release wrote its deny rows to settings.json; mode v2 stage 2's install writes no settings.json.
             const file = path.join(repo, '.claude', 'settings.json');
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const data = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
             data.deniedMcpServers = [{ serverName: 'macos-control' }, { serverName: 'mine' }];
             fs.writeFileSync(file, JSON.stringify(data, null, 2));
             const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
@@ -338,7 +339,8 @@ test('stage 1: an install re-run with no scope keeps the stamped scope', POSIX_O
     for (const scope of ['project', 'user'])
     {
         const { result } = seedRun(['install', 'install'], 'rule markdown-docs\n', { ...BARE, args: [['--scope', scope], []], inspect: scopeState });
-        assert.deepStrictEqual(result, { scope, shared: true, local: false, ignore: false }, `${scope}: the settings stay in settings.json`);
+        // Mode v2 stage 2: the stack's settings sit in settings.local.json at every scope; no .gitignore tells project and user from local.
+        assert.deepStrictEqual(result, { scope, shared: false, local: true, ignore: false }, `${scope}: the settings go to settings.local.json and .claude is not hidden`);
     }
 });
 

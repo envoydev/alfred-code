@@ -386,8 +386,10 @@ test('an unreadable settings file on the migrating run keeps the root the OLD do
             makeOld(repo);
             const rule = path.join(rulesOf(repo), 'baseline-docs-root.md');
             fs.writeFileSync(rule, fs.readFileSync(rule, 'utf8').replace(/This install's root: `[^`]*`/, "This install's root: `.claude/docs`"));
+            // Mode v2 stage 2: the install writes settings.local.json, so settings.json (the file the docs root is read
+            // from at project scope) may not exist yet - it is made unreadable either way.
             const f = path.join(repo, '.claude', 'settings.json');
-            fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
+            fs.writeFileSync(f, (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '{}').replace(/\}\s*$/, ',}'));
         },
         inspect: (repo) => (/This install's root: `([^`]*)`/.exec(fs.readFileSync(ruleFile(repo, 'alfred-docs-root.md'), 'utf8')) || [])[1],
     });

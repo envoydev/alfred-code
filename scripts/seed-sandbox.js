@@ -259,4 +259,20 @@ function plantOlderRoot(repo, R = 'var/data')
     return to;
 }
 
-module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout, plantOlderRoot };
+// A 3.10.0 project-scope install, from this tree's own: the stack's rows sat in settings.json and the stamp's ledger named
+// that file. The local file is laid over settings.json and removed. Not for a project with member rows.
+function plantSharedInstall(repo)
+{
+    const local = path.join(repo, '.claude', 'settings.local.json');
+    const file = path.join(repo, '.claude', 'settings.json');
+    const read = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {});
+    fs.writeFileSync(file, JSON.stringify({ ...read(file), ...read(local) }, null, 2));
+    fs.rmSync(local, { force: true });
+    const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+    const text = fs.readFileSync(stampFile, 'utf8').split('\n')
+        .map((l) => (/^managed-(env|deny|hooks|settings):/.test(l) ? l.split('settings.local.json:').join('settings.json:') : l)).join('\n');
+    fs.writeFileSync(stampFile, text);
+    return file;
+}
+
+module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout, plantOlderRoot, plantSharedInstall };

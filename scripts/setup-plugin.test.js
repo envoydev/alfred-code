@@ -738,7 +738,7 @@ test('router, status and configure read the local stack keys at every scope, and
     assert.ok(installed, 'the Installed definition is there');
     assert.ok(!/worktree/i.test(installed), `Installed still counts a worktree's main checkout: ${installed}`);
     const status = flat(cmdBody('status'));
-    assert.match(status, /at EVERY scope a stack key `settings\.local\.json` holds applies over `settings\.json`/);
+    assert.match(status, /The stack's keys live in `\.claude\/settings\.local\.json` at every scope \(it wins over `settings\.json` key by key\)/);
     assert.match(status, /\*\*Environment\*\* - the install's knobs, one row each\. The variables come from ONE `node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/variables\.js" show --root \.`/);
     assert.match(status, /`ALFRED_CODE_HOOKS_OFF` comes from the\s+STACK VIEW/);
     assert.match(status, /`ALFRED_CODE_HOOKS_OFF` read from the stack view/);
@@ -1014,7 +1014,7 @@ test('configure emits hook none when its Hooks area was walked, and update has n
     const update = flat(updateText());
     assert.ok(!/Global mode:/.test(update), 'update has no global mode left');
     assert.ok(!/legacy-stamp:/.test(update), 'no account-stamp baseline line is left to read');
-    assert.match(update, /`settings\.local\.json` laid over `settings\.json` at local scope/);
+    assert.match(update, /`settings\.local\.json`, the stack's file at every scope, laid over `settings\.json`/);
 });
 
 // A hand-edited library copy is overwritten by the next installer run - never silently: validate
@@ -1339,8 +1339,8 @@ test('group D wording: the no-repo root, the scope, git hygiene, nothing to offe
     const ref = (rel) => fs.readFileSync(path.join(PLUGIN_DIR, ...rel.split('/')), 'utf8');
     const install = ref('references/init-install.md');
     assert.ok(install.includes("- 'Install here (Recommended)' - this directory is the project root, or a workspace root above the projects; move the mark to Stop when this directory sits inside the project you meant"), 'F1');
-    const localLine = "- 'local (Recommended)' - this checkout only; the stack's settings go to .claude/settings.local.json, and .alfred and .claude stay out of git";
-    const sharedLine = "- 'project' - .claude/settings.json - shared: committed with the repo, or read by every session in this folder";
+    const localLine = "- 'local (Recommended)' - this checkout only; the plugins are enabled for you alone, and .alfred and .claude stay out of git";
+    const sharedLine = "- 'project' - the plugins are enabled in .claude/settings.json - shared: committed with the repo; the stack's settings still stay in your .claude/settings.local.json";
     assert.ok(install.includes(localLine) && install.includes(sharedLine) && install.indexOf(localLine) < install.indexOf(sharedLine), 'F2, and local first since stage 1');
     assert.ok(install.includes(`variables.js" recommend --root . --scope <screen A's scope>`), 'the versioning advice is read again once the scope is known');
     for (const rel of ['references/init-install.md', 'references/post-install.md'])

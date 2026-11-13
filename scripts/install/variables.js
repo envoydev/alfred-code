@@ -22,7 +22,7 @@ const FILE = '.variables';
 const rootOf = (place) => dataRootOf({ projectDir: place }).root;
 const LOCAL = 'settings.local.json';
 const KEY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const SETTINGS_KEYS = { ALFRED_CODE_HOOKS_OFF: 'lives in .claude/settings.json - not written to .variables' };
+const SETTINGS_KEYS = { ALFRED_CODE_HOOKS_OFF: 'lives in .claude/settings.local.json - not written to .variables' };
 const CATALOG = () => require('../../meta/environment.json').env || [];
 const isFile = (file) => { try { return fs.statSync(file).isFile(); } catch { return false; } };
 
@@ -160,7 +160,7 @@ const ignoredLine = (dataRoot, verdict) =>
 {
     const src = String(verdict.source || '');
     const inRoot = src === `${dataRoot}/.gitignore` || src.endsWith(`/${dataRoot}/.gitignore`);
-    return `!! variables: ${dataRoot}/${FILE} is ignored by ${src ? `${src}:${verdict.line}` : 'a git rule'} - the keys are kept in settings.json; `
+    return `!! variables: ${dataRoot}/${FILE} is ignored by ${src ? `${src}:${verdict.line}` : 'a git rule'} - the keys are kept in settings.local.json; `
         + (inRoot ? `add !/${FILE} to ${dataRoot}/.gitignore, then update` : `ignore /${dataRoot}/* and re-include !/${dataRoot}/${FILE}, then update`);
 };
 
@@ -176,21 +176,15 @@ function localSettings(projectRoot)
     }
     catch { return null; }
 }
-// The project's settings.json for a D6 write: its object with an `env` object, {} when absent. An unparseable file is
-// refused whole - the user's own file is never rewritten from nothing.
-function sharedSettings(projectRoot)
+// settings.local.json for a D6 write (mode v2 stage 2: the stack's file at every scope): the file read above, made when
+// absent, with an `env` object. A file there that does not parse is refused whole - never rewritten from nothing.
+function localForWrite(projectRoot, local)
 {
-    const file = path.join(projectRoot, '.claude', 'settings.json');
-    let text = null;
-    try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; }
-    let data = {};
-    if (text !== null)
-    {
-        try { data = parseJson(text); } catch { data = null; }
-        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('.claude/settings.json cannot be read - fix it, then run the set again');
-    }
-    if (!data.env || typeof data.env !== 'object' || Array.isArray(data.env)) data.env = {};
-    return { file, data, text };
+    const file = path.join(projectRoot, '.claude', LOCAL);
+    if (!local && fs.existsSync(file)) throw new Error(`.claude/${LOCAL} cannot be read - fix it, then run the set again`);
+    const held = local || { file, data: {}, text: null };
+    if (!held.data.env || typeof held.data.env !== 'object' || Array.isArray(held.data.env)) held.data.env = {};
+    return held;
 }
 const heldLocally = (local, key) =>
 {
@@ -213,23 +207,23 @@ function pairsOf(input)
 }
 
 // D5's routing for each pair. An empty value (`KEY=`) removes the key. { written, toLocal, toSettings, refused }: the keys
-// each way - `toSettings` at project or user scope where git ignores the file (D6), so the value still reaches the team.
+// each way - `toSettings` at project or user scope where git ignores the file (D6): the key lands in settings.local.json,
+// the stack's file at every scope since mode v2 stage 2, in the same write as `toLocal`.
 // `team`: the value is the team's (the docs-versioning seed at project scope, C7) - a key settings.local.json holds is
-// still written to the shared file, and the developer's own file is left as it is.
+// still written to .variables, and the developer's own value is left as it is.
 function set(projectRoot, pairs, { scope, env = process.env, log = console.log, team = false } = {})
 {
     const root = path.resolve(projectRoot);
     const runScope = scope || stamp.installScope(root);
     const file = fileOf(root, { env });
     const rel = path.relative(root, file).split(path.sep).join('/') || FILE;
-    const local = localSettings(root);
+    let local = localSettings(root);
     const result = { written: [], toLocal: [], toSettings: [], refused: [] };
     const updates = {};
     const refuse = (key, why) => { result.refused.push(key); log(`!! variables: ${key} ${why}`); };
     let localChanged = false;
     let fileTracked;
     let verdict;
-    let shared;
     for (const [key, raw] of pairsOf(pairs))
     {
         if (!key || !KEY_NAME.test(key)) { refuse('(a word)', 'is no KEY=value pair - not written'); continue; }
@@ -260,21 +254,22 @@ function set(projectRoot, pairs, { scope, env = process.env, log = console.log, 
         }
         if (runScope !== 'local' && (verdict ??= ignoreVerdict(root, rootOf(root))).ignored)
         {
-            if (value === null) delete (shared ??= sharedSettings(root)).data.env[key];
-            else (shared ??= sharedSettings(root)).data.env[key] = value;
+            local = localForWrite(root, local);
+            if (value === null) delete local.data.env[key];
+            else local.data.env[key] = value;
+            localChanged = true;
             result.toSettings.push(key);
             continue;
         }
         updates[key] = value;
     }
-    if (localChanged) fs.writeFileSync(local.file, stringifyLike(local.data, formatOf(local.text)));
-    if (shared && shared.data)
+    if (localChanged)
     {
-        log(ignoredLine(rootOf(root), verdict));
-        fs.mkdirSync(path.dirname(shared.file), { recursive: true });
-        fs.writeFileSync(shared.file, stringifyLike(shared.data, formatOf(shared.text)));
-        log(`variables: ${result.toSettings.join(', ')} written to .claude/settings.json`);
+        fs.mkdirSync(path.dirname(local.file), { recursive: true });
+        fs.writeFileSync(local.file, stringifyLike(local.data, formatOf(local.text)));
     }
+    if (result.toSettings.length) log(ignoredLine(rootOf(root), verdict));
+    if (result.toSettings.length) log(`variables: ${result.toSettings.join(', ')} written to .claude/${LOCAL}`);
     const keys = Object.keys(updates);
     if (keys.length)
     {

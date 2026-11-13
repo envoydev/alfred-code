@@ -85,8 +85,8 @@ teammate never gets them, so those items are written here in full.
 8. Operational notes - runtime constraints and gotchas that shape code decisions.
 9. Cross-cutting checklists - for each change that must move several files in lockstep, the full touch-point list.
 10. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
-   permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
-   cert / .secrets / .sensitive-data blocks.
+   permissions.deny in .claude/settings.json, the team's file - the installer seeds only the generic .env* / key /
+   cert / .secrets / .sensitive-data blocks, in each machine's .claude/settings.local.json.
 11. Code conventions - only where this project DEPARTS from the house-style skill the path-scoped
    rules attach for that file type; a line that repeats the skill or a preference is a duplicate.
 12. Testing approach - per-layer strategy, what's excluded, the integration / regression net.

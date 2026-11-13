@@ -163,6 +163,20 @@ test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', 
     assert.match(run(['--snapshot', b.snap, '--root', b.install, '--fixture', b.fixtureFile]).out, /^migrations: none detected$/m);
 });
 
+// Mode v2 stage 2 (Task 7): the stack wires its hooks in settings.local.json at every scope, and an older install's wiring
+// may still sit in settings.json - the detect fires on either file, each holding hooks of its own.
+test('a settings_hook_wired migration fires on a wiring settings.local.json holds at project scope', () => {
+    const migrations = [{ id: 'unwire-one-matcher', detect: { settings_hook_wired: 'guard-stop-contract.js::AskUserQuestion' } }];
+    const wire = (event) => ({ hooks: { [event]: [{ hooks: [{ command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"' }] }] } });
+    for (const [shared, local] of [[wire('Stop'), wire('AskUserQuestion')], [wire('AskUserQuestion'), wire('Stop')]])
+    {
+        const a = scaffold({ migrations, settings: shared, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: project\n' });
+        fs.writeFileSync(path.join(a.install, '.claude', 'settings.local.json'), JSON.stringify(local));
+        const out = run(['--snapshot', a.snap, '--root', a.install, '--fixture', a.fixtureFile]).out;
+        assert.match(out, /^migration: unwire-one-matcher\tsettings_hook_wired$/m, out);
+    }
+});
+
 test('settings_hook_wired reads an exec-form wiring too - the script in args - and args that are no list name nothing', () => {
     const migrations = [{ id: 'unwire-one-matcher', detect: { settings_hook_wired: 'guard-stop-contract.js::AskUserQuestion' } }];
     const exec = { hooks: { AskUserQuestion: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-stop-contract.js'] }] }] } };

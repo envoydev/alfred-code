@@ -129,15 +129,18 @@ test('update over a 2.10.0 plugin-route install: every server plugin goes at its
     assert.deepStrictEqual(blockLines(outs[2]), [], outs[2]);
 });
 
-test('update leaves no empty env in settings.local.json once the database path goes, and no file a 2.10.0 install made for it alone', POSIX_ONLY, () =>
+// Mode v2 stage 2: at project and user scope the stack's rows now live in settings.local.json, so the file stays after the
+// database path goes (the 'removed - it held nothing but the stack's entries' line is gone with it); what the 2.10.0 file
+// held of the user's stays beside them, and no empty env is left.
+test('update takes the database path out of settings.local.json, keeps the user\'s own keys beside the stack\'s rows and leaves no empty env', POSIX_ONLY, () =>
 {
     const cases = [
-        ['alone', {}, null],
-        ['beside a key of the user\'s', { mine: 1 }, { mine: 1 }],
-        ['beside an env value of the user\'s', { env: { MY_VAR: 'x' } }, { env: { MY_VAR: 'x' } }],
+        ['alone', {}],
+        ['beside a key of the user\'s', { mine: 1 }],
+        ['beside an env value of the user\'s', { env: { MY_VAR: 'x' } }],
     ];
     for (const scope of ['project', 'user'])
-        for (const [what, before, after] of cases)
+        for (const [what, before] of cases)
         {
             const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
                 args: [['--scope', scope], ['--installed-only', '--scope', scope], ['--installed-only', '--scope', scope]],
@@ -152,9 +155,16 @@ test('update leaves no empty env in settings.local.json once the database path g
                     return { local: fs.existsSync(file) ? jsonAt(file) : null };
                 },
             });
-            assert.deepStrictEqual(steps[1].local, after, `${scope}, ${what}\n${outs[1]}`);
-            if (!after) assert.match(outs[1], /settings\.local\.json removed - it held nothing but the stack's entries/, outs[1]);
-            assert.deepStrictEqual(steps[2].local, after, `${scope}, ${what}: the re-run changed it\n${outs[2]}`);
+            const local = steps[1].local;
+            assert.ok(local, `${scope}, ${what}: the stack's rows live in settings.local.json\n${outs[1]}`);
+            assert.strictEqual((local.env || {}).ALFRED_CODE_MEMORY_DB, undefined, `${scope}, ${what}: the database path stayed\n${outs[1]}`);
+            assert.ok(local.env === undefined || Object.keys(local.env).length, `${scope}, ${what}: an empty env was left\n${outs[1]}`);
+            for (const [key, value] of Object.entries(before))
+            {
+                if (key !== 'env') assert.deepStrictEqual(local[key], value, `${scope}, ${what}: the user's ${key} was lost`);
+                else for (const [k, v] of Object.entries(value)) assert.strictEqual(local.env[k], v, `${scope}, ${what}: the user's ${k} was lost`);
+            }
+            assert.deepStrictEqual(steps[2].local, steps[1].local, `${scope}, ${what}: the re-run changed it\n${outs[2]}`);
             assert.doesNotMatch(outs[2], /settings\.local\.json/, outs[2]);
         }
 });
@@ -476,7 +486,8 @@ test('the 2.10.1 lift leaves a switch-off this feature\'s ledger holds', POSIX_O
         each: (repo, i) =>
         {
             if (i === 0) olderStamp(repo);
-            return settingsOf(repo);
+            // the writer's switch-off lands in settings.local.json at every scope (mode v2 stage 2)
+            return settingsOf(repo, 'settings.local.json');
         },
     });
     assert.strictEqual(steps[0].autoMemoryEnabled, false, outs[0]);
@@ -485,8 +496,8 @@ test('the 2.10.1 lift leaves a switch-off this feature\'s ledger holds', POSIX_O
 });
 
 // Fix-pass review m4: the lift runs before the writer, so an old switch-off under --memory custom read 'removed' and then
-// 'written' in one run. The writer puts it straight back, ledgered, and says so once; with the choice in settings.local.json
-// the writer's switch-off goes there, so settings.json's removal is still said.
+// 'written' in one run. The writer puts it straight back, ledgered, and says so once - in settings.local.json at every scope
+// since mode v2 stage 2; with the choice held in settings.local.json settings.json's removal is still said.
 test('the 2.10.1 lift says nothing where custom memory writes the switch-off straight back', POSIX_ONLY, () =>
 {
     for (const where of ['settings.json', 'settings.local.json'])
@@ -504,14 +515,11 @@ test('the 2.10.1 lift says nothing where custom memory writes the switch-off str
                 return { shared: settingsOf(repo, 'settings.json'), local: settingsOf(repo, 'settings.local.json') };
             },
         });
-        assert.strictEqual((where === 'settings.json' ? steps[1].shared : steps[1].local).autoMemoryEnabled, false, `${where}\n${outs[1]}`);
-        assert.match(outs[1], new RegExp(`${where.replace(/\./g, '\\.')}: autoMemoryEnabled: false written - `), outs[1]);
+        assert.strictEqual(steps[1].local.autoMemoryEnabled, false, `${where}\n${outs[1]}`);
+        assert.strictEqual(steps[1].shared.autoMemoryEnabled, undefined, outs[1]);
+        assert.match(outs[1], /settings\.local\.json: autoMemoryEnabled: false written - /, outs[1]);
         if (where === 'settings.json') assert.doesNotMatch(outs[1], /autoMemoryEnabled: false removed/, outs[1]);
-        else
-        {
-            assert.strictEqual(steps[1].shared.autoMemoryEnabled, undefined, outs[1]);
-            assert.match(outs[1], /settings\.json: autoMemoryEnabled: false removed - the stack switched/, outs[1]);
-        }
+        else assert.match(outs[1], /settings\.json: autoMemoryEnabled: false removed - the stack switched/, outs[1]);
     }
 });
 
@@ -575,9 +583,9 @@ test('A7c: BROWSER_TOOLS_OFF is not exported', () =>
     assert.strictEqual(require('./install/alfred-code.js').BROWSER_TOOLS_OFF, undefined);
 });
 
-// E-batch mcp-A7e: the env pass drops ALFRED_CODE_MEMORY_DB at every scope, but the scope move runs before it - so the key
-// stays a PERSONAL_KEYS entry, or a local-to-project move would call the stack's leftover 'your value' a line before the pass
-// removes it.
+// E-batch mcp-A7e: the env pass drops ALFRED_CODE_MEMORY_DB at every scope, but the scope move runs before it - and the move
+// judges only the stack's variables (mode v2 stage 2, Task 6), so it never calls the leftover 'your value' a line before the
+// pass removes it.
 test('A7e: ALFRED_CODE_MEMORY_DB leaves every scope\'s file through an update, and a scope move never calls it the user\'s', POSIX_ONLY, () =>
 {
     const DB = '~/.alfred-memory/memory.db';

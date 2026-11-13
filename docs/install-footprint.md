@@ -9,11 +9,12 @@ Written at every scope:
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
 - **`.claude/hooks/`** - only the four engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
 - **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin.
-- **`.claude/settings.json`**
-  - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick.
+- **`.claude/settings.local.json`** - the stack's settings, at every scope (3.11.0). Where git ignores the file (the stack warns when it does not), none of it reaches a teammate: their own first `/alfred-code:update` writes it on their machine.
+  - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick, and the secret-file rows.
   - the `env` block - the stack's own keys.
   - the `attribution` keys - commit, PR and session-link attribution off, each only where the project set none.
-- **`.claude/settings.local.json`** - the same keys at local scope. At project or user scope too, for a stack key this file already holds, since it applies over `settings.json` - and custom memory's `autoMemoryEnabled: false` when this file holds the `ALFRED_CODE_MEMORY=custom` choice.
+  - custom memory's `autoMemoryEnabled: false` when the `ALFRED_CODE_MEMORY=custom` choice is made.
+- **`.claude/settings.json`** - nothing the stack writes itself. At project scope `claude plugin install` enables the plugins here. An older install's rows move to `settings.local.json` on the first update; a row you changed since it was written stays here, named in the update's report.
 - **`.claude/alfred-code.stamp`** - the source revision, your picks and a ledger of every write.
 - **`.alfred/`** (the data root, always this folder) - the docs, the hooks' state (`state/`) and ledgers (`statistics/`), the seats' handoff notes and the secrets file (`.secrets`, `.sensitive-data` before). Its own `.gitignore` keeps everything but the docs out of git.
 

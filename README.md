@@ -200,7 +200,7 @@ No. Every write is listed in [`docs/install-footprint.md`](docs/install-footprin
 <details>
 <summary><strong>How do I turn a guard off?</strong></summary>
 
-Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.json`:
+Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.local.json`:
 
 ```json
 { "env": { "ALFRED_CODE_HOOKS_OFF": "guard-answer,guard-read-whole-file" } }
@@ -213,9 +213,19 @@ Or run `/alfred-code:configure` and it writes the key for you.
 <details>
 <summary><strong>Project, local or user scope?</strong></summary>
 
-- **project** (recommended) - settings go in `.claude/settings.json` and are shared through git.
-- **local** - the same, in `.claude/settings.local.json`, for you only.
+- **project** (recommended) - the plugin is enabled for everyone who clones the project, and `.alfred/.variables` and the copies are tracked in git.
+- **local** - the plugin is enabled for you alone, and git ignores the stack's files.
 - **user** - the plugins are enabled for your whole account. The copies and the stamp still live in the project.
+
+The stack writes its settings to `.claude/settings.local.json`, which never leaves your machine. A teammate who clones
+the project gets the plugin (at project scope), the tracked `.variables` and the copies under `.claude/`, and none of
+the stack's settings - no deny rows, no seat denies, no hook switches. Their first `/alfred-code:update` writes the
+deny rows, the seat denies and the seeded keys into their own local file. Where the hooks ride the plugin (the
+default), the hooks your team switched off (`ALFRED_CODE_HOOKS_OFF`) are recorded in no tracked file, so they run for
+a teammate until that teammate switches them off in `/alfred-code:configure`. A cloud session reads no local file and
+gets none of the settings at all. Cursor reads the stack's hook rows from the same file as long as its 'Include
+Third-Party Plugins, Skills, and Other Configs' setting (Cursor Settings -> Agents -> Third-Party Imports) is on,
+which is its default.
 
 That scope covers the core. Each optional item - a language server plugin, claude-hud - has its own: global (every project on your account) or this project, this project
 by default. `/alfred-code:configure` moves one.

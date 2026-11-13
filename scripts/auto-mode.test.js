@@ -761,7 +761,6 @@ function writer(dir, opts = {})
 {
     const file = path.join(dir, '.claude', opts.local ? 'settings.local.json' : 'settings.json');
     return settings.writeSettings({ file, catalog: CATALOG, migrations: {}, log: opts.log || (() => {}), note: () => {},
-        localFile: opts.local ? null : path.join(dir, '.claude', 'settings.local.json'),
         inheritedEnv: opts.inheritedEnv || null,
         compactWindows: opts.windows === null ? null : { models: MODELS, inherited: opts.inherited || null, account: opts.account || {} },
         // `--auto-compact on` unless the case says otherwise (null: the flag not given)
@@ -833,10 +832,8 @@ test('auto-mode window: a window the user set for every model, or for this one e
     dir = fresh();
     writer(dir, { account: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 600000 } } } });
     assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-haiku-4-5', 'claude-x-500k'], 'a model the account names is the account\'s');
-    dir = fresh();
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ modelSettings: { 'claude-haiku-4-5': { autoCompactWindow: 180000 } } }));
-    writer(dir);
-    assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-opus-5-5', 'claude-x-500k'], 'settings.local.json names one - it applies over this file');
+    // Mode v2 stage 2 removed the two-file write (writeSettings' localFile): the run writes settings.local.json at every
+    // scope, and the sibling it never hides is settings.json, handed in as `inherited` - the local-scope case below.
     dir = fresh();
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 250000 }));
     writer(dir);
@@ -848,7 +845,7 @@ test('auto-mode window: a window the user set for every model, or for this one e
     dir = fresh();
     writer(dir, { windows: null });
     assert.strictEqual(read(dir).modelSettings, undefined, 'no compactWindows option, nothing seeded');
-    // local scope: settings.json's own entry is never hidden by a local seed
+    // settings.local.json (every scope since mode v2 stage 2): settings.json's own entry is never hidden by a local seed
     dir = fresh();
     writer(dir, { local: true, inherited: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 450000 } } } });
     assert.deepStrictEqual(Object.keys(read(dir, 'settings.local.json').modelSettings), ['claude-haiku-4-5', 'claude-x-500k']);
@@ -882,12 +879,13 @@ test('compact instead: ALFRED_CODE_AUTO_COMPACT is seeded 0, --auto-compact writ
     assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '0');
     assert.deepStrictEqual(read(dir).modelSettings, { 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
     assert.ok(said.some((l) => /autoCompactWindow removed for claude-opus-5-5, claude-x-500k/.test(l)), said.join('\n'));
-    // a value the user put in by hand (configure's env step) is read without the flag
+    // a value the user put in by hand (configure's env step) is read without the flag - in settings.local.json, the file
+    // the run writes at every scope since mode v2 stage 2 (no second file is read beside it)
     const hand = fs.mkdtempSync(path.join(TMP, 'hand-'));
     fs.mkdirSync(path.join(hand, '.claude'));
     fs.writeFileSync(path.join(hand, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
-    writer(hand, { autoCompact: null });
-    assert.strictEqual(Object.keys(read(hand).modelSettings || {}).length, 3, 'settings.local.json\'s value applies over this file');
+    writer(hand, { local: true, autoCompact: null });
+    assert.strictEqual(Object.keys(read(hand, 'settings.local.json').modelSettings || {}).length, 3, 'the hand-typed value is read without the flag');
     // the flag is refused before anything is written when it is neither on nor off
     const bad = spawnSync(process.execPath, [path.join(__dirname, 'install', 'alfred-code.js'), 'install', '--auto-compact', 'maybe'], { cwd: hand, encoding: 'utf8' });
     assert.notStrictEqual(bad.status, 0);

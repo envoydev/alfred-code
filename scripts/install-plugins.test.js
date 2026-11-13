@@ -1175,6 +1175,14 @@ test('seed update --installed-only: an install under another key keeps its picks
     assert.strictEqual(result.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the hooks the user switched off stay off');
 });
 
+// The off-list a session reads: settings.local.json's over settings.json's. Mode v2 stage 2: the stack writes
+// ALFRED_CODE_HOOKS_OFF to settings.local.json at every scope; an older install's value planted in settings.json still reads.
+function hooksOffOf(repo)
+{
+    const envOf = (name) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', name), 'utf8')).env || {}; } catch { return {}; } };
+    return String(envOf('settings.local.json').ALFRED_CODE_HOOKS_OFF ?? envOf('settings.json').ALFRED_CODE_HOOKS_OFF ?? '').split(',').filter(Boolean).sort();
+}
+
 // Review M3: a hooks-copy-route install made before the hooks rode the core never wrote
 // ALFRED_CODE_HOOKS_OFF - absence on disk was the off-state. Once the core carries every hook, the
 // first update must name each hook the project does not wire, and a None must not come back.
@@ -1200,7 +1208,7 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
     };
     const inspect = (repo) => ({
         onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
-        off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF).split(',').filter(Boolean).sort(),
+        off: hooksOffOf(repo),
     });
     const run = (kept, off, route) => seedRun('update', 'skill markdown-style\n', { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'], prepare: layout(kept, off, route), inspect }).result;
     const kept = ['guard-protected-force-push', 'guard-secret-value'];
@@ -1269,7 +1277,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     const MODULES = require('./install/alfred-code.js').HOOK_MODULES;
     const read = (repo) => ({
         files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
-        off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(),
+        off: hooksOffOf(repo),
     });
     const trip = (selection, prepare) => seedRun(['install', 'update', 'update'], selection, {
         plugins: listing, env: [copies, {}, copies], args: [[], ['--installed-only'], ['--installed-only']], each: read, prepare });
@@ -1454,15 +1462,11 @@ function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
     const hooksDir = path.join(repo, '.claude', 'hooks');
     return {
         work, repo, env, copyEnv, hooksDir,
-        // An install names its scope: with none a fresh one is local since workspace stage 1, and these cases read settings.json.
+        // An install names its scope: with none a fresh one is local since workspace stage 1; these cases run at project scope.
         run: (action, runEnv, out = () => {}) => main([...action, ...(action[0] === 'install' && !action.includes('--scope') ? ['--scope', 'project'] : []), '--selection', selFile, '--source', ROOT], runEnv, { out, err: () => {}, cwd: repo }),
         stamp: () => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
         onDisk: () => fs.readdirSync(hooksDir).sort(),
-        hooksOff: () =>
-        {
-            const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'));
-            return String((settings.env && settings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
-        },
+        hooksOff: () => hooksOffOf(repo),
         cleanup: () => fs.rmSync(work, { recursive: true, force: true }),
     };
 }
@@ -1719,17 +1723,21 @@ test('seed: a personal ALFRED_CODE_HOOKS_VIA_PLUGIN=false in settings.local.json
         },
         inspect: (repo) => ({
             hooks: fs.existsSync(path.join(repo, '.claude', 'hooks')) ? fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => /^guard-/.test(f)) : [],
-            wiring: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).hooks,
+            // the stack's hook wiring lands in settings.local.json at every scope (mode v2 stage 2)
+            wiring: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).hooks,
             stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
         }),
     });
     assert.deepStrictEqual(result.hooks, [], 'the runner\'s personal switch copied the hooks into the project');
-    assert.ok(!JSON.stringify(result.wiring || {}).includes('/.claude/hooks/'), 'the committed settings.json wires copied hooks');
+    assert.ok(!JSON.stringify(result.wiring || {}).includes('/.claude/hooks/'), 'the run wires copied hooks');
     assert.match(result.stamp, /^hooks-route: plugin$/m);
     assert.match(outs[1], /routes: ALFRED_CODE_HOOKS_VIA_PLUGIN=false comes from settings\.local\.json - personal, so this project-scope run follows settings\.json \(unset - the plugin route\)/, outs[1]);
 });
 
-test('seed: on a switch to the hooks copy route the committed wiring follows settings.json\'s ALFRED_CODE_HOOKS_OFF, never the runner\'s local one (C5, N6)', POSIX_ONLY, () =>
+// Mode v2 stage 2 removed C5 / N6's split (the two-file overlay writes, and the read-back's committedEnv - Ruling 15): the
+// stack's file is settings.local.json at every scope, so on a switch to the hooks copy route its ALFRED_CODE_HOOKS_OFF decides
+// the copies and the wiring, both written there; settings.json is not written.
+test('seed: on a switch to the hooks copy route at project scope, settings.local.json\'s ALFRED_CODE_HOOKS_OFF decides the copies and the wiring it holds (was C5, N6)', POSIX_ONLY, () =>
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
@@ -1744,14 +1752,15 @@ test('seed: on a switch to the hooks copy route the committed wiring follows set
         },
         inspect: (repo) => ({
             onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
-            shared: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+            shared: fs.existsSync(path.join(repo, '.claude', 'settings.json')) ? JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')) : null,
             local: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
         }),
     });
-    assert.deepStrictEqual(result.onDisk, shipped.map((h) => `${h}.js`).sort(), `the runner's local HOOKS_OFF decided the committed copies: ${result.onDisk.length} of ${shipped.length}`);
-    assert.ok(JSON.stringify(result.shared.hooks).includes('/.claude/hooks/guard-answer.js'), 'the committed wiring left out the hook the runner switched off for themselves');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_HOOKS_OFF, '', 'the complement of the committed wiring lands in settings.json');
-    assert.strictEqual(result.local.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the runner\'s own switch-off stays theirs, and still applies to them');
+    const wired = JSON.stringify(result.local.hooks || {});
+    assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer').map((h) => `${h}.js`).sort(), `the local HOOKS_OFF did not decide the copies: ${result.onDisk.length} of ${shipped.length}`);
+    assert.ok(wired.includes('/.claude/hooks/') && !wired.includes('/.claude/hooks/guard-answer.js'), 'the wiring in settings.local.json does not follow its HOOKS_OFF');
+    assert.strictEqual(result.local.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the switch-off in the local file stays');
+    assert.strictEqual(result.shared, null, 'the run wrote settings.json');
 });
 
 // A-I2 (final review A): the old local mode printed `/mcp disable context7` for the hosted server. The prune of

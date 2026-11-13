@@ -125,15 +125,17 @@ test('skillOverrides and the seat deny follow', POSIX_ONLY, () =>
                 writeJson(shared, s);
                 return null;
             }
-            return readJson(shared);
+            return { shared: readJson(shared), local: readJson(path.join(repo, '.claude', 'settings.local.json')) };
         },
     });
-    const s = steps[1];
+    // The skillOverrides key is re-keyed where it sits (Ruling 14); the run's seat denies land in settings.local.json at
+    // every scope since mode v2 stage 2.
+    const { shared: s, local } = steps[1];
     assert.strictEqual(s.skillOverrides['mode-output-scoring'], 'off', outs[1]);
     assert.strictEqual(s.skillOverrides['markdown-style'], 'off');
     assert.ok(!Object.hasOwn(s.skillOverrides, 'mode-output-scorer'));   // legacy
-    assert.ok(s.permissions.deny.includes('Agent(alfred-code:output-scoring)'), JSON.stringify(s.permissions.deny));
-    assert.ok(!s.permissions.deny.some((r) => /output-scorer\)/.test(r)), JSON.stringify(s.permissions.deny));   // legacy
+    assert.ok(local.permissions.deny.includes('Agent(alfred-code:output-scoring)'), JSON.stringify(local.permissions.deny));
+    assert.ok(!local.permissions.deny.some((r) => /output-scorer\)/.test(r)), JSON.stringify(local.permissions.deny));   // legacy
 });
 
 test('a local-scope update over a tracked .variables leaves the file alone', POSIX_ONLY, () =>

@@ -53,7 +53,7 @@ never update past one; warnings are listed and passed.
 ## 5. Prune
 
 Delete each item on the confirmed list, showing every command before running it. A deleted hook
-also loses its `.claude/settings.json` wiring in the same pass - show that edit too (a
+also loses its wiring (`.claude/settings.local.json`, or `settings.json` on an older install) in the same pass - show that edit too (a
 migration entry's `unwire_settings_hook` names exactly which entry goes - `<file>::<Matcher>`
 scopes it to ONE matcher when the file stays wired for its other events, and a
 `settings_hook_wired` detect matches on that wiring being present rather than on a file;
@@ -87,7 +87,7 @@ Adopt <hook>? <what it blocks, from its header's first lines>. The update did no
 ```
 
 On 'Adopt now' copy it from `$TMP/repo/stack/hooks/` into `.claude/hooks/` and wire its
-matcher entries into settings.json exactly as the installer's hook step does. To author that ask, read the hook's
+matcher entries into `.claude/settings.local.json` exactly as the installer's hook step does. To author that ask, read the hook's
 own header comment and nothing else (`head -8 "$TMP/repo/stack/hooks/<file>"`) - every guard states what it blocks
 in its first lines; reading the hook to understand it cost 3.6k tokens and the session's largest context spike in
 one audited run, for a one-sentence question. (Measured, and the reason the layer became all-or-nothing: the

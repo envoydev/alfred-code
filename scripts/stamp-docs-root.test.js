@@ -251,6 +251,22 @@ test('--seed-versioning writes the probed value when the key is absent', () => {
     finally { for (const d of [uncommitted, fresh, ignored]) fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+// Mode v2 stage 2 (Task 7): where git ignores the data root the seed lands in settings.local.json, the stack's file at every
+// scope, and the line names it; settings.json is left as it was.
+test('--seed-versioning under an ignored data root writes and names settings.local.json env', () => {
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
+    try
+    {
+        gitIn(root, 'init', '-q', '-b', 'develop', '.');
+        fs.writeFileSync(path.join(root, '.gitignore'), '.alfred/\n');
+        const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8');
+        assert.match(seed(root), /^stamp-docs-root: settings\.local\.json env: ALFRED_CODE_DOCS_VERSIONING seeded/m);
+        assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'), before);
+        assert.ok(JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('--seed-versioning leaves an existing value untouched, byte for byte', () => {
     const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs","ALFRED_CODE_DOCS_VERSIONING":"local"}}');
     const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));

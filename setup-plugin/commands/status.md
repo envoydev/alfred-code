@@ -31,13 +31,11 @@ install records the hooks read (`alfred-code.stamp`, a copied
 
 Every install lives in the PROJECT at every scope: the stamp, the library copies, the rules, the
 copied hook engines and the settings are under `<root>/.claude/` (`<root>` = the git top level,
-else the current directory); the scope says only where the plugin rows are enabled and which
-settings file holds the stack's keys - `.claude/settings.local.json` at `local` scope (it wins over
-`settings.json` key by key), `.claude/settings.json` at `project` and `user`. Call that file the
-SCOPE FILE below. But at EVERY scope a stack key `settings.local.json` holds applies over `settings.json`,
-as Claude Code lays the two files - a value a move off `local` kept there, or one set by hand - so the
-env reads below use the STACK VIEW: `settings.json`'s `env` with every `ALFRED_CODE_*` key of
-`settings.local.json` laid over it (at `local` scope, the whole local `env`).
+else the current directory); the scope says only where the plugin rows are enabled. The stack's keys
+live in `.claude/settings.local.json` at every scope (it wins over `settings.json` key by key) - call
+that file the SCOPE FILE below. A key an older install left in `settings.json` (a value changed since
+the stack wrote it) still applies under it, as Claude Code lays the two files, so the env reads below
+use the STACK VIEW: `settings.json`'s `env` with the local `env` laid over it.
 
 ## 2. General info - always, before the question
 

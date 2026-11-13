@@ -55,7 +55,8 @@ for (const route of Object.keys(ROUTES))
                 agentsMd: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')),
                 engines: ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'memory.js', 'model-windows.json', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
                 stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
-                settings: json(repo, path.join('.claude', 'settings.json')),
+                // Mode v2 stage 2: the stack's settings rows land in settings.local.json at every scope.
+                settings: json(repo, path.join('.claude', 'settings.local.json')),
                 skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'markdown-style', 'SKILL.md')),
                 mcp: fs.existsSync(path.join(repo, '.mcp.json')) ? json(repo, '.mcp.json') : null,
             }),
@@ -126,7 +127,8 @@ for (const route of Object.keys(ROUTES))
                 key: settings.includeCoAuthoredBy,
                 env: settings.env.OWN_FLAG,
                 hook: (settings.hooks.PreToolUse || []).find((e) => JSON.stringify(e).includes('own-hook.js')),
-                stack: typeof settings.env.ALFRED_CODE_HOOKS_OFF,
+                // Mode v2 stage 2: the stack's own env sits beside them in settings.local.json.
+                stack: typeof (json(repo, path.join('.claude', 'settings.local.json')).env || {}).ALFRED_CODE_HOOKS_OFF,
             };
         };
         const { steps } = run(['install', 'update'], route, { prepare, each: own });

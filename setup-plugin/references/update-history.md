@@ -996,3 +996,24 @@ Until 4.0.0 the old spellings still act where an update has not run yet: the fou
 not updated, the two old part names, a skill copy under the old folder and the old name typed in a request. A skill
 copy made before the update dispatches a seat the updated plugin no longer has, so its grade does not run - run
 `/alfred-code:update`. The session status file keeps its `scorer` field (schema 1).
+
+## after 3.10.0 - the stack's settings live in settings.local.json
+
+The stack writes its settings to `.claude/settings.local.json` at every scope, so nothing it writes reaches git. The
+first `/alfred-code:update` at project or user scope carries every row the stamp's ledger records in
+`.claude/settings.json` - the seat denies, the secret-file deny rows, the copy route's hook wiring, the stack's `env`
+keys, the attribution keys - into the local file, and says so in one line: `settings: <n> rows moved from
+settings.json to settings.local.json - teammates and cloud sessions no longer get them`. A row you changed since the
+stack wrote it is yours: it stays in `settings.json`, still applies, and the run names it. A docs path row stays
+where it is too.
+
+When the local file cannot take the rows the run writes nothing and moves nothing, and says why on one `!! settings:`
+line: the file is not valid JSON, git tracks it (`git rm --cached .claude/settings.local.json`), or the run cannot
+write it. Fix that, then run the update again.
+
+A teammate who clones the project gets the plugin (at project scope), the tracked `.variables` and the copies, and
+none of the stack's settings. Their own first update writes the deny rows, the seat denies and the seeded keys into
+their local file. The hooks your team switched off in `ALFRED_CODE_HOOKS_OFF` are recorded in no tracked file, so
+they run for a teammate until that teammate switches them off in `/alfred-code:configure`. A cloud session reads no
+local file and gets none of the settings. Cursor reads the hook rows from the same file while its Third-Party Imports
+setting is on, which is its default.

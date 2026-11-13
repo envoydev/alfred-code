@@ -154,6 +154,46 @@ test('a child install writes its excludes and keeps the root\'s set (AC1)', POSI
     assert.ok(got.js && got.npm);
 });
 
+// Mode v2 stage 2, Task 2: a settings.local.json the repository owns gets no workspace row of the stack's.
+const gitIn = (work, rel, ...a) => rt.execCommand('git', ['-C', at(work, rel), ...a]);
+const LOCAL = (work, rel) => path.join(at(work, rel), '.claude', 'settings.local.json');
+test('a child whose settings.local.json git tracks gets no workspace row, keeps its own picks, and gets the rows once the file is untracked', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); plantGen(work, '.'); } },
+        { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`,
+            before: (work) => { fs.mkdirSync(path.dirname(LOCAL(work, 'api')), { recursive: true }); fs.writeFileSync(LOCAL(work, 'api'), '{}\n'); gitIn(work, 'api', 'add', '-f', '.claude/settings.local.json'); },
+            after: (work) => ({ bytes: readOr(LOCAL(work, 'api')), excludes: excludesOf(work, 'api'), rows: ledgerRowsOf(work, 'api', 'claudeMdExcludes'), own: lineOf(stampOf(work, 'api'), 'own-picks') }) },
+        update('api', { before: (work) => gitIn(work, 'api', 'rm', '-q', '-f', '--cached','.claude/settings.local.json'),
+            after: (work) => ({ want: ruleGlobs(work, '.'), excludes: excludesOf(work, 'api'), rows: ledgerRowsOf(work, 'api', 'claudeMdExcludes') }) }),
+    ]);
+    const [held, freed] = [r.steps[1], r.steps[2]];
+    assert.strictEqual(held.bytes, '{}\n', r.outs[1]);
+    assert.deepStrictEqual(held.excludes, []);
+    assert.deepStrictEqual(held.rows, []);
+    assert.strictEqual(held.own, `skill/${OWN}`);
+    assert.ok(r.outs[1].includes('!! settings: .claude/settings.local.json is tracked by git - git rm --cached it'), r.outs[1]);
+    assert.ok(freed.want.length > 0, 'the root holds a generated rule');
+    for (const g of freed.want) assert.ok(freed.excludes.includes(g), `no exclude for ${g}\n${r.outs[2]}`);
+    for (const g of freed.want) assert.ok(freed.rows.includes(require('./install/settings.js').memberRow('claudeMdExcludes', g)), `no ledger row for ${g}`);
+});
+
+test('a tracked settings.local.json keeps the workspace rows the last run recorded', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); plantGen(work, '.'); } },
+        { at: 'api', after: (work) => { gitIn(work, 'api', 'add', '-f', '.claude/settings.local.json'); return { bytes: readOr(LOCAL(work, 'api')), rows: ledgerRowsOf(work, 'api', 'claudeMdExcludes'), want: ruleGlobs(work, '.') }; } },
+        update('api', { before: (work) => plantGen(work, '.', 'alfred-architecture'),
+            after: (work) => ({ bytes: readOr(LOCAL(work, 'api')), excludes: excludesOf(work, 'api'), rows: ledgerRowsOf(work, 'api', 'claudeMdExcludes'), want: ruleGlobs(work, '.') }) }),
+    ]);
+    const [first, after] = [r.steps[1], r.steps[2]];
+    assert.ok(first.rows.length > 0, 'setup: the install recorded no exclude row');
+    assert.strictEqual(after.bytes, first.bytes, r.outs[2]);
+    assert.ok(after.want.length > first.want.length, 'setup: the root gained no second generated rule');
+    assert.ok(after.want.some((g) => !after.excludes.includes(g)), 'the new rule\'s glob stays out of a tracked file');
+    assert.deepStrictEqual(after.rows, first.rows);
+});
+
 test('the root adds X: an update in each child adds X, except one with ignore skill X (AC3)', POSIX_ONLY, () =>
 {
     const r = scenario([
@@ -289,7 +329,9 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     assert.ok(before.ownEnv.split(',').includes(OLD_LEVEL), `v2.12.0 recorded the child's own value: ${before.ownEnv}`);
     assert.deepStrictEqual(after.effective, reseeded(before.effective), r.outs[4]);
     assert.strictEqual(after.vars[LEVEL], '95', 'the own-env key landed in the child\'s file');
-    assert.ok(!Object.hasOwn(after.vars, SC), 'a copy never lands in the child\'s file');
+    // Mode v2 stage 2 (Review Focus 3): the root's value, changed since the stack wrote it, stays in the root's settings.json,
+    // which the chain does not read - so the child keeps its copy, and the value it reads is the same.
+    assert.strictEqual(after.vars[SC], '1', 'the child keeps the copy the chain cannot give it');
     assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== OFF), [], JSON.stringify(after.local));
     assert.strictEqual(after.ownEnv, null, 'the own-env line went');
     assert.strictEqual(after.local[OFF], 'docs-session:gate', 'HOOKS_OFF keeps only the child\'s own entries');
@@ -346,7 +388,7 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
     const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
-    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from });
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: envOf(work, 'api') });
     for (const when of ['update', 'configure'])
     {
         const pick = (work) =>
@@ -369,9 +411,13 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
         assert.ok(r.steps[3].vars.ALFRED_CODE_DOCS_VERSIONING !== undefined, `${when}: the 2.12.0 seeds moved into the file: ${r.outs[3]}`);
         assert.strictEqual(joined.effective[LEVEL], '90', `${when}: ${r.outs[4]}`);
         assert.strictEqual(joined.from[LEVEL], '..', when);
-        assert.deepStrictEqual(Object.keys(joined.vars).sort(), [NUDGE, 'ALFRED_CODE_DOCS_VERSIONING'].sort(), `${when}: ${JSON.stringify(joined.vars)}`);
-        assert.strictEqual(joined.vars[NUDGE], 'inject');
-        assert.match(r.outs[4], /^workspace: 2 of this project's values kept as its own \(.*\) - \d+ stack seeds? dropped, so the workspace's value reaches it$/m, r.outs[4]);
+        // Mode v2 stage 2: a row changed since the stack wrote it stays in settings.json (the move to settings.local.json
+        // takes only rows at their ledger hash), so the typed value is kept there, and still read over the chain.
+        assert.deepStrictEqual(Object.keys(joined.vars).sort(), ['ALFRED_CODE_DOCS_VERSIONING'], `${when}: ${JSON.stringify(joined.vars)}`);
+        assert.strictEqual(joined.settings[NUDGE], 'inject', `${when}: the typed value stays in settings.json`);
+        assert.strictEqual(joined.effective[NUDGE], 'inject', `${when}: the typed value is still the one read`);
+        // the join's prune reads .variables alone, so the typed value settings.json keeps is not counted there
+        assert.match(r.outs[4], /^workspace: 1 of this project's values kept as its own \(ALFRED_CODE_DOCS_VERSIONING\) - \d+ stack seeds? dropped, so the workspace's value reaches it$/m, r.outs[4]);
         assert.strictEqual(left.vars[LEVEL], '90', `${when}: leaving wrote the root's value back: ${r.outs[5]}`);
         assert.deepStrictEqual(left.effective, joined.effective, when);
     }
@@ -385,7 +431,7 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
     const LEVEL = 'ALFRED_CODE_SCORING_LEVEL';
     const NUDGE = 'ALFRED_CODE_CORRECTION_NUDGE';
-    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: readOr(path.join(at(work, 'api'), '.claude', 'settings.json')), stamp: stampOf(work, 'api') });
+    const read = (work) => ({ effective: effectiveOf(work, 'api'), vars: varsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from, settings: readOr(path.join(at(work, 'api'), '.claude', 'settings.json')), local: envOf(work, 'api', 'settings.local.json'), stamp: stampOf(work, 'api') });
     const r = scenario([
         { at: '.', ...OLD },
         { at: 'api', ...OLD, after: (work) => setEnv(work, 'api', 'settings.json', { [NUDGE]: 'inject' }) },
@@ -397,12 +443,15 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     const [joined, again] = [r.steps[4], r.steps[5]];
     assert.strictEqual(joined.effective[LEVEL], '90', r.outs[4]);
     assert.strictEqual(joined.from[LEVEL], '..');
-    assert.deepStrictEqual(Object.keys(joined.vars).sort(), [NUDGE, 'ALFRED_CODE_DOCS_VERSIONING'].sort(), `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
-    assert.strictEqual(joined.vars[NUDGE], 'inject');
+    // Mode v2 stage 2: the 2.12 seeds at their ledger hash move to settings.local.json, where the prune drops them; the typed
+    // value is a row changed since the stack wrote it, so it stays in settings.json and is still the one read.
+    assert.deepStrictEqual(Object.keys(joined.vars).sort(), ['ALFRED_CODE_DOCS_VERSIONING'], `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
+    assert.strictEqual(joined.effective[NUDGE], 'inject');
     const left = Object.keys(JSON.parse(joined.settings).env || {}).filter((k) => layoutLib.VARIABLE_KEYS.includes(k));
-    assert.deepStrictEqual(left, [], 'no stack value left in settings.json');
+    assert.deepStrictEqual(left, [NUDGE], 'no stack value left in settings.json, only the typed one');
+    assert.deepStrictEqual(Object.keys(joined.local).filter((k) => layoutLib.VARIABLE_KEYS.includes(k)), [], 'no stack value in settings.local.json');
     // the file held the 2.12 name: the prune drops it as written, before the rename pass   // legacy
-    assert.match(r.outs[4], /settings\.json env: ALFRED_CODE_SCORER_LEVEL removed - a stack seed, so the workspace's value reaches this project/);   // legacy
+    assert.match(r.outs[4], /settings\.local\.json env: ALFRED_CODE_SCORER_LEVEL removed - a stack seed, so the workspace's value reaches this project/);   // legacy
     assert.deepStrictEqual(again.vars, joined.vars, `a second update changes nothing: ${r.outs[5]}`);
     assert.ok(!/^join-prune:/m.test(joined.stamp), 'the run consumed the join-prune line');
 });
@@ -488,7 +537,8 @@ test('F10: a linked child given --memory default writes nothing', POSIX_ONLY, ()
 // project holding them itself would - else its hooks run compact / custom memory while Claude Code does neither.
 test('a child reading AUTO_COMPACT=1 and MEMORY=custom from its root gets the autoCompactWindow rows and autoMemoryEnabled false', POSIX_ONLY, () =>
 {
-    const settingsOf = (work, rel) => json(path.join(at(work, rel), '.claude', 'settings.json')) || {};
+    // Mode v2 stage 2: the stack's rows sit in settings.local.json at project scope too.
+    const settingsOf = (work, rel) => json(path.join(at(work, rel), '.claude', 'settings.local.json')) || {};
     const r = scenario([
         { at: '.', after: (work) => { setVar(work, '.', { ALFRED_CODE_AUTO_COMPACT: '1', ALFRED_CODE_MEMORY: 'custom' }); join(work, 'api'); } },
         { at: 'api', after: (work) => ({ api: settingsOf(work, 'api'), from: layoutLib.variablesOf(at(work, 'api'), { env: acct(work) }).from }) },
@@ -1175,7 +1225,15 @@ test('D2: ignore mcp for a parent .mcp.json server writes a disabledMcpjsonServe
 
 // ---- release 3, T3: a child reads its ancestors' docs roots; their docs and memory are read-only (R2, R8) -----------
 const localSettingsOf = (work, rel) => json(path.join(at(work, rel), '.claude', 'settings.local.json')) || {};
-const permsOf = (work, rel) => (localSettingsOf(work, rel).permissions || {});
+// Mode v2 stage 2: settings.local.json holds the stack's secret-file and seat denies at project scope too; the rows these
+// cases are about are the additional directories and the Edit denies, so the deny list is read as those alone.
+const permsOf = (work, rel) =>
+{
+    const perms = { ...(localSettingsOf(work, rel).permissions || {}) };
+    if (Array.isArray(perms.deny)) perms.deny = perms.deny.filter((d) => d.startsWith('Edit('));
+    if (Array.isArray(perms.deny) && !perms.deny.length) delete perms.deny;
+    return perms;
+};
 const ledgerRowsOf = (work, rel, arrayPath) => Object.keys((stampLib.readLedger(path.join(at(work, rel), '.claude', 'alfred-code.stamp')) || { settings: {} }).settings?.['settings.local.json'] || {})
     .filter((r) => r.startsWith(`${arrayPath}[`));
 const denyFor = (p) => wsLib.editDenyRule(p, process.platform);
@@ -1393,16 +1451,20 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
 
     test('refreshBelow: a stamp that cannot be written leaves the child\'s settings as they were (spec 4)', { ...POSIX_ONLY, skip: POSIX_ONLY.skip || (process.getuid?.() === 0 && 'root writes through the mode bits') }, () =>
     {
+        // Mode v2 stage 2: the child's own install wrote the stack's rows into settings.local.json at project scope, so the
+        // file exists before the root's run - the rows refreshBelow added are taken out again and the bytes come back.
         const stampFile = (work) => path.join(at(work, 'api'), '.claude', 'alfred-code.stamp');
+        let before = null;
         const r = scenario([
             { at: 'api' },
-            { at: '.', before: (work) => fs.chmodSync(stampFile(work), 0o444), after: (work) =>
+            { at: '.', before: (work) => { before = settingsOf(work, 'api'); fs.chmodSync(stampFile(work), 0o444); }, after: (work) =>
             {
                 fs.chmodSync(stampFile(work), 0o644);
                 return { settings: settingsOf(work, 'api'), rows: ledgerRows(work, 'api').filter((row) => row.includes('claudeMdExcludes')).length };
             } },
         ]);
-        assert.strictEqual(r.steps[1].settings, null, 'the created file is removed again');
+        assert.ok(before !== null, 'setup: the child\'s install wrote settings.local.json');
+        assert.strictEqual(r.steps[1].settings, before, 'the child\'s settings.local.json is as it was');
         assert.strictEqual(r.steps[1].rows, 0);
         assert.match(r.outs[1], /!! workspace: api/);
     });

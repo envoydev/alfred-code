@@ -233,7 +233,8 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            const settings = path.join(repo, '.claude', 'settings.json');
+            // Mode v2 stage 2: the stack's rows sit in settings.local.json at project scope, so the user's own sit beside them there.
+            const settings = path.join(repo, '.claude', 'settings.local.json');
             const data = JSON.parse(fs.readFileSync(settings, 'utf8'));
             data.env.MY_KEY = 'mine';
             data.env.ALFRED_CODE_PUSH_GATE = '0';
@@ -247,7 +248,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
             const list = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).sort() : []);
             return {
                 claude: list(path.join(repo, '.claude')),
-                settings: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+                settings: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
                 mcp: JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')),
             };
         },
@@ -258,7 +259,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
     assert.deepStrictEqual(result.settings.hooks, { Stop: [{ hooks: [USER_HOOK] }] });
     assert.deepStrictEqual(result.mcp, { mcpServers: { mine: { command: 'node', args: ['srv.js'] } } });
     assert.deepStrictEqual(Object.keys(result.settings).filter((k) => k !== 'enabledPlugins').sort(), ['env', 'hooks'], 'no attribution key, no empty list the stack wrote');
-    assert.deepStrictEqual(result.claude, ['settings.json'], `stack files left: ${result.claude}`);
+    assert.deepStrictEqual(result.claude, ['settings.local.json'], `stack files left: ${result.claude}`);
     assert.match(outs[1], /stamp removed/);
 });
 
@@ -434,18 +435,20 @@ test('uninstall after an update over a malformed settings.json still removes eve
     let good = '';
     const { result, outs } = seedRun(['install', 'update', 'update', 'uninstall'], 'rule markdown-docs\n', {
         failOk: true,
+        // Mode v2 stage 2: the file the stack writes, and so the one that breaks, is settings.local.json.
         each: (repo, i) =>
         {
-            const file = path.join(repo, '.claude', 'settings.json');
+            const file = path.join(repo, '.claude', 'settings.local.json');
             if (i === 0) { good = fs.readFileSync(file, 'utf8'); fs.writeFileSync(file, '{ broken'); }
             if (i === 1) fs.writeFileSync(file, good);
         },
         inspect: (repo) =>
         {
-            const file = path.join(repo, '.claude', 'settings.json');
+            const file = path.join(repo, '.claude', 'settings.local.json');
             return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
         },
     });
+    assert.match(outs[1], /!! settings: \.claude\/settings\.local\.json is not valid JSON - no settings row was written or moved this run/, outs[1]);
     assert.deepStrictEqual(Object.keys(result.env || {}).filter((k) => k.startsWith('ALFRED_CODE_')), [], outs[3]);
     assert.ok(!result.attribution && !result.worktree, JSON.stringify(result));
 });
@@ -652,7 +655,8 @@ test('uninstall lifts the memory switch-off a pre-2.10.1 stack wrote, and keeps 
                 {
                     const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
                     fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^version: .*$/m, `version: ${version}`));
-                    const data = JSON.parse(fs.readFileSync(settings, 'utf8'));
+                    // That release wrote the switch-off to settings.json at project scope; mode v2 stage 2's install writes no settings.json.
+                    const data = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : {};
                     fs.writeFileSync(settings, JSON.stringify({ ...data, autoMemoryEnabled: false, mine: 1 }, null, 2));
                 }
                 return fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null;
@@ -670,16 +674,18 @@ test('uninstall takes a ledgered switch-off back and names none as yours', POSIX
 {
     const { outs, steps } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
         args: [['--scope', 'project', '--memory', 'custom'], []],
+        // Mode v2 stage 2: the ledgered switch-off is written to settings.local.json at project scope.
         each: (repo, i) =>
         {
-            const settings = path.join(repo, '.claude', 'settings.json');
+            const settings = path.join(repo, '.claude', 'settings.local.json');
             const data = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null;
             if (i === 0) fs.writeFileSync(settings, JSON.stringify({ ...data, mine: 1 }, null, 2));
             return data;
         },
     });
     assert.strictEqual(steps[0].autoMemoryEnabled, false, outs[0]);
-    assert.match(outs[0], /settings\.json: autoMemoryEnabled: false written - /, outs[0]);
+    assert.match(outs[0], /settings\.local\.json: autoMemoryEnabled: false written - /, outs[0]);
+    assert.strictEqual(steps[1].mine, 1, 'the user\'s own key went');
     assert.strictEqual(steps[1].autoMemoryEnabled, undefined, outs[1]);
     assert.doesNotMatch(outs[1], /autoMemoryEnabled: false stays/, outs[1]);
     assert.match(outs[1], /attribution \/ worktree \/ auto-compact \/ memory keys removed/, outs[1]);
@@ -690,13 +696,14 @@ test('an update over an unreadable settings file keeps the switch-off\'s ledger 
 {
     const { outs, steps } = seedRun(['install', 'update', 'update'], 'rule markdown-docs\n', {
         args: [['--scope', 'project', '--memory', 'custom'], ['--installed-only', '--scope', 'project'], ['--installed-only', '--scope', 'project']],
+        // Mode v2 stage 2: the file the stack writes, and so the one that breaks, is settings.local.json.
         each: (repo, i) =>
         {
-            const settings = path.join(repo, '.claude', 'settings.json');
+            const settings = path.join(repo, '.claude', 'settings.local.json');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             if (i === 0) { const text = fs.readFileSync(settings, 'utf8'); fs.writeFileSync(settings, '{ not json'); fs.writeFileSync(`${settings}.good`, text); }
             if (i === 1) fs.renameSync(`${settings}.good`, settings);
-            return { row: /^managed-settings: .*settings\.json:autoMemoryEnabled=/m.test(stamp), off: i === 2 ? JSON.parse(fs.readFileSync(settings, 'utf8')).autoMemoryEnabled : null };
+            return { row: /^managed-settings: .*settings\.local\.json:autoMemoryEnabled=/m.test(stamp), off: i === 2 ? JSON.parse(fs.readFileSync(settings, 'utf8')).autoMemoryEnabled : null };
         },
     });
     assert.deepStrictEqual(steps.map((s) => s.row), [true, true, true], outs.join('\n---\n'));

@@ -27,7 +27,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   and never runs on Windows. Lint holds every core hook to the form, and a reader of a hook's line joins `command` and `args`.
   The cost, which 2.1.6 M3 refused: Cursor's hook schema has only `command` (cursor.com/docs/reference/third-party-hooks), so a
   Cursor bridge of the plugin's rows runs a bare `node` that exits 1 on the payload and fails open - GATE 6's three protective
-  guards run in Cursor only from the copy route's rows, which stay shell form in `settings.json`, the file Cursor reads.
+  guards run in Cursor only from the copy route's rows, which stay shell form in `settings.local.json` (3.11.0: the stack's
+  file at every scope), which Cursor reads while its Third-Party Imports setting is on, its default.
   `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;

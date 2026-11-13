@@ -238,7 +238,7 @@ test('status prints show\'s notes: the HOOKS_OFF line, the not-read line and the
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), `ALFRED_CODE_HOOKS_OFF=guard-secret-value\nALFRED_CODE_CONFIG_PROTECT=0\nALFRED_CODE_X_TOKEN=${token}\n`);
     const r = cli('status', '--root', at('ws/api'));
     assert.strictEqual(r.code, 0, r.out);
-    assert.match(r.out, /^!! variables: ALFRED_CODE_HOOKS_OFF in \.variables is not read - it lives in \.claude\/settings\.json$/m);
+    assert.match(r.out, /^!! variables: ALFRED_CODE_HOOKS_OFF in \.variables is not read - it lives in \.claude\/settings\.local\.json$/m);
     assert.match(r.out, /^!! variables: ALFRED_CODE_CONFIG_PROTECT in \.variables is not read - only the stack's variables are; a guard switch stays in \.claude\/settings\.json$/m);
     assert.match(r.out, /^!! variables: ALFRED_CODE_X_TOKEN in \.variables looks like a credential - keep it in \.alfred\/\.secrets$/m);
     assert.ok(!r.out.includes(token) && !r.out.includes('guard-secret-value'), 'no value printed');

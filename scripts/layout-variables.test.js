@@ -133,7 +133,7 @@ test('a .variables HOOKS_OFF or DATA_PATH line is not read and is named in notes
     assert.strictEqual(v.values[K('HOOKS_OFF')], undefined);
     assert.strictEqual(v.values[K('DATA_PATH')], undefined);
     assert.strictEqual(v.values[K('SCORING')], '1');
-    assert.ok(v.notes.includes(`!! variables: ${K('HOOKS_OFF')} in .variables is not read - it lives in .claude/settings.json`), v.notes.join('\n'));
+    assert.ok(v.notes.includes(`!! variables: ${K('HOOKS_OFF')} in .variables is not read - it lives in .claude/settings.local.json`), v.notes.join('\n'));
     assert.ok(v.notes.includes(`!! variables: ${K('DATA_PATH')} in .variables is not read - only the stack's variables are; a guard switch stays in .claude/settings.json`), v.notes.join('\n'));
     assert.strictEqual(layout.hooksOffOf(at('ws/api'), { env: { ...ON } }), '', 'the file\'s HOOKS_OFF line switches nothing off');
 });

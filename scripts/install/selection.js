@@ -233,7 +233,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
 function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
     stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
-    committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
+    scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -248,7 +248,6 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
     stampHooks = [...new Set((stampHooks || []).map(hookNow))];
-    committedEnv = offNow(committedEnv);
     let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, agentsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false } };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
@@ -366,10 +365,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     // A folder holding only the user's own files, or a leftover prelude, carries no hook line at all
     // (R56), so under any route it is never read as the picks. `keptNone` below stays on the literal
     // stamp line (R55): an inferred route never makes an empty folder a None.
-    // C5: at project and user scope the stored switch and HOOKS_OFF below are read from settings.json
-    // alone (`committedEnv`) - what they decide is the committed wiring, never the runner's own file.
-    const committed = committedEnv && typeof committedEnv === 'object' ? committedEnv : env;
-    const viaOff = String(envOf(committed, 'HOOKS_VIA_PLUGIN') || '').trim().toLowerCase() === 'false';
+    const viaOff = String(envOf(env, 'HOOKS_VIA_PLUGIN') || '').trim().toLowerCase() === 'false';
     const wiring = JSON.stringify(stored.hooks && typeof stored.hooks === 'object' ? stored.hooks : {});
     const wiredCopy = lines.some((l) => stackHook(l) && wiring.includes(`/.claude/hooks/${l.slice(5)}.js`));
     const lastRoute = lastHooksRoute || (viaOff || wiredCopy ? 'copy' : 'plugin');
@@ -383,7 +379,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     if (!routes.hooks && !lines.some(stackHook))
     {
         const keptNone = lastHooksRoute === 'copy';
-        const off = String(envOf(committed, 'HOOKS_OFF') || '');
+        const off = String(envOf(env, 'HOOKS_OFF') || '');
         const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
         if (on)
         {

@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-const { seedRun, POSIX_ONLY, plantOlderRoot } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, plantOlderRoot, plantSharedInstall } = require('./seed-sandbox.js');
 const { valueHash } = require('./install/stamp.js');
 
 const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
@@ -65,6 +65,8 @@ const addStampLines = (repo, lines) =>
 function twoZeroLayout(repo)
 {
     const claude = path.join(repo, '.claude');
+    // A 2.0.0 install wrote its rows to settings.json (mode v2 stage 2 moved them to settings.local.json).
+    plantSharedInstall(repo);
     const settings = json(path.join(claude, 'settings.json'));
     delete settings.env.ALFRED_CODE_DATA_PATH;
     settings.env.ALFRED_CODE_DOCS_PATH = '.claude/docs';
@@ -346,9 +348,10 @@ test('sensitive data: an older custom root\'s store is carried to .alfred on the
             each: (repo, i) =>
             {
                 if (i === 0) { put(path.join(repo, '.alfred', '.secrets'), 'API_TOKEN=tok-abcdef123456\n'); plantR(repo); }
-                return { settings: read(path.join(repo, '.claude', 'settings.json')), stamp: pendingOf(read(path.join(repo, '.claude', 'alfred-code.stamp')) || '') };
+                return { settings: read(path.join(repo, '.claude', 'settings.json')), local: read(path.join(repo, '.claude', 'settings.local.json')), stamp: pendingOf(read(path.join(repo, '.claude', 'alfred-code.stamp')) || '') };
             },
-            inspect: (repo) => ({ ...look(repo), deny: (json(path.join(repo, '.claude', 'settings.json')).permissions || {}).deny || [] }),
+            // the stack's deny rows land in settings.local.json at every scope (mode v2 stage 2)
+            inspect: (repo) => ({ ...look(repo), deny: (json(path.join(repo, '.claude', 'settings.local.json')).permissions || {}).deny || [] }),
         });
         assert.strictEqual(r.text('.alfred/.secrets'), 'API_TOKEN=tok-abcdef123456\n', `${route}: moved as it was\n${outs[1]}`);
         assert.ok(!r.has('var/data'), `${route}: the emptied folder is gone`);
@@ -439,7 +442,8 @@ const setStamper = (repo, by) =>
     const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
     fs.writeFileSync(stampFile, read(stampFile).replace(/^secrets: .*$/m, `secrets: dual ${by}`));
 };
-const denyRows = (repo) => (json(path.join(repo, '.claude', 'settings.json')).permissions || {}).deny || [];
+// the stack's deny rows land in settings.local.json at every scope (mode v2 stage 2)
+const denyRows = (repo) => (json(path.join(repo, '.claude', 'settings.local.json')).permissions || {}).deny || [];
 const NO_SESSION = { CLAUDE_CODE_SESSION_ID: '' };   // the suite may run inside a session: each run here is its own
 // M9: on the plugin route the dual line waits for the core read back at this release, so the listing carries it.
 const RELEASE = json(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json')).version;

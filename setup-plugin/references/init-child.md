@@ -12,8 +12,8 @@ this project installs as its child`.
 
   ```ask
   Where should the stack's plugins be enabled in this child of <rel>? The library copies, rules, settings and stamp live in this project's .claude/ at every scope.
-  - 'local (Recommended)' - this checkout only; the stack's settings go to .claude/settings.local.json and the committed settings.json is left as it is
-  - 'project' - .claude/settings.json: everyone who clones this repo
+  - 'local (Recommended)' - this checkout only; the plugins are enabled for you alone and the committed settings.json is left as it is
+  - 'project' - the plugins are enabled in .claude/settings.json for everyone who clones this repo; the stack's settings stay in .claude/settings.local.json
   - 'user' - every project of this account
   ```
 

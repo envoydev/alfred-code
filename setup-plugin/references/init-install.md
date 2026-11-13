@@ -48,8 +48,8 @@ Screen A's templates, one question each in the one call:
 
 ```ask
 Where should the stack's plugins be enabled? The library copies, rules, hook engines, settings and stamp live in this project's .claude/ at every scope.
-- 'local (Recommended)' - this checkout only; the stack's settings go to .claude/settings.local.json, and .alfred and .claude stay out of git
-- 'project' - .claude/settings.json - shared: committed with the repo, or read by every session in this folder
+- 'local (Recommended)' - this checkout only; the plugins are enabled for you alone, and .alfred and .claude stay out of git
+- 'project' - the plugins are enabled in .claude/settings.json - shared: committed with the repo; the stack's settings still stay in your .claude/settings.local.json
 - 'user' - every project of this account
 ```
 
@@ -72,12 +72,12 @@ At <1M> tokens per message on a 1M window (<300K> on a 300k-1M one, <200K> on a 
 
 ## 2. Permission mode
 
-Read the scope's settings file `permissions.defaultMode` - the project's `.claude/settings.local.json` at `local` scope, else its `.claude/settings.json`, if it already carries one - and report the current value in one line (`unset` if the key is absent). Read it with one call, the file's path in forward slashes inside the script - `node -e 'let v;try{v=(JSON.parse(require("fs").readFileSync("<file>","utf8")).permissions||{}).defaultMode}catch{}console.log(v||"unset")'` - it prints the mode, or `unset` for an absent key or a missing or unreadable file. The file is read inside the script, never as an argument or through `cat`: the secret guard refuses a credential file named as a command word on hosts it cannot mask (Cursor, an older Claude Code), and the masker covers the output everywhere else; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE AskUserQuestion - keeping writes nothing, since Claude Code's own documented settings precedence (user -> project -> local, later overrides earlier) has the project read whatever the target file already has, or Claude Code's own default when the key is absent:
+Read the stack's settings file `permissions.defaultMode` - the project's `.claude/settings.local.json`, at every scope, if it already carries one - and report the current value in one line (`unset` if the key is absent). Read it with one call, the file's path in forward slashes inside the script - `node -e 'let v;try{v=(JSON.parse(require("fs").readFileSync("<file>","utf8")).permissions||{}).defaultMode}catch{}console.log(v||"unset")'` - it prints the mode, or `unset` for an absent key or a missing or unreadable file. The file is read inside the script, never as an argument or through `cat`: the secret guard refuses a credential file named as a command word on hosts it cannot mask (Cursor, an older Claude Code), and the masker covers the output everywhere else; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE AskUserQuestion - keeping writes nothing, since Claude Code's own documented settings precedence (user -> project -> local, later overrides earlier) has the project read whatever the target file already has, or Claude Code's own default when the key is absent:
 
 ```ask
 Permission mode for this project? It is <the value reported | unset> today.
 - 'Keep it as it is (Recommended)' - nothing is written here
-- 'Set the default for this project' - writes permissions.defaultMode into this project's .claude/settings.json only; the next ask offers the value reported first, then default / plan / acceptEdits / bypassPermissions / auto / dontAsk
+- 'Set the default for this project' - writes permissions.defaultMode into this project's .claude/settings.local.json only; the next ask offers the value reported first, then default / plan / acceptEdits / bypassPermissions / auto / dontAsk
 ```
  No-project mode: skip - there is no project to scope a default to. Applied at step 10 (Install), the same merge-only-this-key discipline as screen B's environment choices - every other key in `permissions` (`allow` / `deny` / `ask` / `additionalDirectories`) and the rest of the file stay exactly as the installer left them.
 
@@ -210,7 +210,7 @@ Then apply the step-1 environment choices where they differ from what the instal
 
 The docs root is always `<data root>/docs`, which the installer stamped into `.alfred/stack/rules/alfred-docs-root.md`; every later update re-stamps it.
 
-On a step-2 'set the default for this project' answer, merge `permissions.defaultMode: <value>` into the scope's project settings file (`.claude/settings.local.json` at `local` scope, else `.claude/settings.json`) - never the account file - touching ONLY that key inside `permissions` (`allow` / `deny` / `ask` / `additionalDirectories` and everything else in the file untouched). A 'keep it as it is' answer writes nothing.
+On a step-2 'set the default for this project' answer, merge `permissions.defaultMode: <value>` into the project's `.claude/settings.local.json`, at every scope - never the account file - touching ONLY that key inside `permissions` (`allow` / `deny` / `ask` / `additionalDirectories` and everything else in the file untouched). A 'keep it as it is' answer writes nothing.
 
 ### 10a. Plugin settings - apply the step-8 answer
 
@@ -232,7 +232,7 @@ USER's to run - the restart, the account-file credential line, `/alfred-code:ini
 as suggestions, the one everything depends on first and each with
 the one reason it matters, SCOPED to what actually needs it ('Reload the session - skills, agents
 and the always-on rules are inventoried at launch'). Do not say
-nothing is live until the reload: hooks and the `settings.json` env are read per invocation and are
+nothing is live until the reload: hooks and the settings `env` are read per invocation and are
 live on the next tool call, which `meta/environment.json`'s own comment states and a measured run
 proved twice in one session (a hook installed at 08:12:53 fired at 08:21:15; an env flip produced
 its first ledger row 7.9 s later and covered 17 of 17 following calls). A claim about the stack's
@@ -263,7 +263,7 @@ Report what still needs a hand: the first `claude plugin install` may prompt to 
    - 'Skip' - nothing is written
    ```
 
-2. **Restart, then `/alfred-code:init` again** - restart Claude Code from the project root (skills, agents and rules are inventoried at launch; hooks and the settings.json env need no restart - they are live on the next tool call), then type `/alfred-code:init` in the NEW session: it finds the install and runs its bootstrap phase - it installs what the kept plugins need (csharp-ls, typescript-language-server - one ask first; step 9's `init:` lines are the first reason when there are any), sets claude-hud's status line, runs the captures this install carries, and offers the AGENTS.md fill.
+2. **Restart, then `/alfred-code:init` again** - restart Claude Code from the project root (skills, agents and rules are inventoried at launch; hooks and the settings env need no restart - they are live on the next tool call), then type `/alfred-code:init` in the NEW session: it finds the install and runs its bootstrap phase - it installs what the kept plugins need (csharp-ls, typescript-language-server - one ask first; step 9's `init:` lines are the first reason when there are any), sets claude-hud's status line, runs the captures this install carries, and offers the AGENTS.md fill.
 
 ## Do not
 
