@@ -2430,7 +2430,8 @@ test('member: a clear start and a compact start drop the member\'s record, a res
     try
     {
         const key = keyOfRel('api');
-        const home = require('node:crypto').createHash('sha1').update(p.root).digest('hex').slice(0, 12);
+        // The hook keys the temp twin by the root it resolves - the long name where Windows hands a short one (CI's RUNNER~1)
+        const home = require('node:crypto').createHash('sha1').update(fs.realpathSync.native(p.root)).digest('hex').slice(0, 12);
         const put = (s) =>
         {
             const state = path.join(p.root, `.alfred/state/sessions/preferences-${s}-main-m-${key}.json`);
@@ -2483,7 +2484,7 @@ test('member: a seat in a worktree of the root\'s repository editing the child\'
         const file = path.join(p.root, '.claude', 'worktrees', 'w1', 'api', 'src', 'y.ts');
         const hook = require(HOOK);
         const own = hook.ownerOf({ tool_name: 'Edit', tool_input: { file_path: file }, cwd: p.root }, p.root);
-        assert.strictEqual(own.file, path.join(p.root, 'api', 'src', 'y.ts'));
+        assert.strictEqual(own.file, path.join(fs.realpathSync.native(p.root), 'api', 'src', 'y.ts'));   // the long name on CI's RUNNER~1
         const r = p.hook(edit(file, sid(), { agent_id: 'seat1', agent_type: 'web-angular-implementer' }));
         assert.ok(denied(r), r.stdout); assert.match(reason(r), /API-CODE/);
     }
