@@ -2278,3 +2278,254 @@ test('D25: a skip label a hook answered is no waiver; the user\'s is; the answer
   assert.equal(refused.status, 2, 'a prelude with no byUser: the skip is refused');
   assert.match(refused.stderr, /picked by no person/);
 });
+
+// ---- review proof 3.12: what a receipt write proves - the pipe cases (A) and the kind cases (B) ----
+// A consuming project's commit was refused after its review: the receipt writer ran through `| tail -n 3`, which cut
+// the `wrote ... COMMIT-GATE` line, and an earlier receipt had closed every open review whatever it named. The receipt
+// file's own time inside the call's window now proves the write (D3), and a receipt closes only the review kinds it
+// speaks for (D2).
+// A whole-second file time just ahead of now, so the stamped receipt is newer than every transcript written before it.
+const rpTime = () => Math.ceil(Date.now() / 1000) * 1000 + 2000;
+const rpAt = (row, ms) => ({ ...row, timestamp: new Date(ms).toISOString() });
+const rpArgs = (verified, extra = '') => `--verified '${verified}' --authorized 'commit it' --probe 'npm test' --format 'npm run format - clean' --findings 'none'${extra}`;
+const rpCmd = (verified = 'review-code over the change', extra = '', tail = '') => `R="${CP_PATH}"\nnode "$R" commit ${rpArgs(verified, extra)}${tail}`;
+const RP_PIPED = rpCmd(undefined, '', ' | tail -n 3');
+const RP_WROTE = 'wrote .alfred/state/approvals/COMMIT-GATE:\nVERIFIED review-code over the change\n';
+const RP_TAIL3 = 'live-probe: npm test\nformat: npm run format - clean\nfindings: none\n';   // what `| tail -n 3` leaves: no wrote line
+const RP_REFUSED = 'receipt: missing --format\nrc=2';                                         // a refused writer behind `; echo rc=$?`
+const rpDisk = (dir, first, more = '') => writeStateReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: `VERIFIED ${first}` }) + more);
+const rpStamp = (file, ms) => fs.utimesSync(file, new Date(ms), new Date(ms));
+const rpCommit = (dir, tp, extra = {}, command = 'git commit -am x') => gateWith(dir, command, { transcript_path: tp, ...extra });
+const rpUnproven = (names) => new RegExp(`names ${names}, but no run of (?:it|them)`);
+const rpSeat = (ts) => ({ type: 'assistant', ...(ts ? { timestamp: ts } : {}), message: { id: 'mag1', content: [{ type: 'tool_use', id: 'ag1', name: 'Agent', input: { subagent_type: 'general-purpose', prompt: 'review the diff' } }] } });
+const rpPass = (r, name) => assert.equal(r.status, 0, `${name}: ${r.stderr.slice(0, 300)}`);
+const rpRefused = (r, re, name) => { assert.equal(r.status, 2, name); assert.match(r.stderr, re, name); };
+const rpShell = (id, tool, command) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `t${id}`, name: tool, input: { command } }] } });
+const rpTyped = (name, ts) => ({ type: 'user', ...(ts ? { timestamp: ts } : {}), message: { role: 'user', content: `<command-name>/${name}</command-name>\n<command-args></command-args>` } });
+const rpBlockRow = (dir, sid) => JSON.parse(fs.readFileSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').pop());
+
+test('review proof 3.12: a receipt write whose output a pipe cut or hid is proven by the receipt file', () => {
+  const M = rpTime();
+  const review = cpSkill('a', 'review-code');
+  const timed = (call, result, at = M - 500, back = M + 500) => [review, rpAt(call, at), rpAt(result, back)];
+  const dir = scratchRepo();
+  const cases = {
+    A1: timed(cpBash('r', RP_PIPED), cpResult('r', RP_TAIL3)),
+    'A1 array result': timed(cpBash('r', RP_PIPED), cpResult('r', [{ type: 'text', text: RP_TAIL3 }])),
+    A2: timed(cpBash('r', rpCmd(undefined, '', ' >/dev/null 2>&1')), cpResult('r', '')),
+    A3: timed(rpShell('r', 'PowerShell', `node ${CP_PATH} commit ${rpArgs('review-code over the change')} | Select-Object -Last 3`), cpResult('r', RP_TAIL3)),
+    A11: [review, rpAt(cpBash('r1', RP_PIPED), M - 10000), rpAt(cpResult('r1', RP_TAIL3), M - 9000), rpAt(cpBash('r2', RP_PIPED), M - 500), rpAt(cpResult('r2', RP_TAIL3), M + 500)],
+  };
+  const tps = Object.fromEntries(Object.entries(cases).map(([name, rows]) => [name, writeTranscript(dir, `rp-${name.replace(/\W+/g, '-')}`, rows)]));
+  rpStamp(rpDisk(dir, 'review-code over the change'), M);
+  for (const [name, tp] of Object.entries(tps)) rpPass(rpCommit(dir, tp), name);
+  // A12: a receipt only in the pre-2.8.0 flow/ place, and one in both places - the file the gate judges is the one timed
+  const flowOnly = scratchRepo();
+  const tpFlow = writeTranscript(flowOnly, 'rp-a12-flow', cases.A1);
+  writeReceipt(flowOnly, 'COMMIT-GATE', commitReceipt(headOf(flowOnly), { first: 'VERIFIED review-code over the change' }));
+  rpStamp(path.join(flowOnly, '.alfred', 'docs', 'flow', 'COMMIT-GATE'), M);
+  rpPass(rpCommit(flowOnly, tpFlow), 'A12 flow/ only');
+  const both = scratchRepo();
+  const tpBoth = writeTranscript(both, 'rp-a12-both', cases.A1);
+  writeReceipt(both, 'COMMIT-GATE', commitReceipt(headOf(both), { first: 'VERIFIED review-code over the change' }));
+  const flowFile = path.join(both, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
+  const stateFile = rpDisk(both, 'review-code over the change');
+  rpStamp(stateFile, M); rpStamp(flowFile, M - 3600000);
+  rpPass(rpCommit(both, tpBoth), 'A12 both places, state/approvals/ in the window');
+  rpStamp(stateFile, M + 60000); rpStamp(flowFile, M);
+  rpRefused(rpCommit(both, tpBoth), rpUnproven('review-code'), 'A12 both places, the judged file outside the window');
+});
+
+test('review proof 3.12: the window runs from the call row minus 2s to the result row plus 2s', () => {
+  const M = rpTime();
+  const dir = scratchRepo();
+  const points = [['call at mtime + 2000', M + 2000, M + 3000, 0], ['call at mtime + 2001', M + 2001, M + 3001, 2], ['call at mtime + 1999', M + 1999, M + 2999, 0],
+    ['result at mtime - 2000', M - 3000, M - 2000, 0], ['result at mtime - 2001', M - 3001, M - 2001, 2], ['result at mtime - 1999', M - 2999, M - 1999, 0]];
+  const tps = points.map(([name, call, back], i) => [name, writeTranscript(dir, `rp-a4-${i}`, [cpSkill('a', 'review-code'), rpAt(cpBash('r', RP_PIPED), call), rpAt(cpResult('r', RP_TAIL3), back)])]);
+  rpStamp(rpDisk(dir, 'review-code over the change'), M);
+  points.forEach(([, , , status], i) => {
+    const [name, tp] = tps[i];
+    const r = rpCommit(dir, tp);
+    assert.equal(r.status, status, `${name}: ${r.stderr.slice(0, 300)}`);
+    if (status === 2) assert.match(r.stderr, rpUnproven('review-code'), name);
+  });
+});
+
+test('review proof 3.12: no receipt file inside the call\'s window is no proof', () => {
+  const M = rpTime();
+  const dir = scratchRepo();
+  const review = cpSkill('a', 'review-code');
+  const echoed = rpCmd(undefined, '', '; echo rc=$?');
+  const cases = [
+    ['A5 the file is older than the call', [review, rpAt(cpBash('r', echoed), M + 60000), rpAt(cpResult('r', RP_REFUSED), M + 61000)], false],
+    ['A6 the file was written after the result', [review, rpAt(cpBash('r', echoed), M - 60000), rpAt(cpResult('r', RP_REFUSED), M - 59000)], false],
+    ['A9 an error result', [review, rpAt(cpBash('r', RP_PIPED), M - 500), rpAt(cpResult('r', RP_TAIL3, true), M + 500)], false],
+    ['A7 no timestamp on either row', [review, cpBash('r', RP_PIPED), cpResult('r', RP_TAIL3)], false],
+    ['A7 a call timestamp that does not parse', [review, { ...cpBash('r', RP_PIPED), timestamp: 'soon' }, rpAt(cpResult('r', RP_TAIL3), M + 500)], false],
+    ['A7 an empty result timestamp', [review, rpAt(cpBash('r', RP_PIPED), M - 500), { ...cpResult('r', RP_TAIL3), timestamp: '' }], false],
+    ['A7 untimed rows with the wrote line', [review, cpBash('r', rpCmd()), cpResult('r', RP_WROTE)], true],
+    ['B13 a seat that never reports', [review, rpSeat(), rpAt(cpBash('r', RP_PIPED), M - 500), rpAt(cpResult('r', RP_TAIL3), M + 500)], false],
+  ];
+  const tps = cases.map(([, rows], i) => writeTranscript(dir, `rp-none-${i}`, rows));
+  const receipt = rpDisk(dir, 'review-code over the change');
+  rpStamp(receipt, M);
+  cases.forEach(([name, , passes], i) => {
+    const r = rpCommit(dir, tps[i]);
+    if (passes) rpPass(r, name); else rpRefused(r, rpUnproven('review-code'), name);
+  });
+  fs.rmSync(receipt);
+  rpRefused(rpCommit(dir, writeTranscript(dir, 'rp-a8', [review, rpAt(cpBash('r', RP_PIPED), M - 500), rpAt(cpResult('r', RP_TAIL3), M + 500)])),
+    /without the pre-commit gate receipt/, 'A8 no receipt file');
+});
+
+test('review proof 3.12: of two receipt calls the file proves the one that wrote it', () => {
+  const M = rpTime();
+  const one = scratchRepo();
+  const tp1 = writeTranscript(one, 'rp-a10-1', [cpSkill('a', 'review-code'),
+    rpAt(cpBash('r1', rpCmd(undefined, '', '; echo rc=$?')), M - 10000), rpAt(cpResult('r1', RP_REFUSED), M - 9000),
+    rpAt(cpBash('r2', RP_PIPED), M - 500), rpAt(cpResult('r2', RP_TAIL3), M + 500)]);
+  rpStamp(rpDisk(one, 'review-code over the change'), M);
+  rpPass(rpCommit(one, tp1), 'A10 the later piped call wrote it');
+  // the first write closes review-code; a review loaded after it stays open, and the refused second call proves nothing
+  const two = scratchRepo();
+  const both = `R="${CP_PATH}"\nnode "$R" commit ${CP_ARGS}`;
+  const tp2 = writeTranscript(two, 'rp-a10-2', [cpSkill('a', 'review-code'),
+    rpAt(cpBash('r1', `${both} | tail -n 3`), M - 500), rpAt(cpResult('r1', RP_TAIL3), M + 500),
+    cpSkill('s', 'review-security'),
+    rpAt(cpBash('r2', `${both}; echo rc=$?`), M + 5000), rpAt(cpResult('r2', RP_REFUSED), M + 6000)]);
+  rpStamp(rpDisk(two, 'review-code and review-security over the change', CP_SEC), M);
+  rpRefused(rpCommit(two, tp2), /names review-security, but no run of it/, 'A10 the later review stays open');
+});
+
+test('review proof 3.12: a receipt closes the reviews it speaks for', () => {
+  const dir = scratchRepo();
+  const wrote = (command) => [cpBash('r', command), cpResult('r', RP_WROTE)];
+  const run = (name, rows, verified) => {
+    const tp = writeTranscript(dir, `rp-close-${name.replace(/\W+/g, '-')}`, rows);
+    writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: `VERIFIED ${verified}` }));
+    rpPass(rpCommit(dir, tp), name);
+  };
+  const V = `V='review-code and task-verify-plan over the change'\nR="${CP_PATH}"\nnode "$R" commit --verified "$V" --authorized 'commit it' --probe 'npm test' --format 'npm run format - clean' --findings 'none'`;
+  run('B1', [cpSkill('a', 'review-code'), thinking('a'), ...wrote(rpCmd())], 'review-code over the change');
+  run('B7', [cpSkill('a', 'task-verify-code'), ...wrote(rpCmd())], 'task-verify-code over the change');
+  run('B7 mirror', [cpSkill('a', 'review-code'), ...wrote(rpCmd('task-verify-code over the change'))], 'review-code over the change');
+  run('B10 no receipt call', [cpSkill('a', 'review-code'), resultRow()], 'review-code over the change');
+  run('B10 receipt then result', [cpSkill('a', 'review-code'), ...wrote(rpCmd()), resultRow()], 'review-code over the change');
+  run('B10 result then receipt', [cpSkill('a', 'review-code'), resultRow(), ...wrote(rpCmd())], 'review-code over the change');
+  run('B11 a typed review', [rpTyped('review-code'), ...wrote(rpCmd())], 'review-code over the change');
+  run('B12 the names in a variable', [cpSkill('a', 'review-code'), cpSkill('p', 'task-verify-plan'), ...wrote(V)], 'review-code and task-verify-plan over the change');
+  // the fix flow: a first review, a fix, a second review of the fix - the three files in the commit
+  const fixFlow = (id, first, printed, named, withReceipt = true) => {
+    const repo = scratchRepo();
+    spawnSync('git', ['-C', repo, 'add', 'a.txt', 'b.txt', 'c.txt']);
+    const now = Date.now();
+    const min = (n) => new Date(now - n * 60000);
+    for (const f of ['b.txt', 'c.txt']) fs.utimesSync(path.join(repo, f), min(120), min(120));
+    fs.utimesSync(path.join(repo, 'a.txt'), min(30), min(30));   // the fix, after the first review started
+    const sk = (i, name, ago, args) => ({ type: 'assistant', timestamp: min(ago).toISOString(), message: { id: i, content: [{ type: 'tool_use', id: `t${i}`, name: 'Skill', input: { skill: name, ...(args ? { args } : {}) } }] } });
+    const tp = writeTranscript(repo, id, [sk('1', first, 60), sk('2', 'review-code', 20, 'a.txt'), ...(printed ? [resultRow(min(19))] : []),
+      ...(withReceipt ? [cpBash('r', rpCmd(`${named} over the change`)), cpResult('r', RP_WROTE)] : [])]);
+    writeReceipt(repo, 'COMMIT-GATE', commitReceipt(headOf(repo), { first: `VERIFIED ${named} over the change` }));
+    return rpCommit(repo, tp, {}, 'git commit -m x');
+  };
+  rpPass(fixFlow('rp-b5', 'review-code', false, 'review-code'), 'B5');
+  rpPass(fixFlow('rp-b6', 'review-code', true, 'review-code'), 'B6');
+  rpRefused(fixFlow('rp-b6-open', 'review-code', true, 'review-code', false), /b\.txt, c\.txt are in no review of the code this session ran/, 'B6 with no receipt call');
+  rpPass(fixFlow('rp-b18', 'task-verify-code', false, 'task-verify-code'), 'B18');
+});
+
+test('review proof 3.12: a receipt closes no review of a kind it does not speak for', () => {
+  const dir = scratchRepo();
+  const wrote = (command) => [cpBash('r', command), cpResult('r', RP_WROTE)];
+  const NONE = wrote(rpCmd('the checkpoint over the change'));
+  const run = (name, rows, verified, more, refusal) => {
+    const tp = writeTranscript(dir, `rp-kind-${name.replace(/\W+/g, '-')}`, rows);
+    writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: `VERIFIED ${verified}` }) + more);
+    const r = rpCommit(dir, tp);
+    if (refusal) rpRefused(r, refusal, name); else rpPass(r, name);
+  };
+  const rs = [cpSkill('a', 'review-code'), cpSkill('s', 'review-security')];
+  run('B2', [cpSkill('a', 'review-code'), cpSkill('p', 'task-verify-plan'), ...wrote(rpCmd())], 'review-code and task-verify-plan over the change', '', /names verify-plan, but no run of it/);
+  run('B3 --security', [...rs, ...wrote(rpCmd(undefined, " --security 'auth ok'"))], 'review-code and review-security over the change', CP_SEC);
+  run('B3 --security=', [...rs, ...wrote(rpCmd(undefined, ' --security=auth-ok'))], 'review-code and review-security over the change', CP_SEC);
+  run('B3 named in --findings', [...rs, ...wrote(rpCmd().replace("--findings 'none'", "--findings 'review-code none; review-security none'"))], 'review-code and review-security over the change', CP_SEC);
+  run('B3 not named', [...rs, ...wrote(rpCmd())], 'review-code and review-security over the change', CP_SEC, /names review-security, but no run of it/);
+  run('B4 (i)', [cpSkill('a', 'review-code'), ...NONE], 'review-code over the change', '');
+  run('B4 (ii)', [cpSkill('a', 'review-code'), resultRow(), cpSkill('p', 'task-verify-plan'), ...NONE], 'review-code and task-verify-plan over the change', '', /names verify-plan, but no run of it/);
+  run('B4 (iii)', [cpSkill('a', 'review-code'), resultRow(), cpSkill('s', 'review-security'), ...NONE], 'review-code and review-security over the change', CP_SEC, /names review-security, but no run of it/);
+});
+
+const RP_NO_REVIEW = [cpBash('r', rpCmd()), cpResult('r', RP_WROTE)];
+test('review proof 3.12: a receipt with no review before it, or after a refused review call, closes nothing', () => {
+  const dir = scratchRepo();
+  const none = writeTranscript(dir, 'rp-b8', RP_NO_REVIEW);
+  const refused = writeTranscript(dir, 'rp-b9', [cpSkill('a', 'review-code'), cpResult('a', 'refused by a hook', true), ...RP_NO_REVIEW]);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code over the change' }));
+  rpRefused(rpCommit(dir, none), rpUnproven('review-code'), 'B8 no review in the session');
+  rpRefused(rpCommit(dir, refused), rpUnproven('review-code'), 'B9 a refused review call');
+});
+
+test('review proof 3.12: a Cursor payload is not judged', () => {
+  const dir = scratchRepo();
+  const tp = writeTranscript(dir, 'rp-b14', RP_NO_REVIEW);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code over the change' }));
+  const r = rpCommit(dir, tp, { cursor_version: '1.7.0' });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+  assert.equal(r.stderr, '');
+});
+
+test('review proof 3.12: the consent order keeps the start of a review a receipt followed but did not speak for', () => {
+  const dir = scratchRepo();
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.utimesSync(path.join(dir, f), new Date('2026-10-10T08:00:00Z'), new Date('2026-10-10T08:00:00Z'));
+  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, ...userPick(), toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
+  const sk = (id, name, ts) => ({ ...cpSkill(id, name), timestamp: ts });
+  const tail = [answer('2026-10-10T09:17:02Z'), sk('a', 'review-code', '2026-10-10T09:25:41Z'), cpBash('r', rpCmd()), cpResult('r', RP_WROTE)];
+  const cases = [
+    ['a plan review before the answer', [sk('p', 'task-verify-plan', '2026-10-10T09:10:00Z')], true],
+    ['a security review before the answer', [sk('s', 'review-security', '2026-10-10T09:10:00Z')], true],
+    ['a typed plan review before the answer', [rpTyped('task-verify-plan', '2026-10-10T09:10:00Z')], true],
+    ['a plan review a running seat holds', [sk('p', 'task-verify-plan', '2026-10-10T09:10:00Z'), rpSeat('2026-10-10T09:11:00Z')], false],
+    ['no review before the answer', [], false],
+  ];
+  const tps = cases.map(([, before], i) => writeTranscript(dir, `rp-b15-${i}`, [...before, ...tail]));
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code over the change', auth: 'answered: Commit (Recommended)' }));
+  cases.forEach(([name, , passes], i) => {
+    const r = rpCommit(dir, tps[i]);
+    if (passes) {
+      rpPass(r, name);
+      assert.doesNotMatch(r.stderr, /answered before any review ran/, name);
+    } else rpRefused(r, /was answered before any review ran in this session/, name);
+  });
+});
+
+test('review proof 3.12: the WAIVED hint names no plan review', () => {
+  const dir = scratchRepo();
+  const quote = 'I allow you to ' + 'commit, push';
+  const tp = writeTranscript(dir, 'rp-b16', [cpSkill('p', 'task-verify-plan'), thinking('p')]);
+  writeReceipt(dir, 'COMMIT-GATE', `WAIVED - "${quote}"\n`);
+  const r = rpCommit(dir, tp);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /waives nothing/);
+  assert.doesNotMatch(r.stderr, /ran in this session but no result line reached/);
+});
+
+test('review proof 3.12: the block row of a review-proof refusal carries its branch', () => {
+  const named = scratchRepo();
+  const tpNamed = writeTranscript(named, 'rp-b17-named', RP_NO_REVIEW);
+  writeReceipt(named, 'COMMIT-GATE', commitReceipt(headOf(named), { first: 'VERIFIED review-code over the change' }));
+  rpRefused(rpCommit(named, tpNamed, { session_id: 'rp-b17-named' }), rpUnproven('review-code'), 'B17 unproven');
+  assert.deepEqual(rpBlockRow(named, 'rp-b17-named').detail, { branch: 'review-unproven' });
+  const stale = scratchRepo();
+  const now = Date.now();
+  const min = (n) => new Date(now - n * 60000);
+  const tpStale = writeTranscript(stale, 'rp-b17-stale', [{ ...cpSkill('a', 'review-code'), timestamp: min(60).toISOString() }, resultRow(min(59))]);
+  writeReceipt(stale, 'COMMIT-GATE', commitReceipt(headOf(stale), { first: 'VERIFIED review-code over the change' }));
+  fs.utimesSync(path.join(stale, 'a.txt'), min(10), min(10));
+  const r = rpCommit(stale, tpStale, { session_id: 'rp-b17-stale' });
+  rpRefused(r, /a\.txt changed after the last review/, 'B17 stale');
+  assert.deepEqual(rpBlockRow(stale, 'rp-b17-stale').detail, { branch: 'review-stale' });
+  fs.rmSync(path.join(stale, '.alfred', 'docs', 'flow', 'COMMIT-GATE'));
+  rpRefused(rpCommit(stale, tpStale, { session_id: 'rp-b17-none' }), /without the pre-commit gate receipt/, 'B17 no receipt');
+  assert.equal(rpBlockRow(stale, 'rp-b17-none').detail, undefined);
+});
