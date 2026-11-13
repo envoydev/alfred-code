@@ -769,7 +769,7 @@ function transcriptScan() {
   // script named by its path, or by a variable the same command set to that path (`R=".../receipt.js"` then
   // `node "$R" commit`, the shape every smoke run used). The write is proven by the writer's own `wrote ...COMMIT-GATE`
   // line, or by the COMMIT-GATE file's time inside the call's window - its call row minus 2s to its result row plus 2s (a
-  // pipe or a redirect cut the line from 22 of 117 measured calls; 3.12, D3). It closes each open review whose result
+  // pipe or a redirect cut the line from 22 of 118 measured calls; 3.12, D3). It closes each open review whose result
   // line is Findings (never a loop's Outcome) that it speaks for - the two reviews of the code always, the security
   // review when the command names it or carries --security, the plan review when the command names it (D2) - unless a
   // seat sent after that review had not reported before the call. An echo, another script, or a call with neither proof

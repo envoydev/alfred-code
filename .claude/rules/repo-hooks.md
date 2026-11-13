@@ -908,9 +908,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `--dry-run` - the script by its path, or by a variable the same command set to it (`R=".../receipt.js"` then
     `node "$R" commit`; node flags, `node.exe` and a continued line allowed). The write is proven by the writer's own
     `wrote ...COMMIT-GATE` line in its result, or by the COMMIT-GATE file's time inside the call's window - the call
-    row minus 2s to the result row plus 2s (3.12: 22 of 117 receipt calls held no `wrote` line - 28 piped, 8 to
-    `/dev/null`). A refused writer exits before it writes, so `; echo rc=$?` still proves nothing; with no parseable
-    time on either row, or no file, the line alone decides. It closes every open review whose line is `Findings:` -
+    row minus 2s to the result row plus 2s (3.12: 22 of 118 receipt calls held no `wrote` line - 28 piped, 8 to
+    `/dev/null`). A refused writer exits before it writes, so `; echo rc=$?` still proves nothing; with a row whose
+    time does not parse, or no file, the line alone decides. It closes every open review whose line is `Findings:` -
     never a loop's `Outcome:` - that it speaks for: `task-verify-code` and `review-code` always, each standing for the
     other (the checkpoint's own review, fix, re-review flow); `review-security` when the command names it or carries
     `--security` (all 3 measured did); `task-verify-plan` only when named (about 19 plan reviews were closed by a
