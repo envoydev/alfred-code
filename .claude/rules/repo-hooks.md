@@ -764,7 +764,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `AUTO` (no `session:` line) is SPENT once a `.md` under `layout.planDirs` newer than the stamp carries `^Completed:\s*\S`
     - it passes no seat, implementer or generic, and the implementer denial names the plan and its line
     (`implementer-auto-spent`). Bounded per dispatch: the newest 50 plan files, none past 1 MB, an unreadable folder or
-    file no evidence; a session-named AUTO, `APPROVED` and the plan stamps are untouched.
+    file no evidence; a session-named AUTO, `APPROVED` and the plan stamps are untouched. PF1 (3.12): the plans come
+    from `layout.planFiles`, so a plan folder spends the waiver through its `status.json` - `completedAt` set, the file
+    newer than the stamp and at most `SPENT_SCAN_BYTES` - and an unreadable one is no evidence (R31); the flat
+    `Completed:` read is the marked flat branch, and an older `layout.js` copy keeps the flat loop.
     Its `no-execution-verdict` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16: 85 rows nobody
     read, and an 8MB transcript read on every main-session Agent call (+23ms on a 226MB transcript).
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
@@ -1328,6 +1331,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     docs-session, the one sibling that denies a hand-back, asks only a seat whose own writes changed a watched file, and
     the scoring seat holds no write tool (audit 2026-10-30 HK-28, ruled not reproduced; the replay is in
     `docs-session.test.js`).
+    PLAN FOLDERS (PF1, 3.12; R23-R25): the flow state is `v: 11`, a kept `v: 10` read again from the start. A folder
+    plan's close is the RESULT of a shell call whose command runs `plan-status.js ... complete` (`completeCall`, the
+    newest such call's id): its `plan-status: complete ok - plan <id> (<rel>)` line sets what the flat `Completed:`
+    stamp sets, with `completedPlan` `<rel><id>.md`, and the same line echoed under any other call closes nothing; the
+    'new plan after the close' test compares path tails. A frozen Markdown holds no `Completed:` line, so the ids a
+    plan call's result showed completed are kept (`closedPlans`, newest 20) beside the newest folder plan a Read or
+    write named (`planTouched`), and a `## Repro` head marks nothing while that plan is closed - a closed bug plan owes
+    no `Repro:`. The flat stamp read stays, marked.
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10;
@@ -1432,6 +1443,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs
     name no local-scope rule). A user-scope file is named `~/`-relative with `/`, never by its whole path (audit 2026-10-20,
     the hooks track's minor list).
+    PF1 (3.12; R27, R28): on a plan folder the tick is a shell call of `plan-status.js done`, judged BEFORE it runs,
+    so it arms only when the task it names is `in_progress` or `blocked` in `status.json`; a hold whose task is not
+    `done` on disk when the next change arrives is dropped with one `tick-hold` row, outcome `not-landed` (the done
+    was refused). Every shell call naming a plan also runs `session-status.js onPlan` here (THE STATUS FILE, under
+    history-session). Measured on macOS, `shell-guards.js` PreToolUse Bash, 20 runs each: a plain `git status --short`
+    median 57.6 ms, a plan call with the status file already naming the plan 61.0 ms - 3.4 ms more. The flat
+    Edit-of-a-card tick stays, marked.
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route + a filesystem server's
     `write_file` / `edit_file` / `create_directory` by `path` and `move_file` on both its `source` and `destination`, under any
     registration name - audit 2026-11-03 SYS-02, the write half of HK-26; one more node start on those calls only) - a write outside
@@ -1657,6 +1675,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`--diff-filter=A <sha> HEAD`, 1s and 1.5s timeouts, inside the hook's 10s), a failed call lists nothing; `status`
     keeps `outgrown` for the covered rows and lists these as `addedSince`, and the start block names them in one line
     (U36: a capture written before a module existed read as current for good).
+    PLAN FOLDERS (PF1, 3.12; R31, R32; `planFolderWrite`, before the stamped-plan read, for any actor): a file-tool
+    write or a literal shell write target that `layout.planOf` reads as a folder plan is denied in two cases - a
+    `status.json` or `scoring.json` beside its `<id>.md` (`plan-json-write`, by shape whatever the file holds, `rm`
+    and `mv` of it included: the repair of a broken one is the user's), and the `<id>.md` of a plan whose
+    `status.json` reads approved and not reopened (`approved-plan-write`; the denial names `decide`, `deviate`,
+    `add-task` and `redesign`). Everything else passes: before the approval, while reopened, an absent or unreadable
+    `status.json` (fail-open), a folder with no Markdown (no plan), no `layout.planOf`, no engine.
   - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, every MCP call (a navigation server's
     two edit tools and five lookups read by tool name, N6), LSP, Skill and the shell route, the file and shell rows run inside
     their dispatchers; `SessionStart`, every source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
@@ -1868,7 +1893,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     shown once, at its newest answer, and past the cap the ruling lines leave round-robin across sessions, each session's
     newest kept longest, then the older sessions' plan states (oldest first), then an older session's own line (audit
     2026-10-11 SD16, e90a1845: the older session's rulings were cut whole and re-asked), and the newest session's plan
-    state last, its Resume: text before its count - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
+    state last, its Resume: text before its count (a plan folder's count and Resume: text from its `status.json` through
+    the writer script, required on first use; an unreadable one gives the path alone - PF1) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
     THE STATUS FILE (session-inspector, the user's contract of 2026-10-29; the sections cited are its spec's):
     `session-status.js`, a module with
@@ -1906,6 +1932,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
     list alone, and a lone anchored line is the user's.
     `docs/install-footprint.md` lists both writes.
+    THE PLAN KEY (PF1, 3.12; R28-R30): `onPlan`, called by the fresh-session hook at a plan call's PreToolUse, is a
+    fourth `when` of `writeStatus`, `'plan'`: the candidate is checked first (`planField`) and compared with the
+    file's value - equal is `unchanged`, no build and no write - and a write carries `autoRun`, `scorer` and
+    `handoffPrompt` from the file. A call naming a plan outside the root sets `null`, the newest call winning. The Stop
+    fallback runs at Stop only (`when: 'changed'`), when the carried value is empty, and reads the history entry's
+    folder plan; SessionStart keeps `null`. A folder plan's `handoffPrompt` names `plan-status.js resume`, with no
+    backticks (R26).
+    Nine files carry `PF1 flat plan - until 4.0.0` (`scripts/plan-flat-readers.test.js` lists them): one grep finds
+    what 4.0.0 removes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
     `<data root>/forge-lexicon.json`: words under the keys the base has, and R013's three open maps - a host's kind in
     `hints.kinds`, a known kind's CLI in `hints.clis`, its `how` (https) and tap-less `brew` in `hints.install`, never an

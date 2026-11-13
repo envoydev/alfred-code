@@ -631,6 +631,15 @@ test('every command that runs the installer runs the SEED, and names the shell s
 
 // The tool order: status shows the start line the next session gets, validate prints the inventory's rows - both from the
 // capture skill's script, at a path this tree ships.
+test('PF1: status shows a plans row from the engine\'s list and check --all', () =>
+{
+    const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8').replace(/\s+/g, ' ');
+    assert.match(status, /`plans`: one call, `node \.claude\/hooks\/plan-status\.js list ; node \.claude\/hooks\/plan-status\.js check --all`/);
+    assert.match(status, /each `!! <id>: <problem>` line of `check --all`/);
+    assert.match(status, /engine not installed - \/alfred-code:update copies it/);
+    assert.doesNotMatch(status, /CLAUDE_PLUGIN_ROOT[^`]*plan-status/, 'the project\'s copy, as the skills call it');
+});
+
 test('status and validate run tools.js from a path this tree has', () => {
     const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
     const validate = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');

@@ -39,7 +39,7 @@ use the STACK VIEW: `settings.json`'s `env` with the local `env` laid over it.
 
 ## 2. General info - always, before the question
 
-One table, no ask - it is seven rows and every other area reads against it:
+One table, no ask - it is eight rows and every other area reads against it:
 
 | item | value |
 |---|---|
@@ -50,6 +50,7 @@ One table, no ask - it is seven rows and every other area reads against it:
 | docs root | .alfred/docs |
 | initialised | 2026-09-24 |
 | workspace | child of .. - own 3, ignored 1 - load check clean 2026-10-25 |
+| plans | 2 plans, 1 flat |
 
 - `stack version`: the stamp's version and commit - `alfred-code.stamp` (`no stamp - source never
   resolved at install time` when it is not there).
@@ -75,6 +76,11 @@ One table, no ask - it is seven rows and every other area reads against it:
   the `links: <n> whole` line or each `!! link <path>: <state>` line (a skill or seat linked from `.alfred/stack`
   that is `dangling`, `missing`, `edited` here or `stale` behind the store), the `held for members: <names>` line (the
   picks a root holds in its store for the projects below), each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
+- `plans`: one call, `node .claude/hooks/plan-status.js list ; node .claude/hooks/plan-status.js check --all`. The row
+  is the `list` output's second line when there is one plan, else `<n> plans` (the count of plan lines) plus `, <n>
+  flat` from its `flat:` line; `no plan` as printed. The `list` lines are pasted under the table as they are, then
+  each `!! <id>: <problem>` line of `check --all`. With no `.claude/hooks/plan-status.js` the row reads `engine not
+  installed - /alfred-code:update copies it`.
 
 ## 3. One question - what else to show
 

@@ -184,9 +184,9 @@ The score rule: the plan's score is the `total` of the round `released` names. W
 ## Session status file
 
 `<project>/.claude/session-inspector/status/<session id>.json`, written by the hooks. Its `plan` key is the plan
-folder relative to the project root, forward slashes, one trailing slash, or `null` when the session has no plan. It
-is set when the session starts or resumes a plan and goes back to `null` once the plan is completed or its folder is
-gone. A plan outside the project root is `null`, never a `../` path. `updatedAt` here is a full ISO 8601 time.
+folder relative to the project root, forward slashes, one trailing slash, or `null` when the session has no plan. `plan` is set when the session runs a `plan-status.js` call that names a plan (`resume` or a writing verb other than
+`complete`), kept by every later write, and `null` again at the first write after the plan is completed or its folder
+is gone. A plan outside the project root is `null`, never a `../` path. `updatedAt` here is a full ISO 8601 time.
 
 Keys (in file order): `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`, `scorer`, `autoCompact`, `handoffPrompt`, `plan`
 
