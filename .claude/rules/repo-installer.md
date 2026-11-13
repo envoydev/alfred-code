@@ -278,7 +278,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   (`releaseChildren`) - first writes every value the child read through the chain into its own `.variables`
   (`keepOnLeave`), so nothing it reads changes. A child's
   `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it
-  (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; an install with `--parent-plan`
+  (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; a whole hook the child's own
+  `ALFRED_CODE_HOOKS_OFF` names by hand is never added back from the parent's set (3.12, stage 6 M6) unless this run's
+  `--add` names it; an install with `--parent-plan`
   adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
   writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
   `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `unregister`, `join`, `role`, `ignore`,

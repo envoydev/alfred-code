@@ -51,7 +51,7 @@ const runtime = require('./runtime.js');
 const { readJson, formatOf, stringifyLike } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
 const { BRAND, marketOf } = require('./brand.js');
-const { envOf } = require('../../stack/hooks/hook-prelude.js');
+const { envOf, hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 const USAGE = `alfred-code - install or update the Claude Code stack into a project.
 
@@ -491,6 +491,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                     wsPrep.ignores = workspace.recordWord({ projectRoot, env, dataRoot: wsPrep.fileRoot, parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, drops: userDrops, adds: userAdds, log });
                 const own = wsPrep.ownPrior ?? back.lines.filter((l) => !wsPrep.parentLines.includes(l));
                 const d = workspace.delta({ effective: workspace.effectiveLists({ parentLines: wsPrep.parentLines, ignores: wsPrep.ignores, own }), installed: back.lines });
+                // Stage 6 M6 (3.12): a whole hook this project's own ALFRED_CODE_HOOKS_OFF names (typed by hand - a walk's
+                // drop writes an `ignore` line) stays off: the parent's set no longer adds it back, so the off-list keeps it.
+                // A walk's --add of the hook is the user's newer word and turns it on.
+                const offHere = { ALFRED_CODE_HOOKS_OFF: String(envOf(readView.env || {}, 'HOOKS_OFF') ?? '') };
+                d.add = d.add.filter((l) =>
+                {
+                    if (!l.startsWith('hook ') || userAdds.includes(l) || !hookDisabled(l.slice(5), offHere)) return true;
+                    log(`  workspace: hook ${l.slice(5)} stays off here - this project's ALFRED_CODE_HOOKS_OFF names it`);
+                    return false;
+                });
                 for (const l of d.add) if (!args.add.includes(l)) args.add.push(l);
                 for (const l of d.drop) if (!args.drop.includes(l) && !userAdds.includes(l)) args.drop.push(l);
                 log(`  workspace: from ${wsPrep.parent.rel} - ${d.add.length} added, ${d.drop.length} dropped`);

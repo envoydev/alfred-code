@@ -558,6 +558,29 @@ test('W1 at local scope: an untracked .variables is trimmed, each key named, and
     assert.ok(!W1_PRUNED.test(r.outs[3]), r.outs[3]);
 });
 
+// Stage 6 M6 (3.12): a whole hook a joined child's off-list names by hand stays off through its updates - the parent's
+// set no longer adds it back - while a walk's answer (an --add of the hook) still turns it on.
+const OFF = 'ALFRED_CODE_HOOKS_OFF';
+const offOf = (work, rel) => { const l = envOf(work, rel, 'settings.local.json'); return Object.hasOwn(l, OFF) ? l[OFF] : envOf(work, rel)[OFF]; };
+const handOff = (work) => setEnv(work, 'api', 'settings.local.json', { [OFF]: 'docs-session,preferences-session:host' });
+test('M6: an update of a joined child keeps a whole hook its off-list names by hand, a part entry too, and the re-run changes nothing', POSIX_ONLY, () =>
+{
+    const read = (work) => ({ off: offOf(work, 'api'), stamp: stampOf(work, 'api') });
+    const r = scenario([{ at: '.' }, { at: 'api', after: (work) => { join(work, 'api'); } }, update('api', { before: handOff, after: read }), update('api', { after: read })]);
+    const [first, again] = [r.steps[2], r.steps[3]];
+    assert.deepStrictEqual(String(first.off).split(',').sort(), ['docs-session', 'preferences-session:host'], r.outs[2]);
+    assert.match(r.outs[2], /workspace: hook docs-session stays off here - this project's ALFRED_CODE_HOOKS_OFF names it/, r.outs[2]);
+    assert.ok(!/^picked-hooks:.*\bdocs-session\b/m.test(first.stamp), first.stamp);
+    assert.strictEqual(again.off, first.off, r.outs[3]);
+});
+
+test('M6: a walk answer that turns the hand-switched hook on (--add hook) takes it out of the off-list', POSIX_ONLY, () =>
+{
+    const r = scenario([{ at: '.' }, { at: 'api', after: (work) => { join(work, 'api'); } },
+        update('api', { before: handOff, args: ['--add', 'hook docs-session'], after: (work) => offOf(work, 'api') })]);
+    assert.deepStrictEqual(String(r.steps[2]).split(',').filter(Boolean), ['preferences-session:host'], r.outs[2]);
+});
+
 // F10 (the 2026-10-28 workspace run): a child joined BEFORE its install, given the value its workspace already hands it,
 // wrote an own copy - frozen against a later change at the root. It writes nothing now; a different answer is its own.
 const AC = 'ALFRED_CODE_AUTO_COMPACT';

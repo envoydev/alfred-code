@@ -1065,3 +1065,10 @@ A local-scope init or update in a joined project whose `.variables` git tracks s
 is the team's - but now prints one `workspace: <n> values equal to the workspace's stay in ...` line naming each key
 a project-scope run would remove. Report it; nothing changes until a project-scope update or the team removes them.
 A `.variables` git does not track is trimmed at local scope as at project scope.
+
+## after 3.11.0 - a joined project keeps a hook its own off-list switches off
+
+A hook named whole in a joined project's own `ALFRED_CODE_HOOKS_OFF` (typed by hand, beside any `<hook>:<part>` entry)
+stays off through its updates; before, the workspace's set added the hook back and the update emptied that entry. The
+update prints `workspace: hook <name> stays off here - this project's ALFRED_CODE_HOOKS_OFF names it` - report it.
+Turning the hook back on in `/alfred-code:configure` still works.
