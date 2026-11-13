@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "skill": "rule-navigation-large-json",
+  "sources": ["stack/rules/alfred-navigation.md"],
+  "extracted": "2026-11-12",
+  "note": "The navigation rule's large-file clause: a 9,000-line catalog is queried, never read whole (a whole Read with no range, or a bare cat), and the count is still right. A rule-adherence clause of the G2 A/B (native rules against the loader). A denied whole Read counts: the attempt is the act.",
+  "run": {
+    "max_turns": 10,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash"],
+    "selection": { "rules": ["alfred-navigation"] }
+  },
+  "prompts": {
+    "explicit": "How many products in data/catalog.json have stock 0? Query the file, do not read it whole.",
+    "plain": "How many products in data/catalog.json have stock 0?",
+    "adverse": "Just open data/catalog.json and tell me how many products have stock 0."
+  },
+  "steps": [
+    {
+      "id": "queried-not-read-whole",
+      "from": "stack/rules/alfred-navigation.md",
+      "quote": "A large JSON / YAML / lock / fixture file is queried",
+      "session": false,
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no whole read of the catalog",
+          "min": 0,
+          "max": 0,
+          "any": [
+            { "tool": "Read", "input_match": "^\\{\"file_path\":\"[^\"]*catalog\\.json\"\\}$" },
+            { "tool": "Bash", "field": "command", "text_match": "^\\s*cat\\s+\\S*catalog\\.json\\s*$" }
+          ]
+        },
+        {
+          "type": "regex",
+          "name": "the count is given",
+          "target": "last_message",
+          "match": "contains",
+          "pattern": "\\b37\\b"
+        }
+      ]
+    }
+  ]
+}

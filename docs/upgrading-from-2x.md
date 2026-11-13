@@ -211,30 +211,36 @@ Then `/reload-plugins` or a new session: `/plugin` shows `1 mod active · alfred
 
 ### Modes
 
-Two modes, switched per session by a flag right after a `/task-*`, `/capture-*`, `/loop-*`, `/issue-*` or `/mode-*`
-command. Once on, a mode stays on until its `-off` flag or the session ends; each prompt shows `Modes ON: ...`.
+Three modes, each switched for the session by its own command, typed alone on a line with `on` or `off`. Once on, a
+mode stays on until its `off` command or the session ends; each prompt shows `Modes ON: ...`.
 
-| Flag | Effect |
+| Command | Effect |
 | --- | --- |
-| `--mode-auto-run-on` / `-off` | Every question takes its recommended option; nothing outward (push, merge, deploy, publish) runs unasked |
-| `--mode-output-scorer-on` / `-off` | A fresh grader scores plans and root-cause verdicts before you see them |
+| `/alfred-code:mode:auto-run on` / `off` | Every question takes its recommended option; nothing outward (push, merge, deploy, publish) runs unasked; no fresh-session question |
+| `/alfred-code:mode:scoring on` / `off` | A fresh grader scores plans and root-cause verdicts before you see them |
+| `/alfred-code:mode:auto-compact on` / `off` | No fresh-session question: the session compacts instead |
 
 ```text
-/task-solve --mode-auto-run-on add paging to GET /api/loans
+/alfred-code:mode:auto-run on
+/task-solve add paging to GET /api/loans
 /mode-auto-run fix the failing lint rules one by one
 ```
 
-The 2.x `--auto-mode` flag is gone - it prints a pointer to `--mode-auto-run-on`.
+The 2.x `--auto-mode` flag and the `--mode-auto-run-on` family of 3.0 to 3.10 are gone - each prints a pointer to the
+commands.
 
 The defaults live in `.alfred/.variables`. Set them once at the root in `/alfred-code:configure` (Environment area);
 the children read them through the workspace unless they set their own:
 
 | Key | Default | Means |
 | --- | --- | --- |
-| `ALFRED_CODE_SCORER` | `1` | The grader is on; `0` turns it off |
-| `ALFRED_CODE_SCORER_OUTPUTS` | `designer-plan` | What is graded; add `root-cause,inline-plan` for everything |
-| `ALFRED_CODE_SCORER_LEVEL` | `80` | The score an output must reach, 60-100 |
-| `ALFRED_CODE_SCORER_ROUNDS` | `3` | Most grading runs per output, 1-10 |
+| `ALFRED_CODE_SCORING` | `1` | The grader is on; `0` turns it off |
+| `ALFRED_CODE_SCORING_OUTPUTS` | `designer-plan` | What is graded; add `root-cause,inline-plan` for everything |
+| `ALFRED_CODE_SCORING_LEVEL` | `80` | The score an output must reach, 60-100 |
+| `ALFRED_CODE_SCORING_ROUNDS` | `3` | Most grading runs per output, 1-10 |
+
+3.11.0 renamed these four from `ALFRED_CODE_SCORER`, `_SCORER_LEVEL`, `_SCORER_OUTPUTS` and `_SCORER_ROUNDS`; an update
+renames them in place.
 
 Unattended runs pair the stack's mode with Claude Code's permission mode - print mode without one refuses every Bash
 call: `ALFRED_CODE_UNATTENDED=1 claude -p "/alfred-code:update" --permission-mode auto` (PowerShell: set

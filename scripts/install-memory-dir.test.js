@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, plantOlderRoot } = require('./seed-sandbox.js');
 const memoryDir = require('./install/memory-dir.js');
 const { putWorkspace } = require('./workspace-fixture.js');
 const layout = require('../stack/hooks/layout.js');
@@ -97,14 +97,16 @@ test('docs: a joined child\'s second install leaves its stamp unchanged - the ro
     assert.strictEqual(second.stamp, first.stamp, 'the stamp is equal bar its dates');
 });
 
-test('docs -> default removes the row and the file it alone held', POSIX_ONLY, () =>
+// Mode v2 stage 2: the local file holds the stack's other rows at project scope too, so it stays once the row goes.
+test('docs -> default removes the row and keeps the file the stack\'s other rows live in', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, { args: [['--memory', 'docs'], ['--memory', 'default']], inspect: docsInspect });
-    assert.strictEqual(r.result.local, null, r.outs[1]);
+    assert.ok(r.result.local, r.outs[1]);
+    assert.ok(!Object.hasOwn(r.result.local, 'autoMemoryDirectory'), r.outs[1]);
     assert.strictEqual(r.result.row, null);
     assert.strictEqual(r.result.mode, 'default');
     assert.match(r.outs[1], /settings\.local\.json: autoMemoryDirectory removed - ALFRED_CODE_MEMORY is no longer docs, so Claude's own memory is back at its default place/);
-    assert.match(r.outs[1], /settings\.local\.json removed - it held nothing but the stack's entries/);
+    assert.doesNotMatch(r.outs[1], /settings\.local\.json removed - it held nothing but the stack's entries/);
 });
 
 test('docs -> custom: the row goes, autoMemoryEnabled false arrives', POSIX_ONLY, () =>
@@ -112,7 +114,8 @@ test('docs -> custom: the row goes, autoMemoryEnabled false arrives', POSIX_ONLY
     const r = seedRun(['install', 'update'], SEL, { args: [['--memory', 'docs'], ['--memory', 'custom']], inspect: docsInspect });
     assert.ok(!(r.result.local && Object.hasOwn(r.result.local, 'autoMemoryDirectory')), r.outs[1]);
     assert.strictEqual(r.result.row, null);
-    assert.strictEqual(r.result.settings.autoMemoryEnabled, false, 'P2\'s switch-off in the run\'s own file');
+    assert.strictEqual(r.result.local && r.result.local.autoMemoryEnabled, false, 'P2\'s switch-off in the run\'s own file');
+    assert.ok(!Object.hasOwn(r.result.settings, 'autoMemoryEnabled'), 'never the committed settings.json');
 });
 
 test('docs: refused on a tracked settings.local.json - nothing written, ALFRED_CODE_MEMORY stays default', POSIX_ONLY, () =>
@@ -124,7 +127,8 @@ test('docs: refused on a tracked settings.local.json - nothing written, ALFRED_C
     });
     assert.match(r.out, /!! memory: docs not written - \.claude\/settings\.local\.json is tracked in git, so Claude Code reads it as the repository's - untrack it \(git rm --cached \.claude\/settings\.local\.json, then add it to \.gitignore\) to allow docs mode; ALFRED_CODE_MEMORY stays 'default'/);
     assert.strictEqual(r.result.text, '{}\n');
-    assert.strictEqual(r.result.mode, 'default');
+    // Mode v2 stage 2: the pass that seeds .variables does not run over a tracked local file - the key is absent, read as default.
+    assert.notStrictEqual(r.result.mode, 'docs');
     assert.strictEqual(r.result.row, null);
 });
 
@@ -149,7 +153,8 @@ test('docs: refused on a garbage settings.local.json, the file untouched', POSIX
     });
     assert.strictEqual(r.result.text, '{oops');
     assert.match(r.out, /!! memory: docs not written - \.claude\/settings\.local\.json is not valid JSON - fix it, then run \/alfred-code:update again; ALFRED_CODE_MEMORY stays 'default'/);
-    assert.strictEqual(r.result.mode, 'default');
+    // Mode v2 stage 2: no settings pass over a garbage local file - the key is absent, read as default.
+    assert.notStrictEqual(r.result.mode, 'docs');
     assert.strictEqual(r.result.row, null);
 });
 
@@ -352,22 +357,30 @@ test('docs: a moved repo folder is re-pointed on update', POSIX_ONLY, () =>
     assert.strictEqual(r.result.row, rowHash(r.result.want));
 });
 
-test('docs: a data-root move carries memory/ and re-points the row', POSIX_ONLY, () =>
+test('docs: the one-time move of an older data root carries memory/ and re-points the row', POSIX_ONLY, () =>
 {
     const r = seedRun(['install', 'update'], SEL, {
-        args: [['--memory', 'docs'], ['--data-path', '.data', '--data-move', 'move']],
+        args: [['--memory', 'docs'], []],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
             fs.mkdirSync(path.join(repo, '.alfred', 'docs', 'memory'), { recursive: true });
             fs.writeFileSync(path.join(repo, '.alfred', 'docs', 'memory', 'MEMORY.md'), '# Memory\n- a lesson\n');
+            // As the older run left it: the folder under .data, the setting and its ledger row naming that place.
+            plantOlderRoot(repo, '.data');
+            const was = memOf(repo, '.data');
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            fs.writeFileSync(file, JSON.stringify({ ...json(file), autoMemoryDirectory: was }, null, 2));
+            const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/settings\.local\.json:autoMemoryDirectory=[0-9a-f]{64}/, `settings.local.json:autoMemoryDirectory=${rowHash(was)}`));
             return null;
         },
-        inspect: (repo) => ({ local: localOf(repo), want: memOf(repo, '.data'), text: readOr(path.join(repo, '.data', 'docs', 'memory', 'MEMORY.md')), row: stampRow(repo) }),
+        inspect: (repo) => ({ local: localOf(repo), want: memOf(repo), text: readOr(path.join(repo, '.alfred', 'docs', 'memory', 'MEMORY.md')), row: stampRow(repo), old: fs.existsSync(path.join(repo, '.data')) }),
     });
     assert.strictEqual(r.result.text, '# Memory\n- a lesson\n', r.outs[1]);
-    assert.strictEqual(r.result.local.autoMemoryDirectory, r.result.want);
+    assert.strictEqual(r.result.local.autoMemoryDirectory, r.result.want, r.outs[1]);
     assert.strictEqual(r.result.row, rowHash(r.result.want));
+    assert.strictEqual(r.result.old, false, 'the emptied older root is gone');
 });
 
 test('docs: local scope writes the same file and keeps it across a switch to project scope', POSIX_ONLY, () =>
@@ -813,8 +826,9 @@ test('--memory-copy while the docs root is pending says the copy was not made', 
         each: (repo, i) =>
         {
             if (i !== 0) return null;
+            // Mode v2 stage 2: the install writes no settings.json, so the user's hand-set root starts the file.
             const file = path.join(repo, '.claude', 'settings.json');
-            const s = json(file);
+            const s = json(file) || {};
             s.env = { ...(s.env || {}), ALFRED_CODE_DOCS_PATH: 'docs' };
             fs.writeFileSync(file, JSON.stringify(s, null, 2));
             fs.mkdirSync(path.join(repo, 'docs', 'architecture'), { recursive: true });

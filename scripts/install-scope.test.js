@@ -17,6 +17,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const SELECTION = 'skill csharp\nrule markdown-docs\n';
 
 const json = (repo, rel) => JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8'));
+const seats = (s) => ((s.permissions || {}).deny || []).filter((d) => /^Agent\(alfred-code:/.test(d));
 // The hook count is read off the manifest, never written here: two cases still said 18 after monitor-session left (2026-10-16).
 const HOOK_COUNT = new Set(require('../meta/stack-manifest.json').hooks.map((h) => h.file)).size;
 const exists = (repo, ...rel) => fs.existsSync(path.join(repo, ...rel));
@@ -29,7 +30,7 @@ for (const [scope, wantCliScope] of [['project', 'project'], ['user', 'user'], [
             args: ['--scope', scope],
             inspect: (repo) => ({
                 skill: exists(repo, '.claude', 'skills', 'csharp', 'SKILL.md'),
-                rule: exists(repo, '.claude', 'rules', 'markdown-docs.md'),
+                rule: fs.existsSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs')),
                 stamp: exists(repo, '.claude', 'alfred-code.stamp'),
                 settingsFile: exists(repo, '.claude', 'settings.json') ? 'settings.json' : exists(repo, '.claude', 'settings.local.json') ? 'settings.local.json' : null,
                 stampText: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
@@ -56,26 +57,8 @@ test('install-scope: at local scope the stack\'s own settings writes go to setti
     });
     assert.strictEqual(result.hasShared, false, 'a local-scope install must not write the shared settings.json');
     assert.strictEqual(result.hasLocal, true, 'a local-scope install must write settings.local.json');
-    assert.strictEqual(result.local.env.ALFRED_CODE_DATA_PATH, '.alfred', 'the env seed landed in the local file');
-    assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, undefined, 'and the retired docs key is never written');
-});
-
-// C8 (R100, R101), after the memory server left (2026-10-24): a project or user install writes the shared
-// settings.json and no settings.local.json at all - the machine's memory path was its one key.
-test('install-scope: --scope project and --scope user write the shared settings.json and no settings.local.json', POSIX_ONLY, () =>
-{
-    for (const scope of ['project', 'user'])
-    {
-        const { result } = seedRun('install', SELECTION, {
-            args: ['--scope', scope],
-            inspect: (repo) => ({
-                shared: exists(repo, '.claude', 'settings.json') ? json(repo, '.claude/settings.json') : null,
-                local: exists(repo, '.claude', 'settings.local.json') ? json(repo, '.claude/settings.local.json') : null,
-            }),
-        });
-        assert.ok(result.shared, `--scope ${scope} did not write settings.json`);
-        assert.strictEqual(result.local, null, `--scope ${scope} wrote settings.local.json`);
-    }
+    assert.strictEqual(typeof result.local.env.ALFRED_CODE_HOOKS_OFF, 'string', 'the env seed landed in the local file');
+    for (const key of ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.strictEqual(result.local.env[key], undefined, `${key}: no path key is ever written`);
 });
 
 // Claude Code ignores settings.local.json only when it creates the file itself, so a file a local-scope run
@@ -83,9 +66,17 @@ test('install-scope: --scope project and --scope user write the shared settings.
 test('install-scope: a settings.local.json a local run creates is named when git would commit it', POSIX_ONLY, () =>
 {
     const said = /settings\.local\.json: created for this machine's own values - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/;
-    const bare = seedRun(['install', 'update'], SELECTION, { args: ['--scope', 'local'] });
+    // Since workspace stage 1 a local run hides `.claude` whole, so the line is left for a folder git tracks a file in.
+    const team = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'team-notes.md'), 'ours\n');
+        require('node:child_process').execFileSync('git', ['add', '-f', '.claude/team-notes.md'], { cwd: repo });
+    };
+    const bare = seedRun(['install', 'update'], SELECTION, { args: ['--scope', 'local'], prepare: team });
     assert.match(bare.outs[0], said, bare.outs[0]);
     assert.doesNotMatch(bare.outs[1], said, 'the file already existed on the second run');
+    assert.doesNotMatch(seedRun('install', SELECTION, { args: ['--scope', 'local'] }).out, said, 'a folder the run hides whole needs no line');
     const ignored = seedRun('install', SELECTION, { args: ['--scope', 'local'], prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/settings.local.json\n') });
     assert.doesNotMatch(ignored.out, said, 'the repo already ignores it');
 });
@@ -154,12 +145,31 @@ test('install-scope: a settings.json that does not parse never aborts update --i
         each: (repo, i) =>
         {
             if (i !== 0) return null;
+            // Mode v2 stage 2: a project install writes no settings.json, so the team's own file is the one that is malformed.
             const f = path.join(repo, '.claude', 'settings.json');
-            fs.writeFileSync(f, `${fs.readFileSync(f, 'utf8')}{garbage`);
+            fs.writeFileSync(f, `${fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '{"env": {}}'}{garbage`);
             return null;
         },
     });
     assert.match(outs[1], /action: update/, 'a malformed settings.json must not abort the run');
+});
+
+// W1's matrix (M7, 2026-11-13): a settings file holding the JSON `null` parses, and readJson hands null back - three
+// readers took a property of it and the run died with 'Cannot read properties of null'.
+test('install-scope: a settings.json or settings.local.json holding null never aborts an update', POSIX_ONLY, () =>
+{
+    for (const [name, env] of [['settings.json', {}], ['settings.local.json', {}],
+        ['settings.json', { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' }]])
+    {
+        const { outs, errs, codes } = seedRun(['install', 'update'], SELECTION, {
+            args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']], failOk: true, env,
+            plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.10.0', scope: 'project', enabled: true }]),
+            each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(repo, '.claude', name), 'null\n'); return null; },
+        });
+        assert.doesNotMatch(String(errs[1]), /Cannot read properties of null/, name);
+        assert.deepStrictEqual(codes, [0, 0], `${name} ${JSON.stringify(env)}: ${String(errs[1]).slice(0, 300)}`);
+        assert.match(outs[1], /action: update/, name);
+    }
 });
 
 // I2 (R47, fix round 1): a hand-added permissions.allow/ask survives update --installed-only
@@ -175,14 +185,15 @@ test('install-scope: permissions.allow and permissions.ask survive update --inst
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            const f = path.join(repo, '.claude', 'settings.json');
+            // Mode v2 stage 2: the file the stack writes - and so the one to prove - is settings.local.json at every scope.
+            const f = path.join(repo, '.claude', 'settings.local.json');
             const s = JSON.parse(fs.readFileSync(f, 'utf8'));
             s.permissions.allow = ['Bash(ls:*)'];
             s.permissions.ask = ['Bash(rm:*)'];
             fs.writeFileSync(f, JSON.stringify(s, null, 2));
             return null;
         },
-        inspect: (repo) => json(repo, path.join('.claude', 'settings.json')),
+        inspect: (repo) => json(repo, path.join('.claude', 'settings.local.json')),
     });
     assert.deepStrictEqual(result.permissions.allow, ['Bash(ls:*)']);
     assert.deepStrictEqual(result.permissions.ask, ['Bash(rm:*)']);
@@ -274,14 +285,28 @@ test('install-scope: a local-scope update --installed-only keeps the hooks the u
         inspect: (repo) => json(repo, path.join('.claude', 'settings.local.json')).env.ALFRED_CODE_HOOKS_OFF,
     });
     assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
-    assert.ok(before && before.split(',').length === HOOK_COUNT - 1, `setup did not switch every hook but the picked one off: ${before}`);
+    // Stage 4c: the two locked hooks are never named off.
+    assert.ok(before && before.split(',').length === HOOK_COUNT - 3, `setup did not switch every hook but the picked and the locked off: ${before}`);
     assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
 });
 
 // N5 (fix round 5): an update that moves a project install to LOCAL scope must read the hooks the
 // user switched off in settings.json - Claude Code lays settings.local.json over it, so an empty local
-// list would switch them back on - and must write only the personal file.
-test('install-scope: update --scope local --installed-only keeps the hooks settings.json switched off, and writes nothing there (N5)', POSIX_ONLY, () =>
+// list would switch them back on. Mode v2 stage 2: the install is the 3.10.0 shape (its rows in
+// settings.json), so the move carries the stack's rows at their hash into the personal file and
+// settings.json keeps only what is not the stack's.
+const OWN_SHARED = { env: { MY_OWN: 'x' }, permissions: { allow: ['Bash(ls)'] } };
+const plantWithOwn = (repo, extraEnv = {}) =>
+{
+    const file = require('./seed-sandbox.js').plantSharedInstall(repo);
+    const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+    Object.assign(s.env, OWN_SHARED.env, extraEnv);
+    s.permissions = { ...(s.permissions || {}), allow: [...OWN_SHARED.permissions.allow] };
+    const text = `${JSON.stringify(s, null, 2)}\n`;
+    fs.writeFileSync(file, text);
+    return text;
+};
+test('install-scope: update --scope local --installed-only keeps the hooks settings.json switched off, and settings.json keeps only what is not the stack\'s (N5)', POSIX_ONLY, () =>
 {
     const OFF = ['guard-answer', 'instrument-tool-usage'];
     const { loadManifest } = require('./install/manifest.js');
@@ -292,7 +317,7 @@ test('install-scope: update --scope local --installed-only keeps the hooks setti
     const { outs, result } = seedRun(['install', 'update'], `skill csharp\nrule markdown-docs\n${kept.map((h) => `hook ${h}\n`).join('')}`, {
         args: [['--scope', 'project'], ['--scope', 'local', '--installed-only']],
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.0.0', scope: 'project', enabled: true }]),
-        each: (repo, i) => { if (i === 0) sharedBefore = fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'); return null; },
+        each: (repo, i) => { if (i === 0) sharedBefore = plantWithOwn(repo); return null; },
         inspect: (repo) => ({
             shared: fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'),
             local: fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8'),
@@ -301,7 +326,8 @@ test('install-scope: update --scope local --installed-only keeps the hooks setti
     assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
     assert.deepStrictEqual(offOf(sharedBefore), [...OFF].sort(), 'setup did not switch the two hooks off in settings.json');
     assert.deepStrictEqual(offOf(result.local), [...OFF].sort(), 'N5: the local-scope read-back switched hooks back on');
-    assert.strictEqual(result.shared, sharedBefore, 'a local-scope run must write nothing to settings.json');
+    assert.deepStrictEqual(JSON.parse(result.shared), OWN_SHARED, 'settings.json keeps only what is not the stack\'s at its hash');
+    assert.match(outs[1], /settings: \d+ rows moved from settings\.json to settings\.local\.json/, outs[1]);
 });
 
 // N6 (Task 16b): the WRITE half of N5. At local scope the env pass seeded every catalog default into
@@ -329,15 +355,8 @@ for (const [label, listFails] of [['a readable listing', false], ['a failing cla
             // The failing listing: `plugin list` exits 1 with nothing on stdout, on the second step only.
             tools: { claude: 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"\nif [ "$1" = "plugin" ] && [ "$2" = "list" ]; then [ -n "$CLAUDE_STUB_LIST_FAIL" ] && exit 1; cat "$CLAUDE_STUB_PLUGINS"; fi\nexit 0' },
             env: [{}, listFails ? { CLAUDE_STUB_LIST_FAIL: '1' } : {}],
-            each: (repo, i) =>
-            {
-                if (i !== 0) return null;
-                const s = JSON.parse(fs.readFileSync(sharedFile(repo), 'utf8'));
-                Object.assign(s.env, CUSTOM);
-                sharedBefore = `${JSON.stringify(s, null, 2)}\n`;
-                fs.writeFileSync(sharedFile(repo), sharedBefore);
-                return null;
-            },
+            // Mode v2 stage 2: the 3.10.0 shape, its rows in settings.json, with the user's own values there.
+            each: (repo, i) => { if (i === 0) sharedBefore = plantWithOwn(repo, CUSTOM); return null; },
             inspect: (repo) => ({ shared: fs.readFileSync(sharedFile(repo), 'utf8'), env: readBackSettings(path.join(repo, '.claude'), 'local').env }),
         });
         assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
@@ -345,7 +364,8 @@ for (const [label, listFails] of [['a readable listing', false], ['a failing cla
         assert.deepStrictEqual(hidden, [], `N6: a local default hid the settings.json value: ${hidden.join('; ')}`);
         assert.deepStrictEqual(String(result.env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(), [...OFF].sort(),
             `N6: the hooks switched off in settings.json came back on: '${result.env.ALFRED_CODE_HOOKS_OFF}'`);
-        assert.strictEqual(result.shared, sharedBefore, 'a local-scope run must write nothing to settings.json');
+        assert.deepStrictEqual(JSON.parse(result.shared), { ...OWN_SHARED, env: { ...OWN_SHARED.env, ...CUSTOM } },
+            `settings.json keeps only what is not the stack's at its hash - the user's own and changed values:\n${result.shared}\nbefore:\n${sharedBefore}`);
     });
 
 // NI1 (fix round 3): under Task 11b alone, a global/user-scope stamp lived in ONE shared account
@@ -411,15 +431,16 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
         // `lastHooksRoute`. If B's read ever fell back to a shared account file, it would see A's
         // 'copy' + None and wrongly switch every one of B's own hooks off too.
         runOn(projectB, selB, ['update', '--scope', 'user', '--installed-only'], { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
-        const bSettings = JSON.parse(fs.readFileSync(path.join(projectB, '.claude', 'settings.json'), 'utf8'));
+        // Mode v2 stage 2: the off-list sits in settings.local.json at every scope.
+        const bSettings = JSON.parse(fs.readFileSync(path.join(projectB, '.claude', 'settings.local.json'), 'utf8'));
         const bOff = String((bSettings.env && bSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
         assert.deepStrictEqual(bOff, [], `NI1: project B read a sibling project's hooks-route and switched hooks off: ${bOff.join(',')}`);
         assert.match(stampOf(projectB), /^hooks-route: copy$/m, 'project B now correctly records its OWN new copy route');
 
         // Project A is untouched by B's later run - still its own real None.
-        const aSettings = JSON.parse(fs.readFileSync(path.join(projectA, '.claude', 'settings.json'), 'utf8'));
+        const aSettings = JSON.parse(fs.readFileSync(path.join(projectA, '.claude', 'settings.local.json'), 'utf8'));
         const aOff = String((aSettings.env && aSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
-        assert.strictEqual(aOff.length, HOOK_COUNT, `project A's own None must stay every hook, unaffected by B: ${aOff.join(',')}`);
+        assert.strictEqual(aOff.length, HOOK_COUNT - 2, `project A's own None must stay every hook but the two locked, unaffected by B: ${aOff.join(',')}`);
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
@@ -440,88 +461,48 @@ test('install-scope: at local scope a local docs path is the root the rule stamp
             fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
         },
         inspect: (repo) => ({
-            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'),
+            rule: fs.readFileSync(require('./install/copy.js').ruleAt(repo, 'alfred-docs-root'), 'utf8'),
             shared: json(repo, path.join('.claude', 'settings.json')),
             local: json(repo, path.join('.claude', 'settings.local.json')),
         }),
     });
     assert.match(result.rule, /This install's root: `docs\/mine`/, 'the local docs path never reached the rule');
-    const seats = (s) => ((s.permissions || {}).deny || []).filter((d) => /^Agent\(alfred-code:/.test(d));
     assert.ok(seats(result.local).length > 0, 'a local run denies the unpicked core seats in settings.local.json');
     assert.deepStrictEqual(seats(result.shared), [], 'no seat deny reaches the shared settings.json at local scope');
     assert.deepStrictEqual(result.shared, { env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }, 'settings.json is left exactly as it was');
 });
 
-// R78 (Task 16 round 5) and R96 (Task 18b fix round 1): moving a LOCAL install back to project (or
-// user) scope. Claude Code lays settings.local.json over settings.json, so a stack key the local
-// install SEEDED there would keep overriding the file the install now lives in: those go, and so do
-// the seat denies (moved into settings.json). A value the USER set locally stays local, untouched -
-// settings.json is committed, so nothing personal ever moves into it - and is logged with the value
-// that now applies.
-test('install-scope: a local install moved to project scope drops its seeded keys and seat denies, keeps the user\'s local values local (R78, R96)', POSIX_ONLY, () =>
+// Mode v2 stage 2, Task 6 (replaces R78 / R96): the stack's file is settings.local.json at every scope, so a local
+// install moved to project scope keeps its rows where they are - nothing carries into the committed settings.json.
+test('install-scope: a local install moved to project scope keeps its rows in settings.local.json and adds nothing to settings.json', POSIX_ONLY, () =>
 {
-    const { outs, result } = seedRun(['install', 'update'], 'skill csharp\nrule markdown-docs\n', {
-        args: [['--scope', 'local'], ['--scope', 'project', '--installed-only']],
+    const { steps } = seedRun(['install', 'update', 'update'], HOOKS_SEL, {
+        args: [['--scope', 'local'], UPDATE, UPDATE],
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
-        prepare: (repo) =>
-        {
-            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '0' } }));
-            fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { MY_OWN: 'x' }, permissions: { allow: ['Bash(ls)'] } }));
-        },
         each: (repo, i) =>
         {
-            if (i !== 0) return null;
-            // The user set four stack values at local scope: two settings.json lacks, one it holds, and
-            // a personal path that must never reach the committed file.
-            const file = path.join(repo, '.claude', 'settings.local.json');
-            const local = JSON.parse(fs.readFileSync(file, 'utf8'));
-            // An older local install: the stack's variables and their ledger rows in settings.local.json (3.0.0 moved
-            // them to .variables).
-            const vars = path.join(repo, '.alfred', '.variables');
-            Object.assign(local.env, (require('../stack/hooks/layout.js').readDotenv(vars) || {}).values || {});
-            fs.rmSync(vars);
-            const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
-            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/(^managed-env: *|,)\.variables:/gm, '$1settings.local.json:'));
-            Object.assign(local.env, {
-                ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_TURN_CHECK: '1',
-                ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
-            });
-            fs.writeFileSync(file, JSON.stringify(local));
-            return { seeded: Object.keys(local.env).filter((k) => k.startsWith('ALFRED_CODE_')) };
+            if (i === 0)
+            {
+                const file = path.join(repo, LOCAL_FILE);
+                const local = JSON.parse(fs.readFileSync(file, 'utf8'));
+                Object.assign(local.env, { ALFRED_CODE_HISTORY: '7', MINE: '1' });
+                fs.writeFileSync(file, JSON.stringify(local, null, 2));
+            }
+            return snap(repo);
         },
-        inspect: (repo) => ({
-            shared: json(repo, path.join('.claude', 'settings.json')),
-            local: json(repo, path.join('.claude', 'settings.local.json')),
-            vars: (require('../stack/hooks/layout.js').readDotenv(path.join(repo, '.alfred', '.variables')) || {}).values || {},
-        }),
     });
-    assert.match(outs[1], /action: update \[scope=project,/, outs[1]);
-    const localEnv = result.local.env;
-    // ALFRED_CODE_DOCS_PATH is retired (2.8.0): its root held no docs, so the key goes from the local file too.
-    assert.deepStrictEqual(localEnv, {
-        MY_OWN: 'x', ALFRED_CODE_TURN_CHECK: '1',
-        ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
-    }, 'the user\'s values stay local, untouched, and every seeded stack key left');
-    assert.ok(!JSON.stringify(result.shared).includes('/elsewhere/other-repo'), 'a personal path reached the committed settings.json');
-    assert.ok(!JSON.stringify(result.shared).includes('docs/mine'), 'a local value moved into settings.json');
-    assert.strictEqual(result.vars.ALFRED_CODE_TURN_CHECK, '0', 'settings.json\'s own value moved into .variables (AC10)');
-    assert.ok(!('ALFRED_CODE_TURN_CHECK' in result.shared.env));
-    // What Claude Code resolves: the local file over the shared one.
-    const effective = { ...result.shared.env, ...result.local.env };
-    assert.strictEqual(effective.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the hook the user switched off came back on');
-    assert.strictEqual(effective.ALFRED_CODE_ALLOW_WRITE_OUTSIDE, '/elsewhere/other-repo');
-    assert.deepStrictEqual(result.local.permissions.allow, ['Bash(ls)'], 'the user\'s own permissions stay');
-    assert.deepStrictEqual((result.local.permissions.deny || []).filter((d) => /^Agent\(/.test(d)), [], 'no seat deny left in the local file');
-    assert.ok((result.shared.permissions.deny || []).some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies moved into settings.json');
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here \(your value, 12 chars\) - it applies over settings\.json/, outs[1]);
-    assert.ok(!/stays here.*(guard-answer|\/elsewhere\/other-repo)/.test(outs[1]), 'a kept value reached the log');
-    // C18: one line for every removed seed.
-    assert.match(outs[1], /settings\.local\.json: \d+ stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: [A-Z_, ]*ALFRED_CODE_INSTRUMENT/, outs[1]);
-    assert.match(outs[1], /stack env keys removed - [^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
-    assert.strictEqual((outs[1].match(/^==> +settings\.local\.json: .* removed/gm) || []).length, 1, outs[1]);
-    assert.ok(!('attribution' in result.local) && !('worktree' in result.local), `the stack's settings seeds stayed local: ${JSON.stringify(result.local)}`);
-    assert.deepStrictEqual(result.shared.attribution, { commit: '', pr: '', sessionUrl: false }, 'settings.json carries them from here on');
+    const [, after, again] = steps;
+    assert.strictEqual(after.shared, null, `settings.json was written: ${after.shared}`);
+    const local = JSON.parse(after.local);
+    assert.ok(local.permissions.deny.some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies left the local file');
+    assert.ok(local.permissions.deny.includes('Read(.env)'));
+    assert.ok(local.attribution && typeof local.attribution === 'object');
+    assert.strictEqual(local.worktree.baseRef, 'head');
+    assert.strictEqual(typeof local.env.ALFRED_CODE_HOOKS_OFF, 'string');
+    assert.deepStrictEqual([local.env.MINE, local.env.ALFRED_CODE_HISTORY], ['1', '7'], 'the user\'s own values moved or changed');
+    assert.match(after.stamp, /^scope: project$/m);
+    assert.doesNotMatch(after.stamp, ROWS);
+    assert.deepStrictEqual([again.shared, again.local], [after.shared, after.local], 'a second update changed a byte');
 });
 
 // R99 (Task 18b fix round 2), the re-review's N1 measured end to end: a walk at local scope names an
@@ -543,9 +524,10 @@ test('install-scope: after a move off local, configure reads the locally switche
             const env = (name) => (json(repo, path.join('.claude', name)).env || {});
             if (i === 0) return env('settings.local.json').ALFRED_CODE_HOOKS_OFF;
             if (i === 2) return json(repo, 'plan.json');
-            return { shared: fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'), local: fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8') };
+            // Mode v2 stage 2 (Task 6): the move writes no settings.json, so an absent one reads as null.
+            return { shared: read(repo, SHARED_FILE), local: fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8') };
         },
-        inspect: (repo) => ({ shared: json(repo, path.join('.claude', 'settings.json')), local: json(repo, path.join('.claude', 'settings.local.json')) }),
+        inspect: (repo) => ({ shared: JSON.parse(read(repo, SHARED_FILE) || '{}'), local: json(repo, path.join('.claude', 'settings.local.json')) }),
     });
     assert.strictEqual(steps[0], 'guard-answer', 'the walk at local scope named the unpicked hook off in settings.local.json');
     assert.ok(!steps[2].hooks.includes('guard-answer'), `configure's read-back lists the switched-off hook as on: ${steps[2].hooks.join(',')}`);
@@ -588,15 +570,17 @@ test('install-scope: a move off local removes an older shipped seed and the docs
             fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').split('\n').filter((l) => !l.startsWith('managed-')).join('\n'));
             return null;
         },
-        inspect: (repo) => ({ shared: json(repo, path.join('.claude', 'settings.json')), local: json(repo, path.join('.claude', 'settings.local.json')) }),
+        inspect: (repo) => ({ shared: read(repo, SHARED_FILE), local: json(repo, path.join('.claude', 'settings.local.json')) }),
     });
+    // Mode v2 stage 2 (Task 6): the stale seeds go from the local file and the pass seeds the current ones there - .alfred/
+    // is ignored here, so .variables cannot hold them (AC7) - and nothing reaches settings.json.
     const local = result.local.env || {};
-    assert.ok(!('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' in local), `an older shipped seed survived the move: ${local.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K}`);
-    assert.ok(!('ALFRED_CODE_DOCS_VERSIONING' in local), 'the rule\'s own seed survived the move as a user value');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
-    assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_CONTEXT_WINDOW_FOR_200K/, outs[1]);
-    assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
+    assert.strictEqual(local.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, '180000', 'an older shipped seed survived the move');
+    assert.strictEqual(local.ALFRED_CODE_DOCS_VERSIONING, 'local');
+    assert.strictEqual(result.shared, null, 'settings.json was written');
+    assert.match(outs[1], /stack variables removed - each held the stack's own seed[^\n]*ALFRED_CODE_CONTEXT_WINDOW_FOR_200K/, outs[1]);
+    assert.match(outs[1], /stack variables removed - each held the stack's own seed[^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
+    assert.doesNotMatch(outs[1], /stays here \(your value/, outs[1]);
 });
 
 // Safety ticket (R132): with no HOME, no USERPROFILE and no CLAUDE_CONFIG_DIR the account dir resolved
@@ -625,30 +609,390 @@ test('install-entry: no home and no CLAUDE_CONFIG_DIR is refused with one line, 
     assert.deepStrictEqual(run.result, { claude: false, mcp: false }, 'the project was written');
 });
 
-// C4 (R133 N1) end to end: a core seat the user denied for themselves in settings.local.json, then
-// added back through configure's `--add agent`, loads again - the local deny goes, with a line.
-test('install-scope: --add agent at project scope drops the seat\'s deny from settings.local.json (C4)', POSIX_ONLY, () =>
+// C4 (R133 N1) end to end, rewritten for mode v2 stage 2 (the two-file overlay write C4 is gone): the
+// seat denies are the stack's own rows in settings.local.json at project scope, so configure's
+// `--add agent` takes the seat's deny out of that one file, with a line, and settings.json is never written.
+test('install-scope: --add agent at project scope drops the seat\'s deny from settings.local.json, the one file the stack writes (C4, mode v2 stage 2)', POSIX_ONLY, () =>
 {
     const seat = 'Agent(alfred-code:evidence-gatherer)';
-    const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+    const { outs, steps, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]),
         args: [[], ['--installed-only', '--add', 'agent evidence-gatherer']],
+        each: (repo, i) => (i === 0 ? ((json(repo, path.join('.claude', 'settings.local.json')).permissions || {}).deny || []) : null),
+        inspect: (repo) => ({ shared: exists(repo, '.claude', 'settings.json'), local: json(repo, path.join('.claude', 'settings.local.json')) }),
+    });
+    assert.ok(steps[0].includes(seat), 'setup: the install denied the unpicked seat in settings.local.json');
+    assert.ok(!((result.local.permissions || {}).deny || []).includes(seat), 'the seat stays off through the local deny');
+    assert.strictEqual(result.shared, false, 'settings.json is never written');
+    assert.match(outs[1], /settings\.local\.json: agent allowed again Agent\(alfred-code:evidence-gatherer\)/, outs[1]);
+});
+
+// A9 (mode v2 stage 2, O1): a ledgered seat deny the file no longer holds reads as the user's hand-allow only while that
+// file still holds one of the ledger's deny rows - a clone's local file (absent, or Claude Code's own allow rows) holds none.
+const LOCAL_PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.10.0', scope: 'local', enabled: true }]);
+const LOCAL_FILE = path.join('.claude', 'settings.local.json');
+
+test('install-scope: an update over an install whose settings.local.json is gone denies the unpicked seats again (a clone, A9)', POSIX_ONLY, () =>
+{
+    let before = null;
+    const { result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        plugins: LOCAL_PLUGINS,
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            const shared = path.join(repo, '.claude', 'settings.json');
-            const s = JSON.parse(fs.readFileSync(shared, 'utf8'));
-            s.permissions.deny = s.permissions.deny.filter((d) => d !== seat);
-            fs.writeFileSync(shared, JSON.stringify(s, null, 2));
-            const localFile = path.join(repo, '.claude', 'settings.local.json');
-            const l = fs.existsSync(localFile) ? JSON.parse(fs.readFileSync(localFile, 'utf8')) : {};
-            l.permissions = { deny: [seat] };
-            fs.writeFileSync(localFile, JSON.stringify(l, null, 2));
+            before = seats(json(repo, LOCAL_FILE));
+            fs.rmSync(path.join(repo, LOCAL_FILE));
             return null;
         },
-        inspect: (repo) => ({ shared: json(repo, '.claude/settings.json'), local: json(repo, '.claude/settings.local.json') }),
+        inspect: (repo) => seats(json(repo, LOCAL_FILE)),
     });
-    assert.ok(!((result.local.permissions || {}).deny || []).includes(seat), 'the seat stays off through the local deny');
-    assert.ok(!(result.shared.permissions.deny || []).includes(seat));
-    assert.match(outs[1], /settings\.local\.json: agent allowed again Agent\(alfred-code:evidence-gatherer\)/, outs[1]);
+    assert.ok(before.length > 0, 'setup: the install denied no unpicked seat');
+    assert.deepStrictEqual([...result].sort(), [...before].sort());
+});
+
+test('install-scope: a clone whose settings.local.json holds only an allow row of Claude Code\'s denies the unpicked seats again (A9)', POSIX_ONLY, () =>
+{
+    const OWN = { permissions: { allow: ['Bash(ls)'] } };
+    let before = null;
+    const { result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        plugins: LOCAL_PLUGINS,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            before = seats(json(repo, LOCAL_FILE));
+            fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(OWN));
+            return null;
+        },
+        inspect: (repo) => json(repo, LOCAL_FILE),
+    });
+    assert.ok(before.length > 0, 'setup: the install denied no unpicked seat');
+    assert.deepStrictEqual(seats(result).sort(), [...before].sort());
+    assert.deepStrictEqual(result.permissions.allow, OWN.permissions.allow, 'the row Claude Code wrote stays');
+});
+
+test('install-scope: a seat deny taken out of a file that still holds the stack\'s other deny rows stays out (a hand-allow)', POSIX_ONLY, () =>
+{
+    let before = null;
+    let gone = null;
+    const { result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        plugins: LOCAL_PLUGINS,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const data = json(repo, LOCAL_FILE);
+            before = seats(data);
+            gone = before[0];
+            data.permissions.deny = data.permissions.deny.filter((d) => d !== gone);
+            fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(data, null, 2));
+            return null;
+        },
+        inspect: (repo) => seats(json(repo, LOCAL_FILE)),
+    });
+    assert.ok(before.length > 1, 'setup: the install denied fewer than two unpicked seats');
+    assert.ok(!result.includes(gone), `${gone} stays allowed`);
+    assert.deepStrictEqual([...result].sort(), before.filter((d) => d !== gone).sort());
+});
+
+test('install-scope: a file left with one of the ledger\'s deny rows and no seat deny keeps every seat allowed', POSIX_ONLY, () =>
+{
+    let before = null;
+    const { result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        plugins: LOCAL_PLUGINS,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const data = json(repo, LOCAL_FILE);
+            before = seats(data);
+            data.permissions.deny = ['Read(.env)'];
+            fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(data, null, 2));
+            return null;
+        },
+        inspect: (repo) => seats(json(repo, LOCAL_FILE)),
+    });
+    assert.ok(before.length > 0, 'setup: the install denied no unpicked seat');
+    assert.deepStrictEqual(result, []);
+});
+
+// Mode v2 stage 2, Task 2: an unusable local file gets no settings row, the ledger stands, one !! line says why.
+const LEDGER_LINES = /^managed-(env|deny|hooks|settings):.*$/gm;
+for (const [label, spoil, bytes, reason] of [
+    ['is not valid JSON', (repo) => fs.writeFileSync(path.join(repo, LOCAL_FILE), '{ not json'), '{ not json', 'not valid JSON'],
+    ['git tracks', (repo) => require('node:child_process').execFileSync('git', ['add', '-f', '--', LOCAL_FILE], { cwd: repo, stdio: 'pipe' }), null,
+        'tracked by git - git rm --cached it'],
+])
+{
+    test(`install-scope: a settings.local.json that ${label} gets no settings row, the ledger stands, and one !! line says so`, POSIX_ONLY, () =>
+    {
+        let before = null;
+        let had = null;
+        const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+            args: [['--scope', 'local'], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                before = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').match(LEDGER_LINES);
+                spoil(repo);
+                had = fs.readFileSync(path.join(repo, LOCAL_FILE), 'utf8');
+                return null;
+            },
+            inspect: (repo) => ({
+                local: fs.readFileSync(path.join(repo, LOCAL_FILE), 'utf8'),
+                shared: exists(repo, '.claude', 'settings.json'),
+                ledger: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').match(LEDGER_LINES),
+            }),
+        });
+        assert.strictEqual(result.local, bytes ?? had);
+        assert.strictEqual(result.shared, false);
+        assert.deepStrictEqual(result.ledger, before);
+        assert.ok(outs[1].includes(`!! settings: .claude/settings.local.json is ${reason} - no settings row was written or moved this run`), outs[1]);
+    });
+}
+
+// Mode v2 stage 2, Task 4: one file at every scope, and the move of what an older install left in settings.json.
+const { plantSharedInstall } = require('./seed-sandbox.js');
+const HOOKS_SEL = 'skill csharp\nrule markdown-docs\nhook guard-protected-force-push\n';
+const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+const ROWS = /^managed-(env|deny|hooks|settings):.*settings\.json:(?!ALFRED_CODE_DOCS_PATH)/m;
+const SHARED_FILE = path.join('.claude', 'settings.json');
+const stampOf = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+const read = (repo, rel) => (fs.existsSync(path.join(repo, rel)) ? fs.readFileSync(path.join(repo, rel), 'utf8') : null);
+const UPDATE = ['--scope', 'project', '--installed-only'];
+const PROJECT_PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.10.0', scope: 'project', enabled: true }]);
+const snap = (repo) => ({ shared: read(repo, SHARED_FILE), local: read(repo, LOCAL_FILE), stamp: stampOf(repo) });
+
+// Ruling 9, found by the stage 2 matrix (M5): a settings.json that cannot be read skips the move, and its ledger rows -
+// the deny rows and hook wirings among them, not only env and settings rows - stay, so the run after the fix moves them.
+test('install-scope: a garbage settings.json keeps every ledger row naming it, and the run after the fix moves all of them', POSIX_ONLY, () =>
+{
+    let good = null;
+    const { outs, steps } = seedRun(['install', 'update', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE, UPDATE], env: COPY,
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, SHARED_FILE);
+            if (i === 0) { plantSharedInstall(repo); good = fs.readFileSync(file, 'utf8'); fs.writeFileSync(file, '{ not json'); return null; }
+            const out = snap(repo);
+            if (i === 1) fs.writeFileSync(file, good);
+            return out;
+        },
+    });
+    const denyRows = (stamp) => ((/^managed-deny: (.*)$/m.exec(stamp) || [])[1] || '').split(',').filter((r) => r.startsWith('settings.json:'));
+    const hookRows = (stamp) => ((/^managed-hooks: (.*)$/m.exec(stamp) || [])[1] || '').split(',').filter((r) => r.startsWith('settings.json:'));
+    assert.ok(denyRows(steps[1].stamp).length > 0, 'the deny rows naming settings.json stay in the ledger');
+    assert.ok(hookRows(steps[1].stamp).length > 0, 'the hook wirings naming settings.json stay in the ledger');
+    assert.match(outs[2], /settings: \d+ rows moved from settings\.json to settings\.local\.json/);
+    const shared = JSON.parse(steps[2].shared);
+    assert.deepStrictEqual([shared.permissions, shared.hooks], [undefined, undefined], steps[2].shared);
+    assert.doesNotMatch(steps[2].stamp, ROWS);
+});
+
+for (const scope of ['project', 'user'])
+{
+    test(`install-scope: --scope ${scope} writes every settings row to settings.local.json and none to settings.json`, POSIX_ONLY, () =>
+    {
+        const { result } = seedRun('install', HOOKS_SEL, {
+            args: ['--scope', scope],
+            inspect: (repo) => ({ shared: exists(repo, SHARED_FILE), local: json(repo, LOCAL_FILE), stamp: stampOf(repo) }),
+        });
+        assert.strictEqual(result.shared, false, 'settings.json was written');
+        assert.ok(result.local.permissions.deny.includes('Read(.env)'));
+        assert.strictEqual(typeof result.local.env.ALFRED_CODE_HOOKS_OFF, 'string');
+        assert.ok(result.local.attribution && typeof result.local.attribution === 'object');
+        assert.strictEqual(result.local.worktree.baseRef, 'head');
+        assert.doesNotMatch(result.stamp, ROWS);
+    });
+}
+
+test('install-scope: an update over an install whose ledger names settings.json moves every ledgered row and keeps the user\'s rows', POSIX_ONLY, () =>
+{
+    let planted = null;
+    let attribution = null;
+    const { outs, steps } = seedRun(['install', 'update', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                attribution = json(repo, LOCAL_FILE).attribution;
+                const file = plantSharedInstall(repo);
+                const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+                planted = s.env.ALFRED_CODE_HOOKS_OFF;
+                Object.assign(s, { enabledPlugins: { 'x@y': true } });
+                s.env.MY_OWN = '1';
+                s.permissions.allow = ['Bash(ls)'];
+                s.worktree.baseRef = 'origin/main';
+                fs.writeFileSync(file, JSON.stringify(s, null, 2));
+                return null;
+            }
+            return snap(repo);
+        },
+    });
+    assert.deepStrictEqual(JSON.parse(steps[1].shared), { enabledPlugins: { 'x@y': true }, env: { MY_OWN: '1' }, permissions: { allow: ['Bash(ls)'] },
+        worktree: { baseRef: 'origin/main' } });
+    const local = JSON.parse(steps[1].local);
+    assert.strictEqual(local.env.ALFRED_CODE_HOOKS_OFF, planted);
+    assert.ok(local.permissions.deny.includes('Read(.env)'));
+    assert.strictEqual(local.worktree, undefined);
+    assert.deepStrictEqual(local.attribution, attribution, 'the attribution row is written on the moving run itself');
+    assert.match(outs[1], /settings: \d+ rows moved from settings\.json to settings\.local\.json - teammates and cloud sessions no longer get them/);
+    assert.ok(outs[1].includes('settings.json: worktree.baseRef stays - changed since the stack wrote it'), outs[1]);
+    assert.doesNotMatch(steps[1].stamp, ROWS);
+    assert.deepStrictEqual([steps[2].shared, steps[2].local], [steps[1].shared, steps[1].local]);
+    assert.doesNotMatch(outs[2], /rows moved/);
+});
+
+test('install-scope: on the hooks copy route the move takes every hook row to settings.local.json', POSIX_ONLY, () =>
+{
+    const hooksOf = (repo) => ({ shared: exists(repo, SHARED_FILE) ? json(repo, SHARED_FILE).hooks : undefined,
+        local: Object.keys(json(repo, LOCAL_FILE).hooks || {}), rows: (stampOf(repo).match(/^managed-hooks: (.*)$/m) || [])[1] || '' });
+    const moved = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE], env: COPY,
+        each: (repo, i) => { if (i === 0) plantSharedInstall(repo); return null; },
+        inspect: hooksOf,
+    }).result;
+    const fresh = seedRun('install', HOOKS_SEL, { args: ['--scope', 'project'], env: COPY, inspect: hooksOf }).result;
+    for (const r of [moved, fresh])
+    {
+        assert.strictEqual(r.shared, undefined);
+        assert.ok(r.local.includes('PreToolUse') && r.local.includes('SessionStart'), r.local.join(','));
+        assert.ok(r.rows && r.rows.split(/\s+/).every((row) => row.startsWith('settings.local.json:')), r.rows);
+    }
+});
+
+test('install-scope: a hook wiring changed by hand in settings.json stays there after the move', POSIX_ONLY, () =>
+{
+    let group = null;
+    let event = null;
+    const { result } = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE], env: COPY,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const file = plantSharedInstall(repo);
+            const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+            event = Object.keys(s.hooks)[0];
+            s.hooks[event][0].hooks[0].command += ' --mine';
+            group = s.hooks[event][0];
+            fs.writeFileSync(file, JSON.stringify(s, null, 2));
+            return null;
+        },
+        inspect: (repo) => ({ shared: json(repo, SHARED_FILE), local: json(repo, LOCAL_FILE) }),
+    });
+    assert.deepStrictEqual(result.shared.hooks[event], [group]);
+    assert.ok((result.local.hooks[event] || []).length > 0, 'the stack wires the event in the local file');
+});
+
+for (const [leg, env, spoil] of [
+    ['removed', {}, (repo) => fs.rmSync(path.join(repo, LOCAL_FILE))],
+    ['removed, hooks copy route', COPY, (repo) => fs.rmSync(path.join(repo, LOCAL_FILE))],
+    ['replaced by an allow row', {}, (repo) => fs.writeFileSync(path.join(repo, LOCAL_FILE), '{"permissions":{"allow":["Bash(ls)"]}}')],
+])
+{
+    test(`install-scope: a clone of a project-scope install gets its rows back, and not the off-list (local file ${leg})`, POSIX_ONLY, () =>
+    {
+        let before = null;
+        const { steps } = seedRun(['install', 'update', 'update'], HOOKS_SEL, {
+            plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE, UPDATE], env,
+            each: (repo, i) =>
+            {
+                if (i === 0) { before = json(repo, LOCAL_FILE); spoil(repo); return null; }
+                return snap(repo);
+            },
+        });
+        const local = JSON.parse(steps[1].local);
+        assert.ok(local.permissions.deny.includes('Read(.env)'));
+        assert.deepStrictEqual(seats(local).sort(), seats(before).sort());
+        if (env === COPY) assert.deepStrictEqual(Object.keys(local.hooks).sort(), Object.keys(before.hooks).sort());
+        else assert.strictEqual(local.env.ALFRED_CODE_HOOKS_OFF, '');
+        if (leg.startsWith('replaced')) assert.deepStrictEqual(local.permissions.allow, ['Bash(ls)']);
+        assert.strictEqual(steps[1].shared, null);
+        assert.deepStrictEqual([steps[2].shared, steps[2].local], [steps[1].shared, steps[1].local]);
+    });
+}
+
+test('install-scope: a personal ALFRED_CODE_HISTORY in settings.local.json stays at project scope and .variables is unchanged', POSIX_ONLY, () =>
+{
+    let vars = null;
+    const { result } = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const s = json(repo, LOCAL_FILE);
+            s.env.ALFRED_CODE_HISTORY = '7';
+            fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(s, null, 2));
+            vars = read(repo, path.join('.alfred', '.variables'));
+            return null;
+        },
+        inspect: (repo) => ({ local: json(repo, LOCAL_FILE), vars: read(repo, path.join('.alfred', '.variables')), stamp: stampOf(repo) }),
+    });
+    assert.strictEqual(result.local.env.ALFRED_CODE_HISTORY, '7');
+    assert.strictEqual(result.vars, vars);
+    assert.doesNotMatch(result.stamp, /settings\.local\.json:ALFRED_CODE_HISTORY=/);
+});
+
+test('install-scope: an unusable local file stops the move, and the run after the fix moves everything', POSIX_ONLY, () =>
+{
+    let planted = null;
+    const { outs, steps } = seedRun(['install', 'update', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                plantSharedInstall(repo);
+                fs.writeFileSync(path.join(repo, LOCAL_FILE), '{ not json');
+                planted = { shared: read(repo, SHARED_FILE), ledger: stampOf(repo).match(LEDGER_LINES) };
+                return null;
+            }
+            const out = { shared: read(repo, SHARED_FILE), ledger: stampOf(repo).match(LEDGER_LINES), stamp: stampOf(repo) };
+            if (i === 1) fs.rmSync(path.join(repo, LOCAL_FILE));
+            return out;
+        },
+    });
+    assert.strictEqual(steps[1].shared, planted.shared);
+    assert.deepStrictEqual(steps[1].ledger, planted.ledger);
+    assert.ok(outs[1].includes('!! settings: .claude/settings.local.json is not valid JSON'), outs[1]);
+    assert.doesNotMatch(steps[2].stamp, ROWS);
+});
+
+test('install-scope: a ledger naming rows that are in neither file is rebuilt without a word about a move', POSIX_ONLY, () =>
+{
+    let before = null;
+    const { outs, result } = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            before = json(repo, LOCAL_FILE);
+            fs.writeFileSync(plantSharedInstall(repo), '{}');
+            return null;
+        },
+        inspect: (repo) => json(repo, LOCAL_FILE),
+    });
+    assert.ok(result.permissions.deny.includes('Read(.env)'));
+    assert.deepStrictEqual(seats(result).sort(), seats(before).sort());
+    assert.strictEqual(typeof result.env.ALFRED_CODE_HOOKS_OFF, 'string');
+    assert.doesNotMatch(outs[1], /rows moved/);
+});
+
+test('install-scope: a stack variable typed into settings.json at project scope stays there and .variables is unchanged', POSIX_ONLY, () =>
+{
+    let before = null;
+    const { result } = seedRun(['install', 'update'], HOOKS_SEL, {
+        plugins: PROJECT_PLUGINS, args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            fs.writeFileSync(path.join(repo, SHARED_FILE), JSON.stringify({ env: { ALFRED_CODE_HISTORY: '9' } }, null, 2));
+            before = { shared: read(repo, SHARED_FILE), vars: read(repo, path.join('.alfred', '.variables')) };
+            return null;
+        },
+        inspect: (repo) => ({ shared: read(repo, SHARED_FILE), vars: read(repo, path.join('.alfred', '.variables')) }),
+    });
+    assert.deepStrictEqual(result, before);
 });

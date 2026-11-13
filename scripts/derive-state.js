@@ -101,8 +101,10 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     // No hook line at all means every hook, exactly as the installer's copy filter reads it - a
     // selection that never reached the hooks layer answers nothing about hooks.
     const hooksAnswered = flat.hooks.size > 0;
-    const hooksOn = hooksAnswered ? shipped.filter((h) => flat.hooks.has(h)) : shipped;
-    const hooksOff = hooksAnswered ? shipped.filter((h) => !flat.hooks.has(h)) : [];
+    // The locked hooks ride every answered selection (selection.applySelection), so they are never off.
+    const held = (h) => flat.hooks.has(h) || require('./install/selection.js').LOCKED_HOOKS.includes(h);
+    const hooksOn = hooksAnswered ? shipped.filter(held) : shipped;
+    const hooksOff = hooksAnswered ? shipped.filter((h) => !held(h)) : [];
 
     return {
         plugins: enabled,
@@ -173,10 +175,10 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         const env = { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') };
         const shipped = [...new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
         const on = shipped.filter((h) => !hookDisabled(h, env));
-        for (const h of on) lines.push(`hook ${h}`);
         // Every hook off is the walk's None, and reads back as it was written - no hook line at all
-        // would mean 'every hook' to the next derivation.
-        if (!on.length) lines.push('hook none');
+        // would mean 'every hook' to the next derivation. The locked hooks ride every selection, so they are no pick.
+        if (on.some((h) => !require('./install/selection.js').LOCKED_HOOKS.includes(h))) for (const h of on) lines.push(`hook ${h}`);
+        else lines.push('hook none');
     }
     return lines;
 }
@@ -389,7 +391,7 @@ function copiedSkills(skillsDir, overrides = {})
     let graph = {};
     try { graph = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'stack-graph.json'), 'utf8')).skills || {}; } catch { graph = {}; }
     let dirs = [];
-    try { dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { dirs = []; }
+    try { dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory() || d.isSymbolicLink()).map((d) => d.name); } catch { dirs = []; }
     const out = [];
     for (const name of dirs.filter((n) => Object.hasOwn(graph, n)).sort())
     {

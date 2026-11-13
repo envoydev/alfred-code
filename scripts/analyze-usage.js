@@ -24,6 +24,7 @@
 //   node scripts/analyze-usage.js <projects-dir> --exclude-session <id>  # leave a session out (the live one is left out already)
 //   node scripts/analyze-usage.js <projects-dir> --turn-check-advice <root>  # ONE row when unchecked done claims pass 3 per 10 sessions
 //   node scripts/analyze-usage.js --turn-check-advice .           # no folder: this project's own, derived from the cwd
+//   node scripts/analyze-usage.js --scope                         # no folder: the projects and sessions a run here reads
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
@@ -76,6 +77,7 @@ const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']
 // Claude Code's idle compaction (hook-prelude.js idleByTiming): about an hour after the last reply, before the prompt
 // cache expires - no context limit, so the report labels it and keeps it out of the session span.
 const { idleByTiming, idleFloor, isIdleNotice, localOnlyRow } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
+const { usageScope, sessionsDirOf } = require('./usage-scope.js');
 // The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
 // call of one of these opens a phase; any other skill loaded while one is open serves it.
 // A plan's close stamp (U03): `Completed: <date>` opening a line, a list marker or bold allowed.
@@ -952,8 +954,10 @@ function paraDelta(a, b) {
   return { onlyA, onlyB };
 }
 
+// A link (a store item linked into .claude) reads as what it points at; a dangling one as neither a folder nor a file.
 function dirEntries(dir) {
-  try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  const follow = (e) => { let st = null; try { st = fs.statSync(path.join(dir, e.name)); } catch { /* dangling */ } return { name: e.name, isDirectory: () => Boolean(st && st.isDirectory()), isFile: () => Boolean(st && st.isFile()) }; };
+  try { return fs.readdirSync(dir, { withFileTypes: true }).map((e) => (e.isSymbolicLink() ? follow(e) : e)); } catch { return []; }
 }
 function readHead(file) {
   try { return fs.readFileSync(file, 'utf8'); } catch { return ''; }
@@ -1031,6 +1035,40 @@ function findSessionFiles(root, depth = 0, out = []) {
     }
   }
   return out;
+}
+
+// W2: the folder a session was started in - the `cwd` of its first row carrying one, read from the first MB alone (a
+// line that ends past it is not read), else null. Never throws.
+const HEAD_BYTES = 1048576;
+function startFolderOf(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(HEAD_BYTES + 1);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    const end = n < buf.length ? n : buf.lastIndexOf(10, n - 1) + 1;
+    for (const l of buf.subarray(0, end).toString('utf8').split('\n')) {
+      try { const row = JSON.parse(l); if (row && typeof row.cwd === 'string' && row.cwd) return row.cwd; } catch { /* torn or no JSON */ }
+    }
+  } catch { /* missing or unreadable */ } finally { if (fd !== undefined) fs.closeSync(fd); }
+  return null;
+}
+// Each transcript of the scope's folders, read once, to the member it was started in (by layout.pathKey); one started
+// elsewhere counts in `other`; one with no start folder goes to the first member, by rel, whose folder holds it.
+function sessionsOf(scope) {
+  const { pathKey } = require('../stack/hooks/layout.js');
+  const members = scope.projects.map((p) => ({ rel: p.rel, root: p.root, files: [], key: pathKey(p.root), dirs: p.dirs.map((d) => pathKey(d)) }));
+  const seen = new Set();
+  let other = 0;
+  for (const dir of scope.projects.flatMap((p) => p.dirs)) for (const f of findSessionFiles(dir).sort()) {
+    if (seen.has(f)) continue;
+    seen.add(f);
+    const start = startFolderOf(f);
+    const own = start ? members.find((m) => m.key === pathKey(start))
+      : [...members].sort((a, b) => (a.rel < b.rel ? -1 : 1)).find((m) => m.dirs.includes(pathKey(dir)));
+    if (own) own.files.push(f); else other++;
+  }
+  return { members: members.map(({ rel, root, files }) => ({ rel, root, files })), other };
 }
 
 const CATALOG_DIR = path.join(__dirname, '..', 'stack');
@@ -1138,6 +1176,16 @@ function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs, bundl
   if (inv.stamp && inv.stamp.fromBundle) inv.why += "; stamp from the bundle's context/ copy, read at collect time";
   return inv;
 }
+// W2: the rules a joined child is sent from the projects above it (rules-session.js rulesFor - its ignores and picks
+// applied), as loadRulesDir rows; the project's own store and native rules of the same name sit over them. No loader: none.
+function chainRules(project) {
+  try {
+    const { pathKey } = require('../stack/hooks/layout.js');
+    const got = require('../stack/hooks/rules-session.js').rulesFor(project);
+    return [...got.always, ...got.scoped].filter((r) => pathKey(r.root) !== pathKey(project))
+      .map((r) => ({ name: `${r.name}.md`, file: r.file, globs: r.globs, alwaysOn: r.globs.length === 0 }));
+  } catch { return []; }
+}
 function inventoryOnDisk(explicitDir, cwd, sessionLastTs, sessionFirstTs, stampOf) {
   const tryDir = (d, kind, why) => {
     if (!d) return null;
@@ -1145,7 +1193,10 @@ function inventoryOnDisk(explicitDir, cwd, sessionLastTs, sessionFirstTs, stampO
     const merge = (dirRows, plugRows) => [...new Map([...plugRows, ...dirRows].map((r) => [r.name, r])).values()].sort(byName);
     const skills = merge(loadSkillsDir(path.join(d, 'skills')), plug.skills);
     const agents = merge(loadAgentsDir(path.join(d, 'agents')), plug.agents);
-    const rules = loadRulesDir(path.join(d, 'rules'));
+    // The rule loader's store beside the native folder, a native file of the same name winning (it is what loads).
+    const store = path.basename(d) === '.claude' ? loadRulesDir(path.join(path.dirname(d), '.alfred', 'stack', 'rules')) : [];
+    const chained = path.basename(d) === '.claude' ? chainRules(path.dirname(d)) : [];
+    const rules = [...new Map([...chained, ...store, ...loadRulesDir(path.join(d, 'rules'))].map((r) => [r.name, r])).values()].sort(byName);
     if (!skills.length && !agents.length && !rules.length) return null;
     const note = plug.from.length ? ` (${plug.skills.length} skill(s) and ${plug.agents.length} agent(s) served by ${plug.from.join(', ')})` : '';
     // The cwd branch below REWRITES `why` from the stamp, so the note travels as its own field and
@@ -1605,6 +1656,7 @@ function addSessionUse(acc, main, agents, inventoryDir, bundleDir) {
     const row = ensure(acc.rules, file, { alwaysOn: false, globs: [] });
     mark(row, 'attached (transcript record)', e.records || 0, e.firstTs);
     mark(row, 'shell-route notice', e.shellNotices || 0, e.firstTs);
+    mark(row, 'rule loader block', e.loaderBlocks || 0, e.firstTs);
   }
   for (const r of inv.rules) {
     if (r.alwaysOn || !r.globs.length) continue;
@@ -2153,7 +2205,7 @@ async function analyzeTranscript(file, window) {
       if (Array.isArray(o.attachments)) for (const a of o.attachments) if (a && typeof a === 'object') ats.push(a);
       for (const at of ats) {
         const bump = (ruleFile, key) => {
-          const e = s.ruleAttachments[ruleFile] || (s.ruleAttachments[ruleFile] = { records: 0, shellNotices: 0, firstTs: null });
+          const e = s.ruleAttachments[ruleFile] || (s.ruleAttachments[ruleFile] = { records: 0, shellNotices: 0, loaderBlocks: 0, firstTs: null });
           e[key] += 1;
           if (o.timestamp && (!e.firstTs || o.timestamp < e.firstTs)) e.firstTs = o.timestamp;
         };
@@ -2265,8 +2317,11 @@ async function analyzeTranscript(file, window) {
         } else if (at.type === 'hook_additional_context') {
           const txt = Array.isArray(at.content) ? at.content.join('\n') : String(at.content || '');
           // one notice can name its rule twice - the notice is the event, not each mention
-          const named = new Set([...txt.matchAll(/\.claude[\\/]rules[\\/]([A-Za-z0-9._-]+\.md)/g)].map((x) => x[1]));
-          for (const r of named) bump(r, 'shellNotices');
+          const named = new Set([...txt.matchAll(/(?:\.claude|\.alfred[\\/]stack)[\\/]rules[\\/]([A-Za-z0-9._-]+\.md)/g)].map((x) => x[1]));
+          // the rule loader's block: one `## <name> (<path>)` heading per rule sent, a continued chunk not counted again
+          const sent = new Set([...txt.matchAll(/^## ([A-Za-z0-9._-]+) \([^)\n]+\.md\)$/gm)].map((x) => `${x[1]}.md`));
+          for (const r of named) if (!sent.has(r)) bump(r, 'shellNotices');
+          for (const r of sent) bump(r, 'loaderBlocks');
         }
       }
     }
@@ -3445,7 +3500,6 @@ function computeAggregates(main, agents) {
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
 // The log-only rows shell-guards.js writes, each a table of its own in the Probes section: what the row marks.
 const SHELL_PROBES = {
-  'symbol-grep': 'a recursive grep for a code identifier in the main session - a symbol question the navigation tools answer',
   'bg-note': "an actor's first background shell call - the note on how to watch it was sent",
   'monitor-note': "an actor's first Monitor call - the one-start-line note was sent",
   'sed-multi-match': 'an unaddressed sed -i whose pattern matched more than one line - the lines were named',
@@ -3554,13 +3608,12 @@ function readBlockLedger(target, sessionId, transcript) {
         if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
         if (o.mode === 'probe' && o.kind === 'correction') { const c = out.correction || (out.correction = newCorrection()); c.turns += 1; if (o.injected === true) c.injected += 1; }
         if (o.mode === 'probe' && o.kind === 'rationalization') tallyRationalization(out.rationalization || (out.rationalization = newRationalization()), o.detail || {});
-        // The shell guards' notes and the symbol-grep row; a row from before `kind` names its kind in `detail.branch`.
+        // The shell guards' notes; a row from before `kind` names its kind in `detail.branch`. A kind SHELL_PROBES no
+        // longer lists (the symbol-grep probe, removed in complexity stage 1) is skipped.
         const sk = o.mode === 'probe' ? o.kind || (o.detail && o.detail.branch) : null;
         if (sk && Object.hasOwn(SHELL_PROBES, sk)) {
           const sp = out.shellProbes || (out.shellProbes = {});
-          const t = sp[sk] || (sp[sk] = { rows: 0, patterns: new Map() });
-          t.rows += 1;
-          if (o.detail && o.detail.pattern) { const p = String(o.detail.pattern); t.patterns.set(p, (t.patterns.get(p) || 0) + 1); }
+          (sp[sk] || (sp[sk] = { rows: 0 })).rows += 1;
         }
         continue;
       }
@@ -3623,7 +3676,20 @@ const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over a
 // hook profile (which runs the check anyway) or the minimal one (which switches it off), gets no row.
 const TURN_CHECK_WINDOW = 10;
 const TURN_CHECK_THRESHOLD = 3;
-function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
+// The two folders a project's block ledgers live in: the data root's statistics/ (2.8.0), then the docs root's, where a
+// session's file not moved yet still sits.
+const blockDirsOf = (root, docsPath) => [path.resolve(root, '.alfred', 'statistics', 'hook-blocks'),
+  path.resolve(root, String(docsPath || '.alfred/docs'), 'hook-blocks')];
+// The probe tallies a rollup sums, and the lines one sum prints - the conditions of the totals' own lines.
+const newProbes = () => ({ doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() });
+const probeLines = (p) => [
+  p.doneGate.claims ? doneGateLine(p.doneGate) : null,
+  p.rootCause.streaks || p.rootCause.intended || p.rootCause.testFirstRed ? rootCauseLine(p.rootCause) : null,
+  p.correction.turns ? correctionLine(p.correction) : null,
+  p.rationalization.closes ? rationalizationLine(p.rationalization) : null,
+].filter(Boolean);
+// `sessions`: a folder, walked, or a list of transcript files (one project of the usage scope).
+function turnCheckAdvice(sessions, projectRoot, exclude = new Map()) {
   const { envOf, hookProfile, CORE_PLUGIN } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
   const root = path.resolve(projectRoot);
   const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
@@ -3645,11 +3711,8 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const on = String(envOf(variablesOf(root, { env: process.env }).values, 'TURN_CHECK') || '').trim() === '1' || profile === 'strict';
   // 2.8.0: the ledgers live in the data root's statistics/ (stack/hooks/layout.js); a session's file not moved there yet
   // is read from the pre-2.8.0 docs root
-  const { dataRoot } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
-  const dataRel = dataRoot({ ALFRED_CODE_DATA_PATH: setting('DATA_PATH') });
-  const blockDirs = [path.resolve(root, dataRel, 'statistics', 'hook-blocks'),
-    path.resolve(root, String(setting('DOCS_PATH') || `${dataRel}/docs`), 'hook-blocks')];
-  const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
+  const blockDirs = blockDirsOf(root, setting('DOCS_PATH'));
+  const newest = (Array.isArray(sessions) ? sessions : findSessionFiles(sessions)).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
   const doneGate = newDoneGate();
   for (const f of newest) {
@@ -3753,13 +3816,14 @@ function toolSequence(file) {
   return seq;
 }
 const preloadCache = new Map();
-function seatPreloads(agentType, skillRe = ROOT_CAUSE_SKILL_RE) {
+// `root`: the project the session ran in (W2), whose own .claude/agents is read after the stack's.
+function seatPreloads(agentType, skillRe = ROOT_CAUSE_SKILL_RE, root = process.cwd()) {
   const name = String(agentType || '').replace(/^.*:/, '');
   if (!name) return false;
-  const key = `${name}\0${skillRe.source}`;
+  const key = `${name}\0${skillRe.source}\0${root}`;
   if (!preloadCache.has(key)) {
     let hit = false;
-    for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(process.cwd(), '.claude', 'agents', `${name}.md`)]) {
+    for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(root, '.claude', 'agents', `${name}.md`)]) {
       try {
         const fm = (fs.readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
         const skills = (fm.match(/^skills:\s*\n((?:\s+-\s+.*\n?)+)/m) || [])[1] || '';
@@ -3770,7 +3834,7 @@ function seatPreloads(agentType, skillRe = ROOT_CAUSE_SKILL_RE) {
   }
   return preloadCache.get(key);
 }
-function resolveRootCause(details, files) {
+function resolveRootCause(details, files, root = process.cwd()) {
   const t = newRootCause();
   if (!details || !details.length) return t;
   const seqs = files.map(toolSequence);
@@ -3781,11 +3845,11 @@ function resolveRootCause(details, files) {
     let at = -1;
     for (const sq of seqs) { at = d.tool_use_id ? sq.findIndex((st) => st.id === d.tool_use_id) : -1; if (at >= 0) { seq = sq; break; } }
     if (seq && EXPECTS_RED_RE.test(String(seq[at].input.description || ''))
-      && (seq.slice(0, at).some(isTestFirst) || seatPreloads(d.agent_type, TEST_FIRST_SKILL_RE))) { t.intended += 1; continue; }
+      && (seq.slice(0, at).some(isTestFirst) || seatPreloads(d.agent_type, TEST_FIRST_SKILL_RE, root))) { t.intended += 1; continue; }
     t.streaks += 1;
     if (!seq) { t.unmatched += 1; continue; }
     if (seq.slice(0, at).some(isLoad)) { t.inContext += 1; continue; }
-    if (seatPreloads(d.agent_type)) { t.preloaded += 1; continue; }
+    if (seatPreloads(d.agent_type, ROOT_CAUSE_SKILL_RE, root)) { t.preloaded += 1; continue; }
     const rest = seq.slice(at + 1);
     const load = rest.findIndex(isLoad);
     const fix = rest.findIndex((st) => !st.error && isFix(st.name, st.input, st.cwd));
@@ -3842,7 +3906,8 @@ function finishProbes(ledger, sessionFile) {
   // reaches the streak rows; its count rides the ROOT CAUSE line, so a low MISSED is read beside it (audit 2026-10-10 C16).
   const testFirstRed = ledger && ledger.probeKinds ? ledger.probeKinds['test-first-red'] || 0 : 0;
   if (ledger && (ledger.rootCauseRows || testFirstRed)) {
-    ledger.rootCause = resolveRootCause(ledger.rootCauseRows || [], sessionTranscriptFiles(sessionFile));
+    // W2: the seat files of the folder the session was started in; the run's own for a transcript with no cwd row.
+    ledger.rootCause = resolveRootCause(ledger.rootCauseRows || [], sessionTranscriptFiles(sessionFile), startFolderOf(sessionFile) || process.cwd());
     ledger.rootCause.testFirstRed = testFirstRed;
     delete ledger.rootCauseRows;
   }
@@ -4145,12 +4210,21 @@ function efficiencyRows(main, agg, blockLedger) {
   return rows;
 }
 
+// One SUBTOTAL or TOTAL row of the rollup: the cells the session row fills that add up, the rest blank.
+function sumRow(label, tally, usd, corr) {
+  return `  ${pad(label, 38)} ${pad('', 12)} ${rpad(fmt(tally.output), 8)} ${rpad(fmt(tally.cacheRead), 11)} ${rpad(tally.msgs, 6)} ${rpad('', 8)} `
+    + `${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(usd), 9)} ${rpad('', 8)} `
+    + `${rpad(corr.total ? `${corr.saved}/${corr.total}` : '-', 10)}`;
+}
+
 // The complement of every consumption table above it: one row per INSTALLED artifact, and the
 // unused names collapsed to one line per layer so a 79-skill install stays readable.
-function printInventoryBlock(invUse) {
+function printInventoryBlock(invUse, rel) {
   if (!invUse) return;
   const many = invUse.source.sessions > 1;
-  console.log(`\nINVENTORY vs USE (what the install HAS against what ${many ? `these ${invUse.source.sessions} sessions` : 'this session'} touched - a name listed and unused was installed and never reached)`);
+  const tag = rel === undefined ? '' : ` [${rel}]`;
+  console.log(`\nINVENTORY vs USE${tag} (what the install HAS against what ${many ? `these ${invUse.source.sessions} sessions` : 'this session'}`
+    + ' touched - a name listed and unused was installed and never reached)');
   console.log(`  source: skills/agents/rules from ${invUse.source.skills_agents_rules}; plugins from ${invUse.source.plugins}; MCP from ${invUse.source.mcps}`);
   for (const L of inventoryLayers(invUse)) {
     if (!L.rows) continue;
@@ -4799,11 +4873,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse, confo
       `| rationalization | ${ra.closes} | ${ra.red} | ${ra.skipped} | ${ra.skipEdit} | ${ra.preExisting} | ${ra.unrelated} | ${ra.flaky} | ${ra.deferred} |`, '');
     for (const [kind, marks] of Object.entries(SHELL_PROBES)) {
       const sp = blockLedger.shellProbes && blockLedger.shellProbes[kind];
-      if (!sp) continue;
-      if (kind === 'symbol-grep') {
-        const top = [...sp.patterns.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([p, n]) => `${p} x${n}`).join(', ');
-        out.push('| probe | rows | patterns (top 5) | what it marks |', '|---|---|---|---|', `| ${kind} | ${sp.rows} | ${cell(top || '-')} | ${marks} |`, '');
-      } else out.push('| probe | rows | what it marks |', '|---|---|---|', `| ${kind} | ${sp.rows} | ${marks} |`, '');
+      if (sp) out.push('| probe | rows | what it marks |', '|---|---|---|', `| ${kind} | ${sp.rows} | ${marks} |`, '');
     }
   }
   if (conformance) out.push(...conformanceSection(conformance));
@@ -5011,14 +5081,8 @@ function printCheckReport(res) {
 // Exported for the tests: the join's arithmetic shipped broken (ISO string minus a number = NaN,
 // so every ledger-joined session printed '0% of tool calls are inside the ledger window') and
 // stayed broken because nothing could reach the function to pin it.
-// Review finding 10: the project's own transcripts folder, `<config>/projects/<name>`. Claude Code names it
-// from the NATIVE path, every non-alphanumeric character a '-' (the documented rule), so on Windows 'C:\\Users\\me\\repo' is 'C--Users-me-repo'. Derived here from the analyzer's own
-// cwd, never in a command body: a shell's `pwd | sed` gets '-c-Users-me-repo' under Git Bash.
-function sessionsDirOf(cwd, configDir) {
-  return path.join(configDir, 'projects', String(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
-}
-
 module.exports = { findSessionFiles, readEvidence, defaultLedger, classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf, JUDGMENT_HEAD_RE };
+Object.assign(module.exports, { startFolderOf, sessionsOf });
 
 // ---------- entry ----------
 
@@ -5051,15 +5115,18 @@ async function runAnalysis() {
   // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
   const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice', '--data-root', '--receipt']);
   const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
-  // No folder or transcript named: the transcripts of the project this runs in (sessionsDirOf).
-  const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i))
-    || sessionsDirOf(process.cwd(), process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
+  const named = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   // The report CHECK is its own pass: it reads a filled report, not a transcript.
   const checkFile = flagVal('--check-report');
   if (checkFile) {
     process.exitCode = printCheckReport(checkReport(checkFile));
     return;
   }
+  // No folder or transcript named: the usage scope of where this runs (usage-scope.js) - its first transcript folder,
+  // else the start project's own (sessionsDirOf), which a read then fails on as before. A named path sets no scope.
+  const scope = named ? null : usageScope(process.cwd(), { env: process.env });
+  const target = named || scope.projects.flatMap((p) => p.dirs)[0]
+    || sessionsDirOf(scope.projects[0].root, process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
   const asJson = args.includes('--json');
   const asMd = args.includes('--report-md');
   const hookFile = flagVal('--hook-log');
@@ -5078,8 +5145,9 @@ async function runAnalysis() {
   const window = fromStr || toStr
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
-  if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
+  if (!target || (named && args.includes('--scope')) || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
     console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--data-root <dir>] [--receipt <collected.json>] [--no-conformance] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('       analyze-usage.js --scope   # no path named: the projects, transcript folders and sessions a run here reads');
     process.exit(1);
   }
 
@@ -5096,13 +5164,29 @@ async function runAnalysis() {
   const liveId = process.env.CLAUDE_CODE_SESSION_ID;
   if (liveId && !excludeWhy.has(liveId)) excludeWhy.set(liveId, 'CLAUDE_CODE_SESSION_ID');
 
+  // W2: the scope as lines, for the skill and status - ids, paths and counts, read from each transcript's head alone.
+  if (args.includes('--scope')) {
+    const got = sessionsOf(scope);
+    const out = [`scope: ${scope.projects.length} projects`, ...got.members.map((m) => `project: ${m.rel}\t${m.root}\t${m.files.length}`)];
+    out.push(...scope.leftOut.map((l) => `left-out: ${l.rel}\t${l.why}`));
+    for (const m of got.members) out.push(...m.files.map((f) => `session: ${path.basename(f, '.jsonl')}\t${m.rel}\t${f}`));
+    if (got.other) out.push(`other-start-folder: ${got.other}`);
+    console.log([...out, ...scope.notes.map((n) => `note: ${n}`)].join('\n'));
+    return;
+  }
+
   // The Stop build check advisory: ONE row or nothing, over the newest sessions' own ledgers - no
   // transcript is analysed, so it stays cheap on a long history, and a missing directory is no row.
   const adviceRoot = flagVal('--turn-check-advice');
+  // W2: one call per project in scope, on its own sessions and its own root (the start's root, not a sub-folder the run began
+  // in - review #1), each reading its own switch; a row is prefixed with its project when the scope holds more than one.
+  // A named folder sets no scope: the flag's value is the project, as before.
   if (adviceRoot) {
-    const advice = turnCheckAdvice(target, adviceRoot, excludeWhy);
-    if (asJson) console.log(JSON.stringify(advice, null, 2));
-    else if (advice.row) console.log(advice.row);
+    const members = scope ? sessionsOf(scope).members : [{ rel: null, files: target, root: adviceRoot }];
+    const runs = members.map((m) => ({ project: m.rel, ...turnCheckAdvice(m.files, m.root, excludeWhy) }));
+    const many = runs.length > 1;
+    if (asJson) console.log(JSON.stringify(many ? runs : (({ project, ...one }) => one)(runs[0]), null, 2));
+    else for (const r of runs) if (r.row) console.log(many ? `${r.project}: ${r.row}` : r.row);
     return;
   }
 
@@ -5111,14 +5195,24 @@ async function runAnalysis() {
     // collected corpus nests one folder per project and one per session, and the flat one-level
     // history folder is just the depth-0 case of the same walk.
     const excludedSessions = [];
-    const files = findSessionFiles(target)
+    // W2: with more than one project in scope, each session is its member's - a project column, a SUBTOTAL per member,
+    // one inventory block each; one project prints every line as before.
+    const got = scope ? sessionsOf(scope) : null;
+    const many = Boolean(got && got.members.length > 1);
+    const ownerOf = new Map(got ? got.members.flatMap((m) => m.files.map((f) => [f, m.rel])) : []);
+    const width = many ? Math.max(7, ...got.members.map((m) => m.rel.length)) : 0;
+    const lead = (cell) => (many ? `${pad(cell, width)} ` : '');
+    const part0 = () => ({ tally: newTally(), usd: 0, sessions: 0, corr: { saved: 0, total: 0 },
+      acc: newInventoryUse(loadPlugins(pluginsFile)), probes: newProbes() });
+    const parts = new Map(many ? got.members.map((m) => [m.rel, part0()]) : []);
+    const files = (got ? got.members.flatMap((m) => m.files) : findSessionFiles(target))
       .filter((f) => {
         const why = excludeWhy.get(path.basename(f, '.jsonl'));
         if (why) excludedSessions.push({ session: path.basename(f, '.jsonl'), why });
         return !why;
       })
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)} ${rpad('corr-saved', 10)}`);
+    if (!asJson) console.log(lead('project') + `  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)} ${rpad('corr-saved', 10)}`);
     const grand = newTally();
     let grandUsd = 0;
     // Corrections saved to memory, over the run: the number the S2.2 threshold (25% unsaved) reads.
@@ -5130,16 +5224,28 @@ async function runAnalysis() {
     const acc = newInventoryUse(loadPlugins(pluginsFile));
     const rollupJson = { sessions: [] };
     // The probe tallies of the corpus's OWN sessions, each read from its own ledger file.
-    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() } : null;
+    // W2: the start project's sessions read the flag's folder; another member's, the first of its own two that holds the
+    // session's file, else nothing - no measurement, never a zero read off the start project's folder.
+    const probeSum = blockDir ? newProbes() : null;
+    const ledgerDirOf = (f, part) => {
+      if (!part || ownerOf.get(f) === got.members[0].rel) return blockDir;
+      const root = got.members.find((m) => m.rel === ownerOf.get(f)).root;
+      return blockDirsOf(root).find((d) => fs.existsSync(path.join(d, path.basename(f)))) || null;
+    };
     for (const f of files) {
-      if (probeSum) {
-        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl'), f), f);
-        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n] || 0;
+      const ledgerDir = probeSum ? ledgerDirOf(f, parts.get(ownerOf.get(f))) : null;
+      if (ledgerDir) {
+        const led = finishProbes(readBlockLedger(ledgerDir, path.basename(f, '.jsonl'), f), f);
+        const part = parts.get(ownerOf.get(f));
+        for (const sums of [probeSum, ...(part ? [part.probes] : [])])
+          for (const [k, sum] of Object.entries(sums)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n] || 0;
       }
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
       reconcileUntranscribed(s, agents);
-      addSessionUse(acc, s, agents, inventoryDir, path.dirname(f));
+      const rel = ownerOf.get(f);
+      const part = parts.get(rel);
+      addSessionUse(part ? part.acc : acc, s, agents, !part || rel === got.members[0].rel ? inventoryDir : null, path.dirname(f));
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
       mergeTally(grand, s.total); mergeTally(grand, at);
@@ -5154,24 +5260,44 @@ async function runAnalysis() {
       const eff = s.efficiency || {};
       const corrections = { saved: eff.correctionsSaved || 0, total: (eff.correctionsSaved || 0) + (eff.correctionsUnsaved || []).length };
       grandCorr.saved += corrections.saved; grandCorr.total += corrections.total;
+      if (part) {
+        mergeTally(part.tally, s.total); mergeTally(part.tally, at);
+        if (priced) part.usd += usd;
+        part.sessions += 1; part.corr.saved += corrections.saved; part.corr.total += corrections.total;
+      }
       const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)} ${rpad(corrections.total ? `${corrections.saved}/${corrections.total}` : '-', 10)}`;
       if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp, corrections });
-      else console.log(row);
+      else console.log(lead(rel) + row);
+      if (asJson && many) rollupJson.sessions[rollupJson.sessions.length - 1].project = rel;
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
+    const memberInv = [...parts].map(([rel, p]) => [rel, p.acc.sessions ? finishInventoryUse(p.acc) : null]);
+    if (scope && (many || scope.leftOut.length || got.other || scope.notes.length))
+      Object.assign(rollupJson, { leftOut: scope.leftOut, otherStartFolder: got.other, notes: scope.notes });
+    if (many) rollupJson.projects = memberInv.map(([rel, inventory]) => {
+      const p = parts.get(rel);
+      return { rel, sessions: p.sessions, total: p.tally, cost: priceTable().error ? null : p.usd, inventory };
+    });
     if (asJson) { console.log(JSON.stringify({ ...rollupJson, excludedSessions, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse, ...(probeSum ? { probes: probeSum } : {}) }, null, 2)); return; }
-    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)} ${rpad('', 8)} ${rpad(grandCorr.total ? `${grandCorr.saved}/${grandCorr.total}` : '-', 10)}`);
+    for (const [rel, p] of parts) console.log(lead('') + sumRow(`SUBTOTAL ${rel}`, p.tally, p.usd, p.corr));
+    console.log(lead('') + sumRow('TOTAL', grand, grandUsd, grandCorr));
+    if (scope && scope.leftOut.length) console.log(`left out: ${scope.leftOut.map((l) => `${l.rel} (${l.why})`).join(', ')}`);
+    if (got && got.other) console.log(`other start folder: ${got.other}`);
+    for (const n of scope ? scope.notes : []) console.log(n);
     if (excludedSessions.length) {
       const label = (x) => `${x.session} (${x.why === 'CLAUDE_CODE_SESSION_ID' ? 'CLAUDE_CODE_SESSION_ID - the session running this analyzer' : x.why})`;
       console.log(`\nexcluded ${excludedSessions.length} session${excludedSessions.length === 1 ? '' : 's'}: ${excludedSessions.map(label).join(', ')}`);
     }
     const unsaved = grandCorr.total - grandCorr.saved;
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
+    const perProject = [...parts].flatMap(([rel, p]) => probeLines(p.probes).map((l) => `${rel}: ${l}`));
+    if (perProject.length) console.log('\n' + perProject.join('\n'));
     if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
     if (probeSum && (probeSum.rootCause.streaks || probeSum.rootCause.intended || probeSum.rootCause.testFirstRed)) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
     if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
     if (probeSum && probeSum.rationalization.closes) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks || probeSum.correction.turns ? '' : '\n') + rationalizationLine(probeSum.rationalization));
     printInventoryBlock(invUse);
+    for (const [rel, inv] of memberInv) printInventoryBlock(inv, rel);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;
   }

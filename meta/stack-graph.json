@@ -281,7 +281,7 @@
       "mcps": [],
       "plugins": []
     },
-    "mode-output-scorer": {
+    "mode-output-scoring": {
       "mcps": [],
       "plugins": []
     },
@@ -673,7 +673,7 @@
       "mcps": [],
       "plugins": []
     },
-    "output-scorer": {
+    "output-scoring": {
       "skills": [],
       "skillsSource": "none",
       "agents": [],
@@ -1148,7 +1148,6 @@
       "guard-catastrophic-rm",
       "guard-config-protection",
       "guard-cross-project-write",
-      "guard-desktop-exec",
       "guard-fresh-session-start",
       "guard-protected-force-push",
       "guard-read-whole-file",
@@ -1158,7 +1157,8 @@
       "guard-ungated-commit",
       "history-session",
       "instrument-tool-usage",
-      "preferences-session"
+      "preferences-session",
+      "rules-session"
     ]
   },
   "mcps": {}

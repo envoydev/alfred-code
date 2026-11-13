@@ -1,22 +1,22 @@
 ---
-name: mode-output-scorer
-description: "Use when a 'scorer: on' or 'scorer: stacked' line is in context and a plan, verdict or answer is drafted - grade it with a fresh seat before releasing it."
+name: mode-output-scoring
+description: "Use when a 'scoring: on' or 'scoring: stacked' line is in context and a plan, verdict or answer is drafted - grade it with a fresh seat before releasing it."
 ---
 
-# Output scorer - grade before release
+# Output scoring - grade before release
 
-A drafted output is graded by a fresh, read-only output-scorer seat that never saw the conversation, against the rubric of its kind, and released only when `scripts/scorecard.js` says it passed. The script does every sum, every verdict and every next move; the model writes the draft and TASK, dispatches the grader and does what the script prints. The level is a target, not a wall: when the draft cannot reach it, the user decides.
+A drafted output is graded by a fresh, read-only output-scoring seat that never saw the conversation, against the rubric of its kind, and released only when `scripts/scorecard.js` says it passed. The script does every sum, every verdict and every next move; the model writes the draft and TASK, dispatches the grader and does what the script prints. The level is a target, not a wall: when the draft cannot reach it, the user decides.
 
 ## When to use
 
-- The scorer grades what a producer made and never stands in for one: a request to write, draft or produce a plan loads the plan-writing skill first, and its plan file is graded as `designer-plan`; `inline-plan` is only the execution strategy's plan for work this session builds now.
-- A `scorer: on (level <n>, rounds <r>, ...)` line is in context and a producer is about to release an output it names - a designer plan file, a root-cause verdict, an inline plan.
-- A `scorer: stacked for this request (...)` line is in context: whatever this request releases is graded, under its own rubric, or as `custom` when no producer ran.
+- The scoring grades what a producer made and never stands in for one: a request to write, draft or produce a plan loads the plan-writing skill first, and its plan file is graded as `designer-plan`; `inline-plan` is only the execution strategy's plan for work this session builds now.
+- A `scoring: on (level <n>, rounds <r>, ...)` line is in context and a producer is about to release an output it names - a designer plan file, a root-cause verdict, an inline plan.
+- A `scoring: stacked for this request (...)` line is in context: whatever this request releases is graded, under its own rubric, or as `custom` when no producer ran.
 - No such line in context: do nothing; the producer releases as today.
-- The switch: `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a task-, capture-, loop-, issue- or mode- command turns the scorer on or off for the session. Typed with only mode flags (`/mode-output-scorer --mode-output-scorer-on`), this skill grades nothing: say in one line what the flag switched, and stop.
+- The switch: `/alfred-code:mode:scoring on` / `/alfred-code:mode:scoring off`, typed on its own line, turns the scoring on or off for the session. Typed with only a `--mode-*` token (a retired flag), this skill grades nothing: say in one line that the mode command replaced it, and stop.
 - Each producer carries the line that brings it here, in one of two shapes:
-  - automatic outputs: 'Where a `scorer: on` line naming <output> or a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scorer` Skill call with output `<name>`.'
-  - typed-only outputs: 'Where a `scorer: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scorer` Skill call with output `<name>`.'
+  - automatic outputs: 'Where a `scoring: on` line naming <output> or a `scoring: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scoring` Skill call with output `<name>`.'
+  - typed-only outputs: 'Where a `scoring: stacked` line is in context, the FIRST action before releasing <output> is the `mode-output-scoring` Skill call with output `<name>`.'
 - Not for a code diff - the review skills own those - and never inside a seat: the session that receives a seat's report grades what it writes or acts on.
 
 ## The loop
@@ -25,19 +25,19 @@ The script, resolved from this skill's own folder (Node.js built-ins only; run f
 
 ```bash
 S="${CLAUDE_SKILL_DIR}/scripts/scorecard.js"
-[ -f "$S" ] || S=.claude/skills/mode-output-scorer/scripts/scorecard.js
+[ -f "$S" ] || S=.claude/skills/mode-output-scoring/scripts/scorecard.js
 node "$S" start --root "${CLAUDE_PROJECT_DIR}" --session "${CLAUDE_SESSION_ID}" --slug <slug> --output <output>
 ```
 
 Every later call passes the same `--root`, `--session` and `--slug`.
 
-1. The output must be an automatic output a producer marked this cycle, or the cycle carries a `scorer: stacked` line. An ordinary reply is never graded and gets no line. Pick the output by what the request asked for before `start`; a `kind:` line that does not fit the request means a new slug under the right output.
+1. The output must be an automatic output a producer marked this cycle, or the cycle carries a `scoring: stacked` line. An ordinary reply is never graded and gets no line. Pick the output by what the request asked for before `start`; a `kind:` line that does not fit the request means a new slug under the right output.
 2. `start`: `<slug>` from the output's subject, lower-case `[a-z0-9-]`, at most 40 characters, one slug per output. `--output` is the producer line's name. For `designer-plan` add `--target <docs-path>/work/plans/<feature>.md`, the path the plan will be written to; for `inline-plan` add `--target` the plan file the draft names, when it names one. It prints `id:`, `draft:`, `score-file:`, `task:`, `inputs:`, `rubric:`, `attempt:` and `round:` (and `kind:` for `inline-plan`), and on the slug's first start writes `inputs.md`, the docs the grader is handed.
 3. Write TASK to the printed `task:` path before the first dispatch: the user's request and hard constraints verbatim (typos kept) and their answers to any question, never the author's reasoning, the alternatives weighed or a self-assessment. For a typed stack TASK is the text after the stacked skills, plus any constraint the user stated earlier for this request.
 4. Write the draft with the Write tool to the printed `draft:` path - round 0 the original, each later round the revision.
-5. Dispatch ONE new output-scorer seat per grade, exactly as the roster spells it (`alfred-code:output-scorer` on the plugin route) - never a fork, never resumed, never told an earlier score, a finding or that this is a revision. The brief names the `task.md` path, the `inputs.md` path, the rubric path, the draft path, the seat's return format, and as its last line `score-file: <the printed score-file path>`. The hand-back hook writes the score file with its seal; never write or edit one. In an interactive session the seat runs in the background: the turn that dispatches it ends with the one line `Scoring <output> - the grader is running` and releases nothing; the loop resumes at the completion notification, and a message the user types meanwhile is answered without releasing the output. A seat that returns in the foreground hands its report back in the same turn: go on to step 6.
+5. Dispatch ONE new output-scoring seat per grade, exactly as the roster spells it (`alfred-code:output-scoring` on the plugin route) - never a fork, never resumed, never told an earlier score, a finding or that this is a revision. The brief names the `task.md` path, the `inputs.md` path, the rubric path, the draft path, the seat's return format, and as its last line `score-file: <the printed score-file path>`. The hand-back hook writes the score file with its seal; never write or edit one. In an interactive session the seat runs in the background: the turn that dispatches it ends with the one line `Scoring <output> - the grader is running` and releases nothing; the loop resumes at the completion notification, and a message the user types meanwhile is answered without releasing the output. A seat that returns in the foreground hands its report back in the same turn: go on to step 6.
 6. `node "$S" grade <score file> --output <output> --level <n>`, the level from the injected line. Exit 2 (malformed) or 3 (no seal, or a broken one) is a failed grade: the Fallback's retry.
-7. `node "$S" next --root ... --session ... --slug <slug> --level <n> --rounds <r>`, plus `--auto` when auto-run is on (the `scorer: on` line names auto-run, or an `auto-run: on` line is in context), and do exactly what its first line says:
+7. `node "$S" next --root ... --session ... --slug <slug> --level <n> --rounds <r>`, plus `--auto` when auto-run is on (the `scoring: on` line names auto-run, or an `auto-run: on` line is in context), and do exactly what its first line says:
    - `release <id>` - the pass below;
    - `revise` - step 8, then `start` again (a new round), step 4 and step 5; a `From:` line under it names an earlier, higher-scoring draft and its findings - the revision starts from that draft and those findings, never the lower last one;
    - `offer-fix <id> recommend <choice>` - Fix on a pass below; nothing is released yet;
@@ -48,7 +48,7 @@ Every later call passes the same `--root`, `--session` and `--slug`.
 8. Revise: fix every BLOCKER, then every MATERIAL, a MINOR only when trivial; each finding gets one disposition - fixed, rejected with the evidence, or needs-human. Never delete substance to dodge a check, never add an empty section to satisfy one, never edit a rubric during a run. In a designer plan, a finding a Decision on today's behaviour can meet is met that way: a new guard or rule `Asked:` does not name becomes one `## Optional` line, marked Recommended or Not worth it with the reason - a card only when the user asked for it or the request cannot be met safely without it, and a Decision says why (the designer-plan rubric's scope item, P11).
 9. Nothing of a grade's table goes into the reply; the files hold it. Never state a total or a verdict the script did not print.
 
-The files, under `<data root>/state/sessions/scorer/<session id>/<slug>/`: `task.md`, `inputs.md`, `<id>.draft.md` and `<id>.score.md` per grade, `rounds.log` (written by the script) and `answers.md`. A folder is swept 7 days after its newest file, so a withheld draft keeps that long.
+The files, under `<data root>/state/sessions/scoring/<session id>/<slug>/`: `task.md`, `inputs.md`, `<id>.draft.md` and `<id>.score.md` per grade, `rounds.log` (written by the script) and `answers.md`. A folder is swept 7 days after its newest file, so a withheld draft keeps that long.
 
 ## Outputs
 
@@ -56,7 +56,7 @@ The outputs, their producers, rubrics, runs and docs are the table in `reference
 
 ## Typed stack
 
-- The form: `/<producer> /mode-output-scorer <request>` at the start of a message, the producer first (a slash-only producer cannot be loaded later; this skill can) - `/habits-explain-topic /mode-output-scorer explain closures like for a 6-year-old`. `/mode-output-scorer <request>` alone works too, and so does the bare name right after 'using', 'with', 'via', 'run', 'stack' or 'through'; the bare name in other prose ('why did it not run?') is talk about the tool.
+- The form: `/<producer> /mode-output-scoring <request>` at the start of a message, the producer first (a slash-only producer cannot be loaded later; this skill can) - `/habits-explain-topic /mode-output-scoring explain closures like for a 6-year-old`. `/mode-output-scoring <request>` alone works too, and so does the bare name right after 'using', 'with', 'via', 'run', 'stack' or 'through'; the bare name in other prose ('why did it not run?') is talk about the tool.
 - What is graded: every output the stacked producer releases in this request, under its own rubric, listed or not; with no producer stacked, the output of the producer skill that loads in the request; with none, the reply as `custom`.
 - A stack naming `habits-adjust-agents-md` grades nothing: say so in one line.
 

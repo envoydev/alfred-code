@@ -54,9 +54,8 @@ let partOff = (hook, part) => envOf(process.env, LEGACY_PART[part]) === '0';
 try { partOff = require('./hook-prelude.js').partOff || partOff; } catch { /* an install without the prelude reads the old keys */ }
 const docsOff = (part) => partOff('docs-session', part);
 
-// layout.js's reader when it is beside this file, so an inline DATA_PATH spelling ('./') names the root every other
-// hook reads (E-batch ab-HO5); an older copy route without layout.js keeps the old expression.
-const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`);
+// layout.js's reader when it is beside this file; an older copy route without layout.js reads the fixed root itself.
+const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? layout.docsRoot() : envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
 // 2.8.0: the hooks' state lives under <data root>/state/ (layout.js); the pre-2.8.0 <docs-path>/flow/ is still read for
 // the 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;
@@ -73,7 +72,11 @@ const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') 
 // which silently took both the write attribution and the first-change gate's own root check down on every Windows
 // session. Only the platform's OWN separator is translated: on posix a backslash is a legal character in a file name.
 const toPosix = (p, sep = path.sep) => (sep === '/' ? p : String(p).split(sep).join('/'));
-const statePath = (s, agent) => path.join(os.tmpdir(), `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}${agent ? `--${agent}` : ''}.json`);
+// Stage 6: a call under a joined member keeps that member's gate in the session's `-m-<key>` file (MEMBER); HOME is the
+// start project, whose write record and ledgers the call still writes; PATH_LINE opens the member's denial.
+let MEMBER = '', HOME = null, MEMBER_REL = '', PATH_LINE = '', OWNER = null;
+const statePath = (s, agent) => path.join(os.tmpdir(),
+  `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}${agent ? `--${agent}` : MEMBER ? `-m-${MEMBER}` : ''}.json`);
 const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
 // This hook's own litter: one state file per session plus one per actor, in a directory its sibling scan then reads.
 // Swept opportunistically when a NEW state file appears - once per process, so a busy session pays it once and a
@@ -139,6 +142,30 @@ function gateOf(state, input) {
   }
   return state.gate[key];
 }
+// A compaction or a /clear re-arms this actor's gate in each joined member's file of the session too (stage 6).
+function rearmMembers(input) {
+  const stem = `${path.basename(statePath(input.session_id), '.json')}-m-`;
+  for (const f of tmpEntries().filter((e) => e.startsWith(stem) && /^[0-9a-f]{12}\.json$/.test(e.slice(stem.length)))) {
+    MEMBER = f.slice(stem.length, -5); const st = loadState(input.session_id);
+    Object.assign(gateOf(st, input), { consults: [], holds: 0, candidates: false }); saveState(input.session_id, st);
+  }
+  MEMBER = '';
+  const claims = tmpEntries().filter((e) => e.startsWith(stem) && e.endsWith(`-e-${claimKey(input)}.json`));
+  for (const f of claims) try { fs.unlinkSync(path.join(os.tmpdir(), f)); } catch {}
+}
+// Stage 6 entry push: the member's orientation, once per actor and member - the claim an exclusive-create file
+// (EEXIST drops the piece; any other failure sends it), the text fitted to 5,000 with the path line by a lower block cap.
+let ENTRY = null, WROTE = false;
+const claimKey = (input) => actorKey(input).replace(/[^\w.-]/g, '');
+function entryOf(input, root, docs) {
+  const claim = statePath(input.session_id).replace(/\.json$/, `-e-${claimKey(input)}.json`);
+  if (fs.existsSync(claim)) return null;
+  let text = '';
+  for (let cap = 4096; cap >= 0; cap -= 200) { text = orientation(root, docs, cap).join('\n'); if (PATH_LINE.length + 1 + text.length <= 5000) break; }
+  return { claim, text };
+}
+const claimed = () => { try { fs.writeFileSync(ENTRY.claim, '', { flag: 'wx' }); return true; } catch (e) { return e.code !== 'EEXIST'; } };
+const entryTail = () => { if (ENTRY && !WROTE && claimed()) emit('PreToolUse', `${PATH_LINE}\n${ENTRY.text}`); };
 // A worktree a seat was given under `.claude/worktrees/<n>/` mirrors the project: its paths are judged as the project's.
 const unWorktree = (p) => { const m = /^\.claude\/worktrees\/[^/]+\/(.+)$/.exec(p); return m ? m[1] : p; };
 // The checkout an actor's writes belong to, recorded beside them so another session on the same project can tell its
@@ -151,6 +178,8 @@ const tmpEntries = () => { try { return fs.readdirSync(os.tmpdir()); } catch { r
 const WROTE_CAP = 500;
 function recordWrite(root, input, wrote) {
   if (docsOff('ask')) return; // the switch turns the part off, record included
+  if (HOME) wrote = wrote.map((p) => (isUnknown(p) ? p : toPosix(path.relative(layout.realpathOrSelf(HOME), path.resolve(root, p)))));
+  root = HOME || root;
   const key = actorKey(input);
   const a = loadAgent(input.session_id, key);
   const had = (a.wrote || []).length;
@@ -281,7 +310,8 @@ const planDirsOf = (root) => (layout ? layout.planDirs(root) : [path.resolve(roo
 const docsLogFile = (root) => (layout ? layout.statsPath(root, ['docs-log.jsonl']) : path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl'));
 const log = (root, input, row) => {
   try {
-    const file = docsLogFile(root);
+    const file = docsLogFile(HOME || root);
+    if (MEMBER_REL) row = { member: MEMBER_REL, ...row };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`);
   } catch {}
@@ -311,7 +341,7 @@ function workspaceDocsLines(input, root, docs) {
   return out;
 }
 
-function orientation(root, docs) {
+function orientation(root, docs, cap = 4096) {
   let block = '';
   try { block = fs.readFileSync(docs.BLOCK_FILE, 'utf8').trim(); } catch {}
   // A copy of the footer below pasted into the file is dropped, not pushed twice (docs.js HOOK_FOOTER; an older engine
@@ -320,7 +350,7 @@ function orientation(root, docs) {
   // The 4KB cap is enforced here, not only reported by lint: an 11,901-byte file pushed the block past the harness's
   // 10,000-character context cap, which swaps it for a path and a preview - the where / show lines at its end were
   // lost (audit 2026-10-08).
-  const BLOCK_CAP = 4096;
+  const BLOCK_CAP = cap;
   if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (${path.basename(docs.BLOCK_FILE)} continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
   // The orientation block stays the map's own file (BLOCK_FILE, at the map's home), read as before - a domain gets no per-domain twin.
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
@@ -420,7 +450,8 @@ function main() {
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
   if (cursorOff) return;
-  const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  let root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const start = root;
   process.env.CLAUDE_PROJECT_DIR = root;
   // before the domain gate: a plan file lives under the docs root whether or not a domain does
   if (event === 'PreToolUse' && stampedPlanWrite(input, root)) return;
@@ -429,7 +460,22 @@ function main() {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
     startNote = [recordUntracked(input, root), ...garbageRecordLines(input, root)].filter(Boolean).join('\n');
+    if (input.source === 'compact' || input.source === 'clear') rearmMembers(input);
   }
+  // Stage 6: a call whose file sits in a joined member is judged by that member's docs and gate (preferences-session.js
+  // ownerOf, loaded only when the start's chain lists a member); a member with no durable docs leaves it to the start.
+  let member = null, undo = null, rel = '';
+  if (event === 'PreToolUse' && layout && typeof layout.hasMembers === 'function' && layout.hasMembers(start)) {
+    try { const ps = require('./preferences-session.js'); OWNER = ps.ownerOf(input, start); member = OWNER && OWNER.member;
+      if (member) { rel = toPosix(path.relative(layout.realpathOrSelf(start), member.root)); PATH_LINE = ps.pathLine(rel); } } catch {}
+    if (member) undo = layout.enterMember(member.root);
+    try { if (member && require('./hook-prelude.js').hookDisabled('docs-session')) return undo(); } catch {}
+  }
+  const bind = (m) => {
+    root = m ? m.root : start; MEMBER = m ? m.key : ''; HOME = m ? start : null; MEMBER_REL = m ? rel : '';
+    if (!m) { OWNER = null; PATH_LINE = ''; }
+    process.env.CLAUDE_PROJECT_DIR = root; delete require.cache[require.resolve('./docs.js')]; return require('./docs.js');
+  };
   // On the PLUGIN route this hook runs from the marketplace clone, where docs.js and
   // history.js are both tracked - so a never-set-up project under a user-scope core never reaches
   // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
@@ -438,8 +484,9 @@ function main() {
   // like every other fail-open path here; a syntax error or any other load failure in a PRESENT
   // engine is a genuine bug and must surface on stderr, not be swallowed.
   let docs;
-  try { docs = require('./docs.js'); }
+  try { docs = member ? bind(member) : require('./docs.js'); if (member && !durableOf(docs).length) { undo(); docs = bind(null); } }
   catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
+  if (MEMBER && input.tool_name !== HANDBACK_TOOL && !docsOff('block')) ENTRY = entryOf(input, root, docs);
   // before the domain gate: a first capture writes architecture/ before any domain exists
   if (event === 'PreToolUse' && seatHold(input, root, docs)) return;
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
@@ -477,7 +524,7 @@ function main() {
 // blocked their git add). guard-ungated-commit.js reads the session's pointer first.
 const UNTRACKED_CAP = 20000;
 
-// A docs move (`--data-move move`) can leave the old default behind holding hook state: the move's own tool call
+// A docs move can leave the old default behind holding hook state: the move's own tool call
 // ends in PostToolUse hooks that still read the session's old docs root, and their recursive mkdir rebuilds the
 // folder the move just emptied (2.2.0 upgrade: one monitor row in .claude/docs/flow). The next session start folds
 // it into the live root - a .jsonl appends, any other file moves when the live root lacks it and is dropped when it
@@ -1133,17 +1180,17 @@ function unattendedRow(root, input, kind) {
       if (prelude && typeof prelude.sweepStale === 'function') prelude.sweepStale(dir, 'alfred-docs-unattended-');
     } catch (e) { if (e && e.code === 'EEXIST') return; }
   } catch {}
-  try {
-    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.resolve(root, docsRootEnv(), 'hook-blocks');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', mode: 'unattended', kind, reason: `${kind} skipped - nobody at the terminal` })}\n`);
-  } catch {}
+  blockRow(root, input, `${kind} skipped - nobody at the terminal`, { mode: 'unattended', kind });
 }
-function blockRow(root, input, reason) {
+function blockRow(root, input, reason, extra = {}) {
   try {
-    const dir = layout ? layout.statsPath(root, ['hook-blocks']) : path.resolve(root, docsRootEnv(), 'hook-blocks');
+    const home = HOME || root;
+    const dir = layout ? layout.statsPath(home, ['hook-blocks']) : path.resolve(home, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
+    const row = { ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', ...extra };
+    if (MEMBER_REL) row.member = MEMBER_REL;
+    const file = path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
+    fs.appendFileSync(file, `${JSON.stringify({ ...row, reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
 }
 
@@ -1429,12 +1476,19 @@ function seatHold(input, root, docs) {
   ].join('\n');
   log(root, input, { event: 'seat-hold', target, seats: out.map(([, s]) => s.type) });
   blockRow(root, input, reason);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  deny(reason);
   return true;
 }
+const deny = (reason) => {
+  let text = PATH_LINE ? `${PATH_LINE}\n${reason}` : reason;
+  if (ENTRY && text.length + 2 + ENTRY.text.length <= 7000 && claimed()) text += `\n\n${ENTRY.text}`;
+  WROTE = true;
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: text } }));
+};
 
 function preToolUse(input, root, docs, state) {
-  const paths = toolPaths(input, root);
+  const home = HOME || root;
+  const paths = OWNER && OWNER.file && !isShellTool(input.tool_name || '') ? [toPosix(path.relative(root, OWNER.file))] : toolPaths(input, root);
   // One root per domain, not one hardcoded architecture/ - a project documented only in preferences/ must still
   // get credit for reading it. domains() is already required to succeed for this hook to have run at all (see
   // main()'s own gate above), so no extra guard is needed here.
@@ -1449,9 +1503,11 @@ function preToolUse(input, root, docs, state) {
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
   if (isShellTool(name)) {
     recordRun(input, command);
-    recordMoved(root, input, stashMoves(command, typeof input.cwd === 'string' && input.cwd ? input.cwd : root, root));
+    recordMoved(home, input, stashMoves(command, typeof input.cwd === 'string' && input.cwd ? input.cwd : home, home));
   }
-  const shellWrites0 = isShellTool(name) ? writeTargets(command) : null;
+  // a member call's named writes are the owner's, placed by the command's own cd; the unknown-write markers stay writeTargets'
+  const named = (c) => (MEMBER ? [...relative(root, OWNER.targets), ...writeTargets(c).filter(isUnknown)] : writeTargets(c));
+  const shellWrites0 = isShellTool(name) ? named(command) : null;
   // a computed interpreter write that only touches scratch paths is dropped here (U27-2), so it neither holds nor attributes
   const shellWrites = shellWrites0 && shellWrites0.includes(UNKNOWN_INTERPRETER_WRITE) && scratchOnly(command, root, input.cwd)
     ? shellWrites0.filter((t) => t !== UNKNOWN_INTERPRETER_WRITE) : shellWrites0;
@@ -1558,7 +1614,7 @@ function preToolUse(input, root, docs, state) {
   }
   log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id), via: first ? 'cover' : hits.length ? 'words' : 'none' });
   blockRow(root, input, reason);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  deny(reason);
 }
 
 // The one ask this hook makes - a finished agent's SubagentStop and the main session's Stop send the same shape, so
@@ -1856,5 +1912,6 @@ function stop(input, root, docs, state) {
 
 module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
-  try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
+  try { main(); entryTail(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } }
+  catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

@@ -158,3 +158,43 @@ test('cli: one line, a usage error on an unknown home', () =>
     assert.match(out, /^git-hygiene: offer \.alfred\/\t/);
     assert.throws(() => execFileSync(process.execPath, [path.join(__dirname, 'git-hygiene.js'), '--root', root, '--apply', 'nowhere'], { stdio: 'ignore' }));
 });
+
+// Workspace source stage 1: at local scope the folder's own .gitignore hides the data root, so the exclude file's lines go.
+test('stage 1: drop removes this project\'s own comment and lines from the exclude file and nothing else', () =>
+{
+    const root = repo({ files: { '.gitignore': `${OWN_COMMENT}\n/.alfred/\n`, 'web/x': '', 'api/x': '' } });
+    const exclude = path.join(root, '.git', 'info', 'exclude');
+    fs.mkdirSync(path.dirname(exclude), { recursive: true });
+    const all = ['keep-me', OWN_COMMENT, '/.alfred/', OWN_COMMENT, '/web/.alfred/', OWN_COMMENT, '/api/.alfred/*', '!/api/.alfred/.variables', '/other/.alfred/'];
+    const minus = (...gone) => `${all.filter((_, i) => !gone.includes(i)).join('\n')}\n`;
+    fs.writeFileSync(exclude, minus());
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: root, root: '.alfred', drop: true }).map((f) => fs.realpathSync.native(f)), [fs.realpathSync.native(exclude)]);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), minus(1, 2), 'the root project: its comment and its line');
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: root, root: '.alfred', drop: true }), [], 'a re-run rewrites nothing');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), `${OWN_COMMENT}\n/.alfred/\n`, 'the committed .gitignore is never touched');
+    assert.strictEqual(rewriteOwnLine({ projectRoot: path.join(root, 'web'), root: '.alfred', drop: true }).length, 1);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), minus(1, 2, 3, 4), 'a sub-folder project: only its own prefix');
+    assert.strictEqual(rewriteOwnLine({ projectRoot: path.join(root, 'api'), root: '.alfred', drop: true }).length, 1);
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), 'keep-me\n/other/.alfred/\n', 'the pair goes with its comment; a line with no stack comment stays');
+
+    const crlf = repo();
+    const file = path.join(crlf, '.git', 'info', 'exclude');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `a\r\n${OWN_COMMENT}\r\n/.alfred/\r\nb\r\n`);
+    assert.strictEqual(rewriteOwnLine({ projectRoot: crlf, root: '.alfred', drop: true }).length, 1);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), 'a\r\nb\r\n');
+    // review I1: the stack's line, or its pair, as the file's last line with no final newline
+    fs.writeFileSync(file, `a\n${OWN_COMMENT}\n/.alfred/`);
+    assert.strictEqual(rewriteOwnLine({ projectRoot: crlf, root: '.alfred', drop: true }).length, 1);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), 'a');
+    fs.writeFileSync(file, `a\nb\n${OWN_COMMENT}\n/.alfred/*\n!/.alfred/.variables`);
+    assert.strictEqual(rewriteOwnLine({ projectRoot: crlf, root: '.alfred', drop: true }).length, 1);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), 'a\nb');
+    fs.writeFileSync(file, `${OWN_COMMENT}\n/.alfred/`);
+    assert.strictEqual(rewriteOwnLine({ projectRoot: crlf, root: '.alfred', drop: true }).length, 1);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '');
+    // a user's own line under no stack comment, and a folder that is no repository
+    fs.writeFileSync(file, 'a\n/.alfred/\n');
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: crlf, root: '.alfred', drop: true }), []);
+    assert.deepStrictEqual(rewriteOwnLine({ projectRoot: repo({ init: false, files: { '.gitignore': `${OWN_COMMENT}\n/.alfred/\n` } }), root: '.alfred', drop: true }), []);
+});

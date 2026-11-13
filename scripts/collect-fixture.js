@@ -70,9 +70,6 @@ function makeSession(opts = {})
         execCommand('git', ['init', '-q', project], { stdio: 'ignore' });
         if (opts.gitignore !== undefined) write(path.join(project, '.gitignore'), opts.gitignore);
     }
-    const settings = {};
-    if (opts.dataPath) settings.ALFRED_CODE_DATA_PATH = opts.dataPath;
-    if (Object.keys(settings).length) write(path.join(project, '.claude', 'settings.json'), JSON.stringify({ env: settings }, null, 2));
     fs.mkdirSync(dataRoot, { recursive: true });
     if (opts.instrument !== undefined) write(path.join(dataRoot, '.variables'), `ALFRED_CODE_INSTRUMENT=${opts.instrument}\n`);
 
@@ -103,10 +100,9 @@ function makeSession(opts = {})
 // The name-matched stores of the data root, for both sessions (the other session's content marked OTHER), and the
 // session-inspector status file under the project.
 const SESSION_NAMES = (s) => [
-    `AUTO-RUN-${s}`, `AUTO-TAKEN-${s}`, `AUTO-SAID-${s}`, `COMPACT-STATE-${s}`, `twins-${s}.json`, `review-snapshot-${s}@c1.json`,
-    `trivial-${s}`, `turn-check-${s}`, `AGENT-CAP-${s}-R-a1`, `SCORER-${s}`, `SCORER-HELD-${s}`, `preferences-${s}-main.json`,
+    `AUTO-RUN-${s}`, `AUTO-TAKEN-${s}`, `AUTO-SAID-${s}`, `AUTO-COMPACT-${s}`, `COMPACT-STATE-${s}`, `twins-${s}.json`, `review-snapshot-${s}@c1.json`,
+    `trivial-${s}`, `turn-check-${s}`, `AGENT-CAP-${s}-R-a1`, `SCORING-${s}`, `SCORING-HELD-${s}`, `preferences-${s}-main.json`,
 ];
-const FORGE_NAMES = (s) => [`ACTS-${s}.jsonl`, `REFS-${s}.json`, `NOTE-${s}.json`, `PAUSE-${s}.json`];
 function plantStores(fx)
 {
     const at = new Date(fx.firstMs + 10000).toISOString();
@@ -117,14 +113,13 @@ function plantStores(fx)
         fx.write(stats('hook-blocks', `${s}.jsonl`), line({ ts: at, session: s, hook: `guard-read-whole-file.js${mark}` }));
         fx.write(stats('tools-usage', `${s}.jsonl`), line({ ts: at, session: s, tool: 'Read', detail: `x${mark}` }) + line({ ts: at, session: s, tool: 'Bash', detail: `y${mark}` }));
         fx.write(state('history', `${s}.json`), JSON.stringify({ session: s, start: `abc${mark}` }));
-        fx.write(path.join(state('sessions', 'scorer'), s, 'draft.md'), `# draft${mark}`);
+        fx.write(path.join(state('sessions', 'scoring'), s, 'draft.md'), `# draft${mark}`);
         for (const name of SESSION_NAMES(s)) fx.write(state('sessions', name), `${name}${mark}`);
         const record = s === fx.sid ? 'untracked-at-start-abc123' : 'untracked-at-start-def456';
         fx.write(state('sessions', `untracked-session-${s}`), record);
         fx.write(state('sessions', record), `a.txt${mark}`);
-        for (const name of FORGE_NAMES(s)) fx.write(state('forge', name), `${name}${mark}`);
         fx.write(path.join(fx.project, '.claude', 'session-inspector', 'status', `${s}.json`), JSON.stringify({ schema: 1, session: s, title: `t${mark}` }));
     }
 }
 
-module.exports = { makeSession, plantStores, transcriptRows, encodeProject, line, SESSION_NAMES, FORGE_NAMES, FIRST_MS, LAST_MS };
+module.exports = { makeSession, plantStores, transcriptRows, encodeProject, line, SESSION_NAMES, FIRST_MS, LAST_MS };

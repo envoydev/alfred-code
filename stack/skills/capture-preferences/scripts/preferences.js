@@ -72,8 +72,8 @@ function setting(projectRoot, key)
     }
     return undefined;
 }
-// The data root read as the hooks' layout.js reads it (`./` and an empty value are `.alfred`), so both find one folder.
-const dataRoot = (projectRoot) => String(setting(projectRoot, 'ALFRED_CODE_DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') || '.alfred';
+// The data root is always `.alfred` under the project root, as the hooks' layout.js has it.
+const dataRoot = () => '.alfred';
 const docsRoot = (projectRoot) => setting(projectRoot, 'ALFRED_CODE_DOCS_PATH') || `${dataRoot(projectRoot)}/docs`;
 
 const prefsDir = (projectRoot) => path.resolve(projectRoot, docsRoot(projectRoot), PREFS_DIR);
@@ -113,7 +113,7 @@ function readDirs(projectRoot, { env = process.env } = {})
     let up = [];
     try
     {
-        const layout = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+        const layout = require([path.join(__dirname, '..', '..', '..', 'hooks'), path.join(projectRoot, '.claude', 'hooks')].map((d) => path.join(d, 'layout.js')).find((f) => fs.existsSync(f)));
         if (typeof layout.ancestorPrefsDirs === 'function') up = layout.ancestorPrefsDirs(projectRoot, { env });
     }
     catch { /* no layout beside the skill: the own dirs alone */ }

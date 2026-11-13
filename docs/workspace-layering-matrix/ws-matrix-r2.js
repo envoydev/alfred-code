@@ -573,9 +573,9 @@ run('AC17', (sb) =>
     const setOff = sb.vars('.', 'set', ['ALFRED_CODE_HOOKS_OFF=x']);
     check('AC17 variables.js set ALFRED_CODE_HOOKS_OFF=x exits 1 naming settings.json', setOff.code === 1 && /settings\.json/.test(setOff.out), setOff.out);
     const secret = `${'gh'}p_${crypto.randomBytes(18).toString('hex')}`; // built at run time: one of the stack's credential shapes
-    const setCred = sb.vars('.', 'set', [`ALFRED_CODE_FORGE_WATCH=${secret}`]);
+    const setCred = sb.vars('.', 'set', [`ALFRED_CODE_SCORER_OUTPUTS=${secret}`]);
     const anywhere = [setCred.out, readOr(sb.varsFile('.'), ''), sb.stamp('.'), JSON.stringify(sb.settingsOf('.')), JSON.stringify(sb.settingsOf('.', 'settings.local.json'))].some((s) => s.includes(secret));
-    check('AC17 a credential-shaped value is refused, naming the key, and no output or file holds it', setCred.code !== 0 && /ALFRED_CODE_FORGE_WATCH/.test(setCred.out) && !anywhere, `${setCred.code}\n${setCred.out.replace(secret, '<value>')}\nheld somewhere: ${anywhere}`);
+    check('AC17 a credential-shaped value is refused, naming the key, and no output or file holds it', setCred.code !== 0 && /ALFRED_CODE_SCORER_OUTPUTS/.test(setCred.out) && !anywhere, `${setCred.code}\n${setCred.out.replace(secret, '<value>')}\nheld somewhere: ${anywhere}`);
     const hooksOffAt = { fresh: 'ALFRED_CODE_HOOKS_OFF' in sb.envOf('.'), inVars: 'ALFRED_CODE_HOOKS_OFF' in pairs(readOr(sb.varsFile('.'), '').replace(/^ALFRED_CODE_HOOKS_OFF=guard-secret-value\n/m, '')) };
     check('AC17 HOOKS_OFF sits in .claude/settings.json after a fresh install, never seeded into .variables', hooksOffAt.fresh && !hooksOffAt.inVars, JSON.stringify(hooksOffAt));
 });

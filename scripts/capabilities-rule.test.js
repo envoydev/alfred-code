@@ -96,42 +96,17 @@ test('I20: the rows name the resolved data root, never the slots', () =>
     assert.equal(rows.length, 3, rows.join('\n'));
     assert.ok(rows[0].startsWith('- `playwright-chrome` - the browser server') && rows[1].startsWith('- `playwright-firefox` - the browser server'), rows.join('\n'));
     for (const row of rows.slice(0, 2)) assert.ok(row.includes("the server's `--output-dir`"), row);
-    // HK-16 (audit 2026-10-30): the desktop row sends the receipt to the denial's lines, so no row carries the data root.
-    assert.ok(rows[2].includes('write the lines the denial prints') && !rows[2].includes('DESKTOP-EXEC-ALLOW'), rows[2]);
+    // stage 1 B12: the desktop exec guard retired, so the desktop row names no guard or receipt and carries no data root.
+    assert.ok(rows[2].includes("with no guard in front of it - only on the user's ask") && !rows[2].includes('DESKTOP-EXEC-ALLOW'), rows[2]);
     for (const row of rows) assert.doesNotMatch(row, /<data root>|<engine>|<server>|<docs-path>/, row);
 });
 
-test('I20: the data root follows ALFRED_CODE_DATA_PATH, settings.local.json over settings.json', () =>
+test('fixed root: the routing header names .alfred whatever the settings and the account say', () =>
 {
-    const { root, home } = project('data-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
+    const { root, home } = project('data-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } }, account: { env: { ALFRED_CODE_DATA_PATH: 'acct-data' } } });
     const { out } = run([], { cwd: root, home });
-    assert.match(out, /MCP ROUTING rows - .*\(data root data\/mine\):/, out);
-});
-
-test('I20: the script resolves the data root the way stack/mcp/data-root.js does', () =>
-{
-    const { dataRootOf } = require('../stack/mcp/data-root.js');
-    const { dataRoot } = loadScript();
-    const cases = [
-        ['none', {}],
-        ['settings', { settings: { env: { ALFRED_CODE_DATA_PATH: 'data/a' } } }],
-        ['local-wins', { settings: { env: { ALFRED_CODE_DATA_PATH: 'data/a' } }, local: { env: { ALFRED_CODE_DATA_PATH: './data/b/' } } }],
-        ['malformed-local', { settings: { env: { ALFRED_CODE_DATA_PATH: 'data/a' } }, local: '{ not json' }],
-        ['under-claude', { settings: { env: { ALFRED_CODE_DATA_PATH: '.claude/data' } } }],
-        ['absolute', { settings: { env: { ALFRED_CODE_DATA_PATH: '/abs/data' } } }],
-        ['space', { settings: { env: { ALFRED_CODE_DATA_PATH: 'my data' } } }],
-        ['dotdot', { settings: { env: { ALFRED_CODE_DATA_PATH: 'a/../b' } } }],
-        ['account', { account: { env: { ALFRED_CODE_DATA_PATH: 'acct-data' } } }],
-    ];
-    for (const [name, opts] of cases)
-    {
-        const { root, home } = project(`parity-${name}`, opts);
-        const env = { CLAUDE_CONFIG_DIR: path.join(home, '.claude') };
-        assert.equal(dataRoot(root, env), dataRootOf({ env, projectDir: root }).root, name);
-    }
-    const { root } = project('parity-env');
-    const env = { ALFRED_CODE_DATA_PATH: 'from-shell', CLAUDE_CONFIG_DIR: path.join(TMP, 'nowhere') };
-    assert.equal(dataRoot(root, env), dataRootOf({ env, projectDir: root }).root, 'the shell env first');
+    assert.match(out, /MCP ROUTING rows - .*\(data root \.alfred\):/, out);
+    assert.strictEqual(loadScript().dataRoot(root), '.alfred');
 });
 
 test('I20: routingRow leaves no slot outside the first call names', () =>
@@ -148,16 +123,16 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
     assert.ok(rows[0].startsWith('- `playwright-webkit` - '), rows[0]);
     assert.ok(rows[1].startsWith('- `playwright` - '), rows[1]);
-    for (const row of rows.slice(2)) assert.ok(row.includes('write the lines the denial prints') && !row.includes('DESKTOP-EXEC-ALLOW'), row);
+    for (const row of rows.slice(2)) assert.ok(row.includes("with no guard in front of it - only on the user's ask") && !row.includes('DESKTOP-EXEC-ALLOW'), row);
 });
 
 test('I20: the rows\' docs and data roots follow a local-scope install\'s settings.local.json over settings.json', () =>
 {
-    // 2.8.0: the data root follows ALFRED_CODE_DATA_PATH the same way; since HK-16 the routing header names it, no row.
+    // The data root is .alfred whatever a key names (the fixed root); since HK-16 the routing header names it, no row.
     const { root, home } = project('docs-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs', ALFRED_CODE_DATA_PATH: 'shared' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs', ALFRED_CODE_DATA_PATH: 'var/data' } } });
     const { out } = run([], { cwd: root, home });
     assert.match(out, /DOCS ROOT: var\/data\/docs\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.local\.json env\)/);
-    assert.match(out, /MCP ROUTING rows - .*\(data root var\/data\):/, out);
+    assert.match(out, /MCP ROUTING rows - .*\(data root \.alfred\):/, out);
 });
 
 test('I20: --verify fails a rule still holding an unresolved slot', () =>
@@ -329,14 +304,14 @@ test('I45: the macOS row leads with the failed start, and an empty snapshot only
     assert.ok(!row.includes('an empty snapshot means the Accessibility grant is missing'), row);
     assert.ok(row.includes('fails to connect at start') && row.includes('System Settings opens'), row);
     assert.ok(row.includes('`MACOS_MCP_SKIP_PERMISSION_CHECK=1`'), row);
-    assert.ok(row.includes('`Shell`') && row.includes('write the lines the denial prints') && !row.includes('DESKTOP-EXEC-ALLOW'), row);
+    assert.ok(row.includes('`Shell`') && row.includes("with no guard in front of it - only on the user's ask") && !row.includes('DESKTOP-EXEC-ALLOW'), row);
 });
 
-test('I10: the Windows row keeps FileSystem excluded and App launch_executable denied without the receipt', () =>
+test('I10 / stage 1 B12: the Windows row keeps FileSystem excluded and App launch_executable on the user\'s ask', () =>
 {
     const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-desktop`')));
     assert.ok(row.includes('`FileSystem`'), row);
-    assert.ok(row.includes('`launch_executable`') && row.includes('write the lines the denial prints') && !row.includes('DESKTOP-EXEC-ALLOW'), row);
+    assert.ok(row.includes('`launch_executable`') && row.includes("with no guard in front of it - only on the user's ask") && !row.includes('DESKTOP-EXEC-ALLOW'), row);
 });
 
 // 2026-10-13: mobile-control (appium-mcp); 2026-10-24 keyed by the record's `appium-mcp`, its output dirs the server's own env.

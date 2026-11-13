@@ -730,7 +730,7 @@ test('deep review: the manifest wires docs-session on SubagentHandback as its ow
   const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-code');
   const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
   assert.strictEqual(pre.length, 1);
-  // the group also carries the output-scorer's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it
+  // the group also carries the output-scoring's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it
   const launch = (h) => [h.command, ...(h.args || [])].join(' ');
   assert.strictEqual(pre[0].hooks.filter((h) => /stack\/hooks\/docs-session\.js$/.test(launch(h))).length, 1, pre[0].hooks.map(launch).join(' | '));
 });
@@ -2968,36 +2968,505 @@ test('a three-level chain names parent then root', () => {
   } finally { fs.rmSync(top, { recursive: true, force: true }); }
 });
 
-// Audit 2026-10-30 HK-28 (unverified there): the stop contract seals an output-scorer's report at PreToolUse SubagentHandback
+// Audit 2026-10-30 HK-28 (unverified there): the stop contract seals an output-scoring's report at PreToolUse SubagentHandback
 // (`wx`) before a sibling hook's verdict - so a docs-session deny of that hand-back would seal a delivery that never left,
 // and the re-sent report could not be sealed. Replayed here: docs-session asks only a seat whose OWN writes changed a
-// watched file, and the scorer seat holds no write tool (LSP, Read, Grep, Glob, WebFetch), so its hand-back is never
+// watched file, and the scoring seat holds no write tool (LSP, Read, Grep, Glob, WebFetch), so its hand-back is never
 // denied - a watched change by the main session or a writing seat beside it included - and the seal it gets is the
 // delivered report. The writing seat's hand-back beside it is denied, which shows the replay can produce the deny.
-test('HK-28 replay: an output-scorer seat is never denied at its hand-back, so the seal never seals an undelivered report', () => {
-  const tools = /^tools:\s*(.*)$/m.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'output-scorer.md'), 'utf8'))[1].split(/,\s*/);
-  for (const t of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']) assert.ok(!tools.includes(t), `the scorer seat holds ${t}`);
+test('HK-28 replay: an output-scoring seat is never denied at its hand-back, so the seal never seals an undelivered report', () => {
+  const tools = /^tools:\s*(.*)$/m.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'output-scoring.md'), 'utf8'))[1].split(/,\s*/);
+  for (const t of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']) assert.ok(!tools.includes(t), `the scoring seat holds ${t}`);
   const r = watched();
   try {
     const s = sid();
-    const scorer = { agent_type: 'alfred-code:output-scorer' };
-    r.hook(subStart(s, 'sc1', scorer), GIT);
+    const scoring = { agent_type: 'alfred-code:output-scoring' };
+    r.hook(subStart(s, 'sc1', scoring), GIT);
     r.hook(subStart(s, 'impl1'), GIT);
-    // the scorer reads the watched file; the main session and a writing seat beside it change it
-    r.hook({ ...preBy(s, 'sc1', 'src/Api/Program.cs', scorer), tool_name: 'Read' }, { ...GIT, ...ALLOW });
+    // the scoring reads the watched file; the main session and a writing seat beside it change it
+    r.hook({ ...preBy(s, 'sc1', 'src/Api/Program.cs', scoring), tool_name: 'Read' }, { ...GIT, ...ALLOW });
     touch(r);
     touchBy(r, s, 'impl1');
-    const folder = path.join(r.root, '.alfred', 'state', 'sessions', 'scorer', s, 'x');
+    const folder = path.join(r.root, '.alfred', 'state', 'sessions', 'scoring', s, 'x');
     fs.mkdirSync(folder, { recursive: true });
     const card = path.join(folder, 'hk28.score.md');
     const report = `score-file: ${card}\n## Checks\n| P1 | yes | "q" |`;
-    const handBackInput = handBack(s, 'sc1', report, scorer);
+    const handBackInput = handBack(s, 'sc1', report, scoring);
     const docs = r.hook(handBackInput, GIT);
-    assert.strictEqual(docs.stdout, '', 'docs-session never denies the scorer\'s hand-back');
+    assert.strictEqual(docs.stdout, '', 'docs-session never denies the scoring\'s hand-back');
     const seal = spawnSync(process.execPath, [path.join(require('./docs-fixture').HOOKS, 'guard-stop-contract.js')],
       { cwd: r.root, input: JSON.stringify(handBackInput), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: r.root } });
     assert.deepStrictEqual([seal.status, seal.stdout.trim()], [0, ''], 'the seal never delays the hand-back');
     assert.match(fs.readFileSync(card, 'utf8'), /^seal: sha256 [0-9a-f]{64}\nscore-file: /, 'the delivered report is the sealed one');
     assert.ok(denied(r.hook(handBack(s, 'impl1', 'status: DONE'), GIT)), 'the writing seat beside it is asked - the replay can deny');
   } finally { r.rm(); }
+});
+
+// ---- workspace stage 6: a joined member's docs hold ----------------------------------------------------------------------
+// A root (durable docs, ROOT-SECTION covering src/**) with children `api` (its own durable docs, API-SECTION), `src/pkg` and
+// `tools` (no docs), all stamped and joined; `api` a plain folder of the root's repository.
+const API_LINE = 'Project api - paths below are from api/.';
+const mKey = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
+const why = (out) => { try { return JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason || ''; } catch { return ''; } };
+function joined({ apiCovers = 'src/**', apiOff = '', rootDocs = true, rootWatch = null, prefs = false } = {}) {
+  const r = repo({
+    docsPath: '.alfred/docs',
+    files: { 'src/a.ts': 'a\n', 'api/src/a.ts': 'a\n', 'api/src/b.ts': 'b\n', 'src/pkg/a.ts': 'a\n', 'tools/a.ts': 'a\n' },
+    docs: rootDocs ? { 'references/patterns.md': section('root-sec', 'src/**', 'ROOT-SECTION rule.'), ...(rootWatch ? { 'watch.json': rootWatch } : {}) } : {},
+  });
+  const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-joined-cfg-'));
+  r.write('.claude/alfred-code.stamp', 'sha: x\n');
+  r.write('api/.alfred/docs/architecture/references/patterns.md', section('api-sec', apiCovers, 'API-SECTION rule.'));
+  if (apiOff) r.write('api/.claude/settings.json', JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: apiOff } }));
+  if (prefs) for (const [at, tag] of [['', 'ROOT'], ['api/', 'API']]) r.write(`${at}.alfred/docs/preferences/PROJECT-CODE-PREFERENCES.md`, `# Project code preferences\n\n## Rules\n<!-- id: rules -->\n${tag}-CODE: keep it plain.\n`);
+  for (const [rel, up] of [['api', '..'], ['src/pkg', '../..'], ['tools', '..']]) {
+    r.write(`${rel}/.claude/alfred-code.stamp`, 'sha: x\n');
+    putWorkspace(path.join(r.root, ...rel.split('/')), { parent: up });
+  }
+  putWorkspace(r.root, { children: ['api', 'src/pkg', 'tools'] });
+  const env = { CLAUDE_CONFIG_DIR: cfg };
+  const run = (payload, extra = {}) => r.hook({ cwd: r.root, ...payload }, { ...env, ...extra });
+  return { ...r, env, run, rm: () => { r.rm(); fs.rmSync(cfg, { recursive: true, force: true }); } };
+}
+const edit = (file, s) => pre('Edit', { file_path: file }, s);
+const mFile = (s) => path.join(os.tmpdir(), `docs-session-${s}-m-${mKey('api')}.json`);
+
+test('member: the first change under the child\'s source root is denied with the child\'s section and the path line', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    const held = r.run(edit('api/src/a.ts', s));
+    assert.ok(denied(held), held.stdout + held.stderr);
+    assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+    assert.match(why(held), /API-SECTION/);
+    assert.doesNotMatch(why(held), /ROOT-SECTION/);
+    assert.ok(!denied(r.run(edit('api/src/a.ts', s))), 'the retry passes');
+  } finally { r.rm(); }
+});
+
+test('member: a change under the root\'s own source root still uses the root\'s docs', () => {
+  const r = joined();
+  try {
+    const held = r.run(edit('src/a.ts', sid()));
+    assert.ok(denied(held));
+    assert.match(why(held), /ROOT-SECTION/);
+    assert.doesNotMatch(why(held), /Project api|API-SECTION/);
+  } finally { r.rm(); }
+});
+
+test('member: the child\'s gate sits in the session\'s -m-<key> file, per actor', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    assert.ok(denied(r.run(edit('api/src/a.ts', s))));
+    assert.ok(!denied(r.run(edit('api/src/a.ts', s))));
+    const seat = r.run(preBy(s, 'seat-1', 'api/src/a.ts'));
+    assert.ok(denied(seat), 'a seat\'s first change under api is still held');
+    assert.match(why(seat), /API-SECTION/);
+    const m = JSON.parse(fs.readFileSync(mFile(s), 'utf8'));
+    assert.deepStrictEqual(Object.keys(m.gate).sort(), ['main.session', 'seat-1']);
+    let own = {};
+    try { own = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `docs-session-${s}.json`), 'utf8')); } catch {}
+    assert.ok(!own.gate || !Object.values(own.gate).some((g) => g.holds || g.consults.length), 'the session\'s own gate is untouched');
+  } finally { r.rm(); }
+});
+
+test('member: a compact start re-arms the child\'s gate for that actor only - with and without root docs', () => {
+  for (const rootDocs of [true, false]) {
+    const r = joined({ rootDocs });
+    try {
+      const s = sid();
+      for (const call of [edit('api/src/a.ts', s), preBy(s, 'seat-1', 'api/src/a.ts')]) { r.run(call); assert.ok(!denied(r.run(call))); }
+      r.run({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' });
+      assert.ok(denied(r.run(edit('api/src/a.ts', s))), `rootDocs ${rootDocs}: the main session is held again`);
+      assert.ok(!denied(r.run(preBy(s, 'seat-1', 'api/src/a.ts'))), `rootDocs ${rootDocs}: the seat is not`);
+    } finally { r.rm(); }
+  }
+});
+
+test('member: a child with no durable docs under a root source root is held by the root\'s gate; one outside holds nothing', () => {
+  const r = joined();
+  try {
+    const pkg = r.run(edit('src/pkg/a.ts', sid()));
+    assert.ok(denied(pkg));
+    assert.match(why(pkg), /ROOT-SECTION/);
+    assert.doesNotMatch(why(pkg), /^Project /);
+    assert.strictEqual(r.run(edit('tools/a.ts', sid())).stdout, '');
+  } finally { r.rm(); }
+});
+
+test('member: a write under the child is in the start\'s write record with a start-relative path', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    r.run(edit('api/src/a.ts', s));
+    r.run(edit('api/src/a.ts', s));
+    const rec = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `docs-session-${s}--main.session.json`), 'utf8'));
+    assert.deepStrictEqual(rec.wrote, ['api/src/a.ts']);
+    const k = require('../stack/hooks/docs-session.js').toPosix(path.resolve(r.root));
+    assert.strictEqual(rec.root, process.platform === 'win32' ? k.toLowerCase() : k, 'under the root\'s key');
+  } finally { r.rm(); }
+});
+
+test('member: a file both projects cover is held by the child\'s gate', () => {
+  const r = joined({ rootWatch: JSON.stringify({ sourceRoots: ['src', 'api/src'] }) });
+  try {
+    const held = r.run(edit('api/src/a.ts', sid()));
+    assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+    assert.match(why(held), /API-SECTION/);
+  } finally { r.rm(); }
+});
+
+test('member: a shell edit placed under the child by the command\'s own cd is the child\'s', () => {
+  const r = joined();
+  try {
+    for (const command of ['cd api && sed -i s/a/b/ src/a.ts', 'sed -i s/a/b/ api/src/a.ts']) {
+      const held = r.run(pre('Bash', { command }, sid()));
+      assert.ok(denied(held), command);
+      assert.ok(why(held).startsWith(`${API_LINE}\n`), `${command}: ${why(held)}`);
+      assert.match(why(held), /API-SECTION/, command);
+    }
+  } finally { r.rm(); }
+});
+
+test('member: a seat in a worktree of the root\'s repository editing the child\'s file is held by the child\'s gate and banked start-relative', () => {
+  const r = joined();
+  try {
+    r.git('worktree', 'add', '-q', '.claude/worktrees/w1');
+    const s = sid();
+    const file = path.join(r.root, '.claude', 'worktrees', 'w1', 'api', 'src', 'a.ts');
+    const held = r.run(preBy(s, 'seat-1', file));
+    assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+    assert.match(why(held), /API-SECTION/);
+    assert.ok(!denied(r.run(preBy(s, 'seat-1', file))));
+    const rec = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `docs-session-${s}--seat-1.json`), 'utf8'));
+    assert.deepStrictEqual(rec.wrote, ['api/src/a.ts']);
+    const sh = r.run({ ...pre('Bash', { command: 'cd .claude/worktrees/w1/api && sed -i s/a/b/ src/b.ts' }, s), agent_id: 'seat-2', agent_type: 'dotnet-implementer' });
+    assert.ok(why(sh).startsWith(`${API_LINE}\n`), why(sh));
+    assert.match(why(sh), /API-SECTION/);
+  } finally { r.rm(); }
+});
+
+test('member: a hold with no section naming the target is made twice, then the change passes', () => {
+  const r = joined({ apiCovers: null });
+  try {
+    const s = sid();
+    for (let i = 0; i < 2; i++) {
+      const held = r.run(edit('api/src/b.ts', s));
+      assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+      assert.match(why(held), /docs\.js files/);
+    }
+    assert.ok(!denied(r.run(edit('api/src/b.ts', s))), 'the third passes');
+    const t = sid();
+    assert.ok(denied(r.run(edit('api/src/b.ts', t))));
+    r.run(pre('Read', { file_path: path.join(r.root, 'api', '.alfred', 'docs', 'architecture', 'references', 'patterns.md') }, t));
+    assert.ok(!denied(r.run(edit('api/src/b.ts', t))), 'a Read of the child\'s doc counts for the child\'s gate');
+  } finally { r.rm(); }
+});
+
+test('member: the gate part named in the child\'s off-list does not hold', () => {
+  const r = joined({ apiOff: 'docs-session:gate' });
+  try {
+    const s = sid();
+    assert.ok(!denied(r.run(edit('api/src/a.ts', s))));
+    assert.match(why(r.run(edit('src/a.ts', s))), /ROOT-SECTION/, 'the root\'s gate still holds');
+  } finally { r.rm(); }
+});
+
+test('member: a child whose off-list names the whole hook is not held', () => {
+  const r = joined({ apiOff: 'docs-session' });
+  try {
+    const s = sid();
+    assert.strictEqual(r.run(edit('api/src/a.ts', s)).stdout, '');
+    assert.ok(!fs.existsSync(mFile(s)), 'no -m- file');
+    assert.match(why(r.run(edit('src/a.ts', s))), /ROOT-SECTION/);
+  } finally { r.rm(); }
+});
+
+test('member: with no workspace the first hook\'s file is never loaded', () => {
+  const hooks = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-hooks-copy-'));
+  const mark = path.join(hooks, 'LOADED');
+  fs.cpSync(HOOKS, hooks, { recursive: true });
+  const pf = path.join(hooks, 'preferences-session.js');
+  fs.appendFileSync(pf, `\nrequire('fs').writeFileSync(${JSON.stringify(mark)}, 'x');\n`); // appended: the file opens on a shebang
+  const plain = repo({ docsPath: '.alfred/docs', files: { 'src/a.ts': 'a\n' }, docs: { 'references/patterns.md': section('root-sec', 'src/**', 'ROOT-SECTION rule.') } });
+  const r = joined();
+  const via = (p, payload) => spawnSync(process.execPath, [path.join(hooks, 'docs-session.js')], { cwd: p.root, input: JSON.stringify({ cwd: p.root, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_DOCS_PATH: '.alfred/docs', ALFRED_CODE_DOCS_VERSIONING: '', ...(p.env || {}) } });
+  try {
+    plain.write('.claude/alfred-code.stamp', 'sha: x\n');
+    for (const call of [(s) => edit('src/a.ts', s), (s) => pre('Bash', { command: 'sed -i s/a/b/ src/a.ts' }, s)]) {
+      const base = plain.hook(call(sid()));
+      assert.ok(denied(base));
+      assert.strictEqual(via(plain, call(sid())).stdout.length, base.stdout.length, 'replies as the hook does');
+    }
+    assert.ok(!fs.existsSync(mark), 'no workspace: not loaded');
+    const j = via(r, edit('api/src/a.ts', sid()));
+    assert.ok(fs.existsSync(mark), `joined: loaded\n${j.stdout}${j.stderr}`);
+  } finally { plain.rm(); r.rm(); fs.rmSync(hooks, { recursive: true, force: true }); }
+});
+
+test('member: through the dispatcher, one reply carries both hooks\' hand-overs for the child, and the root\'s follow', () => {
+  const r = joined({ prefs: true });
+  const fg = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'file-guards.js')], { cwd: r.root, input: JSON.stringify({ cwd: r.root, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...r.env } });
+  try {
+    const s = sid();
+    const child = fg(edit(path.join(r.root, 'api', 'src', 'a.ts'), s));
+    const text = `${child.stdout}${child.stderr}`.replace(/\\n/g, '\n');
+    assert.strictEqual(text.split(API_LINE).length - 1, 2, text);
+    assert.match(text, /API-CODE/);
+    assert.match(text, /API-SECTION/);
+    assert.doesNotMatch(text, /ROOT-/);
+    const root = fg(edit(path.join(r.root, 'src', 'a.ts'), s));
+    const rt = `${root.stdout}${root.stderr}`;
+    assert.match(rt, /ROOT-CODE/);
+    assert.match(rt, /ROOT-SECTION/);
+    assert.doesNotMatch(rt, /Project api/);
+  } finally { r.rm(); }
+});
+
+test('member: a garbage -m- state file and a payload with no session id do not throw; a Cursor payload prints nothing', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    fs.writeFileSync(mFile(s), '{');
+    const g = r.run(edit('api/src/a.ts', s));
+    assert.strictEqual(g.status, 0, g.stderr);
+    assert.ok(denied(g));
+    const none = r.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'api/src/a.ts' } });
+    assert.strictEqual(none.status, 0, none.stderr);
+    assert.strictEqual(r.run({ ...edit('api/src/a.ts', sid()), cursor_version: '1.7' }).stdout, '');
+  } finally { r.rm(); }
+});
+
+test('member: a root shell call in a workspace replies as it does with the workspace off', () => {
+  const r = joined();
+  try {
+    for (const command of ['git checkout -- src/a.ts', 'git restore src/a.ts', 'dotnet new classlib -o src/Lib', 'git checkout -- api/src/a.ts', 'cd src && sed -i s/a/b/ a.ts']) {
+      const on = r.run(pre('Bash', { command }, sid()));
+      const off = r.run(pre('Bash', { command }, sid()), { ALFRED_CODE_WORKSPACE: '0' });
+      assert.strictEqual(denied(on), denied(off), command);
+      assert.strictEqual(why(on), why(off), command);
+    }
+  } finally { r.rm(); }
+});
+
+test('member: a write under the child is banked start-relative when the start folder is a link', { skip: process.platform === 'win32' }, () => {
+  const r = joined();
+  const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-link-')), 'ws');
+  try {
+    fs.symlinkSync(r.root, link);
+    const s = sid();
+    for (let i = 0; i < 2; i++) r.run({ ...edit('api/src/a.ts', s), cwd: link }, { CLAUDE_PROJECT_DIR: link });
+    const rec = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `docs-session-${s}--main.session.json`), 'utf8'));
+    assert.deepStrictEqual(rec.wrote, ['api/src/a.ts']);
+  } finally { fs.rmSync(path.dirname(link), { recursive: true, force: true }); r.rm(); }
+});
+
+// ---- workspace stage 6, Task 4: the child's orientation, pushed once per actor and child -----------------------------------
+const ORIENT_LEAD = 'How this project is documented - ';
+const ORDER_LEAD = 'Tool order - ';
+const ctxOf = (o) => { try { return JSON.parse(o.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
+const readAt = (file, s, extra = {}) => ({ ...pre('Read', { file_path: file }, s), ...extra });
+const seatAs = (id) => ({ agent_id: id, agent_type: 'dotnet-implementer' });
+const claims = (s) => fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith(`docs-session-${s}-m-${mKey('api')}-e-`));
+const countOf = (text, s) => text.split(s).length - 1;
+// n characters of words that end on a letter, so a trim at either end never moves the count
+const pad = (n) => `${'w '.repeat(Math.ceil(n / 2)).slice(0, n - 1)}w`;
+const ORIENT_FILE = 'api/.alfred/docs/architecture/ORIENTATION.md';
+const SECTION_FILE = 'api/.alfred/docs/architecture/references/patterns.md';
+const PROV_LINE = 'Provisional - replaced by the architecture capture.\n';
+const envOf = (r, extra = {}) => ({ ...process.env, CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.alfred/docs', ALFRED_CODE_DOCS_VERSIONING: '', ...r.env, ...extra });
+const runAsync = (r, payload) => new Promise((resolve) => {
+  const c = require('node:child_process').spawn(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: r.root, env: envOf(r) });
+  let stdout = '';
+  c.stdout.on('data', (d) => { stdout += d; });
+  c.on('close', () => resolve({ stdout }));
+  c.stdin.end(JSON.stringify({ cwd: r.root, ...payload }));
+});
+const prefsRun = (r, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'preferences-session.js')], { cwd: r.root, input: JSON.stringify({ cwd: r.root, ...payload }), encoding: 'utf8', env: envOf(r) });
+
+test('entry: the first call under the child that is not held is answered with the child\'s orientation, once per actor and child', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    const first = ctxOf(r.run(readAt('api/src/a.ts', s)));
+    assert.ok(first.startsWith(`${API_LINE}\n${ORIENT_LEAD}`), first);
+    assert.match(first, /where <path>` names the sections covering a file/);
+    assert.strictEqual(r.run(readAt('api/src/b.ts', s)).stdout, '', 'once for the main session');
+    assert.ok(ctxOf(r.run(readAt('api/src/a.ts', s, seatAs('seat-1')))).includes(ORIENT_LEAD), 'a seat is its own actor');
+    assert.strictEqual(r.run(readAt('api/src/a.ts', s, seatAs('seat-1'))).stdout, '');
+    assert.strictEqual(r.run(readAt('src/a.ts', s)).stdout, '', 'the start\'s own file sends nothing');
+  } finally { r.rm(); }
+});
+
+test('entry: a child with no durable docs sends none', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    for (const f of ['src/pkg/a.ts', 'tools/a.ts']) assert.strictEqual(r.run(readAt(f, s)).stdout, '', f);
+  } finally { r.rm(); }
+});
+
+test('entry: a child whose off-list names docs-session:block gets no orientation - its own or the session\'s', () => {
+  for (const own of [true, false]) {
+    const r = joined({ apiOff: own ? 'docs-session:block' : '' });
+    const extra = own ? {} : { ALFRED_CODE_HOOKS_OFF: 'docs-session:block' };
+    try {
+      const s = sid();
+      assert.strictEqual(r.run(readAt('api/src/a.ts', s), extra).stdout, '', `own ${own}`);
+      assert.deepStrictEqual(claims(s), [], `own ${own}: no claim file`);
+      const held = r.run(edit('api/src/a.ts', s), extra);
+      assert.ok(denied(held), `own ${own}: the gate still holds`);
+      assert.ok(!why(held).includes(ORIENT_LEAD), why(held));
+    } finally { r.rm(); }
+  }
+});
+
+test('entry: a held first call carries the orientation in its denial', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    const held = why(r.run(edit('api/src/a.ts', s)));
+    assert.ok(held.startsWith(`${API_LINE}\n`), held);
+    assert.strictEqual(countOf(held, API_LINE), 1);
+    assert.ok(held.includes('API-SECTION') && held.includes(ORIENT_LEAD), held);
+    assert.strictEqual(r.run(readAt('api/src/a.ts', s)).stdout, '');
+  } finally { r.rm(); }
+});
+
+test('entry: eight calls at once send the orientation once', async () => {
+  const r = joined();
+  try {
+    const s = sid();
+    const outs = await Promise.all(Array.from({ length: 8 }, () => runAsync(r, readAt('api/src/a.ts', s))));
+    assert.strictEqual(countOf(outs.map((o) => o.stdout).join('\n'), ORIENT_LEAD), 1);
+    assert.strictEqual(claims(s).length, 1);
+  } finally { r.rm(); }
+});
+
+test('entry: a seat\'s claim does not silence the main session\'s', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    assert.ok(ctxOf(r.run(readAt('api/src/a.ts', s, seatAs('seat-1')))).includes(ORIENT_LEAD));
+    assert.strictEqual(claims(s).length, 1);
+    assert.ok(ctxOf(r.run(readAt('api/src/a.ts', s))).includes(ORIENT_LEAD));
+    assert.strictEqual(claims(s).length, 2);
+  } finally { r.rm(); }
+});
+
+test('entry: a compact start deletes the actor\'s claim files and the orientation is sent again', () => {
+  const r = joined();
+  try {
+    const s = sid();
+    r.run(readAt('api/src/a.ts', s));
+    r.run(readAt('api/src/a.ts', s, seatAs('seat-1')));
+    assert.strictEqual(r.run(readAt('api/src/a.ts', s)).stdout, '');
+    r.run({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' });
+    assert.strictEqual(claims(s).length, 1, 'the seat\'s claim stays');
+    assert.ok(ctxOf(r.run(readAt('api/src/a.ts', s))).includes(ORIENT_LEAD), 'sent again after a compaction');
+  } finally { r.rm(); }
+});
+
+test('entry: with a temp folder that takes no file the orientation is still sent', { skip: process.platform === 'win32' }, () => {
+  const r = joined();
+  const ro = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-ro-tmp-'));
+  try {
+    fs.chmodSync(ro, 0o555);
+    assert.ok(ctxOf(r.run(readAt('api/src/a.ts', sid()), { TMPDIR: ro })).includes(ORIENT_LEAD));
+  } finally { fs.chmodSync(ro, 0o755); fs.rmSync(ro, { recursive: true, force: true }); r.rm(); }
+});
+
+test('entry: one Read under the child gives one reply holding the second hook\'s push, then the first\'s', () => {
+  const r = joined();
+  try {
+    r.write('api/.alfred/docs/preferences/TOOLS-PREFERENCES.md', '# Tools preferences\n\nUpdated: 2026-10-24\n\n## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: LSP > Grep\n');
+    const o = spawnSync(process.execPath, [path.join(HOOKS, 'file-guards.js')], { cwd: r.root, input: JSON.stringify({ cwd: r.root, ...readAt(path.join(r.root, 'api', 'src', 'a.ts'), sid()) }), encoding: 'utf8', env: envOf(r) });
+    const text = ctxOf(o);
+    assert.ok(text.indexOf(ORIENT_LEAD) > 0 && text.indexOf(ORDER_LEAD) > text.indexOf(ORIENT_LEAD), `${o.stdout}${o.stderr}`);
+    assert.strictEqual(countOf(text, API_LINE), 2);
+  } finally { r.rm(); }
+});
+
+// The boundary rows: each fixture sized to the character from a measured run of the same tree's shape.
+// Provisional, with seven domains (six long-named), so a whole orientation passes 5,000 while its block is under 4,096:
+// the frame is 839 characters with four (measured), a full block reaches 4,883 there.
+const LONG_DOMAINS = ['decisions-of-the-api-project-kept-as-records', 'awareness-of-the-api-project-and-its-callers', 'conventions-of-the-api-project-by-file-type',
+  'operations-of-the-api-project-and-its-deploys', 'quality-notes-of-the-api-project-by-module', 'contracts-of-the-api-project-with-its-clients'];
+const orientTree = (n, provisional = true) => {
+  const r = joined();
+  r.write(ORIENT_FILE, `${provisional ? PROV_LINE : ''}${pad(n)}\n`);
+  if (provisional) for (const d of LONG_DOMAINS) r.write(`api/.alfred/docs/${d}/watch.json`, '{}\n');
+  return r;
+};
+test('entry: the second hook\'s push at 4,999 / 5,000 / 5,001', () => {
+  const probe = orientTree(1000);
+  let base;
+  try { base = ctxOf(probe.run(readAt('api/src/a.ts', sid()))).length; } finally { probe.rm(); }
+  for (const total of [4999, 5000, 5001]) {
+    const r = orientTree(1000 + total - base);
+    try {
+      const text = ctxOf(r.run(readAt('api/src/a.ts', sid())));
+      assert.ok(text.startsWith(`${API_LINE}\n${ORIENT_LEAD}`), text.slice(0, 200));
+      if (total <= 5000) { assert.strictEqual(text.length, total); assert.doesNotMatch(text, /continues past its/); continue; }
+      assert.ok(text.length <= 5000, `${text.length}`);
+      assert.match(text, /continues past its 4KB cap/, 'the block is shorter, its overrun line present');
+      assert.ok(text.endsWith('For a specific symbol the CODE wins; the docs give the decisions, the conventions and the reasons.'));
+      assert.match(text, /where <path>` names the sections covering a file; `.+ show <file>#<id>` prints one\./);
+    } finally { r.rm(); }
+  }
+});
+
+test('entry: the second hook\'s hold + push in a denial at 6,999 / 7,000 / 7,001', () => {
+  const tree = (n) => { const r = orientTree(3800, false); r.write(SECTION_FILE, section('api-sec', 'src/**', `API-SECTION rule. ${pad(n)}`)); return r; };
+  const probe = tree(1000);
+  let hold;
+  let push;
+  try {
+    hold = why(probe.run(edit('api/src/a.ts', sid()), { ALFRED_CODE_HOOKS_OFF: 'docs-session:block' })).length;
+    push = ctxOf(probe.run(readAt('api/src/a.ts', sid()))).length - API_LINE.length - 1;
+  } finally { probe.rm(); }
+  for (const total of [6999, 7000, 7001]) {
+    const r = tree(1000 + total - hold - 2 - push);
+    try {
+      const s = sid();
+      const held = why(r.run(edit('api/src/a.ts', s)));
+      if (total <= 7000) { assert.strictEqual(held.length, total, `${total}`); assert.ok(held.includes(ORIENT_LEAD)); continue; }
+      assert.ok(!held.includes(ORIENT_LEAD) && held.includes('API-SECTION'), 'the denial is the hold alone');
+      assert.ok(ctxOf(r.run(readAt('api/src/a.ts', s))).includes(ORIENT_LEAD), 'the next call that is not held carries it');
+      assert.strictEqual(r.run(readAt('api/src/a.ts', s)).stdout, '');
+    } finally { r.rm(); }
+  }
+});
+
+test('entry: the joined reply at 9,499 / 9,500 / 9,501 holds the note and both pushes whole', () => {
+  const tools = '# Tools preferences\n\nUpdated: 2026-10-24\n\n## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: LSP > Grep\n';
+  const personal = (n) => `# Personal preferences\n\nUpdated: 2026-10-21\n\n## P1 - Short answers\n<!-- id: p1 -->\n- Rule: lead with the verdict.\n- Note: ${pad(n)}\n`;
+  const tree = (o, p) => { const r = orientTree(o); r.write('api/.alfred/docs/preferences/TOOLS-PREFERENCES.md', tools); r.write('api/.alfred/docs/preferences/PERSONAL-PREFERENCES.md', personal(p)); return r; };
+  const probe = tree(1000, 1000);
+  let docsLen;
+  let prefsLen;
+  try {
+    docsLen = ctxOf(probe.run(readAt('api/src/a.ts', sid()))).length;
+    prefsLen = ctxOf(prefsRun(probe, readAt('api/src/a.ts', sid()))).length;
+  } finally { probe.rm(); }
+  const r = tree(1000 + 5000 - docsLen, 1000 + 3600 - prefsLen);
+  // the hooks folder copied beside the one skill folder the first hook reads the tool order through (../skills/...)
+  const top = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-hooks-copy-'));
+  const hooks = path.join(top, 'hooks');
+  fs.cpSync(HOOKS, hooks, { recursive: true });
+  const prefsSkill = path.join('skills', 'capture-preferences');
+  fs.cpSync(path.join(HOOKS, '..', prefsSkill), path.join(top, prefsSkill), { recursive: true });
+  try {
+    assert.strictEqual(ctxOf(r.run(readAt('api/src/a.ts', sid()))).length, 5000, 'the second hook\'s push at its room');
+    assert.strictEqual(ctxOf(prefsRun(r, readAt('api/src/a.ts', sid()))).length, 3600, 'the first hook\'s push at its room');
+    for (const n of [897, 898, 899]) {
+      const stub = `process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'n'.repeat(${n}) } }));\n`;
+      fs.writeFileSync(path.join(hooks, 'guard-read-whole-file.js'), stub);
+      const o = spawnSync(process.execPath, [path.join(hooks, 'file-guards.js')], { cwd: r.root, input: JSON.stringify({ cwd: r.root, ...readAt(path.join(r.root, 'api', 'src', 'a.ts'), sid()) }), encoding: 'utf8', env: envOf(r) });
+      const text = ctxOf(o);
+      assert.strictEqual(text.length, n + 1 + 5000 + 1 + 3600, `${n}: ${text.split(`\n${API_LINE}\n`).map((t) => t.length)} ${o.stderr}`);
+      assert.ok(text.startsWith('n'.repeat(n)) && text.includes(ORIENT_LEAD) && text.includes(ORDER_LEAD) && text.includes('The user\'s personal preferences - '), `${n}`);
+    }
+  } finally { r.rm(); fs.rmSync(top, { recursive: true, force: true }); }
 });

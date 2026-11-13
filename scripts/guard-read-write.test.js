@@ -158,9 +158,8 @@ test('guard-read-whole-file: no navigation remedy for a tree no symbol lookup in
   fs.writeFileSync(inSerena, LONG_JS);
   assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/,
     "the old .serena tree either");
-  // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds the docs, the state and an old server's data: no
-  // navigation remedy there either - the default and a custom root alike.
-  for (const [root, env] of [['.alfred', {}], ['.data', { ALFRED_CODE_DATA_PATH: '.data' }]])
+  // The data root (.alfred) holds the docs, the state and an old server's data: no navigation remedy there either.
+  for (const [root, env] of [['.alfred', {}]])
   {
     const inData = path.join(ROOT, root, 'serena', 'home', 'big.ts');
     fs.mkdirSync(path.dirname(inData), { recursive: true });
@@ -597,14 +596,14 @@ test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under
   assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
 });
 
-test('a 61KB draft under state/sessions/scorer/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {
+test('a 61KB draft under state/sessions/scoring/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {
   const dir = capDir();
-  const slug = path.join(dir, '.alfred', 'state', 'sessions', 'scorer', 's1', 'x'); fs.mkdirSync(slug, { recursive: true });
+  const slug = path.join(dir, '.alfred', 'state', 'sessions', 'scoring', 's1', 'x'); fs.mkdirSync(slug, { recursive: true });
   fs.writeFileSync(path.join(slug, 'ab12cd34.draft.md'), '# draft\n' + 'x'.repeat(61 * 1024) + '\n');
   fs.writeFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'other.md'), '# other\n' + 'x'.repeat(61 * 1024) + '\n');
   const envd = { ...process.env, CLAUDE_PROJECT_DIR: dir };
   const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
-  assert.equal(rd('.alfred/state/sessions/scorer/s1/x/ab12cd34.draft.md'), 0, 'the draft is the grader\'s mandated input');
+  assert.equal(rd('.alfred/state/sessions/scoring/s1/x/ab12cd34.draft.md'), 0, 'the draft is the grader\'s mandated input');
   assert.equal(rd('.alfred/state/sessions/other.md'), 2, 'any other 61KB file under state/ still blocks');
 });
 
@@ -685,17 +684,30 @@ test('U25: a redirected group or subshell is a copy', () => {
     assert.equal(sh(c), 2, c);
 });
 
-// E-batch final review I2: the group's target is a copy of what its cat printed, so a later print of that target is sized as
-// the source - the plain `cat big > out && cat out` already was (HK-19); U25's group form opened a copy-then-print path.
-test('final review I2: a print of a redirected group\'s target is sized as its source', () => {
-  const dir = capDir();
-  fs.writeFileSync(path.join(dir, 'big.html'), linesOf(60000, 'html'));
-  fs.writeFileSync(path.join(dir, 'small.txt'), 'a\nb\n');
-  const sh = (command) => run(READ, { tool_name: 'Bash', tool_input: { command }, session_id: sid(), cwd: dir },
-    { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status;
-  for (const c of ['{ cat big.html; } > out.txt && cat out.txt', '( cat big.html ) > o2.txt; cat o2.txt', '{ echo a; cat big.html; } >> o3.txt && cat o3.txt',
-    'cat big.html > o4.txt && cat o4.txt'])
-    assert.equal(sh(c), 2, c);
-  for (const c of ['{ cat big.html; } > out.txt && wc -l out.txt', '{ cat small.txt; } > o5.txt && cat o5.txt', '{ cat big.html; } > out.txt && head -5 out.txt'])
-    assert.equal(sh(c), 0, c);
+// Stage 4c: the reminder reads the rule loader's view where a store exists - a rule the loader serves from
+// .alfred/stack/rules (a root's in a joined child too) is named by that path, a native one by .claude/rules, and a rule
+// in neither gives no reminder.
+test('4c read guard: a store rule, a native rule, neither, and a root\'s store rule in a joined child', () => {
+  const put = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+  const JS = '---\npaths:\n  - "**/*.js"\n---\n# js\n';
+  const repo = (dir) => { put(path.join(dir, '.git', 'HEAD'), 'x'); put(path.join(dir, '.claude', 'alfred-code.stamp'), 'source: test\n'); return dir; };
+  const top = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'store4c-')));
+  const at = (d) => ({ cwd: d, env: { ...process.env, CLAUDE_PROJECT_DIR: d } });
+  const said = (d) => announce('cp x.js dist/app.js', sid(), READ, at(d));
+  const inStore = repo(path.join(top, 'a'));
+  put(path.join(inStore, '.alfred', 'stack', 'rules', 'javascript-conventions.md'), JS);
+  assert.match(said(inStore), /`\.alfred\/stack\/rules\/javascript-conventions\.md`/, 'a store rule by its store path');
+  const native = repo(path.join(top, 'b'));
+  put(path.join(native, '.alfred', 'stack', 'rules', 'csharp-conventions.md'), '# cs\n');
+  put(path.join(native, '.claude', 'rules', 'javascript-conventions.md'), JS);
+  assert.match(said(native), /`\.claude\/rules\/javascript-conventions\.md`/, 'a native rule by its .claude/rules path');
+  const neither = repo(path.join(top, 'c'));
+  put(path.join(neither, '.alfred', 'stack', 'rules', 'csharp-conventions.md'), '# cs\n');
+  assert.equal(said(neither), '', 'a rule in neither folder gives no reminder');
+  const root = repo(path.join(top, 'ws'));
+  const child = repo(path.join(root, 'api'));
+  put(path.join(root, '.alfred', 'workspace.json'), JSON.stringify({ parent: 'root', children: ['api'] }));
+  put(path.join(child, '.alfred', 'workspace.json'), JSON.stringify({ parent: '..' }));
+  put(path.join(root, '.alfred', 'stack', 'rules', 'javascript-conventions.md'), JS);
+  assert.match(said(child), /\.alfred\/stack\/rules\/javascript-conventions\.md/, 'a root\'s store rule reminds in a joined child');
 });

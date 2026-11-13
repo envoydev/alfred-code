@@ -115,10 +115,14 @@ test('the auditing env\'s ALFRED_CODE_DATA_PATH is ignored', (t) =>
     assert.strictEqual(rc.docsRoot, '.alfred/docs');
 });
 
-test('a custom data root in settings.json and an absolute --data-root are both taken', (t) =>
+// The fixed root (3.11.0): no settings key names the data root - it is .alfred unless --data-root names another folder.
+test('fixed root: a settings key names no data root; --data-root is taken, relative or absolute', (t) =>
 {
     const fx = makeSession({ dataPath: '.data' }); t.after(fx.cleanup);
-    assert.strictEqual(run(fx).dataRoot, '.data');
+    fs.mkdirSync(path.join(fx.project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(fx.project, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.data' } }));
+    assert.strictEqual(run(fx).dataRoot, '.alfred');
+    assert.strictEqual(run(fx, ['--out', path.join(fx.root, 'out1'), '--data-root', '.data']).dataRoot, '.data');
     const abs = path.join(fx.root, 'scratch-data');
     fs.mkdirSync(abs);
     const rc = run(fx, ['--out', path.join(fx.root, 'out2'), '--data-root', abs]);
@@ -162,11 +166,11 @@ test('name-matched stores take this session\'s files and no other session\'s', (
 {
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     const rc = run(fx);
-    for (const id of ['hook-blocks', 'tools-usage', 'history', 'scorer', 'sessions:COMPACT-STATE-', 'sessions:AGENT-CAP-',
-        'sessions:SCORER-', 'sessions:preferences-', 'forge:ACTS-', 'forge:PAUSE-', 'session-inspector'])
+    for (const id of ['hook-blocks', 'tools-usage', 'history', 'scoring', 'sessions:COMPACT-STATE-', 'sessions:AGENT-CAP-',
+        'sessions:SCORING-', 'sessions:preferences-', 'session-inspector'])
         assert.strictEqual(row(rc, id).status, 'copied', id);
-    assert.strictEqual(row(rc, 'sessions:SCORER-').files, 2, 'SCORER- takes SCORER-HELD-');
-    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', 'scorer', fx.sid, 'draft.md')));
+    assert.strictEqual(row(rc, 'sessions:SCORING-').files, 2, 'SCORING- takes SCORING-HELD-');
+    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', 'scoring', fx.sid, 'draft.md')));
     assert.ok(fs.existsSync(path.join(fx.out, 'data', 'statistics', 'hook-blocks', `${fx.sid}.jsonl`)));
     assert.strictEqual(row(rc, 'hook-blocks').to, `data/statistics/hook-blocks/${fx.sid}.jsonl`);
     assert.strictEqual(row(rc, 'sessions:unlisted').status, 'absent');
@@ -178,14 +182,12 @@ test('an entry naming the session under no listed prefix is taken as unlisted pr
 {
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     fx.write(path.join(fx.dataRoot, 'state', 'sessions', `NEWTHING-${fx.sid}`), 'new');
-    fx.write(path.join(fx.dataRoot, 'state', 'forge', `ODD-${fx.sid}.json`), 'odd');
     const rc = run(fx);
     const r = row(rc, 'sessions:unlisted');
     assert.strictEqual(r.status, 'copied');
     assert.strictEqual(r.why, 'unlisted prefix');
     assert.strictEqual(r.files, 1);
     assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'sessions', `NEWTHING-${fx.sid}`)));
-    assert.strictEqual(row(rc, 'forge:unlisted').status, 'copied');
 });
 
 test('a ledger in its pre-2.8.0 docs-root home is taken and marked legacy home', (t) =>
@@ -240,8 +242,8 @@ test('no data root and an empty one', (t) =>
     fs.rmSync(fx.dataRoot, { recursive: true, force: true });
     const rc = run(fx);
     assert.ok(fs.existsSync(path.join(fx.out, `${fx.sid}.jsonl`)));
-    const dataRows = rc.stores.filter((s) => /^(hook-blocks|tools-usage|history|scorer|sessions:|forge:)/.test(s.id));
-    assert.ok(dataRows.length >= 20, `${dataRows.length} data-root rows`);
+    const dataRows = rc.stores.filter((s) => /^(hook-blocks|tools-usage|history|scoring|sessions:)/.test(s.id));
+    assert.ok(dataRows.length >= 15, `${dataRows.length} data-root rows`);
     for (const s of dataRows)
     {
         assert.strictEqual(s.status, 'absent', s.id);
@@ -249,7 +251,7 @@ test('no data root and an empty one', (t) =>
     }
     fs.mkdirSync(fx.dataRoot);
     const rc2 = run(fx, ['--out', path.join(fx.root, 'out2')]);
-    for (const s of rc2.stores.filter((x) => /^(hook-blocks|history|scorer|sessions:|forge:)/.test(x.id)))
+    for (const s of rc2.stores.filter((x) => /^(hook-blocks|history|scoring|sessions:)/.test(x.id)))
         assert.strictEqual(s.why, 'not written', s.id);
 });
 
@@ -297,7 +299,7 @@ test('a pruned history reads pruned', (t) =>
     assert.strictEqual(row(run(older), 'history').why, 'pruned');
 });
 
-// ---- Task 4: stores under another root - forge, preferences, handoff - and approvals ------------------------------
+// ---- Task 4: stores under another root - preferences, handoff - and approvals --------------------------------------
 
 const { execFileSync } = require('node:child_process');
 // No auto-maintenance: a commit spawns a detached `git maintenance run --auto`, whose objects/maintenance.lock came and
@@ -305,7 +307,7 @@ const { execFileSync } = require('node:child_process');
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', ...args],
     { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 
-test('a linked-worktree session finds forge and handoff under the main checkout', (t) =>
+test('a linked-worktree session finds handoff under the main checkout', (t) =>
 {
     const fx = makeSession({}); t.after(fx.cleanup);
     git(fx.project, 'init', '-q');
@@ -314,16 +316,11 @@ test('a linked-worktree session finds forge and handoff under the main checkout'
     git(fx.project, 'worktree', 'add', '-q', wt);
     // an installed main checkout: handoff.js puts the store under the main checkout only when it holds a record
     fx.write(path.join(fx.project, '.claude', 'alfred-code.stamp'), 'version: 3.8.0\n');
-    fx.write(path.join(fx.dataRoot, 'state', 'forge', `ACTS-${fx.sid}.jsonl`), line({ session: fx.sid, act: 'push' }));
     fx.write(path.join(fx.dataRoot, 'state', 'handoff', 'feat.jsonl'), line({ name: 'feat/1/seat', text: 'note', at: '2026-11-01T10:30:00.000Z' }));
     const rc = run(fx, ['--project', wt]);
     const main = fs.realpathSync.native(fx.project);
-    for (const id of ['forge:ACTS-', 'handoff'])
-    {
-        assert.ok(['copied', 'filtered'].includes(row(rc, id).status), `${id}: ${row(rc, id).status}`);
-        assert.strictEqual(row(rc, id).root, main, id);
-    }
-    assert.ok(fs.existsSync(path.join(fx.out, 'data', 'state', 'forge', `ACTS-${fx.sid}.jsonl`)));
+    assert.ok(['copied', 'filtered'].includes(row(rc, 'handoff').status), `handoff: ${row(rc, 'handoff').status}`);
+    assert.strictEqual(row(rc, 'handoff').root, main);
 });
 
 test('preferences records are found under the first checkout holding the preferences folder', (t) =>
@@ -614,7 +611,7 @@ test('the .secrets marker reaches no bundle file in either mode', (t) =>
 {
     const fx = makeSession({ stores: true }); t.after(fx.cleanup);
     fx.write(path.join(fx.dataRoot, '.secrets'), 'K=marker-q7\n');
-    fx.write(path.join(fx.dataRoot, 'state', 'sessions', 'scorer', fx.sid, '.secrets'), 'K=marker-q7\n');
+    fx.write(path.join(fx.dataRoot, 'state', 'sessions', 'scoring', fx.sid, '.secrets'), 'K=marker-q7\n');
     for (const mode of ['copy', 'withhold'])
     {
         const out = path.join(fx.root, `out-${mode}`);
@@ -622,9 +619,9 @@ test('the .secrets marker reaches no bundle file in either mode', (t) =>
         assert.ok(!grepBundle(out, 'marker-q7'), mode);
         if (mode === 'copy')
         {
-            assert.ok(fs.existsSync(path.join(out, 'data', 'state', 'sessions', 'scorer', fx.sid, 'draft.md')));
-            assert.deepStrictEqual(skipped(rc, 'scorer').map((s) => [s.status, s.file, s.why]),
-                [['denied', `data/state/sessions/scorer/${fx.sid}/.secrets`, 'never copied: .secrets']]);
+            assert.ok(fs.existsSync(path.join(out, 'data', 'state', 'sessions', 'scoring', fx.sid, 'draft.md')));
+            assert.deepStrictEqual(skipped(rc, 'scoring').map((s) => [s.status, s.file, s.why]),
+                [['denied', `data/state/sessions/scoring/${fx.sid}/.secrets`, 'never copied: .secrets']]);
         }
     }
 });
@@ -636,7 +633,7 @@ test('a symlink is never followed', (t) =>
     const autoRun = path.join(fx.dataRoot, 'state', 'sessions', `AUTO-RUN-${fx.sid}`);
     fs.rmSync(autoRun);
     if (!link(t, outside, autoRun, false)) return;
-    link(t, path.dirname(outside), path.join(fx.dataRoot, 'state', 'sessions', 'scorer', fx.sid, 'linked'), true);
+    link(t, path.dirname(outside), path.join(fx.dataRoot, 'state', 'sessions', 'scoring', fx.sid, 'linked'), true);
     // A docs path whose parent folder is a link resolves outside the docs root.
     fx.write('elsewhere/x.md', 'elsewhere-q9');
     fs.mkdirSync(path.join(fx.docsRoot, 'work'), { recursive: true });
@@ -646,8 +643,8 @@ test('a symlink is never followed', (t) =>
     assert.strictEqual(row(rc, 'sessions:AUTO-RUN-').status, 'denied');
     assert.deepStrictEqual(skipped(rc, 'sessions:AUTO-RUN-').map((s) => [s.status, s.file, s.why]),
         [['denied', `data/state/sessions/AUTO-RUN-${fx.sid}`, 'symlink']]);
-    assert.deepStrictEqual(skipped(rc, 'scorer').map((s) => [s.status, s.file, s.why]),
-        [['denied', `data/state/sessions/scorer/${fx.sid}/linked`, 'symlink']]);
+    assert.deepStrictEqual(skipped(rc, 'scoring').map((s) => [s.status, s.file, s.why]),
+        [['denied', `data/state/sessions/scoring/${fx.sid}/linked`, 'symlink']]);
     assert.deepStrictEqual(skipped(rc, 'docs').map((s) => [s.status, s.file, s.why]),
         [['denied', 'docs/work/linked/x.md', 'outside its root']]);
     assert.ok(!grepBundle(fx.out, 'outside-q8'));
@@ -776,7 +773,7 @@ test('withhold writes no text path and passes the gate', (t) =>
     const out = path.join(fx.project, 'bundles', 'w');
     const rc = run(fx, ['--out', out, '--text', 'withhold']);
     assert.strictEqual(rc.gate, 'withhold');
-    for (const id of ['transcript', 'subagents', 'session-folder', 'history', 'scorer', 'docs', 'tmp', 'forge:ACTS-'])
+    for (const id of ['transcript', 'subagents', 'session-folder', 'history', 'scoring', 'docs', 'tmp'])
     {
         const r = row(rc, id);
         assert.strictEqual(r.status, 'withheld', id);
@@ -795,7 +792,7 @@ test('swept: a session store older than 7 days', (t) =>
     const past = makeSession({ lastRowAgeMs: 7 * DAY + 1000 }); t.after(past.cleanup);
     const rcAt = run(at7);
     const rcPast = run(past);
-    for (const id of ['sessions:COMPACT-STATE-', 'scorer', 'forge:ACTS-'])
+    for (const id of ['sessions:COMPACT-STATE-', 'scoring'])
     {
         assert.deepStrictEqual([row(rcAt, id).status, row(rcAt, id).why], ['absent', 'not written'], id);
         assert.deepStrictEqual([row(rcPast, id).status, row(rcPast, id).why], ['absent', 'swept'], id);
@@ -1124,4 +1121,74 @@ test('a withhold bundle\'s session-inspector status copy has handoffPrompt null'
     const consent = path.join(fx.root, 'out-consent');
     run(fx, ['--out', consent]);
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(consent, 'context', 'session-inspector-status.json'), 'utf8')).handoffPrompt, 'Resume: the plan text');
+});
+
+// --- W2 Task 5: the collector reads the project of the transcript's cwd and the keys a member answers ---
+
+// The fixture's project joined below its parent folder: both stamped, the parent's record listing it.
+function joinedSession(opts = {}, childRecord = { parent: '..' })
+{
+    const fx = makeSession({ git: true, ...opts });
+    for (const dir of [fx.root, fx.project]) fx.write(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+    putWorkspace(fx.root, { role: 'root', children: ['project'] });
+    putWorkspace(fx.project, childRecord);
+    return fx;
+}
+const contextOf = (fx) => JSON.parse(fs.readFileSync(path.join(fx.out, 'context.json'), 'utf8'));
+
+test('the default project is the project the transcript\'s cwd belongs to', (t) =>
+{
+    const fx = makeSession({ git: true }); t.after(fx.cleanup);
+    fs.mkdirSync(path.join(fx.project, 'src'), { recursive: true });
+    const { transcriptRows } = require('./collect-fixture.js');
+    fs.writeFileSync(fx.transcript, transcriptRows({ sid: fx.sid, project: path.join(fx.project, 'src'),
+        plan: path.join(fx.docsRoot, 'work', 'plans', 'p.md'), firstMs: fx.firstMs, lastMs: fx.lastMs }).map(line).join(''));
+    assert.ok(samePath(run(fx).project, fx.project));
+});
+
+test('context.json for a joined child lists a key only a member holds, with the member\'s rel', (t) =>
+{
+    const fx = joinedSession(); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\n');
+    const rc = run(fx);
+    const c = contextOf(fx);
+    assert.deepStrictEqual(c.variables.ALFRED_CODE_INSTRUMENT, { value: '1', from: '..' });
+    assert.strictEqual(c.instrument, '1');
+    assert.strictEqual(row(rc, 'tools-usage').why, 'not written');
+});
+
+test('context.json for a joined child: a key the child\'s own files hold is as before', (t) =>
+{
+    const fx = joinedSession({ instrument: '0' }); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\n');
+    const rc = run(fx);
+    assert.deepStrictEqual(contextOf(fx).variables.ALFRED_CODE_INSTRUMENT, { value: '0', from: 'own' });
+    assert.strictEqual(row(rc, 'tools-usage').why, 'instrumentation off');
+});
+
+test('a standalone project\'s context.json is the files read alone (a guard)', (t) =>
+{
+    const fx = makeSession({ git: true }); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\n');
+    run(fx);
+    const c = contextOf(fx);
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in c.variables), JSON.stringify(c.variables));
+    assert.strictEqual(c.instrument, null);
+});
+
+test('nothing a child must not read reaches its bundle: an ignored env key, a never-member key, the parent\'s secrets, the switch off', (t) =>
+{
+    const fx = joinedSession({}, { parent: '..', ignore: { env: ['ALFRED_CODE_INSTRUMENT'] } }); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\nALFRED_CODE_DOCS_VERSIONING=1\nALFRED_CODE_TURN_CHECK=1\n');
+    fx.write(path.join(fx.root, '.alfred', '.secrets'), 'W2_TOKEN=W2-SECRET-MARK\n');
+    run(fx);
+    const c = contextOf(fx);
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in c.variables) && !('ALFRED_CODE_DOCS_VERSIONING' in c.variables), JSON.stringify(c.variables));
+    assert.deepStrictEqual(c.variables.ALFRED_CODE_TURN_CHECK, { value: '1', from: '..' }, 'a key the child may read still is');
+    assert.ok(!grepBundle(fx.out, 'W2-SECRET-MARK'));
+    const off = joinedSession({}); t.after(off.cleanup);
+    off.write(path.join(off.root, '.alfred', '.variables'), 'ALFRED_CODE_TURN_CHECK=1\n');
+    off.write(path.join(off.dataRoot, '.variables'), 'ALFRED_CODE_WORKSPACE=0\n');
+    run(off);
+    assert.ok(Object.values(contextOf(off).variables).every((v) => ['own', 'settings.local.json', 'env'].includes(v.from)), JSON.stringify(contextOf(off).variables));
 });

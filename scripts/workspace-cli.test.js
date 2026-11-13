@@ -62,16 +62,6 @@ test('register writes the parent line here and the child line in the parent, the
     assert.match(refused.out, /^!! workspace: /m);
 });
 
-test('register --data-path writes this project\'s line under that folder; the parent\'s by its own setting', () =>
-{
-    const at = tree({ ws: { stamp: true }, 'ws/api': { git: true } });
-    assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '.kid-data').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api'), '.kid-data'), { parent: '..' });
-    assert.strictEqual(wsFile(at('ws/api')), null, 'the default root was written too');
-    assert.deepStrictEqual(wsFile(at('ws')), { children: ['api'] });
-    assert.strictEqual(cli('register', '--root', at('ws/api'), '--data-path', '../out').code, 2, 'a refused data root is bad input');
-});
-
 test('a held parent lock exits 3 and leaves neither file written', () =>
 {
     const at = tree({ ws: { stamp: true, record: {} }, 'ws/api': { git: true } });
@@ -248,7 +238,7 @@ test('status prints show\'s notes: the HOOKS_OFF line, the not-read line and the
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), `ALFRED_CODE_HOOKS_OFF=guard-secret-value\nALFRED_CODE_CONFIG_PROTECT=0\nALFRED_CODE_X_TOKEN=${token}\n`);
     const r = cli('status', '--root', at('ws/api'));
     assert.strictEqual(r.code, 0, r.out);
-    assert.match(r.out, /^!! variables: ALFRED_CODE_HOOKS_OFF in \.variables is not read - it lives in \.claude\/settings\.json$/m);
+    assert.match(r.out, /^!! variables: ALFRED_CODE_HOOKS_OFF in \.variables is not read - it lives in \.claude\/settings\.local\.json$/m);
     assert.match(r.out, /^!! variables: ALFRED_CODE_CONFIG_PROTECT in \.variables is not read - only the stack's variables are; a guard switch stays in \.claude\/settings\.json$/m);
     assert.match(r.out, /^!! variables: ALFRED_CODE_X_TOKEN in \.variables looks like a credential - keep it in \.alfred\/\.secrets$/m);
     assert.ok(!r.out.includes(token) && !r.out.includes('guard-secret-value'), 'no value printed');
@@ -272,11 +262,11 @@ test('status prints each chain key with its source and no value', () =>
 test('variables.js show run from the project names an inherited value from <rel>, not env', () =>
 {
     const at = joined();
-    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=90\n');
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=90\n');
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_HISTORY=4\n');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'variables.js'), 'show', '--root', '.'], { cwd: at('ws/api'), encoding: 'utf8', env: ENV });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.match(r.stdout, /^ALFRED_CODE_SCORER_LEVEL=90 \(from \.\.\)$/m, r.stdout);
+    assert.match(r.stdout, /^ALFRED_CODE_SCORING_LEVEL=90 \(from \.\.\)$/m, r.stdout);
     assert.match(r.stdout, /^ALFRED_CODE_HISTORY=4 \(own\)$/m);
     assert.match(r.stdout, /^ALFRED_CODE_TURN_CHECK=0 \(default\)$/m, 'a key no file holds reads its default, not the env the prelude filled');
 });
@@ -285,13 +275,11 @@ test('ignore --add and --remove edit this project\'s ignore lines', () =>
 {
     const at = joined();
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'skill sqlite').code, 0);
-    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'env ALFRED_CODE_SCORER').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { skill: ['sqlite'], env: ['ALFRED_CODE_SCORER'] } });
+    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'env ALFRED_CODE_SCORING').code, 0);
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { skill: ['sqlite'], env: ['ALFRED_CODE_SCORING'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--remove', 'skill sqlite').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
+    assert.deepStrictEqual(wsFile(at('ws/api')), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORING'] } });
     assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--add', 'colour blue').code, 2);
-    assert.strictEqual(cli('ignore', '--root', at('ws/api'), '--data-path', '.kid-data', '--add', 'skill x').code, 0);
-    assert.deepStrictEqual(wsFile(at('ws/api'), '.kid-data'), { ignore: { skill: ['x'] } });
 });
 
 test('children prints each direct child as ok or gone', () =>
@@ -308,12 +296,12 @@ test('status names the parent, the own, ignored and inherited lines, and the las
     const plan = path.join(TMP, 'installed.json');
     fs.writeFileSync(plan, JSON.stringify({ skills: ['javascript', 'npm'], rules: ['alfred-security'], plugins: [{ name: 'alfred-code' }] }));
     const r = cli('status', '--root', at('ws/api'), '--installed', plan);
-    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\ninstalled-above: 1\nown: skill npm\nignored: skill sqlite\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
+    assert.strictEqual(r.out, 'role: child of ..\nworkspace: parent ..\ninstalled-above: 1\nown: skill npm\nignored: skill sqlite\nmodels: none\nfrom-root: plugin alfred-code, rule alfred-security, skill javascript\ndocs: -\nmemory: -\ncheck: never\n');
     fs.mkdirSync(path.join(at('ws/api'), '.alfred', 'state'), { recursive: true });
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', 'state', 'workspace-check.json'), JSON.stringify({ at: '2026-10-26T10:00:00Z', state: 'clean', misses: [] }));
     assert.match(cli('status', '--root', at('ws/api')).out, /^from-root: unknown - pass --installed <plan json>\ndocs: -\nmemory: -\ncheck: clean 2026-10-26T10:00:00Z\n$/m);
     const alone = tree({ alone: { git: true } });
-    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\ninstalled-above: 0\nown: -\nignored: -\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
+    assert.strictEqual(cli('status', '--root', alone('alone')).out, 'role: standalone (no role recorded)\nworkspace: parent none\ninstalled-above: 0\nown: -\nignored: -\nmodels: none\nfrom-root: unknown - pass --installed <plan json>\ncheck: never\n');
 });
 
 test('status names the ancestor docs roots and the memory index it reads, or ignored', () =>
@@ -370,28 +358,28 @@ test('answer merges, replaces and refuses', () =>
 {
     const file = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
     const ans = (...a) => cli('answer', '--file', file, ...a);
-    assert.strictEqual(ans('--project', '.', '--', '--data-move', 'keep').code, 0);
-    assert.strictEqual(ans('--project', 'api', '--', '--data-move', 'keep', '--instructions-file', 'agents').code, 0);
-    assert.strictEqual(ans('--project', 'api', '--', '--data-move', 'move', '--add', 'skill sqlite').code, 0);
+    assert.strictEqual(ans('--project', '.', '--', '--instructions-at', 'root').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--instructions-at', 'root', '--instructions-file', 'agents').code, 0);
+    assert.strictEqual(ans('--project', 'api', '--', '--instructions-at', 'claude', '--add', 'skill sqlite').code, 0);
     assert.strictEqual(ans('--project', 'api', '--', '--add', 'rule alfred-docs').code, 0);
     assert.strictEqual(ans('--project', 'api/tool', '--', '--docs-root-move', 'move', '--docs-root-leave', 'adr,notes').code, 0);
     const want = {
-        '.': ['--data-move', 'keep'],
-        api: ['--data-move', 'move', '--instructions-file', 'agents', '--add', 'skill sqlite', '--add', 'rule alfred-docs'],
+        '.': ['--instructions-at', 'root'],
+        api: ['--instructions-at', 'claude', '--instructions-file', 'agents', '--add', 'skill sqlite', '--add', 'rule alfred-docs'],
         'api/tool': ['--docs-root-move', 'move', '--docs-root-leave', 'adr,notes'],
     };
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), want);
     const before = fs.readFileSync(file, 'utf8');
-    for (const refused of [['--scope', 'user'], ['--data-move', 'maybe'], ['--docs-root-leave', 'a'], ['--add', 'colour blue'], ['--data-move'], []])
+    for (const refused of [['--scope', 'user'], ['--instructions-at', 'maybe'], ['--docs-root-leave', 'a'], ['--add', 'colour blue'], ['--instructions-at'], ['--data-move', 'move'], []])
     {
         const r = ans('--project', 'api', '--', ...refused);
         assert.strictEqual(r.code, 2, `${refused.join(' ')}: ${r.out}`);
         assert.match(r.out, /^!! workspace: /m);
         assert.strictEqual(fs.readFileSync(file, 'utf8'), before, refused.join(' '));
     }
-    assert.strictEqual(ans('--project', '../out', '--', '--data-move', 'move').code, 2);
+    assert.strictEqual(ans('--project', '../out', '--', '--instructions-at', 'claude').code, 2);
     fs.writeFileSync(file, '{ not json');
-    assert.strictEqual(ans('--project', '.', '--', '--data-move', 'move').code, 2, 'an answers file that does not parse is refused, never replaced');
+    assert.strictEqual(ans('--project', '.', '--', '--instructions-at', 'claude').code, 2, 'an answers file that does not parse is refused, never replaced');
     assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ not json');
 });
 
@@ -482,11 +470,11 @@ test('cascade refuses an answers entry outside the allow-list before that projec
 {
     const at = cascadeTree();
     const answers = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
-    fs.writeFileSync(answers, JSON.stringify({ web: ['--scope', 'user'], api: ['--data-move', 'keep'] }));
+    fs.writeFileSync(answers, JSON.stringify({ web: ['--scope', 'user'], api: ['--instructions-at', 'root'] }));
     const { src, runs } = fakeSource();
     const r = cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers);
     assert.match(r.out, /^!! cascade: the answers for web hold --scope - not an answer the cascade passes; skipped\ncascade: web\tskipped$/m, r.out);
-    assert.ok(runs().some((l) => l.startsWith(`${at('ws/api')} `) && l.endsWith(' --data-move keep')));
+    assert.ok(runs().some((l) => l.startsWith(`${at('ws/api')} `) && l.endsWith(' --instructions-at root')));
     assert.ok(!runs().some((l) => l.startsWith(`${at('ws/web')} `)));
     fs.writeFileSync(answers, '[1, 2]');
     assert.strictEqual(cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers).code, 2);
@@ -518,11 +506,11 @@ test('answer --hold records \'only this project\' in the answers file, and the c
 {
     const at = cascadeTree();
     const answers = path.join(fs.mkdtempSync(path.join(TMP, 'ans-')), 'answers.json');
-    fs.writeFileSync(answers, JSON.stringify({ api: ['--data-move', 'keep'] }));
+    fs.writeFileSync(answers, JSON.stringify({ api: ['--instructions-at', 'root'] }));
     const w = cli('answer', '--file', answers, '--hold');
     assert.strictEqual(w.code, 0, w.out);
     assert.strictEqual(w.out, 'answer: . hold - the cascade runs nothing below\n');
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(answers, 'utf8')), { api: ['--data-move', 'keep'], '.': 'hold' });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(answers, 'utf8')), { api: ['--instructions-at', 'root'], '.': 'hold' });
     const { src, runs } = fakeSource('==> done\n');
     const r = cli('cascade', '--root', at('ws'), '--source', src, '--answers', answers);
     assert.strictEqual(r.out, 'cascade: api\theld\ncascade: api/tool\theld\ncascade: web\theld\ncascade: done 0 updated, 0 failed, 0 skipped, 3 held\n');
@@ -648,4 +636,240 @@ test('review I1: ignore --remove of a line an old-format record never held conve
     assert.strictEqual(r.code, 0, r.out + r.err);
     assert.match(r.out, /converted to workspace\.json/, r.out);
     assert.match(r.out, /^workspace: ignore skill x not there$/m, r.out);
+});
+
+// ---- the model file (workspace stage 2): status says what .alfred/agents.json applies here ----
+const agentModels = require('../stack/hooks/agent-models.js');
+const putModels = (root, value) =>
+{
+    fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.alfred', 'agents.json'), typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+};
+const modelLines = (root, extra = [], e = ENV) =>
+{
+    const r = spawnSync(process.execPath, [CLI, 'status', '--root', root, ...extra], { encoding: 'utf8', env: e });
+    return { code: r.status, err: r.stderr, all: r.stdout.split('\n'), lines: r.stdout.split('\n').filter((l) => /^models: |agents\.json/.test(l)) };
+};
+const seat = (model) => ({ model });
+
+test('status lists each applied entry and where it came from', () =>
+{
+    const at = joined();
+    putModels(at('ws'), { claude: { agents: { 'aspnet-verifier': seat('opus'), 'web-angular-verifier': seat('opus') } } });
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('haiku') } } });
+    const r = modelLines(at('ws/api'));
+    assert.deepStrictEqual(r.lines, ['models: agents aspnet-verifier = haiku (here)', 'models: agents web-angular-verifier = opus (..)']);
+    assert.strictEqual(r.all[r.all.indexOf(r.lines[0]) - 1].split(':')[0], 'ignored', 'right after the ignored line');
+    assert.deepStrictEqual(modelLines(at('ws')).lines, ['models: agents aspnet-verifier = opus (here)', 'models: agents web-angular-verifier = opus (here)']);
+});
+
+test('status says models: none with no file', () =>
+{
+    assert.deepStrictEqual(modelLines(joined()('ws/api')).lines, ['models: none']);
+});
+
+test('status names a garbage file and each skipped entry once', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), '{ not json');
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, ['models: none', '  !! agents.json (here): not JSON - the file is ignored']);
+    putModels(at('ws/api'), { claude: { agents: { ok: seat('sonnet'), bad: seat('opus 4') } }, gemini: {} });
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, ['models: agents ok = sonnet (here)',
+        '  !! agents.json (here): claude.agents.bad: the model must be 1 to 100 characters of letters, digits and . _ : [ ] - - skipped', "  !! agents.json (here): unknown host 'gemini' skipped"]);
+});
+
+test('status names the skills line while skill entries are not applied', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { skills: { csharp: seat('haiku') } } });
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, agentModels.SKILLS_APPLY ? ['models: skills csharp = haiku (here)']
+        : ['models: none', `  !! agents.json (here): claude.skills: not applied in this release (${agentModels.SKILLS_WHY})`]);
+});
+
+test('status --host cursor lists no applied entry, and both reads carry the cursor lines', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } }, cursor: { agents: { 'aspnet-verifier': seat('gpt-5') } } });
+    const waits = '  !! agents.json (here): cursor.agents: read, not applied - waits for the Cursor run';
+    assert.deepStrictEqual(modelLines(at('ws/api')).lines, ['models: agents aspnet-verifier = opus (here)', waits]);
+    assert.deepStrictEqual(modelLines(at('ws/api'), ['--host', 'cursor']).lines, ['models: none', waits]);
+    const other = modelLines(at('ws/api'), ['--host', 'other']);
+    assert.notStrictEqual(other.code, 0);
+    assert.match(other.err + other.all.join('\n'), /^!! workspace: --host takes claude or cursor$/m);
+    assert.ok(!other.all.some((l) => l.startsWith('role: ')), 'refused before any line is printed');
+});
+
+test('status says the entries are not applied with the dispatch guard in the off-list', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus'), bad: seat('') } } });
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer, guard-unapproved-dispatch' } }));
+    const shell = { ...ENV };
+    delete shell.ALFRED_CODE_HOOKS_OFF;
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, ['models: not applied - guard-unapproved-dispatch is off (the off-list)',
+        '  !! agents.json (here): claude.agents.bad: the model must be 1 to 100 characters of letters, digits and . _ : [ ] - - skipped']);
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-unapproved-dispatch:cap' } }));
+    assert.strictEqual(modelLines(at('ws/api'), [], shell).lines[0], 'models: agents aspnet-verifier = opus (here)', 'a part entry stands the guard down for nothing');
+});
+
+// The review's fix pass: the hook reads the off-list from its environment, where a user-scope install's csv and a shell's own arrive.
+test('status reads the off-list from the environment too, spaces around a name included', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } } });
+    const off = ['models: not applied - guard-unapproved-dispatch is off (the off-list)'];
+    for (const csv of ['guard-unapproved-dispatch', 'guard-answer , guard-unapproved-dispatch.js ', ' Guard-Unapproved-Dispatch,guard-answer'])
+        assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, ALFRED_CODE_HOOKS_OFF: csv }).lines, off, csv);
+    for (const csv of ['guard-answer', 'guard-unapproved-dispatch:cap', 'my-guard-unapproved-dispatch'])
+        assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, ALFRED_CODE_HOOKS_OFF: csv }).lines, ['models: agents aspnet-verifier = opus (here)'], csv);
+});
+
+test('status says the entries are not applied under the minimal profile', () =>
+{
+    const at = joined();
+    putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } } });
+    const off = ['models: not applied - guard-unapproved-dispatch is off (the minimal profile)'];
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).lines, off);
+    const account = path.join(TMP, 'acct-minimal');
+    fs.mkdirSync(account, { recursive: true });
+    const shell = { ...ENV, CLAUDE_CONFIG_DIR: account };
+    delete shell.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE;
+    const stored = (profile) => fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'other@envoydev': { options: { hook_profile: 'minimal' } }, 'alfred-code@envoydev': { options: { hook_profile: profile } } } }));
+    stored('minimal');
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, off, 'the account settings answer where the shell has no variable');
+    stored('strict');
+    assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, ['models: agents aspnet-verifier = opus (here)']);
+});
+
+// ------------------------------------------------------------------ W3 Task 7: ignore-child
+const LONG_LINE = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
+const MIDDLE_LINE = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
+const recordBytes = (root) => fs.readFileSync(path.join(root, '.alfred', 'workspace.json'), 'utf8');
+// cascadeTree, with a value in the root's .variables and a rule in its store for api to keep.
+const keptTree = () =>
+{
+    const at = cascadeTree();
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\n');
+    fs.mkdirSync(path.join(at('ws'), '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'stack', 'rules', 'alfred-one.md'), '# one\n');
+    return at;
+};
+
+test('ignore-child: a refusal exits 2 and writes nothing; --add missing likewise', () =>
+{
+    const at = cascadeTree();
+    const bytes = recordBytes(at('ws'));
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', '../x'), { out: '!! workspace: ../x is not a project path below this folder\n', err: '', code: 2 });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws')), { out: '!! workspace: ignore-child takes --add <rel>\n', err: '', code: 2 });
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+    assert.ok(!fs.existsSync(path.join(at('ws/api'), '.alfred', '.variables')));
+});
+
+test('ignore-child: a joined child is kept, marked, updated and cascaded, in that order', () =>
+{
+    const at = keptTree();
+    const { src, runs } = fakeSource('==> done\n');
+    // the fake's first run records what it found: the child's values and rule, and the root's record
+    const seen = path.join(src, 'seen.json');
+    const script = path.join(src, 'scripts', 'install', 'alfred-code.js');
+    fs.writeFileSync(script, fs.readFileSync(script, 'utf8').replace("fs.appendFileSync(path.join(process.cwd(), '.claude', 'runs'), 'x');", [
+        `if (!fs.existsSync(${JSON.stringify(seen)})) fs.writeFileSync(${JSON.stringify(seen)}, JSON.stringify({`,
+        `    vars: fs.readFileSync(path.join(process.cwd(), '.alfred', '.variables'), 'utf8'),`,
+        `    rule: fs.existsSync(path.join(process.cwd(), '.alfred', 'stack', 'rules', 'alfred-one.md')),`,
+        `    record: JSON.parse(fs.readFileSync(${JSON.stringify(path.join(at('ws'), '.alfred', 'workspace.json'))}, 'utf8')) }));`,
+        "fs.appendFileSync(path.join(process.cwd(), '.claude', 'runs'), 'x');",
+    ].join('\n')));
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 0, r.out);
+    const got = JSON.parse(fs.readFileSync(seen, 'utf8'));
+    assert.match(got.vars, /^ALFRED_CODE_SCORING=1$/m, 'the value was kept before the run');
+    assert.strictEqual(got.rule, true, 'the rule was kept before the run');
+    assert.deepStrictEqual([got.record.children, got.record.ignoredChildren], [['web'], ['api']], 'the mark is written before the child runs');
+    const varsAt = fs.statSync(path.join(at('ws/api'), '.alfred', '.variables')).mtimeMs;
+    assert.ok(varsAt <= fs.statSync(path.join(at('ws'), '.alfred', 'workspace.json')).mtimeMs, 'the values were kept before the mark');
+    assert.deepStrictEqual(wsFile(at('ws')), { children: ['web'], ignoredChildren: ['api'] });
+    const calls = runs();
+    assert.strictEqual(calls[0], `${at('ws/api')} update --source ${src} --scope project --installed-only --keep-pins`);
+    assert.deepStrictEqual(calls.slice(1).map((l) => [l.split(' ')[0], l.includes('--print-plan') ? 'plan' : 'run']), [[at('ws/api'), 'plan'], [at('ws/api/tool'), 'run']], 'then the cascade below it');
+    assert.match(r.out, /^workspace: api: 1 values this project read from the workspace written into \.alfred\/\.variables \(ALFRED_CODE_SCORING\)/m);
+    assert.match(r.out, /^workspace: api: 1 rules this project read from the workspace copied into its own store \(alfred-one\)$/m);
+    assert.match(r.out, /^cascade: tool\tupdated$/m);
+    assert.match(r.out, /^workspace: api ignored - nothing of this workspace reaches it$/m);
+});
+
+test('ignore-child: a joined child with no --source exits 2 before anything is written', () =>
+{
+    const at = keptTree();
+    const bytes = recordBytes(at('ws'));
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api');
+    assert.deepStrictEqual([r.code, r.out], [2, '!! workspace: --source <repo> is required\n']);
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+    assert.ok(!fs.existsSync(path.join(at('ws/api'), '.alfred', '.variables')));
+});
+
+test('ignore-child: a child whose values cannot be kept exits 1 with nothing marked', () =>
+{
+    const at = keptTree();
+    const bytes = recordBytes(at('ws'));
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables.lock'), String(process.pid));
+    const { src, runs } = fakeSource();
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^!! workspace: api could not keep its values \(locked\) - nothing marked$/m);
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+    assert.deepStrictEqual(runs(), []);
+});
+
+test('ignore-child: a locked root file exits 3, an unwritable one 1', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true } });
+    const lock = path.join(at('ws'), '.alfred', 'workspace.lock');
+    fs.writeFileSync(lock, String(process.pid));
+    const locked = cli('ignore-child', '--root', at('ws'), '--add', 'solo');
+    assert.deepStrictEqual([locked.code, locked.out], [3, "!! workspace: this project's workspace file could not be written (locked)\n"]);
+    fs.rmSync(lock);
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace.json'), '{ not json');
+    const garbage = cli('ignore-child', '--root', at('ws'), '--add', 'solo');
+    assert.strictEqual(garbage.code, 1, garbage.out);
+    assert.match(garbage.out, /^!! workspace: this project's workspace file could not be written \(garbage\)$/m);
+    assert.strictEqual(fs.readFileSync(path.join(at('ws'), '.alfred', 'workspace.json'), 'utf8'), '{ not json');
+});
+
+test('ignore-child: a failed child run is one !! line and exit 1; the mark stands', () =>
+{
+    const at = keptTree();
+    const { src, runs } = fakeSource('==>   1 step(s) reported a failure above - the rest of the run completed\n');
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^!! workspace: api is ignored but its own update did not finish - run \/alfred-code:update there$/m);
+    assert.doesNotMatch(r.out, /nothing of this workspace reaches it/);
+    assert.deepStrictEqual(wsFile(at('ws')).ignoredChildren, ['api']);
+    assert.ok(!runs().some((l) => l.includes('--print-plan')), 'no cascade below a child whose run failed');
+});
+
+test('ignore-child: the three lines', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true }, 'ws/repo': { git: true } });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo'), { out: `${MIDDLE_LINE('solo')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'repo'), { out: `${LONG_LINE('repo')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'new/x'), { out: `${LONG_LINE('new/x')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual(wsFile(at('ws')), { role: 'root', ignoredChildren: ['solo', 'repo', 'new/x'] });
+});
+
+test('ignore-child: a second run changes nothing', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true } });
+    assert.strictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo').code, 0);
+    const [bytes, files] = [recordBytes(at('ws')), filesOf(at('ws/solo'), ['.git'])];
+    assert.deepStrictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo'), { out: `${MIDDLE_LINE('solo')}\n`, err: '', code: 0 });
+    assert.deepStrictEqual([recordBytes(at('ws')), filesOf(at('ws/solo'), ['.git'])], [bytes, files]);
+});
+
+test('status: ignored-children lists the entries; no line with none', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', ignoredChildren: ['legacy', 'old/app'] } }, alone: { stamp: true, record: { role: 'root' } } });
+    const lines = cli('status', '--root', at('ws')).out.split('\n');
+    const i = lines.findIndex((l) => l.startsWith('ignored: '));
+    assert.strictEqual(lines[i + 1], 'ignored-children: legacy, old/app');
+    assert.ok(!cli('status', '--root', at('alone')).out.includes('ignored-children:'));
 });

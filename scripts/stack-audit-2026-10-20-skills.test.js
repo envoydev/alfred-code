@@ -25,10 +25,10 @@ const skillFiles = () => walk(SK).map((p) => ({ rel: path.relative(ROOT, p).spli
 
 const CARVE = "(under auto-run the hook's `AUTO` stamp already stands - leave it)";
 const TIMEOUT = "A question the idle timeout closed is no answer";
-const NOSTOPS = "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.";
+const NOSTOPS = "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line.";
 
 // S1: one 'no stops' request had four behaviours. The hand-written AUTO waiver stays only in the two solve flows, in
-// the same words; every other flow names --mode-auto-run-on and never hand-writes AUTO.
+// the same words; every other flow names the auto-run mode command and never hand-writes AUTO.
 test('S1: only the two solve flows hand-write an AUTO stamp, and they say it the same way', () =>
 {
     const writers = skillFiles().filter((f) => /`AUTO - "<their words, verbatim>"`/.test(f.text)).map((f) => f.rel).sort();
@@ -48,7 +48,7 @@ test('S1: only the two solve flows hand-write an AUTO stamp, and they say it the
     for (const d of ['task-implement', 'task-build-from-scratch', 'task-version-upgrade', 'loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'issue-diagnoser'])
     {
         const t = flat(read(`stack/skills/${d}/SKILL.md`));
-        assert.ok(t.includes(NOSTOPS), `${d} points a typed no-stops wish at --mode-auto-run-on`);
+        assert.ok(t.includes(NOSTOPS), `${d} points a typed no-stops wish at the auto-run mode command`);
         assert.doesNotMatch(t, /literal no-stops ask/, `${d} keeps no hand-written AUTO alternative`);
     }
 });
@@ -182,8 +182,7 @@ test('row 12: the stamp, loop-twin, quality-capture, coverage and size-row clust
     const rules = JSON.parse(read('meta/shared-rules.json')).rules;
     const ids = ['approval-stamp-shape', 'approval-stamp-refused', 'approval-stamp-auto-carve-out', 'ask-idle-timeout-no-answer',
         'no-stops-waiver-solve-flows', 'no-stops-points-to-auto-mode', 'loop-substantial-steps', 'loop-round-cap',
-        'testing-coverage-mechanics', 'quality-capture-run-gate-and-receipt', 'size-first-trivial-row', 'dotnet-floor-line',
-        'config-protection-allow-ask'];
+        'testing-coverage-mechanics', 'quality-capture-run-gate-and-receipt', 'size-first-trivial-row', 'dotnet-floor-line'];
     const sub = {};
     for (const id of ids) { assert.ok(rules[id], `${id} is registered`); sub[id] = rules[id]; }
     assert.deepStrictEqual(lintSharedRules({ rules: sub }, read), []);
@@ -204,9 +203,7 @@ test('row 13: the named prose stops are ask templates, each marking one option f
         'capture-quality/references/architecture-quality.md': /- 'Verify and rewrite at this HEAD \(Recommended\)'/,
         'capture-quality/references/code-quality.md': /Judge <the modules> through the code-quality-analyzer seats or in this session\?/,
         'dotnet-windows-service/SKILL.md': /- 'Hand the script over \(Recommended\)'/,
-        'dotnet-code-quality/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
-        'dotnet-project-setup/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
-        'typescript/SKILL.md': /- 'Allow this edit \(Recommended\)'/,
+        // the three config-protection allowance asks left with the lint-config judge (complexity stage 1 B11)
     };
     for (const [rel, re] of Object.entries(want))
     {

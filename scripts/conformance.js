@@ -12,7 +12,7 @@ const CLAIMS_FILE = path.join(ROOT, 'meta', 'conformance.json');
 const FIXTURES = path.join(__dirname, 'fixtures', 'conformance');
 const AREAS = ['navigation', 'scoring', 'preferences', 'awareness', 'questions', 'answers', 'flow', 'decisions'];
 // Where each state source is read, data-root-relative: the claims' evidence and a not-visible row's missing path.
-const STATE_SOURCES = { history: 'state/history/<sid>.json', scorer: 'state/sessions/scorer/<sid>/', ledger: 'statistics/hook-blocks/<sid>.jsonl' };
+const STATE_SOURCES = { history: 'state/history/<sid>.json', scoring: 'state/sessions/scoring/<sid>/', ledger: 'statistics/hook-blocks/<sid>.jsonl' };
 const CLOSES = { session: ['end'], turn: ['prompt'], skill: ['stop', 'prompt', 'end'], event: ['event', 'prompt', 'end'] };
 const LOCATORS = 5;
 const TEXT = '@text';
@@ -208,9 +208,9 @@ function loadBundle(transcript, { dataRoot, hookBlocks } = {}) {
     if (!rec || !Array.isArray(rec.rulings)) return absent('history');   // an older writer kept no rulings
     return rec.rulings.filter((r) => r && typeof r === 'object').map((r) => ({ ts: toMs(r.ts), question: r.question, answer: r.answer }));
   })();
-  const scorer = (() => {
-    const p = at('scorer');
-    if (!p || !isDir(p)) return absent('scorer');
+  const scoring = (() => {
+    const p = at('scoring');
+    if (!p || !isDir(p)) return absent('scoring');
     const rows = [];
     for (const slug of fs.readdirSync(p).sort()) {
       const log = path.join(p, slug, 'rounds.log');
@@ -234,7 +234,7 @@ function loadBundle(transcript, { dataRoot, hookBlocks } = {}) {
     }
     return rows;
   })();
-  return { sid, dataRoot: root, session: { main, seats }, state: { history, scorer, ledger, missing } };
+  return { sid, dataRoot: root, session: { main, seats }, state: { history, scoring, ledger, missing } };
 }
 
 // --- the claims ------------------------------------------------------------------------------------------------------
@@ -332,7 +332,7 @@ function evidenceOf(claim) {
 // An x_state step in one window, in this order: N/A when it names an event the window lacks; NOT VISIBLE when the source
 // is absent, no row qualifies, a `tie` finds nothing to tie to, or a `before` has no time to order by; then the order or
 // the count; else PASS. `tie` keeps the rows whose `row` field is group 1 of `capture` over the opening event's `open`
-// input field (S1: a scorer run's own slug, final review M8); `keeps` is how many rows the writer keeps at most, so a
+// input field (S1: a scoring run's own slug, final review M8); `keeps` is how many rows the writer keeps at most, so a
 // perEvent count past it asks only that many (D2: the history keeps the last 60 rulings).
 function gradeState(step, slice, state, refs, need, opening) {
   const anchor = step.before !== undefined ? step.before : step.perEvent;
@@ -362,7 +362,7 @@ function gradeState(step, slice, state, refs, need, opening) {
 // and reads violated on any FAIL, else not visible on any NOT VISIBLE, else held. A seat claim grades each seat's run.
 function gradeClaims(bundle, claims) {
   const { main, seats = [] } = bundle.session;
-  const state = bundle.state || { history: null, scorer: null, ledger: null, missing: {} };
+  const state = bundle.state || { history: null, scoring: null, ledger: null, missing: {} };
   return claims.map((c) => {
     const seat = c.window.opens && typeof c.window.opens === 'object' ? c.window.opens.seat : undefined;
     const runs = seat !== undefined

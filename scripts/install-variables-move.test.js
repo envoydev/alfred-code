@@ -15,23 +15,36 @@ const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
 const stampLib = require('./install/stamp.js');
 const { DATA_IGNORE_HEAD } = require('../stack/mcp/data-root.js');
-const { seedRun, POSIX_ONLY, releaseExport, skipWithout } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, releaseExport, skipWithout, plantOlderRoot } = require('./seed-sandbox.js');
 
 const ROOT = path.join(__dirname, '..');
 const SEL = 'skill markdown-style\n';
 const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]);
 const CATALOG = require('../meta/environment.json').env.map((r) => r.key);
 // [key, the stack's old seed, the value it resets to] - the env pass's reseed list
-const RESEEDS = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json')).reseed;
-const SETTINGS_KEYS = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_HOOKS_OFF'];
+const { reseed: RESEEDS, retired: RETIRED, renames: RENAMES } = require('./install/env-migrations.js').envMigrations(require('../meta/migrations.json'));
+const SETTINGS_KEYS = ['ALFRED_CODE_HOOKS_OFF'];
 // A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
 const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
+const DEFAULTS = Object.fromEntries(require('../meta/environment.json').env.map((r) => [r.key, r.default]));
 const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && !UNSEEDED.includes(k));
 const MOVED_LINE = /variables: (\d+) keys moved to \.alfred\/\.variables - a teammate on 2\.12\.0 or older reads none of them until they update; a downgrade needs them put back in \.claude\/settings\.json by hand/;
 
-// B1 of the 2026-11-03 usage audit: an update moves the stack's own old scorer seeds (meta/migrations.json reseeds);
+// B1 of the 2026-11-03 usage audit: an update moves the stack's own old scoring seeds (meta/migrations.json reseeds);
 // every other value an older install holds is carried across unchanged.
-const reseeded = (env) => { const out = { ...env }; for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to; return out; };
+// An older release's keys under the names this release renamed them to (3.11.0: scorer -> scoring), then the reseeds.
+const renamedKey = (k) => (RENAMES.find(([from]) => from === k) || [k, k])[1];
+const reseeded = (env, keepModes = false) =>
+{
+    const out = {};
+    for (const [k, v] of Object.entries(env)) if (!(renamedKey(k) !== k && Object.hasOwn(env, renamedKey(k)))) out[renamedKey(k)] = v;
+    for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to;
+    // a key retired at the stack's own seed (3.11.0: ALFRED_CODE_AUTO_COMPACT=0) reads as its default once it is gone
+    for (const [k, when] of RETIRED) if (when != null && out[k] === when && !(keepModes && MODES.includes(k))) out[k] = String(DEFAULTS[k] ?? '');
+    return out;
+};
+// The four modes: never seeded into, moved out of or ledgered in the mode file - a typed value there stays as typed.
+const MODES = layout.MODE_KEYS;
 
 const exportOf = releaseExport;
 // The steps of an update over `tag`: that release installs, this tree updates.
@@ -51,8 +64,9 @@ const effective = (repo) => Object.fromEntries(variables.show(repo, { env: acctE
 const ledgerOf = (repo) => stampLib.readLedger(path.join(repo, '.claude', 'alfred-code.stamp')) || {};
 const settingsName = (scope) => (scope === 'local' ? 'settings.local.json' : 'settings.json');
 const catalogIn = (env) => Object.keys(env).filter((k) => CATALOG.includes(k)).sort();
-// The instrumentation hook's wired command lines, read from a settings file's hooks.
-const instrumentCommands = (repo) => Object.values((json(path.join(repo, '.claude', 'settings.json')) || {}).hooks || {})
+// The instrumentation hook's wired command lines, read from both settings files' hooks - an older release wired them in
+// settings.json, this one in settings.local.json at every scope (mode v2 stage 2), so an entry left in either counts.
+const instrumentCommands = (repo) => ['settings.local.json', 'settings.json'].flatMap((name) => Object.values((json(path.join(repo, '.claude', name)) || {}).hooks || {}))
     .flat().flatMap((entry) => entry.hooks || []).map((h) => h.command).filter((c) => /instrument-tool-usage/.test(c));
 
 // Every file under the repo but .git, with its sha256 - the stamp read without its two run times.
@@ -66,6 +80,8 @@ function treeHash(dir)
             const p = path.join(d, e.name);
             if (e.name === '.git') continue;
             if (e.isDirectory()) { walk(p); continue; }
+            // A link (a skill or agent in the store, workspace stage 3) is its target, never read as a file.
+            if (e.isSymbolicLink()) { rows.push(`${path.relative(dir, p)} -> ${fs.readlinkSync(p)}`); continue; }
             let body = fs.readFileSync(p);
             if (e.name === 'alfred-code.stamp') body = Buffer.from(String(body).replace(/^installed(-ms)?: .*$/gm, ''));
             rows.push(`${path.relative(dir, p)} ${crypto.createHash('sha256').update(body).digest('hex')}`);
@@ -77,15 +93,15 @@ function treeHash(dir)
 
 for (const scope of ['project', 'user', 'local'])
 {
-    test(`AC7: a fresh install at ${scope} scope writes every moved key but WORKSPACE into .variables, leaves DATA_PATH and HOOKS_OFF in settings, and git ${scope === 'local' ? 'ignores' : 'tracks'} the file`, POSIX_ONLY, () =>
+    test(`AC7: a fresh install at ${scope} scope writes every moved key but WORKSPACE into .variables, leaves HOOKS_OFF alone in settings, and git ${scope === 'local' ? 'ignores' : 'tracks'} the file`, POSIX_ONLY, () =>
     {
         const { result } = seedRun('install', SEL, {
             plugins: PLUGINS, args: ['--scope', scope],
             inspect: (repo) => ({ vars: varsOf(repo), env: envIn(repo, settingsName(scope)), ignored: ignoredExit(repo, '.alfred/.variables'), effective: effective(repo) }),
         });
         assert.deepStrictEqual(Object.keys(result.vars).sort(), [...SEEDED].sort());
-        assert.strictEqual(result.vars.ALFRED_CODE_SCORER_LEVEL, '80');
-        assert.strictEqual(result.env.ALFRED_CODE_DATA_PATH, '.alfred');
+        assert.strictEqual(result.vars.ALFRED_CODE_SCORING_LEVEL, '80');
+        assert.strictEqual(result.env.ALFRED_CODE_DATA_PATH, undefined, 'no path key is written');
         assert.deepStrictEqual(catalogIn(result.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(result.env));
         assert.strictEqual(result.ignored, scope === 'local' ? 0 : 1);
         assert.strictEqual(result.effective.ALFRED_CODE_MAXIMUM_RUN_AGENTS, '5');
@@ -105,16 +121,19 @@ test('AC7: git-hygiene\'s own /.alfred/ line becomes /.alfred/* plus !/.alfred/.
     assert.deepStrictEqual(Object.keys(result.vars).sort(), [...SEEDED].sort());
 });
 
-test('AC7: the user\'s own .alfred/ line keeps the keys in settings.json and names .gitignore:<n>', POSIX_ONLY, () =>
+// Mode v2 stage 2: the stack's file is settings.local.json at project scope too, so the kept keys sit there.
+test('AC7: the user\'s own .alfred/ line keeps the keys in settings.local.json and names .gitignore:<n>', POSIX_ONLY, () =>
 {
     const { out, result } = seedRun('install', SEL, {
         plugins: PLUGINS, args: ['--scope', 'project'],
         prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), 'node_modules/\n.alfred/\n'),
-        inspect: (repo) => ({ vars: fs.existsSync(varsFile(repo)) ? varsOf(repo) : null, env: envIn(repo, 'settings.json') }),
+        inspect: (repo) => ({ vars: fs.existsSync(varsFile(repo)) ? varsOf(repo) : null, env: envIn(repo, 'settings.local.json'), shared: envIn(repo, 'settings.json') }),
     });
     assert.ok(!result.vars || !Object.keys(result.vars).length, `a key went into an ignored .variables: ${JSON.stringify(result.vars)}`);
-    for (const key of SEEDED) assert.ok(Object.hasOwn(result.env, key), `${key} was not seeded into settings.json`);
-    assert.match(out, /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2 - the keys are kept in settings\.json; ignore \/\.alfred\/\* and re-include !\/\.alfred\/\.variables, then update/, out);
+    for (const key of SEEDED.filter((k) => !MODES.includes(k))) assert.ok(Object.hasOwn(result.env, key), `${key} was not seeded into settings.local.json`);
+    for (const key of MODES) assert.ok(!Object.hasOwn(result.env, key), `${key} was seeded into the mode file`);
+    assert.deepStrictEqual(catalogIn(result.shared), [], 'no stack key in settings.json');
+    assert.match(out, /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2 - the keys are kept in settings\.local\.json; ignore \/\.alfred\/\* and re-include !\/\.alfred\/\.variables, then update/, out);
 });
 
 // A decision the run takes for a moved key (`--docs-versioning`, `--memory`, `--auto-compact`) lands in .variables, and its
@@ -134,29 +153,34 @@ test('an update\'s --docs-versioning and --memory lines name .variables, where t
 });
 
 // AC17: the guard key never moves (D7) - a fresh install over a settings file that holds it, and an update over v2.12.0.
+// Mode v2 stage 2: the off-list's home is settings.local.json at every scope; an older release's sat in settings.json.
 const OFF = 'ALFRED_CODE_HOOKS_OFF';
-const putOff = (repo) =>
+const putOff = (repo, name = 'settings.local.json') =>
 {
-    const f = path.join(repo, '.claude', 'settings.json');
+    const f = path.join(repo, '.claude', name);
     const data = json(f) || {};
     data.env = { ...(data.env || {}), [OFF]: 'docs-session:gate' };
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
 };
-test('AC17: HOOKS_OFF is in settings.json after a fresh install, never in .variables', POSIX_ONLY, () =>
+test('AC17: HOOKS_OFF is in settings.local.json after a fresh install, never in .variables', POSIX_ONLY, () =>
 {
-    const { outs, steps } = seedRun(['install'], SEL, { plugins: PLUGINS, prepare: (repo) => putOff(repo), each: (repo) => ({ env: envIn(repo, 'settings.json'), vars: varsOf(repo) }) });
+    const { outs, steps } = seedRun(['install'], SEL, { plugins: PLUGINS, prepare: (repo) => putOff(repo), each: (repo) => ({ env: envIn(repo, 'settings.local.json'), vars: varsOf(repo) }) });
     assert.strictEqual(steps[0].env[OFF], 'docs-session:gate', outs[0]);
     assert.ok(Object.keys(steps[0].vars).length > 0 && !Object.hasOwn(steps[0].vars, OFF), JSON.stringify(steps[0].vars));
 });
 
-test('AC17: HOOKS_OFF is in settings.json after an update over v2.12.0, never in .variables', skipWithout('v2.12.0'), () =>
+// The user's off-list an older release left in settings.json is changed since its ledger hash, so it stays there; the
+// local file, which Claude Code and the hook loader read over settings.json, must not shadow it with the stack's seed.
+test('AC17: HOOKS_OFF the user set in settings.json under v2.12.0 stays in effect after the update, never in .variables', skipWithout('v2.12.0'), () =>
 {
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS, ...over('v2.12.0', 1), args: [[], ['--installed-only']],
-        each: (repo, i) => { if (i === 0) putOff(repo); return { env: envIn(repo, 'settings.json'), vars: varsOf(repo) }; },
+        each: (repo, i) => { if (i === 0) putOff(repo, 'settings.json'); return { env: envIn(repo, 'settings.json'), local: envIn(repo, 'settings.local.json'), vars: varsOf(repo) }; },
     });
     assert.strictEqual(steps[1].env[OFF], 'docs-session:gate', outs[1]);
+    const effectiveOff = Object.hasOwn(steps[1].local, OFF) ? steps[1].local[OFF] : steps[1].env[OFF];
+    assert.strictEqual(effectiveOff, 'docs-session:gate', `the local file shadows the user's off-list: ${JSON.stringify(steps[1].local)}\n${outs[1]}`);
     assert.ok(Object.keys(steps[1].vars).length > 0 && !Object.hasOwn(steps[1].vars, OFF), JSON.stringify(steps[1].vars));
 });
 
@@ -171,17 +195,36 @@ for (const scope of ['project', 'user', 'local'])
             each: (repo) => ({
                 effective: effective(repo), env: envIn(repo, file), vars: varsOf(repo), ledger: ledgerOf(repo).env || {},
                 tree: treeHash(repo), ignored: ignoredExit(repo, '.alfred/.variables'), dataIgnore: readOr(path.join(repo, '.alfred', '.gitignore')),
+                shared: json(path.join(repo, '.claude', 'settings.json')), local: json(path.join(repo, '.claude', 'settings.local.json')),
             }),
         });
         const [before, after, again] = steps;
-        assert.deepStrictEqual(after.effective, reseeded(before.effective), outs[1]);
-        assert.deepStrictEqual([after.effective.ALFRED_CODE_SCORER, after.effective.ALFRED_CODE_SCORER_OUTPUTS], ['1', 'designer-plan'], 'the old scorer seeds moved');
-        assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(after.env));
+        if (scope !== 'local')
+        {
+            // Mode v2 stage 2: v2.12.0 wrote the stack's rows into settings.json; the update moves them to settings.local.json,
+            // and settings.json keeps only the user's (the export wrote none). 3.11.0's scoring rename re-spells one seat deny.
+            const respell = (r) => r.replace(/^Agent\(alfred-code:output-scorer\)$/, 'Agent(alfred-code:output-scoring)');    // legacy
+            assert.deepStrictEqual(after.shared || {}, {}, `a stack row stayed in settings.json: ${JSON.stringify(after.shared)}`);
+            assert.strictEqual(after.local.env[OFF], before.shared.env[OFF], 'the off-list moved to settings.local.json');
+            assert.deepStrictEqual(after.local.permissions.deny, before.shared.permissions.deny.map(respell));
+            assert.deepStrictEqual([after.local.attribution, after.local.worktree], [before.shared.attribution, before.shared.worktree]);
+            assert.ok(Object.hasOwn(after.ledger['settings.local.json'] || {}, OFF), 'the off-list\'s ledger row names settings.local.json');
+        }
+        assert.deepStrictEqual(after.effective, reseeded(before.effective, scope === 'local'), outs[1]);   // a mode in the mode file stays as it is
+        assert.deepStrictEqual([after.effective.ALFRED_CODE_SCORING, after.effective.ALFRED_CODE_SCORING_OUTPUTS], ['1', 'designer-plan'], 'the old scoring seeds moved');
+        // at local scope the mode file is the stack's file: its mode keys stay there, as v2.12.0 left them (its old SCORER 0 seed reset)
+        const stays = (k) => scope === 'local' && MODES.includes(renamedKey(k));
+        assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k) && !stays(k)), [], JSON.stringify(after.env));
         const want = reseeded(before.env);
-        for (const key of SEEDED) assert.strictEqual(after.vars[key], want[key], `${key} did not move unchanged`);
-        const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(k));
+        for (const key of SEEDED.filter((k) => !stays(k))) assert.strictEqual(after.vars[key], want[key], `${key} did not move unchanged`);
+        for (const key of SEEDED.filter(stays)) assert.strictEqual(after.env[key], want[key], `${key} did not stay in the mode file as v2.12.0 left it`);
+        const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(renamedKey(k)) && !stays(k));
         assert.ok(moved.length > 0, 'v2.12.0 ledgered its seeds');
-        for (const [key, hash] of moved) assert.strictEqual((after.ledger['.variables'] || {})[key], want[key] === before.env[key] ? hash : stampLib.valueHash(want[key]), `${key}'s ledger row did not follow it`);
+        for (const [key, hash] of moved)
+        {
+            const now = renamedKey(key);
+            assert.strictEqual((after.ledger['.variables'] || {})[now], want[now] === before.env[key] ? hash : stampLib.valueHash(want[now]), `${key}'s ledger row did not follow it`);
+        }
         for (const [key] of moved) assert.ok(!Object.hasOwn(after.ledger[file] || {}, key), `${key} is still ledgered under ${file}`);
         assert.strictEqual(after.ignored, scope === 'local' ? 0 : 1);
         if (scope !== 'local') assert.match(after.dataIgnore, /^!\/\.variables$/m, 'the data root\'s own file re-includes .variables');
@@ -194,45 +237,62 @@ for (const scope of ['project', 'user', 'local'])
     });
 }
 
-test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ignores the data root leaves settings.json byte-identical and names .gitignore:<n>', skipWithout('v2.12.0'), () =>
+// Mode v2 stage 2: the stack's file is settings.local.json at project scope too, so the rows settings.json held move there
+// unchanged and settings.json keeps none of them.
+test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ignores the data root moves settings.json\'s rows unchanged to settings.local.json and names .gitignore:<n>', skipWithout('v2.12.0'), () =>
 {
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS, ...over('v2.12.0', 1),
         args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
         prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.alfred/\n'),
-        each: (repo) => ({ settings: readOr(path.join(repo, '.claude', 'settings.json')), vars: fs.existsSync(varsFile(repo)) }),
+        each: (repo) => ({ settings: readOr(path.join(repo, '.claude', 'settings.json')), local: readOr(path.join(repo, '.claude', 'settings.local.json')), vars: fs.existsSync(varsFile(repo)) }),
     });
-    // byte-identical but for the two old scorer seeds the update moves (B1)
+    // unchanged but for the renamed scoring keys, the two old scoring seeds the update moves (B1) and a key retired whatever its value
+    // (complexity stage 1 B9: v2.12.0 seeded ALFRED_CODE_FORGE_WATCH)
     const before = JSON.parse(steps[0].settings);
     before.env = reseeded(before.env);
-    assert.strictEqual(steps[1].settings, `${JSON.stringify(before, null, 2)}\n`, outs[1]);
+    const raw = JSON.parse(steps[0].settings).env;
+    for (const [key, onlyWhen] of RETIRED) if (onlyWhen == null || raw[key] === onlyWhen) delete before.env[key];
+    // and the modes: a stack seed of one is never carried into the mode file (it equals the default the loader reads)
+    for (const key of MODES) delete before.env[key];
+    // and 3.11.0's scoring rename: the seat deny re-spelled in place
+    before.permissions.deny = before.permissions.deny.map((r) => r.replace(/^Agent\(alfred-code:output-scorer\)$/, 'Agent(alfred-code:output-scoring)'));    // legacy
+    // the move writes the rows in its own order, so the top-level and env keys are compared in order of name; the layout byte for byte
+    const byName = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
+    const sorted = (o) => byName({ ...o, env: byName(o.env) });
+    const after = JSON.parse(steps[1].local);
+    assert.strictEqual(steps[1].local, `${JSON.stringify(after, null, 2)}\n`, 'the layout');
+    assert.strictEqual(JSON.stringify(sorted(after), null, 2), JSON.stringify(sorted(before), null, 2), outs[1]);
+    assert.deepStrictEqual(JSON.parse(steps[1].settings || '{}'), {}, 'settings.json keeps none of the stack\'s rows');
     assert.strictEqual(steps[1].vars, false, 'a .variables was written under an ignored data root');
-    assert.match(outs[1], /!! variables: \.alfred\/\.variables is ignored by \.gitignore:1 - the keys are kept in settings\.json/, outs[1]);
+    assert.match(outs[1], /!! variables: \.alfred\/\.variables is ignored by \.gitignore:1 - the keys are kept in settings\.local\.json/, outs[1]);
     assert.doesNotMatch(outs[1], MOVED_LINE);
 });
 
-test('the one-way gate: a value .variables cannot hold keeps its settings key and prints one !! line', POSIX_ONLY, () =>
+// Mode v2 stage 2 (Ruling 12): at project scope a variable in settings.local.json is this machine's override and never
+// moves, and settings.json is no longer the stack's file - so the move, and its gate, run on the local file at local scope.
+test('the one-way gate: a value .variables cannot hold keeps its settings.local.json key at local scope and prints one !! line', POSIX_ONLY, () =>
 {
-    const KEY = 'ALFRED_CODE_SCORER_OUTPUTS';
+    const KEY = 'ALFRED_CODE_SCORING_OUTPUTS';
     const { outs, result } = seedRun(['install', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
+        plugins: PLUGINS, args: [['--scope', 'local'], ['--scope', 'local', '--installed-only']],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
             variables.write(varsFile(repo), { [KEY]: null });
-            const f = path.join(repo, '.claude', 'settings.json');
+            const f = path.join(repo, '.claude', 'settings.local.json');
             const data = json(f);
             data.env[KEY] = 'plan\ndesign';
             fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
             return null;
         },
-        inspect: (repo) => ({ env: envIn(repo, 'settings.json'), vars: varsOf(repo), text: readOr(varsFile(repo)) }),
+        inspect: (repo) => ({ env: envIn(repo, 'settings.local.json'), vars: varsOf(repo), text: readOr(varsFile(repo)) }),
     });
     assert.strictEqual(result.env[KEY], 'plan\ndesign');
     assert.ok(!Object.hasOwn(result.vars, KEY));
     assert.doesNotMatch(result.text, /^design$/m, 'half a value reached the file');
     assert.strictEqual((outs[1].match(/!! variables:/g) || []).length, 1, outs[1]);
-    assert.match(outs[1], new RegExp(`!! variables: ${KEY} [^\\n]*kept in settings\\.json`), outs[1]);
+    assert.match(outs[1], new RegExp(`!! variables: ${KEY} [^\\n]*kept in settings\\.local\\.json`), outs[1]);
 });
 
 test('AC9: an update over a v2.10.0 export applies the renames, then moves, and writes no workspace file', skipWithout('v2.10.0'), () =>
@@ -249,7 +309,9 @@ test('AC9: an update over a v2.10.0 export applies the renames, then moves, and 
     assert.strictEqual(after.ws, false);
 });
 
-test('AC10: a hand-typed value moves unledgered, a non-catalog key stays, a differing settings.local.json key stays, is named and wins', skipWithout('v2.12.0'), () =>
+// Mode v2 stage 2 (the AC24 ruling): a value typed in settings.json stays there, unledgered, and still applies - the stack's
+// old-name row the update carries to settings.local.json (ALFRED_CODE_SCORER_LEVEL at its hash) must not outrank it.
+test('AC10: a hand-typed value stays in settings.json and applies, a non-catalog key stays, the settings.local.json keys stay in place and win', skipWithout('v2.12.0'), () =>
 {
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS, ...over('v2.12.0', 1),
@@ -260,7 +322,7 @@ test('AC10: a hand-typed value moves unledgered, a non-catalog key stays, a diff
             {
                 const f = path.join(repo, '.claude', 'settings.json');
                 const data = json(f);
-                Object.assign(data.env, { ALFRED_CODE_SCORER_LEVEL: '95', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/repo' });
+                Object.assign(data.env, { ALFRED_CODE_SCORING_LEVEL: '95', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/repo' });
                 fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
                 fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_HISTORY: data.env.ALFRED_CODE_HISTORY } }, null, 2)}\n`);
                 return null;
@@ -269,18 +331,25 @@ test('AC10: a hand-typed value moves unledgered, a non-catalog key stays, a diff
         },
     });
     const got = steps[1];
-    assert.strictEqual(got.vars.ALFRED_CODE_SCORER_LEVEL, '95');
-    assert.ok(!Object.hasOwn(got.ledger['.variables'] || {}, 'ALFRED_CODE_SCORER_LEVEL'), 'a hand-typed value was ledgered as the stack\'s');
+    assert.strictEqual(got.effective.ALFRED_CODE_SCORING_LEVEL, '95', outs[1]);
+    assert.strictEqual(got.env.ALFRED_CODE_SCORING_LEVEL, '95', 'the typed value left settings.json');
+    assert.ok(!Object.hasOwn(got.vars, 'ALFRED_CODE_SCORING_LEVEL') && !Object.hasOwn(got.local, 'ALFRED_CODE_SCORING_LEVEL'), 'a copy shadows the typed value');
+    assert.ok(!Object.hasOwn(got.ledger['.variables'] || {}, 'ALFRED_CODE_SCORING_LEVEL'), 'a hand-typed value was ledgered as the stack\'s');
     assert.strictEqual(got.env.ALFRED_CODE_ALLOW_WRITE_OUTSIDE, '/elsewhere/repo', 'a non-catalog key left settings.json');
     assert.ok(!Object.hasOwn(got.vars, 'ALFRED_CODE_ALLOW_WRITE_OUTSIDE'));
-    assert.deepStrictEqual(got.local, { ALFRED_CODE_TURN_CHECK: '1' }, 'the equal local copy goes, the differing one stays');
+    // Ruling 12: the local file's variables are this machine's overrides and stay in place, the equal one too; the off-list is
+    // the stack's row there now.
+    assert.deepStrictEqual(Object.keys(got.local).sort(), ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK'], JSON.stringify(got.local));
+    assert.strictEqual(got.local.ALFRED_CODE_TURN_CHECK, '1');
+    assert.strictEqual(got.local.ALFRED_CODE_HISTORY, got.effective.ALFRED_CODE_HISTORY, 'the equal copy changed value');
     assert.strictEqual(got.effective.ALFRED_CODE_TURN_CHECK, '1');
-    assert.strictEqual((outs[1].match(/variables: ALFRED_CODE_TURN_CHECK set in \.claude\/settings\.local\.json \(it overrides \.variables here\)/g) || []).length, 1, outs[1]);
+    // Task 4's ruling (keepOwn hands moveVariables no held keys): an override left in place is no move, so no line names it.
+    assert.doesNotMatch(outs[1], /variables: ALFRED_CODE_TURN_CHECK set in/, outs[1]);
 });
 
 test('AC10: a local-scope run leaves a tracked settings.json byte-identical and seeds none of its keys', POSIX_ONLY, () =>
 {
-    const team = `${JSON.stringify({ env: { ALFRED_CODE_SCORER_LEVEL: '90', ALFRED_CODE_HISTORY: '5' } }, null, 2)}\n`;
+    const team = `${JSON.stringify({ env: { ALFRED_CODE_SCORING_LEVEL: '90', ALFRED_CODE_HISTORY: '5' } }, null, 2)}\n`;
     const { result } = seedRun('install', SEL, {
         plugins: PLUGINS, args: ['--scope', 'local'],
         prepare: (repo) =>
@@ -292,8 +361,8 @@ test('AC10: a local-scope run leaves a tracked settings.json byte-identical and 
         inspect: (repo) => ({ shared: readOr(path.join(repo, '.claude', 'settings.json')), vars: varsOf(repo), effective: effective(repo) }),
     });
     assert.strictEqual(result.shared, team);
-    assert.ok(!Object.hasOwn(result.vars, 'ALFRED_CODE_SCORER_LEVEL') && !Object.hasOwn(result.vars, 'ALFRED_CODE_HISTORY'), JSON.stringify(result.vars));
-    assert.strictEqual(result.effective.ALFRED_CODE_SCORER_LEVEL, '90');
+    assert.ok(!Object.hasOwn(result.vars, 'ALFRED_CODE_SCORING_LEVEL') && !Object.hasOwn(result.vars, 'ALFRED_CODE_HISTORY'), JSON.stringify(result.vars));
+    assert.strictEqual(result.effective.ALFRED_CODE_SCORING_LEVEL, '90');
 });
 
 test('AC16 (installer half): a local-scope run over a tracked .variables writes nothing there and names a differing flag', POSIX_ONLY, () =>
@@ -317,10 +386,12 @@ test('AC16 (installer half): a local-scope run over a tracked .variables writes 
 
 for (const scope of ['project', 'local'])
 {
-    test(`AC23: at ${scope} scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows`, skipWithout('v2.12.0'), () =>
+    test(`AC23: at ${scope} scope AUTO_COMPACT=1 and MEMORY=custom keep the windows and autoMemoryEnabled false; the mode file is the switch from then on`, skipWithout('v2.12.0'), () =>
     {
-        const file = settingsName(scope);
-        const claudeOwn = (repo) =>
+        // Mode v2 stage 2: v2.12.0 wrote these rows into settings.json at project scope; from the update on they sit in
+        // settings.local.json at every scope, and settings.json keeps none of them.
+        const fileAt = (i) => (scope === 'local' || i > 0 ? 'settings.local.json' : 'settings.json');
+        const claudeOwn = (repo, file) =>
         {
             const data = json(path.join(repo, '.claude', file)) || {};
             return JSON.stringify({ modelSettings: data.modelSettings, autoMemoryEnabled: data.autoMemoryEnabled });
@@ -330,17 +401,23 @@ for (const scope of ['project', 'local'])
             args: [['--scope', scope, '--auto-compact', 'on', '--memory', 'custom'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
             each: (repo, i) =>
             {
-                const got = { own: claudeOwn(repo), settingsRows: (ledgerOf(repo).settings || {})[file] || {}, tree: treeHash(repo) };
+                const got = { own: claudeOwn(repo, fileAt(i)), shared: claudeOwn(repo, 'settings.json'), settingsRows: (ledgerOf(repo).settings || {})[fileAt(i)] || {}, tree: treeHash(repo) };
                 if (i === 2) variables.write(varsFile(repo), { ALFRED_CODE_AUTO_COMPACT: '0' });
                 return got;
             },
         });
         const [before, after, again, off] = steps;
         assert.ok(/autoCompactWindow/.test(before.own) && /"autoMemoryEnabled":false/.test(before.own), before.own);
-        assert.strictEqual(after.own, before.own, outs[1]);
-        assert.deepStrictEqual(after.settingsRows, before.settingsRows);
+        // Mode commands v2: the windows are writeModes's now (the team's 1 copied into the mode file once), never ledgered
+        const windows = (own) => JSON.stringify(JSON.parse(own).modelSettings);
+        assert.strictEqual(windows(after.own), windows(before.own), outs[1]);
+        assert.match(after.own, /"autoMemoryEnabled":false/);
+        const noWindows = (rows) => Object.fromEntries(Object.entries(rows).filter(([k]) => !k.startsWith('modelSettings.')));
+        assert.deepStrictEqual(after.settingsRows, noWindows(before.settingsRows));
+        if (scope !== 'local') assert.strictEqual(after.shared, '{}', 'settings.json keeps no window or memory row');
         assert.strictEqual(again.tree, after.tree, 'the second update changed a file');
-        assert.doesNotMatch(off.own, /autoCompactWindow/, outs[3]);
+        // a 0 in .variables no longer moves them: the mode file's own 1 is the switch (/alfred-code:mode:auto-compact off)
+        assert.strictEqual(windows(off.own), windows(after.own), outs[3]);
         assert.match(off.own, /"autoMemoryEnabled":false/);
     });
 }
@@ -432,25 +509,36 @@ test('ensureRootIgnore writes no !/.variables', () =>
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a configure set where the user\'s .alfred/ line ignores the data root writes settings.json and names .gitignore:<n>', () =>
+// Mode v2 stage 2 (Task 7): the stack's file is settings.local.json at every scope, so a set the ignored data root turns
+// away lands there - settings.json is never written - with one write, an override the file held changed in the same call.
+test('a configure set where the user\'s .alfred/ line ignores the data root writes settings.local.json and names .gitignore:<n>', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'set-ignored-'));
     try
     {
         rt.execCommand('git', ['init', '-q', dir]);
         fs.writeFileSync(path.join(dir, '.gitignore'), 'dist/\n.alfred/\n');
+        fs.mkdirSync(path.join(dir, '.claude'));
+        const team = '{\n  "env": {\n    "TEAM": "1"\n  }\n}\n';
+        fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), team);
+        fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HISTORY: '5' } }));
         const lines = [];
-        const got = variables.set(dir, ['ALFRED_CODE_SCORER_LEVEL=90'], { scope: 'project', env: { CLAUDE_CONFIG_DIR: path.join(dir, 'acct') }, log: (l) => lines.push(l) });
-        assert.deepStrictEqual(got.toSettings, ['ALFRED_CODE_SCORER_LEVEL']);
-        assert.deepStrictEqual(got.written, []);
-        assert.strictEqual(envIn(dir, 'settings.json').ALFRED_CODE_SCORER_LEVEL, '90');
+        const got = variables.set(dir, ['ALFRED_CODE_SCORING_LEVEL=90', 'ALFRED_CODE_HISTORY=7'], { scope: 'project', env: { CLAUDE_CONFIG_DIR: path.join(dir, 'acct') }, log: (l) => lines.push(l) });
+        assert.deepStrictEqual([got.toSettings, got.toLocal, got.written], [['ALFRED_CODE_SCORING_LEVEL'], ['ALFRED_CODE_HISTORY'], []]);
+        assert.deepStrictEqual(envIn(dir, 'settings.local.json'), { ALFRED_CODE_HISTORY: '7', ALFRED_CODE_SCORING_LEVEL: '90' }, 'one write lost the other');
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude', 'settings.json'), 'utf8'), team);
         assert.ok(!fs.existsSync(varsFile(dir)));
-        assert.ok(lines.some((l) => /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2/.test(l)), lines.join('\n'));
+        assert.ok(lines.some((l) => /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2 - the keys are kept in settings\.local\.json/.test(l)), lines.join('\n'));
+        assert.ok(lines.includes('variables: ALFRED_CODE_SCORING_LEVEL written to .claude/settings.local.json'), lines.join('\n'));
+        fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{ nope');
+        assert.throws(() => variables.set(dir, ['ALFRED_CODE_SCORING_LEVEL=95'], { scope: 'project', env: { CLAUDE_CONFIG_DIR: path.join(dir, 'acct') }, log: () => {} }),
+            /\.claude\/settings\.local\.json cannot be read - fix it, then run the set again/);
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude', 'settings.local.json'), 'utf8'), '{ nope');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('variables.ignoreVerdict: a data-root .gitignore the user wrote is not the stack\'s own, so the keys stay in settings.json', () =>
+test('variables.ignoreVerdict: a data-root .gitignore the user wrote is not the stack\'s own, so the keys stay in settings.local.json', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-own-'));
     try
@@ -489,33 +577,22 @@ test('variables.ignoreVerdict reads -q for the verdict and -v only for the rule\
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a --data-path move carries .variables to the new root with its values; a file already there is kept and the old one named', POSIX_ONLY, () =>
+test('the one-time move of an older data root carries .variables to .alfred with its values; a re-run changes nothing', POSIX_ONLY, () =>
 {
-    const move = ['--scope', 'project', '--installed-only', '--data-path', '.data', '--data-move', 'move'];
-    const level = (repo, rel) => ((layout.readDotenv(path.join(repo, ...rel.split('/'), '.variables')) || {}).values || {}).ALFRED_CODE_SCORER_LEVEL;
+    const update = ['--scope', 'project', '--installed-only'];
+    const level = (repo, rel) => ((layout.readDotenv(path.join(repo, ...rel.split('/'), '.variables')) || {}).values || {}).ALFRED_CODE_SCORING_LEVEL;
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], move, ['--scope', 'project', '--installed-only']],
+        plugins: PLUGINS, args: [['--scope', 'project'], update, update],
         each: (repo, i) =>
         {
-            if (i === 0) variables.set(repo, ['ALFRED_CODE_SCORER_LEVEL=95'], { env: acctEnv(repo), log: () => {} });
-            return { old: level(repo, '.alfred'), now: level(repo, '.data'), effective: effective(repo).ALFRED_CODE_SCORER_LEVEL, tree: treeHash(repo) };
+            if (i === 0) { variables.set(repo, ['ALFRED_CODE_SCORING_LEVEL=95'], { env: acctEnv(repo), log: () => {} }); plantOlderRoot(repo, '.data'); }
+            return { old: level(repo, '.data'), now: level(repo, '.alfred'), effective: effective(repo).ALFRED_CODE_SCORING_LEVEL, tree: treeHash(repo) };
         },
     });
-    assert.deepStrictEqual(steps[0], { ...steps[0], old: '95', now: undefined });
+    assert.deepStrictEqual([steps[0].old, steps[0].now, steps[0].effective], ['95', undefined, '95'], 'before the move the older root is read');
     assert.deepStrictEqual([steps[1].old, steps[1].now, steps[1].effective], [undefined, '95', '95'], outs[1]);
-    assert.match(outs[1], /variables: moved \.alfred\/\.variables -> \.data\/\.variables/);
-    // The files the move writes; the root move's own state files are not this case's.
-    const rows = (tree) => tree.split('\n').filter((r) => /^(\.data|\.alfred)\/\.variables |^\.claude\/(settings(\.local)?\.json|alfred-code\.stamp) /.test(r));
-    assert.ok(rows(steps[1].tree).length >= 3, steps[1].tree);
-    assert.deepStrictEqual(rows(steps[2].tree), rows(steps[1].tree), 'a re-run changed a file');
-
-    const clash = seedRun(['install', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], move],
-        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.data'), { recursive: true }); fs.writeFileSync(path.join(repo, '.data', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\n'); },
-        inspect: (repo) => ({ old: level(repo, '.alfred'), now: level(repo, '.data') }),
-    });
-    assert.deepStrictEqual(clash.result, { old: '80', now: '70' });
-    assert.match(clash.out, /!! variables: \.alfred\/\.variables left in place - \.data\/\.variables already exists/);
+    assert.match(outs[1], /data root: moved \.data to \.alfred/);
+    assert.strictEqual(steps[2].tree, steps[1].tree, 'a re-run changed a file');
 });
 
 test('at local scope a key typed into settings.local.json after the move goes into .variables with its value - the value the loader read', POSIX_ONLY, () =>
@@ -545,7 +622,7 @@ test('a move off local keeps the user\'s own .variables values local: they go to
         each: (repo, i) =>
         {
             if (i === 0) variables.set(repo, ['ALFRED_CODE_HISTORY=7'], { env: acctEnv(repo), log: () => {} });
-            return { effective: effective(repo).ALFRED_CODE_HISTORY, file: varsOf(repo).ALFRED_CODE_HISTORY, local: envIn(repo, 'settings.local.json').ALFRED_CODE_HISTORY, seed: varsOf(repo).ALFRED_CODE_SCORER_LEVEL, tree: treeHash(repo) };
+            return { effective: effective(repo).ALFRED_CODE_HISTORY, file: varsOf(repo).ALFRED_CODE_HISTORY, local: envIn(repo, 'settings.local.json').ALFRED_CODE_HISTORY, seed: varsOf(repo).ALFRED_CODE_SCORING_LEVEL, tree: treeHash(repo) };
         },
     });
     assert.deepStrictEqual([steps[0].effective, steps[0].file], ['7', '7']);
@@ -568,7 +645,7 @@ test('uninstall removes the stack\'s .variables rows at their recorded hash and 
             return fs.existsSync(varsFile(repo)) ? varsOf(repo) : null;
         },
     });
-    assert.strictEqual(steps[0].ALFRED_CODE_SCORER_LEVEL, '80');
+    assert.strictEqual(steps[0].ALFRED_CODE_SCORING_LEVEL, '80');
     assert.deepStrictEqual(steps[1], { ALFRED_CODE_HISTORY: '7' }, outs[1]);
     assert.match(outs[1], /\.variables env: ALFRED_CODE_HISTORY kept - changed since the stack wrote it, so it is yours \(1 chars\)/);
 });
@@ -576,27 +653,28 @@ test('uninstall removes the stack\'s .variables rows at their recorded hash and 
 // ---------- the burn-down of 2026-11-04 (R097, R098, R169) ----------
 // R097: the move run wrote <new root>/state/lsp-coverage.json while the old root still sat on disk, so the next update
 // rewrote it - the whole tree, state files included, is equal from the run after the move.
-test('a --data-path move leaves the whole tree identical on the next update', POSIX_ONLY, () =>
+test('the one-time move of an older data root leaves the whole tree identical on the next update', POSIX_ONLY, () =>
 {
-    const move = ['--scope', 'project', '--installed-only', '--data-path', '.data', '--data-move', 'move'];
+    const update = ['--scope', 'project', '--installed-only'];
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
-        plugins: PLUGINS, args: [['--scope', 'project'], move, ['--scope', 'project', '--installed-only']],
-        each: (repo) => treeHash(repo),
+        plugins: PLUGINS, args: [['--scope', 'project'], update, update],
+        each: (repo, i) => { if (i === 0) plantOlderRoot(repo, '.data'); return treeHash(repo); },
     });
     assert.strictEqual(steps[2], steps[1], outs[2]);
 });
 
 // R098: a .variables another run holds locked kept every key in the settings file - a fresh install seeded all of them
 // into settings.json. Now only the keys the settings file already held stay; the rest wait for the next run.
+// Mode v2 stage 2: the stack's settings file is settings.local.json at project scope too, so the lock tests read that one.
 const holdLock = (repo) => { fs.mkdirSync(path.join(repo, '.alfred'), { recursive: true }); fs.writeFileSync(`${varsFile(repo)}.lock`, String(process.pid)); };
-test('a locked .variables during the move writes no seed into settings.json, and the next run seeds .variables', POSIX_ONLY, () =>
+test('a locked .variables during the move writes no seed into settings.local.json, and the next run seeds .variables', POSIX_ONLY, () =>
 {
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
         prepare: holdLock,
         each: (repo, i) =>
         {
-            const got = { env: catalogIn(envIn(repo, 'settings.json')), vars: Object.keys(varsOf(repo)).sort() };
+            const got = { env: catalogIn(envIn(repo, 'settings.local.json')), vars: Object.keys(varsOf(repo)).sort() };
             if (i === 0) fs.rmSync(`${varsFile(repo)}.lock`, { force: true });
             return got;
         },
@@ -607,7 +685,7 @@ test('a locked .variables during the move writes no seed into settings.json, and
     assert.deepStrictEqual(steps[1].env, [...SETTINGS_KEYS].sort());
 });
 
-test('an update under the same lock keeps the keys settings.json already held', POSIX_ONLY, () =>
+test('an update under the same lock keeps the keys settings.local.json already held', POSIX_ONLY, () =>
 {
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']],
@@ -615,19 +693,19 @@ test('an update under the same lock keeps the keys settings.json already held', 
         {
             if (i === 0)
             {
-                const file = path.join(repo, '.claude', 'settings.json');
+                const file = path.join(repo, '.claude', 'settings.local.json');
                 const s = json(file);
                 s.env.ALFRED_CODE_HISTORY = '7';
                 fs.writeFileSync(file, JSON.stringify(s, null, 2));
-                // held in settings.json alone: .variables outranks settings.json (D4), so a key both hold is a dead copy
+                // held in settings.local.json alone, as the key's one home in this test
                 fs.writeFileSync(varsFile(repo), fs.readFileSync(varsFile(repo), 'utf8').replace(/^ALFRED_CODE_HISTORY=.*\n/m, ''));
                 holdLock(repo);
             }
-            return { env: envIn(repo, 'settings.json'), vars: varsOf(repo) };
+            return { env: envIn(repo, 'settings.local.json'), vars: varsOf(repo) };
         },
     });
     assert.strictEqual(steps[1].env.ALFRED_CODE_HISTORY, '7', outs[1]);
-    assert.deepStrictEqual(catalogIn(steps[1].env), [...SETTINGS_KEYS, 'ALFRED_CODE_HISTORY'].sort(), 'no seed from .variables lands in settings.json');
+    assert.deepStrictEqual(catalogIn(steps[1].env), [...SETTINGS_KEYS, 'ALFRED_CODE_HISTORY'].sort(), 'no seed from .variables lands in settings.local.json');
     assert.deepStrictEqual(steps[1].vars, steps[0].vars, '.variables untouched');
 });
 
@@ -645,7 +723,9 @@ test('uninstall names a .variables still holding the user\'s keys', POSIX_ONLY, 
 // the next update and counted as moved; a warning alone still lost it. It stays where it was typed - it changes nothing a
 // reader sees, since .variables wins - the line names both lengths (never a value) on every update until it is settled,
 // it is no move, and no ledger row claims it.
-test('a settings.json value .variables outranks is kept as typed, named on every update, never counted as moved', POSIX_ONLY, () =>
+// Mode v2 stage 2 (Task 4's ruling): settings.json is not the stack's file any more, so a value typed there is left byte
+// for byte and the O11 '!! ... kept as typed ... outranks' line is gone with the put-back it fed; this test keeps the rest.
+test('a settings.json value .variables outranks is left as typed, never counted as moved, and no ledger row claims it', POSIX_ONLY, () =>
 {
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
         plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only'], ['--scope', 'project', '--installed-only']],
@@ -654,8 +734,9 @@ test('a settings.json value .variables outranks is kept as typed, named on every
             if (i === 0)
             {
                 const file = path.join(repo, '.claude', 'settings.json');
-                const s = json(file);
-                s.env.ALFRED_CODE_HISTORY = '17';
+                const s = json(file) || {};
+                s.env = { ...(s.env || {}), ALFRED_CODE_HISTORY: '17' };
+                fs.mkdirSync(path.dirname(file), { recursive: true });
                 fs.writeFileSync(file, JSON.stringify(s, null, 2));
             }
             return { env: envIn(repo, 'settings.json'), vars: varsOf(repo), ledger: ledgerOf(repo).env || {} };
@@ -666,7 +747,8 @@ test('a settings.json value .variables outranks is kept as typed, named on every
         assert.strictEqual(steps[i].vars.ALFRED_CODE_HISTORY, steps[0].vars.ALFRED_CODE_HISTORY, `update ${i}: .variables keeps the value every reader used`);
         assert.strictEqual(steps[i].env.ALFRED_CODE_HISTORY, '17', `update ${i}: the typed value stays in settings.json`);
         assert.ok(!Object.hasOwn(steps[i].ledger['settings.json'] || {}, 'ALFRED_CODE_HISTORY'), `update ${i}: no ledger row claims the typed value`);
-        assert.match(outs[i], /!! settings\.json env: ALFRED_CODE_HISTORY kept as typed \(2 chars\), but \.alfred\/\.variables holds another value \(1 chars\), which outranks settings\.json, so every reader uses that one - set it in \.alfred\/\.variables \(\/alfred-code:configure\) if the typed one was meant, else delete it from settings\.json/, outs[i]);
+        assert.ok(!Object.hasOwn(steps[i].ledger['settings.local.json'] || {}, 'ALFRED_CODE_HISTORY'), `update ${i}: no ledger row claims the typed value`);
+        assert.doesNotMatch(outs[i], /kept as typed/, `update ${i}: the removed O11 line`);
         assert.doesNotMatch(outs[i], MOVED_LINE, `update ${i}: a kept value is no move`);
     }
 });
@@ -680,11 +762,13 @@ test('a value .variables outranks keeps its place between the user\'s own keys: 
         plugins: PLUGINS, args: [['--scope', 'project'], ['--scope', 'project', '--installed-only'], ['--scope', 'project', '--installed-only']],
         each: (repo, i) =>
         {
+            // Mode v2 stage 2: the install writes no settings.json, so the user's typed keys start the file.
             const file = path.join(repo, '.claude', 'settings.json');
             if (i === 0)
             {
-                const s = json(file);
-                s.env = { USER_FIRST: 'a', ALFRED_CODE_HISTORY: '17', ...s.env, USER_LAST: 'z' };
+                const s = json(file) || {};
+                s.env = { USER_FIRST: 'a', ALFRED_CODE_HISTORY: '17', ...(s.env || {}), USER_LAST: 'z' };
+                fs.mkdirSync(path.dirname(file), { recursive: true });
                 typed = JSON.stringify(s, null, 2);
                 fs.writeFileSync(file, typed);
             }

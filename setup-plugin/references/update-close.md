@@ -75,7 +75,7 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   or on `TRUNCATED`: 'the compare was capped at 300 files - run /alfred-code:configure to reconcile what it may have
   missed', with configure on the suggestion card. No signal: no line.
 - **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope writes
-  (`settings.json env: <old> renamed to <new>`, `settings.local.json env: ...`, `<key> removed (retired ...)`,
+  (`settings.local.json env: <old> renamed to <new>`, `<key> removed (retired ...)`,
   `<key> seeded (<value>)`, `<key> <old> -> '<new>'`). Report those lines; when there are none, say 'env: nothing
   renamed, removed or seeded this run' - a claim the silent log AND step 2's `env-keys:` before-state support. Never
   assert it from memory. The `settings.local.json: created ...` line also arrives as a `warn:` line - report it once,

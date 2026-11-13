@@ -12,7 +12,6 @@
 'use strict';
 
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -21,28 +20,12 @@ const PARTS = [
     ['code-quality', 'CODE-ASSESSMENT.md', 'As of'],
     ['test-coverage-quality', 'COVERAGE-QUALITY.md', 'Captured'],
 ];
-const DATA_ROOT_DEFAULT = '.alfred';
 
 const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
 const settingsEnv = (file) => { try { return (JSON.parse(readText(file) || 'null') || {}).env || {}; } catch { return {}; } };
 
-// The data root as capture-awareness' awareness-state.js reads it: the environment, then the project's settings
-// files, then the account's; a value that is not a plain relative folder is the default.
-function dataRoot(projectRoot, env = process.env)
-{
-    let raw = String(env.ALFRED_CODE_DATA_PATH || '').trim();
-    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    for (const file of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), path.join(account, 'settings.json')])
-    {
-        if (raw) break;
-        raw = String(settingsEnv(file).ALFRED_CODE_DATA_PATH || '').trim();
-    }
-    const value = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
-    const parts = value.split('/');
-    const refused = !value || value.startsWith('/') || /^[A-Za-z]:/.test(value) || /\s/.test(value) || /[$%`"'*?<>|:]/.test(value)
-        || parts.some((p) => p === '.' || p === '..') || parts[0] === '.claude' || parts[0] === '.git';
-    return refused ? DATA_ROOT_DEFAULT : value;
-}
+// The data root, as capture-awareness' awareness-state.js names it: always `.alfred` under the project root.
+const dataRoot = () => '.alfred';
 
 // The docs root: a leftover ALFRED_CODE_DOCS_PATH first (the 2.x line), settings.local.json over settings.json, else
 // <data root>/docs - awareness-state.js docsRoot.

@@ -378,3 +378,13 @@ test('R015: branchSelector reads the branch a numberless merge names', () => {
   assert.strictEqual(branchSelector('gh', ['a', 'b']), null);
   assert.strictEqual(branchSelector('gh', ['https://x.example/o/r/pull/abc']), null);
 });
+
+// Complexity stage 1 (the whole-branch review): the push-target reader's only caller was the act ledger's publish write
+// (B8, B9), so it left with it, and the rule doc no longer cites it as live classifier behaviour.
+test('stage 1 B9: the push-target reader left with the act ledger', () => {
+  assert.strictEqual(forge.pushTargets, undefined);
+  const text = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'forge.js'), 'utf8');
+  assert.doesNotMatch(text, /function pushTargets|\bPUSH_VALUE\b/);
+  const rule = fs.readFileSync(path.join(__dirname, '..', '.claude', 'rules', 'repo-hooks.md'), 'utf8');
+  assert.doesNotMatch(rule, /`pushTargets`/);
+});

@@ -34,11 +34,23 @@ test('I1: CLAUDE.md names the Monitor route and the widened dispatcher matcher',
     assert.strictEqual(row.matcher, 'Bash|PowerShell|Monitor', `${row.file}: every shell row names Monitor`);
 });
 
-test('I2: CLAUDE.md states the comparison verbs and the probed git redactor', () => {
+test('swap 1: the hooks doc states the masker, its floor and the failure-path ceiling', () => {
   const text = claude();
-  assert.match(text, /comparison verbs \(`diff`, `sdiff`, `cmp`, `comm`, `rev`\)\s+are judged like `cat`/);
-  assert.match(text, /--redact-stdin/);
-  assert.match(text, /`git diff --exit-code` prints\s+unmasked, a stated ceiling/);
+  assert.match(text, /updatedToolOutput/);
+  assert.match(text, /Claude Code `2\.1\.322` \(`MASKER_FLOOR`/);
+  assert.match(text, /PostToolUseFailure takes no replacement output/);
+  assert.match(text, /THE DENY-ON-NAME CORE/);
+  assert.match(text, /THE STORE CHECK/);
+  assert.match(text, /a COMPARISON naming a credential file[\s\S]*an ENCODER over one[\s\S]*a print that is NOT ALONE/);
+  assert.doesNotMatch(text, /--redact-stdin/);
+  assert.doesNotMatch(text, /are REWRITTEN via/);
+  const notes = Object.fromEntries(manifestRows().filter((r) => r.file === 'guard-secret-value.js').map((r) => [r.matcher, r.note]));
+  assert.match(notes['Bash|PowerShell|Monitor'], /the store check/);
+  assert.match(notes['Bash|PowerShell|Monitor'], /a comparison naming a credential file, an encoder over one, a print that is not alone/);
+  assert.match(notes['Bash|PowerShell|Monitor'], /the deny-on-name core/);
+  assert.match(notes['Bash|PowerShell|Monitor'], /Nothing is rewritten/);
+  assert.doesNotMatch(notes['@SessionStart'], /a dump masked and a source or copy refused/);
+  assert.match(notes['@SessionStart'], /a copy refused and what a shell read printed comes back masked/);
 });
 
 test('I3: the ask wiring is no longer described as injection-only, never denying', () => {
@@ -57,30 +69,16 @@ test('I4 and I5: CLAUDE.md states the narrowed loop sweep and the identifier rul
   assert.match(text, /'reference to' \/\s+'usages of' count only before a code identifier/);
 });
 
-test('I10: the desktop gate is one wired hook, counted everywhere the hooks are counted', () => {
-  const rows = manifestRows().filter((r) => r.file === 'guard-desktop-exec.js');
-  assert.strictEqual(rows.length, 1);
-  const re = new RegExp(rows[0].matcher);
-  // A desktop server TYPE's tool name under any registration (N6, 2026-10-24): the stack ships no server, so the user's own
-  // registration name is unknown - an `App` the macOS server holds is wired too, and the guard judges its mode.
-  for (const name of ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`, 'mcp__windows-mcp__App', 'mcp__plugin_macos-control_macos-control__App']) // mcp-fixture
-    assert.ok(re.test(name), name);
-  for (const name of ['mcp__plugin_windows-control_windows-control__Click', `mcp__${'windows-control'}__AppX`, 'App', 'mcp__x__ShellX', 'mcp__x__browser_run_code_unsafeX', 'mcp__x__browser_evaluate']) // mcp-fixture
-    assert.ok(!re.test(name), `${name} is not matched`);
-  // ... and the browser server type's code runner, under any registration (ruling N9, 2026-10-24).
-  for (const name of [`mcp__${'playwright-chrome'}__browser_run_code_unsafe`, 'mcp__plugin_my-browser_my-browser__browser_run_code_unsafe']) // mcp-fixture
-    assert.ok(re.test(name), name);
+test('I10 / stage 1 B12: the desktop gate is retired, and the hooks are counted as the manifest wires them', () => {
+  // The desktop exec guard left in complexity stage 1 (B12): no row, no file; the rule loader joined in workspace stage 4a,
+  // so the count everywhere is eighteen.
+  assert.strictEqual(manifestRows().filter((r) => r.file === 'guard-desktop-exec.js').length, 0);
   assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
-  assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop server types' process launchers, `App` and `Shell`, under any\s+registration name/);
-  assert.match(claude(), /type's code runner `browser_run_code_unsafe` the same way/);
-  // E-batch mcp-B-m1: a server's PowerShell and execute_shell_command are wired and documented with the Shell.
-  for (const name of ['mcp__win__PowerShell', 'mcp__x__execute_shell_command']) assert.ok(re.test(name), name); // mcp-fixture
-  for (const name of ['PowerShell', 'mcp__x__PowerShellX', 'mcp__x__execute_shell_commands']) assert.ok(!re.test(name), `${name} is not matched`); // mcp-fixture
-  assert.match(claude(), /`\|\^mcp__\.\+__PowerShell\$\|\^mcp__\.\+__execute_shell_command\$`/);
+  assert.doesNotMatch(claude(), /`guard-desktop-exec\.js` \(PreToolUse/);
   // The stale hook count, never the word itself: the footprint counts seventeen references.
   assert.doesNotMatch(read('README.md'), /seventeen (?:wired |stack )?hooks/);
-  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen (?:wired |stack )?hooks/);
+  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen (?:wired |stack |house )?hooks/);
   // The walk's own count follows the manifest's hook files (hooks track H6, 2026-10-21: the pin forbade 'all eighteen'
   // from the days eighteen was stale, and preferences-session made it right again).
   const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',

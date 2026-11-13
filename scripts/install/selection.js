@@ -97,6 +97,8 @@ function parseSelection(text)
 
 // Keep only the entries the selection names. HOOKS are the special case: no `hook` line at all
 // means the file predates the hooks layer, and every hook stays.
+// Workspace stage 4c: the rule loader and the config guard ride every selection that names hooks - no pick leaves them out.
+const LOCKED_HOOKS = ['rules-session', 'guard-config-protection'];
 function applySelection(lists, picked)
 {
     const hasHooks = [...picked].some((l) => l.startsWith('hook '));
@@ -105,7 +107,7 @@ function applySelection(lists, picked)
     {
         const entries = lists[key] || [];
         if (key === 'hooks' && !hasHooks) { out.hooks = [...entries]; continue; }
-        out[key] = entries.filter((entry) => picked.has(`${line} ${name(entry)}`));
+        out[key] = entries.filter((entry) => picked.has(`${line} ${name(entry)}`) || (key === 'hooks' && LOCKED_HOOKS.includes(name(entry))));
     }
     return out;
 }
@@ -139,15 +141,16 @@ const listDir = (dir, test) =>
 // shipped (the catalog, a renamed item's old name, a retired one) is an item, so a project's own skill is
 // neither a pick nor install evidence; null reads every folder.
 // `foreignSkill(name)` (M3): a folder under a catalog skill name that is the project's own, never a pick.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false })
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), agentsDir = path.join(claudeDir, 'agents'), plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false })
 {
     const lines = [];
     const ours = (kind, name) => !known || known[kind].has(name);
-    for (const name of listDir(skillsDir, (d) => d.isDirectory()))
+    for (const name of listDir(skillsDir, (d) => d.isDirectory() || d.isSymbolicLink()))
         if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name)) lines.push(`skill ${name}`);
-    for (const f of listDir(path.join(claudeDir, 'agents'), (d) => d.isFile() && d.name.endsWith('.md')))
+    for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md')))
         if (ours('agents', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
-    for (const f of listDir(path.join(claudeDir, 'rules'), (d) => d.isFile() && d.name.endsWith('.md')))
+    const ruleFile = (d) => d.isFile() && d.name.endsWith('.md');
+    for (const f of new Set([path.join(path.dirname(claudeDir), '.alfred', 'stack'), claudeDir].flatMap((d) => listDir(path.join(d, 'rules'), ruleFile))))
     {
         const name = f.replace(/\.md$/, '');
         if (!RULE_EXCLUDE.test(name) && ours('rules', name)) lines.push(`rule ${name}`);
@@ -228,7 +231,9 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
 // carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
-function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], log = () => {} })
+function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
+    stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
+    scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -243,8 +248,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
     stampHooks = [...new Set((stampHooks || []).map(hookNow))];
-    committedEnv = offNow(committedEnv);
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, agentsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false } };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -252,7 +256,8 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     // entry is every project's, and would read a project the stack never touched as installed.
     // The core counts as enabled whatever its flag (brand.js rowOn, S22).
     const ownEntries = ours.some((r) => rowOn(r) && (r.scope === 'project' || r.scope === 'local'));
-    if (!hasInstall(lines) && !ownEntries) return none;
+    // A joined child may hold nothing of its own but the links its stamp lists (4c: no rule copy either).
+    if (!hasInstall([...lines, ...linked]) && !ownEntries) return none;
 
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
@@ -283,7 +288,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
     const noneBefore = routes.hooks && names.includes(BRAND.core) && stampHooks.length > 0
-        && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
+        && stampHooks.filter((h) => !LOCKED_HOOKS.includes(h)).every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
     for (const line of noneBefore ? installed.filter((l) => !l.startsWith('hook ')).concat('hook none') : installed)
         if (!lines.includes(line)) lines.push(line);
     // A seat the stamp homes in the core ran on the core, whatever that release's placement: on a real
@@ -360,10 +365,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     // A folder holding only the user's own files, or a leftover prelude, carries no hook line at all
     // (R56), so under any route it is never read as the picks. `keptNone` below stays on the literal
     // stamp line (R55): an inferred route never makes an empty folder a None.
-    // C5: at project and user scope the stored switch and HOOKS_OFF below are read from settings.json
-    // alone (`committedEnv`) - what they decide is the committed wiring, never the runner's own file.
-    const committed = committedEnv && typeof committedEnv === 'object' ? committedEnv : env;
-    const viaOff = String(envOf(committed, 'HOOKS_VIA_PLUGIN') || '').trim().toLowerCase() === 'false';
+    const viaOff = String(envOf(env, 'HOOKS_VIA_PLUGIN') || '').trim().toLowerCase() === 'false';
     const wiring = JSON.stringify(stored.hooks && typeof stored.hooks === 'object' ? stored.hooks : {});
     const wiredCopy = lines.some((l) => stackHook(l) && wiring.includes(`/.claude/hooks/${l.slice(5)}.js`));
     const lastRoute = lastHooksRoute || (viaOff || wiredCopy ? 'copy' : 'plugin');
@@ -377,11 +379,11 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
     if (!routes.hooks && !lines.some(stackHook))
     {
         const keptNone = lastHooksRoute === 'copy';
-        const off = String(envOf(committed, 'HOOKS_OFF') || '');
+        const off = String(envOf(env, 'HOOKS_OFF') || '');
         const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
         if (on)
         {
-            lines.push(...(on.length ? on.map((h) => `hook ${h}`) : ['hook none']));
+            lines.push(...(on.some((h) => !LOCKED_HOOKS.includes(h)) ? on.map((h) => `hook ${h}`) : ['hook none']));   // locked: no pick
             log(keptNone ? 'installed-only: the copy route kept no hook here - none is copied back'
                 : `installed-only: no hook is copied here yet - copying the ${on.length} ALFRED_CODE_HOOKS_OFF does not name`);
         }
@@ -404,7 +406,9 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, listing = 
         if ((/^(rule|mcp|plugin|hook) /.test(line) || (/^(skill|agent) /.test(line) && !before.has(line))) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
     // run cannot tell a pick the user dropped from one it merely cannot see.
-    return { lines, closeFrom, parked, deny, installed: true, answered, blind: !ours.length };
+    // Workspace stage 3: what this root holds for its members below (the stamp's member-picks) is never its own pick.
+    const own = (l) => !held.includes(l);
+    return { lines: lines.filter(own), closeFrom: closeFrom.filter(own), parked, deny, installed: true, answered, blind: !ours.length };
 }
 
 // R109: plugins the stack once offered and no longer does, each with the release that dropped it. NOT a
@@ -943,10 +947,11 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 function lockedLines(always)
 {
     const list = (k) => (always && Array.isArray(always[k]) ? always[k] : []);
-    return new Set([...list('rules').map((n) => `rule ${n}`), ...list('skills').map((n) => `skill ${n}`)]);
+    return new Set([...list('rules').map((n) => `rule ${n}`), ...list('skills').map((n) => `skill ${n}`), ...LOCKED_HOOKS.map((n) => `hook ${n}`)]);
 }
 
 module.exports = {
+    LOCKED_HOOKS,
     lockedLines, addLines, closeLines, closeSelection, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, awarenessDocs, respellRenamed, respellOwnPlan, respellOwnApply, foreignRefFiles, respellRosterSeats, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, GENERATED_FILES, FORMER_PLUGINS,
 };

@@ -208,13 +208,14 @@ test('B-m4c: a run list is capped in total', () =>
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('the data root setting places the store', () =>
+test('fixed root: a relative data key does not move the store', () =>
 {
     const root = project();
     try
     {
         run(root, ['put', 'checkout/v1/designer'], 'a\n', { ALFRED_CODE_DATA_PATH: 'var/alfred' });
-        assert.ok(fs.existsSync(path.join(root, 'var', 'alfred', 'state', 'handoff', 'checkout.jsonl')));
+        assert.ok(fs.existsSync(path.join(root, '.alfred', 'state', 'handoff', 'checkout.jsonl')));
+        assert.ok(!fs.existsSync(path.join(root, 'var')), 'nothing lands under the folder the key names');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

@@ -63,6 +63,9 @@ function setup({ events = () => [], agents = null, noCreds = true, found = null 
     execFileSync('git', ['init', '-q', child]);
     fs.writeFileSync(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
     fs.writeFileSync(path.join(child, '.claude', 'rules', 'own.md'), '# own\n');
+    // The child holds its own alfred-security in its store, so the root's native copy is one it must not load (4c, Section 4).
+    fs.mkdirSync(path.join(child, '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(child, '.alfred', 'stack', 'rules', 'alfred-security.md'), '# security, the child\'s\n');
     for (const [dir, record] of [[root, { children: ['api'] }], [child, { parent: '..' }]])
     {
         putWorkspace(dir, record);
@@ -104,6 +107,35 @@ test('a miss is named when an excluded path fires', () =>
     assert.deepStrictEqual(got.misses, [path.join(s.real.root, '.claude', 'rules', 'alfred-security.md')]);
     assert.strictEqual(s.record().state, 'misses');
     assert.match(s.cli(), new RegExp(`^!! check-loads: ${path.join(s.real.root, '.claude', 'rules', 'alfred-security.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} loaded twice - run /alfred-code:update$`, 'm'));
+});
+
+// W3 Task 1, P2 (F13): an excluded FOLDER (the `ignore instructions` route puts one among the paths) - a file loaded from
+// below it is a miss named by the file.
+test('a file loaded from below an excluded folder is a miss named by the file', () =>
+{
+    const s = setup({ events: (r) => [path.join(r.root, '.claude', 'rules', 'hand.md')] });
+    fs.writeFileSync(path.join(s.root, '.claude', 'rules', 'hand.md'), '# hand\n');
+    putWorkspace(s.child, { parent: '..', ignore: { instructions: ['.claude/rules'] } });
+    assert.deepStrictEqual(s.check(), { state: 'misses', misses: [path.join(s.real.root, '.claude', 'rules', 'hand.md')] });
+});
+
+// W3 Task 5: a folder row matches below its separator only - a sibling sharing the prefix, or a file beside it, is no miss.
+test('a file beside an excluded folder is no miss', () =>
+{
+    const s = setup({ events: (r) => [path.join(r.root, '.claude', 'rules-old', 'x.md'), path.join(r.root, '.claude', 'other.md')] });
+    put(path.join(s.root, '.claude', 'rules-old', 'x.md'), '# old\n');
+    put(path.join(s.root, '.claude', 'other.md'), '# other\n');
+    putWorkspace(s.child, { parent: '..', ignore: { instructions: ['.claude/rules'] } });
+    assert.deepStrictEqual(s.check(), { state: 'clean', misses: [] });
+});
+
+test('an ignored project: a root rule loaded from the wide folder row is a miss', () =>
+{
+    const s = setup({ events: (r) => [path.join(r.root, '.claude', 'rules', 'hand.md'), path.join(r.child, '.claude', 'rules', 'own.md')] });
+    put(path.join(s.root, '.claude', 'rules', 'hand.md'), '# hand\n');
+    putWorkspace(s.child, {});
+    putWorkspace(s.root, { role: 'root', ignoredChildren: ['api'] });
+    assert.deepStrictEqual(s.check(), { state: 'misses', misses: [path.join(s.real.root, '.claude', 'rules', 'hand.md')] });
 });
 
 test('an ancestor seed AGENTS.md named by the debug load line is a miss', () =>
@@ -171,7 +203,7 @@ test('a child settings.local.json env with ANTHROPIC_API_KEY, or CLAUDE_CODE_USE
     assert.strictEqual(local.check().why, '.claude/settings.local.json sets env.ANTHROPIC_API_KEY');
     assert.ok(!local.ran());
     const bedrock = setup();
-    put(path.join(bedrock.child, '.claude', 'settings.json'), { env: { CLAUDE_CODE_USE_BEDROCK: '1', ALFRED_CODE_SCORER: '1' } });
+    put(path.join(bedrock.child, '.claude', 'settings.json'), { env: { CLAUDE_CODE_USE_BEDROCK: '1', ALFRED_CODE_SCORING: '1' } });
     assert.strictEqual(bedrock.check().why, '.claude/settings.json sets env.CLAUDE_CODE_USE_BEDROCK');
     const managed = setup();
     put(managed.managedFile, { awsAuthRefresh: 'aws sso login' });
@@ -181,7 +213,7 @@ test('a child settings.local.json env with ANTHROPIC_API_KEY, or CLAUDE_CODE_USE
     assert.match(dropIn.check().why, /managed-settings\.d.10-team\.json sets env\.GOOGLE_APPLICATION_CREDENTIALS$/);
     for (const s of [bedrock, managed, dropIn]) assert.ok(!s.ran());
     const fine = setup();
-    put(path.join(fine.child, '.claude', 'settings.json'), { env: { ALFRED_CODE_SCORER: '1', ANTHROPIC_MODEL: 'x' } });
+    put(path.join(fine.child, '.claude', 'settings.json'), { env: { ALFRED_CODE_SCORING: '1', ANTHROPIC_MODEL: 'x' } });
     assert.strictEqual(fine.check().state, 'clean', 'a key that neither authenticates nor picks a provider is no skip');
 });
 

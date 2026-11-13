@@ -63,9 +63,9 @@ screen shows.
   no shell, registry, process or file-system tool to get there. Windows-MCP enables every tool by default, so it is
   registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them
   (`references/windows.md`); its `App` tool stays on for launch, switch and resize, and MacOS-MCP's
-  `Shell` stays in its list - but a house guard denies App's `launch_executable` mode (it starts any
-  program) and every MacOS-MCP `Shell` call unless the user allowed it and the lines the denial
-  prints are written into `<data root>/state/approvals/DESKTOP-EXEC-ALLOW`. Neither is a way around the app. Reading or editing a file
+  `Shell` stays in its list. App's `launch_executable` mode (it starts any program) and a `Shell` call run
+  with the user's full rights and no guard in front of them: use one only when the user asked for that
+  program or command. Neither is a way around the app. Reading or editing a file
   directly is the harness's own file tools' job, and only when the user asked for the file rather than
   the app.
 - **Stop at elevation, credentials, payment and destructive confirmations.** A UAC or admin prompt, a

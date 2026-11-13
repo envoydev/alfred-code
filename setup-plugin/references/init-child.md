@@ -12,8 +12,8 @@ this project installs as its child`.
 
   ```ask
   Where should the stack's plugins be enabled in this child of <rel>? The library copies, rules, settings and stamp live in this project's .claude/ at every scope.
-  - 'local (Recommended)' - this checkout only; the stack's settings go to .claude/settings.local.json and the committed settings.json is left as it is
-  - 'project' - .claude/settings.json: everyone who clones this repo
+  - 'local (Recommended)' - this checkout only; the plugins are enabled for you alone and the committed settings.json is left as it is
+  - 'project' - the plugins are enabled in .claude/settings.json for everyone who clones this repo; the stack's settings stay in .claude/settings.local.json
   - 'user' - every project of this account
   ```
 
@@ -42,13 +42,12 @@ say `the install at <rel> could not be read - installing standalone; /alfred-cod
   (<source>)` line per key, and its `docs-versioning:` line replaces the detection's. Each question shows the parent's value as its default, marked `from root`.
   An answer equal to it writes nothing, since this project reads the parent's value through the workspace - the
   installer writes nothing when the answer equals the parent's value; only a different answer is set, and that key is
-  this project's own from then on. The data question stays this project's own: the data root is never inherited, and
+  this project's own from then on. The data root is never inherited - every project's is its own `.alfred` - and
   neither is `ALFRED_CODE_DOCS_VERSIONING`.
 
 ## Before the install call - the join, then the ignores
 
-ONE call, each `workspace.js` step with `--data-path <folder>` when screen B's data question took a folder other than
-`.alfred`:
+ONE call:
 
 ```bash
 node "$TMP/repo/scripts/workspace.js" role --root . --answer child ; echo "join: $?" ; [ -f "$TMP/ignores.txt" ] && while IFS= read -r line; do node "$TMP/repo/scripts/workspace.js" ignore --root . --add "$line"; done < "$TMP/ignores.txt"

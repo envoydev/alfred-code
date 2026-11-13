@@ -121,8 +121,8 @@ else process.exit(1);
 // `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
 // and the last run's exit status and stderr come back as `code` and `err`.
 // `cwds` names each step's folder under the sandbox (`'ws/api'`), `repo` where it names none - for a tree of projects
-// that `prepare(repo, work)` lays out beside the repo.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], cwds = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
+// that `prepare(repo, work)` lays out beside the repo. `scopeDefault` is the `--scope` an install step naming none runs at; `''` leaves it out.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], cwds = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false, scopeDefault = 'project' } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -184,7 +184,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
             const src = sourceAt(i);
             try
             {
-                outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
+                outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...((a) => (scopeDefault && act === 'install' && !a.includes('--scope') ? [...a, '--scope', scopeDefault] : a))(argsAt(i))],
                     { cwd: path.join(work, cwds[i] || 'repo'), env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
                 code = 0;
                 err = '';
@@ -229,4 +229,50 @@ function releaseExport(tag)
 }
 const skipWithout = (tag) => ({ ...POSIX_ONLY, skip: POSIX_ONLY.skip || (!releaseExport(tag) && `no ${tag} tag in this checkout`) });
 
-module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout };
+// An older install whose data sits under R (a custom root, retired for the fixed `.alfred`): this seed's own install
+// with its folder renamed to R, the key in settings.json and the stamp's `data-root:` line and ledger row naming it -
+// what a 3.10.0 run with a custom root left. The next run carries R into `.alfred`.
+function plantOlderRoot(repo, R = 'var/data')
+{
+    const { valueHash } = require('./install/stamp.js');
+    const to = path.join(repo, ...R.split('/'));
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    // An older release kept its copies in `.claude`: each stored item goes back over its link, and the store goes.
+    for (const kind of ['skills', 'agents', 'rules'])
+    {
+        const store = path.join(repo, '.alfred', 'stack', kind);
+        for (const n of fs.existsSync(store) ? fs.readdirSync(store) : [])
+        {
+            try { fs.unlinkSync(path.join(repo, '.claude', kind, n)); } catch { fs.mkdirSync(path.join(repo, '.claude', kind), { recursive: true }); }
+            fs.renameSync(path.join(store, n), path.join(repo, '.claude', kind, n));
+        }
+    }
+    fs.rmSync(path.join(repo, '.alfred', 'stack'), { recursive: true, force: true });
+    fs.renameSync(path.join(repo, '.alfred'), to);
+    const file = path.join(repo, '.claude', 'settings.json');
+    const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+    settings.env = { ...(settings.env || {}), ALFRED_CODE_DATA_PATH: R };
+    fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+    const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+    const lines = fs.readFileSync(stampFile, 'utf8').split('\n').filter((l) => !/^(data-root|links):/.test(l)).join('\n').replace(/\n*$/, '');
+    fs.writeFileSync(stampFile, `${lines.replace(/settings\.json:ALFRED_CODE_DATA_PATH=[0-9a-f]{64}/, `settings.json:ALFRED_CODE_DATA_PATH=${valueHash(R)}`)}\ndata-root: ${R}\n`);
+    return to;
+}
+
+// A 3.10.0 project-scope install, from this tree's own: the stack's rows sat in settings.json and the stamp's ledger named
+// that file. The local file is laid over settings.json and removed. Not for a project with member rows.
+function plantSharedInstall(repo)
+{
+    const local = path.join(repo, '.claude', 'settings.local.json');
+    const file = path.join(repo, '.claude', 'settings.json');
+    const read = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {});
+    fs.writeFileSync(file, JSON.stringify({ ...read(file), ...read(local) }, null, 2));
+    fs.rmSync(local, { force: true });
+    const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+    const text = fs.readFileSync(stampFile, 'utf8').split('\n')
+        .map((l) => (/^managed-(env|deny|hooks|settings):/.test(l) ? l.split('settings.local.json:').join('settings.json:') : l)).join('\n');
+    fs.writeFileSync(stampFile, text);
+    return file;
+}
+
+module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout, plantOlderRoot, plantSharedInstall };

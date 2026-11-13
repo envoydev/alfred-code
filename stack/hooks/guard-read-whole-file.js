@@ -12,20 +12,19 @@
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a value the
-// installer's checkDataPath refuses reads as .alfred here too, an absolute root (a harness's scratch) kept (E-batch Task 22's minor).
-const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+// data-root-reader (meta/shared-rules.json): the data root is always .alfred. An absolute ALFRED_CODE_DATA_PATH is a
+// harness's scratch and is kept; anything else is .alfred.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 const os = require('os');
 const pathMod = require('path');
 // The judging budget (review M3 of 2.1.6), its thresholds in this one place. It counts WORK, never time, so a
 // command gets the same verdict on any machine under any load: each judging step charges the characters it reads,
-// past JUDGE_MAX_WORK the command is blocked, and a script nested deeper than JUDGE_MAX_DEPTH is read as printing what
-// it read - judged the conservative way, never let through. The credential guard carries the same budget. The count
-// is `global.JUDGE_WORK`; a test preload lowers the ceiling through `global.JUDGE_WORK_MAX`.
+// past JUDGE_MAX_WORK the command is blocked - judged the conservative way, never let through. The credential guard
+// carries the same budget. The count is `global.JUDGE_WORK`; a test preload lowers the ceiling through
+// `global.JUDGE_WORK_MAX`.
 // 20x the most any of 54,503 recorded commands cost (99,197), and about a second of judging
 const JUDGE_MAX_WORK = 2000000;
-const JUDGE_MAX_DEPTH = 64;
 const JUDGE_WORK = global.JUDGE_WORK = { used: 0, max: Number(global.JUDGE_WORK_MAX) || JUDGE_MAX_WORK };
 class JudgeBudget extends Error {}
 function judgeTick(units) { JUDGE_WORK.used += units; if (JUDGE_WORK.used > JUDGE_WORK.max) throw new JudgeBudget('work'); }
@@ -292,7 +291,7 @@ function smallLiteralLoop(list) {
   }
   return smallFiles(files);
 }
-// Trees no symbol lookup indexes: the data root (ALFRED_CODE_DATA_PATH, default .alfred - the docs, the state, an old
+// Trees no symbol lookup indexes: the data root (.alfred - the docs, the state, an old
 // server's data), `.claude`, and the 2.0.0 `.serena` / `.playwright` folders. Naming a symbol lookup for a path under one
 // of them hands the model a remedy that errors - measured twice, when the stack's navigation server skipped them: the
 // denial named it for a `.claude/...` path and the redirect the model made from it failed. The ranged read is the remedy.
@@ -359,13 +358,10 @@ let groupsAsCuts = (t) => t;
 try { ({ blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 // A heredoc FED TO A SHELL is commands, the same as `sh -c '<script>'` (2.1.6): measured, `bash <<'EOF'` around a `cat`
 // of a 1,000-line file passed, its body blanked as data. That body comes back in place, its own heredocs blanked in turn
-// (and read back when a shell reads them), unless the shell's output is bounded by a filter or sent into a file. Each
-// restored body is kept in `shellBodies`, where the runtime-heredoc pass below finds a runtime heredoc nested inside.
+// (and read back when a shell reads them), unless the shell's output is bounded by a filter or sent into a file.
 // The spans are `heredocsOf`'s, the reader every guard shares, so every opener spelling it accepts is one here too
 // (`<<\EOT` was never judged, seam M1).
-let shellBodies = [];
 function stripHeredocsOf(c, depth = 0) {
-  if (!depth) shellBodies = [];
   const docs = heredocsOf(c);
   let out = hereStringsAsInline(blankHeredocs(c, docs));
   // A shell body nested past three levels is not read as data: it is judged out of budget and blocks, as the work
@@ -385,15 +381,13 @@ function stripHeredocsOf(c, depth = 0) {
       continue;
     }
     if (!word || !SHELL_RUNNER.test(word)) continue;
-    shellBodies.push(body);
     out = out.slice(0, h.bodyStart) + stripHeredocsOf(body, depth + 1) + out.slice(h.bodyStart + body.length);
   }
   return out;
 }
-// A here-string is a one-line heredoc: `bash <<< 'cat f'` runs its word as commands, `python3 - <<< "print(open(f).read())"`
-// as a script. A SHELL's here-string is read in the judged view as its `-c` (three characters, as wide, a lone `-` before it
-// blanked), so the inline passes below judge it as they judge `-c` (seam m2); a runtime's is judged as a heredoc body below
-// (`hereStringsOf`), whatever its `-` or flags (seam delta 3).
+// A here-string is a one-line heredoc: `bash <<< 'cat f'` runs its word as commands. A SHELL's here-string is read in the
+// judged view as its `-c` (three characters, as wide, a lone `-` before it blanked), so the segment loop below reads it as
+// it reads `-c` (seam m2). A runtime's here-string, like any runtime script, is not read (complexity stage 1 A5).
 function hereStringsAsInline(text) {
   if (!text.includes('<<<')) return text;
   let out = text;
@@ -408,1222 +402,12 @@ function hereStringsAsInline(text) {
   }
   return out;
 }
-// The here-strings of `text` as heredoc-shaped records - the line, where `<<<` starts in it, the word it hands over.
-function hereStringsOf(text) {
-  const out = [];
-  for (let i = text.indexOf('<<<'); i >= 0; i = text.indexOf('<<<', i + 3)) {
-    const lineStart = text.lastIndexOf('\n', i) + 1;
-    const nl = text.indexOf('\n', i);
-    const word = /^\s*("(?:[^"\\]|\\.)*"|'[^']*'|\S+)/.exec(text.slice(i + 3, nl < 0 ? text.length : nl));
-    if (word) out.push({ line: text.slice(lineStart, nl < 0 ? text.length : nl), at: i - lineStart, body: word[1].replace(/^(['"])([\s\S]*)\1$/, '$2') });
-  }
-  return out;
-}
-// ---- what an inline runtime script PRINTS (2.1.6 K2) ----------------------------------------------
-// A read through a runtime is a dump only when the file's CONTENT reaches the output. Measured: `node -e
-// 'const h=readFileSync(f);const s=[...h.matchAll(re)].map(m=>m[1]);for(const c of s){new Function(c)};
-// console.log("scripts parse:",s.length)'` printed one count and was denied - the segment split cut the
-// script at its first `;`, and the count test only knew a method chained straight onto the read call. So
-// the WHOLE script is read: the names that hold content (the read itself, and every name assigned or looped
-// from one, and a collection it is put into), then every print - an argument carrying one of them un-reduced
-// (not reduced to a length, a count, a test, a comparison, a map of those) prints the content. A print reached
-// through an alias is followed; one reached any way this reading cannot follow is a dump. The same reading
-// catches dumps the old test passed: a read in the script's second statement, a `.split('\n')` array printed
-// whole, and (2.1.6) a print through `const p = console.log`, `console.log.call` or `[h].forEach(console.log)`.
-// String and regex-literal CONTENTS are blanked first, keeping the quotes and the length, so a name, a paren
-// or a `;` inside one is never code - an interpolation (`${x}`, f'{x}', "#{x}") stays code, since it prints x.
-function maskLiterals(src) {
-  const out = src.split('');
-  const n = src.length;
-  let i = 0;
-  const blank = (k) => { if (k < n && out[k] !== '\n') out[k] = ' '; };
-  const prevCode = (k) => { for (let j = k - 1; j >= 0; j--) if (!/\s/.test(src[j])) return src[j]; return ''; };
-  let code;
-  const str = (q, interp) => {
-    i++;
-    while (i < n) {
-      const c = src[i];
-      if (c === '\\') { blank(i); blank(i + 1); i += 2; continue; }
-      if (c === q) { i++; return; }
-      if (interp === '{' && c === '{' && src[i + 1] === '{') { blank(i); blank(i + 1); i += 2; continue; }
-      const open = interp === '${' ? (c === '$' && src[i + 1] === '{' ? 2 : 0)
-        : interp === '#{' ? (c === '#' && src[i + 1] === '{' ? 2 : 0)
-          : interp === '{' ? (c === '{' ? 1 : 0) : 0;
-      if (open) { i += open; code('}'); i++; continue; }
-      blank(i);
-      i++;
-    }
-  };
-  const regex = () => {
-    i++;
-    let cls = false;
-    while (i < n && src[i] !== '\n') {
-      const c = src[i];
-      if (c === '\\') { blank(i); blank(i + 1); i += 2; continue; }
-      if (!cls && c === '/') { i++; while (i < n && /[a-z]/i.test(src[i])) i++; return; }
-      if (c === '[') cls = true;
-      else if (c === ']') cls = false;
-      blank(i);
-      i++;
-    }
-  };
-  code = (stop) => {
-    let depth = 0;
-    while (i < n) {
-      const c = src[i];
-      if (stop && c === stop && depth === 0) return;
-      if (c === '(' || c === '[' || c === '{') depth++;
-      else if (c === ')' || c === ']' || c === '}') depth--;
-      if (c === '`') { str('`', '${'); continue; }
-      if (c === '"' || c === "'") {
-        const fString = /[fF]/.test(src[i - 1] || '') && !/[\w$]/.test(src[i - 2] || '');
-        str(c, fString ? '{' : c === '"' ? '#{' : null);
-        continue;
-      }
-      if (c === '/' && src[i + 1] !== '/' && src[i + 1] !== '*' && /^$|[(,=:[!&|?{};+\-*%<>~^]/.test(prevCode(i))) { regex(); continue; }
-      i++;
-    }
-  };
-  code(null);
-  return out.join('');
-}
-const CLOSE = { '(': ')', '[': ']', '{': '}' };
-// The masked script's brackets and statement ends, found in one pass each and read in O(1): matchClose and stmtEnd
-// rescanned the rest of the script per call, once per assignment and per occurrence (review M3 of 2.1.6). Per position
-// the innermost open bracket before it (`encl`), and per open bracket its first top-level `for` and comma - what
-// reducedOcc walked back and forth for on every occurrence; the next `.` from each position, and receiverStart's answers.
-let structOf = { m: null, close: null, stop: null, line: null, encl: null, firstFor: null, firstComma: null, nextDot: null, cond: null, recv: null };
-function structure(m) {
-  if (structOf.m === m) return structOf;
-  const n = m.length;
-  const close = new Int32Array(n).fill(-1);
-  const encl = new Int32Array(n + 1).fill(-1);
-  const firstFor = new Int32Array(n).fill(-1);
-  const firstComma = new Int32Array(n).fill(-1);
-  const stack = [];
-  for (let k = 0; k < n; k++) {
-    const c = m[k];
-    const top = stack.length ? stack[stack.length - 1] : -1;
-    encl[k] = top;
-    if (CLOSE[c]) stack.push(k);
-    else if (c === ')' || c === ']' || c === '}') { const o = stack.pop(); if (o !== undefined) close[o] = k; }
-    else if (top >= 0 && c === ',' && firstComma[top] < 0) firstComma[top] = k;
-    else if (top >= 0 && c === 'f' && firstFor[top] < 0 && m.startsWith('for', k) && !/\w/.test(m[k + 3] || '') && !/[\w$]/.test(m[k - 1] || '')) firstFor[top] = k;
-  }
-  encl[n] = stack.length ? stack[stack.length - 1] : -1;
-  const stop = new Int32Array(n + 1).fill(n);
-  const line = new Int32Array(n + 1).fill(n); // the same without the comma: stmtEnd's `lists`
-  for (let k = n - 1; k >= 0; k--) {
-    const c = m[k];
-    if (c === ';' || c === '\n' || c === ')' || c === ']' || c === '}') { stop[k] = k; line[k] = k; }
-    else if (c === ',') { stop[k] = k; line[k] = line[k + 1]; }
-    else if (CLOSE[c]) { stop[k] = close[k] < 0 ? n : stop[close[k] + 1]; line[k] = close[k] < 0 ? n : line[close[k] + 1]; }
-    else { stop[k] = stop[k + 1]; line[k] = line[k + 1]; }
-  }
-  const nextDot = new Int32Array(n + 1).fill(n);
-  for (let k = n - 1; k >= 0; k--) nextDot[k] = m[k] === '.' ? k : nextDot[k + 1];
-  // Per position: inside a keyword test at its own depth - from `if` / `unless` / `elif` to its `then`, `else`, `do`,
-  // a python `:`, a `{`, the statement's end or the closing bracket. A test's operand is read, never printed (`puts n if
-  // s`, `n if s else 0`); `while` and `until` stay out, since perl's `print while <F>` prints every line through $_.
-  const cond = new Uint8Array(n + 1);
-  const on = [0];
-  const KEYWORD = /(?:if|unless|elif|then|else|do)(?![\w$])/y;
-  for (let k = 0; k < n; k++) {
-    const c = m[k];
-    if (CLOSE[c]) { if (c === '{') on[on.length - 1] = 0; on.push(0); }
-    else if (c === ')' || c === ']' || c === '}') { if (on.length > 1) on.pop(); }
-    else if (c === ';' || c === '\n' || (c === ':' && !(/\s/.test(m[k - 1] || '') && /\w/.test(m[k + 1] || '')))) on[on.length - 1] = 0; // ` :sym` is ruby's
-    else if (c >= 'a' && c <= 'u' && !/[\w$@%.]/.test(m[k - 1] || '')) {
-      KEYWORD.lastIndex = k;
-      const w = KEYWORD.exec(m);
-      if (w) on[on.length - 1] = w[0] === 'if' || w[0] === 'unless' || w[0] === 'elif' ? 1 : 0;
-    }
-    cond[k] = on[on.length - 1];
-  }
-  structOf = { m, close, stop, line, encl, firstFor, firstComma, nextDot, cond, recv: new Int32Array(n + 1).fill(-1) };
-  return structOf;
-}
-function matchClose(m, j) {
-  if (m === curM && CLOSE[m[j]]) return structure(m).close[j];
-  let depth = 0;
-  for (let k = j; k < m.length; k++) {
-    if (CLOSE[m[k]]) depth++;
-    else if (m[k] === ')' || m[k] === ']' || m[k] === '}') { depth--; if (depth === 0) return k; }
-  }
-  return -1;
-}
-// Where the statement starting at `from` ends: a top-level `;`, `,`, newline or an unmatched closer. `lists` keeps
-// the commas in: a paren-less call's argument list (`puts "x", s`, perl's `join "", <F>`) runs to the statement's end.
-function stmtEnd(m, from, lists = false) {
-  if (m === curM && from <= m.length) return structure(m)[lists ? 'line' : 'stop'][from];
-  let depth = 0;
-  for (let k = from; k < m.length; k++) {
-    const c = m[k];
-    if (CLOSE[c]) depth++;
-    else if (c === ')' || c === ']' || c === '}') { if (depth === 0) return k; depth--; }
-    else if (depth === 0 && (c === ';' || (c === ',' && !lists) || c === '\n')) return k;
-  }
-  return m.length;
-}
-// Members whose result is a number or a boolean, never the content whatever the receiver held. Python's
-// `find` / `index` return a position; JavaScript's `find` returns an element, so those two count only there.
-const REDUCERS = 'length|size|byteLength|count|sum|includes|include|test|indexOf|lastIndexOf|search|findIndex|findLastIndex'
-  + '|startsWith|endsWith|startswith|endswith|has|every|some|any|all|none|empty|nil|localeCompare|charCodeAt|codePointAt'
-  + '|toFixed|isdigit|isalpha|isalnum|isspace|isupper|islower|isnumeric|bytesize';
-const REDUCER_MEMBER = { js: new RegExp(`^(?:${REDUCERS})$`), python: new RegExp(`^(?:${REDUCERS}|find|rfind|index|rindex)$`), ruby: new RegExp(`^(?:${REDUCERS}|index|rindex)$`) };
-const reducerOf = (lang) => REDUCER_MEMBER[lang] || REDUCER_MEMBER.js;
-// Calls whose callback decides what they return: a map of lengths is lengths, a reduce to a sum is a number.
-const MAPPER = /^(?:map|flatMap|reduce|reduceRight)$/;
-// A SLICE with literal bounds no larger than the ranged read the Read-tool half allows is a ranged read - the
-// `sed -n 10,40p` of a script: THRESHOLD lines for a slice of lines, BIG_BYTES for a slice of characters. So is a WINDOW
-// of constant width around ONE base (`src.slice(i - 220, i + 220)`, `h[a:b]` with a and b bound around one match) when
-// that base is a search hit, a match or a length - the grep -C of a script (2.1.6). A slice with an open or oversized
-// end, two different bases, or a base stepped by a counter across the file is the dump it always was; a negative start
-// with no end is `tail -N`, bounded by N. The span is read from the ORIGINAL text (`srcText`), where the masked copy
-// (`curM`) has blanked a split's argument; the two share every position.
-const SLICE_MEMBER = /^(?:slice|substring|substr)$/;
-const LINE_SPLIT_ARG = /^\s*(?:(['"`])(?:\\r)?\\n\1|\/(?:\\r\??)?\\n\/[a-z]*)\s*$/;
-const LINES_MEMBER = /^(?:splitlines|readlines|lines)$/;
-// A bound is literal when it is an integer or constant arithmetic over integers (`4563608 - 900`); anything else is computed.
-const boundOf = (t) => (/^\s*(?:-\s*)?\d+(?:\s*[+-]\s*\d+)*\s*$/.test(t) ? t.replace(/\s+/g, '').match(/[+-]?\d+/g).reduce((n, x) => n + Number(x), 0) : null);
-let srcText = '';
-let curM = '';
-function sliceSpan(args, method) {
-  const parts = args.split(',');
-  if (parts.length > 2) return null;
-  const [a, b] = [parts[0], parts[1]];
-  const A = a === undefined || !a.trim() ? 0 : boundOf(a);
-  const B = b === undefined ? undefined : boundOf(b);
-  if (A === null || B === null) return null;
-  if (method === 'substr') return B !== undefined ? Math.max(0, B) : A < 0 ? -A : null;
-  if (B === undefined) return A < 0 ? -A : null;
-  if (method === 'substring') return Math.abs(Math.max(0, B) - Math.max(0, A));
-  return (A < 0) === (B < 0) ? Math.max(0, B - A) : null; // one bound from each end: the length decides, unknown here
-}
-// A python subscript `[a:b]` / `[:b]` / `[-n:]`: its span, or null when a bound is computed or the end is open.
-function subscriptSpan(inner) {
-  const parts = inner.split(':');
-  if (parts.length < 2 || parts.length > 3 || (parts[2] !== undefined && !/^\s*(?:1\s*)?$/.test(parts[2]))) return null;
-  const A = !parts[0].trim() ? 0 : boundOf(parts[0]);
-  const B = !parts[1].trim() ? undefined : boundOf(parts[1]);
-  if (A === null || B === null) return null;
-  if (B === undefined) return A < 0 ? -A : null;
-  return (A < 0) === (B < 0) ? Math.max(0, B - A) : null;
-}
-const withinCap = (span, unit) => span !== null && span <= (unit === 'lines' ? THRESHOLD : BIG_BYTES);
-// The names bound to the content's LINES (`const lines = src.split("\n")`), whose slice counts lines, not characters.
-let linesNames = new Set();
-// The top-level pieces of curM[a, b) split at `sep` (`,` or `:`) as [from, to) pairs: a bracket or a blanked string never splits.
-function splitTop(a, b, sep) {
-  const out = [];
-  let from = a;
-  for (let k = a, depth = 0; k < b; k++) {
-    const c = curM[k];
-    if (CLOSE[c]) depth++;
-    else if (c === ')' || c === ']' || c === '}') depth--;
-    else if (depth === 0 && c === sep) { out.push([from, k]); from = k + 1; }
-  }
-  out.push([from, b]);
-  return out;
-}
-const trimSpan = ([a, b]) => { while (a < b && /\s/.test(curM[a])) a++; while (b > a && /\s/.test(curM[b - 1])) b--; return [a, b]; };
-function openOf(close) {
-  for (let k = close - 1, depth = 0; k >= 0; k--) {
-    const c = curM[k];
-    if (c === ')' || c === ']' || c === '}') depth++;
-    else if (CLOSE[c]) { if (depth === 0) return k; depth--; }
-  }
-  return -1;
-}
-// Every binding of a name in the script - the right-hand side of each `name = ...` - and whether the name is a COUNTER:
-// stepped (`+=`, `++`) or a counting loop's own variable (`range`, `enumerate`, `.entries()`, a C-style `for`).
-let counterVars = new Set();
-let bindingMemo = new Map();
-function bindingsOf(name) {
-  if (bindingMemo.has(name)) return bindingMemo.get(name);
-  const esc = name.replace(/\$/g, '\\$');
-  const rhs = [];
-  let counter = counterVars.has(name);
-  for (const x of curM.matchAll(new RegExp(`(?<![\\w$.])${esc}\\s*(\\*\\*|[-+*/%]|\\|\\||\\?\\?|&&)?=(?![=>])`, 'g'))) {
-    if (x[1] && !/^(?:\|\||\?\?|&&)$/.test(x[1])) { counter = true; continue; }
-    const from = x.index + x[0].length;
-    rhs.push([from, stmtEnd(curM, from)]);
-  }
-  if (new RegExp(`(?:\\+\\+|--)\\s*${esc}(?![\\w$])|(?<![\\w$.])${esc}\\s*(?:\\+\\+|--)`).test(curM)) counter = true;
-  const r = { rhs, counter };
-  bindingMemo.set(name, r);
-  return r;
-}
-// One bound as { base, off, span }: a constant (base ''), or one base plus a constant. The base is a match's position
-// (`m.index`, `m.start()`, `m.end()` - the end is the start plus the match's own length, grep's unit), a length
-// (`len(s)`, `s.length` - a window anchored at the end, `tail -c`), a name, or an expression. A name bound once is read
-// through (`a = max(0, m.start() - 160)`). A clamp only narrows a window: `Math.max(0, i - 220)` as a start and
-// `min(len(s), m.end() + 250)` as an end read as their inner bound.
-const LEN_BASE = /^(?:len\(([A-Za-z_$][\w$]*)\)|([A-Za-z_$][\w$]*)\.(?:length|size))$/;
-const MATCH_BASE = /^([A-Za-z_$][\w$]*)\.(?:index|start\(\d*\)|end\(\d*\))$/;
-const MATCH_LEN = /^(?:([A-Za-z_$][\w$]*)\[0\]\??\.length|len\(([A-Za-z_$][\w$]*)(?:\.group\(\d*\)|\[0\])?\)|([A-Za-z_$][\w$]*)\.length)$/;
-function boundParts(span, side, names, depth = 0) {
-  let [a, b] = trimSpan(span);
-  while (a < b && curM[a] === '(' && matchClose(curM, a) === b - 1) [a, b] = trimSpan([a + 1, b - 1]);
-  if (a >= b || depth > 3) return null;
-  const lit = boundOf(srcText.slice(a, b));
-  if (lit !== null) return { base: '', off: lit };
-  const clamp = /^(?:Math\s*\.\s*)?(max|min)\s*\(/.exec(curM.slice(a, b));
-  if (clamp && matchClose(curM, a + clamp[0].length - 1) === b - 1) {
-    const args = splitTop(a + clamp[0].length, b - 1, ',').map(trimSpan);
-    const floor = (s) => boundOf(srcText.slice(s[0], s[1])) !== null;
-    const ceil = (s) => floor(s) || LEN_BASE.test(curM.slice(s[0], s[1]).replace(/\s+/g, ''));
-    const edge = clamp[1] === 'max' && side === 'start' ? floor : clamp[1] === 'min' && side === 'end' ? ceil : null;
-    if (!edge || args.length !== 2) return null;
-    const keep = edge(args[0]) ? 1 : edge(args[1]) ? 0 : -1;
-    return keep < 0 ? null : boundParts(args[keep], side, names, depth + 1);
-  }
-  const terms = [];
-  let from = a;
-  let sign = 1;
-  for (let k = a, d = 0; k < b; k++) {
-    const c = curM[k];
-    if (CLOSE[c]) d++;
-    else if (c === ')' || c === ']' || c === '}') d--;
-    else if (d === 0 && (c === '+' || c === '-') && /[\w$)\]]/.test(curM.slice(from, k).trimEnd().slice(-1))) {
-      terms.push({ sign, span: trimSpan([from, k]) });
-      sign = c === '+' ? 1 : -1;
-      from = k + 1;
-    }
-  }
-  terms.push({ sign, span: trimSpan([from, b]) });
-  let off = 0;
-  let base = null;
-  for (const t of terms) {
-    const text = curM.slice(t.span[0], t.span[1]).replace(/\s+/g, '');
-    const n = boundOf(srcText.slice(t.span[0], t.span[1]));
-    if (n !== null) { off += t.sign * n; continue; }
-    const len = MATCH_LEN.exec(text);
-    if (base && t.sign > 0 && len && !names.has(len[1] || len[2] || len[3])) continue; // `m.index + m[0].length`: the match itself
-    if (base || t.sign < 0) return null;
-    base = baseOf(t.span, text, side, names, depth);
-    if (!base) return null;
-    off += base.off;
-  }
-  return base && base.key ? { base: base.key, off, span: base.span } : { base: '', off };
-}
-function baseOf(span, text, side, names, depth) {
-  let x;
-  if ((x = MATCH_BASE.exec(text))) return { key: `match:${x[1]}`, off: 0 };
-  if ((x = LEN_BASE.exec(text))) return { key: `len:${x[1] || x[2]}`, off: 0 };
-  if (/^[A-Za-z_$][\w$]*$/.test(text)) {
-    const bs = bindingsOf(text);
-    if (!bs.counter && bs.rhs.length === 1) {
-      const inner = boundParts(bs.rhs[0], side, names, depth + 1);
-      if (inner) return { key: inner.base, off: inner.off, span: inner.span };
-    }
-    // a name bound more than once holds one value per binding: the key names the binding that reaches this use, so a
-    // bound read through an older binding shares no base with one read after the name moved (review M4 of 2.1.6)
-    return { key: bs.rhs.length > 1 ? `name:${text}#${bs.rhs.filter((r) => r[0] < span[0]).length}` : `name:${text}`, off: 0 };
-  }
-  return { key: `expr:${srcText.slice(span[0], span[1]).replace(/\s+/g, '')}`, off: 0, span };
-}
-// Is a window's base a fixed point rather than a walk? A match or a length is; a name only when every binding of it is a
-// position (a counter never is); an expression only when it is a search hit whose argument is no element of a walk over
-// the content (`src.indexOf(l)` for every line is every window). Anywhere a match test guards (`guardedAt`), any base
-// is: the window is printed only where the element matched, which is grep -C.
-const SEARCH_TAIL = /\.\s*(?:indexOf|lastIndexOf|search|find|rfind|index|rindex|findIndex|findLastIndex)\s*\($/;
-function baseOk(b, pos, names, depth = 0) {
-  if (/^(?:match|len):/.test(b.base)) return true;
-  if (pos >= 0 && guardedAt(pos, countersIn(b.base.replace(/^\w+:/, '')))) return true;
-  if (depth > 3) return false;
-  if (b.base.startsWith('name:')) {
-    const bs = bindingsOf(b.base.slice(5).replace(/#\d+$/, ''));
-    return !bs.counter && bs.rhs.length > 0 && bs.rhs.every((span) => positionAt(span, names, depth + 1));
-  }
-  return !!b.span && positionAt(b.span, names, depth + 1);
-}
-function positionAt(span, names, depth) {
-  const p = boundParts(span, 'start', names, depth);
-  if (!p) return false;
-  if (!p.base || /^(?:match|len):/.test(p.base)) return true;
-  if (p.base.startsWith('name:')) return baseOk(p, -1, names, depth);
-  const [a, b] = trimSpan(p.span);
-  const open = curM[b - 1] === ')' ? openOf(b - 1) : -1;
-  if (open < a || !SEARCH_TAIL.test(curM.slice(a, open + 1))) return false;
-  const args = curM.slice(open + 1, b - 1);
-  return ![...loopVars].some((v) => names.has(v) && new RegExp(`(?<![\\w$.])${v.replace(/\$/g, '\\$')}(?![\\w$])`).test(args));
-}
-// The span of a window read as a slice (`slice` / `substring` / `substr` at curM[open, close]) or a subscript, when
-// both bounds share one fixed base; null otherwise.
-function windowSpan(open, close, method, names) {
-  const parts = splitTop(open + 1, close, method === 'subscript' ? ':' : ',');
-  if (parts.length !== 2 && !(method === 'subscript' && parts.length === 3 && /^\s*(?:1\s*)?$/.test(srcText.slice(parts[2][0], parts[2][1])))) return null;
-  const s = boundParts(parts[0], 'start', names);
-  if (method === 'substr') {
-    const len = boundOf(srcText.slice(parts[1][0], parts[1][1]));
-    return len !== null && s && (!s.base || baseOk(s, open, names)) ? Math.max(0, len) : null;
-  }
-  const e = boundParts(parts[1], 'end', names);
-  if (!s || !e || !s.base || s.base !== e.base || !baseOk(s, open, names)) return null;
-  return Math.max(0, method === 'substring' ? Math.abs(e.off - s.off) : e.off - s.off);
-}
-// A subscript is a slice when it holds a top-level `:` and no ternary.
-const sliceSubscript = (open, close) => splitTop(open + 1, close, ':').length > 1 && splitTop(open + 1, close, '?').length === 1;
-// An index by a counter is EVERY element in turn, not one - unless a match test guards it.
-const countersIn = (text) => (text.match(/[A-Za-z_$][\w$]*/g) || []).filter((w) => bindingsOf(w).counter);
-const countedIndex = (open, close) => countersIn(curM.slice(open + 1, close)).length > 0;
-// grep -o: a match returns the matched piece, not the text (`s.match(re)`, `s.matchAll(re)`, `re.exec(s)`,
-// `re.findall(p, s)`, `s.scan(re)`) - unless its pattern is WRITTEN to span lines: an any-character class or a dot-all
-// dot, repeated without a bound (`[\s\S]*`, `(?s).*`, `re.S`). Such a match is the text itself, and so is its element.
-const MATCH_MEMBER = /^(?:match|matchAll|scan)$/;
-const PY_MATCH_CALL = /^(?:re|regex)\.(?:findall|finditer|search|match|fullmatch)$/;
-const MATCH_METHOD = /^(?:exec|findall|finditer|search|match|fullmatch|scan)$/;
-const ANY_CLASS_REPEAT = /\[(?:\\s\\S|\\S\\s|\\w\\W|\\W\\w|\\d\\D|\\D\\d|\^)\](?:[*+]|\{\d+,\})/;
-const DOT_REPEAT = /(?:^|[^\\])\.(?:[*+]|\{\d+,\})/;
-const spansLines = (pat, dotAll) => ANY_CLASS_REPEAT.test(pat) || ((dotAll || /\(\?[a-z]*s[a-z]*\)/.test(pat)) && DOT_REPEAT.test(pat));
-function patternOf(span, lang, depth = 0) {
-  const [a, b] = trimSpan(span);
-  const t = srcText.slice(a, b);
-  let x;
-  if (!t.includes('\n') && (x = /^\/([\s\S]+)\/([a-z]*)$/.exec(t))) return { pat: x[1], dotAll: /s/.test(x[2]) || (lang === 'ruby' && /m/.test(x[2])), flags: x[2] };
-  if ((x = /^new\s+RegExp\s*\(\s*(["'`])([\s\S]*?)\1\s*(?:,\s*(["'`])([a-z]*)\3\s*)?\)$/.exec(t))) return { pat: x[2].replace(/\\\\/g, '\\'), dotAll: /s/.test(x[4] || ''), flags: x[4] || '' };
-  if ((x = /^(?:re\s*\.\s*compile\s*\(\s*)?([rRbBuU]*)(["'])([\s\S]*?)\2/.exec(t))) return { pat: /r/i.test(x[1]) ? x[3] : x[3].replace(/\\\\/g, '\\'), dotAll: /\bre\s*\.\s*(?:S|DOTALL)\b/.test(t) };
-  if (/^[A-Za-z_$][\w$]*$/.test(t) && depth < 3) {
-    const bs = bindingsOf(t);
-    if (bs.rhs.length === 1) return patternOf(bs.rhs[0], lang, depth + 1);
-  }
-  return null;
-}
-// A pattern that keeps every line whole or every character (`.*`, `.+`, `^.+$`, `[^\n]*`, `\S+`, `.`, `[\s\S]`): its matches
-// taken ALL at once (`matchAll`, `findall`, `scan`, a `g` match, an exec loop) are the text itself, rejoined - no
-// grep -o (review M4 of 2.1.6). A lazy star matches nothing, so it keeps nothing.
-const KEEPS_ALL = /^\^?\(?(?:\?:)?(?:\.|\[\^[^\]]*\]|\[(?:\\s\\S|\\S\\s|\\w\\W|\\W\\w|\\d\\D|\\D\\d|\^)\]|\\S)(?:\*|\+\??|\{[01],\}\??)?\)?\$?$/;
-const ALL_AT_ONCE = /^(?:matchAll|scan|findall|finditer|exec)$/;
-const patternSpans = (span, lang, dotAll = false, method = '') => {
-  const p = patternOf(span, lang);
-  if (!p) return false;
-  if (spansLines(p.pat, p.dotAll || dotAll)) return true;
-  return KEEPS_ALL.test(p.pat) && (ALL_AT_ONCE.test(method) || (method === 'match' && /g/.test(p.flags || '')));
-};
-// The member chain after an occurrence - `.split("\n").length`, `[1]`, `?.x` - and whether it REDUCES: a reducer
-// member anywhere in it (`h.length.toString()` is a number), a map / reduce whose callback returns no content, ONE
-// element (`lines[k]`, `m[1]` - the `sed -n 'Np'` of a script, unless `bounded` is off: a map or a loop reaches every
-// element, and so does an index by a counter), a match (grep -o), a filter by a match test (grep), a ranged slice or
-// window, or the name itself CALLED (`fn(...)` built by `new Function(src)` returns its result, not the text).
-// `chainLimit` stops the walk at a position: a loop's receiver is judged without the loop call itself.
-let chainLimit = Infinity;
-const FILTER_MEMBER = /^(?:filter|select|find_all)$/;
-function chainState(m, k, names, lang, bounded = true, unit = 'chars', whole = false) {
-  // `whole`: a match of a pattern written to span lines - its element is no bounded piece
-  let reduced = false;
-  let last = null;
-  for (let first = true; ; first = false) {
-    let j = k;
-    if (j >= chainLimit) break;
-    if (m[j] === '?' && m[j + 1] === '.') j++;
-    if (m[j] === '.') {
-      const id = /^\.\s*([A-Za-z_$][\w$]*)/.exec(m.slice(j, j + 80));
-      if (!id) break;
-      last = id[1];
-      if (reducerOf(lang).test(last)) reduced = true;
-      if (LINES_MEMBER.test(last)) { unit = 'lines'; whole = false; }
-      else if (last === 'join') unit = 'chars';
-      k = j + id[0].length;
-      continue;
-    }
-    if (m[j] === '(' || m[j] === '[') {
-      const e = matchClose(m, j);
-      if (e < 0) break;
-      const call = m[j] === '(';
-      if (call && !reduced && last && MAPPER.test(last) && callbackReduces(m, j, e, names, lang, last)) reduced = true;
-      if (call && first) reduced = true;
-      if (call && last === 'split') { whole = false; if (LINE_SPLIT_ARG.test(srcText.slice(j + 1, e))) unit = 'lines'; }
-      if (call && !reduced && last && MATCH_MEMBER.test(last)) { if (patternSpans(splitTop(j + 1, e, ',')[0], lang, false, last)) whole = true; else reduced = true; }
-      if (call && !reduced && last && FILTER_MEMBER.test(last) && callbackMatches(m, j, e, lang)) reduced = true;
-      if (call && bounded && !reduced && !whole && lang !== 'python' && /^(?:find|findLast|detect)$/.test(last || '')) reduced = true; // one element
-      // a slice of EVERY element (a loop variable, a callback parameter) is not one range, like an index of every element
-      if (call && bounded && !reduced && last && SLICE_MEMBER.test(last)
-        && (withinCap(sliceSpan(srcText.slice(j + 1, e), last), unit) || withinCap(windowSpan(j, e, last, names), unit))) reduced = true;
-      if (!call) {
-        if (sliceSubscript(j, e)) {
-          if (bounded && !reduced && (withinCap(subscriptSpan(srcText.slice(j + 1, e)), unit) || withinCap(windowSpan(j, e, 'subscript', names), unit))) reduced = true;
-        } else if (bounded && !whole && !(countedIndex(j, e) && !guardedAt(j, countersIn(curM.slice(j + 1, e))))) reduced = true; // one element
-      }
-      k = e + 1;
-      continue;
-    }
-    break;
-  }
-  return { end: k, reduced, whole };
-}
-// A map / reduce callback that returns no content: its element parameter (the second for a reduce) is content,
-// and the returned expression - or every `return` of a block body - carries none of it un-reduced.
-function callbackReduces(m, open, close, names, lang, method) {
-  const args = m.slice(open + 1, close);
-  const arrow = /^\s*(?:async\s+)?(?:\(([^()]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*/.exec(args);
-  const fn = !arrow && /^\s*(?:async\s+)?function\b[^(]*\(([^()]*)\)\s*/.exec(args);
-  if (!arrow && !fn) return false;
-  const params = (arrow ? (arrow[1] !== undefined ? arrow[1] : arrow[2]) : fn[1]).split(',').map((x) => x.trim().replace(/\s*=[\s\S]*$/, '')).filter(Boolean);
-  const inner = new Set(names);
-  const elem = /^reduce/.test(method) ? params[1] : params[0];
-  if (elem) inner.add(elem);
-  const from = open + 1 + (arrow || fn)[0].length;
-  if (m[from] !== '{') return !carriesContent(m, from, stmtEnd(m, from), inner, lang, false);
-  const end = matchClose(m, from);
-  if (end < 0) return false;
-  for (const r of m.slice(from, end).matchAll(/\breturn\b/g)) {
-    const at = from + r.index + r[0].length;
-    if (carriesContent(m, at, stmtEnd(m, at), inner, lang, false)) return false;
-  }
-  return true;
-}
-// Back over the receiver of a read call - `require("fs").readFileSync` starts at `require`.
-// Every step of the walk is remembered with the answer it led to, so a long chain (`s.a(s).a(s)...`) is walked once, not
-// once per call in it (review M3 of 2.1.6).
-function receiverStart(m, k) {
-  const memo = m === curM && k <= m.length ? structure(m).recv : null;
-  const seen = [];
-  let j = k;
-  for (;;) {
-    if (memo && memo[j] >= 0) { j = memo[j]; break; }
-    seen.push(j);
-    if (j > 0 && m[j - 1] === '.') { j--; continue; }
-    if (j > 0 && /[\w$]/.test(m[j - 1])) { while (j > 0 && /[\w$]/.test(m[j - 1])) j--; continue; }
-    if (j > 0 && (m[j - 1] === ')' || m[j - 1] === ']')) {
-      let depth = 0; let p = j - 1;
-      for (; p >= 0; p--) { if (m[p] === ')' || m[p] === ']') depth++; else if (m[p] === '(' || m[p] === '[') { depth--; if (depth === 0) break; } }
-      if (p < 0) break;
-      j = p;
-      continue;
-    }
-    break;
-  }
-  if (memo) for (const v of seen) memo[v] = j;
-  return j;
-}
-// A scalar the occurrence feeds: a wrapper call (len, Number, Math.max, a test), a negation (`!s`, `not s` - a perl
-// sigil may sit between), a comparison, `in`. A keyword test's operand is structure()'s `cond`.
-const WRAPPED = /(?:\bnot\s+[@%]?|\b(?:len|Number|Boolean|bool|int|float|parseInt|parseFloat|isNaN|isinstance|any|all|sum|hash|Math\s*\.\s*\w+)\s*\(\s*(?:\.\.\.\s*)?|\.\s*(?:test|includes|has|count|indexOf|lastIndexOf|startsWith|endsWith|localeCompare)\s*\(\s*|!\s*|\btypeof\s+|(?:===?|!==?|<=?|(?<!=)>=?)\s*|\bin\s+|(?:^|[(,=:?&|!]\s*)[+-]\s*)$/;
-// Calls whose result carries an argument's content: a serializer, a copy, a collection, an iterator over it, python's
-// regex module where it returns the text (`re.sub`, `re.split`), and the receiver methods that insert their argument.
-// A MATCH call (`re.exec(src)`, `re.findall(p, s)`) returns the matched pieces - grep -o - unless its pattern spans
-// lines. Any other call - a helper, `eval`, `new Function` - returns its own result, not the text it was handed; a
-// loop's iterable is the exception (`iterMode`): a helper there most often hands the elements on (`chain(lines)`).
-const FLOW_BARE = /^(?:String|Set|Map|WeakMap|Array|structuredClone|repr|str|list|tuple|sorted|reversed|set|frozenset|dict|escape|unescape|encodeURIComponent|decodeURIComponent|enumerate|zip|iter|map|filter)$/;
-// perl's and php's (judged with perl's rules) bare calls whose result is the argument's text, transformed (2.1.6)
-const FLOW_BARE_PERL = /^(?:join|reverse|sort|map|split|uc|lc|ucfirst|lcfirst|sprintf|quotemeta|pack|unpack|encode|decode|encode_json|decode_json|Dumper|implode|explode|strtoupper|strtolower|ucwords|trim|rtrim|ltrim|chop|nl2br|htmlspecialchars|htmlentities|html_entity_decode|strip_tags|addslashes|stripslashes|str_replace|str_ireplace|preg_replace|preg_split|str_split|json_encode|serialize|base64_encode|bin2hex|urlencode|rawurlencode|strrev|wordwrap|chunk_split|array_map|array_reverse|array_filter|array_values|vsprintf|str_pad|iconv|mb_convert_encoding)$/;
-const FLOW_DOTTED = /^(?:stringify|parse|inspect|format|from|of|values|entries|assign|fromEntries|dumps|loads|pformat|escape|unescape|dedent|indent|fill|wrap|shorten|replace|replaceAll|concat|join|with|toSorted|toReversed|toSpliced)$/;
-const FLOW_REGEX_MODULE = /^(?:re|regex)\.(?:sub|subn|split)$/;
-let iterMode = false;
-const COMPREHENSION = /\bfor\s+[\w$,\s()]+?\s+in\s+$/;
-const COMPARED = /^\s*(?:===?|!==?|<=?|>=?|\?(?![.?])|&&|\binstanceof\b|\bin\b)/;
-// A `for` at the top level of m[from, to): the occurrence sits in a comprehension's for / in / if clause, which
-// feeds only its loop variable - judged where the comprehension's expression uses it.
-function topLevelFor(m, from, to) {
-  // inside an open bracket's own span, a top-level `for` is one whose innermost bracket is that one
-  if (m === curM && CLOSE[m[from - 1]]) { const st = structure(m); const e = st.close[from - 1]; if (e < 0 || to <= e) { const f = st.firstFor[from - 1]; return f >= 0 && f < to; } }
-  let depth = 0;
-  for (let k = from; k < to; k++) {
-    const c = m[k];
-    if (CLOSE[c]) depth++;
-    else if (c === ')' || c === ']' || c === '}') depth--;
-    else if (depth === 0 && c === 'f' && /^for\b/.test(m.slice(k, k + 4)) && !/[\w$]/.test(m[k - 1] || '')) return true;
-  }
-  return false;
-}
-const READ_CALL = /\b(?:readFileSync|File\s*\.\s*read|open)\s*\(/g;
-// The content occurrences in m[a, b): a read call (with its receiver) or a name bound to content.
-// Scanned from `a` on, never from the script start: the names pass calls this once per assignment in the script
-// (a 25KB, 1,500-assignment script judges in about 50ms, measured in the 2.1.6 review round).
-let namesReKey = null; let namesRe = null; // the names set, and the script its positions were found in
-// The reads of a small or ungated file (a literal path heavyRead says no to) - set per script by scriptPrintsContent.
-let lightReads = new Set();
-// Every match is found ONCE per script (or per names set) and looked up by position: an exec from `a` searched on to
-// the script's end whenever [a, b) held none, once per assignment (review M3 of 2.1.6).
-let readCallsOf = { m: null, at: [] };
-let namePositions = [];
-const firstAtOrAfter = (list, a) => { let lo = 0; let hi = list.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid][0] < a) lo = mid + 1; else hi = mid; } return lo; };
-// A generator, in start order: its one caller stops at the first occurrence that carries the content, so a span holding
-// every later name of a long chain is never listed whole.
-function* occurrencesIn(m, a, b, names) {
-  const out = [];
-  if (readCallsOf.m !== m) readCallsOf = { m, at: [...m.matchAll(READ_CALL)].map((r) => [r.index, r[0].length]) };
-  for (let i = firstAtOrAfter(readCallsOf.at, a); i < readCallsOf.at.length && readCallsOf.at[i][0] < b; i++) {
-    const [at, len] = readCallsOf.at[i];
-    if (lightReads.has(at)) continue;
-    const open = at + len - 1;
-    const close = matchClose(m, open);
-    out.push({ start: Math.max(a, receiverStart(m, at)), end: close < 0 ? b : close + 1 });
-  }
-  if (names.size) {
-    const key = [...names].join('|');
-    if (key !== namesReKey || namesRe !== m) {
-      namesReKey = key;
-      namesRe = m;
-      const re = new RegExp(`(?<![\\w$])(?<![^.]\\.)(?<!^\\.)(?:${[...names].map((x) => x.replace(/\$/g, '\\$')).join('|')})(?![\\w$])`, 'g');
-      namePositions = [...m.matchAll(re)].map((x) => [x.index, x[0]]);
-    }
-  }
-  out.sort((p, q) => p.start - q.start);
-  // this generator's own copy: a nested call for another names set replaces the shared one while this one is paused
-  const positions = names.size ? namePositions : [];
-  let r = 0;
-  if (names.size) {
-    for (let i = firstAtOrAfter(positions, a); i < positions.length && positions[i][0] < b; i++) {
-      const [at, name] = positions[i];
-      if (guards.length && relievedAt(at, name)) continue; // one matching element, under its match test
-      while (r < out.length && out[r].start <= at) yield out[r++];
-      yield { start: at, end: at + name.length, name };
-    }
-  }
-  while (r < out.length) yield out[r++];
-}
-// Is this occurrence REDUCED before it reaches the output? Its own chain first, then what it is wrapped in or
-// compared with, then the bracket around it - a comprehension clause, a key, a template, a group or a call, whose
-// own chain is judged in turn (`new Set(s).size`, `Object.keys(JSON.parse(h)).length`, `(m||[]).length`).
-function reducedOcc(m, occ, a, names, lang, bounded = true) {
-  let { start, end } = occ;
-  // a loop variable or a callback parameter is EVERY element in turn, so its index is not one element
-  const oneElement = bounded && !(occ.name && loopVars.has(occ.name));
-  // WHOLE: the value is a collection whose element is the text itself - a match of a pattern that spans lines, or
-  // the content put into a new array (`[h]`, `out.push(h)`) - so one element of it is no bounded piece
-  let whole = !!(occ.name && wholeNames.has(occ.name));
-  for (let climb = 0; climb < 8; climb++) {
-    const chain = chainState(m, end, names, lang, oneElement, climb === 0 && occ.name && linesNames.has(occ.name) ? 'lines' : 'chars', whole);
-    judgeTick(1 + chain.end - start);
-    if (chain.reduced) return { reduced: true, end: chain.end };
-    if (chain.whole) whole = true;
-    const before = m.slice(Math.max(a, start - 60), start);
-    if (WRAPPED.test(before) && !COMPREHENSION.test(before)) return { reduced: true, end: chain.end };
-    if (lang !== 'js' && m === curM && structure(m).cond[start]) return { reduced: true, end: chain.end };
-    if (COMPARED.test(m.slice(chain.end, chain.end + 20))) return { reduced: true, end: chain.end };
-    let p = start - 1;
-    if (m === curM) p = Math.max(structure(m).encl[start], a - 1);
-    else for (let depth = 0; p >= a; p--) { if (m[p] === ')' || m[p] === ']' || m[p] === '}') depth++; else if (m[p] === '(' || m[p] === '[' || m[p] === '{') { if (depth === 0) break; depth--; } }
-    if (p < a) return { reduced: false, end: chain.end, whole };
-    const close = matchClose(m, p);
-    if (close < 0) return { reduced: false, end: chain.end, whole };
-    if (topLevelFor(m, p + 1, start)) return { reduced: true, end: chain.end };
-    let q = p - 1; while (q >= a && /\s/.test(m[q])) q--;
-    const prev = q >= a ? m[q] : '';
-    // a KEY: `counts[h]` reads an entry, it prints no content of h
-    if (m[p] === '[' && /[\w$)\]]/.test(prev)) return { reduced: true, end: chain.end };
-    if (m[p] === '{' && m[p - 1] === '$') {
-      // a template interpolation prints the value: the template literal is the occurrence now
-      const tick = m.lastIndexOf('`', p);
-      const tickEnd = m.indexOf('`', close);
-      if (tick < a || tickEnd < 0) return { reduced: false, end: chain.end, whole };
-      start = tick;
-      end = tickEnd + 1;
-      continue;
-    }
-    if (m[p] === '(' && /[\w$)\]]/.test(prev)) {
-      start = receiverStart(m, p);
-      // a callee past 512 characters is a chain or a bracket group, never `re.search`: only its tail is read for the name
-      const long = p - start > 512;
-      const callee = m.slice(long ? p - 512 : start, p).replace(/\s+/g, '');
-      const name = (callee.match(/([A-Za-z_$][\w$]*)$/) || ['', ''])[1];
-      const dotted = long ? (m === curM ? structure(m).nextDot[start] < p : m.slice(start, p).includes('.')) : /\./.test(callee);
-      const pyMatch = !long && PY_MATCH_CALL.test(callee);
-      if (pyMatch || (dotted && MATCH_METHOD.test(name))) {
-        // grep -o: the pattern is re's first argument, else the receiver (`re.exec(src)`, `pat.findall(s)`)
-        const patSpan = pyMatch ? splitTop(p + 1, close, ',')[0] : [start, m.lastIndexOf('.', p)];
-        if (!patternSpans(patSpan, lang, /\bre\s*\.\s*(?:S|DOTALL)\b/.test(srcText.slice(p + 1, close)), pyMatch ? callee.replace(/^\w+\./, '') : name)) return { reduced: true, end: chain.end };
-        whole = true;
-      } else if (!iterMode && !(!long && FLOW_REGEX_MODULE.test(callee)) && !(dotted ? FLOW_DOTTED : lang === 'perl' ? FLOW_BARE_PERL : FLOW_BARE).test(name)) return { reduced: true, end: chain.end };
-    } else {
-      start = p;
-      // an array or a tuple literal: its element is the content itself
-      const tuple = m[p] === '(' && (m === curM ? structure(m).firstComma[p] >= 0 && structure(m).firstComma[p] < close : splitTop(p + 1, close, ',').length > 1);
-      if ((m[p] === '[' || tuple) && !topLevelFor(m, p + 1, close)) whole = true;
-    }
-    end = close + 1;
-  }
-  return { reduced: false, end, whole };
-}
-// Does m[a, b) carry the content un-reduced?
-function carriesContent(m, a, b, names, lang, bounded = true) {
-  judgeTick(1 + b - a);
-  let k = a;
-  for (const occ of occurrencesIn(m, a, b, names)) {
-    if (occ.start < k) continue; // inside a chain already judged: `s.map(x => x).length`
-    const r = reducedOcc(m, occ, a, names, lang, bounded);
-    if (!r.reduced) { carryWhole = !!r.whole; return true; }
-    k = Math.max(r.end, occ.end);
-  }
-  return false;
-}
-// Does a loop's iterable - m[a, b), or a callback's receiver ending at `limit` - hand the loop the content?
-function iterCarries(m, a, b, names, lang, limit = Infinity) {
-  iterMode = true;
-  chainLimit = limit;
-  try { return carriesContent(m, a, b, names, lang); } finally { iterMode = false; chainLimit = Infinity; }
-}
-// The end of a loop's iterable: the for's own closing paren (JS), else a python header's `:`, its line end, or a
-// comprehension's next clause (`if` / `for`) or closing bracket - whichever comes first at the top level.
-function iterEnd(m, from) {
-  for (let k = from, d = 0; k < m.length; k++) {
-    const c = m[k];
-    if (CLOSE[c]) d++;
-    else if (c === ')' || c === ']' || c === '}') { if (d === 0) return k; d--; }
-    else if (d === 0 && (c === ':' || c === '\n' || (/^(?:if|for)\b/.test(m.slice(k, k + 4)) && !/[\w$.]/.test(m[k - 1] || '')))) return k;
-  }
-  return m.length;
-}
-// The names that hold the content: assigned from it, destructured from it, looped or called back over it, and a
-// collection it is put into - pushed (`out.push(c)`, `out << c`) or used as a key or a value (`seen[c] = 1`).
-// The loop variables and callback parameters among them - every element in turn (reducedOcc's `oneElement`).
-let loopVars = new Set();
-let wholeNames = new Set();
-let carryWhole = false;
-const FUNCTION_EXPR = /^\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>|lambda\b)/;
-function contentNames(m, lang) {
-  const names = new Set();
-  loopVars = new Set();
-  wholeNames = new Set();
-  linesNames = new Set();
-  for (let pass = 0; pass < 6; pass++) {
-    judgeTick(1 + m.length);
-    const size = names.size;
-    // A chained assignment (`a = b = rhs`) binds every link to the one rhs, so the links wait for it and it is judged
-    // once: judging each link's own rest re-read the whole chain per link (review M3 of 2.1.6).
-    let chain = []; let chainAt = -1;
-    for (const x of m.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?:\+|\|\||\?\?)?=(?![=>])/g)) {
-      if (chain.length && x.index !== chainAt) chain = [];
-      const from = x.index + x[0].length;
-      // pushed, never copied: a copy per link cost the chain's square (1.3s at 20,000 links)
-      chain.push(x[1]);
-      const bound = chain; chain = [];
-      if (FUNCTION_EXPR.test(m.slice(from, from + 60))) continue; // a function built from content is code, not text
-      const link = /^\s*(?=[A-Za-z_$][\w$]*\s*=(?![=>]))/.exec(m.slice(from, from + 256));
-      if (link && x[0].endsWith('=') && !/[+|?]=$/.test(x[0])) { chain = bound; chainAt = from + link[0].length; continue; }
-      // perl and ruby call without parens, so an assignment's comma is an argument list (`my $s = join "", <F>`)
-      const end = stmtEnd(m, from, lang === 'perl' || lang === 'ruby');
-      if (/\.\s*(?:split\s*\(\s*(?:(['"`])(?:\\r)?\\n\1|\/(?:\\r\??)?\\n\/[a-z]*)\s*\)|splitlines\s*\(\s*\)|readlines\s*\(\s*\)|lines\b(?:\s*\(\s*\))?)\s*$/.test(srcText.slice(from, end))) for (const w of bound) linesNames.add(w);
-      if (carriesContent(m, from, end, names, lang)) for (const w of bound) { names.add(w); if (carryWhole) wholeNames.add(w); }
-    }
-    for (const x of m.matchAll(/\b(?:const|let|var)\s*[[{]([^\]}=]*)[\]}]\s*=(?![=>])/g)) {
-      const from = x.index + x[0].length;
-      if (carriesContent(m, from, stmtEnd(m, from), names, lang)) for (const w of x[1].match(/[A-Za-z_$][\w$]*/g) || []) names.add(w);
-    }
-    // no two whitespace runs side by side: `\s*\(?\s*` split a run of spaces every way before failing (review M3 of 2.1.6)
-    for (const x of m.matchAll(/\bfor\s*(?:\(\s*)?(?:(?:const|let|var)\s*)?(?:\[\s*)?([A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*)(?:\s*\])?\s+(?:of|in)\s+/g)) {
-      const from = x.index + x[0].length;
-      // the iterable: up to the for's own closing paren, or a python clause's end - judged like any expression, so a
-      // match iterator (`re.finditer(p, h)`, `src.matchAll(re)`) hands on matches, not the content
-      const to = iterEnd(m, from);
-      const iterable = m.slice(from, to);
-      // `for i, l in enumerate(X)` / `for (const [i, l] of X.entries())`: the first is a COUNTER, not content
-      const counted = /^\s*enumerate\s*\(/.test(iterable) || /\.\s*entries\s*\(\s*\)\s*$/.test(iterable);
-      if (iterCarries(m, from, to, names, lang)) for (const w of x[1].split(/\s*,\s*/).slice(counted ? 1 : 0)) { names.add(w); loopVars.add(w); }
-    }
-    for (const x of m.matchAll(/\.\s*(forEach|map|flatMap|filter|find|findLast|some|every|reduce|reduceRight|sort|each|each_line|each_with_index|select)\s*(?:\(\s*(?:async\s+)?(?:function\b[^(]*\(([^()]*)\)|\(([^()]*)\)|([A-Za-z_$][\w$]*)\s*=>)|(?:do\s*|\{\s*)\|([^|]*)\|)/g)) {
-      if (!iterCarries(m, receiverStart(m, x.index), x.index, names, lang, x.index)) continue;
-      const params = (x[2] || x[3] || x[4] || x[5] || '').split(',').map((w) => w.trim().replace(/\s*=[\s\S]*$/, '')).filter((w) => /^[A-Za-z_$][\w$]*$/.test(w));
-      const taken = /^sort$/.test(x[1]) ? params : /^reduce/.test(x[1]) ? params.slice(1, 2) : params.slice(0, 1);
-      for (const w of taken) { names.add(w); loopVars.add(w); }
-    }
-    for (const x of m.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\.\s*(?:push|unshift|append|appendleft|extend|add|insert|set|update|put|concat|splice)\s*\(/g)) {
-      const open = x.index + x[0].length - 1;
-      const close = matchClose(m, open);
-      if (close > open && carriesContent(m, open + 1, close, names, lang)) { names.add(x[1]); wholeNames.add(x[1]); }
-    }
-    for (const x of m.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*<<\s*/g)) {
-      // `out << a << b` appends both to `out`: only the chain's receiver takes the content, so an operand is skipped - and
-      // a long chain is judged once, not once per link (review M3 of 2.1.6)
-      if (/<<\s*$/.test(m.slice(Math.max(0, x.index - 8), x.index))) continue;
-      const from = x.index + x[0].length;
-      if (carriesContent(m, from, stmtEnd(m, from), names, lang)) { names.add(x[1]); wholeNames.add(x[1]); }
-    }
-    for (const x of m.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\[/g)) {
-      const open = x.index + x[0].length - 1;
-      const close = matchClose(m, open);
-      const op = close > open && /^\s*(?:\+|\|\||\?\?)?=(?![=>])/.exec(m.slice(close + 1, close + 8));
-      if (!op) continue;
-      const from = close + 1 + op[0].length;
-      if (carriesContent(m, open + 1, close, names, lang)) names.add(x[1]);
-      else if (carriesContent(m, from, stmtEnd(m, from), names, lang)) { names.add(x[1]); wholeNames.add(x[1]); }
-    }
-    if (names.size === size) break;
-  }
-  return names;
-}
-// ---- a print GUARDED by a match (2.1.6) -----------------------------------------------------------
-// A loop that prints an element only where it matched is grep, and a window around it grep -C; the shell half blocks
-// neither. A GUARD is a region of the script plus the per-element names a match test there holds true of: the body of
-// `if 'x' in l:` / `if (l.includes("x"))`, the right side of `l.startsWith("x") && print(l)`, a ruby `puts l if l =~ /x/`,
-// a comprehension's expression under its `if`, and the rest of a loop body after `if <negated test>: continue`. Inside
-// one those names are RELIEVED - each is one matching element, grep's own output - and a window may take any base
-// there (`lines[i-5:i+5]` around the matching line) unless its counter is stepped inside the guard. A test that holds
-// of every element is none: a truthiness test (`if l:`), a test of another name, an empty needle or a pattern that
-// matches the empty string, a negation, an `else`, a `||` short-circuit.
-let guards = [];
-let rawGuards = [];
-let matchNames = new Map(); // a name bound once to a test of per-element names (`m = re.search(p, l)`): its subjects
-let counterHeads = new Map(); // a counting loop's header position, per counter
-let curLang = 'js';
-const union = (sets) => new Set(sets.flatMap((s) => [...s]));
-const intersect = (sets) => new Set([...sets[0]].filter((x) => sets.every((s) => s.has(x))));
-const EMPTY_LIT = /^\s*[rRbBuU]*(['"`])\1\s*$/;
-const NO_TEST = () => ({ pos: new Set(), neg: new Set() });
 // A pattern that matches the empty string matches every line: `^`, `.*`, `\s?`, an empty alternative.
 function matchesEmpty(pat) {
   const p = pat.replace(/^\(\?[a-zA-Z]+\)/, '').replace(/^\^|\$$/g, '').replace(/\\[bBAzZ]/g, '');
   if (!p || /^\||\|$|[^\\]\|\|/.test(p)) return true;
   return /^(?:\.|\\[sSwWdD]|\[[^\]]*\]|[^\\()[\]|*+?{}.^$]|\((?:\?:)?[^()]*\))(?:[*?]|\{0(?:,\d*)?\})$/.test(p);
 }
-const emptyPattern = (span) => { const p = span && patternOf(span, curLang); return !!p && matchesEmpty(p.pat); };
-// The top-level pieces of curM[a, b) split at `op` - 'or' (`||`, `or`) or 'and' (`&&`, `and`).
-function splitTopOp(a, b, op) {
-  const sym = op === 'or' ? '||' : '&&';
-  const out = [];
-  let from = a;
-  for (let k = a, d = 0; k < b; k++) {
-    const c = curM[k];
-    if (CLOSE[c]) d++;
-    else if (c === ')' || c === ']' || c === '}') d--;
-    else if (d === 0 && curM.startsWith(sym, k)) { out.push([from, k]); from = k + 2; k++; }
-    else if (d === 0 && curM.startsWith(op, k) && !/[\w$.]/.test(curM[k - 1] || '') && !/[\w$]/.test(curM[k + op.length] || '')) { out.push([from, k]); from = k + op.length; k += op.length - 1; }
-  }
-  out.push([from, b]);
-  return out;
-}
-// A condition's per-element subjects: `pos` - the names it being TRUE says matched; `neg` - the names it being FALSE says
-// matched (`'x' not in l`, `!re.test(l)`). An OR holds of a name only when every branch does, an AND when one does.
-// A guard only RELIEVES a name, so one that is not read is the stricter reading: a condition past GUARD_REACH characters,
-// or a trailing `if` / `&&` whose statement starts further back, is none (review M3 of 2.1.6 - `if s:if s:...` read the
-// rest of the line once per `if`).
-const GUARD_REACH = 1000;
-function cls(span, depth = 0) {
-  if (span[1] - span[0] > GUARD_REACH) return NO_TEST();
-  const [a, b] = trimSpan(span);
-  if (a >= b || depth > 8) return NO_TEST();
-  if (curM[a] === '(' && matchClose(curM, a) === b - 1) return cls([a + 1, b - 1], depth + 1);
-  const ors = splitTopOp(a, b, 'or');
-  if (ors.length > 1) { const cs = ors.map((s) => cls(s, depth + 1)); return { pos: intersect(cs.map((c) => c.pos)), neg: union(cs.map((c) => c.neg)) }; }
-  const ands = splitTopOp(a, b, 'and');
-  if (ands.length > 1) { const cs = ands.map((s) => cls(s, depth + 1)); return { pos: union(cs.map((c) => c.pos)), neg: intersect(cs.map((c) => c.neg)) }; }
-  const not = /^(?:!(?!=)|not\b)\s*/.exec(curM.slice(a, b));
-  if (not) { const c = cls([a + not[0].length, b], depth + 1); return { pos: c.neg, neg: c.pos }; }
-  return atomTest(a, b);
-}
-// The first top-level comparison in curM[a, b): its operator and sides.
-function topCompare(a, b) {
-  for (let k = a, d = 0; k < b; k++) {
-    const c = curM[k];
-    if (CLOSE[c]) d++;
-    else if (c === ')' || c === ']' || c === '}') d--;
-    else if (d === 0) {
-      const s3 = curM.slice(k, k + 3);
-      let op = null;
-      if (s3 === '===' || s3 === '!==') op = s3;
-      else if (/^(?:==|!=|>=|<=)/.test(s3)) op = s3.slice(0, 2);
-      else if ((c === '>' || c === '<') && !/[=<>-]/.test(curM[k - 1] || '') && !/[=<>]/.test(curM[k + 1] || '')) op = c;
-      else if (/^is\b/.test(s3) && /\s/.test(curM[k - 1] || '')) op = (/^is\s+not\b/.exec(curM.slice(k, k + 12)) || ['is'])[0];
-      if (op) return { op: op.replace(/\s+/g, ' '), left: [a, k], right: [k + op.length, b] };
-    }
-  }
-  return null;
-}
-const SUBSTR_TEST = /^(?:includes|include|startsWith|endsWith|startswith|endswith|contains)$/;
-// python `x in S` / `x not in S`: [whole, x, 'not ' or undefined, S] - what `/^([\s\S]+?)\s+(not\s+)?in\s+(ID)$/` matched,
-// read back from the end in one pass (the lazy prefix beside `\s+` split a run of spaces every way; review M3 of 2.1.6).
-function inTest(t) {
-  const ws = (c) => /\s/.test(c || '');
-  let i = t.length;
-  while (i > 0 && /[\w$]/.test(t[i - 1])) i--;
-  if (i === t.length || !/[A-Za-z_$]/.test(t[i])) return null;
-  let j = i;
-  while (j > 0 && ws(t[j - 1])) j--;
-  if (j === i || t.slice(j - 2, j) !== 'in') return null;
-  let w = j - 2;
-  while (w > 0 && ws(t[w - 1])) w--;
-  if (w === j - 2) return null;
-  // where the prefix ends: at the space run's start, or one character in when the run starts the text
-  const cut = (r, end) => (r > 0 ? r : end - r >= 2 ? 1 : -1);
-  if (w >= 3 && t.slice(w - 3, w) === 'not') {
-    let u = w - 3;
-    while (u > 0 && ws(t[u - 1])) u--;
-    const c = u < w - 3 ? cut(u, w - 3) : -1;
-    if (c > 0) return [t, t.slice(0, c), t.slice(w - 3, j - 2), t.slice(i)];
-  }
-  const c = cut(w, j - 2);
-  return c > 0 ? [t, t.slice(0, c), undefined, t.slice(i)] : null;
-}
-function atomTest(a, b) {
-  const t = curM.slice(a, b);
-  const ID = /^[A-Za-z_$][\w$]*$/;
-  const one = (name, positive) => (positive ? { pos: new Set([name]), neg: new Set() } : { pos: new Set(), neg: new Set([name]) });
-  let x;
-  // python `x in S` / `x not in S`
-  if ((x = inTest(t))) return EMPTY_LIT.test(srcText.slice(a, a + x[1].length)) ? NO_TEST() : one(x[3], !x[2]);
-  // ruby / perl `S =~ re`, `S !~ re`
-  if ((x = /^([A-Za-z_$][\w$]*)\s*([=!])~/.exec(t)) || (x = /([=!])~\s*([A-Za-z_$][\w$]*)$/.exec(t))) return x.length === 3 && ID.test(x[1]) ? one(x[1], x[2] === '=') : one(x[2], x[1] === '=');
-  const cmp = topCompare(a, b);
-  if (cmp) {
-    const L = trimSpan(cmp.left); const R = curM.slice(cmp.right[0], cmp.right[1]).replace(/\s+/g, '');
-    const left = curM.slice(L[0], L[1]);
-    // `S.indexOf(x) >= 0` / `!== -1` is a test of S, `=== -1` / `< 0` its negation
-    const idx = /^([A-Za-z_$][\w$]*)\s*\.\s*(?:indexOf|search|find)\s*\(/.exec(left);
-    if (idx && curM[L[1] - 1] === ')' && openOf(L[1] - 1) === L[0] + idx[0].length - 1) {
-      const arg = trimSpan([L[0] + idx[0].length, L[1] - 1]);
-      if (EMPTY_LIT.test(srcText.slice(arg[0], arg[1]))) return NO_TEST();
-      if ((/^(?:>=|!==?)$/.test(cmp.op) && R === (cmp.op === '>=' ? '0' : '-1')) || (cmp.op === '>' && R === '-1')) return one(idx[1], true);
-      if ((/^(?:===?)$/.test(cmp.op) && R === '-1') || (cmp.op === '<' && R === '0')) return one(idx[1], false);
-      return NO_TEST();
-    }
-    // a match name against none: `m is not None`, `m !== null`
-    if (ID.test(left) && matchNames.has(left) && /^(?:None|null|undefined|nil)$/.test(R)) {
-      const set = matchNames.get(left);
-      return /^(?:is not|!==?)$/.test(cmp.op) ? { pos: new Set(set), neg: new Set() } : /^(?:is|===?)$/.test(cmp.op) ? { pos: new Set(), neg: new Set(set) } : NO_TEST();
-    }
-    return NO_TEST();
-  }
-  // a test call: `S.includes(x)`, `re.test(S)`, `re.search(p, S)`, `pat.match(S)`, `S.match(re)`, `S.include?(x)`
-  if (curM[b - 1] === ')') {
-    const open = openOf(b - 1);
-    const h = open > a && /^([A-Za-z_$][\w$]*|\/[^/\n]*\/[a-z]*)\s*\.\s*([A-Za-z_$][\w$]*)\s*(?:\?\s*)?$/.exec(curM.slice(a, open));
-    if (h) {
-      const args = splitTop(open + 1, b - 1, ',').map(trimSpan).filter(([p, q]) => q > p);
-      const idArg = (s) => (s && ID.test(curM.slice(s[0], s[1])) ? curM.slice(s[0], s[1]) : null);
-      const recv = [a, a + h[1].length];
-      const pos = new Set();
-      if (SUBSTR_TEST.test(h[2])) { if (args[0] && !EMPTY_LIT.test(srcText.slice(args[0][0], args[0][1])) && ID.test(h[1])) pos.add(h[1]); }
-      else if (/^(?:test|exec)$/.test(h[2])) { if (idArg(args[0]) && !emptyPattern(recv)) pos.add(idArg(args[0])); }
-      else if (/^(?:match|search|fullmatch)$/.test(h[2])) {
-        if (/^(?:re|regex)$/.test(h[1])) { if (idArg(args[1]) && !emptyPattern(args[0])) pos.add(idArg(args[1])); }
-        else {
-          // python's compiled `pat.match(S)` / `pat.search(S)`; JavaScript's and ruby's `S.match(re)` (a JS `search` is an index)
-          if (curLang === 'python' && idArg(args[0]) && !emptyPattern(recv)) pos.add(idArg(args[0]));
-          if (h[2] === 'match' && curLang !== 'python' && ID.test(h[1]) && !emptyPattern(args[0])) pos.add(h[1]);
-        }
-      }
-      return { pos, neg: new Set() };
-    }
-  }
-  // a match name, truthy: `if m:` after `m = re.search(p, l)`
-  if (ID.test(t) && matchNames.has(t)) return { pos: new Set(matchNames.get(t)), neg: new Set() };
-  return NO_TEST();
-}
-// Is a counter stepped inside curM[from, to)? Then a window on it there walks, guard or not.
-function steppedIn(name, from, to) {
-  const esc = name.replace(/\$/g, '\\$');
-  if (new RegExp(`(?<![\\w$.])${esc}\\s*(?:\\*\\*|[-+*/%])=(?!=)|(?:\\+\\+|--)\\s*${esc}(?![\\w$])|(?<![\\w$.])${esc}\\s*(?:\\+\\+|--)`).test(curM.slice(from, to))) return true;
-  return (counterHeads.get(name) || []).some((p) => p >= from && p < to);
-}
-const guardedAt = (pos, counters = []) => guards.some((g) => pos >= g.from && pos < g.to && counters.every((c) => !steppedIn(c, g.from, g.to)));
-const relievedAt = (pos, name) => guards.some((g) => pos >= g.from && pos < g.to && g.subjects.has(name));
-// A filter callback that keeps only matches (`l => l.includes("x")`): the filter is grep.
-function callbackMatches(m, open, close) {
-  const args = m.slice(open + 1, close);
-  const arrow = /^\s*(?:async\s+)?(?:\(([^()]*)\)|([A-Za-z_$][\w$]*))\s*=>\s*/.exec(args);
-  const fn = !arrow && /^\s*(?:async\s+)?function\b[^(]*\(([^()]*)\)\s*/.exec(args);
-  if (!arrow && !fn) return false;
-  const elem = ((arrow ? (arrow[1] !== undefined ? arrow[1] : arrow[2]) : fn[1]).split(',')[0] || '').trim().replace(/\s*=[\s\S]*$/, '');
-  if (!/^[A-Za-z_$][\w$]*$/.test(elem)) return false;
-  const from = open + 1 + (arrow || fn)[0].length;
-  if (m[from] !== '{') return cls([from, stmtEnd(m, from)]).pos.has(elem);
-  const end = matchClose(m, from);
-  const rets = end < 0 ? [] : [...m.slice(from, end).matchAll(/\breturn\b/g)];
-  return rets.length > 0 && rets.every((r) => { const at = from + r.index + r[0].length; return cls([at, stmtEnd(m, at)]).pos.has(elem); });
-}
-// Where an operand starting at `from` ends: a top-level `;`, `,`, newline, `:`, a ternary `?`, `||` / `??`, or a closer -
-// read at most GUARD_REACH characters on, since the guard it bounds only relieves.
-function operandEnd(m, from) {
-  for (let k = from, d = 0; k < m.length; k++) {
-    if (k - from > GUARD_REACH) return k;
-    const c = m[k];
-    if (CLOSE[c]) d++;
-    else if (c === ')' || c === ']' || c === '}') { if (d === 0) return k; d--; }
-    else if (d === 0 && (/[;,\n:]/.test(c) || (c === '?' && m[k + 1] !== '.') || (c === '|' && m[k + 1] === '|'))) return k;
-  }
-  return m.length;
-}
-// The innermost loop or function body [from, to) holding `pos`.
-const innermost = (bodies, pos) => bodies.filter(([f, t]) => pos >= f && pos < t).sort((p, q) => (p[1] - p[0]) - (q[1] - q[0]))[0];
-// `cond && <print>` (JavaScript, ruby): the right side runs only where the left held.
-function andGuards(m) {
-  const startOf = new Map(); // an earlier `&&` reached at the top level: its own walk's answer is this one's too
-  for (const x of m.matchAll(/&&/g)) {
-    const k = x.index;
-    let s = k - 1;
-    for (let d = 0; s >= 0; s--) {
-      const c = m[s];
-      if (d === 0 && c === '&' && startOf.has(s - 1)) { s = startOf.get(s - 1); break; }
-      if (c === ')' || c === ']' || c === '}') d++;
-      else if (CLOSE[c]) { if (d === 0) break; d--; }
-      else if (d === 0 && (/[;,\n:]/.test(c) || (c === '?' && m[s + 1] !== '.') || (c === '|' && m[s - 1] === '|')
-        || (c === '>' && m[s - 1] === '=') || (c === '=' && !/[=!<>]/.test(m[s - 1] || '') && m[s + 1] !== '='))) break;
-      if (k - s > GUARD_REACH) break;
-    }
-    startOf.set(k, s);
-    if (k - s > GUARD_REACH) continue;
-    const ret = /^\s*return\b/.exec(m.slice(s + 1, k));
-    rawGuards.push({ from: k + 2, to: operandEnd(m, k + 2), pos: cls([s + 1 + (ret ? ret[0].length : 0), k]).pos });
-  }
-}
-function jsStructure(m) {
-  const bodies = [];
-  const heads = [];
-  const bodyAfter = (k) => {
-    while (k < m.length && /\s/.test(m[k])) k++;
-    if (m[k] !== '{') return [k, stmtEnd(m, k)];
-    const e = matchClose(m, k);
-    return e < 0 ? null : [k, e + 1];
-  };
-  for (const x of m.matchAll(/(?<![\w$.])(if|for|while)\s*\(/g)) {
-    const open = x.index + x[0].length - 1;
-    const close = matchClose(m, open);
-    const body = close > open && bodyAfter(close + 1);
-    if (!body) continue;
-    if (x[1] === 'if') heads.push({ at: x.index, cond: [open + 1, close], body });
-    else bodies.push(body);
-  }
-  for (const x of m.matchAll(/=>\s*\{|\bfunction\b[^(]*\([^()]*\)\s*\{/g)) {
-    const o = x.index + x[0].length - 1;
-    const e = matchClose(m, o);
-    if (e > o) bodies.push([o, e + 1]);
-  }
-  for (const h of heads) {
-    rawGuards.push({ from: h.body[0], to: h.body[1], pos: cls(h.cond).pos });
-    // `if (!test) continue;` - the rest of the loop (or function) body runs only where the test held
-    if (/^\{?\s*(?:continue|break|return)\b[^{};]*;?\s*\}?$/.test(m.slice(h.body[0], h.body[1]).trim())) {
-      const enc = innermost(bodies, h.at);
-      if (enc) rawGuards.push({ from: h.body[1], to: enc[1], pos: cls(h.cond).neg });
-    }
-  }
-  andGuards(m);
-}
-function pyStructure(m) {
-  const lines = [];
-  for (let s = 0; ;) {
-    const e = m.indexOf('\n', s);
-    const end = e < 0 ? m.length : e;
-    const text = m.slice(s, end);
-    const indent = text.match(/^[ \t]*/)[0].length;
-    const rest = text.slice(indent);
-    lines.push({ start: s, end, indent, blank: !rest.trim() || rest.startsWith('#') });
-    if (e < 0) break;
-    s = e + 1;
-  }
-  const lineOf = (pos) => { let lo = 0; let hi = lines.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lines[mid].start <= pos) lo = mid; else hi = mid - 1; } return lo; };
-  const bodies = [];
-  const heads = [];
-  for (let li = 0; li < lines.length; li++) {
-    const L = lines[li];
-    const hx = /^[ \t]*(if|elif|while|for)\b/.exec(m.slice(L.start, L.end));
-    if (!hx) continue;
-    const kwEnd = L.start + hx[0].length;
-    let colon = -1;
-    for (let k = kwEnd, d = 0; k < m.length; k++) {
-      const c = m[k];
-      if (CLOSE[c]) d++;
-      else if (c === ')' || c === ']' || c === '}') d--;
-      else if (d === 0 && c === ':') { colon = k; break; } else if (d === 0 && c === '\n') break;
-    }
-    if (colon < 0) continue;
-    const hl = lineOf(colon);
-    const inline = m.slice(colon + 1, lines[hl].end).trim();
-    let body = null;
-    if (inline && !inline.startsWith('#')) body = [colon + 1, lines[hl].end];
-    else {
-      let last = -1;
-      for (let j = hl + 1; j < lines.length; j++) { if (lines[j].blank) continue; if (lines[j].indent <= L.indent) break; last = j; }
-      if (last >= 0) body = [lines[hl].end, lines[last].end];
-    }
-    if (!body) continue;
-    if (hx[1] === 'for' || hx[1] === 'while') bodies.push(body);
-    else heads.push({ at: L.start, cond: [kwEnd, colon], body, inline: !!(inline && !inline.startsWith('#')) });
-  }
-  for (const h of heads) {
-    rawGuards.push({ from: h.body[0], to: h.body[1], pos: cls(h.cond).pos });
-    // `if <negated test>: continue` - the rest of the loop body runs only where the test held
-    const stmts = m.slice(h.body[0], h.body[1]).split(h.inline ? ';' : '\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('#'));
-    if (stmts.length && /^(?:continue|break)$/.test(stmts[stmts.length - 1])) {
-      const enc = innermost(bodies, h.at);
-      if (enc) rawGuards.push({ from: h.body[1], to: enc[1], pos: cls(h.cond).neg });
-    }
-  }
-  // a comprehension's expression runs only where its `if` clauses held: `[(i, l) for i, l in enumerate(ls) if 'x' in l]`
-  for (const x of m.matchAll(/(?<![\w$.])for\b/g)) {
-    const o = openOf(x.index);
-    const close = o < 0 ? -1 : matchClose(m, o);
-    if (close < 0) continue;
-    const conds = [];
-    let cur = -1;
-    for (let k = x.index + 3, d = 0; k < close; k++) {
-      const c = m[k];
-      if (CLOSE[c]) d++;
-      else if (c === ')' || c === ']' || c === '}') d--;
-      else if (d === 0 && /^(?:if|for)\b/.test(m.slice(k, k + 4)) && !/[\w$.]/.test(m[k - 1])) {
-        if (cur >= 0) conds.push([cur, k]);
-        cur = m.startsWith('if', k) ? k + 2 : -1;
-      }
-    }
-    if (cur >= 0) conds.push([cur, close]);
-    if (conds.length) rawGuards.push({ from: o + 1, to: x.index, pos: union(conds.map((s) => cls(s).pos)) });
-  }
-}
-// ruby's trailing `<stmt> if <cond>` / `<stmt> unless <cond>`; a block `if ... end` is not read.
-function rubyStructure(m) {
-  for (const x of m.matchAll(/(?<![\w$.])(if|unless)\b/g)) {
-    const k = x.index;
-    let s = k - 1;
-    for (let d = 0; s >= 0; s--) {
-      const c = m[s];
-      if (c === ')' || c === ']' || c === '}') d++;
-      else if (CLOSE[c]) { if (d === 0) break; d--; }
-      else if (d === 0 && (c === ';' || c === '\n')) break;
-      if (k - s > GUARD_REACH) break;
-    }
-    if (k - s > GUARD_REACH) continue;
-    const lead = /^\s*(?:do\b\s*)?(?:\|[^|]*\|\s*)?/.exec(m.slice(s + 1, k));
-    const from = s + 1 + lead[0].length;
-    if (!m.slice(from, k).trim()) continue;
-    const c = cls([k + x[0].length, stmtEnd(m, k + x[0].length)]);
-    rawGuards.push({ from, to: k, pos: x[1] === 'if' ? c.pos : c.neg });
-  }
-  andGuards(m);
-}
-// The counters, the match names and the raw guards of a script - before its content names are known.
-function scanStructure(m, lang) {
-  curLang = lang;
-  guards = [];
-  rawGuards = [];
-  matchNames = new Map();
-  counterVars = new Set();
-  counterHeads = new Map();
-  const head = (name, at) => { counterVars.add(name); counterHeads.set(name, [...(counterHeads.get(name) || []), at]); };
-  const ID = '[A-Za-z_$][\\w$]*';
-  for (const x of m.matchAll(new RegExp(`(?<![\\w$.])for\\s+(${ID})\\s+in\\s+range\\s*\\(`, 'g'))) head(x[1], x.index);
-  for (const x of m.matchAll(new RegExp(`(?<![\\w$.])for\\s+(?:\\(\\s*)?(${ID})\\s*,[^\\n:]*?\\bin\\s+enumerate\\s*\\(`, 'g'))) head(x[1], x.index);
-  for (const x of m.matchAll(new RegExp(`(?<![\\w$.])for\\s*\\(\\s*(?:(?:const|let|var)\\s*)?\\[\\s*(${ID})\\s*,[^\\]]*\\]\\s*of\\b[^)]*\\.\\s*entries\\s*\\(\\s*\\)\\s*\\)`, 'g'))) head(x[1], x.index);
-  for (const x of m.matchAll(new RegExp(`(?<![\\w$.])for\\s*\\(\\s*(?:(?:let|var)\\s*)?(${ID})\\s*=[^;]*;`, 'g'))) head(x[1], x.index);
-  // a callback's index parameter: `.forEach((l, i) => ...)`, ruby's `each_with_index { |l, i| ... }`
-  for (const x of m.matchAll(new RegExp(`\\.\\s*(?:forEach|map|flatMap|filter|some|every|find|findIndex)\\s*\\(\\s*(?:async\\s+)?(?:\\(\\s*${ID}\\s*,\\s*(${ID})|function\\b[^(]*\\(\\s*${ID}\\s*,\\s*(${ID}))`, 'g'))) head(x[1] || x[2], x.index);
-  for (const x of m.matchAll(new RegExp(`\\.\\s*(?:each_with_index|each\\.with_index)\\s*(?:do\\s*|\\{\\s*)\\|\\s*${ID}\\s*,\\s*(${ID})\\s*\\|`, 'g'))) head(x[1], x.index);
-  bindingMemo = new Map();
-  // a name bound once to a test: `m = re.search(p, l)`, `ok = 'x' in l`
-  const seen = new Set();
-  for (const x of m.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])/g)) {
-    if (seen.has(x[1])) continue;
-    seen.add(x[1]);
-    const from = x.index + x[0].length;
-    if (!/\.\s*(?:includes|include|startsWith|endsWith|startswith|endswith|contains|test|exec|match|search|fullmatch)\s*(?:\?\s*)?\(|\bin\b|[=!]~/.test(m.slice(from, stmtEnd(m, from)))) continue;
-    const bs = bindingsOf(x[1]);
-    if (bs.rhs.length !== 1 || bs.counter) continue;
-    const c = cls(bs.rhs[0]);
-    if (c.pos.size) matchNames.set(x[1], c.pos);
-  }
-  if (lang === 'python') pyStructure(m);
-  else if (lang === 'ruby') rubyStructure(m);
-  else if (lang === 'js') jsStructure(m);
-}
-// Output routes this reading cannot follow: a stream piped into stdout, a raw write to fd 1.
-const OPAQUE_OUT = /\.\s*pipe\s*\(|copyfileobj|copy_stream|\bos\s*\.\s*write\s*\(|\bwriteSync\s*\(\s*(?:1|2)\b|\bsys\s*\.\s*stdout\s*\.\s*buffer/;
-// A print function: a console method, a stdout write, a print builtin. Called directly it is a print; reached any
-// other way - bound to a name (`const p = console.log`, `const {log} = console`, `.bind(...)`), through `.call` /
-// `.apply`, by bracket (`console["log"]`) or passed along (`[h].forEach(console.log)`, `map(print, ...)`) - it is
-// followed where the reading can (an alias's calls are prints like any other) and OPAQUE where it cannot.
-const PRINT_FN = String.raw`(?:\bconsole\s*\.\s*[A-Za-z_$][\w$]*|\bprocess\s*\.\s*(?:stdout|stderr)\s*\.\s*write|\bsys\s*\.\s*(?:stdout|stderr)\s*\.\s*write|(?<![\w$.])stdout\s*\.\s*write|\$stdout\s*\.\s*(?:puts|print|write)|\bSTDOUT\s*\.\s*(?:puts|print|write)|\bpprint\s*\.\s*pprint|(?<![\w$.])(?:print|pprint|puts|pp|say|printf)(?![\w$]))`;
-const PRINT_CALL = new RegExp(`${PRINT_FN}\\s*\\(`, 'g');
-const PRINT_APPLY = new RegExp(`${PRINT_FN}\\s*\\.\\s*(?:call|apply)\\s*\\(`, 'g');
-const PRINT_ALIAS = new RegExp(`(?<![\\w$.])([A-Za-z_$][\\w$]*)\\s*=\\s*(${PRINT_FN})(\\s*\\.\\s*bind\\s*\\()?`, 'g');
-const PRINT_DESTRUCTURE = /\{([^{}]*)\}\s*=\s*(?:console|process\s*\.\s*(?:stdout|stderr)|sys\s*\.\s*(?:stdout|stderr))\b/g;
-const PRINT_REF = /\bconsole\b|\bprocess\s*\.\s*(?:stdout|stderr)\b|\bsys\s*\.\s*(?:stdout|stderr)\b|(?<![\w$.])(?:print|puts)\b/g;
-// A bare print starts a statement: after a separator, a brace, or a ruby block's parameters (`{ |l| puts l }`).
-const PRINT_BARE = /(?:^|[;{}\n|])\s*(?:print|puts|pp|p|say)\s+(?![=(.,)\]|])/g;
-// The print regions of a script - [from, to) of what each print outputs - or null when a print is reached in a
-// way this reading cannot follow.
-function printRegions(m, lang) {
-  const regions = [];
-  const covered = [];
-  const argsOf = (open, skipFirst) => {
-    const close = matchClose(m, open);
-    let from = open + 1;
-    if (skipFirst) { const comma = stmtEnd(m, from); from = m[comma] === ',' ? comma + 1 : comma; }
-    regions.push([from, close < 0 ? m.length : close]);
-    return from;
-  };
-  for (const x of m.matchAll(PRINT_CALL)) { const open = x.index + x[0].length - 1; argsOf(open, false); covered.push([x.index, open]); }
-  for (const x of m.matchAll(PRINT_APPLY)) { const open = x.index + x[0].length - 1; covered.push([x.index, argsOf(open, true)]); }
-  if (lang === 'ruby') for (const x of m.matchAll(/(?<![\w$.])p\s*\(/g)) argsOf(x.index + x[0].length - 1, false);
-  const aliases = new Set();
-  for (const x of m.matchAll(PRINT_ALIAS)) {
-    let end = x.index + x[0].length;
-    if (x[3]) { const close = matchClose(m, end - 1); end = close < 0 ? m.length : close + 1; }
-    if (!/^\s*(?:[;,)\n}]|$)/.test(m.slice(end, end + 4))) continue; // `p = console.log(...)` is a call, not an alias
-    aliases.add(x[1]);
-    covered.push([x.index, end]);
-  }
-  for (const x of m.matchAll(PRINT_DESTRUCTURE)) {
-    for (const part of x[1].split(',')) { const w = part.split(':').pop().trim().replace(/\s*=[\s\S]*$/, ''); if (/^[A-Za-z_$][\w$]*$/.test(w)) aliases.add(w); }
-    covered.push([x.index, x.index + x[0].length]);
-  }
-  if (aliases.size) {
-    const names = [...aliases].map((w) => w.replace(/\$/g, '\\$')).join('|');
-    for (const x of m.matchAll(new RegExp(`(?<![\\w$.])(?:${names})\\s*\\(`, 'g'))) { const open = x.index + x[0].length - 1; argsOf(open, false); covered.push([x.index, open]); }
-    for (const x of m.matchAll(new RegExp(`(?<![\\w$.])(?:${names})\\s*\\.\\s*(?:call|apply)\\s*\\(`, 'g'))) { const open = x.index + x[0].length - 1; covered.push([x.index, argsOf(open, true)]); }
-    // an alias passed along rather than called is a print this reading cannot follow
-    for (const x of m.matchAll(new RegExp(`(?<![\\w$.])(?:${names})(?![\\w$])(?!\\s*(?:\\(|\\.\\s*(?:call|apply)\\s*\\())`, 'g'))) {
-      if (!covered.some(([f, t]) => x.index >= f && x.index < t)) return null;
-    }
-  }
-  for (const x of m.matchAll(PRINT_BARE)) { const from = x.index + x[0].length; regions.push([from, stmtEnd(m, from, true)]); covered.push([x.index, from]); }
-  for (const x of m.matchAll(PRINT_REF)) {
-    if (covered.some(([f, t]) => x.index >= f && x.index < t)) continue;
-    if (/^process|^sys/.test(x[0]) && /^\s*\.\s*(?:isTTY|columns|rows|encoding)\b/.test(m.slice(x.index + x[0].length, x.index + x[0].length + 12))) continue;
-    if (/^(?:print|puts)$/.test(x[0]) && /^\s*\./.test(m.slice(x.index + x[0].length, x.index + x[0].length + 3))) continue;
-    return null;
-  }
-  return regions;
-}
-// true when the script's output can carry the read content; `printsValue` is node's -p / --print. `heavy(path)` says
-// whether a literal read is a content source at all (a gated file over THRESHOLD); a read of a small or ungated file
-// is not one, whatever is printed from it, and a read of a computed path is.
-function scriptPrintsContent(script, printsValue, lang, heavy = () => true) {
-  const src = String(script);
-  const m = maskLiterals(src);
-  srcText = src;
-  curM = m;
-  namesReKey = null;
-  chainLimit = Infinity;
-  iterMode = false;
-  lightReads = new Set();
-  READ_CALL.lastIndex = 0;
-  for (let r; (r = READ_CALL.exec(m)) !== null;) {
-    const open = r.index + r[0].length - 1;
-    const close = matchClose(m, open);
-    const lit = /^\s*(["'`])([^"'`\n]*)\1\s*(?:[,)]|$)/.exec(src.slice(open + 1, close < 0 ? src.length : close + 1));
-    if (lit && !lit[2].includes('${') && !heavy(lit[2])) lightReads.add(r.index);
-  }
-  if (OPAQUE_OUT.test(m)) return true;
-  // nested past the budget's depth: read as printing what it read, never walked
-  let depth = 0;
-  for (let k = 0, d = 0; k < m.length; k++) { if (CLOSE[m[k]]) { if (++d > depth) depth = d; } else if (m[k] === ')' || m[k] === ']' || m[k] === '}') d--; }
-  if (depth > JUDGE_MAX_DEPTH) return true;
-  const regions = printRegions(m, lang);
-  if (!regions) return true;
-  scanStructure(m, lang);
-  let names = contentNames(m, lang);
-  // Two passes: the guards relieve only per-element names - the loop variables this first pass found - and relieving
-  // them can take a name out of the content (`bad = [(i, l) for i, l in enumerate(ls) if 'x' in l]`).
-  guards = rawGuards.map((g) => ({ from: g.from, to: g.to, subjects: new Set([...g.pos].filter((n) => loopVars.has(n))) })).filter((g) => g.subjects.size && g.to > g.from);
-  if (guards.length) names = contentNames(m, lang);
-  if (printsValue) {
-    let from = 0;
-    for (let k = 0, depth = 0; k < m.length; k++) {
-      if (CLOSE[m[k]]) depth++;
-      else if (m[k] === ')' || m[k] === ']' || m[k] === '}') depth--;
-      else if (depth === 0 && (m[k] === ';' || m[k] === '\n') && m.slice(k + 1).trim()) from = k + 1;
-    }
-    regions.push([from, m.length]);
-  }
-  return regions.some(([a, b]) => carriesContent(m, a, b, names, lang));
-}
-// `node -e '<script>'`, `python3 -c "<script>"`, `ruby -e`, `perl -e` - the script as the runtime receives it.
-const RT_INLINE = /\b(python[\d.]*|node|nodejs|perl|ruby)\b((?:[ \t]+-[-\w=]+)*?)[ \t]+(-(?:e|c|p|pe|ep|E|-eval|-print))[ \t]+("(?:[^"\\]|\\.)*"|'[^']*')/g;
-const RT_READ_LIT = /(?:open\(\s*(["'][^"']*["'])[^)]*\)\s*\.read\(|(?:readFileSync|File\.read)\(\s*(["'][^"']*["']))/;
-// `php -r '<script>'` (2.1.6): its reads are rewritten by phpAsReads and the script judged with perl's print rules.
-const PHP_INLINE = /\b(php)\b((?:[ \t]+-[-\w=]+)*?)[ \t]+(-(?:r|B|R|E))[ \t]+("(?:[^"\\]|\\.)*"|'[^']*')/g;
-const langOf = (word) => (/^python/.test(word) ? 'python' : /^ruby/.test(word) ? 'ruby' : /^perl/.test(word) ? 'perl' : /^php/.test(word) ? 'php' : 'js');
-const judgeLang = (lang) => (lang === 'php' ? 'perl' : lang);
 // What reads a heredoc's body is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same
 // line - a whole word, never a substring (`cat > run-node.txt <<'EOF'` feeds no runtime); a redirect target is the file
 // written. The runtime or shell word, or null. guard-secret-value.js's heredocReader is the same reading (shared-rules).
@@ -1926,6 +710,19 @@ const ruleInstalled = (rule) => {
   }
   return !known;
 };
+// Stage 4c: where a rule store exists the loader's view decides - a store rule (a root's in a joined child too) is named
+// by its path, a native one by .claude/rules. Read only once a write matched a rule; fail-open to the check above.
+let loaded;
+const ruleAt = (rule) => {
+  if (loaded === undefined) {
+    try {
+      const r = require('./rules-session.js').rulesFor(anchorDirs[0] || process.cwd());
+      const served = [...r.scoped, ...r.always].map((x) => [`${x.name}.md`, x.rel]);
+      loaded = r.hasStore ? new Map([...r.natives.map((n) => [`${n}.md`, `.claude/rules/${n}.md`]), ...served]) : null;
+    } catch { loaded = null; }
+  }
+  return loaded ? loaded.get(rule) || null : ruleInstalled(rule) ? `.claude/rules/${rule}` : null;
+};
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
 // neither is the install's own `.claude/` tree, so a `.md` target there names no rule - not even one
 // whose pattern its NAME happens to carry (`next.js-upgrade.md`, `Dockerfile.md`): that would spend the
@@ -1970,7 +767,7 @@ function announceRules(text, extra = [], cds = []) {
   const f = sessionStateFile();
   try { state = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* fresh state */ }
   const said = state.__rules || [];
-  const fresh = hit.filter((r) => !said.includes(r) && ruleInstalled(r));
+  const fresh = hit.filter((r) => !said.includes(r) && ruleAt(r));
   if (!fresh.length) return;
   const flush = () => {
     try {
@@ -1982,7 +779,7 @@ function announceRules(text, extra = [], cds = []) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        additionalContext: `This command touches files governed by ${fresh.map((r) => `\`.claude/rules/${r}\``).join(' and ')}. `
+        additionalContext: `This command touches files governed by ${fresh.map((r) => `\`${ruleAt(r)}\``).join(' and ')}. `
           + `A path-scoped rule attaches on a FILE-TOOL touch only, so working through the shell never loads it - `
           + `read the rule and load the house-style skill it names before the next edit to those files.`,
       },
@@ -2005,29 +802,8 @@ function lineHolding(text, re) {
 // Found while fixing review item 5 of 2.1.6: nl, tac, sort, base64, dd if=, a copy onto /dev/stdout, curl file://, vim's
 // print, an identity sed / awk / perl -p script, grep with an empty pattern and the rest each printed a source file whole
 // past the cat check. wholeFiles names the files a pipeline segment prints whole, for the size gate cat already meets;
-// a bounded run (cut of one field, bat -r, a real pattern, output into a file) names none. `grep .` stays the allowed
-// filter it is for the runtime scripts' match guards.
-// perl reads a file through a HANDLE, php through file_get_contents / readfile: each is rewritten as the read call the
-// script analysis knows (`readFileSync('<path>')`), so `open F, '<x'; print <F>` is judged as `print(read('x'))`.
-function perlAsReads(src) {
-  const handles = new Map();
-  const OPEN = /\bopen\s*\(?\s*(?:my\s+|our\s+|local\s+)?(\$?[A-Za-z_]\w*)\s*,\s*(?:(['"])([^'"\n]*)\2\s*,\s*)?(['"])([^'"\n]*)\4/g;
-  for (const m of String(src).matchAll(OPEN)) {
-    if (m[3] !== undefined ? /[>|]/.test(m[3]) : /^\s*[>+|]|\|\s*$/.test(m[5])) continue;
-    handles.set(m[1], [m[4], m[5].replace(/^\s*<\s*/, '').trim()]);
-  }
-  const call = (h, m) => { const r = handles.get(h); return r ? `readFileSync(${r[0]}${r[1]}${r[0]})` : m; };
-  return String(src).replace(/<\s*(\$?[A-Za-z_]\w*)\s*>/g, (m, h) => call(h, m)).replace(/\breadline\s*\(\s*(\$?[A-Za-z_]\w*)\s*\)/g, (m, h) => call(h, m))
-    .replace(/\bread_file\s*\(/g, 'readFileSync(').replace(/\bpath\s*\(\s*((['"])[^'"\n]*\2)\s*\)\s*->\s*slurp\w*(?:\s*\(\s*\))?/g, 'readFileSync($1)');
-}
-function phpAsReads(src) {
-  // a script from stdin opens with `<?php` (`<?=` prints): the tags are no code of their own
-  return String(src).replace(/<\?=/g, ' print ').replace(/<\?(?:php\b)?|\?>/g, ' ').replace(/\bfile_get_contents\s*\(|\bfile\s*\(/g, 'readFileSync(').replace(/\b(?:readfile|fpassthru)\s*\(/g, 'print readFileSync(')
-    .replace(/\b(?:echo|print_r|var_dump|var_export)\b/g, 'print');
-}
-// deno's read calls are the read the analysis knows too (`Deno.readTextFileSync('<path>')`)
-const denoAsReads = (src) => String(src).replace(/\bDeno\s*\.\s*readTextFile(?:Sync)?\s*\(/g, 'readFileSync(');
-function asReads(script, lang) { return lang === 'perl' ? perlAsReads(script) : lang === 'php' ? phpAsReads(script) : lang === 'js' ? denoAsReads(script) : script; }
+// a bounded run (cut of one field, bat -r, a real pattern, output into a file) names none. `grep .` stays an allowed
+// filter.
 // `while read l; do echo "$l"; done < file`: a read loop whose body echoes every line unconditionally is cat. One pass
 // over the command's loop words, its answer kept for the command's every `done` stage.
 let loopMemo = { command: null, echoes: false };
@@ -2315,43 +1091,6 @@ function gitPrinted(words) {
   if (!top) return [];
   return listed.toString('utf8').split('\0').filter(Boolean).map((p) => pathMod.join(top.toString('utf8').trim(), p));
 }
-// `cp src/big.ts /tmp/b.txt && cat /tmp/b.txt`: the copy is not on disk when the hook runs (or holds something else),
-// so a later print of a copy's destination is sized as its source (audit 2026-10-30, found beside HK-19). cp / mv / ln /
-// install and `cat <src> > <dest>`; a destination folder takes the source's name.
-function copiesOf(command, filled, groups = []) {
-  const map = new Map();
-  const base = anchorDirs[0] || process.cwd();
-  const put = (dest, src, at) => { for (const k of [dest, pathMod.resolve(base, nativePath(dest))]) map.set(k, { src, at }); };
-  const unq = (w) => w.replace(/^["']|["']$/g, '');
-  for (const m of command.matchAll(/(?:^|[;&|\n(])\s*(cp|mv|ln|install)[ \t]+([^;&|\n]*)/g)) {
-    if (filled[m.index + m[0].indexOf(m[1])] === '\x01') continue;
-    const ops = (m[2].match(/"[^"]*"|'[^']*'|\S+/g) || []).map(unq).filter((w) => !w.startsWith('-') && !/^\d*[<>]/.test(w));
-    if (ops.length < 2) continue;
-    const dest = ops[ops.length - 1];
-    const srcs = ops.slice(0, -1);
-    let isDir = dest.endsWith('/') || srcs.length > 1;
-    if (!isDir) { try { isDir = fs.statSync(pathMod.resolve(base, nativePath(dest))).isDirectory(); } catch { isDir = false; } }
-    for (const s of srcs) put(isDir ? pathMod.join(dest, pathMod.basename(s)) : dest, s, m.index);
-  }
-  for (const m of command.matchAll(/(?:^|[;&|\n(])\s*cat[ \t]+("[^"]+"|'[^']+'|[^\s;&|<>]+)[ \t]*>[ \t]*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) {
-    if (filled[m.index + m[0].indexOf('cat')] !== '\x01') put(unq(m[2]), unq(m[1]), m.index);
-  }
-  // E-batch final review I2: a group or subshell redirected into a file (U25) copies what its cats print, so a later print of
-  // the target is sized as a source - the largest, when several cats fill one target.
-  const sizeOf = (f) => { try { return fs.statSync(pathMod.resolve(base, nativePath(f))).size; } catch { return -1; } };
-  for (const [a, b, target] of groups) {
-    if (!target) continue;
-    const dest = unq(target);
-    let best = null;
-    for (const m of command.slice(a + 1, b).matchAll(/(?:^|[;&|\n({])\s*cat[ \t]+("[^"]+"|'[^']+'|[^\s;&|<>(){}]+)/g)) {
-      if (filled[a + 1 + m.index + m[0].indexOf('cat')] === '\x01') continue;
-      const src = unq(m[1]);
-      if (!best || sizeOf(src) > sizeOf(best)) best = src;
-    }
-    if (best) put(dest, best, a);
-  }
-  return map;
-}
 // ---- how many of a file's lines a pipeline segment prints (audit 2026-10-08) --------------------------------------------
 // A pipe into a filter verb exempted the whole segment, so a filter that bounds nothing let the dump through: `cat big.ts
 // | grep ""`, `| awk 1`, `| head -n 9999`; a literal span on the file itself passed the same way (`head -n 9999 big.ts`,
@@ -2616,66 +1355,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.exit(2);
     }
   }
-  // A runtime read that PRINTS the file is the whole-file dump in another spelling. This branch used to block on the
-  // extension ALONE (measured: a `node -e` whose whole output was `.match(...).length` on a 198-line file was denied,
-  // a 107k-token retry), and then on a count test that saw one segment (scriptPrintsContent). Two
-  // exemptions: the script prints no content, or the file is knowable and under THRESHOLD, exactly as for `cat`.
-  // A HEAVY read is a gated file over THRESHOLD, or one this hook cannot size; only its content counts as printed.
-  const heavyRead = (litRaw) => {
-    const lit = String(litRaw || '').replace(/^["'`]|["'`]$/g, '');
-    if (!lit || !gatedIn(lit)) return false;
-    if (isVar(lit)) return true;
-    const { lc, resolved } = resolveLineCount(expandWith(assigns, lit));
-    return (!resolved && unfollowedCd) || lc > THRESHOLD;
-  };
-  const RT_READ_LITS = new RegExp(RT_READ_LIT.source, 'g');
-  const readsHeavy = (script) => [...String(script).matchAll(RT_READ_LITS)].some((r) => heavyRead(r[1] || r[2]));
-  const runtimeVerdict = (printsContent) => {
-    if (!printsContent) return;
-    process.stderr.write(
-      'Blocked: whole-file read of a source file through a language runtime.\n' +
-      'Per alfred-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
-      'differently. Locate the symbol first (the navigation tools - LSP documentSymbol / goToDefinition), then read\n' +
-      'only the range you need. A script that PRINTS only a count, a length or a test of the content\n' +
-      '(`.length`, `.match(re).length`, `len(...)`, `.includes(...)`) is not a dump and is not blocked.\n' +
-      'Where the navigation tools are deferred, load them first with\n' + LOAD_NAV,
-    );
-    process.exit(2);
-  };
-  // Every inline script is judged WHOLE, before the segment loop below cuts it at its own `;` (2.1.6 K2).
-  const scriptSpans = [];
-  for (const x of [...command.matchAll(RT_INLINE), ...command.matchAll(PHP_INLINE)]) {
-    const to = x.index + x[0].length;
-    scriptSpans.push([x.index, to]);
-    const lang = langOf(x[1]);
-    const script = asReads(x[4][0] === '"' ? x[4].slice(1, -1).replace(/\\(["\\$`])/g, '$1') : x[4].slice(1, -1), lang);
-    if (!readsHeavy(script)) continue;
-    // the segment loop's own exemptions: output bounded by a filter, or redirected into a file
-    const tail = command.slice(to).match(/^[^;&\n]*/)[0];
-    if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut|select-object|select|select-string|sls|measure-object|measure|findstr)\b/i.test(tail) || /(?:^|\s)>>?\s*[^&\s>]/.test(tail)) continue;
-    const printsValue = /^node/.test(x[1]) && /(?:^|\s)-(?:p|pe|ep|-print)(?=\s|$)/.test(`${x[2]} ${x[3]}`);
-    runtimeVerdict(scriptPrintsContent(script, printsValue, judgeLang(lang), heavyRead));
-  }
-  // A script fed to a runtime through a HEREDOC is the same script as `-e` / `-c` (2.1.6): measured, `node <<'EOF'`
-  // printing a 3,245-line file passed, its body blanked as data above. The body is read back from the raw command
-  // and judged the same way, with the same two exemptions the heredoc's own line can carry.
-  // A runtime heredoc nested in a shell heredoc's body is read the same way (`shellBodies`, filled by stripHeredocsOf).
-  const rawCommand = String(input.command || '');
-  for (const text of [rawCommand, ...shellBodies]) {
-    const docs = [...heredocsOf(text).map((h) => ({ line: text.slice(h.lineStart, h.lineEnd), at: h.index - h.lineStart, body: heredocBody(text, h) })), ...hereStringsOf(text)];
-    for (const { line, at, body: raw } of docs) {
-      const word = heredocRunner(line, at);
-      if (!word || SHELL_RUNNER.test(word)) continue;
-      const body = asReads(raw, langOf(word));
-      if (!readsHeavy(body) || heredocBounded(line, at)) continue;
-      runtimeVerdict(scriptPrintsContent(body, false, judgeLang(langOf(word)), heavyRead));
-    }
-  }
   // The segments, stages, verbs, pipes and redirects below are read on `filled` (quoteFilled): a quoted `;`, `|`, `>` or
   // verb is text. A segment piped into a shell runs its strings, so it is read as written.
   const filled = quoteFilled(command);
   const intoFile = redirectedGroups(filled);
-  const copies = copiesOf(command, filled, intoFile);
   const cuts = [0];
   for (const s of groupsAsCuts(filled).matchAll(/&&|\|\||;|\n/g)) cuts.push(s.index, s.index + s[0].length); // a subshell or group's parens are cuts
   cuts.push(command.length);
@@ -2695,13 +1378,6 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // (the segment's own text from its first word: one cut after `&&` starts with the space before the group's `{`)
     const own = at + seg.length - seg.trimStart().length;
     if (intoFile.some(([a, b]) => own >= a && at + seg.length <= b + 1)) continue;
-
-    // A runtime read the inline-script pass above did not see (an unquoted script): the same verdict, over the segment.
-    const rtLang = langOf((seg.match(/\b(python|ruby|perl|php)/) || ['', 'node'])[1]);
-    const rtSeg = asReads(seg, rtLang);
-    const rtCall = !scriptSpans.some(([a, b]) => at < b && at + seg.length > a)
-      && rtSeg.match(/\b(?:python3?|node|perl|ruby|php)\b[^\n]*?\b(?:open\(\s*(["'][^"']*["'])[^)]*\)\s*\.read\(|(?:readFileSync|File\.read)\(\s*(["'][^"']*["']))/);
-    if (rtCall && readsHeavy(rtSeg)) runtimeVerdict(scriptPrintsContent(rtSeg, false, judgeLang(rtLang), heavyRead));
 
     // A dump verb whose output is unbounded is a dump: `head -n <huge>` and `tail -n +1` both print
     // the whole file, while a bounded `head -40` is the targeted read this gate exists to encourage.
@@ -2761,9 +1437,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // cap - judged after the file's other checks, so a span they block never counts as read (audit 2026-10-10 C11).
     const capSpans = [];
     for (const { f: rawF, printed, range } of entries) {
-    const named = expandWith(assigns, rawF);
-    const copy = copies.get(named) || copies.get(pathMod.resolve(anchorDirs[0] || process.cwd(), nativePath(named)));
-    const f = copy && copy.at < at ? expandWith(assigns, copy.src) : named;
+    const f = expandWith(assigns, rawF);
     const shown = (lc) => pipeSpan.printed(printed(lc));
     if (range && !isVar(f) && !/[*?[]/.test(f) && GATED_EXT.test(f) && shown(1e9) === printed(1e9)) capSpans.push({ f, range });
     if (shown(1e9) <= THRESHOLD) continue; // a span that never prints past the threshold is the targeted read
@@ -2802,20 +1476,9 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       }
       continue;
     }
-    const { lc, resolved } = resolveLineCount(f);
-    if (!resolved) {
-      // Nothing at any anchor: a wrong path, or a file this command creates first - there is nothing on disk to dump,
-      // as for an absolute path to a missing file (audit 2026-10-10: a heredoc that wrote a file and then cat it, and a
-      // `cat <wrong path> || find ...`, were both blocked as 'relative path did not resolve', c6142301, f24eb967).
-      // Only a cd this guard cannot follow (`cd $DIR`, `cd -`) leaves the anchor unknown, and that fails CLOSED.
-      if (!unfollowedCd) continue;
-      process.stderr.write(
-        `Blocked: cannot size ${f} - no file at ${anchorDirs.map((d) => pathMod.join(d, nativePath(f))).slice(0, 3).join(' or ')}, and this\n` +
-        `command cd's somewhere the guard cannot follow first. Check the path; spell the target as an absolute path,\n` +
-        `or locate the symbol first:\n` + navHint(f),
-      );
-      process.exit(2);
-    }
+    // Nothing at any anchor prints nothing - a wrong path, a file the command creates first, a target past a cd the guard
+    // cannot follow (that one failed CLOSED until complexity stage 1 A5).
+    const { lc } = resolveLineCount(f);
     // A whole print past THRESHOLD lines, or a span printing past THRESHOLD lines and more than half the file - the
     // Read half's own 'half the file or less per range'.
     const n = shown(lc);
@@ -2876,10 +1539,10 @@ if (!GATED_EXT.test(path)) {
   // read whole by design: a verifier denied its 65KB plan read it back through two ranges at once, so the block bought a
   // round trip and nothing else (audit 2026-10-10, session 05c925e9).
   const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
-  // A scorer draft (mode-output-scorer) is the grader's mandated input the same way: the seat reads the whole draft.
+  // A scoring draft (mode-output-scoring) is the grader's mandated input the same way: the seat reads the whole draft.
   const dataRel = (() => { try { return require('./layout.js').dataRoot(process.env); } catch { return '.alfred'; } })();
-  const scorerDraft = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${dataRel}/state/sessions/scorer/`);
-  const planFile = scorerDraft || (/\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d))); // plans/ is pre-2.8.0
+  const scoringDraft = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${dataRel}/state/sessions/scoring/`);
+  const planFile = scoringDraft || (/\.md$/i.test(path) && [`${docsRel}/work/plans/`, `${docsRel}/plans/`].some((d) => String(path).replace(/\\/g, '/').includes(d))); // plans/ is pre-2.8.0
   if (size > BIG_BYTES && whole && !planFile && /\.pdf$/i.test(path)) {
     // A PDF is read by PAGE: the Read tool takes one of 10 pages or fewer whole, and a longer one only through `pages`,
     // at most 20 a call - the binary remedy below ('head -c', 'file') answered nothing for one (hooks review 2026-10-16).

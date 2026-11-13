@@ -92,6 +92,6 @@ test('AG-07: no seat restates the navigation tool order; each still points at th
     {
         const body = squash(read(`stack/agents/${s}.md`));
         assert.doesNotMatch(body, PAREN, `${s}: the parenthetical`);
-        if (/the navigation tools your start line orders/.test(body)) assert.match(body, /`\.claude\/rules\/alfred-navigation\.md`/, `${s}: the pointer`);
+        if (/the navigation tools your start line orders/.test(body)) assert.match(body, /the `alfred-navigation\.md` rule/, `${s}: the pointer`);   // stage 4c: rules live in the store
     }
 });

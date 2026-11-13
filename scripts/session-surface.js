@@ -143,13 +143,27 @@ function pluginComponents(spec, account, projectRoot)
     const field = (k) => (entry[k] !== undefined ? entry[k] : manifest[k]);
     const asList = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
     const inRoot = (p) => path.join(root, String(p).replace(/^\.\//, ''));
-    const mdFiles = (paths, fallback) =>
+    // `names`, for commands: a file one folder down is listed with its folder as one more segment (`mode/b.md` is
+    // `<plugin>:mode:b`), as Claude Code names it when the commands FOLDER is listed or scanned by default.
+    const commandNames = {};
+    const mdFiles = (paths, fallback, names = null) =>
     {
         const list = asList(paths);
         const from = list.length ? list.map(inRoot) : [path.join(root, fallback)];
         const out = [];
         for (const p of from)
-            if (isDir(p)) for (const f of listMd(p)) out.push(path.join(p, f));
+            if (isDir(p))
+            {
+                for (const f of listMd(p)) out.push(path.join(p, f));
+                if (!names) continue;
+                let subs = [];
+                try { subs = fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(); } catch { subs = []; }
+                for (const sub of subs) for (const f of listMd(path.join(p, sub)))
+                {
+                    out.push(path.join(p, sub, f));
+                    names[path.join(p, sub, f)] = `${sub}:${f.slice(0, -3)}`;
+                }
+            }
             else if (p.endsWith('.md') && fs.existsSync(p)) out.push(p);
         return out;
     };
@@ -167,7 +181,8 @@ function pluginComponents(spec, account, projectRoot)
     return {
         name, market, root, version: row.version || '',
         skills: [...new Set(skillDirs)].map((d) => path.join(d, 'SKILL.md')),
-        commands: mdFiles(field('commands'), 'commands'),
+        commands: mdFiles(field('commands'), 'commands', commandNames),
+        commandNames,
         agents: mdFiles(field('agents'), 'agents'),
         hooks: hookMaps.map((h) => (h && h.hooks && typeof h.hooks === 'object' && !Array.isArray(h.hooks) ? h.hooks : h)),
         servers: servers.mcpServers || servers,
@@ -340,6 +355,24 @@ function probeWrites(before, projectRoot, account, tmp, since)
     return { project: [...new Set(project)].sort(), stray: [...new Set(stray)].sort() };
 }
 
+// The members the newest session entered (stage 5), a row per member and actor: a loader marker's first line, read from its end.
+function membersEntered(projectRoot, dir = path.join(projectRoot, '.alfred', 'state', 'sessions'))
+{
+    const one = (f, lines = String(readSoft(path.join(dir, f)) || '').split('\n'), w = lines[0].split(' ')) => w[0] === '/' && w.length >= 5 && {
+        member: w.slice(1, -3).join(' '), chars: Number(w[w.length - 3]), session: w[w.length - 2], actor: w[w.length - 1],
+        unsent: lines.filter((l) => l.startsWith('/ not sent: ')).flatMap((l) => l.slice(12).split(', ')), at: fs.statSync(path.join(dir, f)).mtimeMs };
+    const marks = (() => { try { return fs.readdirSync(dir).filter((f) => /^rules-.+-m-[\da-f]{12}-[1-5]$/.test(f)); } catch { return []; } })()
+        .map((f) => one(f)).filter((m) => m && Number.isInteger(m.chars)).sort((a, b) => b.at - a.at);
+    const rows = new Map();
+    for (const m of marks.filter((x) => x.session === marks[0].session))
+    {
+        const r = rows.get(`${m.member}\0${m.actor}`) || { member: m.member, actor: m.actor, parts: 0, chars: 0, unsent: [] };
+        rows.set(`${m.member}\0${m.actor}`, { ...r, parts: r.parts + 1, chars: r.chars + m.chars, unsent: [...r.unsent, ...m.unsent] });
+    }
+    const key = (r) => `${r.member}\0${r.actor === 'main' ? '' : r.actor}`;   // by member, then actor, main first
+    return [...rows.values()].sort((x, y) => (key(x) < key(y) ? -1 : 1));
+}
+
 function surface(projectRoot, options = {})
 {
     projectRoot = realOr(projectRoot);
@@ -382,7 +415,7 @@ function surface(projectRoot, options = {})
         const text = readSoft(file);
         if (text === null) return;
         const fm = frontmatterOf(text);
-        const name = frontmatterValue(fm, 'name') || (command ? path.basename(file, '.md') : path.basename(path.dirname(file)));
+        const name = frontmatterValue(fm, 'name') || (command ? (plugin.commandNames || {})[file] || path.basename(file, '.md') : path.basename(path.dirname(file)));
         installedSkillNames.add(name);
         skillEntries.push({ file, owner, name, listed: plugin.name ? `${plugin.name}:${name}` : name, fm, body: bodyOf(text), source: shown(file, plugin.name, plugin.root) });
     };
@@ -399,6 +432,14 @@ function surface(projectRoot, options = {})
         }
     };
     walkRules(path.join(projectRoot, '.claude', 'rules'), '');
+    // The rule loader's own (the store, a workspace root's included); a native file of the same name is counted above.
+    try
+    {
+        const r = require('../stack/hooks/rules-session.js').rulesFor(projectRoot);
+        const real = fs.realpathSync.native(projectRoot);   // the loader's spelling; Windows expands an 8.3 name the root keeps
+        for (const x of [...r.always, ...r.scoped]) ruleFiles.push({ file: path.join(projectRoot, path.relative(real, x.file)), owner: ruleOwner(x.name) });
+    }
+    catch { /* no loader: the native rules alone */ }
     if (options.withUser) walkRules(path.join(account.dir, 'rules'), 'user');
 
     // Skills: the project's copies, the user's own (with --with-user), and every enabled plugin's.
@@ -667,7 +708,7 @@ function surface(projectRoot, options = {})
         .reduce((t, [from, to]) => t.split(from).join(to), String(text)).split(path.sep).join('/');
     for (const f of flags) f.detail = tidy(f.detail);
     for (const r of rows) { r.source = tidy(r.source); r.note = tidy(r.note); }
-    return { project: path.basename(projectRoot), rows, flags, totals, notMeasured: notMeasured.map(tidy), writes };
+    return { project: path.basename(projectRoot), rows, flags, totals, notMeasured: notMeasured.map(tidy), writes, members: membersEntered(projectRoot) };
 }
 
 function render(s)
@@ -693,6 +734,9 @@ function render(s)
         `  lint 33 cap ${t.alwaysOnCap === null ? 'unread' : `${t.alwaysOnCap} - it holds the catalog; this install's session start is ${Math.round((t.perLoadPoint['session-start'] / t.alwaysOnCap) * 100)}% of it`}`);
     if (s.writes.project.length) out.push('', `PROBE WRITES IN THE PROJECT - ${s.writes.project.length}`, ...s.writes.project.slice(0, 20).map((w) => `  ${w}`));
     if (s.notMeasured.length) out.push('', 'NOT MEASURED', ...s.notMeasured.map((n) => `  ${n}`));
+    if ((s.members || []).length) out.push('', 'MEMBERS ENTERED');
+    for (const m of s.members || []) out.push(`  ${m.member}  ${m.actor}  ${m.parts} part(s), ${m.chars} chars`,
+        ...m.unsent.length ? [`  ${m.member}  ${m.actor}  not sent - past part 5: ${m.unsent.join(', ')}`] : []);
     return out.join('\n');
 }
 

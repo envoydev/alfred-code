@@ -98,8 +98,8 @@ two parts share stays in the root file.
 
 1. Write the sections the template's outline numbers, in its order, only where step 3 found a fact -
    an empty section is not written. The H1 is the project's own name.
-2. Delete the template's two comment blocks once the sections are in. No rules list: every file in
-   `.claude/rules/` loads itself.
+2. Delete the template's two comment blocks once the sections are in. No rules list: every rule loads
+   itself (`.alfred/stack/rules/` through the plugin, `.claude/rules/` natively).
 3. Write each part's `<part>/<name>`.
 
 The write needs no second ask when the user asked for it; a run the user did not ask for shows the

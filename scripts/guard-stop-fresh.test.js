@@ -1124,11 +1124,11 @@ test('check 15: it leaves the ask alone', () => {
   kept(c15('off', 100000, q, { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:fresh-ask' } }), 'the part switched off');
   // audit 2026-10-30 HK-03: the stamp the start hook writes records the transcript's size, and the typed row turning
   // auto-run on sits there (hook-prelude.js autoStampVerified)
-  const typedOn = { type: 'user', message: { role: 'user', content: '<command-name>/loop-code-quality</command-name>\n<command-args>--mode-auto-run-on</command-args>' } };
+  const typedOn = { type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>' } };
   kept(c15('auto', 100000, q, { rows: [typedOn, ...c15Rows(100000)], setup: (root, sid) => {
     const dir = path.join(root, '.alfred', 'state', 'approvals');
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'APPROVAL'), `AUTO - "/loop-code-quality --mode-auto-run-on"\nsession: ${sid}\nskill: loop-code-quality\ntranscript-size: 0\n`);
+    fs.writeFileSync(path.join(dir, 'APPROVAL'), `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`);
   } }), 'a live auto-run stamp of this session');
   kept(c15('unattended', 100000, q, { env: { ALFRED_CODE_UNATTENDED: '1' } }), 'nobody at the terminal');
   kept(c15('seat', 100000, q, { payload: { agent_id: 'seat-1' } }), 'a seat');

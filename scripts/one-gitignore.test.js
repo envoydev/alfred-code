@@ -263,3 +263,16 @@ test('a local-scope run keeps the !/.variables line a team committed in the data
     docs.ensureDataIgnore({ projectRoot: solo, root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'local' });
     assert.doesNotMatch(fs.readFileSync(path.join(solo, '.alfred', '.gitignore'), 'utf8'), /^!\/\.variables$/m, 'an untracked file is this machine\'s: local scope keeps .variables out');
 });
+
+// Workspace source stage 1 (the owner's decision 2): a local install hides the whole data root with the folder's own file.
+test('stage 1: a local install hides the whole data root - no self re-include; git versioning and the other scopes keep today\'s text', () =>
+{
+    const text = (o) => dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs', ...o });
+    assert.ok(!text({ mode: 'local', scope: 'local' }).includes('!/.gitignore'));
+    assert.ok(!dataRoot.dataIgnoreText({ root: '.alfred', docsPath: 'docs', mode: 'git', scope: 'local' }).includes('!/.gitignore'));
+    assert.ok(text({ mode: 'git', scope: 'local' }).includes('!/.gitignore\n!/docs/'));
+    for (const scope of ['project', 'user', undefined])
+        for (const mode of ['local', 'git']) assert.ok(text({ mode, scope }).includes('!/.gitignore'), `${scope} ${mode}`);
+    assert.strictEqual(text({ mode: 'local', scope: 'local' }), `${dataRoot.DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n`);
+    assert.strictEqual(dataRoot.CLAUDE_IGNORE, '# alfred-code: a local install - nothing under .claude is committed from this checkout\n*\n');
+});

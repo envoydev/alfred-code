@@ -97,7 +97,7 @@ test('SD16 42951e5b#3: the review read is git diff HEAD plus each untracked file
     {
         const t = flat(read(`stack/skills/${skill}/SKILL.md`));
         assert.match(t, /`git diff HEAD` plus, for each file `git ls-files -o --exclude-standard` lists, `git diff --no-index -- \/dev\/null <file>`/);
-        assert.match(t, /never a loop or `xargs` over the list - the secret guard masks only a `git diff` whose path it can read/);
+        assert.match(t, /never a loop or `xargs` over the list - the secret guard reads the files a command names and refuses the call when one holds a credential/); // swap 1
         assert.match(t, /Never `git add -N` and never `git reset` in a review or scope read/);
         assert.doesNotMatch(t, /git add -N \. && git diff HEAD; git reset -q/, 'no rule prescribes the reset recipe');
     }

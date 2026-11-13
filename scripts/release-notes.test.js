@@ -79,3 +79,60 @@ test('a 2.10.0 install owes the modes section, and it names the four flags and t
     for (const flag of ['--mode-auto-run-on', '--mode-auto-run-off', '--mode-output-scorer-on', '--mode-output-scorer-off', '--auto-mode', '/mode-auto-run'])
         assert.ok(modes.text.includes(flag), flag);
 });
+
+// Complexity stage 1 (the whole-branch review, Important 1): the update owes a 3.10.0 install the note that names what
+// stopped being guarded - a user who relied on a removed gate learns it from the update, not from a missing denial.
+test('a 3.10.0 install owes the stage 1 guard note, and it names every gate that left', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - '));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    for (const word of ['launch_executable', 'browser_run_code_unsafe', 'browser_file_upload', 'ALFRED_CODE_FORGE_WATCH',
+        'git add -N', 'commit-tree', 'reflog expire', 'ALFRED_CODE_HOOKS_OFF', 'minimal', 'DESKTOP-EXEC-ALLOW', 'CONFIG-EDIT-ALLOW', 'UNTRACKED-ALLOW'])
+        assert.ok(note.text.includes(word), word);
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});
+
+// The fixed root (the user's ruling of 2026-11-11): an install owes the note that says where its data now lives, what
+// the update moves, and that the two flags are ignored.
+test('fixed root: the release note says the data root is always .alfred', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => /^## after 3\.10\.0 - the data root is always \.alfred/.test(x.text));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    assert.match(note.text, /data root is always `?\.alfred/);
+    for (const word of ['--data-path', '--data-move', 'ALFRED_CODE_DATA_PATH', '!! data root:', 'Restart a session']) assert.ok(note.text.includes(word), word);
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});
+
+// The mode commands (the owner's request of 2026-11-12): an install owes the note that names the three commands, the
+// two settings that last, and what a typed flag does now.
+test('mode commands: the release note names the three commands and says the flags are gone', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - modes are commands'));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    for (const word of ['/alfred-code:mode:auto-run', '/alfred-code:mode:scoring', '/alfred-code:mode:auto-compact', 'on|off', '--mode-auto-run-on',
+        'attended', 'a retired off flag ends nothing', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_AUTO_COMPACT', '/mode-auto-run <request>']) assert.ok(note.text.includes(word), word);
+    // mode commands v2 stage 3: a mode stays on until its off, in the checkout's own settings.local.json; a 0 left from
+    // before switches nothing; the key is no longer seeded; the session-start line is the first notice
+    for (const word of ['new sessions included', '.claude/settings.local.json', 'no longer seeded', 'autoCompactEnabled',
+        'switches nothing until', 'the session-start line', 'scoring on 80']) assert.ok(note.text.includes(word), word);
+    assert.doesNotMatch(note.text, /A mode lasts the session|ends with the session/, 'a mode no longer ends with the session');
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});
+
+// Mode v2 stage 1 (3.11.0): the grader's names say scoring; the note names each new name beside its old one, and the
+// skill and the seat by their new names only (the upgrade table is the old names' one home).
+test('the scoring rename: the release note names each new name beside its old one', () =>
+{
+    const s = sectionsOf(fs.readFileSync(HISTORY, 'utf8'));
+    const note = owed(s, '3.10.0').find((x) => x.text.startsWith('## after 3.10.0 - the grader\'s names say scoring'));
+    assert.ok(note, 'owed to a 3.10.0 install');
+    for (const word of ['/mode-output-scoring', 'output-scoring', '/alfred-code:update', '4.0.0']) assert.ok(note.text.includes(word), word);
+    for (const k of ['', '_LEVEL', '_OUTPUTS', '_ROUNDS'])
+        assert.match(note.text, new RegExp(`ALFRED_CODE_SCORER${k}\\b.*ALFRED_CODE_SCORING${k}\\b`), `ALFRED_CODE_SCORER${k} beside its new name`);
+    for (const hook of ['guard-answer', 'guard-stop-contract']) assert.match(note.text, new RegExp(`${hook}:scorer\\b.*${hook}:scoring\\b`), hook);
+    assert.doesNotMatch(note.text, /mode-output-scorer\b|output-scorer\b/, 'the old skill and seat names live in the upgrade table only');   // legacy
+    assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
+});

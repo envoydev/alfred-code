@@ -44,19 +44,19 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs root is <data root>/docs - ALFRED_CODE_DATA_PATH, default .alfred, so .alfred/docs; outside .claude/, the directory Claude Code protects (2.0.0). ALFRED_CODE_DOCS_PATH is retired in 2.8.0 (the user's ruling of 2026-10-20, D7): no run writes it, an update moves the stack's docs from a leftover value and removes it (scripts/install/docs.js docsMovePlan), and every reader still reads a leftover key first for the 2.x line. The always-on alfred-docs-root rule is canonical; the code-level defaults (each hook's inline docsRootEnv() fallback, the installer's resolver, the re-stamp script) must state the same value. Every other code home of the fallback (the engines, the analyzers) is held to the same shape by scripts/docs-root-default.test.js, which also fails on a NEW home spelling another default.",
+      "_note": "The docs root is <data root>/docs and the data root is always .alfred (the fixed root, 3.11.0), so .alfred/docs; outside .claude/, the directory Claude Code protects (2.0.0). ALFRED_CODE_DOCS_PATH is retired in 2.8.0 (the user's ruling of 2026-10-20, D7): no run writes it, an update moves the stack's docs from a leftover value and removes it (scripts/install/docs.js docsMovePlan), and every reader still reads a leftover key first for the 2.x line. The always-on alfred-docs-root rule is canonical; the code-level defaults (each hook's inline docsRootEnv() fallback, the installer's resolver, the re-stamp script) must state the same value. Every other code home of the fallback (the engines, the analyzers) is held to the same shape by scripts/docs-root-default.test.js, which also fails on a NEW home spelling another default.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
-        "marker": "always `<data root>/docs`, where `<data root>` is `ALFRED_CODE_DATA_PATH` (default `.alfred`)"
+        "marker": "always `<data root>/docs`, where `<data root>` is `.alfred`"
       },
       "sites": [
         {
           "file": "scripts/install/copy.js",
-          "marker": "return envOf(view, 'DOCS_PATH') || `${data.ok ? data.value : DATA_ROOT_DEFAULT}/docs`;"
+          "marker": "return envOf(view, 'DOCS_PATH') || `${require('../../stack/mcp/data-root.js').dataRootOf({ projectDir: projectRoot }).root}/docs`;"
         },
         {
           "file": "scripts/stamp-docs-root.js",
-          "marker": "return envOf(env, 'DOCS_PATH') || `${envOf(env, 'DATA_PATH') || DEFAULT_DATA_ROOT}/docs`;"
+          "marker": "return envOf(env, 'DOCS_PATH') || `${require('../stack/mcp/data-root.js').dataRootOf({ projectDir: path.dirname(claudeDir) }).root}/docs`;"
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
@@ -72,7 +72,7 @@
         },
         {
           "file": "stack/hooks/docs-session.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.alfred/docs'"
         }
       ]
     },
@@ -1678,12 +1678,12 @@
       "_note": "The two own reviewers read their target the same way: the `## Target` section (the change set, a branch, a change request, paths, and where the code is read) is byte-identical in review-code and review-security, and their Dispatch paragraph counts the target with the same sentence. It drifted unregistered until the 2026-10-30 audit (SKF-04); the markers pin both ends of the Target section and the count, and scripts/own-reviewers.test.js fails a Target section that differs between the two.",
       "owner": {
         "file": "stack/skills/review-code/SKILL.md",
-        "marker": "the secret guard masks only a `git diff` whose path it can read"
+        "marker": "the secret guard reads the files a command names and refuses the call when one holds a credential"
       },
       "sites": [
         {
           "file": "stack/skills/review-security/SKILL.md",
-          "marker": "the secret guard masks only a `git diff` whose path it can read"
+          "marker": "the secret guard reads the files a command names and refuses the call when one holds a credential"
         },
         {
           "file": "stack/skills/review-code/SKILL.md",
@@ -2807,44 +2807,44 @@
       "_note": "Implementer seats edit source through Edit / Write, the tools the edit hooks watch - measured (audit 2026-10-10): one run's seats made 155 shell writes against 28 Edit calls (85% unseen by check-turn-build, matched only on Write|Edit|MultiEdit), another 132 against 5. A shell splice stays for a mechanical rename across many sites. check-turn-build has since folded into the Stop check that reads git status, so the copies name only config protection and the docs gate (audit 2026-10-21 agents T2-15). Byte-identical across all 10 implementers.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+        "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
       },
       "sites": [
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+          "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (the docs gate) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
         }
       ]
     },
@@ -3807,10 +3807,6 @@
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
-          "file": "stack/hooks/guard-desktop-exec.js",
-          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
-        },
-        {
           "file": "stack/hooks/guard-fresh-session-start.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
@@ -3954,7 +3950,7 @@
       ]
     },
     "designer-oriented-report-line": {
-      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report. The preference docs and both assessments read (or `none present`) ride it as the forcing shape for the START read - the output scorer's designer-plan check P2 reads the same field -, since the hook hands them over only at a first edit or git write and a designer seat makes neither (agents audit 2026-10-21 T2-5).",
+      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report. The preference docs and both assessments read (or `none present`) ride it as the forcing shape for the START read - the output scoring's designer-plan check P2 reads the same field -, since the hook hands them over only at a first edit or git write and a designer seat makes neither (agents audit 2026-10-21 T2-5).",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
         "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
@@ -3995,23 +3991,6 @@
         {
           "file": "stack/agents/wpf-solution-designer.md",
           "marker": "the house skills loaded, the preference and assessment docs read (or `none present`)"
-        }
-      ]
-    },
-    "secret-read-allow-receipt": {
-      "_note": "The secret guard's block ends in ONE AskUserQuestion (presence only - recommended / show or use the value this session / drop), and the 'show' answer is honoured through a receipt at <data root>/state/approvals/SECRET-READ-ALLOW - a file path, a variable NAME or `*`, this session's own, under 8h. The guard owns the path (it resolves and reads the file); the stop contract reads the same file so a consented exposure is not re-asked for rotation; the repo hook notes name it (the security baseline's copy went in audit 2026-10-14 RU03 - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt nothing reads.",
-      "owner": {
-        "file": "stack/hooks/guard-secret-value.js",
-        "marker": "'flow', 'SECRET-READ-ALLOW'"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "'flow', 'SECRET-READ-ALLOW'"
-        },
-        {
-          "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<data root>/state/approvals/SECRET-READ-ALLOW` receipt"
         }
       ]
     },
@@ -4216,32 +4195,6 @@
         {
           "file": "stack/hooks/guard-read-whole-file.js",
           "marker": "const CD_VERB = 'set-location|push-location|chdir|pushd|cd|sl';"
-        }
-      ]
-    },
-    "heredoc-reader": {
-      "_note": "Which command reads a heredoc body: the command word of the stage holding the <<, or of a stage piped from it on the same line - a whole word, never a substring, and never a redirect target. The secret guard reads a runtime or shell body as code (heredocReader); the read guard judges a runtime body like -e / -c (heredocRunner). One reading, two guards: a `.sh` in the name of a file being written once made the secret guard rewrite a data heredoc into a redacted dump (2.1.6 K1).",
-      "owner": {
-        "file": "stack/hooks/guard-secret-value.js",
-        "marker": "is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same"
-        }
-      ]
-    },
-    "heredoc-stdin-script": {
-      "_note": "When a heredoc's reader runs its body: only when the program takes its SCRIPT from stdin (stdinIsScript and its STDIN_FLAGS table, the same in both guards). A script file named, or a script handed as -c / -e / -p / -m, makes the body that program's input data (`bash ./run.sh <<EOF`, `node -e '...' <<EOF`); each option word is read the way that interpreter's own parser reads it (one STDIN_FLAGS row each for the shells, node, python, ruby, perl and php), so an option's own value, bundled or the next word, is no script file (`bash -euo pipefail`, `bash --rcfile x`, `node -r ./x.js`, `node --max-old-space-size 4096`, `python3 -Q new`, `perl -Mstrict -we`); an option the table does not know takes the next word as its value, and a script option with no script word leaves the body the script; a runtime's `-` (and php's `--`) is stdin itself and the words after it are the script's argv (`python3 - <file> <<EOF`), while a shell's `-` or `--` only ends its options; a program with no row (deno, bun, pwsh) always runs its body. The read guard judges a shell body as commands since 2.1.6 round 4; the secret guard judged every runtime or shell body as code.",
-      "owner": {
-        "file": "stack/hooks/guard-secret-value.js",
-        "marker": "The body is the program only when the program takes its SCRIPT from stdin"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "The body is the program only when the program takes its SCRIPT from stdin"
         }
       ]
     },
@@ -6411,35 +6364,6 @@
         }
       ]
     },
-    "config-protection-gate-named": {
-      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig, a loosening of one in an existing MSBuild file (a pure MSBuild tightening passes - audit 2026-10-11 SD16), or any edit to an existing .editorconfig or lint / format config, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys, and nx plus the TypeScript and Angular style references name the lint / format half (audit 2026-10-14 SKS15). 2.1.4 audit I44. Since audit 2026-10-30 HK-16 no copy restates the receipt's lines: each says to write the lines the denial prints, its `session:` line included.",
-      "owner": {
-        "file": "stack/skills/typescript/SKILL.md",
-        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
-        },
-        {
-          "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
-        },
-        {
-          "file": "stack/skills/nx/SKILL.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
-        },
-        {
-          "file": "stack/skills/typescript/references/typescript-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
-        },
-        {
-          "file": "stack/skills/angular-conventions/references/angular-style.md",
-          "marker": "until the user allows it - ask once, never route around the block, and on Allow write the lines the denial prints into the receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW`"
-        }
-      ]
-    },
     "security-review-output-contract": {
       "_note": "What a security review does with a finding it cannot route: it stays in the report, tagged with its surface and marked UNVERIFIED, rather than being dropped because the skill that owns it is not installed. Restated in each security skill because a project installs only its own stacks' - a .NET-only install never sees the Angular one, so a cross-cutting rule stated once would be absent there. database-security is a variant site with its own marker (audit 2026-10-30 SKS-08): its two routes are the .NET security skills, and an unrouted finding stays in its report with the fix stated in full.",
       "owner": {
@@ -6603,7 +6527,7 @@
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
-          "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
+          "file": "stack/skills/mode-output-scoring/scripts/scorecard.js",
           "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
@@ -7096,7 +7020,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/mode-output-scorer/SKILL.md",
+          "file": "stack/skills/mode-output-scoring/SKILL.md",
           "marker": "exactly as the roster spells it"
         }
       ]
@@ -7147,63 +7071,63 @@
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, and the stack-modes spec of 2026-10-27 section 7: four mode flags in the leading run right after the command, auto-run lasting the session through the hook's AUTO stamp, each run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line the flag holds for that run only, M2): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a flag reads as a mode and never a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
+      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, the stack-modes spec of 2026-10-27 section 7 and the mode commands of 2026-11-12: `/alfred-code:mode:auto-run on|off` and `/alfred-code:mode:scoring on|off` typed on their own line, each mode kept in the checkout's own settings.local.json until its off command, new sessions included (mode commands v2, 3.11.0), each auto-run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line a mode is on only on the user's word and holds for the conversation): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a `--mode-*` token (a retired flag) is dropped and never read as a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
-        "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+        "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
       },
       "sites": [
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/task-implement/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/task-verify-plan/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/task-verify-code/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/task-solve/references/full-spec.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/task-solve-cross/references/execution-modes.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/capture-awareness/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/capture-usage-report/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         },
         {
           "file": "stack/skills/capture-quality/SKILL.md",
-          "marker": "**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack."
+          "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
         }
       ]
     },
@@ -7382,7 +7306,7 @@
       ]
     },
     "no-stops-waiver-solve-flows": {
-      "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `--mode-auto-run-on` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
+      "_note": "The typed no-stops waiver (a hand-written AUTO stamp) lives ONLY in the two solve flows, in the same words - the user's ruling of 2026-10-20 (stack audit S1): one request had four behaviours across the flows, and a hand-written AUTO makes every person-directed hook read the session as unattended for 8h. Every other flow answers the same words with `/alfred-code:mode:auto-run on` (no-stops-points-to-auto-mode). task-solve-cross carries it in references/execution-modes.md, read before its first stop, because its SKILL.md sits at its 18,000-char cap.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
         "marker": "When the user explicitly asks for a no-stops run ('run all recommended without asking me'), never self-authorize silently - write `<project root>/<data root>/state/approvals/APPROVAL`, first line `AUTO - \"<their words, verbatim>\"`, say in one line that stops are waived, and take each stop's recommended option; the pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - 'Start AUTO here (Recommended)', then the fresh-session resume - and AUTO starts after its answer."
@@ -7395,35 +7319,35 @@
       ]
     },
     "no-stops-points-to-auto-mode": {
-      "_note": "Outside the two solve flows a typed 'no stops' is no waiver: the flow names `--mode-auto-run-on` and never hand-writes AUTO (the user's ruling of 2026-10-20, stack audit S1; the flag renamed by the stack-modes spec of 2026-10-27). Sits right after each flow's modes paragraph.",
+      "_note": "Outside the two solve flows a typed 'no stops' is no waiver: the flow names `/alfred-code:mode:auto-run on` and never hand-writes AUTO (the user's ruling of 2026-10-20, stack audit S1; a flag until the mode commands of 2026-11-12). Sits right after each flow's modes paragraph.",
       "owner": {
         "file": "stack/skills/task-implement/SKILL.md",
-        "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+        "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
       },
       "sites": [
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/loop-code-quality/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/loop-test-coverage-quality/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
         },
         {
           "file": "stack/skills/issue-diagnoser/SKILL.md",
-          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line."
+          "marker": "A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line."
         }
       ]
     },
@@ -7688,44 +7612,6 @@
         }
       ]
     },
-    "config-protection-allow-ask": {
-      "_note": "The config-protection guard's allowance ask (config-protection-gate-named says when it fires) as a template, Allow recommended and first: the edit is the task the user asked for, and the guard's receipt names one file. Stack audit 2026-10-20 row 13 - the ask was prose in all three, so lint 61 could not hold its mark.",
-      "owner": {
-        "file": "stack/skills/typescript/SKILL.md",
-        "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
-        },
-        {
-          "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried\n- 'Keep the config as it is' - nothing changes in the file"
-        }
-      ]
-    },
-    "config-protection-auto-run-loosening": {
-      "_note": "The auto-run half of the allowance ask (audit 2026-10-30 SKS-01, ruled skill-side): the ask keeps 'Allow this edit (Recommended)' for a tightening the guard still holds (the ESLint judge holds a new rule) or a key moving into a shared base, and auto-run - which answers with the Recommended option - never allows a held loosening. The guard's own deny text and labels are unchanged.",
-      "owner": {
-        "file": "stack/skills/typescript/SKILL.md",
-        "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
-      },
-      "sites": [
-        {
-          "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
-        },
-        {
-          "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
-        },
-        {
-          "file": "stack/skills/nx/SKILL.md",
-          "marker": "Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`)."
-        }
-      ]
-    },
     "loop-substantial-steps": {
       "_note": "The two quality loops' substantial-tier path - decompose, gate the plan, approve, (stamp,) build and verify - verbatim twins (stack audit 2026-10-20 SKF2-04). The stamp step between them is held by the approval-stamp-* entries. The coverage loop carries the same plan-gate step in its own substantial path (skill audit 2026-10-20b FFL-16).",
       "owner": {
@@ -7886,91 +7772,87 @@
       ]
     },
     "data-root-reader": {
-      "_note": "The data root, ALFRED_CODE_DATA_PATH relative to the project or .alfred - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout).",
+      "_note": "The data root, always .alfred (an absolute ALFRED_CODE_DATA_PATH is a harness's scratch and is kept) - one reading in the hooks' layout.js and every script that writes under it without the hooks beside it (2.8.0 layout; the fixed root, 2026-11-11).",
       "owner": {
         "file": "stack/hooks/layout.js",
-        "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+        "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
       },
       "sites": [
         {
           "file": "stack/skills/habits-commit-checkpoint/scripts/receipt.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "setup-plugin/hooks/guard-layer-table.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
-          "file": "stack/skills/mode-output-scorer/scripts/scorecard.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "file": "stack/skills/mode-output-scoring/scripts/scorecard.js",
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-answer.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-catastrophic-rm.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-config-protection.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-cross-project-write.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
-        },
-        {
-          "file": "stack/hooks/guard-desktop-exec.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-fresh-session-start.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-protected-force-push.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-secret-value.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/history.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); if (/^(?:\\/|[A-Za-z]:\\/)/.test(raw)) return raw.replace(/\\/+$/, '') || '.alfred'; const v = raw.replace(/\\/{2,}/g, '/').replace(/^(?:\\.\\/)+/, '').replace(/\\/+$/, ''); return v && !/\\s|[$%`\"'*?<>|:]|(?:^|\\/)\\.{1,2}(?:\\/|$)|^\\.(?:claude|git)(?:\\/|$)/.test(v) ? v : '.alfred'; };"
+          "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         }
       ]
     },
@@ -8208,19 +8090,6 @@
         }
       ]
     },
-    "commit-scope-fresh": {
-      "_note": "The commit ask's scope is derived fresh, untracked files counted and the index never moved. The checkpoint's ask step owns it since the git preferences seed kept only its crucial lines (the user's ruling of 2026-10-21; it was the seed's locked G2 before), and the commit guard's add -N denial names the same survey (skills audit 2026-10-21 S-13).",
-      "owner": {
-        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-        "marker": "`git diff HEAD --stat; git ls-files -o --exclude-standard`"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "git diff HEAD --stat; git ls-files -o --exclude-standard"
-        }
-      ]
-    },
     "preferences-precedence-ask": {
       "_note": "Ruling P (the user's, 2026-10-21, preferences audit): where a preferences entry and a skill, a house convention or another instruction disagree, the user is asked which wins, the entry's side marked (Recommended); a seat cannot ask, so it names the clash (designers on `user_decisions:`, implementers on `decisions:`) and carries on with the entry's side. Every home of the precedence states the same mark.",
       "owner": {
@@ -8371,7 +8240,7 @@
       ]
     },
     "prose-of": {
-      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scorer (the stack reader and the flags); guard-answer.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the mode-output-scorer plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
+      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scoring (the stack reader and the flags); guard-answer.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the mode-output-scoring plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": ".replace(/```[\\s\\S]*?```/g, '')\n.replace(/^\\s*\\|.*$/gm, '')\n.replace(/^\\s*>.*$/gm, '')\n.replace(/`[^`\\n]*`/g, '')\n.replace(/\\]\\([^)\\s]*\\)/g, ']')\n.replace(/\\s+/g, ' ')\n.trim();"
@@ -8383,10 +8252,10 @@
         }
       ]
     },
-    "scorer-hook": {
-      "_note": "The producers' one line that sends an output through mode-output-scorer before it is released (spec section 6, R6): an automatic output's line names the `scorer: on` line and the stacked one, a typed-only output's only the stacked one; the skill's When to use states both shapes. issue-diagnoser's two lines (step 3 and 4a) share one site. mode-output-scorer sits in always.skills, so every producer that names it has it beside it.",
+    "scoring-hook": {
+      "_note": "The producers' one line that sends an output through mode-output-scoring before it is released (spec section 6, R6): an automatic output's line names the `scoring: on` line and the stacked one, a typed-only output's only the stacked one; the skill's When to use states both shapes. issue-diagnoser's two lines (step 3 and 4a) share one site. mode-output-scoring sits in always.skills, so every producer that names it has it beside it.",
       "owner": {
-        "file": "stack/skills/mode-output-scorer/SKILL.md",
+        "file": "stack/skills/mode-output-scoring/SKILL.md",
         "marker": "line is in context, the FIRST action before releasing"
       },
       "sites": [
@@ -8451,19 +8320,6 @@
         {
           "file": "stack/hooks/layout.js",
           "marker": "function settingFrom({ env, projectDir, suffix })\n{\n    const read = (e) => envOf(e, suffix);\n    const own = String(read(env) || '').trim();\n    if (own || !projectDir) return own;\n    const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');\n    for (const file of [\n        path.join(projectDir, '.claude', 'settings.local.json'),\n        path.join(projectDir, '.claude', 'settings.json'),\n        path.join(account, 'settings.json'),\n    ])\n    {\n        try\n        {\n            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();\n            if (value) return value;\n        }\n        catch { /* absent, unreadable or malformed: the next file answers */ }\n    }\n    return '';\n}"
-        }
-      ]
-    },
-    "data-path-check": {
-      "_note": "Which data roots are usable - data-root.js's checkDataPath, copied byte for byte into the hooks' layout.js so the workspace chain refuses the roots the installer refuses.",
-      "owner": {
-        "file": "stack/mcp/data-root.js",
-        "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/layout.js",
-          "marker": "function checkDataPath(raw)\n{\n    const value = String(raw ?? '').trim().replace(/\\\\/g, '/').replace(/\\/{2,}/g, '/').replace(/^(\\.\\/)+/, '').replace(/\\/+$/, '');\n    if (!value) return { ok: false, why: 'the data root is empty' };\n    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };\n    if (/\\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };\n    if (/[$%`\"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };\n    const parts = value.split('/');\n    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };\n    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };\n    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };\n    return { ok: true, value };\n}"
         }
       ]
     },

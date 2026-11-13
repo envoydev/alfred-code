@@ -159,7 +159,7 @@ function bestVerb(c, words) {
   }
   return best;
 }
-// A merge that lands LATER - an auto-merge, a merge queue: the ref watch keeps its act until it explains one landing.
+// A merge that lands LATER - an auto-merge, a merge queue: the result carries `armed`.
 const armedBy = (c, words) => words.some((w) => c.armWords.has(String(w).toLowerCase()));
 function nounsIn(c, words) {
   const found = {};
@@ -402,7 +402,7 @@ function apiCallOf(c, name, argv, dir, depth = 0) {
 // Inline interpreter code (`node -e`, `python -c`, a heredoc into one) that makes a request - a `requestCalls` word in it:
 // every URL in it is a call, its method sniffed from the code; a write path with no method the hook can see is `unknown`.
 // Without a request call a URL is text the code prints or writes (replay 2026-10-23: four file edits asked, a deny in
-// auto mode); a client no word names goes unasked and the ref watch reports what it moved.
+// auto mode); a client no word names goes unasked.
 function interpreterCalls(c, code) {
   const out = [];
   if (!c.requestCall.test(code)) return out;
@@ -665,56 +665,6 @@ function classifyCommand(command, cwd, opts = {}) {
   return classifyShell(c, command, cwd, opts.parsed ? { command, parsed: opts.parsed } : null);
 }
 
-// ---- the act ledger ------------------------------------------------------------------------------------------------
-// Every publish a gate ALLOWS (and every unknown call it asked about) is one row in
-// <data root>/state/forge/ACTS-<session>.jsonl under the REPOSITORY's root (ledgerRoot: a worktree and its main checkout
-// share one) - what the ref watch reads to tell a gated move from an ungated one. Written at PreToolUse with the call's
-// tool_use_id, before the act runs; the watch's PostToolUse appends a `confirm` row once the call finished, and a row never
-// confirmed (refused, failed, interrupted) covers nothing. A row with no tool_use_id counts as confirmed. Best effort - a
-// ledger write never changes a verdict.
-const sessionFile = (sessionId) => `ACTS-${String(sessionId || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_')}.jsonl`;
-function actsPath(projectRoot, sessionId, env = process.env) {
-  return require('./layout.js').statePath(projectRoot, 'forge', sessionFile(sessionId), env);
-}
-// The repository's one root: the main checkout a worktree belongs to (the parent of the common `.git`), else the work
-// tree's top; null outside git.
-function ledgerRoot(cwd) {
-  const common = gitOut(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-  if (common && path.basename(common) === '.git') return path.dirname(common);
-  return gitOut(cwd, ['rev-parse', '--show-toplevel']);
-}
-function recordAct(projectRoot, sessionId, act, env = process.env) {
-  try {
-    const file = actsPath(projectRoot, sessionId, env);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const row = { concept: act.concept || null, change: act.change || null, ref: act.ref || null, head: act.head || null, asked: !!act.asked, at: Date.now() };
-    if (act.all) row.all = true;
-    // An armed merge (forge.js armedBy) lives until it explains one landing, so it carries an id the watch marks used.
-    if (act.armed) { row.armed = true; row.id = act.id || `${Date.now().toString(36)}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`; }
-    if (act.tool_use_id) row.tool_use_id = String(act.tool_use_id);
-    fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
-  } catch { /* the ledger is never allowed to break a gate */ }
-}
-function ledgerRows(projectRoot, sessionId, env) {
-  try {
-    return fs.readFileSync(actsPath(projectRoot, sessionId, env), 'utf8').split('\n').filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((r) => r && typeof r === 'object');
-  } catch { return []; }
-}
-// The acts, each with `confirmed`.
-function readActs(projectRoot, sessionId, env = process.env) {
-  const rows = ledgerRows(projectRoot, sessionId, env);
-  const done = new Set(rows.filter((r) => r.confirm).map((r) => String(r.confirm)));
-  return rows.filter((r) => !r.confirm).map((r) => ({ ...r, confirmed: !r.tool_use_id || done.has(String(r.tool_use_id)) }));
-}
-// PostToolUse: the call `toolUseId` finished - confirm its act, when the ledger holds one. True when it did.
-function confirmAct(projectRoot, sessionId, toolUseId, env = process.env) {
-  if (!toolUseId) return false;
-  const id = String(toolUseId);
-  if (!ledgerRows(projectRoot, sessionId, env).some((r) => !r.confirm && r.tool_use_id === id)) return false;
-  try { fs.appendFileSync(actsPath(projectRoot, sessionId, env), `${JSON.stringify({ confirm: id, at: Date.now() })}\n`); return true; } catch { return false; }
-}
-
 // ---- the forge MCP servers the configs launch -----------------------------------------------------------------------
 // Every MCP server outside the stack whose launch command, arguments or URL carries a forge server's mark (the lexicon's
 // hints.mcpLaunch), never its name: the project's .mcp.json, the account's user-scope servers and its entry for this
@@ -935,36 +885,4 @@ function unseenHead({ cwd, change, sha, branch, receiptHead }) {
   return `the change's head ${t7} carries commits the review at ${h7} never saw - review the change's head and write head: again`;
 }
 
-// The branches and tags a `git push` writes, from its argv after `push`: each refspec's destination (`src:dst`, `+dst`,
-// `:dst` deletes it, a bare name is its own), the current branch's upstream name when it names none or `HEAD`. Null when it
-// pushes refs it does not name (`--all`, `--mirror`, `--tags`, `--follow-tags`) - such an act covers every move. A detached
-// HEAD it cannot name is left out: [] names nothing, and the act then lands one move at its head.
-const PUSH_VALUE = new Set(['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
-function pushTargets(argv, cwd) {
-  const words = (argv || []).map(String);
-  if (words.some((w) => /^--(?:all|mirror|tags|follow-tags|branches)$/.test(w))) return null;
-  const positional = [];
-  for (let i = 0; i < words.length; i++) {
-    if (PUSH_VALUE.has(words[i])) { i++; continue; }
-    if (!/^-/.test(words[i])) positional.push(words[i]);
-  }
-  const current = () => {
-    const branch = gitOut(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']);
-    if (!branch) return null;
-    const merge = gitOut(cwd, ['config', `branch.${branch}.merge`]);
-    return merge ? merge.replace(/^refs\/heads\//, '') : branch;
-  };
-  const specs = positional.slice(1);
-  if (!specs.length) { const c = current(); return c ? [c] : []; }
-  const out = [];
-  for (const spec of specs) {
-    const s = spec.replace(/^\+/, '');
-    let dst = s.includes(':') ? s.slice(s.lastIndexOf(':') + 1) : s;
-    dst = dst.replace(/^refs\/(?:heads|tags)\//, '');
-    if (!dst || dst === 'HEAD' || dst === '@') { const c = current(); if (!c) continue; dst = c; } // `@` is HEAD (E-batch fn-10c)
-    out.push(dst);
-  }
-  return out;
-}
-
-module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, recordAct, readActs, confirmAct, actsPath, ledgerRoot, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushPlain, pushWouldMove, unseenHead, pushTargets, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };
+module.exports = { classify, classifyCommand, readCurlConfig, loadLexicon, localTool, tokens, forgeServersOf, remoteOf, lsRemote, changeHead, branchSelector, branchHead, pushDryRun, pushPlain, pushWouldMove, unseenHead, gitOut, LS_REMOTE_MS, CONCEPTS, PUBLISH, PREF_HOLD };

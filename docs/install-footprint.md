@@ -9,19 +9,20 @@ Written at every scope:
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
 - **`.claude/hooks/`** - only the four engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
 - **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin.
-- **`.claude/settings.json`**
-  - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick.
+- **`.claude/settings.local.json`** - the stack's settings, at every scope (3.11.0). Where git ignores the file (the stack warns when it does not), none of it reaches a teammate: their own first `/alfred-code:update` writes it on their machine.
+  - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick, and the secret-file rows.
   - the `env` block - the stack's own keys.
   - the `attribution` keys - commit, PR and session-link attribution off, each only where the project set none.
-- **`.claude/settings.local.json`** - the same keys at local scope. At project or user scope too, for a stack key this file already holds, since it applies over `settings.json` - and custom memory's `autoMemoryEnabled: false` when this file holds the `ALFRED_CODE_MEMORY=custom` choice.
+  - custom memory's `autoMemoryEnabled: false` when the `ALFRED_CODE_MEMORY=custom` choice is made.
+- **`.claude/settings.json`** - nothing the stack writes itself. At project scope `claude plugin install` enables the plugins here. An older install's rows move to `settings.local.json` on the first update; a row you changed since it was written stays here, named in the update's report.
 - **`.claude/alfred-code.stamp`** - the source revision, your picks and a ledger of every write.
-- **`.alfred/`** (the data root, `ALFRED_CODE_DATA_PATH`) - the docs, the hooks' state (`state/`) and ledgers (`statistics/`), the seats' handoff notes and the secrets file (`.secrets`, `.sensitive-data` before). Its own `.gitignore` keeps everything but the docs out of git.
+- **`.alfred/`** (the data root, always this folder) - the docs, the hooks' state (`state/`) and ledgers (`statistics/`), the seats' handoff notes and the secrets file (`.secrets`, `.sensitive-data` before). Its own `.gitignore` keeps everything but the docs out of git.
 
 Written later, or only on one route:
 
 - **`/alfred-code:init`** dates the stamp's `initialised:` line at its close. It never touches `autoMemoryEnabled` unless the project picks custom memory, and otherwise Claude Code's own memory stays as you set it. Custom memory writes `autoMemoryEnabled: false`, ledgered, beside the choice - into `settings.local.json` when that file holds `ALFRED_CODE_MEMORY`, so a personal choice never switches a teammate's memory off, else into the file the run writes. A personal choice never takes the team's switch-off out of `settings.json` while that file still says custom. An update or uninstall over an earlier release takes back the `autoMemoryEnabled: false` that release's init wrote.
 - **`<repo>/.mcp.json`** is never written. An update over an earlier release takes the stack's own registrations out of it; a server of yours stays.
-- **`.claude/session-inspector/status/<session id>.json`** - written by the hooks, not the install, in every install, whether the session-inspector mod is installed or not: one small file per session for that mod to read (the context the stack acts at, the model and its window, auto-run, the scorer and a resume prompt), in the folder the session runs in when it is the project's own. It is written at session start, at a turn's end when a field changed and when auto-run or the scorer changes; files past 7 days go at the next session start.
+- **`.claude/session-inspector/status/<session id>.json`** - written by the hooks, not the install, in every install, whether the session-inspector mod is installed or not: one small file per session for that mod to read (the context the stack acts at, the model and its window, auto-run, the scoring and a resume prompt), in the folder the session runs in when it is the project's own. It is written at session start, at a turn's end when a field changed and when auto-run or the scoring changes; files past 7 days go at the next session start.
 - **`.git/info/exclude`** (the repository's common git dir) - one `/<folder>/.claude/session-inspector/status/` line under `# alfred-code: session-inspector status files` for each folder that holds status files, so they stay out of git.
 - `/alfred-code:uninstall` takes both back: the status files and the folders they leave empty, and only the exclude lines under that comment. The mod's own files beside `status/` and your own exclude lines stay.
 - **`.claude/settings.local.json`** gets claude-hud's `statusLine` from `/alfred-code:init` when claude-hud is installed for this project alone - the command names this machine's `node`, so it stays out of the shared file - after a `settings.local.json.bak.<time>` copy of the file, when it already exists.
@@ -50,7 +51,7 @@ At install:
 
 At every session start: the enabled plugins load, an LSP plugin starts its language server, and the hooks run. No package is downloaded or launched by the stack.
 
-Nothing else executes from the package itself. The package itself is six command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
+Nothing else executes from the package itself. The package itself is nine command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
 
 ## What you install by hand
 

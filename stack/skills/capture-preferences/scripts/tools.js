@@ -25,12 +25,14 @@ const prefs = require('./preferences.js');
 const client = require('./mcp-client.js');
 const lsp = require('./lsp-coverage.js');
 const { pluginsRoot } = require('./plugins-root.js');
-// The stack's variables (D4) set on the process env before the first read: the hooks' loader, at ../../../hooks/ in the
-// plugin and in a project's .claude/ (bundle-gate.js's route); a copy with no loader beside it reads the env as it is.
+// A hook engine beside the skills folder (the plugin, a real copy in .claude), else in the project's .claude/hooks: a
+// script reached through a link runs from the store, .alfred/stack, where no engine sits.
+const hookEngine = (name, root) => [path.join(__dirname, '..', '..', '..', 'hooks'), path.join(root, '.claude', 'hooks')].map((d) => path.join(d, name)).filter((f) => fs.existsSync(f)).map((f) => require(f))[0] || null;
+// The stack's variables (D4) set on the process env before the first read: the hooks' loader; with none, the env as it is.
 let loader = null;
 try
 {
-    loader = require(path.join(__dirname, '..', '..', '..', 'hooks', 'layout.js'));
+    loader = hookEngine('layout.js', process.env.CLAUDE_PROJECT_DIR || process.cwd());
     loader.applyVariables(process.env.CLAUDE_PROJECT_DIR || loader.projectRootOf(process.cwd()).checkout);
 }
 catch { /* the process env as it stands */ }
@@ -1022,7 +1024,7 @@ const LEAK_ROWS = 10;
 function memoryLeakRows(projectRoot, state, env = process.env)
 {
     let chain = null;
-    try { chain = require(path.join(__dirname, '..', '..', '..', 'hooks', 'secret-chain.js')); }
+    try { chain = hookEngine('secret-chain.js', projectRoot); }
     catch { /* no store reader beside the loader: paths alone */ }
     let values = [];
     try { values = chain ? Object.entries(chain.chainOf(projectRoot, { env }).values).filter(([, v]) => typeof v === 'string' && v.length >= SECRET_MIN) : []; }
@@ -1340,7 +1342,7 @@ module.exports = {
     TOOLS_DOC, TOOLS_CAP, TOOLS_LINE_CAP, TOOLS_FIELD, PREFS_DIR, LIST_TIMEOUT_MS,
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
-    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, wantsSuggest, markSuggested, SUGGEST_LINE, findToolsDoc, pluginAgentFile, validateRows,
+    mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, wantsSuggest, markSuggested, SUGGEST_LINE, findToolsDoc, pluginAgentFile, validateRows, hookEngine,
 };
 
 if (require.main === module)

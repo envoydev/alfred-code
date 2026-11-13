@@ -12,7 +12,7 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `--mode-auto-run-on` right after the command turns auto-run on, and never hand-write an `AUTO` line.
+**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line.
 
 ## When to use
 
@@ -127,7 +127,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At
    tier 4, with no source to pull, this step is code-first instead: locate the named behaviour
-   with the navigation tools per `.claude/rules/alfred-navigation.md`, read the paths that could produce the
+   with the navigation tools per the `alfred-navigation.md` rule, read the paths that could produce the
    symptom, and attempt a repro. Never slurp a large log into this context - grep to the signal
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
    from the evidence and the code. Append the digests' key lines to the findings file, stamp
@@ -141,11 +141,11 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    symptom, never a plausible guess. Match the evidence to the catalogue's signature and isolate
    where the signature points, which is almost never the line that threw. **Hard cap: 2
    investigation passes.** If the cause stays ambiguous after 2, stop guessing and record the
-   surviving hypotheses RANKED with what would decide between each. Where a `scorer: on` line
-   naming the root-cause verdict or a `scorer: stacked` line is in context, the FIRST action before
-   releasing the verdict - stamping it, or putting the fork below - is the `mode-output-scorer`
+   surviving hypotheses RANKED with what would decide between each. Where a `scoring: on` line
+   naming the root-cause verdict or a `scoring: stacked` line is in context, the FIRST action before
+   releasing the verdict - stamping it, or putting the fork below - is the `mode-output-scoring`
    Skill call with output `root-cause`. Stamp `Cause:` with the file + symbol and the evidence that
-   proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scorer released it where one
+   proves it, or `Cause: unproven - <n> hypotheses ranked`, once the scoring released it where one
    runs (`Cause: <pending>` until then).
    Report a severity and an explicit P0-P3 priority when the ask was to level it rather than fix
    it. **This step ends at the fork below - it never continues into planning on its own.**
@@ -163,8 +163,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    - **4a. REPORT** ('Write a report on the issue') - finish the findings file as a standalone
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
-     Where a `scorer: on` line naming the root-cause verdict or a `scorer: stacked` line is in
-     context, the FIRST action before releasing the report is the `mode-output-scorer`
+     Where a `scoring: on` line naming the root-cause verdict or a `scoring: stacked` line is in
+     context, the FIRST action before releasing the report is the `mode-output-scoring`
      Skill call with output `root-cause`. No task cards. This is the outcome when the fix is someone else's, or not now.
    - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
      tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -

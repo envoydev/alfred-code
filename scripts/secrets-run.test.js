@@ -127,13 +127,6 @@ test('the kill switch passes only the cwd project\'s own store', () =>
     assert.strictEqual(launch(set('ws'), set('ws/api'), ['presence', 'A']).stdout.replace(/\r/g, ''), 'A undefined -\n', 'with the chain off a descendant is not proved');
 });
 
-test('a custom data root set only in settings.local.json is found with no env', () =>
-{
-    const at = three({ ws: { data: 'var/data', local: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }) } });
-    assert.ok(!('ALFRED_CODE_DATA_PATH' in ENV));
-    assert.strictEqual(launch(at('ws/api'), at('ws/api'), ['presence', 'B']).stdout.replace(/\r/g, ''), `B string ${VALUES.rootB.length}\n`);
-});
-
 test('the exit code is the command\'s; a missing command exits 1 with one line', () =>
 {
     const at = three();

@@ -8,7 +8,7 @@
    "evidence-gatherer",
    "integration-reviewer",
    "issue-diagnoser-runtime",
-   "output-scorer",
+   "output-scoring",
    "security-auditor",
    "test-coverage-analyzer"
   ],
@@ -35,14 +35,14 @@
    "guard-fresh-session-start",
    "guard-cross-project-write",
    "guard-config-protection",
-   "guard-desktop-exec",
    "guard-answer",
    "instrument-tool-usage",
    "docs-session",
    "preferences-session",
    "check-turn-build",
    "history-session",
-   "forge-session"
+   "forge-session",
+   "rules-session"
   ],
   "skills": [
    "habits-clarify",
@@ -71,7 +71,7 @@
    "review-code",
    "review-security",
    "task-version-upgrade",
-   "mode-output-scorer"
+   "mode-output-scoring"
   ]
  },
  "general": {

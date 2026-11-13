@@ -2513,15 +2513,16 @@ test('a state claim reads data/ beside the transcript or --data-root; with neith
   assert.deepStrictEqual(d2(), ['1', '0', '0', '1', '<data root>/state/history/s.json']);
   assert.deepStrictEqual(d2('--data-root', path.join(dir, 'elsewhere')), ['1', '1', '0', '0', '']);
 });
-test('--no-conformance leaves the section out; the probe kinds the shell guards write get a table each; the navigation row names no retired server', () => {
+test('stage 1 A3: an old ledger with symbol-grep probe rows is read, the rows skipped; the other probe kinds get a table each; --no-conformance leaves the section out; the navigation row names no retired server', () => {
   const dir = tmp();
   fs.cpSync(path.join(__dirname, 'fixtures', 'conformance', 'N1', 'violated'), dir, { recursive: true });
   const row = (kind, extra = {}) => JSON.stringify({ ts: '2026-10-25T10:00:03.000Z', hook: 'shell-guards.js', event: 'PreToolUse', tool: 'Bash', mode: 'probe', kind, reason: `probe: ${kind}`, detail: { branch: kind, ...extra } });
   fs.writeFileSync(path.join(dir, 'hook-blocks-s.jsonl'), [row('symbol-grep', { pattern: 'cartTotal' }), row('symbol-grep', { pattern: 'cartTotal' }), row('bg-note'), row('sed-multi-match')].join('\n') + '\n');
   const dest = path.join(dir, 'report.md');
-  assert.strictEqual(cli([path.join(dir, 's.jsonl'), '--report-md', '--hook-blocks', dir, '--out', dest]).status, 0);
+  const r = cli([path.join(dir, 's.jsonl'), '--report-md', '--hook-blocks', dir, '--out', dest]);
+  assert.strictEqual(r.status, 0, r.stderr);
   const md = fs.readFileSync(dest, 'utf8');
-  assert.match(md, /^\| symbol-grep \| 2 \| .*cartTotal x2/m);
+  assert.doesNotMatch(md, /symbol-grep|cartTotal/, 'an old probe row prints no probe line');
   assert.match(md, /^\| bg-note \| 1 \|/m);
   assert.match(md, /^\| sed-multi-match \| 1 \|/m);
   assert.doesNotMatch(md, /^\| monitor-note \|/m, 'a kind with no row prints no table');
@@ -2791,4 +2792,527 @@ test('--receipt names the bundle\'s collected.json over the copy beside the tran
   const garbage = path.join(b.fx.root, 'garbage.json');
   fs.writeFileSync(garbage, '{ not json');
   assert.match(analyzeBundle(b, ['--report-md', '--receipt', garbage]), /^collected\.json unreadable - stores beyond the transcript are unknown$/m);
+});
+
+test('4c usage: the store rules join the inventory, a loader block names its rules, and a notice may name a store path', () => {
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  const store = path.join(root, '.alfred', 'stack', 'rules');
+  fs.mkdirSync(store, { recursive: true });
+  fs.writeFileSync(path.join(store, 'store-always.md'), '---\ndescription: d\n---\n\nbody\n');
+  fs.writeFileSync(path.join(store, 'store-scoped.md'), '---\npaths: ["**/*.py"]\n---\n\nbody\n');
+  fs.writeFileSync(path.join(store, 'demo-conventions.md'), '---\npaths: ["**/*.go"]\n---\n\nthe native copy wins\n');
+  const file = path.join(dir, 'session.jsonl');
+  const block = 'Project rules, part 1 of 1 - binding instructions for this project\n\n## store-always (.alfred/stack/rules/store-always.md)\nbody\n\n'
+    + '## store-always (.alfred/stack/rules/store-always.md) - continued\nmore\n\nEnd of project rules, part 1 of 1';
+  fs.writeFileSync(file, [
+    line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } }),
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:01.000Z', attachment: { type: 'hook_additional_context', hookName: 'rules-session.js', content: [block] } }),
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:02.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.alfred/stack/rules/store-scoped.md`. Read the rule.'] } }),
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:03.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
+  ].join(''));
+  const { inventory } = run([file, '--inventory', claude, '--plugins', pluginsFile]);
+  assert.deepStrictEqual(invRow(inventory.rules, 'store-always.md').how, ['rule loader block x1'], 'one block per rule, a continued heading not counted again');
+  assert.deepStrictEqual(invRow(inventory.rules, 'store-scoped.md').how, ['shell-route notice x1'], 'a notice naming a store path');
+  assert.deepStrictEqual(invRow(inventory.rules, 'demo-conventions.md').how, ['attached (transcript record) x1'], 'a native load still counts');
+  for (const n of ['store-scoped.md', 'demo-conventions.md']) assert.strictEqual(inventory.rules.filter((r) => r.name === n).length, 1, `${n} once`);
+});
+
+// --- W2 Task 2: the analyzer reads the usage scope (scripts/usage-scope.js) ---
+
+const usageFx = require('./usage-fixture.js');
+const { usageScope } = require('./usage-scope.js');
+const { startFolderOf, sessionsOf } = require('./analyze-usage.js');
+const SCOPE_HEAD = 1048576;
+
+// The analyzer as a command, in `cwd` (a folder of the tree), on the tree's own config dir and HOME.
+function usageCli(t, cwd, args, after = {}) {
+  const env = { ...process.env, ...t.env };
+  for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_') || k === 'CLAUDE_CODE_SESSION_ID') delete env[k];
+  Object.assign(env, after);
+  try {
+    const out = execFileSync('node', [SCRIPT, ...args], { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return { code: 0, out, err: '' };
+  } catch (e) { return { code: e.status, out: String(e.stdout || ''), err: String(e.stderr || '') }; }
+}
+const scopeTree = (extra = {}) => usageFx.tree({
+  ws: { stamp: true, git: true, record: { role: 'root', children: ['api', 'web'] } },
+  'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+  'ws/web': { stamp: true, git: true, record: { parent: '..' } },
+  ...extra,
+});
+
+test('startFolderOf: the first cwd row, head lines without one skipped', () => {
+  const t = usageFx.tree({ api: { stamp: true } });
+  assert.strictEqual(startFolderOf(usageFx.session(t, t('api'), 's1')), t('api'));
+});
+
+test('startFolderOf: an empty file, a missing file, one torn line and no cwd row are null, no throw', () => {
+  const dir = tmp();
+  const put = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+  assert.strictEqual(startFolderOf(put('empty.jsonl', '')), null);
+  assert.strictEqual(startFolderOf(path.join(dir, 'missing.jsonl')), null);
+  assert.strictEqual(startFolderOf(put('torn.jsonl', '{"type":"user","cwd":"/x')), null);
+  assert.strictEqual(startFolderOf(put('none.jsonl', line({ type: 'mode' }) + line({ type: 'user', message: {} }))), null);
+  assert.strictEqual(startFolderOf(put('dir.jsonl.d', '')) , null);
+});
+
+test('startFolderOf: a first cwd row ending at the head bound, one byte under and one over: found, found, null', () => {
+  const dir = tmp();
+  const rowOf = (len) => {
+    const bare = JSON.stringify({ type: 'user', cwd: '/w/été', pad: '' });
+    const row = JSON.stringify({ type: 'user', cwd: '/w/été', pad: 'a'.repeat(len - Buffer.byteLength(bare)) });
+    assert.strictEqual(Buffer.byteLength(row), len);
+    return row;
+  };
+  const at = (len) => { const f = path.join(dir, `b${len}.jsonl`); fs.writeFileSync(f, rowOf(len) + '\n' + line({ type: 'mode' })); return startFolderOf(f); };
+  assert.deepStrictEqual([at(SCOPE_HEAD), at(SCOPE_HEAD - 1), at(SCOPE_HEAD + 1)], ['/w/été', '/w/été', null]);
+});
+
+test('sessionsOf: two members sharing one folder each keep their own', () => {
+  const t = usageFx.tree({
+    w: { stamp: true, git: true, record: { role: 'root', children: ['web-admin', 'web/admin'] } },
+    'w/web-admin': { stamp: true, git: true, record: { parent: '..' } },
+    'w/web/admin': { stamp: true, git: true, record: { parent: '../..' } },
+  });
+  const a = usageFx.session(t, t('w/web-admin'), 's-dash');
+  const b = usageFx.session(t, t('w/web/admin'), 's-slash');
+  assert.strictEqual(path.dirname(a), path.dirname(b), 'one folder');
+  const got = sessionsOf(usageScope(t('w'), { env: t.env }));
+  const files = (rel) => got.members.find((m) => m.rel === rel).files;
+  assert.deepStrictEqual([files('web-admin'), files('web/admin'), got.other], [[a], [b], 0]);
+});
+
+test('sessionsOf: an outsider\'s transcript in a member\'s folder counts once as other', () => {
+  const t = usageFx.tree({
+    w: { stamp: true, git: true, record: { role: 'root', children: ['app/old'] } },
+    'w/app/old': { stamp: true, git: true, record: { parent: '../..' } },
+  });
+  const own = usageFx.session(t, t('w/app/old'), 's-own');
+  usageFx.session(t, path.join(t('w'), 'app-old'), 's-out');
+  const got = sessionsOf(usageScope(t('w'), { env: t.env }));
+  assert.deepStrictEqual([got.members.find((m) => m.rel === 'app/old').files, got.other], [[own], 1]);
+});
+
+test('sessionsOf: a transcript with no cwd row is the first member\'s by rel whose folder holds it', () => {
+  const t = usageFx.tree({
+    w: { stamp: true, git: true, record: { role: 'root', children: ['web/admin', 'web-admin'] } },
+    'w/web-admin': { stamp: true, git: true, record: { parent: '..' } },
+    'w/web/admin': { stamp: true, git: true, record: { parent: '../..' } },
+  });
+  usageFx.session(t, t('w/web/admin'), 's-slash');
+  const bare = usageFx.session(t, t('w/web-admin'), 's-none', { rows: [{ type: 'user', message: { content: 'x' } }] });
+  const got = sessionsOf(usageScope(t('w'), { env: t.env }));
+  assert.ok(got.members.find((m) => m.rel === 'web-admin').files.includes(bare));
+  assert.ok(!got.members.find((m) => m.rel === 'web/admin').files.includes(bare));
+});
+
+test('sessionsOf: a cwd in another letter case, and one through a symlinked folder, is still the member\'s', () => {
+  const t = scopeTree();
+  const files = [];
+  if (process.platform === 'darwin' || process.platform === 'win32') files.push(usageFx.session(t, t('ws/api'), 's-case', { cwd: t('ws/api').toUpperCase() }));
+  if (process.platform !== 'win32') {
+    const link = path.join(t.top, 'api-link');
+    fs.symlinkSync(t('ws/api'), link);
+    files.push(usageFx.session(t, t('ws/api'), 's-link', { cwd: link }));
+  }
+  const got = sessionsOf(usageScope(t('ws'), { env: t.env }));
+  for (const f of files) assert.ok(got.members.find((m) => m.rel === 'api').files.includes(f), f);
+  assert.strictEqual(got.other, 0);
+});
+
+test('--scope: the lines of a root with two children, one gone child and one outsider', () => {
+  const t = scopeTree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['api', 'web', 'old'] } } });
+  const f0 = usageFx.session(t, t('ws'), 's0');
+  const f1 = usageFx.session(t, t('ws/api'), 's1');
+  const f2 = usageFx.session(t, t('ws/web'), 's2');
+  usageFx.session(t, t('ws'), 's-out', { cwd: path.join(t('ws'), 'elsewhere') });
+  const r = usageCli(t, t('ws'), ['--scope']);
+  assert.strictEqual(r.code, 0, r.err);
+  assert.strictEqual(r.out, [
+    'scope: 3 projects',
+    `project: .\t${t('ws')}\t1`, `project: api\t${t('ws/api')}\t1`, `project: web\t${t('ws/web')}\t1`,
+    'left-out: old\tgone',
+    `session: s0\t.\t${f0}`, `session: s1\tapi\t${f1}`, `session: s2\tweb\t${f2}`,
+    'other-start-folder: 1', '',
+  ].join('\n'));
+  const child = usageCli(t, t('ws/api'), ['--scope']);
+  assert.strictEqual(child.out.split('\n')[0], 'scope: 1 projects');
+  assert.strictEqual(child.out.split('\n').filter((l) => l.startsWith('project: ')).length, 1);
+  assert.ok(!/^left-out: /m.test(child.out));
+});
+
+test('--scope at a root whose one child is left out: ignored, gone, naming another parent', () => {
+  const cases = [
+    [{ one: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy'] } }, 'one/legacy': { stamp: true, git: true } }, 'left-out: legacy\tignored'],
+    [{ one: { stamp: true, git: true, record: { role: 'root', children: ['old'] } } }, 'left-out: old\tgone'],
+    [{ one: { stamp: true, git: true, record: { role: 'root', children: ['x'] } }, 'one/x': { stamp: true, git: true } }, 'left-out: x\tnames another parent'],
+  ];
+  for (const [spec, want] of cases) {
+    const t = usageFx.tree(spec);
+    const r = usageCli(t, t('one'), ['--scope']);
+    const lines = r.out.split('\n');
+    assert.deepStrictEqual([lines[0], lines.filter((l) => l.startsWith('project: ')).length, lines.filter((l) => l.startsWith('left-out: '))], ['scope: 1 projects', 1, [want]], want);
+  }
+});
+
+test('--scope with a folder named: exit 1 with the usage lines, nothing on stdout', () => {
+  const t = scopeTree();
+  const r = usageCli(t, t('ws'), [t.config, '--scope']);
+  assert.deepStrictEqual([r.code, r.out], [1, '']);
+  assert.match(r.err, /^usage: analyze-usage\.js/m);
+  assert.match(r.err, /--scope/);
+});
+
+test('--scope prints no row text and reads heads only', () => {
+  const t = scopeTree();
+  for (const [rel, sid] of [['ws', 's0'], ['ws/api', 's1']]) {
+    const f = usageFx.session(t, t(rel), sid, { rows: [{ type: 'user', cwd: t(rel), message: { role: 'user', content: 'W2-TEXT-MARK prompt' } }] });
+    fs.appendFileSync(f, 'x'.repeat(2 * 1048576));
+  }
+  const r = usageCli(t, t('ws'), ['--scope']);
+  assert.strictEqual(r.code, 0, r.err);
+  assert.ok(!r.out.includes('W2-TEXT-MARK'));
+  assert.ok(r.out.endsWith('\n') && r.out.split('\n').filter(Boolean).every((l) => /^(scope|project|left-out|session|other-start-folder|note): /.test(l)), r.out);
+});
+
+test('no path named, one project: the rollup, --json and --inventory equal the named folder\'s (a guard)', () => {
+  const t = usageFx.tree({ solo: { stamp: true, git: true } });
+  usageFx.session(t, t('solo'), 's1', { at: Date.parse('2026-11-01T10:00:00.000Z') });
+  usageFx.session(t, t('solo'), 's2', { at: Date.parse('2026-11-01T11:00:00.000Z') });
+  const folder = path.join(t.config, 'projects', usageFx.encode(t('solo')));
+  for (const extra of [[], ['--json'], ['--inventory', path.join(t('solo'), '.claude')]]) {
+    const bare = usageCli(t, t('solo'), extra);
+    const named = usageCli(t, t('solo'), [folder, ...extra]);
+    assert.strictEqual(bare.code, 0, bare.err);
+    assert.strictEqual(bare.out, named.out, extra.join(' '));
+  }
+});
+
+test('started in a sub-folder, the project\'s sessions are read and the note is printed', () => {
+  const t = scopeTree();
+  fs.mkdirSync(path.join(t('ws/api'), 'src'), { recursive: true });
+  usageFx.session(t, t('ws/api'), 's-api');
+  const r = usageCli(t, path.join(t('ws/api'), 'src'), []);
+  assert.strictEqual(r.code, 0, r.err);
+  assert.match(r.out, /s-api/);
+  assert.match(r.out, /scope: started in src - the sessions read are those started at the project root/);
+});
+
+test('a named folder is read whole, whatever each transcript\'s cwd', () => {
+  const t = scopeTree();
+  usageFx.session(t, t('ws'), 's-own');
+  usageFx.session(t, t('ws'), 's-other', { cwd: path.join(t('ws'), 'elsewhere') });
+  const r = usageCli(t, t('ws'), [path.join(t.config, 'projects', usageFx.encode(t('ws')))]);
+  assert.match(r.out, /s-own/);
+  assert.match(r.out, /s-other/);
+});
+
+test('no transcript folder at all: exit 1 and the message of today (a guard)', () => {
+  const t = usageFx.tree({ solo: { stamp: true, git: true } });
+  const r = usageCli(t, t('solo'), []);
+  assert.strictEqual(r.code, 1);
+  assert.match(r.err, /ENOENT/);
+});
+
+// --- W2 Task 3: the split rollup and the per-project inventory ---
+
+// The root `ws` with `api` and `web`, two sessions each at their own hour; `extra` adds tree entries.
+function rollupTree(extra = {}, members = ['ws', 'ws/api', 'ws/web']) {
+  const t = scopeTree(extra);
+  let hour = 0;
+  for (const rel of members) for (const n of [1, 2]) usageFx.session(t, t(rel), `s-${rel.replace('/', '-')}-${n}`, { at: Date.parse('2026-11-01T00:00:00.000Z') + 3600000 * ++hour });
+  return t;
+}
+const rollupCli = (t, cwd, args, env = {}) => {
+  const r = usageCli(t, cwd, args, env);
+  assert.strictEqual(r.code, 0, r.err);
+  return r.out;
+};
+const afterTotal = (out) => out.slice(out.search(/^\s+TOTAL /m));
+const inventoryBlocks = (out) => out.split(/\n(?=INVENTORY vs USE)/).slice(1);
+
+test('rollup at a root: a project column, three SUBTOTAL rows, one TOTAL equal to their sum', () => {
+  const t = rollupTree();
+  const out = rollupCli(t, t('ws'), []);
+  const lines = out.split('\n');
+  assert.match(lines[0], /^project +session /);
+  assert.match(out, /^api +s-ws-api-1 /m);
+  assert.match(out, /^\. +s-ws-1 /m);
+  const subs = lines.filter((l) => /^\s+SUBTOTAL /.test(l)).map((l) => l.trim().split(/\s+/)[1]);
+  assert.deepStrictEqual(subs, ['.', 'api', 'web']);
+  const at = (re) => lines.findIndex((l) => re.test(l));
+  assert.ok(at(/^\s+SUBTOTAL web/) < at(/^\s+TOTAL /) && at(/^\s+SUBTOTAL \./) > at(/s-ws-web-1/));
+  const json = JSON.parse(rollupCli(t, t('ws'), ['--json']));
+  const sum = (k) => json.projects.reduce((n, p) => n + p.total[k], 0);
+  assert.deepStrictEqual([sum('output'), sum('msgs')], [json.total.output, json.total.msgs]);
+  assert.ok(Math.abs(json.projects.reduce((n, p) => n + (p.cost || 0), 0) - (json.cost || 0)) < 1e-9);
+});
+
+test('rollup at a root: a left out line naming a gone child and an ignored project', () => {
+  const t = rollupTree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['api', 'web', 'old'], ignoredChildren: ['legacy'] } }, 'ws/legacy': { stamp: true, git: true } });
+  assert.match(afterTotal(rollupCli(t, t('ws'), [])), /^left out: old \(gone\), legacy \(ignored\)$/m);
+});
+
+test('rollup at a root: a member with no transcript folder has a SUBTOTAL row of zero and no left out entry', () => {
+  const t = rollupTree({}, ['ws', 'ws/api']);
+  const out = rollupCli(t, t('ws'), []);
+  const web = out.split('\n').find((l) => /^\s+SUBTOTAL web /.test(l));
+  assert.ok(web, out);
+  assert.strictEqual(web.trim().split(/\s+/)[2], '0');
+  assert.ok(!/^left out:/m.test(out));
+});
+
+test('rollup at a root whose one child is left out: today\'s shape, then left out: <rel> (<why>)', () => {
+  const cases = [
+    [{ one: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy'] } }, 'one/legacy': { stamp: true, git: true } }, 'legacy (ignored)'],
+    [{ one: { stamp: true, git: true, record: { role: 'root', children: ['old'] } } }, 'old (gone)'],
+    [{ one: { stamp: true, git: true, record: { role: 'root', children: ['x'] } }, 'one/x': { stamp: true, git: true } }, 'x (names another parent)'],
+  ];
+  for (const [spec, want] of cases) {
+    const t = usageFx.tree(spec);
+    usageFx.session(t, t('one'), 's-one');
+    const out = rollupCli(t, t('one'), []);
+    assert.match(out.split('\n')[0], /^ {2}session /, want);
+    assert.ok(!/SUBTOTAL/.test(out), want);
+    assert.ok(afterTotal(out).split('\n').includes(`left out: ${want}`), out);
+    const json = JSON.parse(rollupCli(t, t('one'), ['--json']));
+    assert.deepStrictEqual([json.leftOut.length, 'projects' in json], [1, false], want);
+  }
+});
+
+test('--json at a root: project on each session, projects of three, leftOut, and the counts per rel equal --scope\'s', () => {
+  const t = rollupTree();
+  usageFx.session(t, t('ws/api'), 's-ws-api-3');
+  const json = JSON.parse(rollupCli(t, t('ws'), ['--json']));
+  assert.ok(json.sessions.every((s) => typeof s.project === 'string'));
+  assert.deepStrictEqual(json.projects.map((p) => p.rel), ['.', 'api', 'web']);
+  assert.deepStrictEqual([json.leftOut, json.otherStartFolder, json.inventory], [[], 0, null]);
+  const scoped = Object.fromEntries(rollupCli(t, t('ws'), ['--scope']).split('\n').filter((l) => l.startsWith('project: ')).map((l) => [l.slice(9).split('\t')[0], Number(l.split('\t')[2])]));
+  assert.deepStrictEqual(Object.fromEntries(json.projects.map((p) => [p.rel, p.sessions])), scoped);
+  assert.deepStrictEqual(scoped, { '.': 2, api: 3, web: 2 });
+});
+
+test('rollup inside a child, and in a standalone project: no project column, no SUBTOTAL, its own sessions alone', () => {
+  const t = rollupTree({ solo: { stamp: true, git: true } });
+  usageFx.session(t, t('solo'), 's-solo');
+  for (const [rel, own, not] of [['ws/api', 's-ws-api-1', 's-ws-1'], ['solo', 's-solo', 's-ws-api-1']]) {
+    const out = rollupCli(t, t(rel), []);
+    assert.match(out.split('\n')[0], /^ {2}session /, rel);
+    assert.ok(out.includes(own) && !out.includes(not) && !/SUBTOTAL/.test(out), rel);
+  }
+});
+
+test('rollup at a root: the live session and --exclude-session are left out in every member', () => {
+  const t = rollupTree();
+  const out = rollupCli(t, t('ws'), ['--exclude-session', 's-ws-web-2'], { CLAUDE_CODE_SESSION_ID: 's-ws-api-1' });
+  assert.ok(!/^\S+ +s-ws-api-1 /m.test(out) && !/^\S+ +s-ws-web-2 /m.test(out), out);
+  assert.match(out, /^excluded 2 sessions: /m);
+  const json = JSON.parse(rollupCli(t, t('ws'), ['--json', '--exclude-session', 's-ws-web-2'], { CLAUDE_CODE_SESSION_ID: 's-ws-api-1' }));
+  assert.deepStrictEqual(json.projects.map((p) => p.sessions), [2, 1, 1]);
+});
+
+const putSkill = (dir, name) => {
+  fs.mkdirSync(path.join(dir, '.claude', 'skills', name), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'skills', name, 'SKILL.md'), `---\nname: ${name}\ndescription: Use when testing.\n---\nbody\n`);
+};
+
+test('inventory at a root: three blocks, each first line carrying its rel; a skill only api holds is in api\'s block alone', () => {
+  const t = rollupTree();
+  putSkill(t('ws/api'), 'api-only');
+  putSkill(t('ws'), 'root-own');
+  const blocks = inventoryBlocks(rollupCli(t, t('ws'), []));
+  assert.deepStrictEqual(blocks.map((b) => b.split('\n')[0].slice(0, 'INVENTORY vs USE [api]'.length).replace(/ \(.*$/, '')), ['INVENTORY vs USE [.]', 'INVENTORY vs USE [api]', 'INVENTORY vs USE [web]']);
+  assert.ok(blocks[1].includes('api-only') && !blocks[0].includes('api-only') && !blocks[2].includes('api-only'));
+  // status cuts from the first `INVENTORY vs USE` line to the end: every block opens on one.
+  assert.strictEqual(blocks.length, 3);
+});
+
+test('inventory, one project: the block\'s first line is today\'s', () => {
+  const t = rollupTree();
+  putSkill(t('ws/api'), 'api-only');
+  const blocks = inventoryBlocks(rollupCli(t, t('ws/api'), []));
+  assert.strictEqual(blocks.length, 1);
+  assert.match(blocks[0].split('\n')[0], /^INVENTORY vs USE \(what the install HAS/);
+});
+
+test('--inventory <dir> at a root names the start project\'s set alone', () => {
+  const t = rollupTree();
+  putSkill(t('ws/api'), 'api-only');
+  const blocks = inventoryBlocks(rollupCli(t, t('ws'), ['--inventory', path.join(t('ws/api'), '.claude')]));
+  assert.ok(blocks[0].includes('api-only') && blocks[1].includes('api-only') && !blocks[2].includes('api-only'), blocks.join('\n----\n'));
+});
+
+test('chain rules: a joined child\'s rules layer holds a rule only its root\'s store holds, not one it ignores; a standalone project\'s is unchanged', () => {
+  const t = rollupTree({
+    'ws/api': { stamp: true, git: true, record: { parent: '..', ignore: { rule: ['root-ignored'] } } },
+    solo: { stamp: true, git: true },
+  });
+  const store = path.join(t('ws'), '.alfred', 'stack', 'rules');
+  fs.mkdirSync(store, { recursive: true });
+  fs.writeFileSync(path.join(store, 'root-only.md'), '# root only\n');
+  fs.writeFileSync(path.join(store, 'root-ignored.md'), '# ignored\n');
+  fs.writeFileSync(path.join(store, 'root-scoped.md'), '---\npaths:\n  - "src/**"\n---\n# scoped\n');
+  const rules = (rel) => JSON.parse(rollupCli(t, t(rel), ['--json'])).inventory.rules.map((r) => r.name);
+  const api = rules('ws/api');
+  assert.ok(api.includes('root-only.md') && api.includes('root-scoped.md') && !api.includes('root-ignored.md'), api.join(','));
+  fs.mkdirSync(path.join(t('solo'), '.claude', 'rules'), { recursive: true });
+  fs.writeFileSync(path.join(t('solo'), '.claude', 'rules', 'own.md'), '# own\n');
+  usageFx.session(t, t('solo'), 's-solo');
+  assert.deepStrictEqual(rules('solo'), ['own.md']);
+});
+
+// --- W2 Task 4: the advisory per project ---
+
+// The root `ws` with `api` and `web`; `claims[rel]` unexcused unrun done claims in one session of that member, its
+// ledger in the member's own statistics/hook-blocks.
+function adviceTree(claims, extra = {}) {
+  const t = scopeTree(extra);
+  for (const [rel, n] of Object.entries(claims)) {
+    const sid = `adv-${rel.replace('/', '-')}`;
+    usageFx.session(t, t(rel), sid);
+    const blocks = path.join(t(rel), '.alfred', 'statistics', 'hook-blocks');
+    fs.mkdirSync(blocks, { recursive: true });
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), Array.from({ length: n }, () => doneRow({})).join(''));
+  }
+  return t;
+}
+const advice = (t, rel, extra = []) => {
+  const r = usageCli(t, t(rel), ['--turn-check-advice', '.', ...extra], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: '' });
+  assert.strictEqual(r.code, 0, r.err);
+  return r.out;
+};
+const adviseRe = (n) => new RegExp(`turn-check: advise - ${n} done claims over an edit`);
+
+test('advice started in a sub-folder of the root reads the root\'s own ledgers, as at the root (review #1)', () => {
+  const t = adviceTree({ ws: 4 });
+  fs.mkdirSync(path.join(t('ws'), 'src'), { recursive: true });
+  const r = usageCli(t, path.join(t('ws'), 'src'), ['--turn-check-advice', '.'], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: '' });
+  assert.strictEqual(r.code, 0, r.err);
+  assert.match(r.out, /^\.: turn-check: advise - 4 done claims over an edit/m);
+});
+
+test('advice at a root: a member at the threshold prints its row prefixed with its rel, one under it prints nothing', () => {
+  const t = adviceTree({ ws: 4, 'ws/api': 3, 'ws/web': 2 });
+  const lines = advice(t, 'ws').trim().split('\n');
+  assert.strictEqual(lines.length, 2, lines.join('\n'));
+  assert.ok(lines[0].startsWith('.: ') && adviseRe(4).test(lines[0]), lines[0]);
+  assert.ok(lines[1].startsWith('api: ') && adviseRe(3).test(lines[1]), lines[1]);
+  const json = JSON.parse(advice(t, 'ws', ['--json']));
+  assert.deepStrictEqual(json.map((a) => [a.project, a.unchecked, a.advise]), [['.', 4, true], ['api', 3, true], ['web', 2, false]]);
+});
+
+test('advice reads the switch per project: a child\'s own .variables, and a 1 read from the root\'s', () => {
+  const t = adviceTree({ ws: 3, 'ws/api': 3 }, { 'ws/api': { stamp: true, git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_TURN_CHECK=1\n' } });
+  const lines = advice(t, 'ws').trim().split('\n');
+  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['.']);
+  const both = adviceTree({ ws: 3, 'ws/api': 3 }, { ws: { stamp: true, git: true, record: { role: 'root', children: ['api', 'web'] }, vars: 'ALFRED_CODE_TURN_CHECK=1\n' } });
+  assert.strictEqual(advice(both, 'ws'), '');
+});
+
+test('advice in a child and in a standalone project: one unprefixed row, --json today\'s object (a guard)', () => {
+  const t = adviceTree({ ws: 4, 'ws/api': 3 }, { solo: { stamp: true, git: true } });
+  for (const rel of ['ws/api']) {
+    const out = advice(t, rel);
+    assert.match(out, /^turn-check: advise - 3 done claims/);
+    assert.strictEqual(out.trim().split('\n').length, 1);
+    const json = JSON.parse(advice(t, rel, ['--json']));
+    assert.ok(!Array.isArray(json) && json.advise === true && !('project' in json));
+  }
+  const solo = adviceTree({ solo: 3 }, { solo: { stamp: true, git: true } });
+  assert.match(advice(solo, 'solo'), /^turn-check: advise - 3 done claims/);
+});
+
+test('advice: a member with no transcript folder gives no row and no throw', () => {
+  const t = adviceTree({ ws: 3 });
+  assert.deepStrictEqual(advice(t, 'ws').trim().split('\n').map((l) => l.split(':')[0]), ['.']);
+});
+
+// --- W2 Task 6b: the probe lines per project and the seat file's root ---
+
+// A session started in `rel` whose one Bash run `r-<sid>` went red; `cwd: false` drops every cwd field.
+function redSession(t, rel, sid, { cwd = true } = {}) {
+  const at = '2026-11-01T10:00:00.000Z';
+  const c = cwd ? { cwd: t(rel) } : {};
+  return usageFx.session(t, t(rel), sid, { rows: [
+    { type: 'user', timestamp: at, ...c, sessionId: sid, message: { role: 'user', content: 'go' } },
+    { type: 'assistant', timestamp: at, ...c, sessionId: sid, message: { id: `m-${sid}`, model: 'claude-opus-5-5', usage: { input_tokens: 1, output_tokens: 1 },
+      content: [{ type: 'tool_use', id: `r-${sid}`, name: 'Bash', input: { command: 'npm test' } }] } },
+    { type: 'user', timestamp: at, ...c, sessionId: sid, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `r-${sid}`, content: 'Exit code 1', is_error: true }] } },
+  ] });
+}
+const putSeat = (dir, preload) => {
+  fs.mkdirSync(path.join(dir, '.claude', 'agents'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'agents', 'fixer.md'), `---\nname: fixer\ndescription: x\n${preload ? 'skills:\n  - habits-root-cause\n' : ''}---\nbody\n`);
+};
+const putLedger = (dir, sid, rows) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, `${sid}.jsonl`), rows.join('')); };
+const statsOf = (root) => path.join(root, '.alfred', 'statistics', 'hook-blocks');
+
+test('seat file: a child\'s session read from the root is scored against the child\'s own seat file', () => {
+  const t = scopeTree();
+  putSeat(t('ws/api'), true);
+  const f = redSession(t, 'ws/api', 's-red');
+  const blocks = path.join(t.home, 'blocks');
+  putLedger(blocks, 's-red', [redRow('r-s-red', { agent_type: 'fixer' })]);
+  const json = JSON.parse(rollupCli(t, t('ws'), [f, '--hook-blocks', blocks, '--json']));
+  assert.strictEqual(json.hookBlocks.rootCause.preloaded, 1, JSON.stringify(json.hookBlocks.rootCause));
+});
+
+test('seat file: two projects holding one seat name each read their own', () => {
+  const t = scopeTree();
+  putSeat(t('ws'), false);
+  putSeat(t('ws/api'), true);
+  redSession(t, 'ws', 's-root');
+  redSession(t, 'ws/api', 's-api');
+  putLedger(statsOf(t('ws')), 's-root', [redRow('r-s-root', { agent_type: 'fixer' })]);
+  putLedger(statsOf(t('ws/api')), 's-api', [redRow('r-s-api', { agent_type: 'fixer' })]);
+  const out = rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))]);
+  assert.match(out, /^api: ROOT CAUSE \(probe\): 1 red streak\(s\) - 0 loaded before the fix, 0 already in context, 1 preloaded by the seat/m);
+  assert.match(out, /^\.: ROOT CAUSE \(probe\): 1 red streak\(s\) - 0 loaded before the fix, 0 already in context, 0 preloaded by the seat/m);
+});
+
+test('seat file: a transcript with no cwd row reads the run\'s own folder (a guard)', () => {
+  const t = scopeTree();
+  putSeat(t('ws/api'), true);
+  const f = redSession(t, 'ws/api', 's-bare', { cwd: false });
+  const blocks = path.join(t.home, 'blocks');
+  putLedger(blocks, 's-bare', [redRow('r-s-bare', { agent_type: 'fixer' })]);
+  assert.strictEqual(JSON.parse(rollupCli(t, t('ws/api'), [f, '--hook-blocks', blocks, '--json'])).hookBlocks.rootCause.preloaded, 1);
+});
+
+test('--hook-blocks at a root: each member\'s probe lines carry its rel and come from its own ledger folder, then the totals equal to their sum', () => {
+  const t = rollupTree();
+  putLedger(statsOf(t('ws')), 's-ws-1', [doneRow({}), doneRow({}), doneRow({})]);
+  putLedger(statsOf(t('ws/api')), 's-ws-api-1', [doneRow({}), doneRow({})]);
+  const out = rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))]);
+  assert.match(out, /^\.: DONE GATE \(probe\): 3 done claim\(s\)/m);
+  assert.match(out, /^api: DONE GATE \(probe\): 2 done claim\(s\)/m);
+  assert.match(out, /^DONE GATE \(probe\): 5 done claim\(s\)/m);
+  assert.ok(!/^web: /m.test(out) && !/^probe lines: read from/m.test(out), out);
+});
+
+test('--hook-blocks at a root: a member\'s session with no ledger in either of its folders adds nothing, and the flag\'s folder is not read for it', () => {
+  const t = rollupTree();
+  putLedger(statsOf(t('ws')), 's-ws-1', [doneRow({})]);
+  putLedger(statsOf(t('ws')), 's-ws-api-1', [doneRow({}), doneRow({})]);
+  const out = rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))]);
+  assert.ok(!/^api: /m.test(out), out);
+  assert.match(out, /^DONE GATE \(probe\): 1 done claim\(s\)/m);
+});
+
+test('--hook-blocks at a root: a member\'s ledger still in its pre-2.8.0 docs folder is read', () => {
+  const t = rollupTree();
+  putLedger(path.join(t('ws/api'), '.alfred', 'docs', 'hook-blocks'), 's-ws-api-2', [doneRow({}), doneRow({})]);
+  assert.match(rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))]), /^api: DONE GATE \(probe\): 2 done claim\(s\)/m);
+});
+
+test('--hook-blocks, one project and a named folder: the probe lines of today (a guard)', () => {
+  const t = rollupTree();
+  putLedger(statsOf(t('ws/api')), 's-ws-api-1', [doneRow({}), doneRow({})]);
+  const bare = rollupCli(t, t('ws/api'), ['--hook-blocks', statsOf(t('ws/api'))]);
+  const named = rollupCli(t, t('ws/api'), [path.join(t.config, 'projects', usageFx.encode(t('ws/api'))), '--hook-blocks', statsOf(t('ws/api'))]);
+  assert.strictEqual(bare, named);
+  assert.match(bare, /\n\nDONE GATE \(probe\): 2 done claim\(s\)/);
+  assert.ok(!/^(\.|api): /m.test(bare));
 });

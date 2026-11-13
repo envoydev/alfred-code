@@ -97,13 +97,45 @@ test('M83: the coverage capture names the cobertura format flag on the MSBuild f
 });
 
 // ---- M84: the transcript folder follows the config dir and the real slug rule ----------------------------------
-test('M84: stack-usage finds the transcript folder under the config dir, by listing it', () => {
+// W2: the analyzer finds the sessions itself (`--scope`), so the skill derives no folder name in prose at all.
+test('M84: stack-usage finds its sessions with one analyzer call, after GET, and states the scope in one sentence', () => {
     const text = flat(skill('capture-usage-report'));
     assert.doesNotMatch(text, /under `~\/\.claude\/projects\//, 'a configured CLAUDE_CONFIG_DIR moves it');
-    assert.doesNotMatch(text, /slashes replaced by dashes/, 'dots map to dashes too');
-    assert.match(text, /`\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/<encoded-project-path>\/`/);
-    assert.match(text, /every non-alphanumeric character replaced by a dash/);
-    assert.match(text, /List `\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/`/);
+    assert.doesNotMatch(text, /<encoded-project-path>|replaced by a dash/, 'no folder name derived in prose');
+    assert.match(text, /`node <snapshot>\/scripts\/analyze-usage\.js --scope`/);
+    assert.ok(text.indexOf('### 1. GET the analyzer') >= 0 && text.indexOf('### 1. GET the analyzer') < text.indexOf('### 2. FIND the sessions'), 'GET comes before FIND');
+    assert.match(text, /The scope: at a workspace root, the root and every project joined below it; anywhere else, the project it runs in\./);
+});
+
+// ---- W2: the audit spans the scope - the ask, the bundles' homes, the consent, the SUMMARY ----------------------
+test('W2: the run-start ask counts across the scope and keeps its options', () => {
+    const text = skill('capture-usage-report');
+    assert.match(text, /```ask\nWhich sessions should the audit cover\? <N> ran a stack skill across <P> projects, <U> unaudited\.\n- 'Up to 12 unaudited, oldest first \(Recommended\)'/);
+    for (const opt of ["'All matching (<U>)'", "'Today's sessions (<T>)'", "'Current session only'"]) assert.ok(text.includes(`- ${opt} - `), opt);
+});
+
+test('W2: each bundle lives in its session\'s own project, the SUMMARY in the start project, the consent per project', () => {
+    const text = flat(skill('capture-usage-report'));
+    assert.match(text, /Each bundle is written under the data root of the project its session was started in/);
+    assert.match(text, /`SUMMARY\.md` is written in the start project/);
+    assert.match(text, /The consent test runs per project/);
+    assert.match(text, /ONE ask names the projects whose folder git can commit/);
+    const mech = flat(read('stack/skills/capture-usage-report/references/run-mechanics.md'));
+    assert.match(mech, /the report in the session's own project/);
+});
+
+test('W2: run-mechanics carries the per-project collect, the --bundles gate and the start project\'s rollup', () => {
+    const mech = flat(read('stack/skills/capture-usage-report/references/run-mechanics.md'));
+    assert.match(mech, /collect-session\.js" "\$f" --project "\$root" --out "\$out\/\$sid"/);
+    assert.match(mech, /out="\$root\/\.alfred\/statistics\/usage-report"/);
+    assert.match(mech, /--bundles <rel>=<project root>\/\.alfred\/statistics\/usage-report/);
+    assert.match(mech, /`node <snapshot>\/scripts\/analyze-usage\.js` with no path, run in the start project/);
+});
+
+test('W2: SUMMARY.md carries the rollup, a Per project section and the three-level judgment', () => {
+    const text = flat(skill('capture-usage-report'));
+    assert.match(text, /a `## Per project` section/);
+    assert.match(text, /a one-off is the session's finding, a repeat inside one project is that project's, a repeat across projects is the stack's/);
 });
 
 // ---- M86: the coverage loop keeps a declined set like its two siblings ----------------------------------------

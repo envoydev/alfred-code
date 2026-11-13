@@ -114,18 +114,18 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
 // project's files through the loader, so a value only .variables holds still fires its migration.
 test('a preflight settings_env_value row matches a key only .variables holds', () => {
     const migrations = [
-        { id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORER_LEVEL', equals: '70' } } },
+        { id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORING_LEVEL', equals: '70' } } },
         { id: 'history-retired', detect: { settings_env_key: 'ALFRED_CODE_HISTORY' } },
     ];
     const s = scaffold({ migrations, settings: { env: {} } });
     fs.mkdirSync(path.join(s.install, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=70\nALFRED_CODE_HISTORY=4\n');
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=70\nALFRED_CODE_HISTORY=4\n');
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(s.install, 'no-account') };
     for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
     const out = run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out;
     assert.match(out, /^migration: level-reseed\tsettings_env_value$/m, out);
     assert.match(out, /^migration: history-retired\tsettings_env_key$/m, out);
-    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORER_LEVEL=80\n');
+    fs.writeFileSync(path.join(s.install, '.alfred', '.variables'), 'ALFRED_CODE_SCORING_LEVEL=80\n');
     assert.match(run(['--snapshot', s.snap, '--root', s.install, '--fixture', s.fixtureFile], env).out, /^migrations: none detected$/m, 'another value does not fire');
 });
 
@@ -161,6 +161,20 @@ test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', 
     const elsewhere = { hooks: { Stop: [{ hooks: [{ command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"' }] }] } };
     const b = scaffold({ migrations, settings: elsewhere });
     assert.match(run(['--snapshot', b.snap, '--root', b.install, '--fixture', b.fixtureFile]).out, /^migrations: none detected$/m);
+});
+
+// Mode v2 stage 2 (Task 7): the stack wires its hooks in settings.local.json at every scope, and an older install's wiring
+// may still sit in settings.json - the detect fires on either file, each holding hooks of its own.
+test('a settings_hook_wired migration fires on a wiring settings.local.json holds at project scope', () => {
+    const migrations = [{ id: 'unwire-one-matcher', detect: { settings_hook_wired: 'guard-stop-contract.js::AskUserQuestion' } }];
+    const wire = (event) => ({ hooks: { [event]: [{ hooks: [{ command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"' }] }] } });
+    for (const [shared, local] of [[wire('Stop'), wire('AskUserQuestion')], [wire('AskUserQuestion'), wire('Stop')]])
+    {
+        const a = scaffold({ migrations, settings: shared, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: project\n' });
+        fs.writeFileSync(path.join(a.install, '.claude', 'settings.local.json'), JSON.stringify(local));
+        const out = run(['--snapshot', a.snap, '--root', a.install, '--fixture', a.fixtureFile]).out;
+        assert.match(out, /^migration: unwire-one-matcher\tsettings_hook_wired$/m, out);
+    }
 });
 
 test('settings_hook_wired reads an exec-form wiring too - the script in args - and args that are no list name nothing', () => {
@@ -723,10 +737,10 @@ test('env-keys: the before-state is the file the run writes - settings.local.jso
 });
 
 // Task 3 (2.1.0): an unstamped legacy copy-route install (`stamp.js state` reads `legacy-unstamped`) takes
-// update's normal path. A tree with no stack signature stays a fresh project with nothing to offer. Since 2.8.0 the docs
-// are no part of the offer (they move unasked), and since 2.10.1 an old server's data is none either: the stack ships no
-// server, so its `.serena` stays where it is.
-test('data-move: an unstamped legacy install takes update\'s path, and its old server data is no offer; a tree with no stack signature is no install', () => {
+// update's normal path. A tree with no stack signature stays a fresh project. No data move is offered to either: the docs
+// move unasked since 2.8.0, the stack ships no server since 2.10.1 (so its `.serena` stays where it is), and the data
+// root is always `.alfred` (2026-11-11), so the preflight prints no `data-move:` line at all.
+test('an unstamped legacy install takes update\'s path with no data-move line, and its old server data stays; a tree with no stack signature is the same', () => {
     const legacyKey = { ALFRED_CODE_DOCS_PATH: '.claude/docs' };
     const { snap, install, fixtureFile } = scaffold({ stamp: null, settings: { env: legacyKey } });
     fs.mkdirSync(path.join(install, '.claude', 'docs', 'architecture'), { recursive: true });
@@ -734,12 +748,12 @@ test('data-move: an unstamped legacy install takes update\'s path, and its old s
     fs.mkdirSync(path.join(install, '.serena'), { recursive: true });
     fs.writeFileSync(path.join(install, '.serena', 'project.yml'), 'project_name: x\n');
     const bare = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
-    assert.match(bare.out, /^data-move: none \(no install record - a fresh install lays the data under the root\)$/m, 'one signature is no install');
+    assert.doesNotMatch(bare.out, /^data-move:/m, bare.out);
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'guard-catastrophic-rm.js'), '// old\n');
     const legacy = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
-    assert.match(legacy.out, /^data-move: none \(nothing to move\)$/m, legacy.out);
+    assert.doesNotMatch(legacy.out, /^data-move:/m, legacy.out);
     assert.ok(fs.existsSync(path.join(install, '.serena', 'project.yml')), 'the old server data is left where it is');
 });
 
@@ -1096,4 +1110,49 @@ test('R063: a declined release-added item the parent holds stays declined in a c
     putWorkspace(install, { parent: '..' });
     putWorkspace(parent, { role: 'root' });
     assert.match(rows().find((r) => r.startsWith('new: skill dotnet-web-backend')) || '', /^new: skill dotnet-web-backend\toffer\t-\tleave$/, 'an unlinked project inherits nothing');
+});
+
+// The fixed root: an older install's folder R is read through the one reader until an update moves it. The preflight
+// names R/docs, reads R's workspace record and its .variables, prints no data-move line and makes no .alfred.
+test('fixed root: the preflight prints no data-move line and reads a custom root\'s files', () =>
+{
+    const R = 'var/data';
+    const migrations = [{ id: 'level-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_SCORING_LEVEL', equals: '70' } } }];
+    const { snap, install, fixtureFile } = scaffold({ migrations, settings: { env: { ALFRED_CODE_DATA_PATH: R, ALFRED_CODE_DOCS_PATH: 'legacy/docs' } } });
+    const parent = path.dirname(install);
+    fs.mkdirSync(path.join(parent, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(parent, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\n');
+    execFileSync('git', ['init', '-q', install]);
+    putWorkspace(parent, {});
+    putWorkspace(install, { parent: '..' }, { dataRoot: R });
+    fs.writeFileSync(path.join(install, ...R.split('/'), '.variables'), 'ALFRED_CODE_SCORING_LEVEL=70\n');
+    fs.mkdirSync(path.join(install, 'legacy', 'docs', 'architecture'), { recursive: true });
+    fs.writeFileSync(path.join(install, 'legacy', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(parent, 'acct') };
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
+    env.ALFRED_CODE_WORKSPACE = '1';
+    const full = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env).out;
+    const asks = run(['--asks', '--root', install], env).out;
+    const offers = run(['--offers', '--root', install], env).out;
+    for (const [name, out] of [['the full read', full], ['--asks', asks], ['--offers', offers]]) assert.doesNotMatch(out, /^data-move:/m, `${name}\n${out}`);
+    for (const out of [full, asks]) assert.match(out, /^docs-move: offer legacy\/docs -> \.alfred\/docs\t/m, out);     // where the run lands them, once it has moved var/data
+    assert.match(full, /^workspace: role-ask rejoin \.\.$/m, full);
+    assert.match(asks, /^workspace: role-ask rejoin \.\.$/m, asks);
+    assert.match(full, /^migration: level-reseed\tsettings_env_value$/m, full);
+    assert.match(offers, /^instructions: /m, offers);
+    assert.ok(!fs.existsSync(path.join(install, '.alfred')), 'no .alfred folder is made');
+});
+
+test('update-preflight: changed-here counts a store rule; OLD_COPY finds a rule in either folder (workspace stage 4c)', () => {
+    const fixture = { files: [{ status: 'modified', filename: 'stack/rules/markdown-docs.md' },
+        { status: 'renamed', filename: 'stack/rules/sql-conventions.md', previous_filename: 'stack/rules/old-sql.md' }] };
+    const { snap, install, fixtureFile } = scaffold({ fixture, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: copy\nhooks-route: copy\n', settings: { env: {} } });
+    const store = path.join(install, '.alfred', 'stack', 'rules');
+    fs.mkdirSync(store, { recursive: true });
+    for (const n of ['markdown-docs', 'old-sql']) fs.writeFileSync(path.join(store, `${n}.md`), '# r\n');
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.match(out, /^changed-here: skills=0 agents=0 rules=1 hooks=0$/m, out);
+    assert.match(out, /^new: rule sql-conventions\trenamed\t-\tfrom=old-sql\told-on-disk$/m, out);
 });

@@ -93,6 +93,10 @@ concept and the Stop already re-reads refs after any unclassified MCP call, so n
 
 ## Temp-project matrix
 
+Complexity stage 1 (B9, 2026-11-11) removed the ref watch, the act ledger it read, forge-session's PostToolUse and Stop
+rows and `ALFRED_CODE_FORGE_WATCH` (0 fires in 442 sessions); the session line stays. The rows below record what was
+measured before that.
+
 Every case ran the installer from a clean export of the branch (`scripts/clean-export.js`) inside `seed-sandbox.js`'s
 isolated `HOME` and `CLAUDE_CONFIG_DIR`, with a stub `claude`, and the written files were read back. Copy route =
 `ALFRED_CODE_{SKILLS,HOOKS,MCPS}_VIA_PLUGIN=false`.
@@ -112,6 +116,8 @@ isolated `HOME` and `CLAUDE_CONFIG_DIR`, with a stub `claude`, and the written f
 | Odd-named forge server | `My Odd.Server-1` launched as `glab mcp serve` is listed by its launch command |
 
 ## Ref watch on a local bare origin
+
+Removed in complexity stage 1 (B9) - kept as the record.
 
 The installed `forge-session.js` ran with real hook payloads against a local bare repository as `origin`, while a
 second clone moved refs as a teammate (or a tool that bypassed the gate) would.
@@ -187,6 +193,8 @@ handshake alone 1.4-1.7 s) and p50 571 ms over HTTPS, 10 runs each. Over past se
 budget is set here; the numbers decide it.
 
 ## The pause and publish-only
+
+Removed with the ref watch in complexity stage 1 (B9) - kept as the record.
 
 Some git logins ask the user on every SSH connection: a security key that needs a touch, an approval dialog from the
 agent app. `networkEnv`'s batch mode stops git's and ssh's own prompts, but not those, so a check at the end of most

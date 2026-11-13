@@ -251,6 +251,22 @@ test('--seed-versioning writes the probed value when the key is absent', () => {
     finally { for (const d of [uncommitted, fresh, ignored]) fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+// Mode v2 stage 2 (Task 7): where git ignores the data root the seed lands in settings.local.json, the stack's file at every
+// scope, and the line names it; settings.json is left as it was.
+test('--seed-versioning under an ignored data root writes and names settings.local.json env', () => {
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
+    try
+    {
+        gitIn(root, 'init', '-q', '-b', 'develop', '.');
+        fs.writeFileSync(path.join(root, '.gitignore'), '.alfred/\n');
+        const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8');
+        assert.match(seed(root), /^stamp-docs-root: settings\.local\.json env: ALFRED_CODE_DOCS_VERSIONING seeded/m);
+        assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'), before);
+        assert.ok(JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('--seed-versioning leaves an existing value untouched, byte for byte', () => {
     const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs","ALFRED_CODE_DOCS_VERSIONING":"local"}}');
     const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));
@@ -448,18 +464,31 @@ test('stamp-docs-root --reprobe-versioning writes .variables and leaves settings
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// 2.1.5 audit M61: the stamped line states where the root comes from and carries no installer narration. Since 2.8.0
-// that is the data root's key and its default - ALFRED_CODE_DOCS_PATH is retired, so no settings file is named.
+// 2.1.5 audit M61: the stamped line states where the root comes from and carries no installer narration. Since the
+// fixed root that is `.alfred` - no key and no settings file is named.
 test('the stamped root line names the data root it sits under, and no installer narration (M61)', () => {
     const root = makeProject('{"env":{"ALFRED_CODE_DATA_PATH":".data"}}');
     try
     {
+        // An older install's folder: the key names it and it holds the stack's docs, so it is read until an update moves it.
+        fs.mkdirSync(path.join(root, '.data', 'docs'), { recursive: true });
+        fs.writeFileSync(path.join(root, '.data', 'docs', 'x.md'), 'x\n');
         run(root);
         const line = stampLine(root);
         assert.match(line, /This install's root: `\.data\/docs`/);
-        assert.match(line, /always `<data root>\/docs`, where `<data root>` is `ALFRED_CODE_DATA_PATH` \(default `\.alfred`\)/, line);
-        assert.doesNotMatch(line, /ALFRED_CODE_DOCS_PATH|settings\.local\.json/, line);
+        assert.match(line, /always `<data root>\/docs`, where `<data root>` is `\.alfred`/, line);
+        assert.doesNotMatch(line, /ALFRED_CODE_DOCS_PATH|ALFRED_CODE_DATA_PATH|settings\.local\.json/, line);
         assert.doesNotMatch(line, /stamped by every install|where every write prompts/, line);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a docs-root rule in the store (workspace stage 4c) is the one re-stamped', () => {
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    const store = path.join(root, '.alfred', 'stack', 'rules');
+    fs.mkdirSync(store, { recursive: true });
+    fs.renameSync(path.join(root, '.claude', 'rules', 'alfred-docs-root.md'), path.join(store, 'alfred-docs-root.md'));
+    run(root);
+    assert.match(fs.readFileSync(path.join(store, 'alfred-docs-root.md'), 'utf8'), /This install's root: `docs`/);
+    assert.ok(!fs.existsSync(path.join(root, '.claude', 'rules', 'alfred-docs-root.md')));
 });

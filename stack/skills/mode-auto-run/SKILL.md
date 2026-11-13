@@ -9,9 +9,9 @@ disable-model-invocation: true
 The user typed `/mode-auto-run <request>` and walked away. Typing it is the waiver: the hook has turned auto-run on for
 this session (its `AUTO` stamp) and opened this run's marker, every ask that marks a (Recommended) option is answered
 with it, and the run goes on until its close. Auto-run outlives the run: it stays on for the session until the user
-types `--mode-auto-run-off` after a command. The limits stay where they are - nothing outward, nothing paid. A guard's
-security ask - a credential shown, work discarded, a write outside the project, a desktop launch, a protective guard
-switched off - is never auto-run's to allow: take its safe option and list the act for the user in the close.
+types `/alfred-code:mode:auto-run off`. The limits stay where they are - nothing outward, nothing paid. A guard's
+security ask - a credential shown, work discarded, a write outside the project, a protective guard switched off - is
+never auto-run's to allow: take its safe option and list the act for the user in the close.
 
 **Availability** - the flows this skill names are user-typed commands, installed only where the install picked them. The
 `Solve flow:` line in context says whether the solve flow is installed here; any other flow named below is never run
@@ -21,8 +21,8 @@ from this skill, only named for the user.
 
 - Any request typed after `/mode-auto-run`: a feature, a fix, a refactor, a failing test, a question, a doc.
 - Three starts run nothing - say the one line and stop:
-  - Only mode flags were typed (`/mode-auto-run --mode-auto-run-off`, `/mode-auto-run --mode-auto-run-on`): the flag
-    switched auto-run for the session - say which way.
+  - Only a `--mode-*` token was typed (a retired flag): it switched nothing - say that `/alfred-code:mode:auto-run off`,
+    typed on its own line, turns auto-run off.
   - The banner reads `Auto-run: OFF` (no request, or another session's run holds the stamp): say why it did not start,
     as the banner gives it.
   - No `auto-run is ON` contract line is in context (hooks off, the minimal profile, Cursor): say that auto-run did not
@@ -52,7 +52,7 @@ Say the route in one line before the work, then take it:
 3. **Anything else** - a question, a doc under the docs root: do it directly. A file it writes stays uncommitted and
    is named in the close.
 
-Each `Left for you:` command runs unattended when typed: auto-run stays on for this session, so the line says so.
+Each `Left for you:` command runs unattended when typed: auto-run stays on in this session until `/alfred-code:mode:auto-run off`, so the line says so.
 
 ## The limits
 
@@ -76,4 +76,4 @@ Left for you: <each outward act, each NOT RUN and why> | none
 ```
 
 Then delete the run marker if the flow's close left it, as the contract's item (7) says - that ends this run. Never
-delete the `AUTO` stamp: auto-run stays on for the session until the user types `--mode-auto-run-off` after a command.
+delete the `AUTO` stamp: auto-run stays on for the session until the user types `/alfred-code:mode:auto-run off`.

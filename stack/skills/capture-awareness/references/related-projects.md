@@ -175,7 +175,8 @@ Related:     <created | refreshed | kept | none recorded> - <n> entries, rewritt
 
 ## Handing work to a sibling
 
-A session belongs to ONE project. When the capture shows work a sibling repo has to make - a consumed package, a
+A session belongs to ONE project - or, where the project is joined to a workspace, to that workspace: it may write
+anywhere under the workspace's root folder. When the capture shows work a sibling repo outside that boundary has to make - a consumed package, a
 related service - investigate freely (read its code, run its tests read-only, find the exact symbol) and then HAND
 IT OFF: `guard-cross-project-write.js` blocks the write, and the reason is not tidiness. A change applied from here
 skips that repo's tests, conventions, review and release, and the project that owns it never sees it happen.

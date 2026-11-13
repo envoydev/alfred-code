@@ -1,13 +1,13 @@
 // Behavior tests for the commit/push gate fixes in family F of the 2026-09-22 audit remediation
 // (docs/sessions-investigation/AUDIT/_fixmap.json, cluster 'F'): the receipt's probe-SCOPE check,
-// the security-review-receipt honesty check, the no-ff merge-order guidance, and the bare
-// `git add -N` guard. Each case pins a real measured defect - both directions, since a false
+// the security-review-receipt honesty check and the no-ff merge-order guidance (the bare `git add -N`
+// guard left in complexity stage 1, B7). Each case pins a real measured defect - both directions, since a false
 // positive here is as costly as the miss it replaces.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
 // Non-English text is generated from code points (foreignWords): no other language is written into this repo's code.
-const { reviewedTranscript, REVIEW_ROW, foreignWords } = require('./hook-test-env');
+const { reviewedTranscript, REVIEW_ROW, foreignWords, userPick } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -23,8 +23,6 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
-// R173: the sweep check's timeout seam, wide here so a loaded runner never turns an add into a timeout denial.
-process.env.ALFRED_CODE_TEST_SWEEP_TIMEOUT_MS = '60000';
 // A session where a review ran: every commit receipt needs one since 2026-10-22, so a case judging another of its lines
 // runs the guard over this transcript unless it hands its own.
 const REVIEWED = reviewedTranscript(TMP);
@@ -263,7 +261,8 @@ test('guard-ungated-commit: plain top-level folders are not projects - only a fo
 // as commitSet() does. A data root inside a manifest-owning folder read its own ledger rows as a second project.
 test('ab-HO3: the push scope skips the data root state as it skips the docs root', () => {
   const { dir, git } = pushRepo();
-  const env = { ALFRED_CODE_DATA_PATH: 'tools/.alfred' };
+  // an absolute value is the one form a hook still takes (the fixed root, 3.11.0): the data root inside tools/
+  const env = { ALFRED_CODE_DATA_PATH: path.join(dir, 'tools', '.alfred') };
   const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
   put('tools/package.json', '{}\n');
   put('apps/auth/a.ts', forty());
@@ -356,30 +355,6 @@ test('guard-ungated-commit: a no-ff merge head must be the receipt\'s head, not 
 
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(mergeHead));
   assert.equal(gateIn(dir, 'git push'), 0, 'a receipt naming the merge commit itself passes');
-});
-
-// ---------------------------------------------------------------------------------------------
-// 6. add-n-unchained (family E's one row, same hook)
-// ---------------------------------------------------------------------------------------------
-test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked', () => {
-  const dir = scratchRepo();
-  const blocked = gateFull(dir, 'git add -N .');
-  assert.equal(blocked.status, 2, 'add -N alone leaves intent-to-add entries open');
-  assert.match(blocked.stderr, /git diff HEAD --stat; git ls-files -o --exclude-standard/, 'names the index-free survey alfred-git.md:9 gives (f24eb967)');
-
-  assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q'), 0,
-    'the reset chained in the SAME call is the conformant scope-survey shape');
-  assert.equal(gateIn(dir, 'git add -N . && git reset -q'), 0, 'any chained git reset clears the block');
-  assert.equal(gateIn(dir, 'git add .'), 0, 'an ordinary add with no -N is untouched');
-  assert.equal(gateIn(dir, 'git add -N src/new-file.ts'), 0,
-    'intent-to-add on ONE named file is a deliberate staging move before `git add -p`, not the survey');
-  assert.equal(gateIn(dir, 'git add --intent-to-add .'), 2, 'the long spelling of the whole-tree shape is the same defect');
-  assert.equal(gateIn(dir, 'echo "run git add -N . then commit"'), 0, 'prose naming the shape is not the shape');
-  assert.equal(gateIn(dir, "cat <<'EOF' > plan.md\nStep 1: git add -N .\nEOF"), 0, 'a heredoc body is data, not a command');
-
-  const withCommit = gateFull(dir, 'git add -N . && git commit -am wip');
-  assert.equal(withCommit.status, 2, 'the add -N check fires before the commit gate is even reached');
-  assert.match(withCommit.stderr, /git ls-files -o --exclude-standard/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1291,17 +1266,6 @@ test('audit 2026-10-10 C18: a commit receipt carries the formatter check and its
   assert.equal(gateIn(pdir, 'git push'), 0, 'a push receipt needs no format: line');
 });
 
-test('audit 2026-10-10 C17: the scope survey never resets an index holding staged work', () => {
-  const dir = scratchRepo();
-  assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q'), 0, 'nothing staged - the survey passes as before');
-  spawnSync('git', ['-C', dir, 'add', 'a.txt']);
-  const r = gateFull(dir, 'git add -N . && git diff HEAD --stat; git reset -q');
-  assert.equal(r.status, 2, 'a bare reset would unstage a.txt');
-  assert.match(r.stderr, /git diff HEAD --stat; git ls-files -o --exclude-standard/, 'names the index-free survey');
-  assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q -- b.txt'), 0, 'a reset of named paths leaves the rest staged');
-  assert.equal(gateIn(dir, 'git diff HEAD --stat; git ls-files -o --exclude-standard'), 0, 'the index-free survey');
-});
-
 // ---------------------------------------------------------------------------------------------
 // audit 2026-10-10 (T4 cross-track: C30, C17, C18): the receipt's findings: line, its security count, a review older than
 // the staged files, an ask answered before the review, and the denial naming the picked option
@@ -1362,7 +1326,7 @@ test('audit 2026-10-10 C17: an answered: ask that came before every review is no
   const dir = scratchRepo();
   // the edits came before the 09:10 review these rows date, so the review saw them (the freshness check, 2026-10-22)
   for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.utimesSync(path.join(dir, f), new Date('2026-10-10T08:00:00Z'), new Date('2026-10-10T08:00:00Z'));
-  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
+  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, ...userPick(), toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
   const review = (ts) => ({ type: 'assistant', timestamp: ts, message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'task-verify-code' } }] } });
   const early = writeTranscript(dir, 'ask-first', [answer('2026-10-10T09:17:02Z'), review('2026-10-10T09:25:41Z'), resultRow('2026-10-10T09:28:00Z')]);
   const late = writeTranscript(dir, 'review-first', [review('2026-10-10T09:10:00Z'), resultRow('2026-10-10T09:12:00Z'), answer('2026-10-10T09:17:02Z')]);
@@ -1382,7 +1346,7 @@ test('audit 2026-10-10 C17: an answered: ask that came before every review is no
 
 test('2026-10-22 own reviewers: review-code and review-security are reviews the gate reads, the built-in is not, and the denial names ours', () => {
   const dir = scratchRepo();
-  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
+  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, ...userPick(), toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
   const skill = (ts, name) => ({ type: 'assistant', timestamp: ts, message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: name } }] } });
   const ours = ['review-code', 'review-security'].map((name) => [name, writeTranscript(dir, `ask-first-${name}`, [answer('2026-10-22T09:17:02Z'), skill('2026-10-22T09:25:41Z', name), resultRow('2026-10-22T09:28:00Z')])]);
   const builtin = writeTranscript(dir, 'ask-first-builtin', [answer('2026-10-22T09:17:02Z'), skill('2026-10-22T09:25:41Z', 'security-review')]);
@@ -2091,7 +2055,7 @@ test('audit 2026-10-10 C17: a refused consent quote names the option the user pi
   const { dir, git } = pushRepo();
   fs.writeFileSync(path.join(dir, 'b.txt'), forty()); git('add', '-A'); git('commit', '-qm', 'b');
   // the transcript first: a PUSH-GATE written before the session began is absent
-  const tp = writeTranscript(dir, 'picked', [{ type: 'user', timestamp: '2026-10-10T14:52:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'answered' }] }, toolUseResult: { answers: { 'Publish now?': 'Publish (Recommended)' } } }]);
+  const tp = writeTranscript(dir, 'picked', [{ type: 'user', timestamp: '2026-10-10T14:52:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'answered' }] }, ...userPick(), toolUseResult: { answers: { 'Publish now?': 'Publish (Recommended)' } } }]);
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { auth: 'authorized: "commit and oush to develop"' }));
   const r = gateWith(dir, 'git push', { transcript_path: tp });
   assert.equal(r.status, 2, 'a typo carries no publish verb (bda299a8)');
@@ -2148,7 +2112,7 @@ test('deep review: a non-English quote is no consent and names the answered: rou
   const { dir: pdir } = pushRepo();
   fs.writeFileSync(path.join(pdir, 'a.txt'), 'seed\nnext\n');
   spawnSync('git', ['-C', pdir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
-  const tp = writeTranscript(pdir, 'waiver', [{ type: 'user', timestamp: '2026-10-16T10:00:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'answered' }] }, toolUseResult: { answers: { 'Push without the review?': 'Skip the review and push' } } }]);
+  const tp = writeTranscript(pdir, 'waiver', [{ type: 'user', timestamp: '2026-10-16T10:00:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'answered' }] }, ...userPick(), toolUseResult: { answers: { 'Push without the review?': 'Skip the review and push' } } }]);
   const waive = (line, env = {}) => { writeReceipt(pdir, 'PUSH-GATE', `${line}\n`); return gateWith(pdir, 'git push', { transcript_path: tp }, env); };
   assert.equal(waive('WAIVED - answered: Skip the review and push').status, 0, 'a waiver the user picked');
   const none = waive('WAIVED - answered: Skip the lint and push');
@@ -2280,4 +2244,37 @@ test('the WAIVED refusal names the receipt route when a review ran unseen', () =
   assert.match(s.stderr, /waives nothing/);
   // the denial's fixed footer names receipt.js for every refusal; the route sentence is what an unseen review adds
   assert.doesNotMatch(s.stderr, /ran in this session but no result line reached/, 'no review left unseen, no route');
+});
+
+// ---- D25 (mode commands v2 stage 3, Task 5): a picked waiver counts only when its own row says a person picked it ----
+test('D25: a skip label a hook answered is no waiver; the user\'s is; the answered: consent reads every answer; no prelude, no waiver', () => {
+  const { dir } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
+  const SKIP = 'Skip the review and push';
+  const tpOf = (name, source, label = SKIP, q = 'Push without the review?') => writeTranscript(dir, name, [{ type: 'user', timestamp: '2026-11-13T10:00:00Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'answered' }] }, ...userPick(source), toolUseResult: { answers: { [q]: label } } }]);
+  const waive = (tp, run = runIn) => { writeReceipt(dir, 'PUSH-GATE', `WAIVED - answered: ${SKIP}\n`);
+    return run('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git push' }, transcript_path: tp }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }); };
+  const byHook = waive(tpOf('d25-hook', 'hook'));
+  assert.equal(byHook.status, 2, 'a hook picked the skip');
+  assert.match(byHook.stderr, /the answered: waiver was picked by no person \(a hook gave that answer\) - a skipped review needs the user/);
+  assert.equal(waive(tpOf('d25-user', 'user_temporary')).status, 0, 'the user picked the skip');
+  const consentTp = tpOf('d25-consent', 'hook', 'Push (Recommended)', 'Push now?');   // the transcript first: a receipt older than the session is absent
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { auth: 'answered: Push (Recommended)' }));
+  const consent = gateWith(dir, 'git push', { transcript_path: consentTp });
+  assert.equal(consent.status, 0, `the answered: consent reads every answer, a hook's too\n${consent.stderr}`);
+  // a prelude older than this gate (no byUser) reads no answer as a person's - a gate with no prelude at all judges
+  // nothing, since shell-writes.js needs it (its stated fail-open)
+  const older = fs.mkdtempSync(path.join(TMP, 'older-prelude-'));
+  fs.cpSync(HOOKS, older, { recursive: true });
+  const preludeCopy = path.join(older, 'hook-prelude.js');
+  const current = fs.readFileSync(preludeCopy, 'utf8');
+  const withoutByUser = current.replace(/(Object\.assign\(module\.exports, \{[^}]*?), byUser\b/, '$1');
+  assert.notEqual(withoutByUser, current, 'the copy lost its byUser export');
+  fs.writeFileSync(preludeCopy, withoutByUser);
+  const runOlder = (hook, payload, opts) => spawnSync(process.execPath, [path.join(older, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  const refused = waive(tpOf('d25-older', 'user_temporary'), runOlder);
+  assert.equal(refused.status, 2, 'a prelude with no byUser: the skip is refused');
+  assert.match(refused.stderr, /picked by no person/);
 });

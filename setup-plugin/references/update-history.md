@@ -284,7 +284,9 @@ who asks about a name the log did not print.
 | seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 | `/habits-explain-code` | `/habits-explain-topic` |
 | `/task-auto` | `/mode-auto-run` |
-| `/habits-output-scorer` | `/mode-output-scorer` |
+| `/habits-output-scorer` | `/mode-output-scoring` |
+| `/mode-output-scorer` | `/mode-output-scoring` |
+| seat `output-scorer` | seat `output-scoring` |
 
 ## after 2.9.0 - the stack's own code and security reviews
 
@@ -362,11 +364,11 @@ the card as the user's to run - only when they want that server again.
 ## after 2.10.1 - grade before release: the output scorer
 
 A designer's plan file, a diagnoser's root-cause verdict and an inline plan can be graded by a fresh, read-only
-`output-scorer` seat before they are released (the `mode-output-scorer` skill, always installed). It was seeded OFF
+`output-scoring` seat before they are released (the `mode-output-scoring` skill, always installed). It was seeded OFF
 until 3.6.0 (the section after 3.6.0 says what changed): `ALFRED_CODE_SCORER=1` turns it on, `ALFRED_CODE_SCORER_LEVEL` sets the pass mark (60-100, default 80),
 `ALFRED_CODE_SCORER_ROUNDS` the grades per attempt (1-10, default 3) and `ALFRED_CODE_SCORER_OUTPUTS` narrows the three
 outputs (a csv; list all three names to grade every output). `--mode-output-scorer-on` / `--mode-output-scorer-off` right after a flow command switch it for the session (the modes section below). A typed
-stack - `/habits-explain-topic /mode-output-scorer <request>` - grades that one request's output even while it is off,
+stack - `/habits-explain-topic /mode-output-scoring <request>` - grades that one request's output even while it is off,
 an explainer answer, a ticket, an upgrade plan or a pick included. An output that cannot reach the level is withheld and
 the user decides: answer the open decisions, accept it marked, one more revision, or keep it withheld.
 `guard-answer:scorer` or `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` switches the whole scorer off. Update
@@ -653,8 +655,8 @@ The guards read more of what a command really does. The rm guard expands globs a
 secret guard reads a script file a command runs, a backslash the shell drops (`cat .e\nv`) and a shell string carried
 in a variable. A session transcript is no longer a write target from inside a session.
 
-An approval receipt now opens a gate only after you answered the guard's ask with its allow option. `DISCARD-ALLOW`,
-`CROSS-WRITE-ALLOW`, `CONFIG-EDIT-ALLOW` and `DESKTOP-EXEC-ALLOW` also need a `session:` line naming the session, and
+An approval receipt now opens a gate only after you answered the guard's ask with its allow option. `DISCARD-ALLOW` and
+`CROSS-WRITE-ALLOW` also need a `session:` line naming the session, and
 each denial prints the exact lines. A receipt left from an older release does not open anything: the next denial asks
 again. Under auto-run a guard's security ask always takes its safe option and lists the act for you in the close.
 Nothing to do by hand.
@@ -751,3 +753,308 @@ removes the mod.
 `session-inspector`, the mod's old name, left the catalog: Discover shows only `alfred-mods`. An install still on the
 old id stops loading without a warning (`claude plugin list --json` shows the error). Move it as the note above says:
 `claude plugin uninstall session-inspector@envoydev`, then `claude plugin install alfred-mods@envoydev`.
+
+## after 3.10.0 - guard checks that never fired are gone
+
+Checks that fired once or never in 442 measured sessions were removed; each guard keeps its core. What is no longer
+judged:
+
+- The desktop exec guard is gone: a desktop server's `App` with `launch_executable`, its `Shell` and `PowerShell`, and
+  a browser server's `browser_run_code_unsafe` run with no stack check. If you register such a server, deny those
+  tools in your own `permissions.deny`. Its `DESKTOP-EXEC-ALLOW` receipt is no longer read, and the `minimal` hook
+  profile now keeps three guards: rm, secret and force-push.
+- The secret guard no longer judges a browser server's `browser_file_upload`. A Read, a shell print and a filesystem
+  server's reads of a credential file are judged as before.
+- The config guard no longer holds a loosened lint, type-check or analyzer config, and its `CONFIG-EDIT-ALLOW` receipt
+  is no longer read. A settings write that switches a guard off still asks first; naming `guard-config-protection` in
+  `ALFRED_CODE_HOOKS_OFF` now turns nothing off.
+- The commit guard no longer refuses a `git add -A` that takes in a file untracked before the session (its
+  `UNTRACKED-ALLOW` receipt is no longer read) or a `git add -N`, and it no longer reads a commit made from a script
+  (`node -e`, `python3 -c`), `git commit-tree` or `git rebase --exec`. A credential in the staged lines is still refused
+  at `git commit`.
+- The rm guard no longer reads `git reflog expire`, `git prune` or `git gc`. A recursive delete of the home, the project
+  or `.git`, and a discard of uncommitted work, are refused as before.
+- The read guard judges a literal print only: a script's print, a copy then a print, and a print after a `cd` it cannot
+  follow are not judged.
+- The forge ref watch and its act ledger are gone. This update removes `ALFRED_CODE_FORGE_WATCH` from `.alfred/.variables`
+  and the settings env and prints the line; the session's `Forge:` line stays, and files the watch wrote under
+  `state/forge/` stay, unread.
+
+Nothing to do by hand. Restart a session left open across the update, so it reads the new hook rows.
+
+## after 3.10.0 - a local-scope install no longer adds a second copy of the plugin
+
+A project set up at local scope used to get its own local row of `alfred-code` even when the account already had the
+plugin at user scope (or the project at project scope), so `/plugin` listed it twice. A local-scope run now leaves a
+plugin that is installed and switched on at a broader scope where it is, and only updates it there. A project- or
+user-scope run installs at its own scope as before, and so does a local run when the broader row is switched off.
+
+A row doubled by an earlier release is not removed. This update names it once per run, with the command that drops
+it: `claude plugin uninstall alfred-code@<marketplace> --scope local`. Running it is optional. While the local row is
+there it is the one that loads; without it this project runs the account's copy, which any project's update moves.
+
+## after 3.10.0 - a workspace is the write boundary, and a subagent never crosses it
+
+The cross-project write guard used to stop every write outside the session's own project. A project joined to a
+workspace now writes anywhere in that workspace - the root, a sibling, a project below it - with no ask; the
+boundary is the workspace's top member. A project in no workspace keeps its own folder as the boundary, and so does
+one whose workspace switch is off or whose parent does not list it.
+
+Past the boundary the main session is asked, as before. A subagent is not: it is refused with no ask, and neither
+your 'allow for this session' answer nor a folder you typed opens anything for it, and a script the guard could not
+read is refused for it too. It reports what must change and the main session hands it off or asks you. `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` still opens a tree for both.
+
+Nothing to do by hand. A project that relied on a subagent writing into a tree you allowed for the session: add that
+tree to `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, or let the main session make that write.
+
+## after 3.10.0 - the data root is always .alfred
+
+The data root is always `.alfred`, beside `.claude/` - the docs, the hooks' `state/` and `statistics/`, the variables
+file and the secrets file all live there, and no settings file names a path any more. An update removes
+`ALFRED_CODE_DATA_PATH` from `.claude/settings.json` and `.claude/settings.local.json` and the stamp's data lines.
+
+A project that had moved its data to another folder: the update moves the stack's own entries of that folder into
+`.alfred` once, before its first write, and prints `data root: moved <folder> to .alfred`. What is not the stack's stays
+in the old folder, still kept out of git by that folder's own `.gitignore`, and the line names it. `state/` and `statistics/` merge file by file. Any other entry both folders
+hold is a clash: the update stops with nothing changed and a `!! data root:` line that says to merge the two into
+`.alfred` by hand, then run `/alfred-code:update` again. A folder git tracks for the team moves on a project-scope
+update only; a local-scope run says so and changes nothing.
+
+`--data-path` and `--data-move` are ignored (one line says so), and configure asks no data-root question.
+
+Restart a session left open across the update: its hooks already read `.alfred`, so until the update has moved the
+folder they see none of the old one's state, variables or workspace record.
+
+## after 3.10.0 - modes are commands
+
+The four mode flags are gone. A mode is switched by its own command, typed alone on its line, with `on|off` after it:
+
+| Command | What it does |
+|---|---|
+| `/alfred-code:mode:auto-run` | Auto-run: each question takes its recommended option, and no fresh-session question is asked |
+| `/alfred-code:mode:scoring` | A fresh grader scores plans and root-cause verdicts before they are released |
+| `/alfred-code:mode:auto-compact` | No fresh-session question: the session compacts instead |
+
+```text
+/alfred-code:mode:auto-run on
+/task-solve add paging to GET /api/loans
+```
+
+A mode stays on until its `off`, new sessions included; the command with no word after it says whether the mode is
+on, and `/alfred-code:mode:scoring on 80` sets the grader's level (60 to 100) too. `auto-run on` also stops the
+fresh-session question, and `auto-compact on` stops it alone. In a new session the first notice of a mode left on is
+the session-start line, then the `Modes ON:` line on each prompt.
+
+The commands keep four keys - `ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`,
+`ALFRED_CODE_SCORING_LEVEL` - in the `env` of the checkout's own `.claude/settings.local.json`, which git never shares:
+a project below its repository's top uses the top's file, a worktree the main checkout's. `auto-run on` puts every
+session in the checkout under auto-run. An answer to a guard's ask opens its gate only when Claude Code's own row says
+a person gave it, so on a client older than 2.1.296 no receipt, discard or picked waiver opens. `auto-compact on` also
+writes Claude Code's `autoCompactEnabled: true` and a compaction window per model; only a typed `auto-compact off`
+writes `autoCompactEnabled: false`, so Claude Code stops compacting by itself there (`/compact` still works).
+`/alfred-code:configure` no longer offers the four keys, and `variables.js set` refuses them and names the command.
+
+`ALFRED_CODE_AUTO_COMPACT` is no longer seeded. This update removes a seeded `0` from `settings.json` and
+`.alfred/.variables`; a `1` there is copied into the local file once, and from then on the local file is the switch. A
+`0` already in the local file from before switches nothing until you type `/alfred-code:mode:auto-compact off`.
+
+`--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on` and `--mode-output-scorer-off` now print a
+pointer to the commands and switch nothing. While auto-run is off the run is attended, so each question waits for
+you; while it is on, a retired off flag ends nothing - type `/alfred-code:mode:auto-run off`. A session started
+with a flag before the update and resumed after it is attended again - type `/alfred-code:mode:auto-run on`.
+
+`/mode-auto-run <request>` is unchanged: it turns auto-run on and runs the request in one go. An install with no core
+plugin has no mode command: set the keys by hand in the local file's `env` (with `"autoCompactEnabled": false` beside a
+hand-set `ALFRED_CODE_AUTO_COMPACT` of `0`), and `/mode-auto-run <request>` starts auto-run for its session. A headless
+run (`claude -p`) in the checkout runs under the modes the local file holds. Going back to 3.10.0 leaves the mode keys
+in the local file, where only `ALFRED_CODE_AUTO_COMPACT` is read; remove `autoCompactEnabled` and `modelSettings` there
+by hand.
+
+## after 3.10.0 - a local install stays out of git; local is the default scope; ignore keys are plural
+
+**A local install leaves nothing in `git status`.** At `local` scope `.alfred/.gitignore` no longer re-includes
+itself, and the run writes `.claude/.gitignore` holding `*` - one small file inside each folder, nothing outside the
+project. The stack's line in `.git/info/exclude` goes once the folder's own file hides it. `.claude/.gitignore` is
+left alone where you wrote one yourself, and is not written where git already tracks a file under `.claude`.
+
+- A local install whose docs versioning is stored as `git` keeps its docs committed, so `.alfred/` still shows;
+  `ALFRED_CODE_DOCS_VERSIONING=local` (in `/alfred-code:configure`, the Environment area) hides the folder.
+- A move from `local` to `project` scope removes the stack's `.claude/.gitignore`. One you edited stays, and it hides
+  `.claude/settings.json` from git: delete `.claude/.gitignore` when `git status` shows no `.claude` change after the move.
+- Going back to 3.10.0 leaves `.claude/.gitignore` in place - that release does not know the file. Delete it by hand,
+  or `.claude` stays hidden from git at every scope.
+- `git clean -fdx` removes `.alfred` whole. The hooks write its ignore file back with the self re-include, so
+  `.alfred/` shows in `git status` until the next `/alfred-code:update`.
+
+**`local` is the scope a new install takes.** The scope question lists `local` first, and an install given no
+`--scope` runs at `local`. An installed project keeps its scope: an update, and an install run again, read it from
+the stamp. A new local install keeps its docs out of git too; pick `project` at the scope question, or `git` at the
+docs-versioning question, to commit them. A local install moved to `project` scope later keeps that answer: set
+`ALFRED_CODE_DOCS_VERSIONING=git` in `/alfred-code:configure` (the Environment area) to commit the docs for the team.
+
+**`workspace.json` spells its `ignore` keys in the plural** - `skills`, `agents`, `rules`, `hooks`, `plugins`:
+
+```json
+{ "ignore": { "rules": ["csharp-conventions"], "hooks": ["guard-answer"], "skills": ["markdown-style"] } }
+```
+
+Both spellings are read. An update rewrites a file that still holds the old keys, once. Update the projects below
+before the root: while a project up to five folders below runs a release that reads only the old keys, the root
+keeps them and the update prints `workspace.json keeps its singular keys: <project> is at <version>`. A project
+deeper than that, or one that joins later on an older release, names each key it cannot read - update it.
+
+## after 3.10.0 - a seat's model can be set per project in .alfred/agents.json
+
+**A file you write by hand names the model a seat runs on.** `.alfred/agents.json`, beside `workspace.json`:
+
+```json
+{
+  "claude": {
+    "agents": {
+      "aspnet-verifier": { "model": "opus" },
+      "Explore": { "model": "haiku" }
+    }
+  }
+}
+```
+
+- The seat files keep their own model. An entry overrides it for this project only, at the moment the seat is
+  dispatched; a dispatch that names a model itself keeps that model.
+- In a workspace a child takes its root's entries too. The nearest file naming the seat wins: the project's own, then
+  each project above it. A linked git worktree with no file of its own reads the main checkout's.
+- A seat is named bare (`aspnet-verifier`); a key written with the plugin prefix (`alfred-code:aspnet-verifier`) means
+  the same seat.
+- The value is one of `sonnet`, `opus`, `haiku`, `fable` - the names Claude Code's Agent tool takes. Any other
+  value, a full model id included, is skipped and named in status: the Agent tool would refuse the dispatch.
+- `/alfred-code:status` lists what applies - `models: agents aspnet-verifier = opus (here)` - and names each entry it
+  skipped and why. A file that is not JSON, an unknown key or a bad value never blocks a dispatch: what cannot be
+  read is skipped, and the seat takes the next file's entry or its own model.
+- The dispatch guard applies the entries, so with `guard-unapproved-dispatch` in `ALFRED_CODE_HOOKS_OFF`, or the
+  `minimal` hook profile, none applies and status says so. Status cannot see three other ways the guard is off -
+  `disableAllHooks`, a managed policy that switches hooks off, and a copied-hooks install whose settings lost the
+  guard's row: there it still lists the entries while the seats run on their own models.
+- A `skills` map is read and reported, not applied: on this Claude Code release a skill's `model` field does not
+  change the request. A `cursor` map is read and reported too; it waits for the Cursor run.
+- The installer never writes, moves or removes the file - an update and an uninstall leave it as it is.
+
+Nothing to do by hand.
+
+## after 3.10.0 - skills and agents live once in .alfred/stack, linked into .claude
+
+**Each library skill now lives in `.alfred/stack/skills/<name>`, and on the copy route each seat in
+`.alfred/stack/agents/<name>.md`.** `.claude/skills` and `.claude/agents` hold a link per item, and the stamp's
+`links:` line lists them. The first update moves each copy it recorded into the store (`skill moved to the store:
+<name>`) and links it back (`link: .claude/skills/<name> -> .alfred/stack/skills/<name>`); Claude Code lists each item
+once, as before. On the plugin route the seats still ship in the plugin, so no agent is linked.
+
+- **Where git would commit a link, nothing moves.** A project whose `.claude/skills` or `.claude/agents` git does not
+  ignore - files of that folder tracked, or a `.claude` with no ignore line, as at `project` scope - keeps its copies
+  there, and the run names the two ways to the store: the `local` scope, or an ignore line for the folder plus
+  `git rm -r --cached .claude/<kind>`. Where git cannot be run, the copies stay too.
+- **A workspace root holds its members' picks.** A skill or seat a project below picked lands once, in the root's
+  store; the stamp's `member-picks:` line names it and `/alfred-code:status` prints `held for members: <names>`. A child
+  links the root's own picks and its own, never a sibling's, and leaves out what it or a project between ignores.
+  A root whose `.claude` git does not ignore holds none and says `member pick <kind>/<name> not held`.
+- **On Windows a seat is a copy** - linking a file needs admin rights there - written again from the store at each
+  run. A copy you edited stays: `agent kept: .claude/agents/<name>.md - edited since it was copied from the store, so
+  it is yours`.
+- **What is yours stays.** A real folder or file of yours under a link's name, or a link the stamp does not list, is
+  left and named (`link skipped: ...`); an item of yours in `.alfred/stack` stays the project's own. An uninstall takes
+  only the links and the store items still at the hash the stack wrote; a project below a root that is uninstalled,
+  or one that leaves its workspace, keeps every item it linked as its own, in its own store.
+- **An edit asks nothing under `acceptEdits`.** The skills and seats now sit in `.alfred/stack`, outside `.claude`,
+  so a session in that mode edits them without the prompt Claude Code shows for a `.claude` file.
+- `/alfred-code:status` prints `links: <n> whole`, or one `!! link <path>: <state>` line per link that is dangling,
+  missing, edited here or behind the store.
+
+Nothing to do by hand.
+
+## after 3.10.0 - a workspace session is sent a child's own rules on the first file touch under it
+
+A session started at a workspace root, or in one member, now gets another joined member's own rules and pointers
+the first time it reads or edits a file under that member: its instructions file, rule files, docs root and
+preferences named, its always-on rules sent, and the root's rules it leaves out listed. A large member arrives over
+up to five touches. `/alfred-code:status` lists the members the newest session entered.
+
+Nothing to do by hand.
+
+## after 3.10.0 - a workspace child's own docs hold its first edit
+
+In a session started at a workspace root, the first edit and the first git write under a joined child are now held
+with THAT child's preference docs and documented sections, each reply opening with `Project <child> - paths below are
+from <child>/.`; before, the root's docs were used. The first call under a child that is not held also brings the
+child's docs orientation, its tool order and the user's personal preferences, where the child's own copy differs
+from the root's. Expect one more hold per child per session, and again after a compaction or `/clear`. A child's own
+`ALFRED_CODE_HOOKS_OFF` switches its parts off as it does at its own start.
+
+Nothing to do by hand.
+
+## after 3.10.0 - the grader's names say scoring
+
+The output grader is named for what it does: the skill is `/mode-output-scoring` and its seat `output-scoring` (the
+upgrade table above lists the old names). The settings, the switches and the session state follow:
+
+| Before | Now |
+| --- | --- |
+| `ALFRED_CODE_SCORER` | `ALFRED_CODE_SCORING` |
+| `ALFRED_CODE_SCORER_LEVEL` | `ALFRED_CODE_SCORING_LEVEL` |
+| `ALFRED_CODE_SCORER_OUTPUTS` | `ALFRED_CODE_SCORING_OUTPUTS` |
+| `ALFRED_CODE_SCORER_ROUNDS` | `ALFRED_CODE_SCORING_ROUNDS` |
+| `guard-answer:scorer` in `ALFRED_CODE_HOOKS_OFF` | `guard-answer:scoring` |
+| `guard-stop-contract:scorer` in `ALFRED_CODE_HOOKS_OFF` | `guard-stop-contract:scoring` |
+| `state/sessions/SCORER-*` and `state/sessions/scorer/` | `state/sessions/SCORING-*` and `state/sessions/scoring/` |
+
+`/alfred-code:update` renames the four variables in `.variables` and both settings `env` blocks, re-keys a
+`skillOverrides` entry, re-spells a seat deny and a stored part switch, moves the skill copy and removes the old
+session state - so a session's own scoring on / off from before the update is forgotten and the variable decides.
+Until 4.0.0 the old spellings still act where an update has not run yet: the four old keys in a file a teammate has
+not updated, the two old part names, a skill copy under the old folder and the old name typed in a request. A skill
+copy made before the update dispatches a seat the updated plugin no longer has, so its grade does not run - run
+`/alfred-code:update`. The session status file keeps its `scorer` field (schema 1).
+
+## after 3.10.0 - the stack's settings live in settings.local.json
+
+The stack writes its settings to `.claude/settings.local.json` at every scope, so nothing it writes reaches git. The
+first `/alfred-code:update` at project or user scope carries every row the stamp's ledger records in
+`.claude/settings.json` - the seat denies, the secret-file deny rows, the copy route's hook wiring, the stack's `env`
+keys, the attribution keys - into the local file, and says so in one line: `settings: <n> rows moved from
+settings.json to settings.local.json - teammates and cloud sessions no longer get them`. A row you changed since the
+stack wrote it is yours: it stays in `settings.json`, still applies, and the run names it. A docs path row stays
+where it is too.
+
+When the local file cannot take the rows the run writes nothing and moves nothing, and says why on one `!! settings:`
+line: the file is not valid JSON, git tracks it (`git rm --cached .claude/settings.local.json`), or the run cannot
+write it. Fix that, then run the update again.
+
+A teammate who clones the project gets the plugin (at project scope), the tracked `.variables` and the copies, and
+none of the stack's settings. Their own first update writes the deny rows, the seat denies and the seeded keys into
+their local file. The hooks your team switched off in `ALFRED_CODE_HOOKS_OFF` are recorded in no tracked file, so
+they run for a teammate until that teammate switches them off in `/alfred-code:configure`. A cloud session reads no
+local file and gets none of the settings. Cursor reads the hook rows from the same file while its Third-Party Imports
+setting is on, which is its default.
+
+## after 3.10.0 - a joined child's .variables keeps only its own values
+
+Every init and update that writes `.variables` in a project joined to a workspace removes from that file each
+value equal to the one the workspace hands it, and prints one `workspace: <n> values equal to the workspace's
+removed from ...` line naming the keys - report it. Nothing the project reads changes: the value comes through
+the workspace from then on and follows a later change there. A value that differs stays. A key that must hold
+whatever the workspace says takes an `ignore env <KEY>` line in the project's workspace record. A key the line
+names as `stays` is equal to the workspace's but sits over another value in a settings file or the launch
+environment; it is left alone. A run that does not write the file - a local-scope run in a project whose
+`.variables` git tracks, or a project whose data folder another ignore rule hides - removes nothing from it and
+prints no line; the next run that writes the file does.
+
+## after 3.10.0 - a root can ignore a project below it
+
+A workspace root can mark a project below it ignored (`/alfred-code:configure`'s workspace role, or update's ask about
+projects installed below): nothing of the workspace reaches it - its values and the rules it read are kept as its own
+first, and its next update releases it. Nothing to do by hand.
+
+## after 3.10.0 - the usage audit and status cover a whole workspace
+
+At a workspace root the usage audit (`capture-usage-report`) and status's usage table cover the root and every project
+joined below it - a subtotal and an inventory block per project, the advisory one row per project, and a line naming
+each project the workspace leaves out. Each session's bundle is written in its own project's data root, so a child's
+bundles stay in the child; the root's `SUMMARY.md` lists them all. In a child or a standalone project nothing changes.
+Nothing to do by hand.

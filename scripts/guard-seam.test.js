@@ -31,9 +31,9 @@ const call = (hook, command) => spawnSync(process.execPath, [hook], {
   input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'seam', cwd: ROOT }),
   encoding: 'utf8', cwd: ROOT, env: { ...process.env },
 });
-const rewritten = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command != null; } catch { return false; } };
-// The secret guard answers a content read with a rewrite or a block; the read guard answers a whole-file dump with a block.
-const secretHits = (command) => { const r = call(SECRET, command); return r.status === 2 || rewritten(r); };
+// The secret guard answers a command naming a credential file with a block (swap 1: no rewrite is left, and a payload
+// naming no transcript is its core mode); the read guard answers a whole-file dump with a block.
+const secretHits = (command) => { const r = call(SECRET, command); assert.ok(!/updatedInput/.test(r.stdout), `no rewrite: ${command}`); return r.status === 2; };
 const readHits = (command) => call(READ, command).status === 2;
 
 const SECRET_BODY = 'cat .env';
@@ -75,38 +75,31 @@ test('seam M2: xargs, find -exec and a here-string into a shell carry a script',
   assert.ok(readHits(`bash <<< '${READ_BODY}'`), 'read, here-string');
 });
 
-// ---- m1: a heredoc runtime that opens inside $( ), ( ) or a backtick is still a runtime ----
-test('seam m1: a runtime heredoc inside a substitution or a subshell is judged', () => {
-  const py = (inner) => `${inner}python3 - <<'EOF'\nprint(open('.env').read())\nEOF\n`;
-  assert.ok(secretHits(`echo "$(${py('')})"`), 'secret, $( )');
-  assert.ok(secretHits(`(${py('')})`), 'secret, ( )');
-  assert.ok(secretHits(`x=\`${py('')}\``), 'secret, backtick');
-  assert.ok(secretHits(`OUT=$(${py('')})`), 'secret, NAME=$( )');
-  const pyBig = `python3 - <<'EOF'\nprint(open('src/big.js').read())\nEOF\n`;
-  assert.ok(readHits(`echo "$(${pyBig})"`), 'read, $( )');
-  assert.ok(readHits(`(${pyBig})`), 'read, ( )');
+// ---- m1: a runtime's inline script is read by no guard (the read guard's half went in complexity stage 1 A5, the
+// secret guard's in swap 1 ruling 3): above the masker's floor its output is masked, in core mode it passes raw ----
+test('seam m1: a runtime heredoc is not read by the secret guard; a shell read beside it still is', () => {
+  const py = `python3 - <<'EOF'\nprint(open('.env').read())\nEOF\n`;
+  assert.ok(!secretHits(py), 'a runtime body is data to the core');
+  assert.ok(!secretHits(`echo "$(${py})"`), 'inside $( ) too');
+  assert.ok(secretHits(`${py}cat .env`), 'the shell read after it is named');
 });
 
-// ---- m2: the read guard has the secret guard's runtime list and here-string branch ----
-test('seam m2: the read guard judges a runtime here-string and the wider runtime list', () => {
-  const p = "print(open('src/big.js').read())";
-  assert.ok(readHits(`python3 <<< "${p}"`), 'python here-string');
-  assert.ok(readHits(`node <<< "console.log(require('fs').readFileSync('src/big.js','utf8'))"`), 'node here-string');
-  assert.ok(readHits(`ruby <<< "puts File.read('src/big.js')"`), 'ruby here-string');
-  assert.ok(readHits(`bun run - <<'EOF'\nconsole.log(require('fs').readFileSync('src/big.js','utf8'))\nEOF`), 'bun run -');
-  assert.ok(readHits(`deno run - <<'EOF'\nconsole.log(Deno.readTextFileSync('src/big.js'))\nEOF`), 'deno run -');
+// ---- m2: a PowerShell body fed from stdin is commands; a runtime's is not read (complexity stage 1 A5) ----
+test('seam m2: the read guard judges a PowerShell heredoc body and reads no runtime script', () => {
   assert.ok(readHits(`pwsh -Command - <<'EOF'\nGet-Content src/big.js\nEOF`), 'pwsh -Command -');
+  assert.ok(!readHits(`python3 <<< "print(open('src/big.js').read())"`), 'a runtime here-string is not read');
 });
 
 // ---- m5: a body a shell expands, a git verb that prints a blob, a script the command wrote and runs ----
 test('seam m5: $( ) in an unquoted heredoc body, git cat-file, a script the command writes then runs', () => {
-  assert.ok(secretHits(`cat <<EOF > out.txt\nvalue: $(cat .env)\nEOF`), 'secret, unquoted body expansion');
   assert.ok(readHits(`cat <<EOF\nvalue: $(cat src/big.js)\nEOF`), 'read, unquoted body expansion into the terminal');
   assert.ok(!readHits(`cat <<EOF > out.txt\nvalue: $(cat src/big.js)\nEOF`), 'read, the same into a file is no dump');
   assert.ok(!readHits(`cat <<'EOF'\nvalue: $(cat src/big.js)\nEOF`), 'read, a quoted tag expands nothing');
   assert.ok(!secretHits(`cat <<'EOF' > out.txt\nvalue: $(cat .env)\nEOF`), 'a quoted tag expands nothing');
-  assert.ok(secretHits('git cat-file -p HEAD:.env'), 'git cat-file prints a blob');
-  assert.ok(secretHits(`cat > scratch.py <<'EOF'\nprint(open('.env').read())\nEOF\npython3 scratch.py`), 'a script written then run');
+  assert.ok(secretHits('git cat-file -p HEAD:.env'), 'git cat-file names the blob\'s path');
+  // a heredoc body is data to the secret guard since swap 1: an expansion in it and a script written then run are
+  // not read before the run (above the masker's floor the output is masked)
+  assert.ok(!secretHits(`cat > scratch.py <<'EOF'\nprint(open('.env').read())\nEOF\npython3 scratch.py`), 'a script written then run is not read');
 });
 
 // ---- M3: the force-push and rm guards read a command through the reader the commit guard uses ----
@@ -224,18 +217,12 @@ test('seam delta 1: a whole-file dump inside a subshell, a group, after ! or tim
 
 // ---- delta 3: a here-string handed to a runtime that reads its script from stdin (`-`, `-Command -`, `run -`) is a script ----
 test('seam delta 3: a here-string to a runtime with - or flags is judged like the inline form', () => {
-  const py = "print(open('src/big.js').read())";
-  const nodeJs = "console.log(require('fs').readFileSync('src/big.js','utf8'))";
-  const shapes = [
-    `python3 - <<< "${py}"`, `python3 -u - <<< "${py}"`, `python - <<< "${py}"`,
-    `node - <<< "${nodeJs}"`, `ruby - <<< "puts File.read('src/big.js')"`, `perl - <<< "open(F, 'src/big.js'); print <F>;"`,
-    `bun run - <<< "${nodeJs}"`, `deno run - <<< "console.log(Deno.readTextFileSync('src/big.js'))"`,
-    `pwsh -Command - <<< "Get-Content src/big.js"`, `pwsh - <<< "Get-Content src/big.js"`, `pwsh <<< "Get-Content src/big.js"`,
-  ];
+  // the read guard keeps the PowerShell shapes; a runtime's here-string is read by no guard (stage 1 A5, swap 1 ruling 3)
+  const shapes = [`pwsh -Command - <<< "Get-Content src/big.js"`, `pwsh - <<< "Get-Content src/big.js"`, `pwsh <<< "Get-Content src/big.js"`];
   for (const c of shapes) assert.ok(readHits(c), `read: ${c}`);
   const sec = [`python3 - <<< "print(open('.env').read())"`, `node - <<< "console.log(require('fs').readFileSync('.env','utf8'))"`,
     `ruby - <<< "puts File.read('.env')"`];
-  for (const c of sec) assert.ok(secretHits(c), `secret: ${c}`);
+  for (const c of sec) assert.ok(!secretHits(c), `a runtime's script is not read: ${c}`);
   for (const c of [`python3 - <<< "print(1)"`, `node - <<< "console.log(2)"`, `pwsh - <<< "Get-Date"`]) assert.ok(!readHits(c), `read allowed: ${c}`);
 });
 
@@ -279,12 +266,19 @@ test('seam: force-push, rm and commit guards fail open when shell-writes.js is a
     }
   }
 });
-test('seam: the read and secret guards keep judging (degraded) when shell-writes.js is absent', () => {
-  for (const [hook, plain] of [['guard-read-whole-file.js', READ_BODY], ['guard-secret-value.js', SECRET_BODY]]) {
-    const r = rawCall(NO_SHELL, hook, plain);
-    assert.ok(r.status === 2 || /updatedInput/.test(r.stdout), `${hook} still judges a plain read: ${r.status}`);
-    assert.ok(!CRASH.test(r.stderr), `${hook}: ${r.stderr.slice(0, 160)}`);
-    for (const c of ['ls', `(cd . && ${plain})`, `time ${plain}`, `bash <<\\EOT\n${plain}\nEOT`, `python3 - <<< "print(1)"`, `setsid bash -c '${plain}'`, `cat <<EOF\n$(echo hi)\nEOF`]) {
+test('seam: without shell-writes.js the read guard keeps judging (degraded) and the secret guard keeps the Read and the literal check', () => {
+  const r = rawCall(NO_SHELL, 'guard-read-whole-file.js', READ_BODY);
+  assert.strictEqual(r.status, 2, `the read guard still judges a plain read: ${r.status}`);
+  // the secret guard's core reads its words through the module: without it nothing is named, and the other routes stand
+  const secret = (payload) => spawnSync(process.execPath, [path.join(NO_SHELL, 'guard-secret-value.js')], {
+    input: JSON.stringify({ session_id: 'seam', cwd: ROOT, ...payload }), encoding: 'utf8', cwd: ROOT, env: { ...process.env } });
+  assert.strictEqual(rawCall(NO_SHELL, 'guard-secret-value.js', SECRET_BODY).status, 0, 'the core names nothing without the module');
+  assert.strictEqual(secret({ tool_name: 'Read', tool_input: { file_path: path.join(ROOT, '.env') }, permission_mode: 'bypassPermissions' }).status, 2, 'a Read of a credential file is still blocked');
+  const literal = ['gh', 'p_'].join('') + 'A1b2'.repeat(9);
+  assert.strictEqual(secret({ tool_name: 'Bash', tool_input: { command: `curl -H 'Authorization: token ${literal}' https://example.invalid` } }).status, 2, 'a credential literal is still blocked');
+  for (const hook of ['guard-read-whole-file.js', 'guard-secret-value.js']) {
+    const plain = hook === 'guard-read-whole-file.js' ? READ_BODY : SECRET_BODY;
+    for (const c of ['ls', plain, `(cd . && ${plain})`, `time ${plain}`, `bash <<\\EOT\n${plain}\nEOT`, `python3 - <<< "print(1)"`, `setsid bash -c '${plain}'`, `cat <<EOF\n$(echo hi)\nEOF`]) {
       const q = rawCall(NO_SHELL, hook, c);
       assert.ok(q.status === 0 || q.status === 2, `${hook}: ${c} -> ${q.status}`);
       assert.ok(!CRASH.test(q.stderr), `${hook}: ${c}: ${q.stderr.slice(0, 160)}`);

@@ -13,10 +13,11 @@ const layout = require(LAYOUT);
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-layout-'));
 const put = (file, text = 'x') => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
 
-test('dataRoot defaults to .alfred, normalizes the value and reads an empty one as unset', () =>
+test('dataRoot is .alfred: a relative value and an empty one read as unset, an absolute one is normalized', () =>
 {
     assert.strictEqual(layout.dataRoot({}), '.alfred');
-    assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: './x\\y/' }), 'x/y');
+    assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: './x\\y/' }), '.alfred');
+    assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: 'C:\\x\\y\\' }), 'C:/x/y');
     assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: '' }), '.alfred');
 });
 

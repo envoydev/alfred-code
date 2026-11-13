@@ -162,6 +162,21 @@ test("the user's own hook and MCP server stay the project's; a shared event and 
     assert.match(ep[0].detail, /~config\/plugins\/cache/);
 });
 
+test('a plugin that lists its commands folder: a command one folder down is on the surface', () =>
+{
+    const command = (description) => `---\ndescription: ${description}\n---\n\nDo it.\n`;
+    const fx = install({
+        plugins: {
+            'alfred-code@envoydev': {
+                files: { 'commands/a.md': command('Use when testing a.'), 'commands/mode/b.md': command('Use when testing b.'), 'commands/mode/deeper/c.md': command('Too deep.') },
+                entry: { commands: ['./commands/'] },
+            },
+        },
+    });
+    const listing = rowsAt(fx.run(), 'session-start').filter((r) => r.listing === 'skill').map((r) => r.note.replace(/^skill listing /, '')).sort();
+    assert.deepEqual(listing, ['alfred-code:a', 'alfred-code:mode:b'], 'a sub-folder is one more segment of the name; two levels down is no command');
+});
+
 test('an empty project maps to no rows and exits 0', () =>
 {
     const fx = install();
@@ -403,4 +418,98 @@ test('a plugin under a moved plugins root (CLAUDE_CODE_PLUGIN_CACHE_DIR) is read
     assert.ok(rowsAt(s, 'session-start').some((r) => r.listing === 'skill' && /alfred-code:core$/.test(r.note)), 'the moved plugin\'s skill is listed');
     const unmoved = fx.run({ env: { ...process.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: '' } });
     assert.match(flagsOf(unmoved, 'dangling')[0].detail, /alfred-code@envoydev is enabled \(project\) but not in the plugin cache/, 'unset, the config dir\'s plugins/ is read');
+});
+test('4c surface: a store rule is named from the project as given when the loader spells its real path another way', { skip: process.platform === 'win32' && 'a link needs privilege here' }, () =>
+{
+    // The Windows gate's temp folder: the native real path expands an 8.3 name the given root keeps. A link stands in.
+    const fx = install({ project: { '.git/HEAD': 'x', '.claude/alfred-code.stamp': 'source: test\n', '.alfred/stack/rules/alfred-security.md': 'Never print a credential.\n' } });
+    const other = path.join(fx.root, 'long-name');
+    fs.symlinkSync(fx.proj, other, 'dir');
+    const native = fs.realpathSync.native;
+    fs.realpathSync.native = (p, ...rest) => { const r = native(p, ...rest); return r.startsWith(fx.proj) ? other + r.slice(fx.proj.length) : r; };
+    let rows;
+    try { rows = rowsAt(fx.run(), 'session-start'); }
+    finally { fs.realpathSync.native = native; }
+    assert.ok(rows.some((r) => r.source === '.alfred/stack/rules/alfred-security.md'), JSON.stringify(rows.map((r) => r.source)));
+});
+test('4c surface: the status floor counts the rules the loader sends, a root\'s included, and a native rule once', () =>
+{
+    const fx = install({
+        project: {
+            '.git/HEAD': 'x',
+            '.claude/alfred-code.stamp': 'source: test\n',
+            '.claude/rules/alfred-git.md': 'The native copy wins.\n',
+            '.alfred/stack/rules/alfred-git.md': 'The store copy never arrives.\n',
+            '.alfred/stack/rules/alfred-security.md': '---\ndescription: s\n---\nNever print a credential.\n',
+            '.alfred/stack/rules/ts-conventions.md': '---\npaths:\n  - "**/*.ts"\n---\nTypes first.\n',
+        },
+    });
+    const start = rowsAt(fx.run(), 'session-start');
+    assert.equal(start.filter((r) => /alfred-git\.md$/.test(r.source)).length, 1, 'a native rule is counted once');
+    assert.ok(start.some((r) => r.source === '.claude/rules/alfred-git.md'), 'the native copy is the one counted');
+    const store = start.find((r) => r.source === '.alfred/stack/rules/alfred-security.md');
+    assert.ok(store, `a store rule is a session-start row: ${JSON.stringify(start.map((r) => r.source))}`);
+    assert.equal(store.owner, 'project', 'owned by the inventory, which lists no alfred-security here');
+    assert.equal(store.chars, 'Never print a credential.'.length);
+    assert.equal(rowsAt(fx.run(), 'path-scoped').find((r) => /ts-conventions/.test(r.source)).owner, 'house', 'a listed rule is the house\'s');
+    assert.ok(rowsAt(fx.run(), 'path-scoped').some((r) => r.source === '.alfred/stack/rules/ts-conventions.md'), 'a scoped store rule');
+
+    const root = fx.proj;
+    write(root, { '.alfred/workspace.json': JSON.stringify({ parent: 'root', children: ['api'] }) });
+    write(path.join(root, 'api'), { '.git/HEAD': 'x', '.claude/alfred-code.stamp': 'source: test\n', '.alfred/workspace.json': JSON.stringify({ parent: '..' }) });
+    const child = surface(path.join(root, 'api'), { configDir: fx.acct, inventory: INVENTORY, home: fx.root });
+    const rows = rowsAt(child, 'session-start').map((r) => r.source);   // posix on every OS
+    assert.ok(rows.includes('../.alfred/stack/rules/alfred-security.md'), `a root's store rule counts in a joined child: ${JSON.stringify(rows)}`);
+});
+
+// ---- stage 5: the members a session entered, from the rule loader's markers ---------------------------------------------
+const K1 = 'a1b2c3d4e5f6';
+function markers(proj, list)
+{
+    const dir = path.join(proj, '.alfred', 'state', 'sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    list.forEach(([name, text], i) =>
+    {
+        const f = path.join(dir, name);
+        fs.writeFileSync(f, text);
+        const t = new Date(Date.now() - (list.length - i) * 60000);
+        fs.utimesSync(f, t, t);
+    });
+}
+const X = 'api/.alfred/stack/rules/x.md';
+const BASE_MARKS = [[`rules-s0-main-m-${K1}-1`, '/ api 100 s0 main\n#head\n'], [`rules-s1-main-m-${K1}-1`, '/ api 4200 s1 main\n#head\nown\n'],
+    [`rules-s1-main-m-${K1}-2`, `/ api 900 s1 main\n/ not sent: ${X}\nb\n`]];
+
+test('surface: the members a session entered are listed from its markers', () =>
+{
+    const fx = install();
+    markers(fx.proj, BASE_MARKS);
+    const s = fx.run();
+    assert.deepStrictEqual(s.members, [{ member: 'api', actor: 'main', parts: 2, chars: 5100, unsent: [X] }]);
+    const text = require('./session-surface.js').render(s);
+    assert.ok(text.includes('MEMBERS ENTERED\n  api  main  2 part(s), 5100 chars'), text);
+    assert.ok(text.includes(`  api  main  not sent - past part 5: ${X}`));
+});
+
+test('surface: one member entered by the session and by an agent is two rows, nothing summed', () =>
+{
+    const fx = install();
+    markers(fx.proj, [[`rules-s1-a1-m-${K1}-1`, '/ api 4200 s1 a1\n#head\n'], ...BASE_MARKS]);
+    assert.deepStrictEqual(fx.run().members.map((m) => [m.member, m.actor, m.parts, m.chars]), [['api', 'main', 2, 5100], ['api', 'a1', 1, 4200]]);
+});
+
+test('surface: a session id and an actor holding dashes are read from line 1', () =>
+{
+    const fx = install();
+    markers(fx.proj, [[`rules-a-b-c-main-m-${K1}-1`, '/ web 50 a-b-c main\n#head\n'], [`rules-a-b-c-d-m-${K1}-1`, '/ my api 300 a-b c-d\n#head\n']]);
+    assert.deepStrictEqual(fx.run().members, [{ member: 'my api', actor: 'c-d', parts: 1, chars: 300, unsent: [] }]);
+});
+
+test('surface: no marker, an unreadable marker and a marker with no first line give no row and no throw', () =>
+{
+    const fx = install();
+    assert.deepStrictEqual(fx.run().members, []);
+    markers(fx.proj, [[`rules-s1-main-m-${K1}-1`, ''], [`rules-s1-main-m-${K1}-2`, '/ api 4200\n']]);
+    fs.mkdirSync(path.join(fx.proj, '.alfred', 'state', 'sessions', `rules-s1-main-m-${K1}-3`));
+    assert.deepStrictEqual(fx.run().members, []);
 });

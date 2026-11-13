@@ -100,9 +100,8 @@ function requireQuiet(file)
         for (const [key, value] of Object.entries(before)) if (process.env[key] !== value) process.env[key] = value;
     }
 }
-// The roots a store's writer may have used, the project's own first, deduped by real path. forge: the repository's root
-// (forge.js ledgerRoot - a worktree and its main checkout share one); handoff: layout.projectRootOf; preferences: every
-// checkout hook-prelude.js checkoutsOf names (preferences-session.js contextOf).
+// The roots a store's writer may have used, the project's own first, deduped by real path. handoff: layout.projectRootOf;
+// preferences: every checkout hook-prelude.js checkoutsOf names (preferences-session.js contextOf).
 function rootsFor(ctx, kind)
 {
     const key = `roots:${kind}`;
@@ -110,8 +109,7 @@ function rootsFor(ctx, kind)
     const roots = [ctx.project];
     try
     {
-        if (kind === 'forge') roots.push(require('../stack/hooks/forge.js').ledgerRoot(ctx.project));
-        else if (kind === 'handoff') roots.push(layout.projectRootOf(ctx.project).project);
+        if (kind === 'handoff') roots.push(layout.projectRootOf(ctx.project).project);
         else if (kind === 'preferences') roots.push(...requireQuiet('../stack/hooks/hook-prelude.js').checkoutsOf(realOrSelf(ctx.fs, ctx.project)));
     }
     catch { /* the project alone */ }
@@ -182,8 +180,10 @@ const wholeRow = (id, source, to, inData = true, name = undefined) => ({
 });
 const realProject = (ctx) => realOrSelf(ctx.fs, ctx.project);
 // context.json: the catalog variables the project's own files set and where each came from (layout.variablesOf, files
-// only), the instrumentation switch they resolve, and the plugins installed for this session - user scope or naming
-// this project - from the session's own account. No other key of any settings file is read.
+// only), plus each key those leave unanswered that a workspace member's .variables answers (W2, `from` the member's
+// rel - the loader's own walk, so an ignored key, a never-member key and the switch off add nothing), the
+// instrumentation switch they resolve, and the plugins installed for this session - user scope or naming this
+// project - from the session's own account. No other key of any settings file is read.
 function contextBody(ctx)
 {
     const v = variables(ctx);
@@ -209,10 +209,17 @@ function contextBody(ctx)
     const instrument = v.values.ALFRED_CODE_INSTRUMENT ?? null;
     return JSON.stringify({ variables: vars, instrument, plugins }, null, 2) + '\n';
 }
+const OWN_LAYERS = new Set(['settings.local.json', 'own', 'env']);
 const variables = (ctx) =>
 {
-    if (!ctx.cache.variables) ctx.cache.variables = layout.variablesOf(ctx.project, { env: { ...ctx.stripped, ALFRED_CODE_DATA_PATH: ctx.dataRootValue }, layers: 'files' });
-    return ctx.cache.variables;
+    if (ctx.cache.variables) return ctx.cache.variables;
+    const read = (layers) => layout.variablesOf(ctx.project, { env: ctx.stripped, layers, dataRoot: ctx.dataRootRel });
+    const v = read('files');
+    const all = read('all');
+    for (const [key, value] of Object.entries(all.values))
+        if (v.values[key] === undefined && !OWN_LAYERS.has(all.from[key])) { v.values[key] = value; v.from[key] = all.from[key]; }
+    ctx.cache.variables = v;
+    return v;
 };
 
 const APPROVAL_MAX_BYTES = 65536;
@@ -320,20 +327,19 @@ function overlapOf(ctx)
 const HISTORY_KEEP = 200;
 const HISTORY_DAYS_MS = 15552000000;
 
-// One row per name prefix under state/sessions/ and state/forge/, in the spec's order (4.3).
+// One row per name prefix under state/sessions/, in the spec's order (4.3). The forge store (ACTS-, REFS-, NOTE-, PAUSE-)
+// left with the ref watch (complexity stage 1 B9).
 const SESSION_PREFIXES = [
-    ['AUTO-RUN-', 'meta'], ['AUTO-TAKEN-', 'meta'], ['AUTO-SAID-', 'meta'], ['COMPACT-STATE-', 'meta'], ['twins-', 'meta'],
+    ['AUTO-RUN-', 'meta'], ['AUTO-TAKEN-', 'meta'], ['AUTO-SAID-', 'meta'], ['AUTO-COMPACT-', 'meta'], ['COMPACT-STATE-', 'meta'], ['twins-', 'meta'],
     ['review-snapshot-', 'meta'], ['trivial-', 'meta'], ['untracked-', 'meta'], ['turn-check-', 'text'],
-    ['AGENT-CAP-', 'meta'], ['SCORER-', 'text'], ['preferences-', 'text'],
+    ['AGENT-CAP-', 'meta'], ['SCORING-', 'text'], ['preferences-', 'text'], ['rules-', 'meta'],
 ];
-const FORGE_PREFIXES = ['ACTS-', 'REFS-', 'NOTE-', 'PAUSE-'];
 // `dir` is <data root>/state/<kind> of the root that held it, so that data root is the item's source root.
 const stateItem = (kind, dir, name) => ({ to: `data/state/${kind}/${name}`, from: path.join(dir, name), root: path.dirname(path.dirname(dir)) });
-// The roots a name row searches: forge's under the repository's root too; the preferences records under the first
-// checkout that holds one (each root's data root, in checkoutsOf's order).
+// The roots a name row searches: the preferences records under the first checkout that holds one (each root's data root,
+// in checkoutsOf's order).
 function nameRoots(ctx, kind, prefix)
 {
-    if (kind === 'forge') return rootsFor(ctx, 'forge');
     if (kind === 'sessions' && prefix === 'preferences-')
     {
         const roots = rootsFor(ctx, 'preferences');
@@ -380,20 +386,9 @@ const unlistedRow = (kind, prefixes, skip = []) => ({
     id: `${kind}:unlisted`, cls: 'text', match: 'name', kind, sweeps: true, inData: true,
     find: (ctx) =>
     {
-        const items = [];
-        const taken = new Set();
-        let root;
-        for (const at of kind === 'forge' ? rootsFor(ctx, 'forge') : [ctx.project])
-        {
-            const { dir, names } = stateEntries(ctx, kind, at);
-            for (const n of names.filter((x) => holdsSid(ctx, x) && !skip.includes(x) && !taken.has(x) && !prefixes.some((p) => x.startsWith(p))))
-            {
-                taken.add(n);
-                items.push(stateItem(kind, dir, n));
-                if (root === undefined) root = otherRoot(ctx, at);
-            }
-        }
-        return { items, root, why: items.length ? 'unlisted prefix' : undefined };
+        const { dir, names } = stateEntries(ctx, kind, ctx.project);
+        const items = names.filter((x) => holdsSid(ctx, x) && !skip.includes(x) && !prefixes.some((p) => x.startsWith(p))).map((n) => stateItem(kind, dir, n));
+        return { items, why: items.length ? 'unlisted prefix' : undefined };
     },
     // What the bundle holds under the same rule, so a file the hook swept since an earlier collect reads kept (R165).
     held: (ctx) => listDir(ctx.fs, path.join(ctx.out, 'data', 'state', kind))
@@ -505,18 +500,16 @@ const STORES = [
         held: (ctx) => [`data/state/history/${ctx.sid}.json`],
     },
     {
-        id: 'scorer', cls: 'text', match: 'name', kind: 'sessions', name: 'scorer', sweeps: true, inData: true,
+        id: 'scoring', cls: 'text', match: 'name', kind: 'sessions', name: 'scoring', sweeps: true, inData: true,
         find: (ctx) =>
         {
-            const dir = path.join(layout.statePath(ctx.project, 'sessions', 'scorer', ctx.env), ctx.sid);
+            const dir = path.join(layout.statePath(ctx.project, 'sessions', 'scoring', ctx.env), ctx.sid);
             return { items: isDir(ctx.fs, dir) ? [dataItem(ctx, dir)] : [] };
         },
-        held: (ctx) => [`data/state/sessions/scorer/${ctx.sid}`],
+        held: (ctx) => [`data/state/sessions/scoring/${ctx.sid}`],
     },
     ...SESSION_PREFIXES.map(([prefix, cls]) => prefixRow('sessions', prefix, cls)),
-    unlistedRow('sessions', SESSION_PREFIXES.map(([p]) => p), ['scorer']),
-    ...FORGE_PREFIXES.map((prefix) => prefixRow('forge', prefix, 'text')),
-    unlistedRow('forge', FORGE_PREFIXES),
+    unlistedRow('sessions', SESSION_PREFIXES.map(([p]) => p), ['scoring']),
     {
         // session-status.js writes <cwd>/.claude/session-inspector/status/<sid>.json for session-inspector.
         id: 'session-inspector', cls: 'meta', match: 'name',
@@ -723,4 +716,4 @@ const STORES = [
     },
 ];
 
-module.exports = { STORES, TMP_PREFIXES, CHUNK, eachLine, toPosix, isDir, listDir, sidDir, exists, rowsOf, dataItem, stateEntries, requireQuiet, headTs, tailTs, SESSION_PREFIXES, FORGE_PREFIXES };
+module.exports = { STORES, TMP_PREFIXES, CHUNK, eachLine, toPosix, isDir, listDir, sidDir, exists, rowsOf, dataItem, stateEntries, requireQuiet, headTs, tailTs, SESSION_PREFIXES };

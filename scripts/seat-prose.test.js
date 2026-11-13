@@ -463,10 +463,8 @@ test('ab-Q5: the analyzer reads the sibling\'s data root first', () =>
 {
     const line = squash(body('related-project-analyzer')).match(/\*\*first_read\*\*[^\n]*?(?= 4\. \*\*seam\*\*)/);
     assert.ok(line, 'the first_read item is there');
-    assert.match(line[0], /ALFRED_CODE_DATA_PATH/, 'names the key that moves the data root');
-    assert.match(line[0], /default `\.alfred`/, 'names the default');
-    assert.match(line[0], /`\.claude\/settings\.local\.json` wins/, 'M9: says which file wins when both set the key');
-    assert.doesNotMatch(line[0], /`\.alfred\/docs\/awareness\//, 'the exact path is no longer hard-coded under .alfred');
+    assert.match(line[0], /under the data root of a sibling the stack set up, `\.alfred` in the sibling's root/, 'names the fixed data root');
+    assert.doesNotMatch(line[0], /ALFRED_CODE_DATA_PATH|settings\.local\.json/, 'no key and no settings file: the root does not move');
 });
 
 test('ab-P4: the footprint names statistics/', () =>

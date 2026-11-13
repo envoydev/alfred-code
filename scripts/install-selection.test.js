@@ -103,6 +103,19 @@ test('derive: skills, agents, rules and hooks are read off disk', () =>
         assert.ok(lines.includes(want), `${want} missing from ${lines.join(', ')}`);
 });
 
+test('derive: a link reads as the item it points at; a dangling one is none', { skip: process.platform === 'win32' }, () =>
+{
+    const dir = target({});
+    const real = target({ skills: ['project-aspnet'], agents: ['ng-implementer'] });
+    fs.mkdirSync(path.join(dir, 'skills'), { recursive: true }); fs.mkdirSync(path.join(dir, 'agents'), { recursive: true });
+    fs.symlinkSync(path.join(real, 'skills', 'project-aspnet'), path.join(dir, 'skills', 'project-aspnet'));
+    fs.symlinkSync(path.join(real, 'agents', 'ng-implementer.md'), path.join(dir, 'agents', 'ng-implementer.md'));
+    fs.symlinkSync(path.join(real, 'agents', 'gone.md'), path.join(dir, 'agents', 'gone.md'));
+    fs.symlinkSync(path.join(real, 'skills', 'gone'), path.join(dir, 'skills', 'gone'));
+    const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] });
+    assert.deepStrictEqual(lines.filter((l) => /^(skill|agent) /.test(l)).sort(), ['agent ng-implementer', 'skill project-aspnet']);
+});
+
 test('derive: generated project-owned files and the engine modules are NOT items', () =>
 {
     // The captures rewrite alfred-project-* and project-code-style; docs.js / memory.js are
@@ -960,11 +973,12 @@ test('B-m6: a part-qualified rename value is no selection line', () =>
 });
 
 // F5 (the 2026-10-28 workspace run): one home for the always-on lock the installer and stack-select both read.
-test('lockedLines: the always rules and skills, nothing else', () =>
+test('lockedLines: the always rules and skills and the locked hooks, nothing else', () =>
 {
-    assert.deepStrictEqual(sel.lockedLines({ rules: ['a'], skills: ['b'], agents: ['c'] }), new Set(['rule a', 'skill b']));
-    assert.strictEqual(sel.lockedLines(undefined).size, 0);
-    assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, 0);
+    const hooks = sel.LOCKED_HOOKS.map((h) => `hook ${h}`);
+    assert.deepStrictEqual(sel.lockedLines({ rules: ['a'], skills: ['b'], agents: ['c'] }), new Set(['rule a', 'skill b', ...hooks]));
+    assert.strictEqual(sel.lockedLines(undefined).size, hooks.length);
+    assert.strictEqual(sel.lockedLines({ rules: 'a' }).size, hooks.length);
 });
 
 // E-batch O4: a hand-written partial --selection on install was applied as given - its closure came only at the next
@@ -995,7 +1009,7 @@ test('a partial --selection on install takes the locked always-on rules and skil
     const { seedRun } = require('./seed-sandbox.js');
     const always = require('../meta/recommendations.json').always;
     const missing = (repo) => [
-        ...always.rules.filter((n) => !fs.existsSync(path.join(repo, '.claude', 'rules', `${n}.md`))).map((n) => `rule ${n}`),
+        ...always.rules.filter((n) => !fs.existsSync(require('./install/copy.js').ruleAt(repo, n))).map((n) => `rule ${n}`),
         ...always.skills.filter((n) => !fs.existsSync(path.join(repo, '.claude', 'skills', n, 'SKILL.md'))).map((n) => `skill ${n}`),
     ];
     const { steps, outs } = seedRun(['install', 'update'], 'skill csharp\nrule markdown-docs\nhook none\n', {

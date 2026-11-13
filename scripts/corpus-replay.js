@@ -59,25 +59,14 @@ const ROUTES = [
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.*',
     tools: ['mcp__github__merge_pull_request', 'mcp__work_forge__accept_merge_request', 'mcp__plugin_acme_ado__repo_pull_request_write'] }, // mcp-fixture
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
-  // The output-scorer's seal (mode-output-scorer): a seat's hand-back is written to its score file, logged, never decided.
-  { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scorer-seal' },
+  // The output-scoring's seal (mode-output-scoring): a seat's hand-back is written to its score file, logged, never decided.
+  { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scoring-seal' },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
-  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches: the desktop
-  // server types' launchers (a server's PowerShell and execute_shell_command too, E-batch mcp-B-m1) and the browser server type's code runner under any registration (N6 and N9, 2026-10-24 -
-  // the stack ships no server, so the name is the user's). A bare server spelling is built here, never written - lint
-  // check 54 fails on it as literal text.
-  { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$|^mcp__.+__browser_run_code_unsafe$',
-    tools: ['control', 'desktop'].flatMap((k) => [`mcp__plugin_windows-${k}_windows-${k}__App`, `mcp__windows-${k}__App`, `mcp__windows-${k}__PowerShell`, `mcp__plugin_macos-${k}_macos-${k}__Shell`, `mcp__macos-${k}__Shell`])
-        .concat([`mcp__${'shell'}__execute_shell_command`])
-        .concat(['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `playwright-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_run_code_unsafe`, `mcp__${s}__browser_run_code_unsafe`])) },
-  // The browser's file upload, the secret guard's fourth read route (audit 2026-10-14 PL3): a Playwright server under any
-  // registration name (N6), replayed on the names the stack once shipped.
-  { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__.+__browser_file_upload$',
-    tools: ['chrome', 'msedge', 'firefox', 'webkit'].flatMap((e) => [`${e}-control`, `browser-${e}`]).flatMap((s) => [`mcp__plugin_${s}_${s}__browser_file_upload`, `mcp__${s}__browser_file_upload`]) },
+  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches under any
+  // registration (N6, 2026-10-24 - the stack ships no server, so the name is the user's). A bare server spelling is built
+  // here, never written - lint check 54 fails on it as literal text.
   // A file server's read tools, the secret guard's fifth read route (audit 2026-10-30 HK-26): a user-registered
   // filesystem server under any registration name.
   { hook: 'guard-secret-value.js', event: 'PreToolUse', deny: true,
@@ -110,6 +99,9 @@ const ROUTES = [
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: HOLD_TOOLS, deny: true, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false },
   { hook: 'guard-answer.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
+  // The output masker (swap 1, 2026-11-11) reads what a command PRINTED, and a failed call's error text - declared below.
+  { hook: 'guard-secret-value.js', event: 'PostToolUse', deny: false, noShell: true },
+  { hook: 'guard-secret-value.js', event: 'PostToolUseFailure', deny: false, noShell: true },
 ];
 // A route can be silent on the corpus for two very different reasons: the gate is broken, or the
 // thing it guards simply never happened. Only the second is acceptable, and declaring it here is
@@ -124,21 +116,27 @@ const UNEXERCISED = {
     'takes the pending file a dispatch wrote and prints at most a count line; pinned in agent-cap.test.js',
   'guard-unapproved-dispatch.js::SubagentStop':
     'marks the started agent\'s cap file and prints nothing - no verdict to replay; pinned in agent-cap.test.js',
-  // Wired 2026-10-25 (mode-output-scorer). The seal acts only on an output-scorer seat's hand-back, a seat the corpus
-  // predates; what it writes is pinned in guard-stop-closes.test.js ('scorer seal').
+  // Wired 2026-10-25 (mode-output-scoring). The seal acts only on an output-scoring seat's hand-back, a seat the corpus
+  // predates; what it writes is pinned in guard-stop-closes.test.js ('scoring seal').
   'guard-stop-contract.js::PreToolUse:SubagentHandback':
-    'the corpus predates the output-scorer seat; the seal is pinned in guard-stop-closes.test.js',
-  // Replayed 2026-09-23 over 820 transcripts: 29,058 Bash and 1,523 Write payloads, none aimed at a
-  // check config that already existed - the sessions never shell-edited or overwrote one. The gate
-  // fires on both routes in guard-hooks.test.js.
+    'the corpus predates the output-scoring seat; the seal is pinned in guard-stop-closes.test.js',
+  // The config guard judges one thing since complexity stage 1 B11: a write that switches a protective guard off
+  // (SYS-01, 2026-11-03), which the corpus predates. The lint-config judge these routes were measured on (2026-09-23, 820
+  // transcripts: 29,058 Bash and 1,523 Write payloads, no fire) left with B11. The gate fires on both routes in
+  // audit-2026-11-03-guard-asks.test.js.
   'guard-config-protection.js::PreToolUse:Bash':
-    'no shell write to an existing check config in 29k Bash payloads; the gate fires in guard-hooks.test.js',
+    'the corpus predates the guard switch-off check, its one check since stage 1 B11; the gate fires in audit-2026-11-03-guard-asks.test.js',
   'guard-config-protection.js::PreToolUse:Write':
-    'no overwrite of an existing check config in 1.5k Write payloads; the gate fires in guard-hooks.test.js',
+    'the corpus predates the guard switch-off check, its one check since stage 1 B11; the gate fires in audit-2026-11-03-guard-asks.test.js',
   'guard-protected-force-push.js::PreToolUse:Bash':
     'no force-push to a protected branch occurred in 21.5k Bash payloads; the gate fires in guard-hooks.test.js',
   'guard-secret-value.js::PreToolUse:Grep':
     'the corpus predates this matcher - it was wired after a content-mode Grep was measured reading a settings.json the Bash route had just blocked; the gate fires in guard-secret-value.test.js',
+  // The output masker (swap 1, 2026-11-11): it reads what a command PRINTED, and a failed call's error text.
+  'guard-secret-value.js::PostToolUse':
+    'the corpus holds commands, not their outputs; the canary in guard-secret-value.test.js',
+  'guard-secret-value.js::PostToolUseFailure':
+    'the corpus holds commands, not their outputs; the canary in guard-secret-value.test.js',
   // The PowerShell spelling of the shell route, wired 2026-09-12 after an audit measured 122
   // PowerShell tool calls in a 115-session corpus against six guards matching `Bash` alone. The
   // replay corpus predates the wiring, so it can prove nothing about these six; each fires on its

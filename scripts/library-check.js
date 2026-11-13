@@ -30,7 +30,7 @@ const { headingOf, headingHash, pastHeadings } = require('./install/skill-headin
 const { stampFile } = require('./install/brand.js');
 const { hashItem, hashBuffer, renderSkillFile } = require('./install/library.js');
 const { parseJson } = require('./install/json-file.js');
-const { resolveDocsRoot } = require('./install/copy.js');
+const { resolveDocsRoot, ruleAt } = require('./install/copy.js');
 
 // alfred-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
 // `__DOCS_ROOT__` placeholder) and the PROJECT copy (which the installer substitutes the resolved
@@ -84,7 +84,7 @@ function check({ project, source, configDir })
         for (const [name, hash] of Object.entries(stamp[kind] || {}).sort())
         {
             if (!validItemName(name, dirs[kind])) { invalid += 1; continue; }
-            const file = kind === 'skills' ? path.join(dirs.skills, name) : path.join(dirs[kind], `${name}.md`);
+            const file = kind === 'skills' ? path.join(dirs.skills, name) : kind === 'rules' ? ruleAt(project, name) : path.join(dirs[kind], `${name}.md`);
             const have = hashItem(file);
             let state = 'ok';
             if (!have) state = 'missing';
@@ -133,7 +133,7 @@ function check({ project, source, configDir })
         const rules = Object.keys(stamp.rules || {}).sort().filter((name) =>
         {
             if (!validItemName(name, dirs.rules)) return false;
-            try { return cite.test(fs.readFileSync(path.join(dirs.rules, `${name}.md`), 'utf8')); } catch { return false; }
+            try { return cite.test(fs.readFileSync(ruleAt(project, name), 'utf8')); } catch { return false; }
         });
         if (rules.length) blocked.push({ skill, mode, rules });
     }

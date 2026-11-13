@@ -26,6 +26,7 @@ test('the wirings come from the installer table, not a second list', () => {
         : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`)
         // The turn build check rides history-session's Stop process (2026-10-16): a hook, though it starts no process of its own.
         : w.file === 'history-session.js' && w.event === 'Stop' ? [w.file, ...historySession.RIDERS.map(g => `${g}.js`)] : [w.file])));
+    // Seventeen since complexity stage 1 B12 retired guard-desktop-exec; eighteen since the rule loader joined (workspace stage 4a).
     assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
@@ -207,8 +208,10 @@ test('the Monitor route: the shell guards judge a Monitor command through the ge
         fs.writeFileSync(path.join(cwd, '.env'), 'API_KEY=abc123\n');
         assert.ok(denied(replayPreToolUse('Monitor', { command: 'rm -rf ~', description: 'x' }, cwd)), 'rm -rf ~ through Monitor');
         assert.ok(denied(replayPreToolUse('Monitor', { command: 'git push -f origin main', description: 'x' }, cwd)), 'a force-push through Monitor');
-        const view = rewrittenTo(replayPreToolUse('Monitor', { command: 'cat .env', description: 'x' }, cwd));
-        assert.ok(view && /--redacted/.test(view), `cat .env through Monitor is rewritten to the redacted view: ${view}`);
+        // Swap 1 (2026-11-11): nothing is rewritten, and Monitor's output cannot be masked - a command naming a credential file is refused
+        const core = replayPreToolUse('Monitor', { command: 'cat .env', description: 'x' }, cwd);
+        assert.ok(denied(core) && !rewrittenTo(core), 'cat .env through Monitor is refused, never rewritten');
+        assert.ok(core.some(r => /--presence/.test(`${r.stderr}${r.stdout}`)), 'the denial names the presence read');
         // a WebSocket watch carries no command, and passes untouched
         const ws = replayPreToolUse('Monitor', { ws: { url: 'wss://example.test/feed' }, description: 'x' }, cwd);
         assert.ok(!denied(ws) && !rewrittenTo(ws), 'a ws watch passes');

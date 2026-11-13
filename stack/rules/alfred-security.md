@@ -26,5 +26,5 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 <!-- Maintainer note: extend the deny list in settings.json with the stack's own secret/config globs. -->
 <!-- Maintainer note: `permissions.deny` Read rules cover the file tools and the shell file commands Claude Code
 recognizes (`cat`, `head`, `sed`, a redirect), never an unnamed read (`grep -r`) or a subprocess (a python / node
-script); `guard-secret-value.js` covers those by content. The value ask, its SECRET-READ-ALLOW receipt and the rotate
-ask's once-per-exposure switch live in the guards' own block texts (audit 2026-10-14 RU03). -->
+script); `guard-secret-value.js` covers those by content. The Read ask and the rotate ask's once-per-exposure
+switch live in the guards' own texts (audit 2026-10-14 RU03; the receipt left in swap 1, 2026-11-11). -->

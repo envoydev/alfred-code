@@ -145,12 +145,14 @@ test('--core: the core alone, its own eval cases as evals/, every path its comma
     const evalCases = fs.readdirSync(path.join(REPO, 'setup-plugin', 'evals'), { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'results').map((e) => e.name).sort();
     assert.deepEqual(fs.readdirSync(path.join(out, 'evals')).sort(), evalCases, 'setup-plugin/evals/ cases, no library case');
     for (const c of evalCases) assert.ok(fs.existsSync(path.join(out, 'evals', c, 'prompt.md')), `${c} travels whole`);
-    for (const f of fs.readdirSync(path.join(out, 'commands')).map((n) => path.join(out, 'commands', n)).concat(path.join(out, 'skills', 'alfred-code', 'SKILL.md')))
+    assert.ok(fs.existsSync(path.join(out, 'commands', 'mode', 'scoring.md')), 'a command one folder down travels at its own path');
+    for (const f of require('./lint-skills.js').commandFiles(path.join(out, 'commands')).map((n) => path.join(out, 'commands', n)).concat(path.join(out, 'skills', 'alfred-code', 'SKILL.md')))
         for (const m of fs.readFileSync(f, 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+[A-Za-z0-9_-])/g))
             assert.ok(fs.existsSync(path.join(out, m[1])), `${path.basename(f)} names ${m[1]}, which the core bundle holds`);
     assert.ok(fs.existsSync(path.join(out, 'scripts', 'install', 'stamp.js')), 'the stamp script the status and router bodies run');
     assert.match(JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin/plugin.json'), 'utf8')).description, /core alone/);
     assert.equal(printed.cases, evalCases.length);
+    assert.equal(printed.commands, require('./lint-skills.js').commandFiles(path.join(out, 'commands')).length, 'the printed count is the command files, not the manifest entries');
     // a re-build over its own output is allowed, over a full bundle too - both are this script's
     execFileSync(process.execPath, [SCRIPT, '--core', out]);
     execFileSync(process.execPath, [SCRIPT, out]);

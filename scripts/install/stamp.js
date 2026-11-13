@@ -49,11 +49,9 @@
 // settings scope). The file cannot tell that entry from the user's own, so this line is what a later run lifts when
 // the server is picked again, and what uninstall lifts.
 //
-// `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
-// the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of the
-// secrets file a run could not make inline (`sensitive <from> -> <to>`), kept until the file has left `from`;
-// an earlier release's server-data line is no longer read. `data-move: kept` is the user's answer to keep the old
-// layout - no later update offers the move again (configure still can).
+// The data root is always `.alfred`, so no run writes a data line. An older stamp's `data-root:` (a custom root that
+// release left in effect) and `data-pending:` (`sensitive <from> -> <to>`, a secrets file it could not move) are still
+// read - they name what the next update carries into `.alfred` (scripts/install/fixed-root.js).
 //
 // `initialised` is the one line only /alfred-code:init writes (its bootstrap phase): a date. A fresh install writes `pending`, every
 // later run carries the value forward, and nothing but init turns `pending` into a date - so an update
@@ -127,7 +125,7 @@ function installedAlways({ recommendations, rulesDir })
 {
     const always = (readJson(recommendations).always) || {};
     const list = (x) => (Array.isArray(x) ? x : []);
-    return { rules: list(always.rules).filter((r) => rulesDir && fs.existsSync(path.join(rulesDir, `${r}.md`))) };
+    return { rules: list(always.rules).filter((r) => [].concat(rulesDir || []).some((d) => fs.existsSync(path.join(d, `${r}.md`)))) };
 }
 
 // --- the ledger (R10) ----------------------------------------------------------------------------
@@ -143,12 +141,13 @@ const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
 // The copies that sit directly in .claude: the seeded AGENTS.md (a 2.1.6 ledger still names it CLAUDE.md - read, never written),
-// and the full copy route's serena context (I12).
-const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml'];
+// the full copy route's serena context (I12) and the rules canary, the one rules row.
+const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml', '.gitignore', 'rules/alfred-rules.md'];
 // A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys; custom memory's
 // switch-off is a top-level key.
 // A workspace row is one MEMBER of an array (settings.js syncMembers), keyed by the member's own hash, so two members never
 // share a ledger key.
+// until 4.0.0: the modelSettings.<id>.autoCompactWindow rows stay readable so a later release can take ledgered windows back.
 const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|autoMemoryDirectory|(?:claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[[0-9a-f]{64}\])$/;
 const MCP_SCOPES = ['local', 'user'];
 // Workspace layering (spec 2.2): the one account settings key D5 writes, the MCP rows a child copies from its root
@@ -271,7 +270,7 @@ function readLedger(file)
 const secretsLine = (by, ms) => { const who = by === null ? `run-${ms}` : by; return who ? `secrets: dual ${who}` : 'secrets: dual'; };
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [] } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], links = [], memberPicks = [] } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -297,9 +296,6 @@ function renderStamp(fields)
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         ...(Object.keys(toolIgnores || {}).length ? [`tool-ignores: ${Object.entries(toolIgnores).map(([f, how]) => `${f}=${how}`).join(',')}`] : []),
         ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
-        ...(data && data.root ? [`data-root: ${data.root}`] : []),
-        ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
-        ...(data && data.kept ? ['data-move: kept'] : []),
         ...(data && data.secrets ? [secretsLine(data.secrets.by, installedMs)] : []),
         ...(MEMORY_LIFT_FILES.includes(memoryLift) ? [`memory-lift: pending ${memoryLift}`] : []),
         ...(Array.isArray(untrackTold) && untrackTold.length ? [`untrack-told: ${[...new Set(untrackTold)].filter((p) => p && !/[,\r\n]/.test(p)).sort().join(',')}`] : []),
@@ -307,6 +303,8 @@ function renderStamp(fields)
         ...(Array.isArray(ownPicks) ? [`own-picks: ${[...new Set(ownPicks)].map((l) => l.replace(' ', '/')).sort().join(',')}`] : []),
         ...(Array.isArray(ownEnv) ? [`own-env: ${[...new Set(ownEnv)].sort().join(',')}`] : []),
         ...(instructionsBoth === 'declined' ? ['instructions-both: declined'] : []),
+        ...(links.length ? [`links: ${linksValue(links)}`] : []),
+        ...(memberPicks.length ? [`member-picks: ${[...new Set(memberPicks)].map((l) => l.replace(' ', '/')).sort().join(',')}`] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -332,7 +330,7 @@ function writeStamp(opts)
 {
     const {
         source, action, scope, configDir, projectRoot, hooksCatalog, hooksRoute, seatsRoute, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], version = '', now = new Date(), log = () => {}, note = () => {},
+        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], links = [], memberPicks = [], version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }) });
 
@@ -347,7 +345,7 @@ function writeStamp(opts)
 
     const always = installedAlways({
         recommendations: path.join(source.dir, 'meta', 'recommendations.json'),
-        rulesDir: path.join(projectRoot, '.claude', 'rules'),
+        rulesDir: [path.join(projectRoot, '.alfred', 'stack', 'rules'), path.join(projectRoot, '.claude', 'rules')],
     });
 
     try
@@ -359,7 +357,7 @@ function writeStamp(opts)
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
             alwaysRules: always.rules, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-            instructionsFile, ownPicks, ownEnv, instructionsBoth, memoryLift, untrackTold,
+            instructionsFile, ownPicks, ownEnv, instructionsBoth, memoryLift, untrackTold, links, memberPicks,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -398,6 +396,18 @@ function readOwnPicks(file)
     return items.map((s) => s.split('/')).filter((p) => p.length === 2 && OWN_CATEGORIES.includes(p[0]) && validItemName(p[1])).map(([c, n]) => `${c} ${n}`);
 }
 
+// Workspace stage 3: the links a run made (`links: <kind>/<file>=<symlink|junction|copy>[@<sha256>],...`) and the picks a
+// workspace root holds for its members (`member-picks: skill/<name>,...`). An entry of any other shape is dropped (N1).
+const linksValue = (record) => record.map((e) => `${e.path}=${e.kind}${e.hash ? `@${e.hash}` : ''}`).join(',');
+const readLinks = (file) => (lineOf(file, 'links') || []).map((s) => /^(skills\/([^/=]+)|agents\/([^/=]+)\.md)=(symlink|junction|copy)(?:@([0-9a-f]{64}))?$/.exec(s))
+    .filter((m) => m && validItemName(m[2] || m[3]) && (m[4] === 'copy') === Boolean(m[5])).map((m) => ({ path: m[1], kind: m[4], hash: m[5] || '' }));
+function readMemberPicks(file)
+{
+    const items = lineOf(file, 'member-picks');
+    return items && items.map((s) => s.split('/')).filter((p) => p.length === 2 && ['skill', 'agent', 'rule'].includes(p[0]) && validItemName(p[1]))
+        .map(([c, n]) => `${c} ${n}`);
+}
+
 function readOwnEnv(file)
 {
     const items = lineOf(file, 'own-env');
@@ -407,7 +417,7 @@ function readOwnEnv(file)
 // 'declined' when the D5 ask was answered 'Leave it' for this project, else ''.
 const readInstructionsBoth = (file) => ((lineOf(file, 'instructions-both') || [])[0] === 'declined' ? 'declined' : '');
 // True when a join answered between runs left this project's 2.12 values in settings for the next run to prune
-// (workspace.js pruneOnJoin); the stamp that run writes carries no such line.
+// (workspace.js pruneChained under `seeds`); the stamp that run writes carries no such line.
 const readJoinPrune = (file) => (lineOf(file, 'join-prune') || [])[0] === 'settings';
 
 // One `key: value` line set, replaced or (value null) removed in place, the rest of the stamp left byte for byte - for
@@ -538,17 +548,15 @@ function readMcpDenied(file)
     if (!m) return [];
     return m[1].split(',').map((s) => /^(project|local):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
-// The data lines - { root: '' when none, pending: [], kept, secrets } with no stamp or none of them. `secrets` is item 3's
+// The data lines - { root: '' when none, pending: [], secrets } with no stamp or none of them. `secrets` is item 3's
 // `secrets: dual <by>` as { by } (`by` '' for a bare line), null with none or any other value.
 function readDataLines(file)
 {
     let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], kept: false, secrets: null }; }
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], secrets: null }; }
     const dr = require('../../stack/mcp/data-root.js');
-    const root = (/^data-root: *(\S+) *$/m.exec(text) || [])[1] || '';
     const dual = /^secrets: *dual(?: +(\S+))? *$/m.exec(text);
-    return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text),
-        secrets: dual ? { by: dual[1] || '' } : null };
+    return { root: dr.readRootLine(text), pending: dr.readPending(text), secrets: dual ? { by: dual[1] || '' } : null };
 }
 
 // E-batch mcp-A6: `memory-lift: pending <file>` - the 2.10.1 lift of Claude's own memory switch-off could not read that
@@ -713,8 +721,8 @@ function legacySignature(root, { manifest } = {})
         }
         catch { return false; }
     });
-    const items = list('skills', (d) => d.isDirectory()).filter(own('skills')).length
-        + list('agents', (d) => d.isFile() && d.name.endsWith('.md')).map((f) => f.replace(/\.md$/, '')).filter(own('agents')).length
+    const items = list('skills', (d) => d.isDirectory() || d.isSymbolicLink()).filter(own('skills')).length
+        + list('agents', (d) => (d.isFile() || d.isSymbolicLink()) && d.name.endsWith('.md')).map((f) => f.replace(/\.md$/, '')).filter(own('agents')).length
         + list('rules', (d) => d.isFile() && d.name.endsWith('.md')).map((f) => f.replace(/\.md$/, '')).filter(own('rules')).length;
     return [hooks, envKeys, items >= 3].filter(Boolean).length >= 2;
 }
@@ -770,7 +778,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
     readPicked, readLibrary, readLedger, renderLedger, settingsLine, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
-    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS, readMemoryLift, readUntrackTold,
+    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS, readMemoryLift, readUntrackTold, readLinks, readMemberPicks, linksValue,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

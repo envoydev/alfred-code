@@ -143,11 +143,11 @@ test('no git: a stamped doc is stale (no git), an unstamped one stays unstamped'
     assert.deepStrictEqual(lines(root), ['architecture-quality: absent', 'code-quality: stale main@abc1234 (no git)', 'test-coverage-quality: unstamped']);
 });
 
-test('the docs root follows ALFRED_CODE_DATA_PATH in the project settings', () =>
+test('fixed root: the docs are read under .alfred whatever a settings key names, the data root out of the pathspec', () =>
 {
     const root = repo();
     const head = commit(root, '.claude/settings.json', JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'data' } }), 'settings');
-    put(root, 'data/docs/quality/CODE-ASSESSMENT.md', asOf(head));
-    put(root, 'data/state/x.json', '{}');
+    put(root, '.alfred/docs/quality/CODE-ASSESSMENT.md', asOf(head));
+    put(root, '.alfred/state/x.json', '{}');
     assert.strictEqual(lines(root)[1], `code-quality: current main@${head.slice(0, 7)}`, 'its doc found, and the data root out of the pathspec');
 });

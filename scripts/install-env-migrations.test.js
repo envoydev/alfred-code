@@ -25,6 +25,10 @@ test('every settings-env migration in the real file reaches applyEnv', () =>
         ['ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M'],
         ['ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K'],
         ['ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT'],
+        ['ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORING'],
+        ['ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_SCORING_LEVEL'],
+        ['ALFRED_CODE_SCORER_OUTPUTS', 'ALFRED_CODE_SCORING_OUTPUTS'],
+        ['ALFRED_CODE_SCORER_ROUNDS', 'ALFRED_CODE_SCORING_ROUNDS'],
     ]);
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_PCT'));
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_CONTEXT_WINDOW'));
@@ -35,9 +39,9 @@ test('every settings-env migration in the real file reaches applyEnv', () =>
         'the default became a trigger (the user\'s ruling, 2026-10-21): its old window seed moves to the trigger seed');
     assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_HISTORY' && bad === '1' && to === '3'),
         'the history switch became a session count (item 10, 2026-10-21): the old on seed moves to the count seed');
-    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORER' && bad === '0' && to === '1'),
-        'the scorer is on by default (B1 of the 2026-11-03 usage audit): the old off seed moves to on');
-    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORER_OUTPUTS' && bad === '' && to === 'designer-plan'),
+    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORING' && bad === '0' && to === '1'),
+        'the scoring is on by default (B1 of the 2026-11-03 usage audit): the old off seed moves to on');
+    assert.ok(m.reseed.some(([k, bad, to]) => k === 'ALFRED_CODE_SCORING_OUTPUTS' && bad === '' && to === 'designer-plan'),
         'and graded for designer plan files only: the old all-three seed moves to designer-plan');
 });
 
@@ -226,4 +230,14 @@ test('the retired servers\' keys go whatever they hold, from the file and the ov
     for (const key of SERVER_KEYS) assert.ok(!(key in env), `${key} left settings.json`);
     assert.deepEqual(overlay, { OTHER: 'y' }, 'the database path a level answer rewrote leaves the overlay too');
     assert.ok(lines.some((l) => /settings\.local\.json env: ALFRED_CODE_MEMORY_DB removed \(retired - nothing reads it\)/.test(l)), lines.join('\n'));
+});
+
+test('the scoring rename meets the older reseed: the stack\'s own 0 arrives as 1 under the new key, a typed 0 stays', () =>
+{
+    const stack = run({ ALFRED_CODE_SCORER: '0' }, { stackWrote: () => true });
+    assert.deepStrictEqual([stack.env.ALFRED_CODE_SCORING, Object.hasOwn(stack.env, 'ALFRED_CODE_SCORER')], ['1', false], stack.lines.join('\n'));
+    const user = run({ ALFRED_CODE_SCORER: '0' }, { stackWrote: () => false });
+    assert.deepStrictEqual([user.env.ALFRED_CODE_SCORING, Object.hasOwn(user.env, 'ALFRED_CODE_SCORER')], ['0', false], user.lines.join('\n'));
+    const both = run({ ALFRED_CODE_SCORER: '0', ALFRED_CODE_SCORING: '1' }, { stackWrote: () => false });
+    assert.deepStrictEqual([both.env.ALFRED_CODE_SCORING, Object.hasOwn(both.env, 'ALFRED_CODE_SCORER')], ['1', false], both.lines.join('\n'));
 });

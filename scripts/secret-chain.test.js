@@ -75,13 +75,13 @@ test('both file names are read, .secrets first', () =>
     assert.deepStrictEqual(deny, ['.secrets', '.secrets', '.sensitive-data'], 'a deny lists every store file of both names');
 });
 
-test('a parent\'s custom data root is found', () =>
+// The fixed root (3.11.0): a member's record and store are its .alfred's - a settings key names no other folder.
+test('fixed root: a parent whose settings key names another folder hands the chain nothing from it', () =>
 {
     const at = three({ ws: { data: 'var/data', local: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }) } });
     const got = chain.chainOf(at('ws/api'), { env: env0 });
-    assert.deepStrictEqual(got.values, { A: 'child-a', B: 'root-b' });
-    assert.strictEqual(got.stores[1].file, path.join(at('ws'), 'var', 'data', '.secrets'));
-    assert.strictEqual(got.stores[1].real, fs.realpathSync(path.join(at('ws'), 'var', 'data', '.secrets')));
+    assert.deepStrictEqual(got.values, { A: 'child-a' });
+    assert.deepStrictEqual(got.stores.map((s) => s.rel), ['.']);
 });
 
 test('UTF-16 and BOM stores read, an empty one and a folder named .secrets skipped, no throw', () =>
@@ -110,13 +110,11 @@ test('the kill switch reads only the project\'s own store, and forDeny still lis
     assert.deepStrictEqual(chain.chainOf(at('ws/api'), { env: { ...env0, ALFRED_CODE_WORKSPACE: '0' } }).values, { A: 'child-a' }, 'env too');
 });
 
-test('the project\'s own store is found from a sub-folder and in a settings-only data root', () =>
+test('the project\'s own store is found from a sub-folder', () =>
 {
-    const at = three({ api: { data: '.kid', store: 'K=kid-value\n', local: JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.kid' } }) } });
+    const at = three({ api: { store: 'K=kid-value\n' } });
     fs.mkdirSync(path.join(at('ws/api'), '.git'));
     fs.mkdirSync(path.join(at('ws/api'), 'src', 'deep'), { recursive: true });
-    fs.mkdirSync(path.join(at('ws/api'), '.kid'), { recursive: true });
-    putWorkspace(at('ws/api'), { parent: '..' }, { dataRoot: '.kid' });
     const got = chain.chainOf(path.join(at('ws/api'), 'src', 'deep'), { env: env0 });
     assert.deepStrictEqual(got.values, { K: 'kid-value', A: 'root-a', B: 'root-b' });
 });

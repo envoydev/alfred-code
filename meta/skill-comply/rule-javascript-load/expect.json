@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "skill": "rule-javascript-load",
+  "sources": ["stack/rules/javascript-conventions.md"],
+  "extracted": "2026-11-12",
+  "note": "The JavaScript path rule's one job, graded from the trace: after the first touch of a .js file the run loads the javascript skill before its first .js write. A rule-adherence clause of the G2 A/B (native rules against the loader).",
+  "run": {
+    "max_turns": 20,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill"],
+    "selection": { "skills": ["javascript"], "rules": ["javascript-conventions"] }
+  },
+  "prompts": {
+    "explicit": "Load the JavaScript conventions first, then: `npm test` is failing on the cart total - fix it.",
+    "plain": "`npm test` is failing on the cart total - fix it.",
+    "adverse": "Quick one: `npm test` fails on the cart total - just fix it."
+  },
+  "matchers": {
+    "js_write": { "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "\\.(js|jsx|mjs|cjs)$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "\\.(js|jsx|mjs|cjs)$" },
+      { "tool": "Write", "field": "file_path", "text_match": "\\.(js|jsx|mjs|cjs)$" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "javascript-before-edit",
+      "from": "stack/rules/javascript-conventions.md",
+      "quote": "load `javascript`: the FIRST action after this rule attaches is that Skill call, before the NEXT edit lands",
+      "session": false,
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the javascript skill loaded before the first .js write",
+          "before": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?javascript$" },
+          "after": { "ref": "js_write" }
+        }
+      ]
+    }
+  ]
+}

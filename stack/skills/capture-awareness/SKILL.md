@@ -53,7 +53,7 @@ The rule stays out of the installer's catalog and no installer ledger records th
 - Not for judging the code, the architecture or the coverage (capture-quality), or dynamic cross-repo findings -
   those go to Claude Code's own memory, naming the sibling.
 
-**Modes.** Mode flags right after the command - `--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`, `--mode-output-scorer-off` - are switches, not the request: strip them; with only flags typed, run as with no arguments. Under the hook's auto-run contract, follow it. With no hook line (hooks off, Cursor), `-on` holds for this run only: each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off, and the close says auto-run ended; `--mode-output-scorer-on` grades this run's output like a typed stack.
+**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.
 
 ## 0. The script - resolve it once
 
@@ -80,8 +80,7 @@ echo "caps: ${CAPS:-absent}"
 
 Read the arguments in this order.
 
-1. Strip the mode flags (`--mode-auto-run-on`, `--mode-auto-run-off`, `--mode-output-scorer-on`,
-   `--mode-output-scorer-off`).
+1. Drop a `--mode-*` token (a retired flag).
 2. Take the first remaining word, compared whole and case-insensitively against the topic words. A word holding `/`,
    `\` or `.`, or a git URL, never matches.
 3. A match picks that part. A mode word next, `DELEGATED` or `INLINE` (case-insensitive), marks a calling flow: the

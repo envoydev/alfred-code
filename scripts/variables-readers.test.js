@@ -10,9 +10,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-// The keys that move into `.variables`: the catalog minus the two that stay in the settings (spec D3).
+// The keys that move into `.variables`: the catalog minus the one that stays in the settings (spec D3).
 const MOVED = require('../meta/environment.json').env.map((r) => r.key)
-    .filter((k) => k !== 'ALFRED_CODE_DATA_PATH' && k !== 'ALFRED_CODE_HOOKS_OFF')
+    .filter((k) => k !== 'ALFRED_CODE_HOOKS_OFF' && k !== 'ALFRED_CODE_AUTO_RUN')   // auto-run is a mode, never a variable
     .map((k) => k.slice('ALFRED_CODE_'.length));
 
 // Readers still to convert, as `<file>:<key suffix | env-lookup>` - none since T12c: every reader goes through the loader.
@@ -30,12 +30,21 @@ const ALLOWED = {
     'scripts/install/settings.js:env-lookup': 'applyEnv\'s migration and the uninstall read the settings env to move or remove it; `prior.env` is the stamp\'s ledger',
     'scripts/update-preflight.js:env-lookup': 'detects() reads the env object it is handed - a settings file\'s for a settings key, the loader\'s values (layout.variablesOf, layers files) for the stack\'s variables, held by "a preflight settings_env_value row matches a key only .variables holds"',
     'scripts/lint-skills.js:DOCS_VERSIONING': 'a lint check that the seed special-cases the catalog key - no settings read',
-    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
-    'stack/skills/mode-output-scorer/scripts/scorecard.js:SCORER_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORER_LEVEL=90 from the root\'s .variables in a child"',
-    'stack/hooks/hook-prelude.js:SCORER': 'switchOn reads the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER_LEVEL': 'reads the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',
-    'stack/hooks/hook-prelude.js:SCORER_ROUNDS': 'reads the hook\'s env, which applyVariables fills',
+    'stack/skills/mode-output-scoring/scripts/scorecard.js:SCORING_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/skills/mode-output-scoring/scripts/scorecard.js:SCORING_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/hooks/mode-settings.js:AUTO_COMPACT': 'writeModes writes the mode file itself - the mode block is the user\'s typed mode, read there by design (mode commands v2), held by mode-settings.test.js',
+    'stack/hooks/mode-settings.js:env-lookup': 'autoRunHeld and writeModes read the mode file\'s own env - the mode file is the mode\'s one home, held by mode-settings.test.js',
+    'scripts/install/modes.js:AUTO_COMPACT': 'refresh reads the mode file\'s own key to copy a team 1 once, the loader\'s values (layout.variablesOf) for the team\'s, held by install-modes.test.js',
+    'scripts/install/modes.js:env-lookup': 'setAside, refresh and remove handle the mode block in the mode file itself, held by install-modes.test.js',
+    'stack/hooks/hook-prelude.js:AUTO_COMPACT': 'compactCause reads the env it is handed - the hook\'s env, which applyVariables fills',
+    // modeCommand's envIs is envOf(process.env, k) - the hook's env, which applyVariables fills; the file is scanned since
+    // the standing contract names .claude/settings.local.json (stage 3's final review, finding 7)
+    ...Object.fromEntries(['AUTO_COMPACT', 'CONTEXT_WINDOW_FOR_1M', 'CONTEXT_WINDOW_FOR_300K', 'CONTEXT_WINDOW_FOR_200K', 'CONTEXT_WINDOW_DEFAULT']
+        .map((k) => [`stack/hooks/guard-fresh-session-start.js:${k}`, 'modeCommand\'s envIs reads envOf(process.env, k), which applyVariables fills'])),
+    'stack/hooks/hook-prelude.js:SCORING': 'switchOn reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING_LEVEL': 'reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',
+    'stack/hooks/hook-prelude.js:SCORING_ROUNDS': 'reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:TURN_CHECK': 'the strict profile\'s switch list - no read',
     'stack/hooks/check-turn-build.js:TURN_CHECK': 'switchOn reads the process env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_DEFAULT': 'freshAt reads the process env, which applyVariables fills',
@@ -75,7 +84,7 @@ function rowsOn(line)
         const from = /settingFrom\(\{[^}]*suffix:\s*(['"`])([A-Z0-9_]+)\1/.exec(rest);
         if (from && from[2] === s) found.add(s);
     }
-    // (b) a template literal whose head is a moved suffix's start, up to an underscore (`SCORER_${x}`)
+    // (b) a template literal whose head is a moved suffix's start, up to an underscore (`SCORING_${x}`)
     for (const m of rest.matchAll(/`([A-Z0-9_]+_)\$\{/g)) for (const s of MOVED) if (s.startsWith(m[1])) found.add(s);
     // (c) a lookup into some object's env by a computed key
     if (/envOf\((?!process\.env)[^,()]*\.env\b/.test(rest) || /[\w)\]]\.env\[(?!['"`])/.test(rest)) found.add('env-lookup');
@@ -119,13 +128,13 @@ test('the scan sees each access shape and passes over a process env read, a mess
 {
     const rows = (line) => [...rowsOn(line)].sort();
     assert.deepStrictEqual(rows('const v = data.env.ALFRED_CODE_MEMORY;'), ['MEMORY']);
-    assert.deepStrictEqual(rows('if (Object.hasOwn(own, \'ALFRED_CODE_SCORER\')) x();'), ['SCORER']);
+    assert.deepStrictEqual(rows('if (Object.hasOwn(own, \'ALFRED_CODE_SCORING\')) x();'), ['SCORING']);
     assert.deepStrictEqual(rows('const v = envOf(view, \'DOCS_VERSIONING\');'), ['DOCS_VERSIONING']);
-    assert.deepStrictEqual(rows('const k = `SCORER_${name}`;'), ['SCORER_LEVEL', 'SCORER_OUTPUTS', 'SCORER_ROUNDS']);
+    assert.deepStrictEqual(rows('const k = `SCORING_${name}`;'), ['SCORING_LEVEL', 'SCORING_OUTPUTS', 'SCORING_ROUNDS']);
     assert.deepStrictEqual(rows('const v = settingFrom({ env, projectDir, suffix: \'DOCS_VERSIONING\' });'), ['DOCS_VERSIONING']);
     assert.deepStrictEqual(rows('const v = settings.env[row.key];'), ['env-lookup']);
     assert.deepStrictEqual(rows('const v = envOf(data.env, suffix);'), ['env-lookup']);
-    assert.deepStrictEqual(rows('const v = envOf(process.env, \'MEMORY\') || process.env.ALFRED_CODE_SCORER;'), []);
+    assert.deepStrictEqual(rows('const v = envOf(process.env, \'MEMORY\') || process.env.ALFRED_CODE_SCORING;'), []);
     assert.deepStrictEqual(rows('const v = envOf(env || process.env, \'HOOK_LOG_DIR\');'), []);
     assert.deepStrictEqual(rows('const on = envOf(variablesOf(root, { env: process.env }).values, \'TURN_CHECK\') === \'1\';'), [], 'the loader\'s own values');
     assert.deepStrictEqual(rows('return envOf(layout.variablesOf(root, { env: {}, layers: \'team\' }).values, \'DOCS_VERSIONING\');'), []);

@@ -56,7 +56,7 @@ the fallback only where the harness lacks the tool.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
+`alfred-interaction.md` rule loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -108,7 +108,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   walks without it and says the inherited rows could not be marked.
 
   Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
-  --offers --root .` prints a `data-move:` line (step 8's data question) - `offer ...` or `none (<why>)` - then an
+  --offers --root .` prints an
   `instructions:` line and an `instructions-file:` line (step 11's place and name asks). It prints no
   `docs-move:` line: a docs root set by hand is moved by `/alfred-code:update` alone, never here (audit 2026-10-21 C-Q1).
 
@@ -244,9 +244,8 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 ## 8. Environment - the stack env values (when picked)
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
-release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_DATA_PATH` and
-`ALFRED_CODE_HOOKS_OFF` stay in the scope's settings file `env`; a key `.claude/settings.local.json` also holds is read
-from, and written back to, that file, since it applies over `.variables`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
+release owns, each kept in the project's `<data root>/.variables` (`ALFRED_CODE_HOOKS_OFF` stays in the `env` of `.claude/settings.local.json`, the stack's settings file at every scope; a key
+that file also holds is read from, and written back to, it, since it applies over `.variables`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
 front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row `variables.js show` reads as `default` (no file holds it) is one
@@ -260,38 +259,8 @@ absent its `mode:` line falls back to the same rule) - and offer THAT probed val
 (`git`/`local`, the bare `git (docs are not kept out of git - ...)` or `overlay (docs are kept out of
 git - ...)` line names it and why) as the recommended answer, never the catalog default.
 
-Two behaviours live here rather than in the catalog, because they are about what this step DOES. The
-DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
-hooks' state and the sensitive-data file - so changing it MOVES that data, and it goes through the installer, never `variables.js set`. It is ONE question about
-plugin data storage as a whole, the current value shown with what it holds. Step 1's `data-move:` line
-says whether any of it still sits outside the root (the same line update reads). On `data-move: offer <root> ...` the
-MOVE is the recommendation, whatever the current value: every Alfred Code file belongs under the data
-root, and the data at `from=` (an earlier root's sensitive-data file) is outside it. The docs are no part of it: they always sit at `<data root>/docs`, and every run moves them unasked. It is asked even when step 2 left the
-Environment area out (the data question alone, no other row). Ask this form then, and pass
-`--data-move move` on step 11's installer call (a yes is a change on its own, so the installer runs):
-
-```ask
-Move this project's Alfred Code data into <root>? From <from places>: the sensitive-data file, moved by this run.
-- '<root> - move everything (Recommended)' - one folder outside .claude/, nothing overwritten
-- 'Keep the current layout' - nothing moves; the hooks keep reading the file where it is
-```
-
-A `conflicts=<n>` field means data already sits at the new place: name it and do not ask. With
-`data-move: none (...)` the question is the keep-or-change one below:
-
-```ask
-Where should Alfred Code keep this project's data - its docs, the hooks' state and the seats' handoff notes, and its sensitive-data file? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
-- 'Keep <current> (Recommended)' - nothing moves
-- 'Move everything into .alfred' - one folder at the project root, outside .claude/ - leave this option out when <current> is already .alfred
-```
-
-A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
-The current state is always the recommended answer (the walk's own rule): a custom root the user chose is
-kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.alfred` or to another
-folder - rides step 11's ONE installer call as `--data-path <folder> --data-move move` (a
-change on its own, so that call runs); report its
-`docs root:` and `data root:` lines verbatim - the docs and the sensitive-data file move at once. The docs root is always `<data root>/docs`, so a
-data-root change carries the docs with it and re-stamps the rule. Claude Code's own
+The data root is no row here: it is always `.alfred`, no question offers another folder, and the docs root is always
+`.alfred/docs`. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
@@ -305,12 +274,12 @@ along with the row it names rather than spending its own question. A row carryin
 them (recommended), set your own (Other: one number per key, in the catalog's own order), or do not
 use the feature (which writes the row's `group_off` value to every key in the group). Only a row
 carrying `group_off` gets an off answer; never invent one for a row without it, and a group already
-sitting at that value is reported as off, with turning it back on as the change. The fresh-session group also
-carries `ALFRED_CODE_AUTO_COMPACT`, so its question gains one answer: switch between offering a fresh session at
-the triggers (`0`) and compacting there instead (`1`) - the value on disk is the kept one. A change is an env change,
-so step 11's installer runs and sets or removes each model's compaction window from the value just written; it
-applies from the next session. Nothing else
-needs editing. Apply on consent with ONE
+sitting at that value is reported as off, with turning it back on as the change. The four MODE keys -
+`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL` - are no
+question here: report each as a mode with its state, name its command (`/alfred-code:mode:auto-run on|off`,
+`/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level]`, typed alone on its line, which
+keeps it in this checkout's `.claude/settings.local.json` until its off), and write none of them - `variables.js set`
+refuses a mode key. Nothing else needs editing. Apply on consent with ONE
 `node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> KEY=value ...` naming ONLY the chosen keys - it
 writes each where it takes effect and prints the file; a refused key is named with its reason. The one EXCEPTION is a
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that one by running
@@ -377,16 +346,31 @@ line's answer>`, its lines pasted as they are; a `!!` line (a refusal naming the
 nothing changed. A join's values reach the project at once; the parent's set reaches it at the next
 `/alfred-code:update`.
 
+When the role line reads a root and `workspace.js children` or `status`'s `ignored-children:` line names at least one
+project below (`<n>` is the `child:` rows plus the listed entries, `<m>` the listed entries), ask:
+
+```ask
+This root ignores <m> of the <n> projects below it - change that?
+- 'Keep (Recommended)' - nothing changes
+- 'Ignore a project' - it takes nothing from this workspace: what it links becomes its own copy and its values stay as they read today
+```
+
+'Ignore a project' is ONE multi-select call of up to 4 questions grouped from the `child:` rows, as the walk's 'Pick'
+is. Each pick runs `node "$TMP/repo/scripts/workspace.js" ignore-child --root . --add <rel> --source "$TMP/repo"`
+with `timeout: 600000` (each is one installer run and a cascade), its lines pasted as they are; a `!!` line names what
+was refused or did not finish. Taking a project back is a hand edit - its entry out of `ignoredChildren` in this
+root's `workspace.json`; it stays standalone until its own role ask joins it.
+
 ## 9. Permission mode
 
 Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
 question there at 4 options, already spent on rules+agents+skills / hooks / plugins /
 environment). Read the account settings.json (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json`)
-`permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json` at
-local scope, else `.claude/settings.json`) already sets one - report both in one line (`account:
-auto · project: unset`). Read the key with ONE call per file, the file piped into a stdin reader -
-`cat "<file>" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let v;try{v=(JSON.parse(s).permissions||{}).defaultMode}catch{}console.log(v||"unset")})'` -
-it prints the mode, or `unset` for an absent key or a missing or unreadable file. The secret guard serves a settings file that holds a credential as a redacted view, which still parses; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE
+`permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json`, the stack's
+settings file at every scope) already sets one - report both in one line (`account:
+auto · project: unset`). Read the key with ONE call per file, its path in forward slashes inside the script -
+`node -e 'let v;try{v=(JSON.parse(require("fs").readFileSync("<file>","utf8")).permissions||{}).defaultMode}catch{}console.log(v||"unset")'` -
+it prints the mode, or `unset` for an absent key or a missing or unreadable file. The file is read inside the script, never as an argument or through `cat`: the secret guard refuses a credential file named as a command word on hosts it cannot mask (Cursor, an older Claude Code), and the masker covers the output everywhere else; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE
 AskUserQuestion:
 
 ```ask
@@ -435,7 +419,7 @@ the user never picked - report it as 'stays switched off; pick it in the walk to
 as added; `keep-parked plugin <name>` is a parked plugin the read-back would otherwise enable -
 pass it as a `--drop` whenever the installer runs, but it is no reason to run it. When it prints `none` AND no removals were accepted AND no env,
 permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
-install, nothing to remove` - and skip to step 12 (a rename, place or data-move answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
+install, nothing to remove` - and skip to step 12 (a rename or place answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
 installer pass whose only real effect was resetting the agent model/effort pins).
 
@@ -455,7 +439,7 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|docs|custom [--memory-copy]] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|docs|custom [--memory-copy]] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -463,14 +447,12 @@ before it owes a second run when the answer moves an item (audit 2026-10-20 C46,
   key that is present - so it needs no flag.
 - `--scope` is the stamp's own `scope:` line (`project`, `user` or `local`) - pass it unchanged unless
   the user asked to MOVE the install.
-  Moving a `local` install to `project` or `user` clears the stack's own entries out of
-  `settings.local.json` first, or they would keep overriding the shared file: the seat denies move
-  into settings.json, the copied-hook wiring goes, and so does every
-  `ALFRED_CODE_*` key still holding the stack's seed (`<key> removed - the stack's own seed ...`). No
-  env key ever moves into the committed settings.json: a value the user set locally stays in
-  `settings.local.json` and keeps applying (`<key> stays here (your value, <n> chars) - it applies
-  over settings.json ...`), and every later run reads and writes that key there - report each kept key
-  by name and length, as logged, never its value.
+  Moving a `local` install to `project` or `user` keeps the stack's entries in `settings.local.json`,
+  its settings file at every scope - nothing moves into the committed settings.json. A stack variable
+  there still holding the stack's seed is removed, so `.variables` or its seed applies (`<n> stack
+  variable(s) removed - each held the stack's own seed ...`); a value the user set stays and keeps
+  applying (`<key> stays here (your value, <n> chars) - it applies over .variables ...`) - report each
+  kept key by name and length, as logged, never its value.
 
 The run refreshes EVERY installed item, in every category, whether or not its area was walked this
 run - the area picker decides which tables you page through, never which files the installer

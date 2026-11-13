@@ -75,7 +75,7 @@ test('SKF-06: the loops\' consent stamp, the round cap and task-implement\'s clo
 
 test('SKF-07: task-solve\'s Modes paragraph is in the reference read first, on every size', () =>
 {
-    assert.match(flat(read('stack/skills/task-solve/references/full-spec.md')), /\*\*Modes\.\*\* Mode flags right after the command/);
+    assert.match(flat(read('stack/skills/task-solve/references/full-spec.md')), /\*\*Modes\.\*\* Auto-run, auto-compact and output scoring are modes/);
     assert.doesNotMatch(read('stack/skills/task-solve/references/step-mechanics.md'), /\*\*Modes\.\*\*/);
     const sites = [registry()['auto-mode-contract'].owner, ...registry()['auto-mode-contract'].sites].map((c) => c.file);
     assert.ok(sites.includes('stack/skills/task-solve/references/full-spec.md'));
@@ -230,12 +230,12 @@ test('SKF-22: the diagnoser\'s CI-seat offer dispatches the seat as the roster s
     assert.match(flat(skill('issue-diagnoser')), /offer that dispatch as the recommended option at this stop rather than re-deriving it here, the seat dispatched exactly as the roster spells it/);
 });
 
-test('SKF-23: no dated or opaque token in the code loop example or the scorer revise step', () =>
+test('SKF-23: no dated or opaque token in the code loop example or the scoring revise step', () =>
 {
     assert.doesNotMatch(skill('loop-code-quality'), /1\.x starter/);
-    const scorer = flat(skill('mode-output-scorer'));
-    assert.doesNotMatch(scorer, /says why \(P11\)/);
-    assert.match(scorer, /\(the designer-plan rubric's scope item, P11\)/);
+    const scoring = flat(skill('mode-output-scoring'));
+    assert.doesNotMatch(scoring, /says why \(P11\)/);
+    assert.match(scoring, /\(the designer-plan rubric's scope item, P11\)/);
 });
 
 test('SKF-24: no skill names a shipped rule by its retired baseline name', () =>
@@ -297,14 +297,16 @@ test('SKC-06: a capture part reached only through its router carries no second M
         assert.doesNotMatch(read(`stack/skills/${p}`), /\*\*Modes\.\*\*/, p);
         assert.ok(!sites.includes(`stack/skills/${p}`), `${p}: off the auto-mode-contract sites`);
     }
-    for (const router of ['capture-awareness', 'capture-quality']) assert.match(skill(router), /^\*\*Modes\.\*\* Mode flags right after the command/m, `${router} keeps it`);
+    for (const router of ['capture-awareness', 'capture-quality']) assert.match(skill(router), /^\*\*Modes\.\*\* Auto-run, auto-compact and output scoring are modes/m, `${router} keeps it`);
 });
 
 test('SKC-07/08: the usage report names no dead six-seat limit and keeps headroom under its 19,000 cap', () =>
 {
     const raw = skill('capture-usage-report');
     assert.doesNotMatch(raw, /at most six at a time/);
-    assert.ok(raw.length <= 18700, `the body sits ${raw.length} chars, under 18,700`);
+    // 18,700 until the mode commands (2026-11-12): the shared Modes paragraph grew 165 chars, the cap stays 19,000;
+    // 18,850 until mode commands v2 stage 3 (2026-11-13): the paragraph names auto-compact and 'until its off', 41 more
+    assert.ok(raw.length <= 18950, `the body sits ${raw.length} chars, under 18,950`);
     assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /The rows only you know, appended after the machine sections: OS, project stack\(s\), analyzer snapshot revision/);
 });
 
@@ -410,13 +412,13 @@ test('RU-17: the map clause is written only with the map, and the always-on meas
     assert.ok(measured.includes(aw.MAP_LINE), 'the map line is counted in its slot');
 });
 
-// HK-16 (the plan's contract for every track): a skill that restates a receipt says to write the lines the guard's
-// denial prints - its `session:` line included - never a receipt shape copied from the skill.
-test('HK-16: the desktop server rows send the receipt to the denial\'s own lines', () =>
+// HK-16 sent the desktop rows' receipt to the denial's own lines; complexity stage 1 (B12) retired the guard, so each row
+// keeps its launcher on the user's ask and names no guard or receipt.
+test('HK-16 / stage 1 B12: the desktop server rows keep the launchers on the user\'s ask, naming no guard', () =>
 {
     const t = flat(read('stack/skills/capture-awareness/references/agents.md'));
-    assert.doesNotMatch(t, /DESKTOP-EXEC-ALLOW/, 'no receipt path to write from memory');
-    assert.strictEqual(t.split('until the user allows it - write the lines the denial prints, never a receipt from memory').length - 1, 2, 'both desktop rows');
+    assert.doesNotMatch(t, /DESKTOP-EXEC-ALLOW|house guard|the lines the denial prints/, 'no retired guard or receipt');
+    assert.strictEqual(t.split('with no guard in front of it - only on the user\'s ask').length - 1, 2, 'both desktop rows');
 });
 
 test('SKC-24: the four rule-forced or preloaded habits leave the / menu and keep their description', () =>

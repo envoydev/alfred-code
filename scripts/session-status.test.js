@@ -165,7 +165,7 @@ test('T1 the file appears with every field', () =>
     assert.strictEqual(got, 'written');
     const s = readStatus(root, 's1');
     assert.deepStrictEqual(Object.keys(s), S().FIELDS);
-    assert.deepStrictEqual(S().FIELDS, ['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'handoffPrompt']);
+    assert.deepStrictEqual(S().FIELDS, ['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'autoCompact', 'handoffPrompt']);
     assert.strictEqual(s.schema, 1);
     assert.strictEqual(s.session, 's1');
     assert.strictEqual(new Date(s.updatedAt).toISOString(), s.updatedAt);
@@ -188,6 +188,14 @@ test('T2 fullContext', () =>
     assert.strictEqual(off.resumeAt, null);
     assert.strictEqual(build({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0' }).fullContext, 'off', 'the session\'s own tier switched off');
     assert.strictEqual(build({}).fullContext, 'fresh-session');
+    // mode commands v2: a v1 session switch file left behind is not read; the mode file's variable compacts every session
+    const mine = path.join(root, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-s1');
+    fs.mkdirSync(path.dirname(mine), { recursive: true });
+    fs.writeFileSync(mine, 'on\nat: 2026-11-12T00:00:00.000Z\n');
+    assert.strictEqual(build({}).fullContext, 'fresh-session', 'a v1 session file is not read');
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
+    assert.strictEqual(build({}).fullContext, 'compact', 'the mode file\'s variable');
 });
 
 // Auto-run offers no fresh session (guard-fresh-session-start's context line), so the file says compact while it is on,
@@ -215,6 +223,63 @@ test('T2b fullContext under auto-run', () =>
     for (const autoRun of [true, false]) assert.strictEqual(build({ ALFRED_CODE_AUTO_COMPACT: '1' }, { entry: null, autoRun }).fullContext, 'compact', `AUTO_COMPACT, autoRun ${autoRun}`);
     const derived = build({}, { entry: null }, '{ prelude: { autoRunFor: () => true } }');
     assert.deepStrictEqual([derived.autoRun, derived.fullContext], [true, 'compact'], 'the derived autoRun counts too');
+});
+
+// --- mode commands v2 stage 3, Task 7: the autoCompact field ----------------------------------------------------
+const putMode = (root, obj) => { fs.mkdirSync(path.join(root, '.claude'), { recursive: true }); fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify(obj)); };
+const SONNET = 'claude-sonnet-4-5';
+test('FIELDS: autoCompact after scorer, schema still 1', () =>
+{
+    assert.strictEqual(S().FIELDS[S().FIELDS.indexOf('scorer') + 1], 'autoCompact');
+});
+test('autoCompact: on with the window, on with none, off, and null without the engine', () =>
+{
+    const field = (mode, deps = 'undefined') =>
+    {
+        const { root, P } = sonnetSession();
+        if (mode) putMode(root, mode);
+        return inChild({ CLAUDE_PROJECT_DIR: root }, `return S.buildStatus(${P}, { entry: null }, ${deps}).autoCompact;`);
+    };
+    assert.deepStrictEqual(field({ env: { ALFRED_CODE_AUTO_COMPACT: '1' }, modelSettings: { [SONNET]: { autoCompactWindow: 400000 } } }), { on: true, at: 400000 });
+    assert.deepStrictEqual(field({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }), { on: true, at: null });
+    assert.deepStrictEqual(field({ env: { ALFRED_CODE_AUTO_COMPACT: '0' }, modelSettings: { [SONNET]: { autoCompactWindow: 400000 } } }), { on: false, at: null });
+    assert.strictEqual(field(null, '{ fresh: null }'), null);
+    assert.strictEqual(S().buildStatus({ session_id: 's1', cwd: project() }, { entry: null, autoRun: true }, { env: {}, fresh: null, prelude: null, history: null }).autoCompact, null);
+    const { root, P } = sonnetSession();
+    const viaAutoRun = inChild({ CLAUDE_PROJECT_DIR: root }, `return S.buildStatus(${P}, { entry: null }, { prelude: { ...require(${JSON.stringify(path.join(HOOKS, 'hook-prelude.js'))}), compactCause: () => 'auto-run' } }).autoCompact;`);
+    assert.strictEqual(viaAutoRun.on, true, 'auto-run is a cause');
+});
+test('an auto-compact-only change is written at the prompt, not a turn later', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const prompt = `S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: false, scoring: null })`;
+    inChild({ CLAUDE_PROJECT_DIR: root }, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, {}, { when: 'always' });`);
+    assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${prompt};`), 'unchanged');
+    putMode(root, { env: { ALFRED_CODE_AUTO_COMPACT: '1' } });
+    assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${prompt};`), 'written');
+    assert.strictEqual(JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8')).autoCompact.on, true);
+    assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${prompt};`), 'unchanged');
+});
+test('an older file with no autoCompact key is rewritten once', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const prompt = `S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: false, scoring: null })`;
+    inChild({ CLAUDE_PROJECT_DIR: root }, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, {}, { when: 'always' });`);
+    const file = JSON.parse(FILE);
+    const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+    delete s.autoCompact;
+    fs.writeFileSync(file, JSON.stringify(s));
+    assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${prompt};`), 'written');
+    assert.ok('autoCompact' in JSON.parse(fs.readFileSync(file, 'utf8')));
+    assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${prompt};`), 'unchanged');
+});
+
+test('modesLine: the ON line\'s words, in its order', () =>
+{
+    assert.strictEqual(S().modesLine({ autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: { on: true, at: 400000 } }), 'Modes ON: auto-run, scoring (level 80), auto-compact (at 400k)');
+    assert.strictEqual(S().modesLine({ autoRun: false, scorer: { on: false, level: 80, rounds: 3 }, autoCompact: { on: true, at: null } }), 'Modes ON: auto-compact');
+    assert.strictEqual(S().modesLine({ autoRun: false, scorer: null, autoCompact: null }), '');
+    assert.strictEqual(S().modesLine(null), '');
 });
 
 test('auto-run reads compact without the fresh engine', () =>
@@ -263,8 +328,8 @@ test('the prompt\'s auto-run flip rewrites fullContext', () =>
         const { root, P, FILE } = sonnetSession();
         const got = inChild({ CLAUDE_PROJECT_DIR: root, ...env }, `const read = () => JSON.parse(require('fs').readFileSync(${FILE}, 'utf8'));
             const p = { ...${P}, hook_event_name: 'UserPromptSubmit' };
-            const on = S.onPrompt(p, { autoRun: true, scorer: null }); const a = read();
-            const off = S.onPrompt(p, { autoRun: false, scorer: null }); const b = read();
+            const on = S.onPrompt(p, { autoRun: true, scoring: null }); const a = read();
+            const off = S.onPrompt(p, { autoRun: false, scoring: null }); const b = read();
             return [on, a.autoRun, a.fullContext, off, b.autoRun, b.fullContext];`);
         assert.deepStrictEqual(got, ['written', true, 'compact', 'written', false, offValue]);
     }
@@ -274,7 +339,7 @@ test('a Stop keeps compact while the file says auto-run', () =>
 {
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `const fs = require('fs');
-        S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scoring: null });
         const bytes = fs.readFileSync(${FILE}, 'utf8');
         const r = [1, 2].map(() => S.onStop({ ...${P}, hook_event_name: 'Stop' }, null));
         return { r, same: fs.readFileSync(${FILE}, 'utf8') === bytes, s: JSON.parse(bytes) };`);
@@ -291,7 +356,7 @@ test('a 3.3.0 file under auto-run is corrected at the next Stop', () =>
 {
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: true, scorer: null }, { fullContext: 'fresh-session' })}
-        const prompt = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        const prompt = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scoring: null });
         const stop = S.onStop({ ...${P}, hook_event_name: 'Stop' }, null);
         return { prompt, stop, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
     // R116: the prompt no longer leaves an auto-run file reading anything but compact for a turn.
@@ -329,7 +394,7 @@ test('R116: a prompt over a file reading autoRun true and not compact rewrites i
 {
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: true, scorer: null }, { fullContext: 'fresh-session' })}
-        const r = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null });
+        const r = S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scoring: null });
         return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
     assert.deepStrictEqual([got.r, got.s.fullContext], ['written', 'compact']);
 });
@@ -340,9 +405,9 @@ test('R137: the prompt\'s stand-down runs only when a write is due', () =>
     const { root, P, FILE } = sonnetSession();
     const got = inChild({ CLAUDE_PROJECT_DIR: root }, `let n = 0; const gate = () => { n++; return true; };
         const p = { ...${P}, hook_event_name: 'UserPromptSubmit' };
-        const a = S.onPrompt(p, { autoRun: false, scorer: null }, gate); const na = n;
-        const b = S.onPrompt(p, { autoRun: false, scorer: null }, gate); const nb = n;
-        const c = S.onPrompt({ ...p, session_id: 's2' }, { autoRun: false, scorer: null }, () => false);
+        const a = S.onPrompt(p, { autoRun: false, scoring: null }, gate); const na = n;
+        const b = S.onPrompt(p, { autoRun: false, scoring: null }, gate); const nb = n;
+        const c = S.onPrompt({ ...p, session_id: 's2' }, { autoRun: false, scoring: null }, () => false);
         return [a, na, b, nb, c, require('fs').existsSync(${FILE}.replace('s1.json', 's2.json'))];`);
     assert.deepStrictEqual(got, ['written', 1, 'unchanged', 1, 'skipped', false]);
 });
@@ -737,6 +802,27 @@ test('removeStatus takes back the status files and the exclude lines this projec
     link(outside, path.join(linked, '.claude', 'session-inspector', 'status'));
     assert.strictEqual(S().removeStatus(linked, { env: { CLAUDE_PROJECT_DIR: linked } }).files, 0);
     assert.ok(fs.existsSync(path.join(outside, 'aaaa.json')), 'nothing removed through the link');
+});
+
+// The fixed root (3.11.0): an uninstall over a folder an update has not moved yet names it; a hook never does.
+test('fixed root: removeStatus reads the list under the dataRoot it is handed', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const gitEnv = { ...scrubbed(process.env), HOME, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(ACCOUNT, 'gitconfig') };
+    fs.writeFileSync(gitEnv.GIT_CONFIG_GLOBAL, '');
+    const root = project();
+    execFileSync('git', ['init', '-q'], { cwd: root, env: gitEnv, stdio: 'pipe' });
+    const sub = path.join(root, 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    const env = { CLAUDE_PROJECT_DIR: root };
+    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: () => 0 } }), 'written', base);
+    const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
+    const moved = path.join(root, 'var', 'data', 'state', 'sessions', 'status-folders.json');
+    fs.mkdirSync(path.dirname(moved), { recursive: true });
+    fs.renameSync(list, moved);
+    assert.strictEqual(S().removeStatus(root, { env, dataRoot: 'var/data' }).files, 2);
+    assert.ok(!fs.existsSync(statusOf(sub, 's1')), 'the base the list names is swept');
+    assert.ok(!fs.existsSync(moved), 'the list goes with them');
 });
 
 

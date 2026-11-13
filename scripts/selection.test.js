@@ -26,7 +26,7 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
     // ALFRED_CODE_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
     // 'hours' is a duration the idle-gap offer reads with parseFloat: decimals allowed, 0 meaning off.
-    // 'int' is a whole number in min..max - a count, never a percent (ALFRED_CODE_SCORER_ROUNDS).
+    // 'int' is a whole number in min..max - a count, never a percent (ALFRED_CODE_SCORING_ROUNDS).
     const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv', 'hours', 'int']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
@@ -40,8 +40,11 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         // (--memory-level), and asking twice would let the two answers disagree.
         if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
         // A seed:false row is never written into a project, so an answer to it would land nowhere.
-        if (row.seed === false) { assert.strictEqual(row.ask, false, `${row.key} is never written, so it is not asked`); }
-        if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
+        // A row with a `flag` (ALFRED_CODE_AUTO_COMPACT since 3.11.0) is the installer's own: the answer goes to that flag,
+        // never a seed (lint check 3626 reads it the same way). A never-seeded row's empty default is 'not set' - the
+        // mode keys (3.11.0), which only a typed command writes.
+        if (row.seed === false && !row.flag) { assert.strictEqual(row.ask, false, `${row.key} is never written, so it is not asked`); }
+        if (row.validate.type === 'enum' && !(row.seed === false && row.default === '')) { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')
         {
             const n = Number(row.default);
@@ -104,14 +107,14 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     }
 });
 
-test('catalog: the scorer rows carry the validate shapes the walks check', () =>
+test('catalog: the scoring rows carry the validate shapes the walks check', () =>
 {
     const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
     const v = (k) => cat.env.find((r) => r.key === k).validate;
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER'), { type: 'enum', values: ['0', '1'] });
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_LEVEL'), { type: 'percent', min: 60, max: 100 });
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_OUTPUTS'), { type: 'csv', values: ['designer-plan', 'root-cause', 'inline-plan'] });
-    assert.deepStrictEqual(v('ALFRED_CODE_SCORER_ROUNDS'), { type: 'int', min: 1, max: 10 });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING'), { type: 'enum', values: ['0', '1'] });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING_LEVEL'), { type: 'percent', min: 60, max: 100 });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING_OUTPUTS'), { type: 'csv', values: ['designer-plan', 'root-cause', 'inline-plan'] });
+    assert.deepStrictEqual(v('ALFRED_CODE_SCORING_ROUNDS'), { type: 'int', min: 1, max: 10 });
     assert.ok(!('values' in v('ALFRED_CODE_HOOKS_OFF')), 'the one csv row of today is unchanged');
 });
 
@@ -148,4 +151,76 @@ test('awarenessDocs: the split docs and the run book under either name', () =>
         assert.deepStrictEqual(awarenessDocs(root, 'docs', { agentsOnly: true }).map((f) => path.basename(f)), ['AGENTS-AWARENESS.md']);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// Workspace stage 4c, Task 4: the rule loader and the config guard are locked hooks - no selection leaves them out.
+test('selection: applySelection keeps both locked hooks when the picked set names other hooks only', () =>
+{
+    const { applySelection, LOCKED_HOOKS, lockedLines } = require('./install/selection.js');
+    assert.deepStrictEqual(LOCKED_HOOKS, ['rules-session', 'guard-config-protection']);
+    const lists = { hooks: ['guard-ungated-commit.js::Bash', 'rules-session.js::SessionStart', 'rules-session.js::Read', 'guard-config-protection.js::Write', 'guard-secret-value.js::Bash'] };
+    assert.deepStrictEqual(applySelection(lists, new Set(['hook guard-ungated-commit'])).hooks, lists.hooks.filter((e) => !e.startsWith('guard-secret-value')));
+    assert.deepStrictEqual(applySelection(lists, new Set(['hook none'])).hooks, lists.hooks.filter((e) => /^(rules-session|guard-config-protection)\./.test(e)));
+    assert.deepStrictEqual(applySelection(lists, new Set(['skill x'])).hooks, lists.hooks, 'an unanswered hooks layer keeps every hook');
+    assert.ok(lockedLines({}).has('hook rules-session') && lockedLines({}).has('hook guard-config-protection'));
+});
+
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const HOOKS_COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+const settingsText = (repo) => ['settings.json', 'settings.local.json'].map((f) => { try { return fs.readFileSync(path.join(repo, '.claude', f), 'utf8'); } catch { return ''; } }).join('\n');
+
+test('install: a selection file whose hooks layer leaves both locked hooks out still copies and wires them on the copy route', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', 'skill markdown-style\nhook guard-ungated-commit\n', { env: HOOKS_COPY,
+        inspect: (repo) => ({ files: ['rules-session.js', 'guard-config-protection.js', 'guard-secret-value.js'].map((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))), wired: settingsText(repo) }) });
+    assert.deepStrictEqual(result.files, [true, true, false]);
+    assert.match(result.wired, /rules-session\.js/);
+    assert.match(result.wired, /guard-config-protection\.js/);
+});
+
+test('selection: a drop of hook rules-session or hook guard-config-protection is refused like a locked rule', POSIX_ONLY, () =>
+{
+    for (const env of [{}, HOOKS_COPY])
+    {
+        const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', { env,
+            args: [[], ['--installed-only', '--drop', 'hook rules-session', '--drop', 'hook guard-config-protection']], inspect: (repo) => settingsText(repo) });
+        for (const h of ['rules-session', 'guard-config-protection']) assert.match(outs[1], new RegExp(`--drop hook ${h} not applied - locked`));
+        if (env === HOOKS_COPY) for (const f of ['rules-session.js', 'guard-config-protection.js']) assert.ok(result.includes(f), f);
+        else assert.doesNotMatch(result, /ALFRED_CODE_HOOKS_OFF[^\n]*(rules-session|guard-config-protection)/);
+    }
+});
+
+test('install: rules-session named in the off-list is reported in one line, and a disableAllHooks true in each settings file the session reads is named', POSIX_ONLY, () =>
+{
+    const put = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(body)); };
+    const { outs } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            // Mode v2 stage 2: the install wrote its rows to settings.local.json and no settings.json - both are laid over.
+            const read = (file) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {});
+            const localFile = path.join(repo, '.claude', 'settings.local.json');
+            const local = read(localFile);
+            put(localFile, { ...local, disableAllHooks: true, env: { ...(local.env || {}), ALFRED_CODE_HOOKS_OFF: 'rules-session' } });
+            const project = read(path.join(repo, '.claude', 'settings.json'));
+            put(path.join(repo, '.claude', 'settings.json'), { ...project, disableAllHooks: true });
+            put(path.join(path.dirname(repo), 'acct', 'settings.json'), { disableAllHooks: true });
+            return null;
+        } });
+    assert.match(outs[1], /rules: rules-session is named in the off-list - it carries the project's rules and still runs; leave a rule out with ignore rule/);
+    for (const f of ['\\.claude/settings\\.json', '\\.claude/settings\\.local\\.json', 'acct/settings\\.json']) assert.match(outs[1], new RegExp(`rules: disableAllHooks is true in \\S*${f}`), f);
+});
+
+// Stage 3's final review, finding 9: the compact key's description said a `0` lets Claude Code compact at its own point,
+// when the mode writer turns a typed `0` into `autoCompactEnabled: false`; the start hook's manifest note still told the
+// v1 story (a session stamp and a per-session switch file).
+test('the compact key and the start hook describe the mode block as it works', () =>
+{
+    const root = path.join(__dirname, '..');
+    const cat = JSON.parse(fs.readFileSync(path.join(root, 'meta', 'environment.json'), 'utf8'));
+    const what = cat.env.find((r) => r.key === 'ALFRED_CODE_AUTO_COMPACT').what;
+    assert.doesNotMatch(what, /Unset or `0`/, 'unset and 0 are not the same');
+    assert.match(what, /`0`[^.]*`autoCompactEnabled: false`/, 'a typed 0 turns Claude Code\'s own compaction off');
+    const manifest = fs.readFileSync(path.join(root, 'meta', 'stack-manifest.json'), 'utf8');
+    assert.doesNotMatch(manifest, /AUTO-COMPACT-<session>|writes or deletes the session's AUTO stamp/);
 });

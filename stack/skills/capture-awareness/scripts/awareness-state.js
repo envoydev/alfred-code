@@ -69,7 +69,9 @@ const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## M
 // ---------------------------------------------------------------- small IO helpers (all fail-soft)
 
 const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
-const readDir = (p) => { try { return fs.readdirSync(p, { withFileTypes: true }); } catch { return []; } };
+// A link (a store item linked into .claude) reads as what it points at; a dangling one as neither a folder nor a file.
+const follow = (dir, e) => { if (!e.isSymbolicLink()) return e; const st = statOf(path.join(dir, e.name)); return { name: e.name, isDirectory: () => Boolean(st && st.isDirectory()), isFile: () => Boolean(st && st.isFile()) }; };
+const readDir = (p) => { try { return fs.readdirSync(p, { withFileTypes: true }).map((e) => follow(p, e)); } catch { return []; } };
 const statOf = (p) => { try { return fs.statSync(p); } catch { return null; } };
 const slash = (p) => p.split(path.sep).join('/');
 const relTo = (root, p) => slash(path.relative(root, p));
@@ -469,31 +471,8 @@ function routingMap()
     return map;
 }
 
-// THE DATA ROOT a row names (`<data root>`): ALFRED_CODE_DATA_PATH, read like every launcher setting - the
-// shell env, then settings.local.json, settings.json and the account settings.json - and refused back to
-// `.alfred` where stack/mcp/data-root.js (checkDataPath) refuses it. That module is the one home, but this
-// script ships inside a skill copy with no stack/mcp beside it, so the read is inline; a parity test
-// (scripts/capabilities-rule.test.js) holds the two to one answer.
-const DATA_ROOT_DEFAULT = '.alfred';
-function dataRoot(projectRoot, env = process.env)
-{
-    let raw = String(env.ALFRED_CODE_DATA_PATH || '').trim();
-    if (!raw)
-    {
-        const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-        for (const file of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), path.join(account, 'settings.json')])
-        {
-            try { raw = String(((JSON.parse(readText(file) || 'null') || {}).env || {}).ALFRED_CODE_DATA_PATH || '').trim(); }
-            catch { raw = ''; }
-            if (raw) break;
-        }
-    }
-    const value = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
-    const parts = value.split('/');
-    const refused = !value || value.startsWith('/') || /^[A-Za-z]:/.test(value) || /\s/.test(value) || /[$%`"'*?<>|:]/.test(value)
-        || parts.some((p) => p === '.' || p === '..') || parts[0] === '.claude' || parts[0] === '.git';
-    return refused ? DATA_ROOT_DEFAULT : value;
-}
+// THE DATA ROOT a row names (`<data root>`): always `.alfred` under the project root (the fixed root, 3.11.0).
+const dataRoot = () => '.alfred';
 
 // The literal values a row carries into the rule: the generated rule is a pointer and cannot itself hold
 // the slot it exists to resolve (a desktop row told the model to write `<data root>/...`).
@@ -682,7 +661,7 @@ function precheck(projectRoot, rulePath)
         if (!st.isFile() || skipName(path.basename(p)) || path.resolve(p) === path.resolve(rulePath)) return;
         if (st.mtimeMs > ruleStat.mtimeMs) hits.push({ path: relTo(projectRoot, p), mtime: st.mtimeMs });
     };
-    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.mcp.json', ...STAMPS])
+    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.alfred/stack/rules', '.mcp.json', ...STAMPS])
     {
         visit(path.join(projectRoot, src), 0);
     }
@@ -846,7 +825,7 @@ function inventory(projectRoot)
     const fams = seatFamilies(seats);
     sub(`seat families (${fams.length}): ${fams.join(', ') || 'none'}`);
 
-    const rules = scanRules(path.join(projectRoot, '.claude', 'rules'));
+    const rules = ['.claude/rules', '.alfred/stack/rules'].flatMap((d) => scanRules(path.join(projectRoot, d)));   // native, then the store
     const scoped = rules.filter((r) => r.pathScoped);
     say('RULES', `${rules.length} total, ${rules.length - scoped.length} pathless, ${scoped.length} path-scoped`);
     sub(`pathless: ${rules.filter((r) => !r.pathScoped).map((r) => r.name).join(', ') || 'none'}`);

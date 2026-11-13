@@ -102,22 +102,22 @@ test('plan: a local-scope run cannot take a settings.json key out - nothing move
     assert.strictEqual(plan(root, { scope: 'local', shared: { ALFRED_CODE_DOCS_PATH: '.alfred/docs' }, personal: { ALFRED_CODE_DOCS_PATH: 'docs-ext' } }).state, 'move');
 });
 
-test('plan: with no key the earlier data root\'s docs move with the root, and an old default is drained', () =>
+test('plan: with no key an old default is drained; a key under a folder this run moved is read at its new place', () =>
 {
-    const root = repo({ '.data/docs/architecture/ARCHITECTURE.md': '# a\n', '.claude/docs/flow/COMMIT-GATE': 'VERIFIED x\n' });
-    const p = plan(root, { shared: {}, prior: '.data' });
-    assert.deepStrictEqual([p.state, p.from, p.untracked], ['move', '.data/docs', ['architecture/ARCHITECTURE.md']]);
+    const root = repo({ '.alfred/docs/architecture/ARCHITECTURE.md': '# a\n', '.claude/docs/flow/COMMIT-GATE': 'VERIFIED x\n' });
     const legacy = plan(root, { shared: {} });
     assert.deepStrictEqual([legacy.state, legacy.from, legacy.untracked], ['move', '.claude/docs', ['flow/COMMIT-GATE']]);
     assert.strictEqual(plan(root, { shared: {}, stamped: false }).state, 'none', 'a fresh install has no earlier root');
+    // The one-time move carried .data under .alfred: the key still says .data/docs, the docs are at .alfred/docs.
+    const moved = plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.data/docs' }, moved: ['.data'] });
+    assert.deepStrictEqual([moved.state, moved.from, moved.handSet], ['drop', '.alfred/docs', false]);
+    const deeper = plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.data/notes' }, moved: ['.data/'] });
+    assert.strictEqual(deeper.from, '.alfred/notes', 'a folder under the moved one is read where the move put it');
+    assert.strictEqual(plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.database/docs' }, moved: ['.data'], stamped: false }).from, '.database/docs', 'a name that only starts alike is another folder');
 });
 
-test('plan: an earlier data root\'s tickets/ moves with its docs; in a hand-set root it is named among the moves (item 5)', () =>
+test('plan: a hand-set root\'s tickets/ is named among the moves (item 5)', () =>
 {
-    const root = repo({ '.data/docs/tickets/fix-api-retry.md': '# Fix API retry\n', '.data/docs/architecture/ARCHITECTURE.md': '# a\n' });
-    const p = plan(root, { shared: {}, prior: '.data' });
-    assert.deepStrictEqual([p.state, p.from], ['move', '.data/docs']);
-    assert.ok(p.untracked.includes('tickets/fix-api-retry.md'), JSON.stringify(p.untracked));
     const ext = repo({ ...EXT, 'docs-ext/tickets/team-board.md': '# the team\'s own\n' });
     const q = plan(ext);
     assert.ok(q.untracked.includes('tickets/team-board.md'), 'a hand-set root\'s tickets/ is a stack entry, so the ask names it');
@@ -141,11 +141,10 @@ test('plan: an empty key is dropped and read as no key; one that empties setting
 
 test('plan: a root the stack never wrote is hand-set; a seeded or ledgered one is not', () =>
 {
-    const root = repo({ ...EXT, '.claude/docs/ORIENTATION.md': '# map\n', '.data/docs/ORIENTATION.md': '# map\n' });
+    const root = repo({ ...EXT, '.claude/docs/ORIENTATION.md': '# map\n' });
     assert.strictEqual(plan(root).handSet, true, 'docs-ext, no ledger row');
     assert.strictEqual(plan(root, { ledgered: [valueHash('docs-ext')] }).handSet, false, 'a value the ledger records is the stack\'s');
     assert.strictEqual(plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }).handSet, false, 'the pre-2.0.0 default');
-    assert.strictEqual(plan(root, { shared: { ALFRED_CODE_DOCS_PATH: '.data/docs' }, prior: '.data' }).handSet, false, 'the earlier data root\'s docs');
     assert.strictEqual(plan(root, { shared: {} }).handSet, false, 'no key: the drain is the stack\'s own');
 });
 
@@ -226,7 +225,7 @@ function olderInstall(repoDir, { value = 'docs-ext', files = EXT, file = 'settin
     const stamp = path.join(claude, 'alfred-code.stamp');
     const row = `${file}:ALFRED_CODE_DOCS_PATH=${valueHash(ledgered)}`;
     fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^managed-env: ?(.*)$/m, (_, rest) => `managed-env: ${rest ? `${rest},` : ''}${row}`));
-    const rule = path.join(claude, 'rules', 'alfred-docs-root.md');
+    const rule = require('./install/copy.js').ruleAt(repoDir, 'alfred-docs-root');
     fs.writeFileSync(rule, fs.readFileSync(rule, 'utf8').replace(/This install's root: `[^`]*`/, `This install's root: \`${value}\``));
     fs.rmSync(path.join(repoDir, '.alfred', 'docs'), { recursive: true, force: true });
     for (const [rel, body] of Object.entries(files)) put(repoDir, rel, body);
@@ -236,7 +235,7 @@ const envOf = (repoDir, file) => { try { return JSON.parse(fs.readFileSync(path.
 const look = (repoDir) => ({
     key: (envOf(repoDir, 'settings.json') || {}).ALFRED_CODE_DOCS_PATH,
     local: (envOf(repoDir, 'settings.local.json') || {}).ALFRED_CODE_DOCS_PATH,
-    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
+    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(require('./install/copy.js').ruleAt(repoDir, 'alfred-docs-root'), 'utf8'))[1],
     ledger: /ALFRED_CODE_DOCS_PATH/.test(fs.readFileSync(path.join(repoDir, '.claude', 'alfred-code.stamp'), 'utf8')),
     // the map arrives at the awareness home: the same update's architecture move (docs.migrateArchitecture) carries it on
     moved: ['awareness/ARCHITECTURE-AWARENESS.md', 'ORIENTATION.md', 'mydomain/NOTES.md'].filter((rel) => fs.existsSync(path.join(repoDir, '.alfred', 'docs', ...rel.split('/')))),
@@ -400,7 +399,7 @@ test('installer: a settings file that does not parse moves nothing and leaves th
             fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
             return null;
         },
-        inspect: (r) => ({ rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1], ext: fs.existsSync(path.join(r, 'docs-ext', 'architecture')) }),
+        inspect: (r) => ({ rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(require('./install/copy.js').ruleAt(r, 'alfred-docs-root'), 'utf8'))[1], ext: fs.existsSync(path.join(r, 'docs-ext', 'architecture')) }),
     });
     assert.doesNotMatch(outs[1], /docs root: moved/);
     assert.deepStrictEqual(result, { rule: 'docs-ext', ext: true });
@@ -433,18 +432,6 @@ test('installer: tracked docs move as staged renames, and an ignored old root st
     });
     assert.match(ignored.outs[1], /ALFRED_CODE_DOCS_VERSIONING 'git' -> 'local' \(the old root was kept out of git\)/, ignored.outs[1]);
     assert.deepStrictEqual(ignored.result, { versioning: 'local', status: '' });
-});
-
-test('installer: --data-path carries the docs to the new root\'s docs/ and writes no key', POSIX_ONLY, () =>
-{
-    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
-        args: [['--scope', 'project'], updateArgs('--data-path', '.data', '--data-move', 'move')],
-        each: (r, i) => { if (i === 0) put(r, '.alfred/docs/architecture/ARCHITECTURE.md', '# arch\n'); return null; },
-        inspect: (r) => ({ key: envOf(r, 'settings.json').ALFRED_CODE_DOCS_PATH, data: envOf(r, 'settings.json').ALFRED_CODE_DATA_PATH, rule: look(r).rule,
-            moved: fs.existsSync(path.join(r, '.data', 'docs', 'awareness', 'ARCHITECTURE-AWARENESS.md')), old: fs.existsSync(path.join(r, '.alfred', 'docs')) }),
-    });
-    assert.match(outs[1], /docs root: moved \.alfred\/docs -> \.data\/docs/, outs[1]);
-    assert.deepStrictEqual(result, { key: undefined, data: '.data', rule: '.data/docs', moved: true, old: false });
 });
 
 test('installer: hook state a stale session writes under the old default after the move is folded in at the next start', POSIX_ONLY, () =>
@@ -510,25 +497,7 @@ test(`installer (${scope} scope): an update moves every folder under superpowers
     assert.deepStrictEqual(steps[2], steps[1]);
 });
 
-// M10 (final review): a `data-pending:` row an earlier run recorded under `.sensitive-data` is the same move once the store
-// is renamed `.secrets` - the offer leaves it out under either name, or update offers a move the run already retries.
-test('dataOffer: a pending move recorded under either store name matches the store under the other', () =>
-{
-    for (const [onDisk, recorded] of [['.secrets', '.sensitive-data'], ['.sensitive-data', '.secrets'], ['.secrets', '.secrets']])
-    {
-        const root = fs.mkdtempSync(path.join(TMP, 'offer-'));
-        put(root, `.alfred/${onDisk}`, 'K=v\n');
-        const stampText = `data-root: .alfred\ndata-pending: sensitive .alfred/${recorded} -> .data/${recorded}\n`;
-        const offer = docs.dataOffer({ projectRoot: root, stamped: true, stampText, root: '.data' });
-        assert.deepStrictEqual([offer.state, offer.why], ['none', 'nothing to move'], `${recorded} recorded, ${onDisk} on disk`);
-    }
-    const root = fs.mkdtempSync(path.join(TMP, 'offer-'));
-    put(root, '.alfred/.secrets', 'K=v\n');
-    const other = docs.dataOffer({ projectRoot: root, stamped: true, stampText: 'data-root: .alfred\ndata-pending: sensitive .alfred/.secrets -> .store/.secrets\n', root: '.data' });
-    assert.strictEqual(other.state, 'offer', 'a pending move to another root is no match');
-});
-
-test('preflight: the docs are no part of the data-move offer; only a hand-set root gets a docs-move offer', POSIX_ONLY, () =>
+test('preflight: no data-move line; only a hand-set root gets a docs-move offer', POSIX_ONLY, () =>
 {
     const root = repo(EXT);
     fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs-ext' } }));
@@ -537,7 +506,7 @@ test('preflight: the docs are no part of the data-move offer; only a hand-set ro
     const run = () => require('node:child_process').spawnSync(process.execPath, [path.join(snap, 'scripts', 'update-preflight.js'), '--snapshot', snap, '--root', root, '--fixture', path.join(TMP, 'none.json')], { encoding: 'utf8' });
     stampWith('docs-ext');
     const seeded = run();
-    assert.match(seeded.stdout, /^data-move: none \(nothing to move\)$/m, seeded.stdout + seeded.stderr);
+    assert.doesNotMatch(seeded.stdout, /^data-move:/m, seeded.stdout + seeded.stderr);
     assert.match(seeded.stdout, /^docs-move: none \(the stack's own root - it moves unasked\)$/m, seeded.stdout);
     stampWith('.alfred/docs');
     const hand = run();
@@ -552,7 +521,9 @@ test('preflight --log: a moved docs root asks for a restart - the loaded rule st
     assert.match(logMode(), /^restart: no$/m);
     fs.writeFileSync(log, '==> mcps=0\n==> docs root: moved docs-ext -> .alfred/docs (2 file(s), 0 through git mv) - the rule is re-stamped\n');
     assert.match(logMode(), /^restart: yes$/m);
-    // A server's data waits for that server's next start - the restart is what moves it.
-    fs.writeFileSync(log, '==> mcps=0\n==> data root: .alfred - 0 moved now, 2 waiting for a server\'s next start; restart the session\n');
+    // An older install's folder carried into .alfred: an open session's hooks still write under the old one.
+    fs.writeFileSync(log, '==> mcps=0\n==>   data root: moved var/data to .alfred\n');
     assert.match(logMode(), /^restart: yes$/m);
+    fs.writeFileSync(log, '==> mcps=0\n==> data root: var/data moves to .alfred at the next update\n');
+    assert.match(logMode(), /^restart: no$/m, 'a plan line moved nothing');
 });

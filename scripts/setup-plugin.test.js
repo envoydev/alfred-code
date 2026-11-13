@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
 const { foreignEntry } = require('./install/plugins.js');
+const { commandFiles } = require('./lint-skills.js');
 
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
@@ -18,8 +19,9 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     // live under stack/, outside that folder.
     const core = mp.plugins.find(x => x.name === 'alfred-code');
     assert.ok(core, 'the core entry must survive every generator run');
-    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided commands ship from the core - init and uninstall among them');
-    assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && !core.commands.includes('./setup-plugin/commands/setup.md'), 'setup merged into init (2026-10-17)');
+    assert.deepStrictEqual(core.commands, ['./setup-plugin/commands/'], 'the commands ship from the core as the commands FOLDER, so no command file can ship dead');
+    const shipped = commandFiles(path.join(PLUGIN_DIR, 'commands'));
+    assert.ok(shipped.includes('init.md') && shipped.includes('uninstall.md') && !shipped.includes('setup.md'), 'init and uninstall among them; setup merged into init (2026-10-17)');
     // preferred-tools is fetched from its own repo (plugins.js foreignEntry): the marketplace's plugin, not the stack's.
     for (const p of mp.plugins.filter((x) => !foreignEntry(x)))
     {
@@ -69,7 +71,7 @@ test('preferred-tools follows its own main branch, and every foreign entry carri
     }
 });
 
-test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the commands folder is listed (nine commands), and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'alfred-code');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -77,7 +79,10 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
     // Plugin COMMANDS display namespaced-only (/alfred-code:init); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /alfred-code, no /alfred-code:alfred-code stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md', './commands/uninstall.md']);
+    // The FOLDER is listed (2026-11-12): a sub-folder is one more `:` segment of the name (/alfred-code:mode:scoring).
+    assert.deepStrictEqual(pj.commands, ['./commands/']);
+    assert.deepStrictEqual(commandFiles(path.join(PLUGIN_DIR, 'commands')),
+        ['configure.md', 'init.md', 'mode/auto-compact.md', 'mode/auto-run.md', 'mode/scoring.md', 'status.md', 'uninstall.md', 'update.md', 'validate.md']);
     for (const name of ['init', 'update', 'configure', 'validate', 'status', 'uninstall'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /alfred-code:${name} command exists`);
@@ -85,6 +90,25 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'setup.md')), 'no setup command - it merged into init (2026-10-17)');
     assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md')), 'the /alfred-code router skill exists');
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'alfred-code.md')), 'no router COMMAND - a command named like the plugin displays as the /alfred-code:alfred-code stutter');
+});
+
+// The three mode commands (2026-11-12): typed by the user alone, `on|off`, a short body that repeats the hook's
+// `[mode]` line and names no stack skill (a command ships in the core, a skill may be absent).
+test('the three mode commands: user-typed only, on|off, a short body around the [mode] line', () => {
+    for (const name of ['scoring', 'auto-run', 'auto-compact'])
+    {
+        const text = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'mode', `${name}.md`), 'utf8');
+        const fm = (/^---\n([\s\S]*?)\n---\n/.exec(text) || ['', ''])[1];
+        const body = text.slice(text.indexOf('\n---\n', 4) + 5);
+        assert.match(fm, /^disable-model-invocation: true$/m, `${name}: only the user types it`);
+        // mode commands v2 stage 3: scoring takes a level after on|off
+        assert.match(fm, name === 'scoring' ? /^argument-hint: on\|off \[level\]$/m : /^argument-hint: on\|off$/m, `${name}: the argument hint`);
+        assert.match(fm, new RegExp(`^description: .*/alfred-code:mode:${name} on\\|off`, 'm'), `${name}: the description names the typed form`);
+        assert.ok(body.split('\n').filter((l) => l.trim()).length <= 12, `${name}: a body of at most 12 lines`);
+        assert.ok(body.includes('[mode]'), `${name}: the body acts on the hook's [mode] line`);
+        assert.ok(body.includes(`/alfred-code:mode:${name} $ARGUMENTS`), `${name}: the body shows what was typed`);
+        assert.doesNotMatch(body, /mode-(auto-run|output-scoring)\b/, `${name}: names no stack skill`);
+    }
 });
 
 // Task 18a, then 2026-10-17: init is ONE command with two phases - the install (the selection walk and the install,
@@ -226,7 +250,7 @@ test('init bootstrap phase: the order - read, plan, one machine ask, memory and 
     // 2.10.1: no server runtime to install and no memory import - the stack ships no MCP server.
     assert.doesNotMatch(init, /\buvx?\b|memory\.js|--level/, 'no uv, no memory step');
     // The hook count, stated once per table: the manifest ships eighteen (forge-session joined 2026-10-23, memory-session
-    // retired 2026-10-24).
+    // retired 2026-10-24, guard-desktop-exec retired in complexity stage 1 B12, rules-session joined in workspace stage 4a).
     assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
     const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory and navigation', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
@@ -649,7 +673,8 @@ test(`source-protocol.md, read whole by every command, stays under ${PROTOCOL_CA
 });
 
 test('the command bodies read stack entries under the key the core is listed under, never a literal @envoydev', () => {
-    const files = ['references/source-protocol.md', 'references/source-protocol-powershell.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    const files = ['references/source-protocol.md', 'references/source-protocol-powershell.md', ...commandFiles(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    assert.ok(files.includes('commands/mode/scoring.md'), 'a command one folder down is read too');
     for (const file of files)
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
@@ -714,9 +739,9 @@ test('router, status and configure read the local stack keys at every scope, and
     assert.ok(installed, 'the Installed definition is there');
     assert.ok(!/worktree/i.test(installed), `Installed still counts a worktree's main checkout: ${installed}`);
     const status = flat(cmdBody('status'));
-    assert.match(status, /at EVERY scope a stack key `settings\.local\.json` holds applies over `settings\.json`/);
+    assert.match(status, /The stack's keys live in `\.claude\/settings\.local\.json` at every scope \(it wins over `settings\.json` key by key\)/);
     assert.match(status, /\*\*Environment\*\* - the install's knobs, one row each\. The variables come from ONE `node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/variables\.js" show --root \.`/);
-    assert.match(status, /`ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` come from the\s+STACK VIEW/);
+    assert.match(status, /`ALFRED_CODE_HOOKS_OFF` comes from the\s+STACK VIEW/);
     assert.match(status, /`ALFRED_CODE_HOOKS_OFF` read from the stack view/);
     const configure = flat(cmdBody('configure'));
     assert.match(configure, /`<key> stays here \(your value, <n> chars\)/);
@@ -739,6 +764,15 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
     assert.doesNotMatch(status, /claude mcp list/, 'status lists no MCP server since 2.10.1');
     assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
+    // W2: at a workspace root the usage numbers span the root and its children, and what was left out is named.
+    assert.match(f, /At a workspace root these numbers cover the root and its `<n>` children/);
+    assert.match(status, /scripts\/analyze-usage\.js" --scope \| grep -v '\^session: '/);
+    assert.match(f, /Each `left-out:` line - at `scope: 1 projects` too - becomes one `left out: <rel> \(<why>\)` line under the tables/);
+    // review #8: the scope's own notes (a start in a sub-folder, a garbage record) and the other-start count reach the reader
+    assert.match(f, /Each `note:` line, and an `other-start-folder:` line above 0, is shown as written under the tables/);
+    assert.match(f, /one usage table per `INVENTORY vs USE` block, headed by the block's `<rel>`; the always-on line and the closing caveat once/);
+    assert.match(f, /the advisory's rows go under the tables as printed, each already carrying its `<rel>: `/);
+    assert.match(flat(cmdBody('validate')), /At a workspace root the advisory covers the root and each child, each row carrying its `<rel>: `/);
     assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
     for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
         assert.match(status, new RegExp(`^\\| ${row} \\|`, 'm'), `the general table has its ${row} row`);
@@ -990,7 +1024,7 @@ test('configure emits hook none when its Hooks area was walked, and update has n
     const update = flat(updateText());
     assert.ok(!/Global mode:/.test(update), 'update has no global mode left');
     assert.ok(!/legacy-stamp:/.test(update), 'no account-stamp baseline line is left to read');
-    assert.match(update, /`settings\.local\.json` laid over `settings\.json` at local scope/);
+    assert.match(update, /`settings\.local\.json`, the stack's file at every scope, laid over `settings\.json`/);
 });
 
 // A hand-edited library copy is overwritten by the next installer run - never silently: validate
@@ -1196,6 +1230,9 @@ test('update: a local install\'s update shows the settings.local.json gitignore 
             fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
             fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: local\n');
             fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
+            // Since stage 1 a local run hides `.claude` whole - except where git tracks a file in it, the case left for the advice.
+            fs.writeFileSync(path.join(repo, '.claude', 'team-notes.md'), 'ours\n');
+            require('node:child_process').execFileSync('git', ['add', '-f', '.claude/team-notes.md'], { cwd: repo });
         },
     });
     assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values - git does not ignore it here; add .claude/settings.local.json to .gitignore');
@@ -1225,7 +1262,7 @@ test('superpowers is on no stack selection surface', () => {
     for (const rel of ['meta/recommendations.json', 'meta/evidence.json'])
         assert.doesNotMatch(read(rel), /superpowers/, rel);
     assert.ok(!JSON.parse(read('meta/stack-graph.json')).catalog.plugins.includes('superpowers'), 'the graph catalog');
-    for (const f of fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((c) => `setup-plugin/commands/${c}`).concat('setup-plugin/references/walk.md'))
+    for (const f of commandFiles(path.join(PLUGIN_DIR, 'commands')).map((c) => `setup-plugin/commands/${c}`).concat('setup-plugin/references/walk.md'))
         assert.doesNotMatch(read(f), /`superpowers`/, f);
     const html = read('docs/alfred-code.html');
     assert.doesNotMatch(html, /pluginOrder = \[[^\]]*superpowers/, 'the HTML plugin order');
@@ -1312,7 +1349,10 @@ test('group D wording: the no-repo root, the scope, git hygiene, nothing to offe
     const ref = (rel) => fs.readFileSync(path.join(PLUGIN_DIR, ...rel.split('/')), 'utf8');
     const install = ref('references/init-install.md');
     assert.ok(install.includes("- 'Install here (Recommended)' - this directory is the project root, or a workspace root above the projects; move the mark to Stop when this directory sits inside the project you meant"), 'F1');
-    assert.ok(install.includes("- 'project (Recommended)' - .claude/settings.json - shared: committed with the repo, or read by every session in this folder"), 'F2');
+    const localLine = "- 'local (Recommended)' - this checkout only; the plugins are enabled for you alone, and .alfred and .claude stay out of git";
+    const sharedLine = "- 'project' - the plugins are enabled in .claude/settings.json - shared: committed with the repo; the stack's settings still stay in your .claude/settings.local.json";
+    assert.ok(install.includes(localLine) && install.includes(sharedLine) && install.indexOf(localLine) < install.indexOf(sharedLine), 'F2, and local first since stage 1');
+    assert.ok(install.includes(`variables.js" recommend --root . --scope <screen A's scope>`), 'the versioning advice is read again once the scope is known');
     for (const rel of ['references/init-install.md', 'references/post-install.md'])
         assert.match(flat(ref(rel)), /no-repo mode[^.]*`git hygiene: skipped - no git repository`, and nothing about `\.claude\/AGENTS\.md`/, `F6 ${rel}`);
     assert.ok(flat(ref('references/walk.md')).includes('No kept plugin with a row, or a report whose last line reads `plugin-settings: nothing to offer`: skip this silently, ask nothing.'), 'F16');
@@ -1328,19 +1368,17 @@ test('group D wording: the no-repo root, the scope, git hygiene, nothing to offe
     assert.ok(configure.indexOf(note) < configure.lastIndexOf(close), 'F23 note sits before the pinned close');
 });
 
-// The data-root question (2.1.0) rides the same template shape as the walk's layer asks, so lint 61 holds
-// its recommended option - '.alfred (Recommended)' - first in both homes that ask it.
-// M12: setup has no data yet, so .alfred is its recommendation; configure reads a live install, and the walk's rule
-// is that the current state is the recommended answer - a custom root the user chose is never moved back.
-test('the data-root question is one ask template in init\'s install phase and configure - .alfred recommended there, the current root on configure', () =>
+// The data root is always .alfred (the fixed root, 2026-11-11): no body asks where the data goes, and none hands the
+// installer or workspace.js a folder.
+test('no body asks for a data folder or passes one', () =>
 {
-    for (const [rel, first] of [['references/init-install.md', /^- '\.alfred \(Recommended\)'/], ['commands/configure.md', /^- 'Keep <current> \(Recommended\)'/]])
+    for (const rel of ['references/init-install.md', 'references/init-child.md', 'references/init-role.md', 'references/update-workspace.md', 'commands/configure.md',
+        'references/update-walk.md', 'references/update-slow-path.md'])
     {
         const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
-        const data = askBlocks(text).filter((b) => /keep this project's data/i.test(b[0]));
-        assert.strictEqual(data.length, 1, `${rel} carries the data question as one ask template`);
-        const opts = data[0].filter((l) => /^- '/.test(l));
-        assert.match(opts[0], first, `${rel}: the recommended first option`);
+        assert.deepStrictEqual(askBlocks(text).filter((b) => /keep this project's data/i.test(b[0])), [], `${rel} asks where the data goes`);
+        assert.doesNotMatch(text, /--data-path|--data-move/, `${rel} passes a retired flag`);
+        assert.doesNotMatch(text, /data-move:/, `${rel} reads a line the preflight no longer prints`);
     }
 });
 
@@ -1473,42 +1511,65 @@ test('configure step 1: the inventory comes from the preflight, the close is one
 
 // Audit 2026-10-11 (SD01, session 5f9fec85): configure step 10's settings read went through `jq` (absent on Git for
 // Windows, exit 127) and `--presence` (a length, never the mode), and the step's 'account: <mode>' line never appeared.
-// Both texts now name ONE reader; it must survive the secret guard's redacted view of a credential-bearing file and
-// print `unset` for an absent key or file.
-test('init\'s install phase and configure read permissions.defaultMode with the same stdin reader, and it survives the secret guard', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+// Both texts name ONE reader. Since swap 1 (2026-11-11) the secret guard rewrites nothing, and where no masker runs it
+// refuses a command whose words name a credential file - so the reader opens the file INSIDE its script: it passes on
+// every host, prints the mode and no value, and prints `unset` for an absent key or file.
+test('init\'s install phase and configure read permissions.defaultMode with the same in-script reader, and it passes the secret guard on every host', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
     const { spawnSync } = require('node:child_process');
     const os = require('node:os');
     const reader = (rel) => {
-        const m = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8').replace(/\s*\n\s*/g, ' ').match(/`(cat "<file>" \| node -e '[^']+')`/);
-        assert.ok(m, `${rel} names the stdin reader`);
+        const m = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8').replace(/\s*\n\s*/g, ' ').match(/`(node -e '[^']+')`/);
+        assert.ok(m, `${rel} names the in-script reader`);
         return m[1];
     };
     const cmd = reader('commands/configure.md');
     assert.strictEqual(reader('references/init-install.md'), cmd, 'one reader in both texts');
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-')));
+    assert.match(cmd, /readFileSync\("<file>","utf8"\)/, 'the file is read inside the script');
+    for (const rel of ['commands/configure.md', 'references/init-install.md'])
+        assert.match(fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8').replace(/\s*\n\s*/g, ' '), /never as an argument or through `cat`: the secret guard refuses a credential file named as a command word on hosts it cannot mask/, `${rel} says why`);
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-')));
+    const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-home-')));
     try {
         const token = 'sntrys_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0';
         const f = path.join(dir, 'settings.json');
-        const read = () => {
+        const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude') };
+        const transcript = (version) => { const p = path.join(home, `t-${version}.jsonl`); fs.writeFileSync(p, JSON.stringify({ type: 'user', entrypoint: 'cli', version }) + '\n'); return p; };
+        const HOSTS = { 'above the floor': { transcript_path: transcript('2.1.322') }, 'an older Claude Code': { transcript_path: transcript('2.1.321') },
+            Cursor: { cursor_version: '2.1.0', hook_event_name: 'preToolUse' } };
+        const guard = (payload) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
+            { input: JSON.stringify({ session_id: 'suite', cwd: dir, ...payload }), encoding: 'utf8', env });
+        const before = (host, command) => guard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, ...HOSTS[host] });
+        const read = (host) => {
             const command = cmd.replace('<file>', 'settings.json');
-            const g = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
-                { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
-            assert.notStrictEqual(g.status, 2, g.stderr);
-            let ran = command;
-            try { ran = JSON.parse(g.stdout).hookSpecificOutput.updatedInput.command || command; } catch { /* passed as written */ }
-            const r = spawnSync('sh', ['-c', ran], { cwd: dir, encoding: 'utf8' });
-            assert.ok(!`${r.stdout}${r.stderr}`.includes(token), 'no credential value printed');
-            return r.stdout;
+            const g = before(host, command);
+            assert.strictEqual(g.status, 0, `${host}: ${g.stderr}`);
+            assert.ok(!/updatedInput/.test(g.stdout), `${host}: nothing is rewritten`);
+            const r = spawnSync('sh', ['-c', command], { cwd: dir, encoding: 'utf8' });
+            // what the model gets: the run's output after the masker (above the floor), which has no value to mask here
+            const after = guard({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command },
+                tool_response: { stdout: r.stdout, stderr: r.stderr, interrupted: false, isImage: false, noOutputExpected: false } });
+            const out = after.stdout ? JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout : r.stdout;
+            assert.ok(!`${out}${r.stderr}`.includes(token), `${host}: no credential value printed`);
+            return out;
         };
+        for (const host of Object.keys(HOSTS)) {
+            fs.writeFileSync(f, JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { SENTRY_ACCESS_TOKEN: token } }, null, 2));
+            assert.strictEqual(read(host), 'acceptEdits\n', `${host}: a credential-bearing file still yields its mode`);
+            fs.writeFileSync(f, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: token } }));
+            assert.strictEqual(read(host), 'unset\n', `${host}: an absent key`);
+            fs.writeFileSync(f, '{ not json');
+            assert.strictEqual(read(host), 'unset\n', `${host}: an unreadable file`);
+            fs.rmSync(f);
+            assert.strictEqual(read(host), 'unset\n', `${host}: a missing file`);
+        }
+        // the old form names the file as a command word: refused where no masker runs, naming the presence read
         fs.writeFileSync(f, JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { SENTRY_ACCESS_TOKEN: token } }, null, 2));
-        assert.strictEqual(read(), 'acceptEdits\n', 'a credential-bearing file still yields its mode');
-        fs.writeFileSync(f, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: token } }));
-        assert.strictEqual(read(), 'unset\n', 'an absent key');
-        fs.writeFileSync(f, '{ not json');
-        assert.strictEqual(read(), 'unset\n', 'an unreadable file');
-        fs.rmSync(f);
-        assert.strictEqual(read(), 'unset\n', 'a missing file');
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+        for (const host of ['an older Claude Code', 'Cursor']) {
+            const old = before(host, 'cat "settings.json" | node -e \'process.stdin.resume()\'');
+            assert.strictEqual(old.status, 2, `${host}: the old stdin form`);
+            assert.match(old.stderr, /--presence/, host);
+        }
+    } finally { for (const d of [dir, home]) fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 // Audit 2026-10-20 C16 / C46: validate reset every pin unasked, cleaned up by a glob zsh aborted on, skipped six
@@ -1811,7 +1872,8 @@ test('no body hand-merges a settings env: init and configure set the stack\'s va
 test('no body places a moved key in a settings env', () =>
 {
     const layout = require('../stack/hooks/layout.js');
-    const moved = layout.VARIABLE_KEYS.filter((k) => k !== 'ALFRED_CODE_WORKSPACE').map((k) => new RegExp(`${k}(?![A-Z0-9_])`));
+    // a mode key's home IS the mode file's env (mode commands v2 stage 3), so it is no moved key here
+    const moved = layout.VARIABLE_KEYS.filter((k) => k !== 'ALFRED_CODE_WORKSPACE' && !layout.MODE_KEYS.includes(k)).map((k) => new RegExp(`${k}(?![A-Z0-9_])`));
     const hits = [];
     const walk = (dir) =>
     {

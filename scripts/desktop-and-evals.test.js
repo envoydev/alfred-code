@@ -36,31 +36,31 @@ test('I45: macos.md says a missing grant stops the start, and the skip switch is
     assert.doesNotMatch(ref, /stops that\./, 'the skip switch does more than stop the Settings pop-up');
 });
 
-// ---------------------------------------------------------------- I10 - the desktop tool gate
-// Ruling 'Gate + observe grants': FileSystem joins the default exclude list on both routes, and a house
-// guard denies App's launch_executable mode and every macOS Shell call unless DESKTOP-EXEC-ALLOW allows it.
-test('I10: the skill and windows.md say what stays on and that a house guard denies App launch_executable unless DESKTOP-EXEC-ALLOW allows it', () =>
+// ---------------------------------------------------------------- I10 - the desktop tools left on
+// Ruling 'Gate + observe grants': FileSystem joins the default exclude list on both routes. The house guard that denied
+// App's launch_executable mode and every macOS Shell call left in complexity stage 1 (B12): the skill keeps both on the
+// user's ask alone, and no site names a guard or its receipt.
+test('I10 / stage 1 B12: the skill and windows.md say what stays on, and launch_executable and Shell run only on the user\'s ask', () =>
 {
     const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
     // stack audit 2026-10-20 row 14: Windows-MCP 0.8.8 enables every tool; since 2026-10-24 the user's registration excludes them
     assert.match(skill, /Windows-MCP enables every tool by default, so it is registered with PowerShell, Registry, Process and FileSystem excluded unless the user wants them/);
-    // audit 2026-10-30 HK-16: the receipt's lines are the ones the denial prints (a `session:` line among them), never copied here
-    assert.match(skill, /a house guard denies App's `launch_executable` mode[^.]*and every MacOS-MCP `Shell` call unless the user allowed it and the lines the denial prints are written into `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(skill, /App's `launch_executable` mode \(it starts any program\) and a `Shell` call run with the user's full rights and no guard in front of them: use one only when the user asked for that program or command/);
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /--exclude-tools PowerShell,Registry,Process,FileSystem/);
     assert.match(win, /What stays on:/);
-    assert.match(win, /a house guard denies that mode unless the user allowed it and the lines the denial prints are written into `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
+    assert.match(win, /with no guard in front of it: use that mode only when the user asked for that program/);
     assert.doesNotMatch(win, /`Notification`, `FileSystem`, and - switched off/, 'FileSystem is no longer among the tools left on');
     const mac = flat(read('stack/skills/desktop-automation/references/macos.md'));
-    assert.match(mac, /A house guard denies every `Shell` call[^.]*unless the user allowed it and the lines the denial prints are written into `<data root>\/state\/approvals\/DESKTOP-EXEC-ALLOW`/);
-    // no T4 site restates a receipt's line shape (the config receipt's 'takes the file's path' included)
+    assert.match(mac, /A `Shell` call - shell commands and AppleScript alike - runs with the user's full rights and no guard in front of it, so it waits for the user to ask for that command/);
+    // no T4 site restates a receipt's line shape, and none sends the model to a receipt nothing reads (B11 and B12)
     for (const rel of ['stack/skills/typescript/SKILL.md', 'stack/skills/typescript/references/typescript-style.md', 'stack/skills/nx/SKILL.md',
         'stack/skills/dotnet-project-setup/SKILL.md', 'stack/skills/dotnet-code-quality/SKILL.md', 'stack/skills/angular-conventions/references/angular-style.md',
         'stack/skills/desktop-automation/SKILL.md', 'stack/skills/desktop-automation/references/macos.md', 'stack/skills/desktop-automation/references/windows.md'])
     {
         const text = flat(read(rel));
         assert.doesNotMatch(text, /takes the file's path|allowed it in `<data root>/, `${rel} restates a receipt shape`);
-        assert.match(text, /the lines the denial prints/, `${rel} points at the denial's lines`);
+        assert.doesNotMatch(text, /CONFIG-EDIT-ALLOW|DESKTOP-EXEC-ALLOW|house guard|the lines the denial prints/, `${rel} still sends the model to a retired guard's receipt`);
     }
 });
 
@@ -100,7 +100,11 @@ test('I9: every setup-plugin/evals case invokes a command or skill the core entr
     const dir = path.join(ROOT, 'setup-plugin', 'evals');
     const cases = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'results').map((e) => e.name);
     assert.ok(cases.length >= 2, cases.join(','));
-    const commands = new Map(core.commands.map((c) => [`alfred-code:${path.basename(c, '.md')}`, c]));
+    // The core lists its commands FOLDER: a file one folder down is one more `:` segment (/alfred-code:mode:scoring).
+    const { commandFiles } = require('./lint-skills.js');
+    const carried = core.commands.flatMap((c) => (c.endsWith('/') ? commandFiles(path.join(ROOT, c)).map((f) => [f, path.join(c, f)]) : [[path.basename(c), c]]));
+    const commands = new Map(carried.map(([f, rel]) => [`alfred-code:${f.replace(/\.md$/, '').replace(/\//g, ':')}`, rel]));
+    assert.ok(commands.has('alfred-code:status') && commands.has('alfred-code:mode:scoring'), [...commands.keys()].join(','));
     const skills = new Map(core.skills.map((s) => [path.basename(s), path.join(s, 'SKILL.md')]));
     for (const name of cases)
     {
@@ -128,7 +132,8 @@ test('I9: the size-first cases live with the library cases, where the eval bundl
             assert.ok(fs.existsSync(path.join(out, 'skills', call, 'SKILL.md')), `${c}: the bundle does not carry /${call}`);
         }
         // The bundle's commands and router name their scripts under ${CLAUDE_PLUGIN_ROOT}: each must resolve.
-        const bodies = [...fs.readdirSync(path.join(out, 'commands')).map((f) => path.join(out, 'commands', f)), path.join(out, 'skills', 'alfred-code', 'SKILL.md')];
+        const bodies = [...require('./lint-skills.js').commandFiles(path.join(out, 'commands')).map((f) => path.join(out, 'commands', f)), path.join(out, 'skills', 'alfred-code', 'SKILL.md')];
+        assert.ok(bodies.some((b) => b.endsWith(path.join('mode', 'scoring.md'))), 'the bundle carries a command one folder down');
         for (const body of bodies)
             for (const ref of pluginRefs(fs.readFileSync(body, 'utf8')))
                 assert.ok(fs.existsSync(path.join(out, ref)), `${path.basename(body)} names \${CLAUDE_PLUGIN_ROOT}/${ref}, absent from the bundle`);

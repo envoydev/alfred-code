@@ -9,16 +9,16 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **... or at the first bundle boundary past the fresh-session trigger** - measured (audit 2026-10-11, session ae38c08f): a 12-bundle single-turn run on a 1M window, inside the bound, crossed the 400k trigger right after bundle 4 and peaked at 719.5k; the context at the boundaries ran 142k, 221k, 292k, 386k, 450k ... 694k, and 48.15M of its 68.6M cache-read sat at or above 400k. One turn means no Stop, and 1M means no compaction, so nothing offered the fresh session; a hand-off after bundle 4 would have saved ~24.2M cache-read (35%). The gate script reads the trigger the Stop offer reads.
 - **The bound counts on either window** - on a 200k window the biggest scope forces compactions; on a 1M window it runs on past the trigger, where no Stop and no compaction comes to offer a fresh session.
 
-## Step 1 - FIND
+## Step 1 - GET
+- **Run these as SEPARATE simple commands, not a piped one-liner** - measured three times: two runs fell back after a denied pipe; one lost 17 minutes - a quarter of its session - to the resulting cold clone.
+- **Only the PIPE half of that rule holds** - measured: one sweep carried a loop in 69 of its 141 calls, because a per-session command times N sessions is N calls - the clause that banned loops was unfollowable at real scope.
+- **Look in the plugin cache before downloading** - measured: downloading first tripped the harness classifier in 4 audited bundles, and paid ~1.8s for a 1.4MB archive already on disk. The cache entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates.
+
+## Step 2 - FIND
 - **The marker pattern allows a plugin prefix** - measured (audit 2026-10-11, session ae38c08f): a hand-written `<command-name>/?(alfred-[a-z-]+)</command-name>` grep found 2 files, so every scope option offered 6 unaudited sessions while 13 existed - the 7 it missed were all `/alfred-code:*` runs - and the run widened to 12 and said so only at the close.
 - **Never pick a scope yourself and never default to the current session** - measured: one run picked 'two sessions' unasked from its own tail, another started analyzing the current session with no ask - the prose form of this step was skipped both times; the tool call is the step.
 - **never audit the live session's own tail** - measured: four sessions did, one burning its whole 529-retry budget over 44 minutes and shipping a bundle that undercounts its own tail - the prose rule alone did not hold, this check is the gate.
 - **The folder alone is not the test** - measured: the folder becomes true at the SKELETON write, up to 74 minutes before the report is authored, so a run resumed after an interruption would have skipped all 53 of its own unfinished bundles as done.
-
-## Step 2 - GET
-- **Run these as SEPARATE simple commands, not a piped one-liner** - measured three times: two runs fell back after a denied pipe; one lost 17 minutes - a quarter of its session - to the resulting cold clone.
-- **Only the PIPE half of that rule holds** - measured: one sweep carried a loop in 69 of its 141 calls, because a per-session command times N sessions is N calls - the clause that banned loops was unfollowable at real scope.
-- **Look in the plugin cache before downloading** - measured: downloading first tripped the harness classifier in 4 audited bundles, and paid ~1.8s for a 1.4MB archive already on disk. The cache entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates.
 
 ## Step 3 - RUN
 - **Test for the ledgers, never assert their absence** - measured: all 53 reports in one sweep shipped `Hook ledger | absent` from a prose instruction nobody executed, and 26 of them were reworked at the end of the run for 6,222,488 cache-read - 8.0% of that session.

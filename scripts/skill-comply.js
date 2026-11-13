@@ -721,8 +721,9 @@ function checkExpectation(exp)
 const q = (s) => (/^[A-Za-z0-9_/.,:=@%+-]+$/.test(String(s)) ? String(s) : `'${String(s).replace(/'/g, `'\\''`)}'`);
 
 // The catalog's keys, plus a retired key the hooks still read for the 2.x line - a leftover in the shell must not
-// reach a replay either (ALFRED_CODE_DOCS_PATH, retired in 2.8.0).
-const RETIRED_STILL_READ = ['ALFRED_CODE_DOCS_PATH'];
+// reach a replay either (ALFRED_CODE_DOCS_PATH, retired in 2.8.0; ALFRED_CODE_DATA_PATH, out of the catalog with the fixed root, an
+// absolute value still kept by the hooks' reader).
+const RETIRED_STILL_READ = ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_PATH'];
 function stackEnvKeys()
 {
     let keys = [];

@@ -198,7 +198,7 @@ test('in a never-set-up project every plugin-launched hook writes nothing, and o
 });
 
 test('no suite states the hook count as a number that went stale with the eighteenth hook (2.1.5 final review R12)', () => {
-    // The counts written before guard-desktop-exec.js outlived it; the comments now say what holds at any count.
+    // The counts written before the eighteenth hook outlived it; the comments now say what holds at any count.
     // The pattern is assembled, so this file does not match itself.
     for (const f of ['install-plugins.test.js', 'install-selection.test.js', 'hook-plugin-parity.test.js', 'hook-prelude.test.js'])
     {
@@ -206,4 +206,18 @@ test('no suite states the hook count as a number that went stale with the eighte
         const stale = new RegExp([['16', '17'], ['1', '17']].map(([n, m]) => `\\b${n} of ${m}\\b`).concat(['over', 'seventeen', 'rows'].join(' '), ['seventeen', 'stale', 'lists'].join(' ')).join('|'));
         assert.doesNotMatch(src, stale, `${f} carries a stale hook count`);
     }
+});
+
+test('stage 1 B12: the desktop exec guard is retired', () => {
+    const repo = path.join(__dirname, '..');
+    const m = JSON.parse(fs.readFileSync(path.join(repo, 'meta/stack-manifest.json'), 'utf8'));
+    assert.equal(fs.existsSync(path.join(repo, 'stack/hooks/guard-desktop-exec.js')), false);
+    assert.equal(m.hooks.some((h) => h.file === 'guard-desktop-exec.js'), false);
+    assert.ok(m.retired.hooks.includes('guard-desktop-exec.js'));
+    assert.equal(require('../stack/hooks/hook-prelude.js').PROTECTIVE.has('guard-desktop-exec'), false);
+    // The desktop skill no longer promises the guard or its receipt.
+    const skill = path.join(repo, 'stack/skills/desktop-automation');
+    const files = fs.readdirSync(skill, { recursive: true }).map((f) => path.join(skill, f)).filter((f) => fs.statSync(f).isFile());
+    assert.ok(files.length > 0, 'the desktop-automation skill is gone - this check reads nothing');
+    for (const f of files) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /guard-desktop-exec|DESKTOP-EXEC-ALLOW/, `${path.relative(repo, f)} still names the desktop exec guard`);
 });

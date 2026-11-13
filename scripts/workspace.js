@@ -17,6 +17,7 @@
 //   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree;
 //               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
+//   ignore-child  a path below this root marked ignored: its joined children keep their values and sent rules, then run their own update
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
 
@@ -29,7 +30,6 @@ const stamp = require('./install/stamp.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { BRAND } = require('./install/brand.js');
-const { checkDataPath } = require('../stack/mcp/data-root.js');
 
 // This CLI's own flags stop at `--`; what follows is `answer`'s installer arguments.
 const own = process.argv.indexOf('--') < 0 ? process.argv : process.argv.slice(0, process.argv.indexOf('--'));
@@ -59,16 +59,6 @@ function rootArg()
     return realOf(root);
 }
 
-// The folder this project's own file lives in before any setting names it; checked before anything is written.
-function dataPathArg()
-{
-    const raw = arg('--data-path');
-    if (raw === undefined) return undefined;
-    const checked = checkDataPath(raw);
-    if (!checked.ok) throw bad(`--data-path ${raw} refused - ${checked.why}`);
-    return checked.value;
-}
-
 function parentVerb(out)
 {
     const v = ws.joinVerdict(rootArg(), { env, exec });
@@ -87,7 +77,7 @@ function report(out, r)
 
 function register(out)
 {
-    report(out, ws.register(rootArg(), { env, exec, dataRoot: dataPathArg() }));
+    report(out, ws.register(rootArg(), { env, exec }));
 }
 
 function unregister(out)
@@ -101,7 +91,7 @@ function join(out)
 {
     const answer = arg('--answer');
     if (answer !== 'join' && answer !== 'none') throw bad('--answer takes join or none');
-    report(out, ws.applyRole(rootArg(), answer === 'join' ? 'child' : 'standalone', { env, exec, dataRoot: dataPathArg() }));
+    report(out, ws.applyRole(rootArg(), answer === 'join' ? 'child' : 'standalone', { env, exec }));
     out(`join: ${answer}`);
 }
 
@@ -110,7 +100,7 @@ function roleVerb(out)
 {
     const root = rootArg();
     const answer = arg('--answer');
-    if (answer !== undefined) return report(out, ws.applyRole(root, answer, { env, exec, dataRoot: dataPathArg() }));
+    if (answer !== undefined) return report(out, ws.applyRole(root, answer, { env, exec }));
     const when = arg('--when', 'configure');
     if (!WHEN.includes(when)) throw bad(`--when takes ${WHEN.join(', ')}`);
     out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
@@ -123,7 +113,6 @@ function roleVerb(out)
 function ignore(out)
 {
     const root = rootArg();
-    const dataRoot = dataPathArg();
     const add = arg('--add');
     const remove = arg('--remove');
     if ((add === undefined) === (remove === undefined)) throw bad("ignore takes one of --add or --remove '<category> <name>'");
@@ -132,7 +121,7 @@ function ignore(out)
     // The mutators throw on a bad line; writeWorkspace would read that as an unwritable file.
     try { ws.addIgnore(ws.emptyRecord(), category, name); }
     catch (e) { throw bad(e.message.replace(/^workspace: /, '')); }
-    const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, dataRoot, log: out });
+    const r = ws.writeWorkspace(root, (m) => (add !== undefined ? ws.addIgnore(m, category, name) : ws.removeIgnore(m, category, name)), { env, log: out });
     if (!r.ok) throw new Exit(r.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${r.why})`);
     out(`workspace: ignore ${category} ${name} ${add !== undefined ? (r.changed ? 'added' : 'kept') : (r.changed ? 'removed' : 'not there')}`);
 }
@@ -147,6 +136,9 @@ const list = (lines) => (lines.length ? lines.join(', ') : '-');
 function status(out)
 {
     const root = rootArg();
+    const models = require('../stack/hooks/agent-models.js');
+    const host = arg('--host', 'claude');
+    if (!models.HOSTS.includes(host)) throw bad(`--host takes ${models.HOSTS.join(' or ')}`);
     out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
     const own = ws.readWorkspace(root, { env });
     // a garbage record: its one line, once, whether or not roleOf (the switch on) named it already
@@ -161,6 +153,24 @@ function status(out)
     const ownPicks = (stampFile && stamp.readOwnPicks(stampFile)) || [];
     out(`own: ${list(ownPicks)}`);
     out(`ignored: ${list(own.view.ignores.map((i) => `${i.category} ${i.name}`))}`);
+    if (own.view.ignoredChildren.length) out(`ignored-children: ${own.view.ignoredChildren.join(', ')}`);
+    // The stage 3 links: whole, or each entry that is not, then the picks this root holds for a member below.
+    const record = stampFile ? stamp.readLinks(stampFile) : [];
+    const broken = require('./install/links.js').checkLinks({ projectRoot: root, record, members: linked.members, rt }).filter((c) => c.state !== 'ok');
+    if (record.length) out(broken.length ? broken.map((c) => `  !! link ${c.path}: ${c.state}`).join('\n') : `links: ${record.length} whole`);
+    const held = (stampFile && stamp.readMemberPicks(stampFile)) || [];
+    if (held.length) out(`held for members: ${held.sort().join(', ')}`);
+    for (const l of ws.ruleNotes({ projectRoot: root, env })) out(l);
+    // THE MODEL FILE: what .alfred/agents.json applies here. The dispatch guard applies it, so with the guard off - the off-list, or the minimal
+    // profile, which a command's shell has no variable for and reads from the account settings - no entry is.
+    const read = models.entries({ start: root, env, host });
+    let stored = '';
+    try { stored = Object.entries(JSON.parse(fs.readFileSync(path.join(ws.accountPaths(env).configDir, 'settings.json'), 'utf8')).pluginConfigs).find(([id]) => id.split('@')[0] === BRAND.core)[1].options.hook_profile; } catch { /* none stored */ }
+    const guardOff = /(^|,)\s*guard-unapproved-dispatch(\.js)?\s*(,|$)/i.test([env.ALFRED_CODE_HOOKS_OFF, require('../stack/hooks/layout.js').hooksOffOf(root, { env })].join(',')) ? 'the off-list' : String(env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored).trim().toLowerCase() === 'minimal' ? 'the minimal profile' : '';
+    if (guardOff) out(`models: not applied - guard-unapproved-dispatch is off (${guardOff})`);
+    else if (!read.applied.length) out('models: none');
+    else for (const row of read.applied) out(`models: ${row.kind} ${row.name} = ${row.model} (${row.from})`);
+    for (const p of read.problems) out(`  !! agents.json (${p.from}): ${p.text}`);
     const installed = arg('--installed');
     if (installed === undefined) out('from-root: unknown - pass --installed <plan json>');
     else
@@ -199,7 +209,7 @@ function status(out)
     out(check && check.state && check.at ? `check: ${check.state} ${check.at}` : 'check: never');
     for (const line of ws.hintLines(root, { env })) out(line);
     // variables.js show's notes (D7): a guard key, a key never read, a key named like a credential - never a value.
-    for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env }).notes) out(note);
+    for (const note of require('../stack/hooks/layout.js').variablesOf(root, { env, dataRoot: require('./install/variables.js').rootOf(root) }).notes) out(note);
     // The secrets chain by key and source - the nearest store's key wins - never a value.
     const secrets = require('../stack/hooks/secret-chain.js').chainOf(root, { env });
     for (const [key, rel] of Object.entries(secrets.from)) out(`secrets: ${key} ${rel === '.' ? 'own' : `from ${rel}`}`);
@@ -289,7 +299,7 @@ function readBack(root, source, file, parentPlan)
     return read.plan ? { file, plan: read.plan } : { why: read.why };
 }
 
-const ASK = [/^data-move: offer /, /^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: role-ask /];
+const ASK = [/^docs-move: offer /, /^instructions-file: .*\bupdate=ask/, /^instructions-both: ask$/, /^workspace: role-ask /];
 
 // The project's own asks, as update-preflight prints them for it.
 function asksOf(root)
@@ -381,7 +391,7 @@ function planVerb(out)
 }
 
 // Each ask line plan prints, and the installer flag that answers it.
-const ANSWER_FLAGS = ['--data-move', '--docs-root-move', '--docs-root-leave', '--instructions-file', '--instructions-at', '--add'];
+const ANSWER_FLAGS = ['--docs-root-move', '--docs-root-leave', '--instructions-file', '--instructions-at', '--add'];
 const projectRel = (rel) => rel === '.' || (/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(rel) && rel.split('/').every((p) => p !== '.' && p !== '..'));
 
 // [flag, value, ...] checked as the installer checks it; the line that refuses it, or null.
@@ -484,6 +494,10 @@ function treeHash(root)
 }
 
 const FAILED_LINE = /^(?:==>)?\s*\d+ step\(s\) reported a failure above/m;
+// ignore-child's three closing lines (W3 Task 7).
+const IGNORED_RELEASED = (rel) => `workspace: ${rel} ignored - nothing of this workspace reaches it`;
+const IGNORED_STAMPED = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
+const IGNORED_NO_INSTALL = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
 
 function cascade(out)
 {
@@ -532,11 +546,11 @@ function cascade(out)
             if (r.state === 'gone')
             {
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
-                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { env: r.parentRel === '.' ? env : ws.ancestorEnv(env), runRoot: top, log: out });
+                ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { runRoot: top, log: out });
                 row(r.rel, 'gone');
                 continue;
             }
-            const first = ws.chain(r.root, { env: ws.ancestorEnv(env), maxDepth: 1 }).members[0];
+            const first = ws.chain(r.root, { maxDepth: 1 }).members[0];
             if (!first || ws.realKey(first.root) !== ws.realKey(parent.root))
             {
                 out(`!! cascade: ${r.rel} does not name ${r.parentRel} as its parent - skipped; join it again or run workspace.js unregister there`);
@@ -582,6 +596,52 @@ function cascade(out)
     out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped`);
 }
 
+// W3 Task 7: a path below this root marked ignored. Each joined child at or below it keeps the values and rules it reads
+// from the workspace first [F12], then the mark is written, then each child runs its own update - which releases it - and
+// the cascade below it. A refusal or a missing --source writes nothing.
+function ignoreChild(out)
+{
+    const root = rootArg();
+    const rel = arg('--add');
+    if (rel === undefined) throw bad('ignore-child takes --add <rel>');
+    const refused = ws.markRefusal(root, rel, { env, exec });
+    if (refused) throw bad(refused);
+    const joinedRows = ws.subtree(root, { env, log: out }).filter((r) => r.depth === 1 && r.state === 'ok' && (r.rel === rel || r.rel.startsWith(`${rel}/`)))
+        .filter((r) => { const first = ws.chain(r.root, { env, maxDepth: 1 }).members[0]; return first && ws.realKey(first.root) === ws.realKey(root); });
+    const source = joinedRows.length ? sourceArg() : null;
+    const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR };
+    for (const r of joinedRows)
+    {
+        const say = (l) => out(l.replace(/^workspace: /, `workspace: ${r.rel}: `));
+        const kept = ws.keepOnLeave(r.root, { env: childEnv, log: say });
+        if (kept.why) throw new Exit(1, `!! workspace: ${r.rel} could not keep its values (${kept.why}) - nothing marked`);
+        ws.keepRules(r.root, { env: childEnv, log: say });
+    }
+    const w = ws.writeWorkspace(root, (m) => ws.addIgnoredChild(m, rel), { env, log: out });
+    if (!w.ok) throw new Exit(w.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${w.why})`);
+    let failed = false;
+    for (const r of joinedRows)
+    {
+        const run = rt.spawnCommand(process.execPath, [installer(source), 'update', '--source', source, '--scope', stamp.installScope(r.root), '--installed-only', '--keep-pins'],
+            { cwd: r.root, encoding: 'utf8', stdio: 'pipe', timeout: 600000 });
+        let ok = !run.error && run.status === 0 && !FAILED_LINE.test(String(run.stdout || ''));
+        if (ok)
+        {
+            const below = rt.spawnCommand(process.execPath, [__filename, 'cascade', '--root', r.root, '--source', source], { encoding: 'utf8', stdio: 'pipe', timeout: 600000, env });
+            for (const l of String(below.stdout || '').split('\n').filter(Boolean)) out(l);
+            ok = !below.error && below.status === 0;
+        }
+        if (!ok) { failed = true; out(`!! workspace: ${r.rel} is ignored but its own update did not finish - run /alfred-code:update there`); continue; }
+        out(IGNORED_RELEASED(r.rel));
+    }
+    if (!joinedRows.length)
+    {
+        const folder = path.join(root, ...rel.split('/'));
+        out(fs.existsSync(path.join(folder, '.claude', BRAND.stamp)) ? IGNORED_STAMPED(rel) : IGNORED_NO_INSTALL(rel));
+    }
+    if (failed) throw new Exit(1, '');
+}
+
 // --claude and --managed-file are the tests' seams; a real run takes `claude` from PATH and the OS's managed file.
 function checkLoadsVerb(out)
 {
@@ -595,7 +655,7 @@ function checkLoadsVerb(out)
     else out(`!! check-loads: the probe failed - ${r.why}`);
 }
 
-const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb };
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()
@@ -611,7 +671,7 @@ function main()
     catch (e)
     {
         if (!(e instanceof Exit)) throw e;
-        out(e.message);
+        if (e.message) out(e.message);
         code = e.code;
     }
     // workspace.json: each project an older release would now misread, the records this verb converted - against the

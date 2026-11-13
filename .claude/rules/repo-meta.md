@@ -19,6 +19,7 @@ paths:
 What each meta file owns and what the repo-level scripts (lint, usage analysis, evidence scan) do. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
 - `meta/` - never installed:
+  - `meta/probes/` - host-behaviour probes against a local stand-in, never installed, re-run on a new Claude Code release.
   - `shared-rules.json` pins every deliberate multi-home rule (owner + marker-pinned copies); the lint
     goes red when a copy's marker breaks.
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
@@ -92,6 +93,13 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   or column table it names has rows (audit 2026-10-20 C40). A slash run of a
   manual-only skill counts as a skill run, its body read from the expansion's `Base directory for this skill:` row. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
+  With no path named it reads the USAGE SCOPE (`scripts/usage-scope.js`, W2 of 3.11.0): at a workspace root the root
+  and every project joined below it, anywhere else the project it runs in - each transcript kept by the folder it was
+  started in (`startFolderOf`, the head only), a rollup with a `project` column and one `SUBTOTAL` per project, one
+  inventory block and one advisory row per project, a project's probe lines from its own ledger folders, and a
+  `left out:` line for an ignored, gone or elsewhere-joined child; `--scope` prints just those lines for the skill and
+  status, and a named file or folder is read whole as before. The collector's `context.json` lists a key a member's
+  `.variables` answers with that member's `rel` as its `from`.
   `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only
   and no model call. `scripts/profile-fixture.js` - one throwaway project per tech profile (a `stacks` key or `bare`), installed
   from this tree on an isolated account dir: the export is registered as the stack's marketplace BEFORE the installer runs, or the

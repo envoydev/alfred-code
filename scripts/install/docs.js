@@ -84,13 +84,13 @@ function docsVersioningSeed(o)
     return docsVersioningAdvice(o).value;
 }
 
-// The answer and the reason the walk shows beside it (F3, F15): no repository, then a local-scope child (its data root
+// The answer and the reason the walk shows beside it (F3, F15): no repository, then local scope, a child's too (the data root
 // stays out of git), then the kept-out rule below; `git` otherwise. A fake git with no inRepo skips the first test.
 function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child })
 {
     const g = git || realGit(projectRoot);
     if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs' };
-    if (child && scope === 'local') return { value: 'local', reason: 'a local-scope child keeps its data root out of git' };
+    if (scope === 'local') return { value: 'local', reason: child ? 'a local-scope child keeps its data root out of git' : 'a local install keeps its data root out of git' };
     return keptOutOfGitHere({ projectRoot, docsPath, g })
         ? { value: 'local', reason: 'the docs are kept out of git here' }
         : { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' };
@@ -215,7 +215,7 @@ const RUN_BOOK_MOVED = 'awareness/RUN-AND-DEBUG-AWARENESS.md';
 
 // `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
 // CLAUDE.md files to name - see repointDocs.
-function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = [], instructions = [], engineText = null, log = () => {}, spawn = spawnSync })
+function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = [], engineText = null, log = () => {}, spawn = spawnSync })
 {
     // resolve, not join: a docs root the user set may be absolute (migrateUsageReport and migratePlans read it so too)
     const base = path.resolve(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
@@ -233,7 +233,7 @@ function migrateDocsDomains({ projectRoot, docsPath, dataPath = null, rules = []
     }
     if (moved.includes(RUN_BOOK_MOVED)) log('  docs migration (awareness): the run book is RUN-AND-DEBUG-AWARENESS.md - run /capture-awareness project to write the project info and the resources docs');
     // Before the switch-on: the git doc it seeds, and code-style/watch.json it carries over, decide what is switched on.
-    const preferences = migratePreferences({ projectRoot, base, dataPath, log, spawn });
+    const preferences = migratePreferences({ projectRoot, base, log, spawn });
     const switched = [];
     for (const [dir, doc] of DOCS_SWITCH_ON)
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
@@ -519,7 +519,7 @@ const STYLE_RULE = 'project-code-style.md';
 const STYLE_RULE_HEAD = /^# Project code style \(generated\b/m;
 const LOCKED = /<!--\s*locked:\s*([a-z][a-z-]*)\s*-->/g;
 
-function migratePreferences({ projectRoot, base, dataPath = null, log = () => {}, spawn = spawnSync })
+function migratePreferences({ projectRoot, base, log = () => {}, spawn = spawnSync })
 {
     const out = { respelled: [], overlays: [], watch: 'none', git: 'none', rule: 'none', scopes: [], reach: [], tools: [] };
     if (!fs.existsSync(projectRoot)) return out;
@@ -539,7 +539,7 @@ function migratePreferences({ projectRoot, base, dataPath = null, log = () => {}
     out.git = seedGitPreferences(projectRoot, path.join(dir, GIT_DOC), log);
     out.scopes = deadScopeLines(projectRoot, dir, log);
     out.reach = mismatchLines(projectRoot, dir, log);
-    out.tools = toolsRefreshLines(projectRoot, log, { spawn, dataPath });
+    out.tools = toolsRefreshLines(projectRoot, log, { spawn });
     return out;
 }
 
@@ -548,17 +548,12 @@ function migratePreferences({ projectRoot, base, dataPath = null, log = () => {}
 // when no inventory was taken, or when the snapshot's capture has no refresh yet.
 const TOOLS = path.join(__dirname, '..', '..', 'stack', 'skills', 'capture-preferences', 'scripts', 'tools.js');
 const TOOLS_REFRESH_MS = 60000;
-// The child reads the data root this run resolved: an ALFRED_CODE_DATA_PATH the session exported outranks the settings
-// files, and during a --data-path move it still names the old root (fix-pass review m1).
-const toolsEnv = (dataPath) => (dataPath ? { ...process.env, ALFRED_CODE_DATA_PATH: dataPath } : process.env);
-function toolsRefreshLines(projectRoot, log, { spawn = spawnSync, dataPath = null } = {})
+function toolsRefreshLines(projectRoot, log, { spawn = spawnSync } = {})
 {
     let file;
     try { file = require(TOOLS).inventoryPath(projectRoot); } catch { return []; }
-    // The run's own root here too: this process inherits the same exported value.
-    if (dataPath) file = path.resolve(projectRoot, dataPath, 'state', path.basename(file));
     if (!fs.existsSync(file)) return [];
-    const r = spawn(process.execPath, [TOOLS, 'refresh', '--project', projectRoot], { cwd: projectRoot, env: toolsEnv(dataPath), encoding: 'utf8', timeout: TOOLS_REFRESH_MS, windowsHide: true });
+    const r = spawn(process.execPath, [TOOLS, 'refresh', '--project', projectRoot], { cwd: projectRoot, env: process.env, encoding: 'utf8', timeout: TOOLS_REFRESH_MS, windowsHide: true });
     // What it said before a cap or a stop is kept; the reason follows it.
     const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
     if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! tools: the inventory refresh did not finish in ${TOOLS_REFRESH_MS / 1000}s - its recorded tools stand; /capture-preferences tools takes it again`);
@@ -572,10 +567,10 @@ function toolsRefreshLines(projectRoot, log, { spawn = spawnSync, dataPath = nul
 // tools.js in its own process, so a huge tree costs the run at most its cap; the tool order reads the file.
 // It speaks only when the result changed, so a re-run is quiet.
 const TOOLS_LSP_MS = 30000;
-function lspCoverageLines(projectRoot, log, { spawn = spawnSync, dataPath = null } = {})
+function lspCoverageLines(projectRoot, log, { spawn = spawnSync } = {})
 {
     if (!fs.existsSync(TOOLS) || !fs.existsSync(projectRoot)) return [];
-    const r = spawn(process.execPath, [TOOLS, 'lsp', '--changed-only', '--project', projectRoot], { cwd: projectRoot, env: toolsEnv(dataPath), encoding: 'utf8', timeout: TOOLS_LSP_MS, windowsHide: true });
+    const r = spawn(process.execPath, [TOOLS, 'lsp', '--changed-only', '--project', projectRoot], { cwd: projectRoot, env: process.env, encoding: 'utf8', timeout: TOOLS_LSP_MS, windowsHide: true });
     const out = String(r.stdout || '').split(/\r?\n/).filter(Boolean);
     if (r.error && r.error.code === 'ETIMEDOUT') out.push(`!! lsp: the language-server check did not finish in ${TOOLS_LSP_MS / 1000}s - the last result stands; the next run checks again`);
     else if (r.status !== 0) out.push(`!! lsp: the language-server check stopped (${r.error ? r.error.code || r.error.name : `exit ${r.status}`}) - the last result stands; the next run checks again`);
@@ -1797,7 +1792,7 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, covered = false, log = 
 // root may be a folder the project uses too (`docs/`), so its own files stay and are named. A clash (a file at both
 // places) moves nothing and keeps the key, so the hooks keep reading where the docs are until one side is cleared. With
 // no key the root to drain is the earlier data root's docs (a data-root change), or on a stamped install the old default
-// LEGACY_DOCS_ROOT, which a release before 2.0.0 read with no key at all. Never a part of the data-move offer: the docs
+// LEGACY_DOCS_ROOT, which a release before 2.0.0 read with no key at all. The docs
 // move unasked - except a HAND-SET root (`handSet`: one no release seeded and no ledger
 // row records), which may be the team's own `docs/`: since the stack's entries are picked by name, it moves only on the
 // answer to update's ask (`--docs-root-move`), which names the entries that are the team's own (`leave`, kept in place).
@@ -1869,23 +1864,27 @@ function docsMoveViews({ claudeDir })
 // stay) or 'blocked' (a key sits in settings.json, which a local-scope run does not write - nothing moves). `keys`: each
 // file's value; `from`: the root in effect (settings.local.json over settings.json, Claude Code's merge); `left`: the
 // project's own top-level entries there; `shadowed`: a settings.json root settings.local.json hid, named, never moved.
-function docsMovePlan({ projectRoot, shared = {}, personal = {}, broken = null, scope = 'project', stamped = false, to, prior = null, ledgered = [], leave = [] })
+function docsMovePlan({ projectRoot, shared = {}, personal = {}, broken = null, scope = 'project', stamped = false, to, moved = [], ledgered = [], leave = [] })
 {
     const target = normRoot(to);
+    // `moved`: the folders this run's one-time move carried under the data root (fixed-root.js) - a key naming a place
+    // under one is read where the move put it.
+    const dataBase = target.slice(0, target.lastIndexOf('/'));
+    const placed = (v) => { for (const r of moved.map(normRoot)) if (v === r || v.startsWith(`${r}/`)) return `${dataBase}${v.slice(r.length)}`; return v; };
     // An empty value is still a key to drop, but names no root: every reader takes the default for it.
     const keys = [['settings.json', shared], ['settings.local.json', personal]]
         .filter(([, env]) => env && typeof env[DOCS_KEY] === 'string')
-        .map(([file, env]) => ({ file, value: normRoot(env[DOCS_KEY]) }));
+        .map(([file, env]) => ({ file, value: placed(normRoot(env[DOCS_KEY])) }));
     const base = { to: target, keys, from: null, moves: [], tracked: [], untracked: [], conflicts: [], left: [], shadowed: [], ignored: false, handSet: false, unknown: [] };
     if (broken) return { ...base, state: 'none', why: `${broken} cannot be read` };
     const stuck = scope === 'local' ? keys.find((k) => k.file === 'settings.json' && k.value && k.value !== target) : null;
     if (stuck) return { ...base, from: stuck.value, state: 'blocked', why: `settings.json sets ${DOCS_KEY} '${stuck.value}', which a local-scope run does not write` };
     const effective = keys.length ? keys[keys.length - 1].value : '';
-    const from = effective || (stamped && prior ? `${normRoot(prior)}/docs` : stamped ? LEGACY_DOCS_ROOT : null);
+    const from = effective || (stamped ? LEGACY_DOCS_ROOT : null);
     const shadowed = keys.length > 1 && keys[0].value && keys[0].value !== from && keys[0].value !== target ? [keys[0].value] : [];
     // `ledgered`: the hashes the stamp's ledger records for the key - a value among them is one the stack wrote.
     const { valueHash } = require('./stamp.js');
-    const seeded = [target, SEEDED_DOCS_ROOT, LEGACY_DOCS_ROOT, prior ? `${normRoot(prior)}/docs` : null];
+    const seeded = [target, SEEDED_DOCS_ROOT, LEGACY_DOCS_ROOT];
     const raw = keys.length ? (keys[keys.length - 1].file === 'settings.json' ? shared : personal)[DOCS_KEY] : '';
     const handSet = Boolean(effective) && !seeded.includes(effective) && ![effective, raw].some((v) => ledgered.includes(valueHash(v)));
     const settled = { ...base, from, shadowed, handSet, state: keys.length ? 'drop' : 'none' };
@@ -2044,33 +2043,6 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, log = () =
     return have === null ? 'written' : 'replaced';
 }
 
-// A root the data just left: its emptied folders go, and the root itself when all it still holds is the
-// stack's own .gitignore. A folder holding anything at all stays. What every run derives again at the root in effect
-// (the language-server check's result, lsp-coverage.js) is no data: it goes first, or no move would ever empty a root.
-const DERIVED_STATE = ['state/lsp-coverage.json'];
-function pruneDataRoot({ projectRoot, root, log = () => {} })
-{
-    const base = path.join(projectRoot, ...normRoot(root).split('/'));
-    for (const rel of DERIVED_STATE) try { fs.rmSync(path.join(base, ...rel.split('/')), { force: true }); } catch { /* a folder of that name is not ours */ }
-    const prune = (dir) =>
-    {
-        let entries;
-        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-        for (const e of entries) if (e.isDirectory()) prune(path.join(dir, e.name));
-        try { if (dir !== base && !fs.readdirSync(dir).length) fs.rmdirSync(dir); } catch { /* left in place */ }
-    };
-    prune(base);
-    let names;
-    try { names = fs.readdirSync(base); } catch { return false; }
-    if (names.some((n) => n !== '.gitignore')) return false;
-    let text = '';
-    try { text = names.length ? fs.readFileSync(path.join(base, '.gitignore'), 'utf8') : ''; } catch { return false; }
-    if (names.length && !text.startsWith(DATA_IGNORE_HEAD)) return false;
-    try { fs.rmSync(base, { recursive: true }); } catch { return false; }
-    log(`  data root: ${normRoot(root)}/ removed - everything in it moved`);
-    return true;
-}
-
 // THE NESTED .gitignore FILES an earlier release wrote, once one file carries their rules (the user's ruling of
 // 2026-10-13: one .gitignore, the data root's). Each goes only while it holds exactly the stack's text and a stack
 // file covers it: `docsCovered` - the docs rules are in the data root's file or the docs root's own stack file;
@@ -2102,38 +2074,10 @@ function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, 
     return out;
 }
 
-// THE WHOLE DATA MOVE AN UPDATE OFFERS - the sensitive-data file an earlier root the stamp names still holds, minus a move
-// already recorded as pending. The docs are no part of it since 2.8.0: they move unasked (docsMovePlan); no server's data
-// is since 2.10.1, when the stack stopped shipping MCP servers. { state: 'offer' | 'none', why, rows, root }.
-function dataOffer({ projectRoot, stamped, stampText = '', root })
-{
-    const dr = require('../../stack/mcp/data-root.js');
-    const none = (why) => ({ state: 'none', why, rows: [], root });
-    if (!stamped) return none('no install record - a fresh install lays the data under the root');
-    if (/^data-move: *kept *$/m.test(stampText)) return none('the data move was answered keep');
-    const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
-    const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
-    const pending = dr.readPending(stampText);
-    // A row recorded under `.sensitive-data` is the same move once the store is `.secrets` (item 3's rename, M10).
-    const fold = (p) => String(p).replace(new RegExp(`(^|/)${dr.LEGACY_SECRETS_FILE.replace('.', '\\.')}$`), `$1${dr.SECRETS_FILE}`);
-    const rows = dr.dataMovePlan({ projectRoot, root, prior })
-        .filter((r) => !pending.some((p) => p.cls === r.cls && fold(p.from) === fold(r.from) && fold(p.to) === fold(r.to)));
-    if (!rows.length) return none('nothing to move');
-    return { state: 'offer', why: 'data outside the root', rows, root };
-}
-
-// The preflight's line: `data-move: offer <root>\tfrom=<places>[\tconflicts=<n>]`, or `data-move: none (<why>)`.
-function dataOfferLine(offer)
-{
-    if (offer.state !== 'offer') return `data-move: none (${offer.why})`;
-    const conflicts = offer.rows.filter((r) => r.conflict).length;
-    return `data-move: offer ${offer.root}\tfrom=${offer.rows.map((r) => r.from).join(',')}` + (conflicts ? `\tconflicts=${conflicts}` : '');
-}
-
 module.exports = {
     migrateArchitecture, KEY_RENAMES, respellTargets, nameForeignRefs, ownFileRef, completedKeys, respellKeys,
     docsVersioningAdvice,
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, ensureQualityNotOwned, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
-    ensureDataIgnore, dataIgnoreText, pruneDataRoot, pruneNestedIgnores, dataOffer, dataOfferLine, migrateLayout,
+    ensureDataIgnore, dataIgnoreText, pruneNestedIgnores, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,
 };

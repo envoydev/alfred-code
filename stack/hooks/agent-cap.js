@@ -333,7 +333,7 @@ function startLine(env = process.env)
 }
 
 // The main session's Stop, in the stop contract's Stop block and behind the same gates as the deny: `stopReconcile`
-// right after its state sweep (it never decides), `stopContinue` after the scorer backstop - once per `.denied` file, the
+// right after its state sweep (it never decides), `stopContinue` after the scoring backstop - once per `.denied` file, the
 // turn goes on when the count is under the cap again. Neither acts with no task registry on the payload.
 const stopGates = (payload, env) => (!payload || payload.agent_id || !Array.isArray(payload.background_tasks) ? null : capGates(payload, env, { stop: true }));
 function stopReconcile(payload, env = process.env)

@@ -23,9 +23,9 @@ function envOf(env, suffix)
     return value === '' ? undefined : value;
 }
 
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred - a relative value
-// checkDataPath refuses reads as .alfred, an absolute one (a harness's scratch, which the installer refuses) is kept.
-const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+// data-root-reader (meta/shared-rules.json): the data root is always .alfred. An absolute ALFRED_CODE_DATA_PATH is a
+// harness's scratch and is kept; anything else is .alfred.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(env)}/docs`;
 
 // A receipt the user's yes writes (the approval, the commit and push gates, every *-ALLOW) is an approval; every
@@ -33,7 +33,7 @@ const docsRoot = (env = process.env) => envOf(env, 'DOCS_PATH') || `${dataRoot(e
 const APPROVAL_NAME = /^(?:APPROVAL|COMMIT-GATE|PUSH-GATE|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-ALLOW)$/;
 const flowKind = (name) => (APPROVAL_NAME.test(String(name)) ? 'approvals' : 'sessions');
 
-const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'forge', 'handoff']);
+const STATE_KINDS = new Set(['approvals', 'sessions', 'history', 'handoff']);
 const kindOf = (kind) =>
 {
     if (!STATE_KINDS.has(kind)) throw new Error(`layout: unknown state kind '${kind}'`);
@@ -219,7 +219,7 @@ function projectRootOf(start, { home = require('os').homedir() } = {})
 // ---- the workspace chain (workspace layering, release 2) -------------------------------------------------------------
 // The hook-side twin of scripts/install/workspace.js chain(): the hooks cannot require the installer, so the same files
 // are read here with Node's own modules alone. scripts/layout-workspace.test.js holds the two equal on every tree, and
-// the two readers below are byte-for-byte copies of stack/mcp/data-root.js's (data-path-setting in meta/shared-rules.json).
+// the reader below is a byte-for-byte copy of stack/mcp/data-root.js's (data-path-setting in meta/shared-rules.json).
 
 // One ALFRED_CODE_<suffix> setting as a script outside a session sees it: the shell env, then this machine's file before
 // the shared one, then the account's.
@@ -245,28 +245,8 @@ function settingFrom({ env, projectDir, suffix })
     return '';
 }
 
-// The data root a setting names, or why it is refused.
-function checkDataPath(raw)
-{
-    const value = String(raw ?? '').trim().replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
-    if (!value) return { ok: false, why: 'the data root is empty' };
-    if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return { ok: false, why: `${value} is absolute - the data root is a folder inside the project` };
-    if (/\s/.test(value)) return { ok: false, why: `${value} holds a space - the navigation server's home reaches cmd.exe unquoted on Windows` };
-    if (/[$%`"'*?<>|:]/.test(value)) return { ok: false, why: `${value} holds a character a shell or a server placeholder would read` };
-    const parts = value.split('/');
-    if (parts.some((p) => p === '.' || p === '..')) return { ok: false, why: `${value} has a . or .. segment - the data root stays inside the project` };
-    if (parts[0] === '.claude') return { ok: false, why: `${value} is under .claude/, where Claude Code prompts for every write` };
-    if (parts[0] === '.git') return { ok: false, why: `${value} is under .git/` };
-    return { ok: true, value };
-}
-
-// The data root in effect for a folder: its setting when usable, else .alfred.
-function dataRootOf(root, { env = process.env } = {})
-{
-    const raw = settingFrom({ env, projectDir: root, suffix: 'DATA_PATH' });
-    const checked = raw ? checkDataPath(raw) : { ok: false };
-    return checked.ok ? checked.value : '.alfred';
-}
+// The data root of a folder: always .alfred. The callers keep their call; nothing is read.
+const dataRootOf = () => '.alfred';
 
 // The workspace record a data-root folder holds, through the one reader: { file, state, view } - `view` the installer's
 // { parent, children, ignores }; a garbage or absent record reads as an empty view, and `file` is the path it was read from.
@@ -319,8 +299,7 @@ function ownWorkspace(projectRoot, { env = process.env } = {})
 // valid JSON, its file relative to the start, the start's own first (docs-session says each at session start); `startData`
 // the start's data root when the caller already read it. A hop needs
 // a strict ancestor holding a stamp whose workspace record lists this folder as a child (workspace.js chain()); a note
-// names the file the refused record was read from. An
-// ancestor's data root is read with the account alone, never the run's ALFRED_CODE_DATA_PATH. The kill switch is the
+// names the file the refused record was read from. An ancestor's record is its `.alfred`'s. The kill switch is the
 // caller's to apply: this reads the chain whatever it says.
 function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startData } = {})
 {
@@ -334,7 +313,6 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
     };
     const start = realOf(projectRoot);
-    const upEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR };
     const members = [];
     const notes = [];
     const seen = new Set([keyOf(start)]);
@@ -343,6 +321,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
     let { file, state, view } = wsRead(startData ? path.join(start, ...startData.split('/')) : wsDir(start, env));
     if (state === 'garbage') garbage.push(wsRel(start, file));
     const startIgnores = view.ignores;
+    let ignoredBy = null;
     while (members.length < maxDepth && view.parent)
     {
         const value = view.parent;
@@ -353,7 +332,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         const up = path.relative(keyOf(parent), keyOf(current));
         if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
         if (!fs.existsSync(path.join(parent, '.claude', 'alfred-code.stamp'))) { refuse(`${label} holds no Alfred install`); break; }
-        const parentData = dataRootOf(parent, { env: upEnv });
+        const parentData = dataRootOf(parent);
         const { file: parentFile, state: parentState, view: parentView } = wsRead(path.join(parent, ...parentData.split('/')));
         // A garbage parent record is named, never read as 'does not list this folder' - its children are unknown.
         if (parentState === 'garbage')
@@ -362,6 +341,8 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
             refuse(`${wsRel(start, parentFile)} is not valid JSON`);
             break;
         }
+        // W3: a folder at or below a path the parent's record ignores takes nothing from it - the walk ends, unsaid.
+        if (workspaceFile.covered(parentView.ignoredChildren, keyOf(parent), keyOf(current))) { ignoredBy = label; break; }
         if (!parentView.children.some((c) => keyOf(path.join(parent, ...c.split('/'))) === keyOf(current)))
         {
             refuse(`${label} does not list this folder as a child`);
@@ -375,7 +356,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         file = parentFile;
         view = parentView;
     }
-    return { members, notes, ignores: startIgnores, garbage };
+    return { members, notes, ignores: startIgnores, garbage, ignoredBy };
 }
 
 // ---- the stack's variables (workspace roles and variables, D3 / D4) --------------------------------------------------
@@ -384,18 +365,27 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
 // file, the process env, then each linked member's file while the switch is on. applyVariables sets each winner on the
 // process env once, so every envOf copy reads it unchanged.
 
-// The catalog keys a `.variables` line may set: meta/environment.json's rows but the data root (the file cannot name its
-// own place) and the hook switch-offs (D7: they stay in the settings Claude Code protects). Inline because meta/ never
-// ships into a project; layout-variables.test.js holds it to the catalog.
+// The catalog keys a `.variables` line may set: meta/environment.json's rows but the hook switch-offs (D7: they stay in
+// the settings Claude Code protects). Inline because meta/ never ships into a project; layout-variables.test.js holds
+// it to the catalog.
 const VARIABLE_KEYS = Object.freeze([
     'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_INSTRUMENT', 'ALFRED_CODE_CORRECTION_NUDGE', 'ALFRED_CODE_TURN_CHECK',
-    'ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_SCORER_OUTPUTS', 'ALFRED_CODE_SCORER_ROUNDS',
+    'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL', 'ALFRED_CODE_SCORING_OUTPUTS', 'ALFRED_CODE_SCORING_ROUNDS',
     'ALFRED_CODE_HISTORY', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_AUTO_COMPACT',
     'ALFRED_CODE_MAXIMUM_RUN_AGENTS', 'ALFRED_CODE_MEMORY', 'ALFRED_CODE_FRESH_SESSION_AFTER_HOURS',
-    'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_FORGE_WATCH', 'ALFRED_CODE_WORKSPACE',
+    'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_WORKSPACE',
 ]);
 const VARIABLE_SET = new Set(VARIABLE_KEYS);
+// The four modes the mode commands switch, kept in the mode file (modeFile). AUTO_RUN is no variable: the loader never reads it.
+const MODE_KEYS = Object.freeze(['ALFRED_CODE_AUTO_RUN', 'ALFRED_CODE_AUTO_COMPACT', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL']);
+const MODE_SET = new Set(MODE_KEYS);
+// until 4.0.0: the four keys 3.11.0 renamed are read as their new key wherever that key has no value in the same file
+// (a tracked file a teammate has not updated yet); new key -> old key.
+const OLD_KEYS = Object.freeze({
+    ALFRED_CODE_SCORING: 'ALFRED_CODE_SCORER', ALFRED_CODE_SCORING_LEVEL: 'ALFRED_CODE_SCORER_LEVEL',
+    ALFRED_CODE_SCORING_OUTPUTS: 'ALFRED_CODE_SCORER_OUTPUTS', ALFRED_CODE_SCORING_ROUNDS: 'ALFRED_CODE_SCORER_ROUNDS',
+});
 // Never taken from a member: the docs mode is this project's own layout (release 1's ENV_NEVER), and the chain cannot
 // decide the switch that gates it.
 const MEMBER_NEVER = new Set(['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE']);
@@ -471,6 +461,7 @@ function settingsEnv(file)
 const valueIn = (from, key) =>
 {
     const value = from && Object.hasOwn(from, key) ? from[key] : undefined;
+    if ((value === '' || value === null || value === undefined) && OLD_KEYS[key]) return valueIn(from, OLD_KEYS[key]);
     return value === '' || value === null || value === undefined ? undefined : String(value);
 };
 const csvOf = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -488,11 +479,11 @@ function fileNotes(read, label, secrets)
     const notes = read.bad.map((n) => `!! variables: ${label} line ${n} is not a KEY=value line - not read`);
     for (const key of Object.keys(read.values))
     {
-        if (VARIABLE_SET.has(key)) continue;
+        if (VARIABLE_SET.has(key) || Object.values(OLD_KEYS).includes(key)) continue;
         if (SECRET_KEY_RE.test(key)) { notes.push(`!! variables: ${key} in ${label} looks like a credential - keep it in ${secrets}`); continue; }
         if (!/^ALFRED_CODE_[A-Za-z0-9_]+$/.test(key)) continue;
         notes.push(key === HOOKS_OFF_KEY
-            ? `!! variables: ${HOOKS_OFF_KEY} in ${label} is not read - it lives in .claude/settings.json`
+            ? `!! variables: ${HOOKS_OFF_KEY} in ${label} is not read - it lives in .claude/settings.local.json`
             : `!! variables: ${key} in ${label} is not read - only the stack's variables are; a guard switch stays in .claude/settings.json`);
     }
     return notes;
@@ -528,21 +519,21 @@ function ownVariables(checkout, env, mainOf, checkoutData)
 
 // Steps 1 to 4 for every key - the project alone, what the switch is read from. Step 4 outside a session reads what a
 // session lays over its launch env: the project's settings.json, then the account's (in a hook the two agree).
-// `layers` 'files' reads the project's own three files alone, 'team' its two shared ones (see variablesOf).
-function ownLayers(projectRoot, env, layers = 'all')
+// `layers` 'files' reads the project's own three files alone, 'team' its two shared ones (see variablesOf). `dataRoot` is
+// the checkout's folder when the installer side names one (variablesOf); a hook never does.
+function ownLayers(projectRoot, env, layers = 'all', dataRoot = '.alfred')
 {
     const checkout = path.resolve(projectRoot);
     const claude = path.join(checkout, '.claude');
     const all = layers === 'all';
     const local = layers === 'team' ? null : settingsEnv(path.join(claude, 'settings.local.json'));
+    // A same-repository child reads the modes from the file Claude Code keeps at the top (modeFile), over its own.
+    const modeAt = layers === 'team' ? null : modeFile(checkout);
+    const mode = modeAt && pathKey(modeAt) !== pathKey(path.join(claude, 'settings.local.json')) ? settingsEnv(modeAt) : null;
     const shared = settingsEnv(path.join(claude, 'settings.json'));
     const account = all ? settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json')) : null;
     let main;
     const mainOf = () => (main === undefined ? (main = mainCounterpart(checkout)) : main);
-    // dataRootOf's answer from the three files already read (settingFrom's order: the env, local, shared, account).
-    const dataPath = [env, local, shared, account].map((e) => String((e && envOf(e, 'DATA_PATH')) || '').trim()).find(Boolean);
-    const checked = dataPath ? checkDataPath(dataPath) : { ok: false };
-    const dataRoot = checked.ok ? checked.value : '.alfred';
     const own = ownVariables(checkout, env, mainOf, dataRoot);
     const values = {};
     const from = {};
@@ -550,7 +541,7 @@ function ownLayers(projectRoot, env, layers = 'all')
     for (const key of VARIABLE_KEYS)
     {
         if (all && key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
-        let value = valueIn(local, key);
+        let value = valueIn(MODE_SET.has(key) ? mode : null, key) ?? valueIn(local, key);
         if (value !== undefined)
         {
             values[key] = value;
@@ -569,9 +560,9 @@ function ownLayers(projectRoot, env, layers = 'all')
 // The whole read: every key's winner, where it came from, the notes, and the merged HOOKS_OFF csv (D4): the project's
 // entries (settings.local.json over settings.json, R99) plus each member's `<hook>:<part>` entries - a member's
 // whole-hook entry never reaches a child (release 1) - up to an `ignore env ALFRED_CODE_HOOKS_OFF`.
-function resolveVariables(projectRoot, env, which = 'all')
+function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
 {
-    const layers = ownLayers(projectRoot, env, which);
+    const layers = ownLayers(projectRoot, env, which, dataRoot);
     const { values, from, notes } = layers;
     const hooksOffAt = (local, shared) => csvOf(local && Object.hasOwn(local, HOOKS_OFF_KEY) ? local[HOOKS_OFF_KEY] : (shared || {})[HOOKS_OFF_KEY]);
     const hooksOff = hooksOffAt(layers.local, layers.shared);
@@ -605,9 +596,11 @@ function resolveVariables(projectRoot, env, which = 'all')
 // `layers`: 'all' (the D4 order, what a hook reads), 'files' (the project's settings.local.json, .variables and
 // settings.json - no account file, process env or member: a session's env carries settings.local.json's values, so a
 // script deciding what a file holds reads the files) or 'team' (the two files a teammate shares, no settings.local.json).
-function variablesOf(projectRoot, { env = process.env, layers = 'all' } = {})
+// `dataRoot`: the checkout's data folder in place of .alfred - the installer side's way to read an older install's
+// unmoved folder through this loader (stack/mcp/data-root.js dataRootOf names it). A hook never passes it.
+function variablesOf(projectRoot, { env = process.env, layers = 'all', dataRoot } = {})
 {
-    const { values, from, notes } = resolveVariables(projectRoot, env, layers);
+    const { values, from, notes } = resolveVariables(projectRoot, env, layers, dataRoot);
     return { values, from, notes };
 }
 const hooksOffOf = (projectRoot, { env = process.env } = {}) => resolveVariables(projectRoot, env).hooksOff;
@@ -615,13 +608,24 @@ const hooksOffOf = (projectRoot, { env = process.env } = {}) => resolveVariables
 // Each winner set on `env` once per env object (a second call returns []); the HOOKS_OFF csv becomes the union of what
 // `env` holds (a launch or account switch-off) and the merge - an entry is only ever added. Returns the keys set.
 const APPLIED = new WeakSet();
+// The launch value of each key applyVariables wrote over, per env object: `launchEnv(env)` hands the env as launched
+// (W1: a run's own layer is what it was started with, never the project's winner the prelude wrote into it).
+const LAUNCH = new WeakMap();
+const launchEnv = (env = process.env) =>
+{
+    const out = { ...env };
+    for (const [key, value] of Object.entries(LAUNCH.get(env) || {})) if (value === undefined) delete out[key]; else out[key] = value;
+    return out;
+};
 function applyVariables(projectRoot, env = process.env)
 {
     if (APPLIED.has(env)) return [];
     APPLIED.add(env);
     const { values, hooksOff } = resolveVariables(projectRoot, env);
     const set = [];
-    for (const [key, value] of Object.entries(values)) if (env[key] !== value) { env[key] = value; set.push(key); }
+    const launch = {};
+    LAUNCH.set(env, launch);
+    for (const [key, value] of Object.entries(values)) if (env[key] !== value) { launch[key] = env[key]; env[key] = value; set.push(key); }
     const held = csvOf(env[HOOKS_OFF_KEY]);
     const union = [...new Set([...held, ...csvOf(hooksOff)])];
     if (union.length > held.length) { env[HOOKS_OFF_KEY] = union.join(','); set.push(HOOKS_OFF_KEY); }
@@ -859,6 +863,8 @@ function localSettingsFile(root, { home = require('os').homedir(), platform = pr
     if (platform === 'win32') return dirKey(top) === dirKey(root) ? path.join(root, '.claude', 'settings.local.json') : null;
     return path.join(worktreeMain(top) || top, '.claude', 'settings.local.json');
 }
+// The mode file: the local file Claude Code reads for this folder, else the folder's own (no repository, Windows below the top).
+const modeFile = (root, opts) => localSettingsFile(root, opts) || path.join(path.resolve(root), '.claude', 'settings.local.json');
 // R171: a start folder's settings.local.json that Claude Code 2.1.211+ no longer keeps there (it keeps the file at the
 // repository root, localSettingsFile) and that sets autoMemoryDirectory: { file, dir, rootFile }, else null. Claude Code
 // still reads the older file while the root one sets no key, but the write guard trusts only the root file, so the
@@ -1058,6 +1064,56 @@ function docsMemoryShare(root, { env = process.env, home = require('os').homedir
 // The folder a checkout's workspace chain is read from: a linked worktree's main counterpart, whose workspace file the
 // worktree lacks (it is gitignored), as resolveVariables reads it.
 const chainProjectOf = (projectRoot) => mainCounterpart(projectRoot) || projectRoot;
+// The joined member a touched file belongs to when it is outside the start's own chain: { root, rel, key, chain } - `chain`
+// its own members the start's chain lacks, top first, itself last, each { root, rel, key }; else null (workspace stage 5).
+function memberOf(file, start, { env = process.env } = {})
+{
+    const from = chainProjectOf(realpathOrSelf(start));
+    if (!workspaceOn({ env, projectRoot: from })) return null;
+    const own = [from, ...workspaceChain(from, { env }).members.map((m) => m.root)].map(dirKey);
+    const top = own[own.length - 1];
+    let at = path.dirname(path.resolve(file));
+    at = realpathOrSelf(mainCounterpart(at) || at);
+    for (; ; at = path.dirname(at))
+    {
+        const rel = path.relative(top, dirKey(at));
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+        if (holdsRecord(at)) break;
+    }
+    if (own.includes(dirKey(at))) return null;
+    const up = [at, ...workspaceChain(at, { env }).members.map((m) => m.root)];
+    const meet = up.findIndex((r, i) => i > 0 && own.includes(dirKey(r)));
+    if (meet < 0 || dirKey(up[up.length - 1]) !== top) return null;
+    const hash = (rel) => require('crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
+    const chain = up.slice(0, meet).reverse().map((root) => { const rel = wsRel(top, dirKey(root)); return { root, rel, key: hash(rel) }; });
+    return { ...chain[chain.length - 1], chain };
+}
+// Stage 6: whether the start's chain lists a member outside it - the test made before memberOf, never its verdict. A start
+// whose own record names no parent and no child costs that one read; any throw is false.
+function hasMembers(start, { env = process.env } = {})
+{
+    try
+    {
+        const from = chainProjectOf(realpathOrSelf(start));
+        const { view } = wsRead(wsDir(wsReal(from), env));
+        if (!view.parent && !view.children.length) return false;
+        if (!workspaceOn({ env, projectRoot: from })) return false;
+        const roots = [from, ...workspaceChain(from, { env }).members.map((m) => m.root)];
+        const own = new Set(roots.map(dirKey));
+        return roots.some((r) => wsRead(wsDir(r, env)).view.children.some((c) => !own.has(dirKey(path.join(r, ...c.split('/'))))));
+    }
+    catch { return false; }
+}
+// Stage 6: the env a member's hold reads - its docs root and its off-list after the session's; undo() puts both back.
+function enterMember(root, env = process.env)
+{
+    const keys = ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF'];
+    const was = keys.map((k) => [k, Object.hasOwn(env, k), env[k]]);
+    const off = [...new Set([...csvOf(env.ALFRED_CODE_HOOKS_OFF), ...csvOf(hooksOffOf(root, { env }))])].join(',');
+    env.ALFRED_CODE_DOCS_PATH = docsRootOf(root, { env });
+    if (off) env.ALFRED_CODE_HOOKS_OFF = off;
+    return () => { for (const [k, had, v] of was) { if (had) env[k] = v; else delete env[k]; } };
+}
 // R3: each linked member's preferences folder, nearest first, read-only, while the switch is on. `skip` holds the files an
 // `ignore doc <file>` here or in a nearer member drops for THAT member (R0); `ignore docs root` drops the member and every
 // one past it, as it drops their docs roots.
@@ -1115,8 +1171,9 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
-    settingFrom, checkDataPath, dataRootOf, workspaceOn, ownWorkspace, workspaceChain,
+    settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
-    VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
+    MODE_KEYS, modeFile,
+    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, valueIn,
 };

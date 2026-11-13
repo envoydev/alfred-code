@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
-// Stamp the deployed alfred-docs-root.md rule with the CURRENT docs root: <data root>/docs (ALFRED_CODE_DATA_PATH in
-// <root>/.claude/settings.json, else `.alfred`), or a leftover ALFRED_CODE_DOCS_PATH an update has not cleared yet
+// Stamp the deployed alfred-docs-root.md rule with the CURRENT docs root: <data root>/docs (`.alfred`, or the folder an older
+// install named until an update moves it), or a leftover ALFRED_CODE_DOCS_PATH an update has not cleared yet
 // (2.8.0 retired it). Handles both the fresh copy (the
 // __DOCS_ROOT__ placeholder) and a previously stamped value - so the guided commands can re-stamp
 // after an env change without re-running the installer (the installers stamp fresh copies with
@@ -25,20 +25,15 @@ const { envOf } = require('../stack/hooks/hook-prelude.js');
 const layout = require('../stack/hooks/layout.js');
 const { parseJson } = require('./install/json-file.js');
 
-const DEFAULT_DATA_ROOT = '.alfred';
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
 
-function resolveDocsRoot(settingsFile)
+// The docs root when none is handed: a leftover docs key in the folder's own settings.json (a global install's account
+// dir holds it directly), else `<the data root>/docs` by the one reader, over the project the folder is in.
+function resolveDocsRoot(claudeDir)
 {
-    try
-    {
-        const env = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env || {};
-        return envOf(env, 'DOCS_PATH') || `${envOf(env, 'DATA_PATH') || DEFAULT_DATA_ROOT}/docs`;
-    }
-    catch
-    {
-        return `${DEFAULT_DATA_ROOT}/docs`;
-    }
+    let env = {};
+    try { env = parseJson(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8')).env || {}; } catch { /* no value here */ }
+    return envOf(env, 'DOCS_PATH') || `${require('../stack/mcp/data-root.js').dataRootOf({ projectDir: path.dirname(claudeDir) }).root}/docs`;
 }
 
 // R87 / R89: which settings a PROJECT run reads and writes, by the install's scope (the stamp's
@@ -83,13 +78,14 @@ function unreadable(file)
 // never answers for the committed one (C7). The process env is not read: a session carries settings.local.json's values.
 function decided(root, scope)
 {
-    return envOf(layout.variablesOf(root, { env: {}, layers: scope === 'local' ? 'files' : 'team' }).values, 'DOCS_VERSIONING');
+    const dataRoot = require('../stack/mcp/data-root.js').dataRootOf({ projectDir: path.resolve(root) }).root;
+    return envOf(layout.variablesOf(root, { env: {}, layers: scope === 'local' ? 'files' : 'team', dataRoot }).values, 'DOCS_VERSIONING');
 }
 
 // Writes the decision through the variables writer: the project's .variables (settings.local.json where a local-scope
-// install holds the key there, settings.json where git ignores the data root), the team's file at project scope even
-// where settings.local.json holds the key (C7). Returns where it landed, or null when it was refused (the writer's
-// `!!` line says why).
+// install holds the key there, or where git ignores the data root), .variables at project scope even where
+// settings.local.json holds the key (C7). Returns where it landed, or null when it was refused (the writer's `!!` line
+// says why).
 function writeDecision(root, scope, value)
 {
     const variables = require('./install/variables.js');
@@ -98,7 +94,7 @@ function writeDecision(root, scope, value)
     for (const l of lines) if (l.startsWith('!!')) console.log(l);
     if (got.refused.length) return null;
     if (got.toLocal.length) return 'settings.local.json env';
-    if (got.toSettings.length) return 'settings.json env';
+    if (got.toSettings.length) return 'settings.local.json env';
     return path.relative(root, variables.fileOf(root)).split(path.sep).join('/');
 }
 
@@ -135,13 +131,14 @@ function restampLibraryHash(claudeDir, ruleFile)
 // its scope; the account-dir mode reads that dir's settings.json alone.
 function stampDir(claudeDir, value)
 {
-    const ruleFile = path.join(claudeDir, 'rules', 'alfred-docs-root.md');
+    const inStore = path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules', 'alfred-docs-root.md');   // workspace stage 4c's store
+    const ruleFile = fs.existsSync(inStore) ? inStore : path.join(claudeDir, 'rules', 'alfred-docs-root.md');
     if (!fs.existsSync(ruleFile))
     {
         console.log(`stamp-docs-root: no ${ruleFile} - nothing to stamp`);
         return;
     }
-    const val = value || resolveDocsRoot(path.join(claudeDir, 'settings.json'));
+    const val = value || resolveDocsRoot(claudeDir);
     const text = fs.readFileSync(ruleFile, 'utf8');
     if (!STAMP_RE.test(text))
     {

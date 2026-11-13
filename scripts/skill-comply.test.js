@@ -578,16 +578,16 @@ test('an execution-strategy trace grades the load before the first edit and no p
     assert.deepStrictEqual(failing(sc.grade(exp, planned, { level: 'plain' })), ['no-plan-file']);
 });
 
-test('an output-scorer trace grades the seat, the script\'s next before the plan, no plan after a withhold and one more attempt', () =>
+test('an output-scoring trace grades the seat, the script\'s next before the plan, no plan after a withhold and one more attempt', () =>
 {
-    const exp = expectOf('mode-output-scorer');
+    const exp = expectOf('mode-output-scoring');
     // Each row is built per use: two rows from one call share a message id and the reader keeps one.
     const plan = () => tool('Write', { file_path: '/w/.alfred/docs/work/plans/cancel-reason.md', content: '# plan' });
-    const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scorer', prompt: 'score-file: /w/s.md' });
+    const seat = () => tool('Agent', { subagent_type: 'alfred-code:output-scoring', prompt: 'score-file: /w/s.md' });
     const next = () => tool('Bash', { command: 'node "$S" next --root /w --session s1 --slug cancel --level 80 --rounds 3' });
     // the seat's report graded before next (the 2026-11-04 prose round, sc-13: grade-after-return)
     const graded = () => tool('Bash', { command: 'node "$S" grade /w/s.md --output designer-plan --level 80' });
-    const answers = () => tool('Write', { file_path: '/w/.alfred/state/sessions/scorer/s1/cancel/answers.md', content: 'a' });
+    const answers = () => tool('Write', { file_path: '/w/.alfred/state/sessions/scoring/s1/cancel/answers.md', content: 'a' });
     const good = jsonl([user('plan it'), seat(), graded(), next(), say('Scored: 91/100 (level 80) - 1 run(s) - independent - designer-plan'), plan()]);
     assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
 
@@ -622,13 +622,14 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
-    const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scorer', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
-        'tier4-compaction', 'tier4-data-root', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
+    const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+        'tier4-compaction', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
     // A fixture added by a prose A/B group is pinned in that group's own scripts/skill-comply-prose-<group>.test.js (the
-    // 2026-11-04 round: a group's fixtures ship or leave with its verdict), so no stray folder passes unnamed.
-    const prose = fs.readdirSync(__dirname).filter((f) => /^skill-comply-prose-[A-Z]\.test\.js$/.test(f)).map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
+    // 2026-11-04 round: a group's fixtures ship or leave with its verdict), or in a gate round's own
+    // scripts/skill-comply-g<n>.test.js (the workspace G2 rule A/B), so no stray folder passes unnamed.
+    const prose = fs.readdirSync(__dirname).filter((f) => /^skill-comply-(prose-[A-Z]|g\d+)\.test\.js$/.test(f)).map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
     for (const name of listed.filter((n) => !base.includes(n))) assert.ok(prose.includes(`'${name}'`), `${name} is pinned by no skill-comply-prose-<group>.test.js`);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
@@ -692,8 +693,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         for (const b of billed)
         {
             assert.match(b, / -p --output-format stream-json --verbose --max-turns \d+ --permission-mode dontAsk --setting-sources user,project,local /);
-            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_DATA_PATH /);
-            assert.match(b, / -u ALFRED_CODE_DOCS_PATH /, 'a retired key the hooks still read is scrubbed too');
+            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_/);
+            for (const key of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_DATA_PATH']) assert.ok(b.includes(` -u ${key} `), `${key}: a retired key the hooks still read is scrubbed too`);
             // a fixture's own run.model wins over --model (the designer seat's dispatcher runs on haiku)
             const fixture = b.match(/[\\/]([^\\/]+)[\\/](?:explicit|plain|adverse)[\\/]transcript\.jsonl\)$/)[1];
             assert.ok(b.includes(`--max-budget-usd 1.5 --model=${sc.loadExpectation(fixture).data.run.model || 'claude-sonnet-4-5'} > `), fixture);
@@ -770,7 +771,7 @@ test('replay --live against a stub claude installs, scaffolds, records and grade
         assert.match(r.out, /csharp \(level plain\) - 3 of 3 graded steps followed, 1 skipped offline/);
         const proj = path.join(out, 'csharp', 'plain', 'project');
         assert.ok(fs.existsSync(path.join(proj, '.claude', 'skills', 'csharp', 'SKILL.md')), 'the copy route copied the skill under test');
-        assert.ok(fs.existsSync(path.join(proj, '.claude', 'rules', 'csharp-conventions.md')), 'and the rule carrying its load contract');
+        assert.ok(fs.existsSync(require('./install/copy.js').ruleAt(proj, 'csharp-conventions')), 'and the rule carrying its load contract');
         assert.strictEqual(execFileSync('git', ['-C', proj, 'log', '--format=%s'], { encoding: 'utf8' }).trim(), 'baseline');
         assert.strictEqual(execFileSync('git', ['-C', proj, 'status', '--porcelain'], { encoding: 'utf8' }).trim(), '');
         assert.strictEqual(fs.readFileSync(path.join(out, 'csharp', 'plain', 'transcript.jsonl'), 'utf8'), fs.readFileSync(canned, 'utf8'));
@@ -889,7 +890,7 @@ test('run.env of a fixture reaches only its own billed line', POSIX_ONLY, () =>
     assert.ok(withEnv.cmds.filter((c) => c.kind !== 'billed').every((c) => !c.cmd.includes('CLAUDE_CODE_ENTRYPOINT')));
     const [none] = billedLine(replayFor({}).cmds);
     assert.doesNotMatch(none, /CLAUDE_CODE_ENTRYPOINT/);
-    for (const key of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'SENTRY_ACCESS_TOKEN', 'ALFRED_CODE_SCORER', 'HOME', 'lower_case'])
+    for (const key of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'SENTRY_ACCESS_TOKEN', 'ALFRED_CODE_SCORING', 'HOME', 'lower_case'])
         assert.match(replayFor({ env: { [key]: 'x' } }).problems.join('\n'), /run\.env/, key);
     assert.match(replayFor({ env: { A_KEY: 1 } }).problems.join('\n'), /run\.env/, 'a value is a string');
     assert.match(replayFor({ env: ['A=1'] }).problems.join('\n'), /run\.env/, 'run.env is an object');
@@ -1006,4 +1007,10 @@ test('tool_order after_optional: no after event passes, an after with no before 
     assert.strictEqual(run(step({ after_optional: true }), [tool('Bash', { command: 'git switch -c SHOP-205' })]).verdict, 'FAIL');
     assert.strictEqual(run(step({ after_optional: true }), [tool('Bash', { command: 'git switch -c SHOP-205' }), tool('Bash', { command: 'git branch -a' })]).verdict, 'FAIL');
     assert.strictEqual(run(step({ after_optional: true }), [...ask, tool('Bash', { command: 'git switch -c SHOP-205' })]).verdict, 'PASS');
+});
+test('4c parseTranscript: a rule loader block\'s rule name is in the context target', () => {
+    const block = 'Project rules, part 1 of 1 - binding instructions for this project\n\n## alfred-git (.alfred/stack/rules/alfred-git.md)\nCommit on the user\'s word.\n\nEnd of project rules, part 1 of 1';
+    const run = sc.parseTranscript(jsonl([{ type: 'attachment', attachment: { type: 'hook_additional_context', content: [block], hookEvent: 'SessionStart' } }, user('go')]));
+    const ctx = (pattern) => sc.gradeRun({ steps: [{ id: 'c', graders: [{ type: 'regex', target: 'context', pattern, flags: 'm' }] }] }, run).steps[0].verdict;
+    assert.deepStrictEqual([ctx('^## alfred-git \\('), ctx('alfred-security')], ['PASS', 'FAIL']);
 });

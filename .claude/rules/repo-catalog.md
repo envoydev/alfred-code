@@ -17,7 +17,8 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   refused; `skillOverrides` is the per-project lever, and `library-check.js` flags a `blocked` row where
   one set `off` or `user-invocable-only` hits a skill a shipped rule still sends the model to - 2.1.5 audit
   M75) - and every rule is a library copy in
-  `.claude/rules` the same way (`scripts/install/library.js`, each copy's hash in the stamp), because a
+  `.alfred/stack/rules` the same way (`scripts/install/library.js`, each copy's hash in the stamp; workspace stage 4c moved
+  it from `.claude/rules`, and the `rules-session.js` loader sends it), because a
   plugin skill is locked on and only a project copy can be switched off per project (measured, the
   2026-09-24 library test). `scripts/library-check.js` reports drift and staleness for validate and
   status. A folder already under a catalog skill name that the stamp does not record (a library hash or a
@@ -84,7 +85,7 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
     DevOps, browser extension);
   - seven read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`,
-    `output-scorer` (mode-output-scorer's grader; both mode skills took their names in the stack-modes rename of
+    `output-scoring` (mode-output-scoring's grader; both mode skills took their names in the stack-modes rename of
     2026-10-27, and the manifest's `renamed` rows hold the old ones).
   Every seat that judges or writes code holds `WebFetch` (alfred-quality-gates sends its outside-world claims to the
   documentation tools the start line ranks, the vendor's own page when nothing else is registered); the five read-only
@@ -118,11 +119,13 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
   branch from HEAD because the installer seeds `worktree.baseRef: "head"` add-only, and fan in as an
-  uncommitted `git apply`). cursor-stack holds twins of all 45 but `output-scorer` (added 2026-10-25,
+  uncommitted `git apply`). cursor-stack holds twins of all 45 but `output-scoring` (added 2026-10-25,
   while its mirror is paused), shipped before this rebrand, and is PENDING the same rename - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
-- `stack/rules/` - eighteen single-job rules, each a library copy in `.claude/rules/`. Six always-on `alfred-*.md`
+- `stack/rules/` - eighteen single-job rules, each a library copy in `.alfred/stack/rules/` (stage 4c), sent by the
+  loader; the generated rules and the canary seed `.claude/rules/alfred-rules.md` (a native rule saying when the loader's
+  blocks are missing) stay in `.claude/rules/`. Six always-on `alfred-*.md`
   (no `paths:`): interaction, quality-gates, security, preferences (a pointer to the four preferences docs and
   when each is read - the git lines live in the seeded `GIT-PREFERENCES.md`, the commit checkpoint itself is the
   `habits-commit-checkpoint` skill; the installer stamps the root over its `__DOCS_ROOT__` too), navigation, docs-root (always `<data root>/docs` since 2.8.0 - `ALFRED_CODE_DOCS_PATH` is retired, a leftover

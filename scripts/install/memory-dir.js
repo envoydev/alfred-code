@@ -170,13 +170,13 @@ function gate(ctx)
 }
 
 // The row for the mode the run left, by the plan's table. Sets ctx.memoryDirRow - the hash to record, or null - on every
-// path; a pending hand-set docs root, an invalid data root and a file that cannot be read keep the last run's row.
+// path; a pending hand-set docs root and a file that cannot be read keep the last run's row.
 // Returns what it decided: { skip } before anything was read, else { mode, share, refusal }.
 function rowStep(ctx, { warnUnignoredLocal = () => {} } = {})
 {
     const prior = priorRow(ctx);
     ctx.memoryDirRow = prior === undefined ? null : prior;
-    if (ctx.docsRootPending || (ctx.dataInfo && ctx.dataInfo.invalid)) return { skip: true };
+    if (ctx.docsRootPending) return { skip: true };
     const root = ctx.projectRoot;
     const env = memoryEnv(ctx);
     const file = path.join(ctx.claudeDir, LOCAL);

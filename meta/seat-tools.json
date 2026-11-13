@@ -275,7 +275,7 @@
       "Glob",
       "WebFetch"
     ],
-    "output-scorer": [
+    "output-scoring": [
       "LSP",
       "Read",
       "Grep",

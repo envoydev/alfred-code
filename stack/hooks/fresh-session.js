@@ -59,6 +59,18 @@ function tierKeyOf(window) {
   return w >= 1000000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M' : w >= 300000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K'
     : w >= 200000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' : null;
 }
+// { <model id>: <tokens> }: each tier's trigger from `env` (unset or garbage: its DEFAULT, else DEFAULT_SEED; `0` skips it), held
+// at 90% of the window and inside 100k-1M; under 200K no row. ALFRED_CODE_AUTO_COMPACT is the caller's test.
+function compactWindowSeeds(models, env = {}) {
+  const num = (key) => { const n = parseInt(env && Object.hasOwn(env, key) ? env[key] : NaN, 10); return Number.isNaN(n) || n < 0 ? null : n; };
+  const dflt = num('ALFRED_CODE_CONTEXT_WINDOW_DEFAULT') ?? DEFAULT_SEED;
+  const out = {};
+  for (const [id, n] of Object.entries(models && typeof models === 'object' && !Array.isArray(models) ? models : {})) {
+    const at = tierKeyOf(n) && /^[a-z0-9][a-z0-9-]{0,99}$/.test(id) ? num(tierKeyOf(n)) ?? dflt : 0;
+    if (at > 0) out[id] = Math.max(100000, Math.min(1000000, at >= Number(n) ? Math.floor(Number(n) * 0.9) : at));
+  }
+  return out;
+}
 const FRESH_AT_1M = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', DEFAULT_AT);
 const FRESH_AT_300K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', DEFAULT_AT);
 const FRESH_AT_200K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', DEFAULT_AT);
@@ -293,7 +305,7 @@ function compactPointsFile(write = false) {
   let layout = null;
   try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
   if (layout) return write ? layout.statePath(root, 'sessions', 'compact-points.json') : layout.findState(root, 'sessions', 'compact-points.json');
-  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`, 'flow', 'compact-points.json'); // pre-2.8.0, no layout.js here
+  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'flow', 'compact-points.json'); // pre-2.8.0, no layout.js here
 }
 function readCompactPoints() {
   try {
@@ -1065,7 +1077,7 @@ function stopOfferCtx(p = payload) {
 }
 
 module.exports = {
-  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
+  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, compactWindowSeeds, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
   tableWindow, recordSessionModel, knownWindow, ctxThreshold, ctxThresholdWhy, triggerReason, triggerText, coldFloor, firstUsage, worthResuming, contextNow,
   RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,

@@ -37,14 +37,17 @@ test('every reader defaults to <data root>/docs - the installer, the layout modu
     const layout = require('../stack/hooks/layout.js');
     assert.strictEqual(copy.resolveDocsRoot(repo()), '.alfred/docs', 'no settings file - the default data root');
     const root = repo();
+    // The fixed root (3.11.0): a key names a folder only to the installer side, and only while that folder still holds
+    // the stack's data - the docs an update has not moved yet.
     fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.data' } }));
-    assert.strictEqual(copy.resolveDocsRoot(root, 'project'), '.data/docs', 'the data root the settings name');
+    assert.strictEqual(copy.resolveDocsRoot(root, 'project'), '.alfred/docs', 'a key naming a folder with nothing of the stack\'s in it');
+    fs.mkdirSync(path.join(root, '.data', 'docs'), { recursive: true });
+    assert.strictEqual(copy.resolveDocsRoot(root, 'project'), '.data/docs', 'an older install\'s folder, until an update moves it');
     assert.strictEqual(layout.docsRoot({}), '.alfred/docs');
-    assert.strictEqual(layout.docsRoot({ ALFRED_CODE_DATA_PATH: '.data' }), '.data/docs');
+    assert.strictEqual(layout.docsRoot({ ALFRED_CODE_DATA_PATH: '.data' }), '.alfred/docs', 'a hook reads no relative key');
     assert.strictEqual(layout.docsRoot({ ALFRED_CODE_DATA_PATH: '.data', ALFRED_CODE_DOCS_PATH: 'docs-ext' }), 'docs-ext', 'a leftover key is still read first for the 2.x line');
     const prefs = require('../stack/skills/capture-preferences/scripts/preferences.js');
-    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: '.data' } }));
-    assert.strictEqual(prefs.docsRoot(root), '.data/docs');
+    assert.strictEqual(prefs.docsRoot(root), '.alfred/docs');
     const rows = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'environment.json'), 'utf8')).env;
     assert.strictEqual(rows.find((r) => r.key === 'ALFRED_CODE_DOCS_PATH'), undefined, 'the catalog retires the key');
 });
@@ -83,7 +86,7 @@ test('every docs-root fallback in code is the data root\'s docs/, and the old ro
     }
     assert.ok(fallbacks.length >= 15, `the hooks' inline fallbacks are found (${fallbacks.length})`);
     // The one spelling: the data root's docs/ - a hook's own pinned dataRoot() (it ships with no module beside it), dataRoot(env) in layout.js.
-    const DATA_DOCS = /^`\$\{(?:envOf\((process\.env|source|env), 'DATA_PATH'\) \|\| (?:'\.alfred'|DEFAULT_DATA_ROOT)|dataRoot\((?:env)?\)|dataRel|root|data\.ok \? data\.value : DATA_ROOT_DEFAULT)\}\/docs`/;
+    const DATA_DOCS = /^(?:'\.alfred\/docs'|`\$\{(?:dataRoot\((?:env|projectRoot(?:, env)?)?\)|dataRel|root|require\('[./]+\/stack\/mcp\/data-root\.js'\)\.dataRootOf\(\{ projectDir: [^}]+ \}\)\.root)\}\/docs`)/;
     assert.deepStrictEqual(fallbacks.filter(([, rest]) => !DATA_DOCS.test(rest)).map(([at, rest]) => `${at} ${rest.trim()}`), [], 'a fallback that is not the data root\'s docs/');
     assert.deepStrictEqual(stray, [], 'the old root spelled as a value outside the LEGACY_DOCS_ROOT constant');
 });
@@ -234,29 +237,17 @@ test('ab-HO5: DATA_PATH=\'./\' reads the same in docsRootEnv and layout.dataRoot
     }
 });
 
-// E-batch minor (Task 22): DATA_PATH='.' put the hooks' docs and state at the project root while the installer refused the
-// value and used .alfred. The env reader now refuses what checkDataPath refuses, so every reader lands on one root.
-test('a DATA_PATH the installer refuses reads as .alfred in the env reader too', () =>
+// The fixed root (3.11.0): the env reader takes an absolute value alone - a harness's scratch (corpus-replay.js, the
+// hook suites). Every relative value reads as .alfred, the ones the installer's checkDataPath kept included.
+test('fixed root: the env reader keeps an absolute value and reads every relative one as .alfred', () =>
 {
     const layout = require('../stack/hooks/layout.js');
-    for (const v of ['.', './', '..', '.claude/x', '.git', 'a b', '\'./\'', 'x/../y', '$HOME/x', 'x:y', 'C:x', '/'])
-    {
-        assert.strictEqual(layout.checkDataPath(v).ok, false, `checkDataPath refuses ${v}`);
-        assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: v }), '.alfred', `the env reader refuses ${v}`);
-    }
-    for (const [v, want] of [['var/data', 'var/data'], ['./var/data/', 'var/data'], ['.alfred', '.alfred'], ['var//data', 'var/data'], ['  tools/.alfred ', 'tools/.alfred']])
-    {
-        assert.strictEqual(layout.checkDataPath(v).value, want, `checkDataPath keeps ${v}`);
-        assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: v }), want, `the env reader keeps ${v}`);
-    }
+    assert.strictEqual(layout.checkDataPath, undefined, 'layout.js holds no copy of the installer\'s check');
+    for (const v of ['.', './', '..', '.claude/x', '.git', 'a b', '\'./\'', 'x/../y', '$HOME/x', 'x:y', 'C:x', 'var/data', './var/data/', '.alfred', 'var//data', '  tools/.alfred '])
+        assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: v }), '.alfred', `the env reader ignores ${v}`);
     assert.strictEqual(layout.dataRoot({}), '.alfred', 'unset');
-    // An absolute root the installer refuses is still the hooks' to honour: a harness points every hook's writes at its
-    // scratch that way (corpus-replay.js, the hook suites), as the reader did before the relative check came in.
-    for (const [v, want] of [['/abs/x', '/abs/x'], ['/abs/x/', '/abs/x'], ['C:/x', 'C:/x'], ['C:\\x\\y', 'C:/x/y'], ['/a b/c', '/a b/c']])
-    {
-        assert.strictEqual(layout.checkDataPath(v).ok, false, `checkDataPath refuses ${v}`);
+    for (const [v, want] of [['/abs/x', '/abs/x'], ['/abs/x/', '/abs/x'], ['C:/x', 'C:/x'], ['C:\\x\\y', 'C:/x/y'], ['/a b/c', '/a b/c'], ['/', '.alfred']])
         assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: v }), want, `the env reader keeps the absolute ${v}`);
-    }
 });
 
 test('a hook under DATA_PATH=\'.\' writes its ledger under .alfred/statistics, never the project root', () =>
@@ -272,4 +263,38 @@ test('a hook under DATA_PATH=\'.\' writes its ledger under .alfred/statistics, n
     assert.strictEqual(res.status, 2, res.stderr);
     assert.ok(!fs.existsSync(path.join(root, 'statistics')), 'nothing lands in <project>/statistics');
     assert.ok(fs.existsSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'dot.jsonl')), 'the row lands where the installer put the data root');
+});
+
+// The fixed root (2026-11-11): a relative ALFRED_CODE_DATA_PATH names nothing - a hook reads .alfred whatever it holds.
+test('fixed root: a hook ignores a relative ALFRED_CODE_DATA_PATH in its env', () =>
+{
+    const layout = require('../stack/hooks/layout.js');
+    assert.strictEqual(layout.dataRoot({ ALFRED_CODE_DATA_PATH: 'var/data' }), '.alfred');
+    const root = repo();
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'source: x\n');
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DATA_PATH: 'var/data' };
+    for (const k of Object.keys(env)) if (/DOCS_PATH$/.test(k)) delete env[k];
+    const res = spawnSync(process.execPath, [path.join(REPO, 'stack', 'hooks', 'guard-catastrophic-rm.js')], {
+        input: JSON.stringify({ session_id: 'rel', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' }, cwd: root }),
+        env, cwd: root, encoding: 'utf8',
+    });
+    assert.strictEqual(res.status, 2, res.stderr);
+    assert.ok(fs.existsSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'rel.jsonl')), 'the row lands under .alfred');
+    assert.ok(!fs.existsSync(path.join(root, 'var')), 'nothing lands under the folder the key names');
+});
+
+// An absolute value is a harness's scratch (corpus-replay.js, the hook suites): the hooks' state and ledgers follow it,
+// while everything joined under a project root - the workspace record, .variables - stays in .alfred.
+test('fixed root: under an absolute key the state and ledgers follow it, the workspace record and .variables do not', () =>
+{
+    const layout = require('../stack/hooks/layout.js');
+    const root = repo();
+    const abs = path.join(TMP, 'scratch-abs');
+    const env = { ALFRED_CODE_DATA_PATH: abs, CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
+    assert.ok(layout.statePath(root, 'approvals', 'APPROVAL', env).startsWith(path.resolve(abs) + path.sep));
+    assert.ok(layout.statsPath(root, ['hook-blocks', 'x.jsonl'], env).startsWith(path.resolve(abs) + path.sep));
+    assert.strictEqual(layout.dataRootOf(root, { env }), '.alfred');
+    fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.alfred', '.variables'), 'ALFRED_CODE_HISTORY=9\n');
+    assert.strictEqual(layout.variablesOf(root, { env }).values.ALFRED_CODE_HISTORY, '9');
 });

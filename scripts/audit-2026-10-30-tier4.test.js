@@ -37,13 +37,13 @@ test('RU-09: all ten FIRST-action rules carry the compaction clause once, pinned
     assert.ok(cs.includes('Skip the load only when it is already in context this session'), 'the skip itself stays');
 });
 
-// RU-05's data-root half (1787106a) is HELD - A/B red (docs/tier4-rules-ab-2026-11-03-evidence.md): with the move line
-// gone from the always-on rule, a 'move .alfred to .ai-data' request named configure or update in 2 of 6 runs against 5 of
-// 6, and moved the folder by hand in 6 of 6 against 3 of 6. The line stays always-on until a new A/B says otherwise.
-test('RU-05 (held): the always-on docs-root rule keeps the data-root move line', () =>
+// RU-05's data-root half was HELD on an A/B (docs/tier4-rules-ab-2026-11-03-evidence.md) while the folder could move.
+// The fixed root (3.11.0) took the move out, so the line that named it is gone with it.
+test('RU-05: the always-on docs-root rule names .alfred and no move', () =>
 {
     const rule = read('stack', 'rules', 'alfred-docs-root.md');
-    assert.match(rule, /Moving it is `\/alfred-code:configure`'s data-root question; a hand edit to `ALFRED_CODE_DATA_PATH` moves the docs at the next `\/alfred-code:update`\./);
+    assert.match(rule, /always `<data root>\/docs`, where `<data root>` is `\.alfred`/);
+    assert.doesNotMatch(rule, /Moving it is|ALFRED_CODE_DATA_PATH/);
 });
 
 // RU-05 (round 2): the domain line keeps the rule, the capture domains by name and the ad-hoc homes; the paths a capture
@@ -150,7 +150,7 @@ test('RU-13: alfred-security keeps the secret invariants and points at the guard
     assert.ok(guard.includes('runs a copy-ready command in their own terminal'), 'the copy-ready route rides the denial');
     assert.ok(guard.includes('A command that needs them: node "${__filename}" --with-sensitive -- "<command line>"'), 'the Sensitive data: line names the run and its path');
     // `.alfred` as the default data root stays always-on in the docs-root rule
-    assert.match(read('stack', 'rules', 'alfred-docs-root.md'), /`ALFRED_CODE_DATA_PATH` \(default `\.alfred`\)/);
+    assert.match(read('stack', 'rules', 'alfred-docs-root.md'), /where `<data root>` is `\.alfred`/);
 });
 
 // RU-08 (dadc79f1) is HELD - A/B red (docs/tier4-rules-ab-2026-11-03-evidence.md): with the routing moved into

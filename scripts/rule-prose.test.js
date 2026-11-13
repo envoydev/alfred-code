@@ -516,7 +516,7 @@ test('SKC02: the git rule and the checkpoint mark the same option on an owed com
 // ------------------------------------------------------------------ audit 2026-10-14 RU03
 
 // RU03: the credentials section restated the guards' own block texts - the value ask with its receipt (guard-secret-value.js
-// askLine, on every denial) and the rotate ask's once-per-exposure switch (guard-stop-contract.js) - which arrive exactly when
+// askLine, on every denial; since swap 1 the host's own Read ask, askOrDeny, and no receipt) and the rotate ask's once-per-exposure switch (guard-stop-contract.js) - which arrive exactly when
 // they apply. The rule keeps every constraint; the Read-deny coverage line, which changes no model action, is a maintainer note.
 test('RU03: the credentials section keeps its constraints and leaves the ask, the receipt and the switch to the guards', () =>
 {
@@ -529,10 +529,10 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
         assert.ok(sec.includes(kept), `the constraint '${kept}' stays`);
     assert.ok(squash(rule('alfred-security')).includes('`guard-secret-value.js` covers those by content'), 'the coverage line is a maintainer note');
     const guard = read('stack/hooks/guard-secret-value.js');
-    assert.ok(guard.includes("'Presence only (Recommended)'") && guard.includes("'flow', 'SECRET-READ-ALLOW'"), 'the value ask and its receipt ride every denial');
+    assert.ok(guard.includes('in this transcript permanently') && !guard.includes('SECRET-READ-ALLOW'), 'the Read ask says what allowing costs, and no receipt is named (swap 1)');
     const stop = read('stack/hooks/guard-stop-contract.js');
     assert.ok(stop.includes('This ask comes once') && stop.includes('guard-stop-contract:rotate in ALFRED_CODE_HOOKS_OFF turns it off'), 'the rotate ask names its switch');
-    assert.ok(!homes(registry()['secret-read-allow-receipt']).some((h) => h.file === 'stack/rules/alfred-security.md'), 'the registry drops the rule site');
+    assert.strictEqual(registry()['secret-read-allow-receipt'], undefined, 'the registry entry went with the receipt');
 });
 
 // 2026-11-10 (the user's report on 2.9.0, task-solve): a stop's ask met with a question came back with the same ask
@@ -540,4 +540,25 @@ test('RU03: the credentials section keeps its constraints and leaves the ask, th
 test('alfred-interaction: a question at an open ask is answered and the turn ends', () =>
 {
     assert.ok(injected('alfred-interaction').includes(squash('When the user meets an open ask with a question - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.')));
+});
+
+// Workspace stage 4c: the canary is native, so check 33 counts it, and it quotes the loader's own block lines.
+test('surface: check 33 counts the canary\'s text', () =>
+{
+    const { alwaysOnSurface } = require('./always-on-surface.js');
+    const without = alwaysOnSurface({ canaryFile: path.join(ROOT, 'no-such-canary.md') });
+    const withIt = alwaysOnSurface();
+    assert.strictEqual(withIt.rules - without.rules, injectedRuleText(read('stack/alfred-rules.canary.md')).length);
+    assert.strictEqual(withIt.total - without.total, withIt.rules - without.rules);
+});
+
+test('canary: the text names both block lines the loader prints', () =>
+{
+    const text = squash(read('stack/alfred-rules.canary.md'));
+    const loader = read('stack/hooks/rules-session.js');
+    for (const phrase of ['Project rules, part', 'End of project rules, part'])
+    {
+        assert.ok(loader.includes(phrase), `the loader prints '${phrase}'`);
+        assert.ok(text.includes(phrase), `the canary names '${phrase}'`);
+    }
 });

@@ -24,6 +24,17 @@ const NOW = { 'agent-capabilities': 'alfred-agent-awareness', 'related-context':
 const body = (n) => `---\ndescription: generated ${n}\n---\n\n${n} body - kept byte for byte\n`;
 
 const rulesOf = (repo) => path.join(repo, '.claude', 'rules');
+// Workspace stage 4c: a fresh install keeps its rules in the store; an install from before it held them in .claude/rules,
+// so a case that builds an older install first moves them back there. A run's result is read from both folders.
+const storeOf = (repo) => path.join(repo, '.alfred', 'stack', 'rules');
+function oldShape(repo)
+{
+    fs.mkdirSync(rulesOf(repo), { recursive: true });
+    for (const f of fs.existsSync(storeOf(repo)) ? fs.readdirSync(storeOf(repo)) : []) fs.renameSync(path.join(storeOf(repo), f), path.join(rulesOf(repo), f));
+    return rulesOf(repo);
+}
+const ruleFiles = (repo) => [...new Set([storeOf(repo), rulesOf(repo)].flatMap((d) => (fs.existsSync(d) ? fs.readdirSync(d) : [])))].sort();
+const ruleFile = (repo, f) => (fs.existsSync(path.join(storeOf(repo), f)) ? path.join(storeOf(repo), f) : path.join(rulesOf(repo), f));
 const stampOf = (repo) => path.join(repo, '.claude', 'alfred-code.stamp');
 const stampRules = (repo) => Object.fromEntries((((/^library-rules: (.*)$/m.exec(fs.readFileSync(stampOf(repo), 'utf8')) || [])[1]) || '')
     .split(',').filter((s) => s.includes('=')).map((s) => s.split('=')));
@@ -31,9 +42,8 @@ const stampRules = (repo) => Object.fromEntries((((/^library-rules: (.*)$/m.exec
 // What a run left: the rule files with their bytes, and the stamp's library-rules names.
 function snap(repo)
 {
-    const dir = rulesOf(repo);
     const files = {};
-    for (const f of fs.readdirSync(dir).sort()) files[f] = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const f of ruleFiles(repo)) files[f] = fs.readFileSync(ruleFile(repo, f), 'utf8');
     return { files, stamp: stampRules(repo) };
 }
 
@@ -42,7 +52,7 @@ function snap(repo)
 // and two files the stack never wrote.
 function makeOld(repo, { edit = [] } = {})
 {
-    const dir = rulesOf(repo);
+    const dir = oldShape(repo);
     const text = fs.readFileSync(stampOf(repo), 'utf8');
     const rows = Object.entries(stampRules(repo));
     const moved = rows.map(([name, hash]) =>
@@ -137,6 +147,7 @@ test('a retired rule name the stamp does not record is the project\'s own: kept 
         each: (repo, i) =>
         {
             if (i !== 0) return;
+            fs.mkdirSync(rulesOf(repo), { recursive: true });
             for (const n of ['web-conventions', 'aspnet-conventions', 'house-baseline']) fs.writeFileSync(path.join(rulesOf(repo), `${n}.md`), `my own ${n}\n`);
         },
     });
@@ -181,6 +192,7 @@ const { shippedText } = require('./install/retired-rules.js');
 
 function make220(repo, { edit = [], crlf = [], unrecord = [] } = {})
 {
+    oldShape(repo);
     for (const [name, text] of Object.entries(SHIPPED_OLD))
     {
         const n = name.replace(/^baseline-/, '');
@@ -251,7 +263,7 @@ test('a 2.8.0-shaped stamp records alfred-git: the git copy and a leftover shipp
         each: (repo, i) =>
         {
             if (i !== 0) return;
-            const dir = rulesOf(repo);
+            const dir = oldShape(repo);
             fs.renameSync(path.join(dir, 'alfred-preferences.md'), path.join(dir, 'alfred-git.md'));
             fs.writeFileSync(path.join(dir, 'baseline-git.md'), SHIPPED_OLD['baseline-git']);
             const rows = Object.entries(stampRules(repo)).filter(([name]) => name !== 'alfred-preferences');
@@ -374,10 +386,12 @@ test('an unreadable settings file on the migrating run keeps the root the OLD do
             makeOld(repo);
             const rule = path.join(rulesOf(repo), 'baseline-docs-root.md');
             fs.writeFileSync(rule, fs.readFileSync(rule, 'utf8').replace(/This install's root: `[^`]*`/, "This install's root: `.claude/docs`"));
+            // Mode v2 stage 2: the install writes settings.local.json, so settings.json (the file the docs root is read
+            // from at project scope) may not exist yet - it is made unreadable either way.
             const f = path.join(repo, '.claude', 'settings.json');
-            fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
+            fs.writeFileSync(f, (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '{}').replace(/\}\s*$/, ',}'));
         },
-        inspect: (repo) => (/This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(rulesOf(repo), 'alfred-docs-root.md'), 'utf8')) || [])[1],
+        inspect: (repo) => (/This install's root: `([^`]*)`/.exec(fs.readFileSync(ruleFile(repo, 'alfred-docs-root.md'), 'utf8')) || [])[1],
     });
     assert.strictEqual(result, '.claude/docs');
 });
@@ -394,7 +408,7 @@ test('a run that dies after the old rules are pruned would leave none: the old c
             fs.rmSync(path.join(repo, '.claude', 'hooks'), { recursive: true, force: true });
             fs.writeFileSync(path.join(repo, '.claude', 'hooks'), 'not a folder\n');
         },
-        inspect: (repo) => fs.readdirSync(rulesOf(repo)).filter((f) => /^(baseline|alfred)-(docs-root|git|interaction|memory|navigation|quality-gates|security)\.md$/.test(f)),
+        inspect: (repo) => ruleFiles(repo).filter((f) => /^(baseline|alfred)-(docs-root|git|interaction|memory|navigation|quality-gates|security)\.md$/.test(f)),
     });
     assert.notStrictEqual(code, 0, 'the injected failure did not stop the run');
     assert.ok(result.length >= SHIPPED.length, `no always-on rule is left after a failed run: ${result}`);
@@ -444,6 +458,7 @@ test('update over a 2.3.x install: each alfred-project-<x>.md moves to its new n
         each: (repo, i) =>
         {
             if (i !== 0) return;
+            fs.mkdirSync(rulesOf(repo), { recursive: true });
             for (const g of GENERATED) fs.writeFileSync(path.join(rulesOf(repo), `alfred-project-${g}.md`), body(g));
             fs.writeFileSync(path.join(rulesOf(repo), 'alfred-project-notes.md'), 'my own project rule\n');
         },
@@ -464,6 +479,7 @@ test('a project holding both legacy spellings: the 2.3.x file moves, the older 2
         each: (repo, i) =>
         {
             if (i !== 0) return;
+            fs.mkdirSync(rulesOf(repo), { recursive: true });
             const old = path.join(rulesOf(repo), 'baseline-project-run-book.md');
             const mid = path.join(rulesOf(repo), 'alfred-project-run-book.md');
             fs.writeFileSync(old, body('run-book'));

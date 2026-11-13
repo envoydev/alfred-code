@@ -47,12 +47,12 @@ function writePin(file, key, value)
 
 // Every locally-installed pin-bearing target: the manifest's agents, and each selected skill's
 // SKILL.md. A file the project does not have is not a target.
-function pinFiles({ projectRoot, skillsDir, agents = [], skills = [] })
+function pinFiles({ projectRoot, skillsDir, agentsDir = path.join(projectRoot, '.claude', 'agents'), agents = [], skills = [] })
 {
     const out = [];
     for (const entry of agents)
     {
-        const file = path.join(projectRoot, '.claude', 'agents', String(entry).split('::')[0]);
+        const file = path.join(agentsDir, String(entry).split('::')[0]);
         if (fs.existsSync(file)) out.push(file);
     }
     for (const entry of skills)

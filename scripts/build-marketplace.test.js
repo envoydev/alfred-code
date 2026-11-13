@@ -381,7 +381,9 @@ test('the README trust surface counts what the core entry carries', () =>
     const m = /The package itself is (\S+) command bodies, (\S+) skills? \((?:the `\/alfred-code` router; )?(?:only ((?:`[^`]+`(?:, | and )?)+) ships? a script|none ships a script)\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
     assert.ok(m, `docs/install-footprint.md names what the core carries: ${row}`);
     m[3] = [...String(m[3] || '').matchAll(/`([^`]+)`/g)].map((x) => x[1]).join(); // the skills that ship a script, as a list
-    assert.deepStrictEqual(m.slice(1), [word(core.commands.length), word(core.skills.length), scripted.join(), word(core.agents.length),
+    assert.deepStrictEqual(core.commands, ['./setup-plugin/commands/'], 'the core entry lists the commands folder');
+    const commandCount = require('./lint-skills.js').commandFiles(path.join(__dirname, '..', 'setup-plugin', 'commands')).length;
+    assert.deepStrictEqual(m.slice(1), [word(commandCount), word(core.skills.length), scripted.join(), word(core.agents.length),
         word(references), word(files.size), word(own), word(files.size - own)]);
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
     if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');

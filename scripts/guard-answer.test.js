@@ -309,26 +309,25 @@ test('a seat\'s own compaction start carries no budget; the budget names the per
 });
 
 // ---------------------------------------------------------------------------------------------
-// the scorer (mode-output-scorer): --mode-output-scorer-on|off, the on line, the stacked line, the ON line, compaction
+// the scoring (mode-output-scoring): the scoring mode command, the on line, the stacked line, the ON line, compaction
 // ---------------------------------------------------------------------------------------------
-const { scorerFile } = require('../stack/hooks/hook-prelude.js');
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
-const SKILL_COPY = path.join(ROOT, '.claude', 'skills', 'mode-output-scorer');
-const seedSkillCopy = () => { fs.mkdirSync(SKILL_COPY, { recursive: true }); fs.writeFileSync(path.join(SKILL_COPY, 'SKILL.md'), '---\nname: mode-output-scorer\n---\n'); };
+const SKILL_COPY = path.join(ROOT, '.claude', 'skills', 'mode-output-scoring');
+const seedSkillCopy = () => { fs.mkdirSync(SKILL_COPY, { recursive: true }); fs.writeFileSync(path.join(SKILL_COPY, 'SKILL.md'), '---\nname: mode-output-scoring\n---\n'); };
 seedSkillCopy();
-const SCORER_CFG = { CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'cfg-')) };   // no account copy or override reaches in
-const ON = { ALFRED_CODE_SCORER: '1' };
+const SCORING_CFG = { CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'cfg-')) };   // no account copy or override reaches in
+const ON = { ALFRED_CODE_SCORING: '1' };
 // B1 (2026-11-03): an unset switch reads on and unset outputs read plan files only, so a case about the switch off sets 0
-const OFF = { ALFRED_CODE_SCORER: '0' };
-const ALL = { ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause,inline-plan' };
-const ON_LINE = ' - load mode-output-scorer before releasing a designer plan file, root-cause verdict or inline plan for work started now; --mode-output-scorer-off after a command stops it';
-const PLAN_LINE = ' - load mode-output-scorer before releasing a designer plan file; --mode-output-scorer-off after a command stops it';
+const OFF = { ALFRED_CODE_SCORING: '0' };
+const ALL = { ALFRED_CODE_SCORING_OUTPUTS: 'designer-plan,root-cause,inline-plan' };
+const ON_LINE = ' - load mode-output-scoring before releasing a designer plan file, root-cause verdict or inline plan for work started now; /alfred-code:mode:scoring off stops it';
+const PLAN_LINE = ' - load mode-output-scoring before releasing a designer plan file; /alfred-code:mode:scoring off stops it';
 const ctxOf = (result) => JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
-const msgOf = (sid, text, env = {}, extra = {}) => JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid, ...extra }, { ...SCORER_CFG, ...env }).stdout).systemMessage;
-const prompt = (sid, text, env = {}) => ctxOf(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORER_CFG, ...env }));
-const said = (payload, env = {}) => run(payload, { ...SCORER_CFG, ...env }).stdout;
-const stateOf = (sid) => { try { return fs.readFileSync(scorerFile(ROOT, sid), 'utf8'); } catch { return null; } };
-const scorerRows = (kind) => {
+const msgOf = (sid, text, env = {}, extra = {}) => JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid, ...extra }, { ...SCORING_CFG, ...env }).stdout).systemMessage;
+const prompt = (sid, text, env = {}) => ctxOf(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORING_CFG, ...env }));
+const said = (payload, env = {}) => run(payload, { ...SCORING_CFG, ...env }).stdout;
+const stateOf = () => { try { return fs.readFileSync(settingsLocal, 'utf8'); } catch { return null; } };   // the mode file (v2): null while none was written
+const scoringRows = (kind) => {
     const dir = path.join(ROOT, '.alfred', 'statistics', 'hook-blocks');
     let names = [];
     try { names = fs.readdirSync(dir); } catch { return []; }
@@ -337,161 +336,207 @@ const scorerRows = (kind) => {
 const settingsLocal = path.join(ROOT, '.claude', 'settings.local.json');
 const writeOverride = (name, value) => fs.writeFileSync(settingsLocal, JSON.stringify({ skillOverrides: { [name]: value } }));
 const clearOverride = () => fs.rmSync(settingsLocal, { force: true });
-// the AUTO stamp a typed --mode-auto-run-on writes, naming its session (auto-mode.test.js autoStamp)
+// the AUTO stamp a typed `/alfred-code:mode:auto-run on` writes, naming its session (auto-mode.test.js autoStamp)
+const SCORING = '/alfred-code:mode:scoring';
+const AUTO_CMD = '/alfred-code:mode:auto-run';
 const APPROVAL = path.join(ROOT, '.alfred', 'state', 'approvals', 'APPROVAL');
-const autoStamp = (sid) => { fs.mkdirSync(path.dirname(APPROVAL), { recursive: true }); fs.writeFileSync(APPROVAL, `AUTO - "/loop-code-quality --mode-auto-run-on"\nsession: ${sid}\nskill: loop-code-quality\n`); };
+const autoStamp = (sid) => { fs.mkdirSync(path.dirname(APPROVAL), { recursive: true }); fs.writeFileSync(APPROVAL, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\n`); };
+// mode commands v2 (stage 3): a scoring command writes the project's mode file, which every later session reads and which
+// outranks the launch env - so each test starts with none, and with the skill copy in place
+const rawMode = () => { try { return fs.readFileSync(settingsLocal, 'utf8'); } catch { return null; } };
+const modeOf = () => JSON.parse(rawMode());
+const putRawMode = (_root, text) => { fs.mkdirSync(path.dirname(settingsLocal), { recursive: true }); fs.writeFileSync(settingsLocal, text); };
+const putMode = (root, obj) => putRawMode(root, JSON.stringify(obj));
+const clearMode = () => fs.rmSync(settingsLocal, { force: true });
+const pick = (o, keys) => Object.fromEntries(keys.filter((k) => Object.hasOwn(o, k)).map((k) => [k, o[k]]));
+const switchFileOf = (sid) => path.join(ROOT, '.alfred', 'state', 'sessions', `SCORING-${sid}`);
+const removeSkillCopy = () => fs.rmSync(SKILL_COPY, { recursive: true, force: true });
+const MODEL = 'claude-opus-5-5';
+const transcriptFor = (model) => { const t = path.join(TMP, `model-${model}.jsonl`);
+    fs.writeFileSync(t, `${JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { role: 'assistant', model, content: [{ type: 'text', text: 'ok' }] } })}\n`); return t; };
+const outOf = (sid, text, env = {}, extra = {}) => JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid, ...extra }, { ...SCORING_CFG, ...env }).stdout);
+const lineOf = (out) => ((out.hookSpecificOutput && out.hookSpecificOutput.additionalContext) || '').split('\n').find((l) => l.startsWith('[mode]')) || '';
+test.afterEach(() => { clearMode(); seedSkillCopy(); });
 
-test('scorer: env on injects the on line with the level, the run cap and every listed output (AC2)', () => {
-    assert.ok(prompt('a1', 'plan it', { ...ON, ...ALL }).endsWith(` scorer: on (level 80, rounds 3, env)${ON_LINE}`));
+test('scoring: env on injects the on line with the level, the run cap and every listed output (AC2)', () => {
+    assert.ok(prompt('a1', 'plan it', { ...ON, ...ALL }).endsWith(` scoring: on (level 80, rounds 3, env)${ON_LINE}`));
 });
-test('scorer: all four keys unset read the catalog defaults - on, level 80, rounds 3, plan files only (B1)', () => {
-    assert.ok(prompt('a1b', 'plan it').endsWith(` scorer: on (level 80, rounds 3, env)${PLAN_LINE}`));
-    assert.ok(prompt('a1b', 'plan it', { ALFRED_CODE_SCORER_OUTPUTS: '' }).endsWith(` scorer: on (level 80, rounds 3, env)${PLAN_LINE}`), 'set empty: unset, plan files only');
-    assert.strictEqual(msgOf('a1b', 'plan it'), 'Modes ON: output-scorer (level 80)');
-    assert.strictEqual(stateOf('a1b'), null, 'the default writes no session file');
+test('scoring: all four keys unset read the catalog defaults - on, level 80, rounds 3, plan files only (B1)', () => {
+    assert.ok(prompt('a1b', 'plan it').endsWith(` scoring: on (level 80, rounds 3, env)${PLAN_LINE}`));
+    assert.ok(prompt('a1b', 'plan it', { ALFRED_CODE_SCORING_OUTPUTS: '' }).endsWith(` scoring: on (level 80, rounds 3, env)${PLAN_LINE}`), 'set empty: unset, plan files only');
+    assert.strictEqual(msgOf('a1b', 'plan it'), 'Modes ON: scoring (level 80)');
+    assert.strictEqual(stateOf(), null, 'the default writes no mode file');
 });
-test('scorer: --mode-output-scorer-on in the leading run holds for later prompts; -off writes off (AC7)', () => {
-    assert.match(prompt('a2', '/task-solve --mode-output-scorer-on go', OFF), /scorer: on \(level 80, rounds 3, flag\)/);
-    assert.match(stateOf('a2'), /^on\nat: /);
-    assert.match(prompt('a2', 'next', OFF), /scorer: on \(level 80, rounds 3, flag\)/);
-    assert.doesNotMatch(prompt('a3', 'next', OFF), /scorer:/);
-    assert.match(prompt('a2', '/loop-code-quality --mode-output-scorer-off'), / scorer: off for this session$/);
-    assert.match(stateOf('a2'), /^off\nat: /);
-    assert.doesNotMatch(prompt('a2', 'next'), /scorer:/, 'the session file off beats the unset default');
+test('mode command: scoring on writes the mode file and says the [mode] line; off writes 0 (AC7)', () => {
+    const on = JSON.parse(said({ hook_event_name: 'UserPromptSubmit', prompt: `${SCORING} on`, session_id: 'a2' }, OFF));
+    const ctx = on.hookSpecificOutput.additionalContext;
+    assert.ok(ctx.startsWith('[mode] scoring is ON (level 80)\n'), ctx.slice(0, 80));
+    assert.strictEqual(ctx.split('\n').filter((l) => l.startsWith('[mode]')).length, 1, 'one [mode] line, a line of its own');
+    assert.match(ctx, /scoring: on \(level 80, rounds 3, env\)/);
+    assert.strictEqual(on.systemMessage, 'Modes ON: scoring (level 80)');
+    assert.strictEqual(modeOf().env.ALFRED_CODE_SCORING, '1');
+    assert.match(prompt('a2', 'next', OFF), /scoring: on \(level 80, rounds 3, env\)/, 'the file outranks the launch env');
+    assert.doesNotMatch(prompt('a2', 'next', OFF), /\[mode\]/, 'only the command\'s own prompt carries the line');
+    assert.match(prompt('a3', 'next', OFF), /scoring: on/, 'every session reads the mode file');
+    const off = prompt('a2', `${SCORING} OFF`);
+    assert.ok(off.startsWith('[mode] scoring is OFF (level 80 kept)\n'), off.slice(0, 80));
+    assert.match(off, / scoring: off$/);
+    assert.strictEqual(modeOf().env.ALFRED_CODE_SCORING, '0');
+    assert.doesNotMatch(prompt('a2', 'next'), /scoring:/, 'the file\'s 0 beats the unset default');
+    assert.strictEqual(msgOf('a2', `${SCORING} off`), undefined);
 });
-test('scorer: --mode-output-scorer-off beats env on, and says so once (AC4)', () => {
-    assert.match(prompt('a4', '/task-solve --mode-output-scorer-off x', ON), / scorer: off for this session$/);
-    assert.doesNotMatch(prompt('a4', 'next', ON), /scorer:/);
+test('mode command: scoring off beats env on, and says so once (AC4)', () => {
+    assert.match(prompt('a4', `${SCORING} off`, ON), / scoring: off$/);
+    assert.doesNotMatch(prompt('a4', 'next', ON), /scoring:/);
 });
-test('scorer: a flag outside the leading run, or with no family command, switches nothing (AC7)', () => {
-    for (const text of ['go --mode-output-scorer-on', '/task-solve fix x --mode-output-scorer-on', '/review-code --mode-output-scorer-on x',
-        'what does `/task-solve --mode-output-scorer-on` do', '> /task-solve --mode-output-scorer-on x', '--score-on', '/task-solve --score-on x'])
-        assert.doesNotMatch(prompt('a5', text, OFF), /scorer: on/, text);
-    assert.strictEqual(stateOf('a5'), null);
+test('mode command: a bare scoring command reports and writes nothing; anything but on or off switches nothing', () => {
+    assert.ok(prompt('a5', SCORING, ON).startsWith('[mode] scoring is ON (level 80)\n'));
+    assert.ok(prompt('a5', SCORING, OFF).startsWith('[mode] scoring is OFF\n'));
+    for (const text of [`${SCORING} yes`, `${SCORING} on now`, `${SCORING} on off`, `${SCORING} /task-solve x`, `go ${SCORING} on`, `what does \`${SCORING} on\` do`,
+        `${AUTO_CMD} on`, '/alfred-code:mode:auto-compact on', '/alfred-code:mode:scoring-x on'])
+        assert.doesNotMatch(prompt('a5', text, OFF), /scoring: on|\[mode\]/, text);
+    assert.strictEqual(stateOf(), null);
 });
-test('scorer: a flag-only /mode-output-scorer line is no stack (AC7)', () => {
-    assert.match(prompt('a5b', '/mode-output-scorer --mode-output-scorer-on'), /scorer: on \(level 80, rounds 3, flag\)/);
-    assert.match(stateOf('a5b'), /^on\n/);
-    assert.doesNotMatch(prompt('a5b', '/mode-output-scorer --mode-output-scorer-on'), /scorer: stacked/);
-    assert.doesNotMatch(prompt('a5b', '/mode-output-scorer --mode-output-scorer-off'), /scorer: stacked/);
-    assert.match(stateOf('a5b'), /^off\n/);
-    assert.match(prompt('a5b', '/mode-output-scorer --mode-output-scorer-on explain x'), /scorer: stacked for this request/);
+test('mode command: scoring where the scoring skill cannot be used writes nothing and says why', () => {
+    fs.rmSync(SKILL_COPY, { recursive: true });
+    try {
+        for (const word of ['on', 'off', ''])
+            assert.ok(prompt('a7', `${SCORING} ${word}`.trim(), ON).startsWith('[mode] scoring is not available here: the scoring skill is not installed in this project\n'), word);
+    } finally { seedSkillCopy(); }
+    writeOverride('mode-output-scoring', 'off');
+    try { assert.ok(prompt('a7', `${SCORING} on`, ON).startsWith('[mode] scoring is not available here: the scoring skill is switched off in this project\n')); }
+    finally { clearOverride(); }
+    assert.ok(prompt('a7', `${SCORING} on`, { ...ON, ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scoring' }).startsWith('[mode] scoring is not available here: a scoring hook is switched off\n'));
+    assert.strictEqual(stateOf(), null, 'no mode written');
 });
-test('scorer: both flags in one message - off wins', () => {
-    assert.match(prompt('a6', '/task-solve --mode-output-scorer-on --mode-output-scorer-off x', ON), /off for this session/);
-    assert.match(stateOf('a6'), /^off\n/);
+test('scoring: a mode command line is no stack; a stacked request still is (AC7)', () => {
+    assert.doesNotMatch(prompt('a5b', `${SCORING} on`), /scoring: stacked/);
+    assert.doesNotMatch(prompt('a5b', '/mode-output-scoring --mode-x'), /scoring: stacked/, 'mode-like tokens alone are no request');
+    assert.match(prompt('a5b', '/mode-output-scoring explain x'), /scoring: stacked for this request/);
 });
-test('scorer: the level and the run cap read their defaults for bad values and as given in range (AC6, AC23)', () => {
+test('scoring: the level and the run cap read their defaults for bad values and as given in range (AC6, AC23)', () => {
     for (const [v, want] of [['59', 80], ['101', 80], ['abc', 80], ['', 80], ['60', 60], ['100', 100]])
-        assert.match(prompt('a7', 'x', { ...ON, ALFRED_CODE_SCORER_LEVEL: v }), new RegExp(`level ${want}, rounds 3, env`), `level ${v}`);
+        assert.match(prompt('a7', 'x', { ...ON, ALFRED_CODE_SCORING_LEVEL: v }), new RegExp(`level ${want}, rounds 3, env`), `level ${v}`);
     for (const [v, want] of [['0', 3], ['11', 3], ['abc', 3], ['', 3], ['1', 1], ['10', 10]])
-        assert.match(prompt('a7', 'x', { ...ON, ALFRED_CODE_SCORER_ROUNDS: v }), new RegExp(`level 80, rounds ${want}, env`), `rounds ${v}`);
+        assert.match(prompt('a7', 'x', { ...ON, ALFRED_CODE_SCORING_ROUNDS: v }), new RegExp(`level 80, rounds ${want}, env`), `rounds ${v}`);
 });
-test('scorer: the outputs list narrows the phrases; a bad name is ignored with one row per session (AC24, R25)', () => {
-    assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORER_OUTPUTS: 'designer-plan,root-cause' }), /releasing a designer plan file or root-cause verdict;/);
-    assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORER_OUTPUTS: ' Root-Cause ' }), /releasing a root-cause verdict;/);
+test('scoring: the outputs list narrows the phrases; a bad name is ignored with one row per session (AC24, R25)', () => {
+    assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORING_OUTPUTS: 'designer-plan,root-cause' }), /releasing a designer plan file or root-cause verdict;/);
+    assert.match(prompt('a8', 'x', { ...ON, ALFRED_CODE_SCORING_OUTPUTS: ' Root-Cause ' }), /releasing a root-cause verdict;/);
     for (const bad of ['topic-explainer', 'foo']) {
-        const env = { ...ON, ALFRED_CODE_SCORER_OUTPUTS: bad };
+        const env = { ...ON, ALFRED_CODE_SCORING_OUTPUTS: bad };
         assert.ok(prompt(`a9${bad}`, 'x', env).endsWith(PLAN_LINE), `${bad}: no valid name reads the default, plan files only`);
         prompt(`a9${bad}`, 'y', env);
-        assert.strictEqual(scorerRows('scorer-outputs-ignored').filter((r) => r.detail.name === bad).length, 1, bad);
+        assert.strictEqual(scoringRows('scoring-outputs-ignored').filter((r) => r.detail.name === bad).length, 1, bad);
     }
 });
-test('scorer: the auto-run word while the session holds a live AUTO stamp, and the longest line stays under 230 chars', () => {
+test('scoring: the auto-run word while the session holds a live AUTO stamp, and the longest line stays under 230 chars', () => {
     autoStamp('b5');
-    const ctx = prompt('b5', '/task-solve --mode-output-scorer-on x', { ALFRED_CODE_SCORER_LEVEL: '100', ALFRED_CODE_SCORER_ROUNDS: '10' });
+    const ctx = prompt('b5', `${SCORING} on`, { ALFRED_CODE_SCORING_LEVEL: '100', ALFRED_CODE_SCORING_ROUNDS: '10' });
     fs.rmSync(APPROVAL, { force: true });
-    const line = ctx.slice(ctx.indexOf('scorer: on'), ctx.indexOf(' auto-run: on'));
-    assert.match(line, /^scorer: on \(level 100, rounds 10, flag, auto-run\) - /);
+    const line = ctx.slice(ctx.indexOf('scoring: on'), ctx.indexOf(' auto-run: on'));
+    assert.match(line, /^scoring: on \(level 100, rounds 10, env, auto-run\) - /);
     assert.ok(line.length <= 230, `${line.length}`);
 });
-test('scorer: a typed stack with the switch off injects the stacked line; the name in code or a quote does not (AC25)', () => {
-    const STACKED = 'scorer: stacked for this request (level 80, rounds 3) - grade this request\'s output with mode-output-scorer before releasing it';
-    for (const t of ['/task-version-upgrade /mode-output-scorer upgrade to .NET 10', 'using mode-output-scorer, explain closures'])
+test('scoring: a typed stack with the switch off injects the stacked line; the name in code or a quote does not (AC25)', () => {
+    const STACKED = 'scoring: stacked for this request (level 80, rounds 3) - grade this request\'s output with mode-output-scoring before releasing it';
+    for (const t of ['/task-version-upgrade /mode-output-scoring upgrade to .NET 10', 'using mode-output-scoring, explain closures'])
         assert.ok(prompt('c1', t, OFF).endsWith(` ${STACKED}`), t);
-    for (const t of ['what does `/mode-output-scorer` do', '> /mode-output-scorer x'])
-        assert.doesNotMatch(prompt('c1', t, OFF), /scorer:/, t);
-    assert.strictEqual(stateOf('c1'), null, 'a stack writes no state file');
+    for (const t of ['what does `/mode-output-scoring` do', '> /mode-output-scoring x'])
+        assert.doesNotMatch(prompt('c1', t, OFF), /scoring:/, t);
+    assert.strictEqual(stateOf(), null, 'a stack writes no mode');
 });
-test('scorer: the bare name in a question is talk - only the slash form or a usage word stacks it (final review 4)', () => {
-    assert.doesNotMatch(prompt('c2', 'why did mode-output-scorer not run?'), /scorer: stacked for this request/);
-    assert.match(prompt('c2b', 'explain closures with mode-output-scorer'), /scorer: stacked for this request/);
+test('scoring: the bare name in a question is talk - only the slash form or a usage word stacks it (final review 4)', () => {
+    assert.doesNotMatch(prompt('c2', 'why did mode-output-scoring not run?'), /scoring: stacked for this request/);
+    assert.match(prompt('c2b', 'explain closures with mode-output-scoring'), /scoring: stacked for this request/);
 });
-test('scorer: --mode-output-scorer-on and a stack in one message carry both lines, on first', () => {
-    const ctx = prompt('c3', '/task-solve /mode-output-scorer --mode-output-scorer-on explain x');
-    assert.ok(ctx.indexOf('scorer: on (') >= 0 && ctx.indexOf('scorer: on (') < ctx.indexOf('scorer: stacked'), ctx);
+test('scoring: on and a stack in one message carry both lines, on first', () => {
+    const ctx = prompt('c3', '/task-solve /mode-output-scoring explain x');
+    assert.ok(ctx.indexOf('scoring: on (') >= 0 && ctx.indexOf('scoring: on (') < ctx.indexOf('scoring: stacked'), ctx);
 });
-test('scorer: user-invocable-only - no on line with the switch on, a stack still gets its line (AC19)', () => {
-    writeOverride('mode-output-scorer', 'user-invocable-only');
-    assert.doesNotMatch(prompt('c4', 'x', ON), /scorer: on/);
-    assert.match(prompt('c4', '/mode-output-scorer explain x', ON), /scorer: stacked/);
+test('scoring: user-invocable-only - no on line with the switch on, a stack still gets its line (AC19)', () => {
+    writeOverride('mode-output-scoring', 'user-invocable-only');
+    assert.doesNotMatch(prompt('c4', 'x', ON), /scoring: on/);
+    assert.match(prompt('c4', '/mode-output-scoring explain x', ON), /scoring: stacked/);
     clearOverride();
 });
-test('scorer: no skill copy, or skillOverrides off - no line, a stack included (AC19)', () => {
-    writeOverride('mode-output-scorer', 'off');
-    assert.doesNotMatch(prompt('c5', '/mode-output-scorer x', ON), /scorer:/);
+test('scoring: no skill copy, or skillOverrides off - no line, a stack included (AC19)', () => {
+    writeOverride('mode-output-scoring', 'off');
+    assert.doesNotMatch(prompt('c5', '/mode-output-scoring x', ON), /scoring:/);
     clearOverride(); fs.rmSync(SKILL_COPY, { recursive: true });
-    assert.doesNotMatch(prompt('c5', '/mode-output-scorer x', ON), /scorer:/);
+    assert.doesNotMatch(prompt('c5', '/mode-output-scoring x', ON), /scoring:/);
     seedSkillCopy();
 });
-test('scorer: guard-answer, guard-stop-contract, or either scorer part off - no line, a stack included (AC13, AC20)', () => {
-    for (const off of ['guard-answer', 'guard-answer:scorer', 'guard-stop-contract', 'guard-stop-contract:scorer'])
-        assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '/mode-output-scorer x', session_id: 'c6' }, { ...ON, ALFRED_CODE_HOOKS_OFF: off }).includes('scorer:'), off);
+test('scoring: guard-answer, guard-stop-contract, or either scoring part off - no line, a stack included (AC13, AC20)', () => {
+    for (const off of ['guard-answer', 'guard-answer:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
+        assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '/mode-output-scoring x', session_id: 'c6' }, { ...ON, ALFRED_CODE_HOOKS_OFF: off }).includes('scoring:'), off);
 });
-test('scorer: a payload with agent_id, a harness prompt, and the switch at 0 - no line, no file (AC1)', () => {
-    assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '/task-solve --mode-output-scorer-on x', session_id: 'd1', agent_id: 'g1' }).includes('scorer:'));
-    assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>done</task-notification> /task-solve --mode-output-scorer-on x', session_id: 'd1' }).includes('scorer:'));
-    assert.doesNotMatch(prompt('d1', 'plain', OFF), /scorer:/);
+test('scoring: a payload with agent_id, a harness prompt, and the switch at 0 - no line, no file (AC1)', () => {
+    assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: `${SCORING} on`, session_id: 'd1', agent_id: 'g1' }).includes('scoring:'));
+    assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: `<task-notification>done</task-notification> ${SCORING} on`, session_id: 'd1' }).includes('scoring:'));
+    assert.doesNotMatch(prompt('d1', 'plain', OFF), /scoring:/);
     assert.strictEqual(msgOf('d1', 'plain', OFF), undefined);
-    assert.strictEqual(stateOf('d1'), null);
+    assert.strictEqual(stateOf(), null);
 });
-test('scorer: a garbage session file reads as absent and leaves one scorer-file-garbage row', () => {
-    fs.mkdirSync(path.dirname(scorerFile(ROOT, 'd2')), { recursive: true }); fs.writeFileSync(scorerFile(ROOT, 'd2'), 'garbage');
+test('scoring: a v1 session file left behind is not read and leaves no row', () => {
+    fs.mkdirSync(path.dirname(switchFileOf('d2')), { recursive: true }); fs.writeFileSync(switchFileOf('d2'), 'garbage');
     assert.match(prompt('d2', 'x', ON), /level 80, rounds 3, env/);
-    assert.strictEqual(scorerRows('scorer-file-garbage').length, 1);
+    assert.strictEqual(scoringRows('scoring-file-garbage').length, 0);
 });
-test('scorer: a plain prompt sweeps an 8-day-old scorer folder (R11)', () => {
-    const dir = path.join(ROOT, '.alfred', 'state', 'sessions', 'scorer');
+test('scoring: a plain prompt sweeps an 8-day-old scoring folder (R11)', () => {
+    const dir = path.join(ROOT, '.alfred', 'state', 'sessions', 'scoring');
     const old = path.join(dir, 'gone', 'x', 'ab12cd34.draft.md'); fs.mkdirSync(path.dirname(old), { recursive: true }); fs.writeFileSync(old, 'd');
     const s = (Date.now() - 8 * 86400000) / 1000; fs.utimesSync(old, s, s);
-    fs.rmSync(path.join(dir, '.alfred-sweep-scorer'), { force: true });     // an earlier prompt may have swept today
+    fs.rmSync(path.join(dir, '.alfred-sweep-scoring'), { force: true });     // an earlier prompt may have swept today
     prompt('d3', 'plain', ON);
     assert.ok(!fs.existsSync(path.join(dir, 'gone')));
 });
-test('scorer: the compaction route carries the on line while on, and nothing while off', () => {
-    const compact = (env) => ctxOf(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'd4' }, { ...SCORER_CFG, ...env }));
-    assert.match(compact(ON), /scorer: on \(level 80, rounds 3, env\)/);
-    assert.ok(compact({}).endsWith(` scorer: on (level 80, rounds 3, env)${PLAN_LINE}`), 'unset: the default, plan files only');
-    assert.doesNotMatch(compact(OFF), /scorer:/);
+test('scoring: the compaction route carries the on line while on, and nothing while off', () => {
+    const compact = (env) => ctxOf(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'd4' }, { ...SCORING_CFG, ...env }));
+    assert.match(compact(ON), /scoring: on \(level 80, rounds 3, env\)/);
+    assert.ok(compact({}).endsWith(` scoring: on (level 80, rounds 3, env)${PLAN_LINE}`), 'unset: the default, plan files only');
+    assert.doesNotMatch(compact(OFF), /scoring:/);
 });
 
 // ---------------------------------------------------------------------------------------------
-// the ON line (stack-modes spec section 3): one systemMessage listing the modes on, computed from the prompt's own flags
+// the ON line (stack-modes spec section 3): one systemMessage listing the modes on, computed from the prompt's own line
 // ---------------------------------------------------------------------------------------------
-const AUTO_LINE = 'auto-run: on for this session - each ask takes its (Recommended) option; only --mode-auto-run-off after a command ends it';
+const AUTO_LINE = 'auto-run: on - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it';
 const clearStamp = () => fs.rmSync(APPROVAL, { force: true });
 test('ON line: lists exactly the modes on, on the prompt that turns one on or off, /mode-auto-run fix X included (AC8)', () => {
     clearStamp();
     assert.strictEqual(msgOf('e1', 'plain', OFF), undefined, 'nothing on - no message');
-    assert.strictEqual(msgOf('e1', '/task-solve --mode-auto-run-on fix x', OFF), 'Modes ON: auto-run');
-    assert.strictEqual(msgOf('e2', '/mode-auto-run fix X', OFF), 'Modes ON: auto-run');
-    assert.strictEqual(msgOf('e3', '/task-solve --mode-output-scorer-on x', OFF), 'Modes ON: output-scorer (level 80)');
-    assert.strictEqual(msgOf('e3', 'next', OFF), 'Modes ON: output-scorer (level 80)');
-    assert.strictEqual(msgOf('e4', '/task-solve --mode-auto-run-on --mode-output-scorer-on x', { ALFRED_CODE_SCORER_LEVEL: '90' }), 'Modes ON: auto-run, output-scorer (level 90)');
+    assert.strictEqual(msgOf('e1', `${AUTO_CMD} on`, OFF), 'Modes ON: auto-run, auto-compact');
+    assert.strictEqual(msgOf('e2', '/mode-auto-run fix X', OFF), 'Modes ON: auto-run, auto-compact');
+    assert.strictEqual(msgOf('e3', `${SCORING} on`, OFF), 'Modes ON: scoring (level 80)');
+    assert.strictEqual(msgOf('e3', 'next', OFF), 'Modes ON: scoring (level 80)');
+    clearMode();   // the scoring command wrote the mode file, which outranks the env the lines below set
+    assert.strictEqual(msgOf('e4', `${AUTO_CMD} on`, { ALFRED_CODE_SCORING_LEVEL: '90' }), 'Modes ON: auto-run, scoring (level 90), auto-compact');
     autoStamp('e5');
-    assert.strictEqual(msgOf('e5', 'next', ON), 'Modes ON: auto-run, output-scorer (level 80)');
+    assert.strictEqual(msgOf('e5', 'next', ON), 'Modes ON: auto-run, scoring (level 80), auto-compact');
     assert.ok(prompt('e5', 'next', OFF).endsWith(` ${AUTO_LINE}`));
-    assert.strictEqual(msgOf('e5', '/mode-auto-run --mode-auto-run-off', ON), 'Modes ON: output-scorer (level 80)');
-    assert.strictEqual(msgOf('e5', '/task-solve --mode-auto-run-off --mode-output-scorer-off x', ON), undefined);
+    assert.strictEqual(msgOf('e5', `${AUTO_CMD} off`, ON), 'Modes ON: scoring (level 80)');
+    assert.strictEqual(msgOf('e5', `${AUTO_CMD} off`, OFF), undefined);
     clearStamp();
     assert.doesNotMatch(prompt('e6', 'next', OFF), /auto-run: on/);
 });
-test('ON line: with the start hook switched off a typed -on claims no auto-run, since no stamp gets written (R092)', () => {
+test('ON line: auto-compact is listed for the variable, auto-run and a typed on; a typed off takes it out', () => {
+    clearStamp();
+    const COMPACT = '/alfred-code:mode:auto-compact';
+    assert.strictEqual(msgOf('p1', 'plain', { ...OFF, ALFRED_CODE_AUTO_COMPACT: '1' }), 'Modes ON: auto-compact', 'the variable is the mode now');
+    assert.strictEqual(msgOf('p1', `${COMPACT} on`, OFF), 'Modes ON: auto-compact', 'on the very prompt that types it, before the write');
+    assert.strictEqual(msgOf('p1', `${COMPACT} on`, { ...OFF, ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' }), undefined, 'the writer is off: nothing is stored');
+    assert.strictEqual(msgOf('p1', `${COMPACT} off`, { ...OFF, ALFRED_CODE_AUTO_COMPACT: '1' }), undefined, 'the typed off, before the write');
+    putMode(ROOT, { env: { ALFRED_CODE_AUTO_COMPACT: '1' } });
+    assert.strictEqual(msgOf('p3', 'next', OFF), 'Modes ON: auto-compact', 'every session reads the mode file');
+    assert.ok(!fs.existsSync(path.join(ROOT, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-p1')), 'no session file');
+});
+test('ON line: with the start hook switched off a typed on claims no auto-run, since no stamp gets written (R092)', () => {
     clearStamp();
     const startOff = { ...OFF, ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' };
-    assert.strictEqual(msgOf('r92', '/task-solve --mode-auto-run-on fix x', startOff), undefined);
+    assert.strictEqual(msgOf('r92', `${AUTO_CMD} on`, startOff), undefined);
     autoStamp('r92');
-    assert.strictEqual(msgOf('r92', '/task-solve --mode-auto-run-on fix x', startOff), 'Modes ON: auto-run', 'a live stamp still reads');
+    assert.strictEqual(msgOf('r92', `${AUTO_CMD} on`, startOff), 'Modes ON: auto-run, auto-compact', 'a live stamp still reads');
     clearStamp();
 });
 test('ON line: a prelude older than autoRunFor (a copy-route skew) still lists auto-run and carries its line', () => {
@@ -503,49 +548,44 @@ test('ON line: a prelude older than autoRunFor (a copy-route skew) still lists a
     fs.writeFileSync(path.join(dir, 'hook-prelude.js'), `const { autoRunFor, ...rest } = require(${JSON.stringify(path.join(real, 'hook-prelude.js'))});\nmodule.exports = rest;\n`);
     clearStamp();
     autoStamp('e7');
-    const r = spawnSync(process.execPath, [path.join(dir, 'guard-answer.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'next', session_id: 'e7' }), encoding: 'utf8', env: { ...process.env, ...SCORER_CFG, ...OFF } });
+    const r = spawnSync(process.execPath, [path.join(dir, 'guard-answer.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'next', session_id: 'e7' }), encoding: 'utf8', env: { ...process.env, ...SCORING_CFG, ...OFF } });
     const out = JSON.parse(r.stdout);
-    assert.strictEqual(out.systemMessage, 'Modes ON: auto-run');
+    assert.strictEqual(out.systemMessage, 'Modes ON: auto-run, auto-compact');
     assert.ok(out.hookSpecificOutput.additionalContext.endsWith(` ${AUTO_LINE}`));
     clearStamp();
 });
-test('ON line: a refused -on (another session running, empty /mode-auto-run) does not list auto-run (AC8)', () => {
+test('ON line: a refused start (another session running, empty /mode-auto-run) does not list auto-run; the mode command is never refused there (AC8, D4)', () => {
     clearStamp();
     assert.strictEqual(msgOf('f1', '/mode-auto-run', OFF), undefined, 'an empty /mode-auto-run');
-    assert.strictEqual(msgOf('f1', '/mode-auto-run', ON), 'Modes ON: output-scorer (level 80)');
+    assert.strictEqual(msgOf('f1', '/mode-auto-run', ON), 'Modes ON: scoring (level 80)');
     // another session's stamp, its transcript beside this one written just now
     const tdir = fs.mkdtempSync(path.join(TMP, 'tr-'));
     fs.writeFileSync(path.join(tdir, 'other-sid.jsonl'), '{}\n');
     fs.writeFileSync(path.join(tdir, 'f2.jsonl'), '{}\n');
     fs.mkdirSync(path.dirname(APPROVAL), { recursive: true });
-    fs.writeFileSync(APPROVAL, 'AUTO - "/task-solve --mode-auto-run-on x"\nsession: other-sid\nskill: task-solve\n');
-    assert.strictEqual(msgOf('f2', '/task-solve --mode-auto-run-on fix x', OFF, { transcript_path: path.join(tdir, 'f2.jsonl') }), undefined, 'another session running');
+    fs.writeFileSync(APPROVAL, 'AUTO - "/alfred-code:mode:auto-run on"\nsession: other-sid\nskill: alfred-code:mode:auto-run\n');
+    assert.strictEqual(msgOf('f2', '/mode-auto-run fix X', OFF, { transcript_path: path.join(tdir, 'f2.jsonl') }), undefined, 'another session running');
+    assert.strictEqual(msgOf('f2', `${AUTO_CMD} on`, OFF, { transcript_path: path.join(tdir, 'f2.jsonl') }), 'Modes ON: auto-run, auto-compact', 'D4: the variable');
     clearStamp();
 });
 // A folder's mode bits do not make it read-only on Windows, and root writes through them.
-test('ON line: a refused -on on a read-only data root does not list auto-run (AC8)', { skip: (process.platform === 'win32' && 'a mode bit does not make a Windows folder read-only') || (process.getuid?.() === 0 && 'root writes a mode-555 folder') }, () => {
+test('ON line: a typed request on a read-only data root does not list auto-run (AC8)', { skip: (process.platform === 'win32' && 'a mode bit does not make a Windows folder read-only') || (process.getuid?.() === 0 && 'root writes a mode-555 folder') }, () => {
     clearStamp();
     const ro = fs.mkdtempSync(path.join(TMP, 'ro-'));
     fs.chmodSync(ro, 0o555);
     try {
-        const out = JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt: '/task-solve --mode-auto-run-on fix x', session_id: 'f3' }, { ...SCORER_CFG, ...OFF, CLAUDE_PROJECT_DIR: ro }).stdout);
+        const out = JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt: '/mode-auto-run fix X', session_id: 'f3' }, { ...SCORING_CFG, ...OFF, CLAUDE_PROJECT_DIR: ro }).stdout);
         assert.strictEqual(out.systemMessage, undefined, 'read-only data root');
     } finally { fs.chmodSync(ro, 0o755); }
 });
-test('ON line: the prompt flag beats the stored state, so the parallel end hook cannot race it (Review Focus 3)', () => {
-    autoStamp('g1');   // the stamp still stands: the start hook's -off has not run yet
-    assert.strictEqual(msgOf('g1', '/loop-code-quality --mode-auto-run-off', OFF), undefined);
-    assert.doesNotMatch(prompt('g1', '/loop-code-quality --mode-auto-run-off', OFF), /auto-run: on/);
+test('ON line: the typed line beats the stored state, so the parallel start hook cannot race it (Review Focus 3)', () => {
+    autoStamp('g1');   // the stamp still stands: the start hook's off has not run yet
+    assert.strictEqual(msgOf('g1', `${AUTO_CMD} off`, OFF), undefined);
+    assert.doesNotMatch(prompt('g1', `${AUTO_CMD} off`, OFF), /auto-run: on/);
     clearStamp();      // no stamp yet: the start hook's write has not landed
-    assert.strictEqual(msgOf('g2', '/loop-code-quality --mode-auto-run-on', OFF), 'Modes ON: auto-run');
-    assert.ok(prompt('g2b', '/loop-code-quality --mode-auto-run-on', OFF).endsWith(` ${AUTO_LINE}`));
+    assert.strictEqual(msgOf('g2', `${AUTO_CMD} on`, OFF), 'Modes ON: auto-run, auto-compact');
+    assert.ok(prompt('g2b', `${AUTO_CMD} on`, OFF).endsWith(` ${AUTO_LINE}`));
     assert.strictEqual(fs.existsSync(APPROVAL), false, 'guard-answer writes no stamp');
-});
-test('ON line: a mode flag after a non-family command lists nothing and switches nothing (AC9)', () => {
-    clearStamp();
-    assert.strictEqual(msgOf('h1', '/review-code --mode-auto-run-on X', OFF), undefined);
-    assert.strictEqual(msgOf('h1', '/habits-explain-topic --mode-output-scorer-on X', OFF), undefined);
-    assert.strictEqual(stateOf('h1'), null);
 });
 test('ON line: a seat or a harness prompt gets no message', () => {
     autoStamp('h2');
@@ -555,22 +595,22 @@ test('ON line: a seat or a harness prompt gets no message', () => {
 });
 test('compaction: both context lines come back, no systemMessage', () => {
     autoStamp('k1');
-    const out = JSON.parse(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'k1' }, { ...SCORER_CFG, ...ON }).stdout);
+    const out = JSON.parse(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'k1' }, { ...SCORING_CFG, ...ON }).stdout);
     clearStamp();
     assert.strictEqual(out.systemMessage, undefined);
-    assert.match(out.hookSpecificOutput.additionalContext, /scorer: on \(level 80, rounds 3, env, auto-run\)/);
+    assert.match(out.hookSpecificOutput.additionalContext, /scoring: on \(level 80, rounds 3, env, auto-run\)/);
     assert.ok(out.hookSpecificOutput.additionalContext.endsWith(` ${AUTO_LINE}`));
 });
 
-// The session status file (2026-10-29, plan task 5): the prompt's own autoRun and scorer, written when one changes.
+// The session status file (2026-10-29, plan task 5): the prompt's own autoRun and scoring, written when one changes.
 const statusPath = (sid) => path.join(ROOT, '.claude', 'session-inspector', 'status', `${sid}.json`);
 const statusRead = (sid) => JSON.parse(fs.readFileSync(statusPath(sid), 'utf8'));
-const typed = (sid, text, env = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORER_CFG, ...env });
+const typed = (sid, text, env = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORING_CFG, ...env });
 test('T4 autoRun at the prompt', () => {
     clearStamp();
-    typed('st1', '/task-solve --mode-auto-run-on fix x');
+    typed('st1', `${AUTO_CMD} on`);
     assert.strictEqual(statusRead('st1').autoRun, true, 'written at the prompt that turns it on');
-    typed('st1', '/task-solve --mode-auto-run-off x');
+    typed('st1', `${AUTO_CMD} off`);
     assert.strictEqual(statusRead('st1').autoRun, false);
     fs.mkdirSync(path.dirname(APPROVAL), { recursive: true });
     fs.writeFileSync(APPROVAL, 'AUTO - "x"\n');
@@ -592,9 +632,9 @@ test('T4 autoRun at the prompt', () => {
     assert.strictEqual(statusRead('st3').schema, 1, 'a garbage file is replaced by a full write');
     const kept = { ...statusRead('st3'), handoffPrompt: 'X' };
     fs.writeFileSync(statusPath('st3'), JSON.stringify(kept));
-    typed('st3', '/task-solve --mode-auto-run-on x');
+    typed('st3', `${AUTO_CMD} on`);
     assert.deepStrictEqual([statusRead('st3').autoRun, statusRead('st3').handoffPrompt], [true, 'X'], 'the file\'s handoffPrompt rides an auto-run flip');
-    typed('st3', '/task-solve --mode-auto-run-off x');
+    typed('st3', `${AUTO_CMD} off`);
     clearStamp();
     const plan = path.join(ROOT, '.alfred', 'docs', 'work', 'plans', 'st4.md');
     fs.mkdirSync(path.dirname(plan), { recursive: true });
@@ -618,15 +658,41 @@ test('T4 autoRun at the prompt', () => {
     } finally { fs.rmSync(statusDir, { force: true }); fs.renameSync(aside, statusDir); }
     assert.strictEqual(JSON.parse(quiet.stdout).hookSpecificOutput.additionalContext, JSON.parse(typed('st7', 'plain').stdout).hookSpecificOutput.additionalContext, 'the same context with the file on');
 });
-test('T5 scorer at the prompt', () => {
+test('T5 scoring at the prompt', () => {
     clearOverride();
-    typed('sc1', '/task-solve --mode-output-scorer-on x');
+    typed('sc1', `${SCORING} on`);
     assert.deepStrictEqual(statusRead('sc1').scorer, { on: true, level: 80, rounds: 3 });
-    typed('sc1', '/task-solve --mode-output-scorer-off x');
+    typed('sc1', `${SCORING} off`);
     assert.strictEqual(statusRead('sc1').scorer.on, false, 'rewritten');
-    writeOverride('mode-output-scorer', 'off');
+    writeOverride('mode-output-scoring', 'off');
     try {
         typed('sc1', 'plain');
-        assert.strictEqual(statusRead('sc1').scorer, null, 'no usable scorer');
+        assert.strictEqual(statusRead('sc1').scorer, null, 'no usable scoring');
     } finally { clearOverride(); }
 });
+
+// ---------------------------------------------------------------------------------------------
+// mode commands v2 (stage 3, Task 6): scoring writes the mode block; the level rides the command
+// ---------------------------------------------------------------------------------------------
+test('v2 scoring on 75: both keys stored, the line and the ON line say the level', () => { seedSkillCopy(); const m = outOf('s1', '/alfred-code:mode:scoring on 75');
+    assert.deepStrictEqual(pick(modeOf(ROOT).env, ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL']), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_SCORING_LEVEL: '75' });
+    assert.match(lineOf(m), /^\[mode\] scoring is ON \(level 75\)$/); assert.match(m.systemMessage, /Modes ON: .*scoring \(level 75\)/); });
+test('v2 scoring off 85, then on: off at 85 kept, then on at 85', () => { assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring off 85')), /^\[mode\] scoring is OFF \(level 85 kept\)$/);
+    assert.match(lineOf(outOf('s2', '/alfred-code:mode:scoring on')), /^\[mode\] scoring is ON \(level 85\)$/); });
+for (const n of ['59', '101']) test(`v2 scoring on ${n}: nothing changes`, () => { const before = rawMode(ROOT);
+    assert.strictEqual(lineOf(outOf('s1', `/alfred-code:mode:scoring on ${n}`)), '[mode] the level is a whole number from 60 to 100 - nothing changed'); assert.strictEqual(rawMode(ROOT), before); });
+for (const n of ['60', '100']) test(`v2 scoring on ${n} is stored`, () => { outOf('s1', `/alfred-code:mode:scoring on ${n}`); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, n); });
+test('v2 the level is stored canonical, a number past the range is refused', () => { outOf('s1', '/alfred-code:mode:scoring on 080'); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, '80');
+    outOf('s1', '/alfred-code:mode:scoring on 0075'); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, '75');
+    assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring on 99999999999999999999')), /nothing changed$/); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, '75'); });
+test('v2 a new session reads the mode with no command typed in it', () => { outOf('s1', '/alfred-code:mode:scoring off'); assert.doesNotMatch(outOf('s9', 'hello').systemMessage || '', /scoring/);
+    outOf('s1', '/alfred-code:mode:scoring on'); assert.match(outOf('s9', 'hello').systemMessage, /scoring \(level \d+\)/); });
+test('v2 no switch file is written, and one left by v1 is not read', () => { outOf('s1', '/alfred-code:mode:scoring off'); assert.ok(!fs.existsSync(switchFileOf('s1')));
+    outOf('s1', '/alfred-code:mode:scoring on'); fs.mkdirSync(path.dirname(switchFileOf('s3')), { recursive: true }); fs.writeFileSync(switchFileOf('s3'), 'off\n');
+    assert.match(outOf('s3', 'hello').systemMessage, /scoring/); });
+test('v2 scoring where the copy is absent: the not-available line, nothing written', () => { removeSkillCopy(); const before = rawMode(ROOT);
+    assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring on 75')), /^\[mode\] scoring is not available here: /); assert.strictEqual(rawMode(ROOT), before); });
+test('v2 a failed save says why', () => { putRawMode(ROOT, '{ bad'); assert.strictEqual(lineOf(outOf('s1', '/alfred-code:mode:scoring on')), '[mode] scoring could not be saved: the file is not valid JSON - nothing changed'); });
+test('v2 the ON line: auto-compact for either cause, with the window when it is known', () => { putMode(ROOT, { env: { ALFRED_CODE_AUTO_COMPACT: '1' }, modelSettings: { [MODEL]: { autoCompactWindow: 400000 } } });
+    assert.match(outOf('s1', 'hello', {}, { transcript_path: transcriptFor(MODEL) }).systemMessage, /^Modes ON: .*auto-compact \(at 400k\)$/);
+    putMode(ROOT, { env: { ALFRED_CODE_AUTO_COMPACT: '1' } }); assert.match(outOf('s1', 'hello').systemMessage, /auto-compact$/); });

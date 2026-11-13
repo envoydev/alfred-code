@@ -33,7 +33,7 @@ never from recall, and never from a reference the project did not install:
    for' bullets are the rules, its severity paragraph their scale, its `Bar:` line the bar, and its 'Not
    a finding' list is part of the rule too. The `0.`-numbered file is FIX discipline and never judged
    against; un-numbered files (`RUN-STATE.md`, `DECISIONS.md`, notes) are run records, never rules.
-3. **The convention rules** under `.claude/rules/` - each path-scoped file attaches one file family to
+3. **The convention rules** under `.alfred/stack/rules/` - each path-scoped file attaches one file family to
    its house convention skill; the skill's rules are the rules for that family.
 
 **The user's preferences outrank all three.** The `C<n>` entries of

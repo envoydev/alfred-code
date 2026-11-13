@@ -234,7 +234,6 @@ test('copy route: the ledger keeps the dispatcher wiring this run wrote', () => 
 test('each guard\'s block reaches the combined answer, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'other-'));
-  fs.writeFileSync(path.join(dir, 'eslint.config.js'), 'export default [];\n');
   const FAKE_JWT = ['eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0', 'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'].join('.');
   const cases = [
     ['guard-protected-force-push', 'git push --force origin main'],
@@ -242,10 +241,13 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     ['guard-read-whole-file', `cat ${BIG}`],
     ['guard-secret-value', `curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`],
     ['guard-ungated-commit', 'git commit -am "wip"'],
-    ['guard-config-protection', 'echo "export default [{}];" > eslint.config.js'],
+    ['guard-config-protection', `echo '{"disableAllHooks": true}' > .claude/settings.local.json`], // stage 1 B11: its switch-off half
+    ['guard-config-protection', `sed -i 's/"0"/"1"/' .claude/settings.local.json`], // mode commands v2: no write turns auto-run on
     ['guard-cross-project-write', `echo x > ${path.join(other, 'f.txt')}`],
   ];
   const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{"env":{"ALFRED_CODE_AUTO_RUN":"0"}}\n');
   for (const [guard, command] of cases)
   {
     const session = `each-${guard}`;
@@ -473,21 +475,23 @@ test('a guard list in the wiring runs exactly those guards', () => {
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env, args: ['guard-ungated-commit'] }).status, 2);
 });
 
-test('the secret rewrite passes through unchanged, and a block from another guard wins over it', () => {
+// Swap 1 (2026-11-11): the secret guard rewrites nothing any more. A payload naming no transcript is its core mode,
+// where a command whose words name a credential file is refused; the stub-guard fixtures above still pin the rewrite merge.
+test('the secret guard\'s denial reaches the call through the dispatcher, and no rewrite is written', () => {
   const dir = project();
   const env = { CLAUDE_PROJECT_DIR: dir };
-  const payload = bashPayload('echo $SENTRY_ACCESS_TOKEN', dir);
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${'x0'.repeat(20)}\n`);
+  const payload = bashPayload('cat .env', dir);
   const alone = run(path.join(HOOKS, 'guard-secret-value.js'), payload, { cwd: dir, env });
   const both = run(DISPATCH, payload, { cwd: dir, env });
-  assert.strictEqual(both.status, 0);
-  assert.deepStrictEqual(JSON.parse(both.stdout), JSON.parse(alone.stdout), 'the rewrite is the secret guard\'s own, byte for byte');
-  // The other guards judge the ORIGINAL command, as they do beside it in parallel today.
-  const mixed = bashPayload(`echo $SENTRY_ACCESS_TOKEN; cat ${BIG}`, dir);
-  const secret = run(path.join(HOOKS, 'guard-secret-value.js'), mixed, { cwd: dir, env });
-  assert.ok(JSON.parse(secret.stdout).hookSpecificOutput.updatedInput, 'standalone, the secret guard rewrites this command');
-  const out = run(DISPATCH, mixed, { cwd: dir, env });
-  assert.strictEqual(out.status, 2, 'the whole-file guard blocks the original command');
-  assert.ok(!out.stdout.includes('updatedInput'), 'the rewrite never reaches a blocked call');
+  assert.strictEqual(alone.status, 2, alone.stderr);
+  assert.strictEqual(both.status, 2, both.stderr);
+  assert.ok(both.stderr.includes(alone.stderr.trim()), 'the denial is the secret guard\'s own text');
+  assert.ok(!both.stdout.includes('updatedInput') && !alone.stdout.includes('updatedInput'), 'nothing is rewritten');
+  // an environment print passes as written: its output is the masker's to cover, never a rewrite
+  const print = run(DISPATCH, bashPayload('echo $SENTRY_ACCESS_TOKEN', dir), { cwd: dir, env });
+  assert.strictEqual(print.status, 0, print.stderr);
+  assert.ok(!print.stdout.includes('updatedInput'), 'no rewrite of a variable print');
 });
 
 // ---- the file-guard dispatcher (2.1.5 M3) -------------------------------------------------------
@@ -541,19 +545,18 @@ test('file-guards: the core entry launches ONE process per file-tool call, with 
 test('file-guards: each guard\'s block reaches the combined answer through the dispatcher, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'fg-other-'));
-  fs.writeFileSync(path.join(dir, 'eslint.config.js'), 'export default [];\n');
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }, null, 2));
   const cases = [
     ['guard-read-whole-file', 'Read', { file_path: BIG }],
-    ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }],
-    ['guard-config-protection', 'Edit', { file_path: path.join(dir, 'eslint.config.js'), old_string: '[]', new_string: '[{}]' }],
+    ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }, { permission_mode: 'bypassPermissions' }], // where nobody can answer the ask: a block
+    ['guard-config-protection', 'Write', { file_path: path.join(dir, '.claude', 'settings.local.json'), content: '{ "disableAllHooks": true }' }], // stage 1 B11: its switch-off half
     ['guard-cross-project-write', 'Write', { file_path: path.join(other, 'f.txt'), content: 'x' }],
   ];
   const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
-  for (const [guard, tool, input] of cases)
+  for (const [guard, tool, input, more] of cases)
   {
     const session = `fg-${guard}`;
-    const payload = filePayload(tool, input, dir, session);
+    const payload = { ...filePayload(tool, input, dir, session), ...more };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
     assert.strictEqual(alone.status, 2, `${guard} blocks ${tool} on its own: ${alone.stderr}`);
     for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
@@ -562,6 +565,24 @@ test('file-guards: each guard\'s block reaches the combined answer through the d
     assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
     assert.deepStrictEqual(hooksOf(ledgerRows(dir, session)), [`${guard}.js`], `${guard}: one ledger row, its own`);
   }
+});
+
+test('file-guards: the secret guard\'s ask reaches the host through the dispatcher; a Cursor Read is denied there', () => {
+  const dir = project();
+  const file = path.join(dir, 'deploy.yaml');
+  fs.writeFileSync(file, `users:\n- name: dev\n  user:\n    token: ${'kc-' + 'w6'.repeat(8)}\n`);
+  const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '' };
+  const payload = { ...filePayload('Read', { file_path: file }, dir, 'fg-ask'), permission_mode: 'default', tool_use_id: 'toolu_fg1' };
+  const r = run(FILES, payload, { cwd: dir, env });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const h = JSON.parse(r.stdout).hookSpecificOutput;
+  assert.deepStrictEqual([h.hookEventName, h.permissionDecision], ['PreToolUse', 'ask']);
+  assert.match(h.permissionDecisionReason, /in this transcript permanently/);
+  assert.ok(ledgerRows(dir, 'fg-ask').some((x) => x.hook === 'guard-secret-value.js' && x.mode === 'ask' && x.tool_use_id === 'toolu_fg1'), 'the ask row');
+  const cursor = run(FILES, { ...payload, session_id: 'fg-ask-cursor', cursor_version: '2.1.0', hook_event_name: 'preToolUse' }, { cwd: dir, env });
+  assert.strictEqual(cursor.status, 2, 'a Cursor Read is denied');
+  assert.match(cursor.stderr, /nobody can answer an ask here/);
+  assert.doesNotMatch(cursor.stdout, /permissionDecision/);
 });
 
 test('file-guards: a guard never judges a tool its row did not name; an ordinary call and garbage pass silently', () => {
@@ -586,7 +607,7 @@ test('file-guards: the protective secret guard is answered at once, and a guard 
   const dir = project();
   fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123\n');
   const r = spawnSync(process.execPath, [path.join(copy, 'file-guards.js')], {
-    input: JSON.stringify(filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'fg-prot')), encoding: 'utf8', cwd: dir,
+    input: JSON.stringify({ ...filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'fg-prot'), permission_mode: 'bypassPermissions' }), encoding: 'utf8', cwd: dir,
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
   assert.strictEqual(r.status, 2, `the secret block arrives before the stalled guard runs (status ${r.status})`);
@@ -621,7 +642,7 @@ test('a stalled guard ahead of the secret guard in the manifest cannot drop its 
   const spawnIt = (file, payload) => spawnSync(process.execPath, [path.join(copy, file)], {
     input: JSON.stringify(payload), encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
-  const read = spawnIt('file-guards.js', filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'));
+  const read = spawnIt('file-guards.js', { ...filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'), permission_mode: 'bypassPermissions' });
   assert.strictEqual(read.status, 2, `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-read')), ['guard-secret-value.js']);
   // a second read that PRINTS the file forces the whole-command rewrite, which would drop the build - a block, not a
@@ -672,7 +693,7 @@ test('the docs label every shell guard with the shell route, never Bash alone (2
 
 // ---------------------------------------------------------------------------------------------
 // audit 2026-10-10 (C14, C25, T5 cross-track): the dispatcher's own checks - zsh quoting, the foreground poll loop,
-// an unaddressed sed -i over several lines, the symbol-grep probe
+// an unaddressed sed -i over several lines
 // ---------------------------------------------------------------------------------------------
 const own = (dir, command, { env = {}, extra = {} } = {}) => {
   const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
@@ -823,14 +844,11 @@ test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its fil
   assert.strictEqual(sedRow.kind, 'sed-multi-match', 'the probe row names its kind (item 7)');
 });
 
-test('audit 2026-10-10: a recursive grep for a code identifier in the main session writes one probe row; a seat writes none', () => {
+test('stage 1 A3: a recursive symbol grep in the main session writes no probe row', () => {
   const dir = project('sym-');
-  own(dir, 'grep -rn SearchTermNormalizer .');
-  own(dir, 'grep -rn "todo list" .');
-  run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'grep -rn OrderService .' }, session_id: 'own', cwd: dir, agent_id: 'seat-1' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
-  const probes = rowsIn(dir).filter((x) => x.mode === 'probe' && x.detail.branch === 'symbol-grep');
-  assert.deepStrictEqual(probes.map((x) => x.detail.pattern), ['SearchTermNormalizer'], 'bc2fa83e');
-  assert.strictEqual(probes[0].kind, 'symbol-grep', 'the probe row names its kind (item 7)');
+  assert.equal(own(dir, 'grep -rn SearchTermNormalizer .').status, 0);
+  assert.equal(own(dir, 'grep -rn "cartTotal(" .').status, 0);
+  assert.deepStrictEqual(rowsIn(dir).filter((x) => x.mode === 'probe'), [], 'the symbol-grep probe is gone');
 });
 
 test('audit 2026-10-10: the dispatcher\'s own checks stand down where the stack does - a repo never set up, hook_profile minimal', () => {
@@ -1020,7 +1038,11 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command li
   blocked(runner('rm -rf ~'), 'the argv form: several words are one command line');
   blocked(runner("'rm -rf ~'"), 'a single-quoted line');
   blocked(runner('"git push --force origin main"'), 'a force push to main');
-  blocked(runner('"cat .env"'), 'a raw credential file read: the runner masks only the store values', /with-sensitive/);
+  // swap 1: this payload names no transcript, so the secret guard's core reads the carried line and refuses the name
+  blocked(runner('"cat .env"'), 'a raw credential file read: refused by name where no masker runs', /--presence/);
+  // the read guard keeps a reader of its own, so the dispatcher judges the runner's line with it and writes the runner's row
+  fs.writeFileSync(path.join(dir, 'big.ts'), 'const a = 1;\n'.repeat(500));
+  blocked(runner('"cat big.ts"'), 'a whole-file dump inside the runner', /with-sensitive/);
   blocked(runner(`"echo x > ${other}/f.txt"`), 'a write outside the project');
   blocked(runner('"git commit -am x"'), 'an ungated commit');
   blocked(`bash -c '${runner('"rm -rf ~"')}'`, 'a runner inside a carried script');

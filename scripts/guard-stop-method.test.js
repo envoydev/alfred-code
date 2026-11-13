@@ -389,6 +389,7 @@ test('done gate: the row records the skill load, the project\'s test markers and
     for (const [file, line] of [
         ['CLAUDE.md', '- Do not run the tests: they need the staging database.'],
         [path.join('.claude', 'rules', 'house.md'), 'Never run tests locally - CI owns them.'],
+        [path.join('.alfred', 'stack', 'rules', 'team.md'), 'Never run tests in this repository - CI owns them.'],
         ['AGENTS.md', 'Tests must not be run by the agent.'],
         [path.join('.claude', 'AGENTS.md'), 'Never run the tests here - CI owns them.'],
     ])
@@ -727,9 +728,9 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         const root = project();
         const sid = sidOf();
         fs.mkdirSync(path.join(root, '.alfred', 'state', 'approvals'), { recursive: true });
-        fs.writeFileSync(path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL'), `AUTO - "/mode-auto-run --mode-auto-run-on"\nsession: ${sid}\nskill: mode-auto-run\ntranscript-size: 0\n`);
+        fs.writeFileSync(path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL'), `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`);
         const at = new Date(Date.now() - 60000).toISOString();
-        const modeRow = { type: 'user', timestamp: at, message: { role: 'user', content: '<command-message>mode-auto-run</command-message>\n<command-name>/mode-auto-run</command-name>\n<command-args>--mode-auto-run-on</command-args>' } };
+        const modeRow = { type: 'user', timestamp: at, message: { role: 'user', content: '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>' } };
         assert.notStrictEqual(decision(reask(root, opened(QUESTION, [modeRow]), { sid })), 'deny');
     });
 }

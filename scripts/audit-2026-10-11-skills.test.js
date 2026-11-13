@@ -29,6 +29,7 @@ test('the checkpoint review read keeps a merge and the index, reads a brand-new 
         assert.doesNotMatch(skill, /reset chained into the SAME call/, 'the reset recipe is gone');
         assert.match(flat(skill), /Never `git add -N` and never `git reset` in a review or scope read/);
         assert.match(flat(skill), /never a loop or `xargs` over the list/);
+        assert.match(flat(skill), /the secret guard reads the files a command names and refuses the call when one holds a credential, its denial naming the file and the masked way to read it; a looped name is never in the command/);
         const blocks = [...(/Feed it the FULL change set([\s\S]*?)Name every file/.exec(skill) || ['', ''])[1].matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1].trim());
         assert.strictEqual(blocks.length, 2, 'the survey block and the per-file block');
         for (const b of blocks) assert.doesNotMatch(b, /add -N|reset|while|xargs/);
@@ -59,26 +60,40 @@ test('the checkpoint review read keeps a merge and the index, reads a brand-new 
             assert.match(survey, /^\+resolved$/m, 'the tracked change is in the review');
             const listed = ['.env', 'brand-new.txt'];
             for (const f of listed) assert.match(survey, new RegExp(`^${f.replace('.', '\\.')}$`, 'm'), `the survey lists ${f}`);
-            // The per-file block, built from the template over the listed files, then through the guard as the harness runs it.
+            // The per-file block, built from the template over the listed files, then through the guard as the harness runs it
+            // on a client at the masker's floor. Swap 1 (2026-11-11): nothing is rewritten. A `--no-index` diff naming a file
+            // that holds a credential is refused by name - a comparison's exit status is its own - so that file is printed
+            // alone, where the masker covers it, and the rest goes through as written.
             const unit = blocks[1].split(';')[0].trim();
-            let command = listed.map((f) => unit.replace('<file-1>', f)).join('; ');
-            const guard = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')], { cwd: repo, encoding: 'utf8',
-                input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: repo }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo } });
-            assert.strictEqual(guard.status, 0, guard.stderr);
-            const rewritten = ((JSON.parse(guard.stdout || '{}').hookSpecificOutput || {}).updatedInput || {}).command;
-            assert.ok(rewritten, 'the guard sees the named credential file and rewrites the read');
-            command = rewritten;
+            const perFile = (files) => files.map((f) => unit.replace('<file-1>', f)).join('; ');
+            const floor = path.join(os.tmpdir(), `sd-review-floor-${process.pid}.jsonl`);
+            fs.writeFileSync(floor, JSON.stringify({ type: 'user', entrypoint: 'cli', version: '2.1.322' }) + '\n');
+            const guard = (payload) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')], { cwd: repo, encoding: 'utf8',
+                input: JSON.stringify({ tool_name: 'Bash', session_id: 'suite', cwd: repo, transcript_path: floor, ...payload }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo } });
+            const refused = guard({ tool_input: { command: perFile(listed) } });
+            assert.strictEqual(refused.status, 2, 'the call naming the credential file is refused');
+            assert.match(refused.stderr, /--presence ".*\.env"/, 'the denial names the file and the presence read');
+            assert.match(refused.stderr, /print each file alone - its output comes back masked/);
+            assert.ok(!/updatedInput/.test(refused.stdout), 'nothing is rewritten');
+            const command = perFile(['brand-new.txt']);
+            assert.strictEqual(guard({ tool_input: { command } }).status, 0, 'the call naming the other files runs as written');
             const out = execFileSync('sh', ['-c', command], { cwd: repo, encoding: 'utf8' });
             assert.match(out, /^\+NEW-FILE-BODY$/m, 'the untracked file is in the review');
-            assert.ok(!out.includes(KEY), 'the credential printed raw');
+            // the credential file alone: the read passes, and what it printed comes back masked
+            assert.strictEqual(guard({ tool_input: { command: 'cat .env' } }).status, 0, 'the credential file is printed alone');
+            const after = guard({ hook_event_name: 'PostToolUse', tool_input: { command: 'cat .env' },
+                tool_response: { stdout: fs.readFileSync(path.join(repo, '.env'), 'utf8'), stderr: '', interrupted: false, isImage: false, noOutputExpected: false } });
+            const shown = JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout;
+            assert.ok(!shown.includes(KEY), 'the credential printed raw');
+            assert.match(shown, /^ANTHROPIC_API_KEY=<set \(\d+ chars\)>$/m);
+            fs.rmSync(floor, { force: true });
             assert.ok(fs.existsSync(mergeHead), 'the review read dropped MERGE_HEAD');
             assert.strictEqual(git('diff', '--cached', '--name-status'), staged, 'the review read moved the index');
-            // The controls: a loop over the list prints the key past the guard, and the old recipe drops the merge.
+            // The controls: a loop over the list names no file in the command, so nothing is refused before the run and the
+            // raw run prints the key - and the old recipe drops the merge.
             const loop = 'git ls-files -o --exclude-standard | while IFS= read -r f; do git diff --no-index -- /dev/null "$f"; done';
-            const loopGuard = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')], { cwd: repo, encoding: 'utf8',
-                input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: loop }, session_id: 'suite', cwd: repo }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo } });
-            if (!JSON.parse(loopGuard.stdout || '{}').hookSpecificOutput && loopGuard.status === 0)
-                assert.ok(spawnSync('sh', ['-c', loop], { cwd: repo, encoding: 'utf8' }).stdout.includes(KEY), 'control: an unseen loop prints the key');
+            assert.strictEqual(guard({ tool_input: { command: loop } }).status, 0, 'control: the loop is not refused');
+            assert.ok(spawnSync('sh', ['-c', loop], { cwd: repo, encoding: 'utf8' }).stdout.includes(KEY), 'control: an unseen loop prints the key');
             execFileSync('sh', ['-c', 'git add -N . && git diff HEAD >/dev/null; git reset -q'], { cwd: repo });
             assert.ok(!fs.existsSync(mergeHead), 'control: the reset recipe drops MERGE_HEAD');
     }

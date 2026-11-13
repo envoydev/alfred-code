@@ -666,3 +666,11 @@ test('shadowed: the CLI prints the row with its fix and exits 1; a re-run says t
     assert.match(first.stdout, /^CLAUDE\.md:1 shadowed: \.claude\/AGENTS\.md - is not loaded while this file sits on its path - import it \(`@\.claude\/AGENTS\.md`\) or set Project instructions to claude-md-and-agents-md in \/config$/m);
     assert.strictEqual(cli(root).stdout, first.stdout, 'read-only: a second run changes nothing');
 });
+
+test('4c agents-md-check: a reference to .alfred/stack/rules/alfred-* is a stack rule reference', () =>
+{
+    const root = tree({ '.alfred/stack/rules/alfred-git.md': 'x' });
+    const check = (text) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: () => true }));
+    assert.deepStrictEqual(check(['# App', '', '## Rules', '', '| `.alfred/stack/rules/alfred-git.md` | x |'].join('\n')), ['3 stack-rules ## Rules']);
+    assert.deepStrictEqual(check(['# App', '', '## Rules', '', '| `.alfred/stack/rules/team-style.md` | x |'].join('\n')), [], 'a project\'s own store rule is no stack rule');
+});

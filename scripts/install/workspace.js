@@ -65,6 +65,15 @@ function addChild(record, rel)
     return record;
 }
 
+// W3: a path below this root the workspace ignores - once, and no child line at or below it stays.
+function addIgnoredChild(record, rel)
+{
+    if (!isChildPath(rel)) throw new Error(`workspace: ignored child ${rel} is not a relative path inside the project`);
+    if (!record.ignoredChildren.includes(rel)) record.ignoredChildren.push(rel);
+    record.children = record.children.filter((c) => !workspaceFile.covered([rel], '', `/${c}`, false));
+    return record;
+}
+
 function removeChild(record, rel)
 {
     record.children = record.children.filter((c) => c !== rel);
@@ -100,15 +109,10 @@ function workspaceOn({ env = {}, projectRoot })
 
 // ------------------------------------------------------------------ the file
 
-// The env an ANCESTOR's data root is read with: only the account, so the run's own ALFRED_CODE_DATA_PATH never
-// names another project's root, while settingFrom still reads the account this run uses - an empty env would read
-// the real ~/.claude/settings.json inside a throwaway-account run.
-const ancestorEnv = (env = {}) => ({ CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR });
-
 // { root, dir, file, legacy, lock } for the project's record - `file` workspace.json, `legacy` the old line file - or
-// { why } when a handed data root is refused. A handed `dataRoot` is the root init's walk chose before any setting names
-// it (`register --data-path`).
-function locate(projectRoot, { env = {}, dataRoot } = {})
+// { why } when a handed data root is refused. A handed `dataRoot` is the root the caller's reader already
+// found (an older install's folder, until its update moves it).
+function locate(projectRoot, { dataRoot } = {})
 {
     let root;
     if (dataRoot !== undefined && dataRoot !== null && dataRoot !== '')
@@ -117,7 +121,7 @@ function locate(projectRoot, { env = {}, dataRoot } = {})
         if (!checked.ok) return { why: checked.why };
         root = checked.value;
     }
-    else root = dataRootMod.dataRootOf({ env, projectDir: projectRoot }).root;
+    else root = dataRootMod.dataRootOf({ projectDir: projectRoot }).root;
     const dir = path.join(projectRoot, ...root.split('/'));
     return { root, dir, file: path.join(dir, JSON_NAME), legacy: path.join(dir, LEGACY_NAME), lock: path.join(dir, LOCK_NAME) };
 }
@@ -136,7 +140,7 @@ function readWorkspace(projectRoot, opts = {})
     const at = locate(projectRoot, opts);
     if (!at.file) return { file: null, state: 'unreadable', source: null, record: emptyRecord(), view: viewOf(emptyRecord()), problems: [], why: at.why };
     const read = readRecord(at.dir);
-    return { file: read.file, state: read.state, source: read.source, record: read.record, view: viewOf(read.record), problems: read.problems };
+    return { file: read.file, state: read.state, source: read.source, singular: read.singular, record: read.record, view: viewOf(read.record), problems: read.problems };
 }
 
 // The one line for a garbage record, `rel` the file's path from the folder the run reads from.
@@ -163,7 +167,7 @@ function takeConversions()
 
 const shownValue = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
 // The rendered object's value at an invalid entry's key (`parent`, `ignore.skill`).
-const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), object);
+const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v === 'object' ? (k in v ? v[k] : v[workspaceFile.PLURAL[k]]) : undefined), object);
 
 // Reads, changes and writes the project's record under its lock. `mutate(record)` changes the record in place (or
 // returns a new one). A write is due when the record renders differently after the change, or when the old line file is
@@ -173,11 +177,11 @@ const valueAt = (object, key) => key.split('.').reduce((v, k) => (v && typeof v 
 // garbage workspace.json is never written over (`why: 'garbage'`). `runRoot` is the run's own project (default
 // `projectRoot`): the log lines name paths from it, and a conversion of another project's record is named by
 // olderProjectLines.
-function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
+function writeWorkspace(projectRoot, mutate, { dataRoot, runRoot, plural = false, log = () => {}, now = Date.now, sleep = sleepMs, retryMs = 2000, staleMs = 30000 } = {})
 {
     const empty = viewOf(emptyRecord());
     const fail = (why, view = empty) => ({ ok: false, why, view, wrote: false, changed: false, converted: false });
-    const at = locate(projectRoot, { env, dataRoot });
+    const at = locate(projectRoot, { dataRoot });
     if (!at.file) return fail('unwritable');
     try { fs.mkdirSync(at.dir, { recursive: true }); }
     catch { return fail('unwritable'); }
@@ -189,9 +193,9 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log 
         if (!held) return fail('locked', viewOf(readRecord(at.dir).record));
         const current = readRecord(at.dir);
         if (current.state === 'garbage') { sayGarbage(current.file, from, log); return fail('garbage'); }
-        const before = JSON.stringify(renderRecord(current.record, current.unknown, current.invalid));
+        const before = JSON.stringify(renderRecord(current.record, current.unknown, current.invalid, current.singular));
         const record = mutate(current.record) || current.record;
-        const object = renderRecord(record, current.unknown, current.invalid);
+        const object = renderRecord(record, current.unknown, current.invalid, current.singular && !plural);
         const converting = current.source === 'legacy' || current.source === 'both';
         const changed = JSON.stringify(object) !== before;
         if (!converting && !changed) return { ok: true, view: viewOf(record), wrote: false, changed: false, converted: false };
@@ -236,16 +240,6 @@ function writeWorkspace(projectRoot, mutate, { env = {}, dataRoot, runRoot, log 
     }
 }
 
-// The data root holding the run's own record: the `--data-path` choice once init registered there; on a root change the
-// record is still at the current root until moveWorkspace carries it after the run's install, so an absent record there
-// reads the current root's (undefined).
-function ownDataRootOf({ projectRoot, env = process.env, args = {} })
-{
-    const checked = args.dataPath ? dataRootMod.checkDataPath(args.dataPath) : null;
-    const chosen = checked && checked.ok ? checked.value : undefined;
-    return chosen !== undefined && readWorkspace(projectRoot, { env, dataRoot: chosen }).state === 'absent' ? undefined : chosen;
-}
-
 // The run's own record converted to workspace.json before the workspace pass reads it - whatever ALFRED_CODE_WORKSPACE
 // says: the conversion carries every value, so the switch's freeze still holds for the content. Writes nothing on a
 // converted project. { ok, why, converted }.
@@ -257,6 +251,7 @@ function convertOwn({ projectRoot, env = process.env, dataRoot, log = () => {} }
 
 // The first release that reads workspace.json - the version bump that ships it sets this (review I3, 2026-11-10).
 const JSON_SINCE = '3.10.0';
+const PLURAL_SINCE = '3.11.0';   // the first release that reads the plural ignore keys (workspace-file.js PLURAL)
 
 // After a conversion: each project whose older release would now misread - a child a converted record lists, the parent
 // a converted record names, and the owner of a converted record not this run's own - when its stamp names a release
@@ -290,30 +285,6 @@ function olderProjectLines({ conversions: list = [], release, compare, env = pro
         }
     }
     return out;
-}
-
-// A data-root move carries the record along (planDataMove moves only the secrets store, and leaves the old root in place
-// while it holds anything else): workspace.json and a still-present old file as ONE record. Never over a record the new
-// root already holds under either name - moved one by one, a workspace.json could land beside a stale old file.
-function moveWorkspace({ projectRoot, from, to, log = () => {} })
-{
-    const dirOf = (root) => path.join(projectRoot, ...String(root).split('/'));
-    const names = [JSON_NAME, LEGACY_NAME];
-    const here = names.filter((n) => fs.existsSync(path.join(dirOf(from), n)));
-    if (!here.length) return 'absent';
-    const there = names.filter((n) => fs.existsSync(path.join(dirOf(to), n)));
-    if (there.length)
-    {
-        log(`  !! workspace: ${here.map((n) => `${from}/${n}`).join(' and ')} left in place - ${to} already holds a workspace record (${there.join(', ')})`);
-        return 'clash';
-    }
-    fs.mkdirSync(dirOf(to), { recursive: true });
-    for (const n of here)
-    {
-        fs.renameSync(path.join(dirOf(from), n), path.join(dirOf(to), n));
-        log(`  workspace: moved ${from}/${n} -> ${to}/${n}`);
-    }
-    return 'moved';
 }
 
 // ------------------------------------------------------------------ the tree
@@ -360,13 +331,68 @@ function sameRepo(childRoot, parentRoot, { exec = runtime.execCommand } = {})
 
 const isCheckout = (projectRoot, { exec = runtime.execCommand } = {}) => topOf(projectRoot, exec) === realKey(projectRoot);
 
+// W3: the workspace above that ignores this folder - the holders, in order: the folder the record names as `parent` (or,
+// with none, as `above` - a released between-tree project's root) when it is a stamped strict ancestor, then the nearest. The first whose record reads and whose ignoredChildren
+// covers the folder answers { root, rel, ignored: true }, or { ..., ignored: false, why: 'same-repo' } for a folder of
+// its own repository; null when none does. A garbage holder answers nothing; git is asked only once a list covers it.
+function ignoredBy(projectRoot, { env = process.env, exec = runtime.execCommand } = {})
+{
+    const start = realOf(projectRoot);
+    const own = readWorkspace(start, { env });
+    const word = own.state !== 'ok' ? null : own.view.parent || (own.view.above && own.view.above !== 'none' ? own.view.above : null);
+    const named = word ? path.resolve(start, ...word.split('/')) : null;
+    const nearest = findParent(start, { env });
+    const up = (dir) => { const rel = path.relative(realKey(dir), realKey(start)); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); };
+    const holders = [...(named && isStamped(named) && up(named) ? [named] : []), ...(nearest ? [nearest.root] : [])];
+    for (const holder of new Set(holders.map((h) => realOf(h))))
+    {
+        const read = readWorkspace(holder);
+        if (read.state !== 'ok' || !workspaceFile.covered(read.view.ignoredChildren, realKey(holder), realKey(start))) continue;
+        const rel = relPosix(start, holder);
+        return sameRepo(start, holder, { exec }) ? { root: holder, rel, ignored: false, why: 'same-repo' } : { root: holder, rel, ignored: true };
+    }
+    return null;
+}
+
+// W3 Task 7: why `rel` cannot be marked ignored at `projectRoot` (the root), or null. In order: no project path below the
+// root (outside it, `.claude`, the data root); a spelling other than the real path read from the root (another case on a
+// folding disk, a link); a folder of the root's repository, or a project that is no checkout under a root that is none
+// (both read the root's skills, agents and local settings, so nothing isolates it); a folder another stamped folder holds
+// (D20). A path with no folder yet is marked.
+function markRefusal(projectRoot, rel, { env = process.env, exec = runtime.execCommand } = {})
+{
+    const root = realOf(projectRoot);
+    const first = String(rel).split('/')[0];
+    const data = dataRootMod.dataRootOf({ projectDir: root }).root.split('/')[0];
+    if (!workspaceFile.isChildPath(rel) || first === '.claude' || first === data) return `${rel} is not a project path below this folder`;
+    const folder = path.join(root, ...rel.split('/'));
+    if (!isDir(folder)) return null;
+    const real = relPosix(root, realOf(folder));
+    if (real !== rel) return `${rel} is ${real} on disk - a mark names the real path`;
+    if (sameRepo(folder, root, { exec })) return `${rel} is part of this folder's git repository, not a project of its own - it cannot be isolated: this repository's skills, agents and local settings reach it`;
+    if (isStamped(folder) && topOf(folder, exec) === null && topOf(root, exec) === null)
+        return `${rel} is no git checkout of its own, and neither is this folder - it cannot be isolated: this folder's skills, agents and local settings reach it`;
+    const nearest = findParent(folder, { env });
+    const own = readWorkspace(folder, { env });
+    const named = own.state === 'ok' && own.view.parent && realKey(path.resolve(folder, ...own.view.parent.split('/'))) === realKey(root);
+    if (nearest && realKey(nearest.root) !== realKey(root) && !named)
+    {
+        const holder = relPosix(root, nearest.root);
+        return `${rel} is held by ${holder} - mark it in ${holder}`;
+    }
+    return null;
+}
+
 // Whether this project may join the stamped folder above it: a project inside the parent's own repo is that repo's
-// folder, not a child, and a plain folder has no install record of its own to keep apart.
+// folder, not a child, a folder the workspace ignores takes nothing from it (W3), and a plain folder has no install
+// record of its own to keep apart.
 function joinVerdict(projectRoot, { env = process.env, exec = runtime.execCommand } = {})
 {
     const parent = findParent(projectRoot, { env });
     if (!parent) return { parent: null, ok: false };
     if (sameRepo(projectRoot, parent.root, { exec })) return { parent, ok: false, why: 'same-repo' };
+    const by = ignoredBy(projectRoot, { env, exec });
+    if (by && by.ignored) return { parent, ok: false, why: 'ignored', by: by.rel };
     if (!isCheckout(projectRoot, { exec })) return { parent, ok: false, why: 'not-a-checkout' };
     return { parent, ok: true };
 }
@@ -384,7 +410,7 @@ function roleOf(projectRoot, { env = process.env, log = printLine } = {})
     if (read.state === 'garbage') { sayGarbage(read.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const view = read.view;
     // So is a parent whose own record is garbage: the chain cannot say whether it still lists this project.
-    const parentRead = view.parent ? readWorkspace(path.resolve(realOf(projectRoot), ...view.parent.split('/')), { env: ancestorEnv(env) }) : null;
+    const parentRead = view.parent ? readWorkspace(path.resolve(realOf(projectRoot), ...view.parent.split('/'))) : null;
     if (parentRead && parentRead.state === 'garbage') { sayGarbage(parentRead.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const children = view.children.length;
     const asked = Boolean(view.role || view.parent || view.above);
@@ -407,6 +433,7 @@ function roleText(role)
 const WHY = {
     'same-repo': (rel) => `${rel} is the same git repository - this folder is part of it, not a project of its own`,
     'not-a-checkout': (rel) => `this folder is no git checkout of its own, so it keeps no install record apart from ${rel}`,
+    ignored: (rel) => `${rel} ignores this folder - nothing of that workspace reaches it; taking this folder out of ignoredChildren in its workspace.json lifts it`,
 };
 
 // The role question for `when` (init, configure or update), its options Recommended first, each with the `--answer` word
@@ -423,7 +450,7 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     if (own.state === 'garbage') { sayGarbage(own.file, root, log); return null; }
     if (own.view.parent)
     {
-        const parentRead = readWorkspace(path.resolve(root, ...own.view.parent.split('/')), { env: ancestorEnv(env) });
+        const parentRead = readWorkspace(path.resolve(root, ...own.view.parent.split('/')));
         if (parentRead.state === 'garbage') { sayGarbage(parentRead.file, root, log); return null; }
     }
     const v = joinVerdict(projectRoot, { env, exec });
@@ -434,7 +461,7 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     if (when === 'init')
     {
         if (near && v.ok) return out('init-child', near.rel, [opt(`Child of ${near.rel} (Recommended)`, 'child'), opt('Standalone', 'standalone'), opt('Root', 'root')]);
-        if (near) return out('init-why', near.rel, [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')], { why: WHY[v.why](near.rel) });
+        if (near) return out('init-why', near.rel, [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')], { why: WHY[v.why](v.by || near.rel) });
         return out('init-none', null, isCheckout(projectRoot, { exec })
             ? [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')] : [opt('Root (Recommended)', 'root'), opt('Standalone', 'standalone')]);
     }
@@ -447,6 +474,8 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
         return out('configure-standalone', near ? near.rel : null, [keep, ...join, opt('Become a root', 'root')]);
     }
     const view = own.view;
+    // W3: the project's own run releases an ignored one - no 'Become standalone' ask before it
+    if (v.why === 'ignored') return null;
     if (view.parent && role.kind !== 'child')
     {
         const lost = chain(projectRoot, { env, maxDepth: 1 }).notes.some((n) => n.endsWith('does not list this folder as a child'));
@@ -476,10 +505,9 @@ function register(projectRoot, { env = process.env, exec = runtime.execCommand, 
     if (!v.parent) return { ok: false, code: 2, lines: [`!! workspace: no installed folder above ${root} - nothing to join`] };
     if (!v.ok) return { ok: false, code: 2, lines: [`!! workspace: ${v.parent.rel} cannot take this folder as a child (${v.why})`] };
     const childRel = relPosix(v.parent.root, root);
-    const upEnv = ancestorEnv(env);
     const said = [];
     const log = (l) => said.push(l);
-    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { env: upEnv, runRoot: root, log });
+    const up = writeWorkspace(v.parent.root, (m) => addChild(m, childRel), { runRoot: root, log });
     if (!up.ok && up.why === 'locked') return { ok: false, code: 3, lines: [...said, `!! workspace: the workspace file in ${v.parent.rel} is locked by another run - nothing was written; the join is offered again at the next update`] };
     if (!up.ok && up.why === 'garbage') return { ok: false, code: 1, lines: [...said, `!! workspace: the workspace record in ${v.parent.rel} is garbage (not valid JSON) - nothing was joined; fix it by hand, then join again`] };
     if (!up.ok) return { ok: false, code: 1, lines: [...said, `!! workspace: the workspace file in ${v.parent.rel} could not be written (${up.why}) - nothing was joined`] };
@@ -488,7 +516,7 @@ function register(projectRoot, { env = process.env, exec = runtime.execCommand, 
     {
         // The parent's line alone is a child the chain never reaches: take it back, unless it was there before (a
         // conversion alone writes the parent's file without adding the line).
-        if (up.changed) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { env: upEnv, runRoot: root });
+        if (up.changed) writeWorkspace(v.parent.root, (m) => removeChild(m, childRel), { runRoot: root });
         const state = here.why === 'locked' ? 'locked by another run' : here.why === 'garbage' ? 'garbage (not valid JSON)' : 'not writable';
         return { ok: false, code: here.why === 'locked' ? 3 : 1, lines: [...said, `!! workspace: this project's workspace file is ${state} - nothing was joined; the join is offered again at the next update`] };
     }
@@ -508,10 +536,10 @@ function editVariablesLedger(projectRoot, change)
 }
 
 // A stack seed: the value still at its managed-env ledger hash AND the catalog default, or an old seed a reseed migration
-// moves (the update would reset it anyway - the scorer's 0 and empty list, B1 of the 2026-11-03 usage audit) - an
+// moves (the update would reset it anyway - the scoring's 0 and empty list, B1 of the 2026-11-03 usage audit) - an
 // installer answer off the default (`--auto-compact on`, a walk's value) is ledgered the same way and is the project's own (D5).
 let catalogSeeds = null;
-function isSeed(key, value, rows)
+function isSeed(key, value, rows, catalogKey = key)
 {
     if (!catalogSeeds)
     {
@@ -520,7 +548,7 @@ function isSeed(key, value, rows)
         catalogSeeds = new Map(JSON.parse(fs.readFileSync(path.join(meta, 'environment.json'), 'utf8')).env
             .map((r) => [r.key, [r.default ?? '', ...reseed.filter(([k]) => k === r.key).map(([, bad]) => bad)].map(String)]));
     }
-    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && (catalogSeeds.get(key) || []).includes(String(value));
+    return Boolean(rows[key]) && rows[key] === stamp.valueHash(value) && (catalogSeeds.get(catalogKey) || []).includes(String(value));
 }
 
 // A join's prune (D5): every stack seed (isSeed) in the joiner's `.variables` leaves (with its row) and the members'
@@ -528,33 +556,50 @@ function isSeed(key, value, rows)
 // own. One line names the count kept. A joiner whose values still sit in settings (a 2.12 project the update walk joins
 // before the installer moves them) gets `join-prune: settings` in its stamp, so the next settings pass prunes them there
 // (envPlan) - a 2.12 child that never answered a join keeps every value (the spec's Migration).
-function pruneOnJoin(projectRoot, { env = process.env, log = () => {} } = {})
+// W1: every run that writes a joined child's `.variables` calls it too, with no `seeds`: a value equal to the chain's leaves.
+function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = false } = {})
 {
     const variables = require('./variables.js');
     const layout = require('../../stack/hooks/layout.js');
     const file = variables.fileOf(projectRoot, { env });
     const values = variables.read(file).values;
+    const chained = chainValues(projectRoot, { env });
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const dropped = [];
     const own = [];
+    // The layers the loader reads after the own file and before the members (layout.js ownLayers' order): the first holding
+    // another value would answer once the own line left, so the line stays, named.
+    const envIn = (f) => { const e = (readJson(f) || {}).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; };
+    // Each read through the loader's own `valueIn`, so a 3.10 name (layout.OLD_KEYS, until 4.0.0) answers as it does there -
+    // the own file's included: with the line gone, its old name is what the loader reads next.
+    const held = [['settings.json', envIn(path.join(projectRoot, '.claude', 'settings.json'))], ['account settings',
+        envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
+    const stays = [];
     for (const [key, value] of Object.entries(values))
     {
         if (!layout.VARIABLE_KEYS.includes(key)) continue;
-        if (!layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
-        else own.push(key);
+        const rest = { ...values };
+        delete rest[key];
+        const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
+        if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
+        else if (chained[key] !== value) own.push(key);
+        else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
+        else dropped.push(key);
     }
     const ledgerEnv = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env || {};
-    if (['settings.json', 'settings.local.json'].some((f) => Object.keys(ledgerEnv[f] || {}).some((k) => layout.VARIABLE_KEYS.includes(k))))
+    if (seeds && ['settings.json', 'settings.local.json'].some((f) => Object.keys(ledgerEnv[f] || {}).some((k) => layout.VARIABLE_KEYS.includes(k))))
         stamp.markLine(stampFile, 'join-prune', 'settings');
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
     if (dropped.length)
     {
         const done = variables.write(file, Object.fromEntries(dropped.map((k) => [k, null])));
-        if (done.why) { log(`!! workspace: ${path.relative(projectRoot, file)} could not be written (${done.why}) - its stack seeds stay and beat the workspace's values until the next join`); return { dropped: [], own }; }
+        if (done.why) { log(`!! workspace: ${rel} could not be written (${done.why}) - nothing was removed from it`); return { dropped: [], own }; }
         editVariablesLedger(projectRoot, (r) => { for (const k of dropped) delete r[k]; return r; });
     }
-    if (dropped.length || own.length)
-        log(`workspace: ${own.length} of this project's values kept as its own (${own.join(', ') || 'none'}) - ${dropped.length} stack seed${dropped.length === 1 ? '' : 's'} dropped, so the workspace's value reaches it`);
+    if (dropped.length || (seeds && own.length) || stays.length)
+        log(`workspace: ${dropped.length} ${seeds ? 'stack seeds and values' : 'values'} equal to the workspace's removed from ${rel} (${dropped.join(', ') || 'none'})`
+            + ` - ${own.length} kept as this project's own (${own.join(', ') || 'none'})${stays.join('')}`);
     return { dropped, own };
 }
 
@@ -562,7 +607,7 @@ function pruneOnJoin(projectRoot, { env = process.env, log = () => {} } = {})
 // nothing changes - a member's seed (its value at the member's ledger hash) keeps a seed's ledger row here. With the
 // parent gone there is no chain to read: the keys the project does not hold read the stack's defaults now, named, and
 // the next update seeds them as a standalone's.
-function keepOnLeave(projectRoot, { env = process.env, log = () => {} } = {})
+function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored = null } = {})
 {
     const variables = require('./variables.js');
     const layout = require('../../stack/hooks/layout.js');
@@ -574,7 +619,8 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {} } = {})
     {
         const held = variables.read(file).values;
         const defaults = layout.VARIABLE_KEYS.filter((k) => !layout.MEMBER_NEVER.has(k) && held[k] === undefined);
-        if (view.parent && defaults.length) log(`workspace: ${view.parent} is gone - ${defaults.length} values read the stack's defaults here now (${defaults.join(', ')}); the next update seeds them`);
+        if (view.parent && ignored) log(`workspace: ${ignored} ignores this project - ${defaults.length} values it does not hold read the stack's defaults (${defaults.join(', ') || '-'}); a rule that workspace sent arrives only from this project's own store now - /alfred-code:configure adds one back`);
+        else if (view.parent && defaults.length) log(`workspace: ${view.parent} is gone - ${defaults.length} values read the stack's defaults here now (${defaults.join(', ')}); the next update seeds them`);
         return { written: [], defaults };
     }
     const { values, from } = layout.variablesOf(root, { env });
@@ -599,6 +645,47 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {} } = {})
     return { written, defaults: [] };
 }
 
+// W3 [F12]: before a project leaves, each rule the loader sends it from a member is copied into its own store (never over
+// a file there), hashed on its stamp's library-rules line and never a member-picks row. The loader is handed a stub prelude,
+// so the root's variables never reach this process (Review Focus 1). Returns the names copied.
+function keepRules(child, { env = process.env, log = () => {} } = {})
+{
+    const real = realOf(child);
+    const sent = require('../../stack/hooks/rules-session.js').rulesFor(real, env, { prelude: { checkoutsOf: () => [real], INSTALL_RECORDS: [] } });
+    if (!sent.project || realKey(sent.project) !== realKey(real)) return [];
+    const store = require('./links.js').storeOf(real, 'rules');
+    const copied = [];
+    for (const rule of [...sent.always, ...sent.scoped].sort((a, b) => a.name.localeCompare(b.name)))
+    {
+        if (realKey(rule.root) === realKey(real) || fs.existsSync(path.join(store, `${rule.name}.md`))) continue;
+        const r = addToStore({ root: real, kind: 'rules', name: rule.name, mine: true, copy: (dir) => fs.copyFileSync(rule.file, path.join(dir, `${rule.name}.md`)),
+            log: (l) => { if (/!!/.test(l)) log(l.trim()); } });
+        if (r === 'added') copied.push(rule.name);
+    }
+    if (copied.length) log(`workspace: ${copied.length} rules this project read from the workspace copied into its own store (${copied.join(', ')})`);
+    return copied;
+}
+
+// Workspace stage 3: a child leaving its workspace keeps each item it linked from above - copied as it stands into its
+// own store and linked there - so its next session lists the same skills. Never on its own uninstall.
+function copyIn(child, log = () => {})
+{
+    const links = require('./links.js');
+    const file = path.join(child, '.claude', brand.BRAND.stamp);
+    const prior = stamp.readLinks(file);
+    for (const e of prior)   // a copy entry too: its file goes into the child's store, or the sync below would drop it
+    {
+        const own = path.join(child, '.alfred', 'stack', e.path);
+        let target;
+        try { target = fs.realpathSync(path.join(child, '.claude', e.path)); } catch { continue; }
+        if (fs.existsSync(own)) continue;
+        fs.mkdirSync(path.dirname(own), { recursive: true });
+        fs.cpSync(target, own, { recursive: true });
+    }
+    const want = prior.map((e) => ({ kind: e.path.split('/')[0], name: e.path.split('/')[1].replace(/\.md$/, '') }));
+    stamp.markLine(file, 'links', stamp.linksValue(links.syncLinks({ projectRoot: child, want, prior, log })) || null);
+}
+
 // One answer to the role ask: { ok, code, lines }. Every answer rewrites `above`, so the same tree is never asked twice.
 function applyRole(projectRoot, answer, { env = process.env, exec = runtime.execCommand, dataRoot } = {})
 {
@@ -621,6 +708,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         keepOnLeave(root, { env, log });
         const r = leaveParent({ projectRoot: root, env, dataRoot, log });
         if (r.why) return fail(r.why === 'locked' ? 3 : 1, `!! ${r.line}`);
+        copyIn(root, log);   // only once the leave holds: a failed one keeps the child linked to its root
         return write((m) => setAbove(setRole(m, to), nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${to}`] };
     };
     const joinHere = (rel) =>
@@ -635,7 +723,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         const r = register(root, { env, exec, dataRoot, above: true });
         lines.push(...r.lines);
         if (!r.ok) return { ok: false, code: r.code, lines };
-        pruneOnJoin(root, { env, log });
+        pruneChained(root, { env, log, seeds: true });
         return { ok: true, code: 0, lines: [...lines, `role: child of ${r.rel}`] };
     };
     if (answer === 'stay') return write((m) => setAbove(m, nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${roleText(roleOf(root, { env, log }))}`] };
@@ -665,14 +753,15 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
 // holds a stamp and whose own file lists this folder as `child` (the N1 rule): project text alone can never pull an
 // unrelated folder - or its secrets - into the chain. The first refused hop ends it with one `!!` note, returned for
 // the caller to log (never through the installer's `note`, which counts a failure).
-function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {})
+function chain(projectRoot, { maxDepth = 8, ownDataRoot } = {})
 {
     const start = realOf(projectRoot);
     const members = [];
     const notes = [];
     const seen = new Set([realKey(start)]);
     let current = start;
-    let read = readWorkspace(start, { env, dataRoot: ownDataRoot });
+    let read = readWorkspace(start, { dataRoot: ownDataRoot });
+    let ignoredBy = null;
     while (members.length < maxDepth && read.view.parent)
     {
         const value = read.view.parent;
@@ -684,8 +773,10 @@ function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {
         const up = path.relative(realKey(parent), realKey(current));
         if (!up || up.startsWith('..') || path.isAbsolute(up)) { refuse(`${label} is not a folder above this one`); break; }
         if (!isStamped(parent)) { refuse(`${label} holds no Alfred install`); break; }
-        const parentRead = readWorkspace(parent, { env: ancestorEnv(env) });
+        const parentRead = readWorkspace(parent);
         if (parentRead.state === 'garbage') { refuse(`${relPosix(start, parentRead.file)} is not valid JSON`); break; }
+        // W3: layout.workspaceChain's cut - a folder the parent ignores takes nothing from it, unsaid.
+        if (workspaceFile.covered(parentRead.view.ignoredChildren, realKey(parent), realKey(current))) { ignoredBy = label; break; }
         if (!parentRead.view.children.some((c) => realKey(path.join(parent, ...c.split('/'))) === realKey(current)))
         {
             refuse(`${label} does not list this folder as a child`);
@@ -694,12 +785,12 @@ function chain(projectRoot, { env = process.env, maxDepth = 8, ownDataRoot } = {
         const key = realKey(parent);
         if (seen.has(key)) { refuse(`${label} is already in the chain`); break; }
         seen.add(key);
-        const dataRoot = dataRootMod.dataRootOf({ env: ancestorEnv(env), projectDir: parent }).root;
+        const dataRoot = dataRootMod.dataRootOf({ projectDir: parent }).root;
         members.push({ root: realOf(parent), rel: label, dataRoot, view: parentRead.view });
         current = parent;
         read = parentRead;
     }
-    return { members, notes };
+    return { members, notes, ignoredBy };
 }
 
 // The project and every descendant its `child` lines reach, pre-order. A child folder that is missing or holds no
@@ -710,7 +801,7 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine
     const rows = [{ root: top, rel: '.', depth: 0, parentRel: null, state: 'ok' }];
     const seen = new Set([realKey(top)]);
     // A garbage record is named, and nothing below it is read.
-    const viewAt = (dir, readEnv) => { const r = readWorkspace(dir, { env: readEnv }); if (r.state !== 'garbage') return r.view; sayGarbage(r.file, top, log); return null; };
+    const viewAt = (dir) => { const r = readWorkspace(dir); if (r.state !== 'garbage') return r.view; sayGarbage(r.file, top, log); return null; };
     const walk = (dir, rel, depth, view) =>
     {
         if (depth >= maxDepth || !view) return;
@@ -723,10 +814,10 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine
             const childRel = rel === '.' ? c : `${rel}/${c}`;
             const ok = isDir(child) && isStamped(child);
             rows.push({ root: ok ? realOf(child) : child, rel: childRel, depth: depth + 1, parentRel: rel, state: ok ? 'ok' : 'gone' });
-            if (ok) walk(child, childRel, depth + 1, viewAt(child, ancestorEnv(env)));
+            if (ok) walk(child, childRel, depth + 1, viewAt(child));
         }
     };
-    walk(top, '.', 0, viewAt(top, env));
+    walk(top, '.', 0, viewAt(top));
     return rows;
 }
 
@@ -738,7 +829,7 @@ const RESCAN_SKIP = new Set(['.git', 'node_modules', '.claude']);
 function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine } = {})
 {
     const top = realOf(projectRoot);
-    const dataRoot = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const dataRoot = dataRootMod.dataRootOf({ projectDir: top }).root.split('/')[0];
     const found = [];
     const walk = (dir, depth) =>
     {
@@ -751,10 +842,10 @@ function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine 
             const child = path.join(dir, d.name);
             if (isStamped(child))
             {
-                const read = readWorkspace(child, { env: ancestorEnv(env) });
+                const read = readWorkspace(child);
                 // a garbage record is no project to offer: named, and left to be fixed by hand
                 if (read.state === 'garbage') sayGarbage(read.file, top, log);
-                else if (!read.view.parent && !read.view.parentNone) found.push(relPosix(top, child));
+                else if (!read.view.parent && !read.view.parentNone && !(ignoredBy(child, { env }) || {}).ignored) found.push(relPosix(top, child));
                 continue;
             }
             if (depth + 1 < maxDepth) walk(child, depth + 1);
@@ -817,14 +908,20 @@ function chainValues(projectRoot, { env = process.env } = {})
     const layout = require('../../stack/hooks/layout.js');
     const out = {};
     if (!layout.workspaceOn({ env, projectRoot })) return out;
-    const { members, ignores } = layout.workspaceChain(projectRoot, { env });
-    const skip = new Set((ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
+    // The installer's own chain: a member whose data an update has not moved yet is read where it sits.
+    const { members } = chain(projectRoot);
+    const skip = new Set((readWorkspace(realOf(projectRoot)).view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
     for (const member of members)
     {
         const read = layout.readDotenv(path.join(member.root, ...member.dataRoot.split('/'), '.variables'));
-        for (const [key, value] of Object.entries((read && read.values) || {}))
-            if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !skip.has(key) && !Object.hasOwn(out, key)) out[key] = value;
-        for (const i of member.ignores || []) if (i.category === 'env') skip.add(i.name);
+        // The loader's own `valueIn`: an empty line is unset and a 3.10 name answers for its new one (until 4.0.0).
+        for (const key of layout.VARIABLE_KEYS)
+        {
+            if (!read || layout.MEMBER_NEVER.has(key) || skip.has(key) || Object.hasOwn(out, key)) continue;
+            const value = layout.valueIn(read.values, key);
+            if (value !== undefined) out[key] = value;
+        }
+        for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
     return out;
 }
@@ -835,7 +932,7 @@ function chainValues(projectRoot, { env = process.env } = {})
 // it set itself): each copy still at its ledger hash, and given the same value by the chain now, goes (`copies`); a copy
 // the chain would answer otherwise - a parent not updated yet - stays as the child's own, so no value changes. Its
 // HOOKS_OFF loses the part entries a member's settings hold (`hooksOffDrop`), which the loader merges back at load.
-// A project the role answer joined while its 2.12 values still sat in settings (pruneOnJoin's `join-prune: settings`
+// A project the role answer joined while its 2.12 values still sat in settings (pruneChained's `join-prune: settings`
 // stamp line - the update walk answers BEFORE the installer): each stack seed (isSeed) goes from settings as the prune
 // drops it from `.variables` (`seeds`) - never DOCS_VERSIONING or an `ignore env` key - and the workspace's value
 // reaches it. The stamp the run writes carries no such line, so it prunes once.
@@ -846,7 +943,7 @@ function envPlan(ctx)
     const w = ctx.workspace;
     if (!w || ctx.args.action === 'uninstall') return null;
     const linked = Boolean(w.on && w.members.length);
-    const dataRoot = w.fileRoot ?? (ctx.dataInfo && !ctx.dataInfo.invalid ? ctx.dataInfo.root : undefined);
+    const dataRoot = w.fileRoot ?? (ctx.dataInfo ? ctx.dataInfo.root : undefined);
     let view = { ignores: w.ignores };
     if (!linked)
     {
@@ -864,22 +961,38 @@ function envPlan(ctx)
     const read = stamp.stampFiles({ projectRoot: ctx.projectRoot }).read;
     const own = read ? stamp.readOwnEnv(read) : null;
     const layout = require('../../stack/hooks/layout.js');
-    const target = ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json';
-    const data = readJson(path.join(ctx.claudeDir, target));
-    const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
-    const rows = ((ctx.ledger && ctx.ledger.env) || {})[target] || {};
+    // The stack's file at every scope since mode v2 stage 2 is settings.local.json; at project and user scope an older
+    // install's rows still sit in settings.json until this run's settings pass carries them there, so both are judged.
+    const files = ctx.args.scope === 'local' ? ['settings.local.json'] : ['settings.json', 'settings.local.json'];
+    const held = files.flatMap((file) =>
+    {
+        const data = readJson(path.join(ctx.claudeDir, file));
+        const env = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
+        const rows = ((ctx.ledger && ctx.ledger.env) || {})[file] || {};
+        return Object.entries(env).map(([key, value]) => ({ key, value, rows }));
+    });
+    const env = Object.fromEntries(held.map(({ key, value }) => [key, value]));
+    const add = (list, key) => { if (!list.includes(key)) list.push(key); };
+    // until 4.0.0: this runs before the settings pass renames the four scoring keys, so an old key is judged as its new
+    // one (the catalog, the chain) on its own ledger row, and the plan names it as the file holds it, which the pass drops.
+    const newOf = Object.fromEntries(Object.entries(layout.OLD_KEYS).map(([n, o]) => [o, n]));
     if (own === null)
     {
         if (read && stamp.readJoinPrune(read))
-            for (const [key, value] of Object.entries(env))
-                if (layout.VARIABLE_KEYS.includes(key) && !layout.MEMBER_NEVER.has(key) && !plan.ignored.includes(key) && isSeed(key, value, rows)) plan.seeds.push(key);
+            for (const { key, value, rows } of held)
+            {
+                const name = newOf[key] || key;
+                if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !plan.ignored.includes(name)
+                    && isSeed(key, value, rows, name)) add(plan.seeds, key);
+            }
         return plan;
     }
     const chained = plan.memberEnv;
-    for (const [key, value] of Object.entries(env))
+    for (const { key, value, rows } of held)
     {
-        if (!layout.VARIABLE_KEYS.includes(key) || own.includes(key) || layout.MEMBER_NEVER.has(key)) continue;
-        if (rows[key] === stamp.valueHash(value) && chained[key] === String(value)) plan.copies.push(key);
+        const name = newOf[key] || key;
+        if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name)) continue;
+        if (rows[key] === stamp.valueHash(value) && chained[name] === String(value)) add(plan.copies, key);
     }
     const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
     plan.hooksOffDrop = csv(env.ALFRED_CODE_HOOKS_OFF).filter((e) => e.includes(':') && memberParts.has(e));
@@ -890,7 +1003,9 @@ function envPlan(ctx)
 
 // Every stamped folder above the project, nearest first, joined or not: Claude Code loads an ancestor's rules and
 // AGENTS.md into any project below it, so each one's Alfred files are excluded wherever a project sits under it.
-function stampedAncestors(projectRoot, { env = process.env, maxDepth = 8 } = {})
+// W3: two own properties ride the array - `ignored`, the real path of the first folder on the way up (the project, then
+// each stamped one) a workspace ignores, else null, and `cut`, the stamped folders above that one ([] when none).
+function stampedAncestors(projectRoot, { env = process.env, exec = runtime.execCommand, maxDepth = 8 } = {})
 {
     const out = [];
     let at = projectRoot;
@@ -901,13 +1016,16 @@ function stampedAncestors(projectRoot, { env = process.env, maxDepth = 8 } = {})
         out.push(found.root);
         at = found.root;
     }
+    const i = [projectRoot, ...out].findIndex((dir) => (ignoredBy(dir, { env, exec }) || {}).ignored);
+    out.ignored = i < 0 ? null : realOf([projectRoot, ...out][i]);
+    out.cut = i < 0 ? [] : out.slice(i);
     return out;
 }
 
 // An ancestor's Alfred-managed files a child must not load a second time (absolute paths): its library rule copies,
 // the generated rules, and its seeded AGENTS.md while it still hashes to the seed - an edited one is the user's
 // instructions and stays. `ignore instructions <file>` adds one more of the ancestor's files.
-function ancestorExcludes(ancestorRoot, { childIgnores = [] } = {})
+function ancestorExcludes(ancestorRoot, { childIgnores = [], nearer = [] } = {})
 {
     const { GENERATED_FILES } = require('./selection.js');
     const seeds = require('./seeds.js');
@@ -917,7 +1035,11 @@ function ancestorExcludes(ancestorRoot, { childIgnores = [] } = {})
     const rulesDir = path.join(claudeDir, 'rules');
     const out = [];
     const library = stamp.readLibrary(stampFile);
-    for (const name of Object.keys((library && library.rules) || {})) out.push(path.join(rulesDir, `${name}.md`));
+    // A library rule only while it loads natively here and the child ignores it or a nearer member holds that name (4c).
+    const dropped = (f) => childIgnores.some((i) => i.category === 'rule' && `${i.name}.md` === f)
+        || nearer.some((r) => ['.claude', '.alfred/stack'].some((d) => fs.existsSync(path.join(r, d, 'rules', f))));
+    for (const f of Object.keys((library && library.rules) || {}).map((n) => `${n}.md`))
+        if (fs.existsSync(path.join(rulesDir, f)) && dropped(f)) out.push(path.join(rulesDir, f));
     for (const name of GENERATED_FILES)
     {
         const file = path.join(rulesDir, `${name}.md`);
@@ -939,6 +1061,29 @@ function ancestorExcludes(ancestorRoot, { childIgnores = [] } = {})
     }
     return [...new Set(out)];
 }
+// D16: an ignored project shuts out the whole instruction surface of each folder of the range - the six names whether
+// the file exists or not, the rules entry a folder (its trailing separator).
+const WIDE = ['CLAUDE.md', 'CLAUDE.local.md', '.claude/CLAUDE.md', 'AGENTS.md', '.claude/AGENTS.md', '.claude/rules/'];
+// D16's range, nearest first: from the parent of the ignored folder up to the topmost stamped ancestor, plain folders too.
+function wideRange(ancestors)
+{
+    if (!ancestors.ignored || !ancestors.length) return [];
+    const top = realKey(ancestors[ancestors.length - 1]);
+    const out = [];
+    for (let dir = path.dirname(ancestors.ignored); ; dir = path.dirname(dir))
+    {
+        out.push(dir);
+        if (realKey(dir) === top || path.dirname(dir) === dir) return out;
+    }
+}
+// F3's rows for each ancestor the project is not cut from, then D16's six names over the range.
+function chainExcludes(ancestors, self, childIgnores)
+{
+    const cut = ancestors.cut || [];
+    const kept = ancestors.flatMap((root, i) => (cut.includes(root) ? [] : ancestorExcludes(root, { childIgnores, nearer: [self, ...ancestors.slice(0, i)] })));
+    const wide = wideRange(ancestors).flatMap((dir) => WIDE.map((n) => path.join(dir, ...n.split('/').filter(Boolean)) + (n.endsWith('/') ? path.sep : '')));
+    return wide.length ? [...new Set([...kept, ...wide])] : kept;
+}
 
 const GLOB_META = new Set(['*', '?', '[', '{', '}', '(', ')']);
 
@@ -952,8 +1097,11 @@ function excludeGlobs(paths, platform = process.platform)
     const out = [];
     for (const p of paths)
     {
+        // A folder (a trailing separator) matches everything below it: its path plus `/**`.
+        const folder = /[\\/]$/.test(p) && (platform === 'win32' || p.endsWith('/'));
         let spelled = fs.existsSync(p) ? realOf(p) : p;
         spelled = platform === 'win32' ? spelled.replace(/\\/g, '/') : spelled.split(path.sep).join('/');
+        if (folder) spelled = spelled.replace(/\/+$/, '');
         let glob = '';
         for (const c of spelled)
         {
@@ -962,9 +1110,70 @@ function excludeGlobs(paths, platform = process.platform)
             const up = c.toUpperCase();
             glob += folds && lo !== up && [...lo].length === 1 && [...up].length === 1 ? `[${lo}${up}]` : c;
         }
-        out.push(glob);
+        out.push(folder ? `${glob}/**` : glob);
     }
     return [...new Set(out)];
+}
+
+// Workspace stage 3: the `skill` and `agent` lines each joined member below `root` picked itself (its stamp's `own-picks`),
+// walked `maxDepth` folders deep - an `agent` line only from a member on the root's seats route (ruling 7). A member whose
+// stamp holds no such line adds nothing and is named; a stamped folder whose chain does not end at `root` is passed over.
+function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
+{
+    const top = realOf(root);
+    const lines = new Set();
+    const notes = [];
+    const visit = (dir) =>
+    {
+        const members = chain(dir).members;
+        if (!members.length || realOf(members[members.length - 1].root) !== top) return;
+        const file = path.join(dir, '.claude', brand.BRAND.stamp);
+        const picks = stamp.readOwnPicks(file);
+        if (!picks) { notes.push(`member ${relPosix(top, dir)} not counted: its stamp holds no own-picks line`); return; }
+        for (const l of picks) if (/^(skill|rule) /.test(l) || (l.startsWith('agent ') && stamp.readSeatsRoute(file) === seatsRoute)) lines.add(l);
+    };
+    const walk = (dir, depth) =>
+    {
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { /* unreadable: nothing below */ }
+        for (const d of entries.filter((e) => e.isDirectory() && !e.isSymbolicLink() && !RESCAN_SKIP.has(e.name)))
+        {
+            if (isStamped(path.join(dir, d.name))) visit(path.join(dir, d.name));
+            if (depth + 1 < maxDepth) walk(path.join(dir, d.name), depth + 1);
+        }
+    };
+    walk(top, 0);
+    return { lines: [...lines].sort(), notes };
+}
+
+// Workspace stage 3: a joined child's own pick, put into its top's store under the top's lock (`copy(dir)` writes it) and
+// recorded on the top's stamp - its library hash (the copy route: its managed-files row) and, unless the top picked it
+// itself, its member-picks entry. 'added' | 'present' | 'locked' | 'not-held' (the top's kind is not linkable).
+function addToStore({ root, kind, name, copy, route = 'plugin', from = root, mine = false, log = () => {} })
+{
+    const links = require('./links.js');
+    const home = kind === 'rules' ? { store: true, dir: links.storeOf(root, 'rules') } : links.homeOf(root, kind);   // a rule is never linked (4c)
+    if (!home.store) return 'not-held';
+    const [rel, item, at] = [relPosix(from, root) || '.', path.join(home.dir, links.fileOf(kind, name)), locate(root)];
+    let held = false;
+    try { fs.mkdirSync(at.dir, { recursive: true }); held = takeLock(at.lock, { now: Date.now, sleep: sleepMs, retryMs: 500, staleMs: 30000 }); }
+    catch { held = false; }
+    if (!held) { log(`  !! store: ${rel} is locked - ${kind}/${name} is added at the next run`); return 'locked'; }
+    try
+    {
+        const present = fs.existsSync(item);
+        if (!present) { fs.mkdirSync(home.dir, { recursive: true }); copy(home.dir); log(`store: ${kind}/${name} added to ${rel}/.alfred/stack`); }
+        const file = path.join(root, '.claude', brand.BRAND.stamp);
+        const hash = require('./library.js').hashItem(item);
+        const pairs = (map) => Object.entries(map).map(([n, h]) => `${n}=${h}`).join(',');
+        if (route === 'plugin' || kind === 'rules') stamp.markLine(file, `library-${kind}`, pairs({ ...stamp.readLibrary(file)?.[kind], [name]: hash }));
+        else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${links.fileOf(kind, name)}`]: hash }));
+        const line = `${kind.slice(0, -1)} ${name}`;
+        const own = ((stamp.readPicked(file) || {})[kind] || []).some((e) => e.split('@')[0] === name);
+        if (!own && !mine) stamp.markLine(file, 'member-picks', [...new Set([...(stamp.readMemberPicks(file) || []), line])].map((l) => l.replace(' ', '/')).sort().join(','));
+        return present ? 'present' : 'added';
+    }
+    finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
 }
 
 // ------------------------------------------------------------------ refresh below (2026-11-10)
@@ -977,11 +1186,39 @@ function excludeGlobs(paths, platform = process.platform)
 // lock. Only that array moves, a member its ledger does not hold is the user's and stays, and every other ledger row is
 // re-rendered byte for byte. A failed stamp write puts the settings file back (or removes it, when this made it), so no
 // row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
-function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500 } = {})
+// Workspace stage 3: a moved member below `top` re-links what it links plus the top's own items of each linked kind, less
+// what it or a member between ignores, under its own lock. A child with no `links:` line is not moved yet: its update does it.
+function relink(child, top, rel, ignores, log)
+{
+    const links = require('./links.js');
+    const file = path.join(child, '.claude', brand.BRAND.stamp);
+    const prior = stamp.readLinks(file);
+    const { members } = chain(child);
+    if (!/^links:/m.test(readOr(file)) || !members.length || realOf(members[members.length - 1].root) !== top) return;
+    const topFile = path.join(top, '.claude', brand.BRAND.stamp);
+    const held = new Set(stamp.readMemberPicks(topFile) || []);
+    const off = new Set([...ignores, ...members.slice(0, -1).flatMap((m) => m.view.ignores || [])].map((i) => `${i.category} ${i.name}`));
+    const lib = stamp.readLibrary(topFile) || {};
+    const rows = Object.keys((stamp.readLedger(topFile) || {}).files || {}).map((r) => r.split('/'));
+    const want = [...prior.map((e) => ({ kind: e.path.split('/')[0], name: e.path.split('/')[1].replace(/\.md$/, '') }))];
+    for (const kind of links.KINDS.filter((k) => links.homeOf(child, k).store))
+        for (const name of [...Object.keys(lib[kind] || {}), ...rows.filter((r) => r[0] === kind).map((r) => r[1].replace(/\.md$/, ''))])
+            if (!held.has(`${kind.slice(0, -1)} ${name}`) && !off.has(`${kind.slice(0, -1)} ${name}`)) want.push({ kind, name });
+    const at = locate(child);
+    let got = false;
+    try { got = takeLock(at.lock, { now: Date.now, sleep: sleepMs, retryMs: 500, staleMs: 30000 }); }
+    catch { got = false; }
+    if (!got) { log(`  !! workspace: ${rel} is locked - its links refresh on its next run`); return; }
+    const once = [...new Map(want.map((w) => [`${w.kind}/${w.name}`, w])).values()];
+    try { stamp.markLine(file, 'links', stamp.linksValue(links.syncLinks({ projectRoot: child, members, want: once, prior, log: (l) => log(`  ${rel}: ${l.trim()}`) })) || null); }
+    finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+}
+
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare } = {})
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     const top = realOf(projectRoot);
-    const ownData = dataRootMod.dataRootOf({ env, projectDir: top }).root.split('/')[0];
+    const ownData = dataRootMod.dataRootOf({ projectDir: top }).root.split('/')[0];
     const below = [];
     const walk = (dir, depth) =>
     {
@@ -997,10 +1234,16 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         }
     };
     walk(top, 0);
+    // An update (`release`) writes this project's ignore keys plural once - held while a project below runs a release that reads none.
+    const own = release ? readWorkspace(top) : null;
+    const due = Boolean(own && own.singular && own.view.ignores.some((i) => workspaceFile.PLURAL[i.category]));
+    const older = due && below.sort().map((dir) => [dir, stamp.readVersion(path.join(dir, '.claude', brand.BRAND.stamp))]).find(([, v]) => v && compare(v, compare(PLURAL_SINCE, release) > 0 ? release : PLURAL_SINCE) < 0);
+    if (older) log(`  workspace.json keeps its singular keys: ${relPosix(top, older[0])} is at ${older[1]}`);
+    else if (due) writeWorkspace(top, (record) => record, { runRoot: top, plural: true, log });
     const out = { refreshed: [], current: [], skipped: [] };
-    // Another project's data root and workspace file are read with the account alone (ancestorEnv): this run's own
-    // ALFRED_CODE_DATA_PATH is not the child's. A launch `0` still freezes the child's switch, as it would its own run.
-    const childEnv = { ...ancestorEnv(env), ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
+    // A child's switch and its ancestors are read with the account alone: this run's launch values are not the child's.
+    // A launch `0` still freezes the child's switch, as it would its own run.
+    const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR, ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
     const isExclude = (row) => { const m = MEMBER_PATH.exec(row); return Boolean(m) && m[1] === 'claudeMdExcludes'; };
     for (const child of below.sort())
     {
@@ -1010,8 +1253,9 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         try { on = workspaceOn({ env: childEnv, projectRoot: child }); }
         catch { on = false; }
         if (!on) { skip(''); continue; }
-        const ownRead = readWorkspace(child, { env: ancestorEnv(env) });
+        const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
+        relink(child, top, rel, ownRead.view.ignores || [], log);
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -1023,12 +1267,12 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         try
         {
             const ignores = ownRead.view.ignores || [];
-            const ancestors = stampedAncestors(child, { env: ancestorEnv(env) });
-            want = uniqSorted(excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: ignores })), process.platform));
+            const ancestors = stampedAncestors(child, { env: childEnv });
+            want = uniqSorted(excludeGlobs(chainExcludes(ancestors, child, ignores), process.platform));
         }
         catch (e) { skip(`- its excludes could not be worked out (${e.message}); left as it is`); continue; }
         if (!want.length && !Object.keys(prior).some(isExclude)) { out.current.push(rel); log(`workspace: ${rel} - excludes current`); continue; }
-        const at = locate(child, { env: ancestorEnv(env) });
+        const at = locate(child);
         if (!at.file) { skip(`- its data root is refused (${at.why}); left as it is`); continue; }
         let held = false;
         try
@@ -1103,16 +1347,24 @@ function settingsEnv(root)
 // project's ignores and own lines, and the parent's lines - read from `--parent-plan`, or from the parent's own
 // `update --installed-only --print-plan` (never inside a plan run, which reads nothing it would not print).
 // `parentLines` stays null whenever the parent's set cannot be trusted, so nothing inherited is added or dropped.
-function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir() })
+function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir(), dataRoot: ownDataRoot })
 {
     const read = stamp.stampFiles({ projectRoot }).read;
     const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
     if (args.action === 'uninstall' || !workspaceOn({ env, projectRoot })) return { ...base, on: false };
-    const ownDataRoot = ownDataRootOf({ projectRoot, env, args });
-    const own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
+    let own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
     // The run's own record is garbage: the workspace part is frozen, as at the switch's 0 - no members, nothing inherited
     // added or dropped, the own lines carried.
     if (own.state === 'garbage') { sayGarbage(own.file, realOf(projectRoot), (l) => log(`  ${l}`)); return { ...base, on: false, garbage: true }; }
+    // W3: a folder the workspace ignores, still holding a parent, its own-picks or a link from above, releases itself first;
+    // a release that cannot finish freezes the workspace part of this run (Review Focus 4), and the next run retries.
+    const by = args.printPlan ? null : ignoredBy(projectRoot, { env });
+    if (by && by.ignored && (own.view.parent || base.ownPrior !== null || (read && require('./links.js').inherited(projectRoot, stamp.readLinks(read)).length)))
+    {
+        if (!releaseChildren({ projectRoot: by.root, only: projectRoot, keepRules: true, env, log, note }).length) return { ...base, on: false };
+        own = readWorkspace(projectRoot, { env, dataRoot: ownDataRoot });
+        base.ownPrior = null;
+    }
     const where = own.file ? relPosix(realOf(projectRoot), own.file) : 'the workspace file';
     for (const problem of own.problems) log(`  !! workspace: ${where}: ${problem}`);
     const { members, notes } = chain(projectRoot, { env, ownDataRoot });
@@ -1198,22 +1450,23 @@ function workspaceStep(ctx)
     ctx.ownPicks = w.ownPrior;
     if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
-    const want = excludeGlobs(ancestors.flatMap((root) => ancestorExcludes(root, { childIgnores: w.ignores })), process.platform);
+    const want = excludeGlobs(chainExcludes(ancestors, ctx.projectRoot, w.ignores), process.platform);
     const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     // A standalone project - nothing stamped above, nothing recorded - leaves settings.local.json alone.
     const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
-    const sync = (arrayPath, list) => (list.length || recorded(arrayPath)
+    // An unusable local file (installHooksAndRules' localBad) gets no row; carryMemberRows keeps what the ledger named.
+    const sync = (arrayPath, list) => (!ctx.localBad && (list.length || recorded(arrayPath))
         ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note })
         : { rows: {}, created: false });
     const r = sync('claudeMdExcludes', want);
     // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
     // entry that hides it here. Every stamped folder above counts, linked or not, as for the excludes.
-    const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores));
+    const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores, ctx.projectRoot));
     const access = ancestorAccess(ctx, w);
     const a = sync('permissions.additionalDirectories', access.dirs);
     const n = sync('permissions.deny', access.deny);
-    ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows };
+    if (!ctx.localBad) ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows };
     mcpHint(ctx);
     if (w.members.length)
     {
@@ -1263,14 +1516,20 @@ function ancestorAccess(ctx, w)
 // ------------------------------------------------------------------ D8, a linked member's local MCP registrations
 
 const ignoredMcp = (ignores) => (ignores || []).filter((i) => i.category === 'mcp').map((i) => i.name);
-// The `ignore mcp` names some ancestor's .mcp.json registers.
-function mcpJsonIgnores(ancestors, ignores)
+// The `ignore mcp` names some ancestor's .mcp.json registers, then (D16) every server of a .mcp.json in the range that
+// `self`'s own .mcp.json does not declare.
+function mcpJsonIgnores(ancestors, ignores, self)
 {
     const names = ignoredMcp(ignores);
-    if (!names.length) return [];
+    const range = wideRange(ancestors);
+    if (!names.length && !range.length) return [];
     const mcp = require('./mcp.js');
-    const held = ancestors.map((root) => mcp.registrationsAt({ scope: 'project', mcpFile: path.join(root, '.mcp.json'), projectRoot: root }).servers);
-    return names.filter((n) => held.some((servers) => Object.hasOwn(servers, n)));
+    const servers = (root) => mcp.registrationsAt({ scope: 'project', mcpFile: path.join(root, '.mcp.json'), projectRoot: root }).servers;
+    const held = ancestors.map(servers);
+    const out = names.filter((n) => held.some((s) => Object.hasOwn(s, n)));
+    const own = range.length && self ? servers(self) : {};
+    for (const dir of range) for (const n of Object.keys(servers(dir))) if (!Object.hasOwn(own, n) && !out.includes(n)) out.push(n);
+    return out;
 }
 
 // A folder's account-file key, compared case-folded with `\` as `/` (A8: Windows keeps the case typed at `cd`).
@@ -1385,6 +1644,23 @@ function accountPaths(env = process.env)
 {
     const home = os.homedir();
     return { configDir: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), accountFile: path.join(env.CLAUDE_CONFIG_DIR || home, '.claude.json') };
+}
+
+// Workspace stage 4c: what keeps a rule from being sent here, one `rules:` line each - for the install run and status.
+function ruleNotes({ projectRoot, env = process.env })
+{
+    const loader = require('../../stack/hooks/rules-session.js');
+    const r = loader.rulesFor(projectRoot, env);
+    const out = [...r.notes, ...loader.parts(r.always, { natives: r.natives }).unsent.map((u) => `not sent - ${u}`)];
+    const files = [['.claude/settings.json'], ['.claude/settings.local.json'], [path.join(accountPaths(env).configDir, 'settings.json'), true]];
+    const jsonOf = (f) => { try { return parseJson(fs.readFileSync(f, 'utf8')) || {}; } catch { return {}; } };
+    const read = files.map(([f, abs]) => [f, jsonOf(abs ? f : path.join(projectRoot, f))]);
+    const lay = require('../../stack/hooks/layout.js');
+    const offList = [env.ALFRED_CODE_HOOKS_OFF, lay.hooksOffOf(projectRoot, { env }), ...read.map(([, d]) => d.env?.ALFRED_CODE_HOOKS_OFF)];
+    if (offList.join(',').split(',').some((h) => /^rules-session(\.js)?$/i.test(h.trim())))
+        out.push('rules-session is named in the off-list - it carries the project\'s rules and still runs; leave a rule out with ignore rule');
+    for (const [f, d] of read) if (d.disableAllHooks === true) out.push(`disableAllHooks is true in ${f}`);
+    return out.map((l) => `rules: ${l}`);
 }
 
 // The first CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md in the project or a folder above it - the account dir's
@@ -1558,23 +1834,39 @@ const readOr = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch {
 // its own `.variables` (D5's keep, so nothing changes), then loses its `parent` line and its stamp's `own-picks:` /
 // `own-env:` lines, so it reads as standalone and every item it holds is its own; the parent's `child` lines go
 // with them. A gone child has nothing to release. Returns the released children's lines.
-function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () => {}, note = () => {} })
+// W3: `only` (one project's path) releases that project alone, whichever parent its record names, from its own run - the
+// holder's record untouched, its record written before its links move (a lock held there leaves every link as it was);
+// `keepRules` first copies the rules the loader sent it into its own store.
+function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () => {}, note = () => {}, only = null, keepRules: keep = false })
 {
     const root = realOf(projectRoot);
     const released = [];
     const stale = [];
-    for (const rel of readWorkspace(root, { env, dataRoot }).view.children)
+    const again = only ? 'run /alfred-code:update there' : 'run uninstall again';
+    for (const rel of only ? [relPosix(root, realOf(only))] : readWorkspace(root, { env, dataRoot }).view.children)
     {
-        const child = path.join(root, ...rel.split('/'));
+        const child = only ? realOf(only) : path.join(root, ...rel.split('/'));
         if (!isDir(child) || !isStamped(child)) continue;
         const points = (record) => { const v = record.parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
-        const held = readWorkspace(child, { env: ancestorEnv(env) });
-        if (!points(held.record)) { stale.push(rel); continue; }
-        const kept = keepOnLeave(child, { env: ancestorEnv(env), log: (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `)) });
-        if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - run uninstall again`); continue; }
-        const r = writeWorkspace(child, (m) => (points(m) ? setParent(m, null) : m), { env: ancestorEnv(env), runRoot: root, log });
-        if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - run uninstall again`); continue; }
+        const held = readWorkspace(child);
+        if (!only && !points(held.record)) { stale.push(rel); continue; }
+        const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR };
+        const say = only ? log : (l) => log(l.replace(/^workspace: /, `workspace: ${rel}: `));
+        const kept = keepOnLeave(child, { env: childEnv, log: say, ignored: only ? relPosix(child, root) : null });
+        if (kept.why) { note(`workspace: ${rel} could not be released (${kept.why}) - ${again}`); continue; }
+        if (keep) keepRules(child, { env: childEnv, log: say });
+        // An ignored project the root holds past a nearer stamped folder (the between tree) keeps the root as `above`,
+        // so ignoredBy still finds it once `parent` is gone.
+        const near = only ? findParent(child, { env: childEnv }) : null;
+        const past = near && realKey(near.root) !== realKey(root) ? relPosix(child, root) : null;
+        const unparent = () => writeWorkspace(child, (m) => (only ? setAbove(setParent(m, null), past ?? m.above) : points(m) ? setParent(m, null) : m),
+            { runRoot: root, log });
+        let r = only ? unparent() : { ok: true };
+        if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - ${again}`); continue; }
+        copyIn(child, (l) => log(`workspace: ${rel}: ${l.trim()}`));
+        if (!only) r = unparent();
+        if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - ${again}`); continue; }
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
         // Its D2 copies stay as the user's own registrations: the rows and the parent hashes they were made from go.
         if (childStamp) for (const key of ['own-picks', 'own-env', 'workspace-mcp']) stamp.markLine(childStamp, key, null);
@@ -1582,7 +1874,7 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         log(`workspace: released ${rel} - it reads as standalone now, every item it holds its own`);
         released.push(rel);
     }
-    if (released.length || stale.length) writeWorkspace(root, (m) => { for (const rel of [...released, ...stale]) removeChild(m, rel); return m; }, { env, dataRoot, log });
+    if (!only && (released.length || stale.length)) writeWorkspace(root, (m) => { for (const rel of [...released, ...stale]) removeChild(m, rel); return m; }, { env, dataRoot, log });
     return released;
 }
 
@@ -1598,7 +1890,7 @@ function leaveParent({ projectRoot, env = process.env, dataRoot, log = () => {},
     if (isDir(parent))
     {
         const childRel = relPosix(realOf(parent), root);
-        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { env: ancestorEnv(env), runRoot: root, log });
+        const up = writeWorkspace(parent, (m) => removeChild(m, childRel), { runRoot: root, log });
         if (!up.ok) return failed(up.why, `workspace: the workspace file in ${own.view.parent} could not be changed (${up.why}) - nothing was removed`);
         if (up.changed) log(`workspace: child ${childRel} removed from ${own.view.parent}`);
     }
@@ -1618,7 +1910,7 @@ function garbageOnLeave({ projectRoot, env = process.env, dataRoot })
     const own = readWorkspace(root, { env, dataRoot });
     if (own.state === 'garbage') return [relPosix(root, own.file)];
     const out = [];
-    const check = (dir) => { const r = readWorkspace(dir, { env: ancestorEnv(env) }); if (r.state === 'garbage') out.push(relPosix(root, r.file)); };
+    const check = (dir) => { const r = readWorkspace(dir); if (r.state === 'garbage') out.push(relPosix(root, r.file)); };
     if (own.view.parent)
     {
         const parent = path.resolve(root, ...own.view.parent.split('/'));
@@ -1726,7 +2018,8 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
     const skip = authLayer(root, managedFile);
     if (skip) return finish({ state: 'skipped', misses: [], why: skip });
     const ignores = readWorkspace(root, { env }).view.ignores;
-    const excluded = new Map(ancestors.flatMap((a) => ancestorExcludes(a, { childIgnores: ignores })).map((p) => [realKey(p), realOf(p)]));
+    // A folder row (D16's rules entry, or an `ignore instructions` folder) is keyed without its trailing separator.
+    const excluded = new Map(chainExcludes(ancestors, root, ignores).map((p) => p.replace(/(.)[\\/]+$/, '$1')).map((p) => [realKey(p), realOf(p)]));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-check-loads-'));
     try
     {
@@ -1769,19 +2062,22 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
             const shut = onDisk.filter((p) => excluded.has(realKey(p)));
             if (Number(found[1]) > onDisk.length - shut.length) loaded.push(...shut);
         }
-        const misses = [...new Set(loaded.map((p) => excluded.get(realKey(p))).filter(Boolean))];
+        // An excluded path itself, by its own spelling; a file below an excluded folder, by the file's.
+        const missOf = (p) => { const k = realKey(p); return excluded.get(k) || ([...excluded.keys()].some((e) => k.startsWith(`${e}/`)) ? realOf(p) : null); };
+        const misses = [...new Set(loaded.map(missOf).filter(Boolean))];
         return finish({ state: misses.length ? 'misses' : 'clean', misses });
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
 module.exports = {
+    ruleNotes, keepRules,
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
-    setParent, setRole, setAbove, addChild, removeChild, addIgnore, removeIgnore,
-    ancestorEnv, workspacePath, readWorkspace, writeWorkspace, moveWorkspace, garbageLine, sayGarbage, convertOwn, ownDataRootOf, takeConversions, olderProjectLines, JSON_SINCE,
-    realKey, findParent, sameRepo, isCheckout, joinVerdict, roleOf, roleText, roleAsk, register, applyRole, pruneOnJoin, keepOnLeave, chain, subtree, rescan,
-    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, excludeGlobs, refreshBelow,
+    setParent, setRole, setAbove, addChild, addIgnoredChild, removeChild, addIgnore, removeIgnore,
+    workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
+    realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,

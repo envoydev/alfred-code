@@ -56,9 +56,8 @@ checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route inst
 `/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
 the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
-(`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
-scope `settings.json`, with every stack key `settings.local.json` holds laid over it and written back
-there). One installer on
+(`.claude/settings.local.json`, the stack's settings file at every scope, laid over `.claude/settings.json`;
+a stack row is written back to the local file). One installer on
 every OS.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
@@ -68,7 +67,7 @@ the fallback only where the harness lacks the tool.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
+`alfred-interaction.md` rule loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -217,7 +216,7 @@ entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; re
 applies its `unwire:` edit and puts its `then:` follow-up in the report. (The version and diff
 lines the same call prints are update's business, not validate's - ignore them here; its `policy-rev:` row is the
 post-check's.) An entry acting
-on the settings.json `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
+on the settings `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
 layer instead: a retired key still on disk is a RETIRED row there, reported with its `why`, and
 accepting it drops the key - the installers' own env pass does the same on their next run.
 
@@ -269,7 +268,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   on an install predating its catalog entry (measured: a v0.1.23-era install upgraded to
   v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
   an accepted add is not an install at all: the name is removed from `ALFRED_CODE_HOOKS_OFF` in the
-  scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
+  `env` of `.claude/settings.local.json`, and the apply step reports it as that edit, not as a copied file.
 - **Plugins** - `claude-hud` is the one always-recommended plugin (2.2.0 - an optional pick,
   marked in every walk): never REDUNDANT, and never MISSING either - an install without it is the user's
   choice, so it is at most one `no-evidence:`-style advisory naming `/alfred-code:configure` to add it. A
@@ -286,14 +285,13 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 ## 8. Environment - the stack's values against this release
 
 The one layer that is not an artifact: the values this stack owns - each catalog variable in the project's
-`<data root>/.variables`, and `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` in the scope's settings `env`. Read
+`.alfred/.variables`, and `ALFRED_CODE_HOOKS_OFF` in the scope's settings `env`. Read
 the rows from the snapshot's `$TMP/repo/meta/environment.json`; the variables from ONE `node
 "$TMP/repo/scripts/variables.js" show --root .` (`<KEY>=<value> (<source>)` per key - `own`, `from <rel>`,
 `settings.local.json` or `default` - then its `!! variables:` notes: a HOOKS_OFF line in `.variables` that is not
 read, a key the loader never reads, a key named like a credential with the `.secrets` to keep it in; paste every note
 under the table, never a value); the two settings keys, and any OLD NAME or RETIRED key an older install left there,
-from the scope's file (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope, else
-`.claude/settings.json` with every `ALFRED_CODE_*` key `settings.local.json` holds laid over it). Then show one
+from the stack's file (`.claude/settings.local.json` laid over `.claude/settings.json`, at every scope). Then show one
 table of the actionable rows only - an install whose env already matches gets the single line
 `environment: nothing to reconcile` and you move on. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus.
 
@@ -311,10 +309,8 @@ table of the actionable rows only - an install whose env already matches gets th
   probed '<value>': <the mode line's own parenthetical>`. A leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0 - the
   docs root is always `<data root>/docs`) is never written or removed from here: name `/alfred-code:update`, which moves
   the stack's docs from the root it names and then removes it, in its reason column.
-  `ALFRED_CODE_DATA_PATH` is never offered from here, MISSING or changed: the data root carries the docs
-  and the hooks' state, so a new value without the move would strand them - name
-  `/alfred-code:configure` (its data question moves them) in its reason column; a missing key is written
-  back by the next update from the stamp's `data-root:` line.
+  A leftover `ALFRED_CODE_DATA_PATH` (retired in 3.11.0 - the data root is always `.alfred`) is the same: never written
+  or removed from here; name `/alfred-code:update`, which moves the folder it names into `.alfred` and removes it.
   Every other MISSING row still offers the catalog default unchanged. A row with `"seed": false` is never MISSING and
   never offered: it is set only in the launch environment or by hand (`ALFRED_CODE_WORKSPACE`).
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
@@ -629,8 +625,8 @@ node "$TMP/repo/scripts/analyze-usage.js" --turn-check-advice .
 ```
 
 It prints ONE `turn-check: advise - ...` line (done claims over an edit with nothing run after it
-reached 3 in the newest 10 sessions) or nothing. Paste a printed line as-is in the same fenced block;
-nothing printed means no row. It is advisory: never write `ALFRED_CODE_TURN_CHECK` from this command -
+reached 3 in the newest 10 sessions) or nothing. At a workspace root the advisory covers the root and each child, each
+row carrying its `<rel>: `. Paste each printed line as-is in the same fenced block; nothing printed means no row. It is advisory: never write `ALFRED_CODE_TURN_CHECK` from this command -
 the user sets it through `/alfred-code:configure` or by hand.
 
 ## Clean up the temp dir - ALWAYS

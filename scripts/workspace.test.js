@@ -154,11 +154,11 @@ test('the mutators set, add and remove on a record; setParent and setRole exclud
     ws.removeChild(record, 'api');
     ws.addIgnore(record, 'skill', 'x');
     ws.addIgnore(record, 'skill', 'x');
-    ws.addIgnore(record, 'env', 'ALFRED_CODE_SCORER');
-    ws.removeIgnore(record, 'env', 'ALFRED_CODE_SCORER');
+    ws.addIgnore(record, 'env', 'ALFRED_CODE_SCORING');
+    ws.removeIgnore(record, 'env', 'ALFRED_CODE_SCORING');
     ws.addIgnore(record, 'docs', 'root');
     assert.deepStrictEqual(wfLib.viewOf(record), {
-        parent: '../..', parentNone: false, role: null, above: null, children: ['web'],
+        parent: '../..', parentNone: false, role: null, above: null, children: ['web'], ignoredChildren: [],
         ignores: [{ category: 'skill', name: 'x' }, { category: 'docs', name: 'root' }],
     });
     ws.setRole(record, 'root');
@@ -177,40 +177,6 @@ test('the mutators set, add and remove on a record; setParent and setRole exclud
     assert.throws(() => ws.setRole(record, 'boss'), /role/);
     assert.throws(() => ws.addIgnore(record, 'colour', 'x'), /ignore/);
     assert.ok(ws.CATEGORIES.includes('instructions'));
-});
-
-test('moveWorkspace moves workspace.json and a still-present old file as one record; the new root holding either name is a clash - neither file moves, the clash named', () =>
-{
-    const said = sink();
-    const log = said.log;
-    const root = putJson(putOld(project(), 'child web\n'), '{"children": ["api"]}\n');
-    assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'moved');
-    assert.deepStrictEqual([fs.existsSync(jsonOf(root)), fs.existsSync(legacyOf(root))], [false, false]);
-    assert.strictEqual(fs.readFileSync(jsonOf(root, '.ws-data'), 'utf8'), '{"children": ["api"]}\n');
-    assert.strictEqual(fs.readFileSync(legacyOf(root, '.ws-data'), 'utf8'), 'child web\n');
-    assert.deepStrictEqual(readWorkspaceValues(root, { dataRoot: '.ws-data' }), { children: ['api', 'web'] });
-    assert.strictEqual(ws.moveWorkspace({ projectRoot: root, from: '.alfred', to: '.ws-data', log }), 'absent');
-    // the new root holds the OTHER name: a clash either way
-    const cases = [
-        [(p) => putOld(p, 'child api\n'), (p) => putJson(p, '{}\n', '.ws-data'), 'workspace', 'workspace.json'],
-        [(p) => putJson(p, '{"children": ["api"]}\n'), (p) => putOld(p, 'child web\n', '.ws-data'), 'workspace.json', 'workspace'],
-    ];
-    for (const [here, there, mine, theirs] of cases)
-    {
-        const p = project();
-        here(p);
-        there(p);
-        const files = () => [jsonOf(p), legacyOf(p), jsonOf(p, '.ws-data'), legacyOf(p, '.ws-data')].map((f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null));
-        const before = files();
-        assert.strictEqual(ws.moveWorkspace({ projectRoot: p, from: '.alfred', to: '.ws-data', log }), 'clash', mine);
-        assert.deepStrictEqual(files(), before, 'neither file moved');
-        assert.ok(said.lines.some((l) => l.includes(`!! workspace: .alfred/${mine} left in place - .ws-data already holds a workspace record (${theirs})`)), said.lines.join('\n'));
-    }
-});
-
-test('ancestorEnv keeps only the account', () =>
-{
-    assert.deepStrictEqual(ws.ancestorEnv({ CLAUDE_CONFIG_DIR: '/acct', ALFRED_CODE_DATA_PATH: '.x' }), { CLAUDE_CONFIG_DIR: '/acct' });
 });
 
 // ------------------------------------------------------------------ the tree (Task 3)
@@ -431,16 +397,28 @@ test('ownPicksAfter, one case per rule', () =>
 const chainTree = () =>
 {
     const at = tree({ 'ws': { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
-    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORER=1\nALFRED_CODE_HISTORY=0\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_INSTRUMENT=1\n');
+    fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\nALFRED_CODE_HISTORY=0\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_INSTRUMENT=1\n');
     return at;
 };
 
 test('chainValues reads the members\' .variables, never a MEMBER_NEVER key, and stops a key at an ignore env line', () =>
 {
     const at = chainTree();
-    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORER: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
-    putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORER'] } });
-    assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORER'));
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
+    putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORING'] } });
+    assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORING'));
+});
+
+// The fixed root (3.11.0): a child's installer run keeps its chain while its parent's data still sits in the folder an
+// older install named - the installer reads a member through the one reader, never the hooks' fixed .alfred.
+test('fixed root: chainValues reads a parent whose data still sits in its older folder', () =>
+{
+    const at = tree({ 'ws': { stamp: true }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    fs.writeFileSync(path.join(at('ws'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DATA_PATH: 'var/data' } }));
+    putWorkspace(at('ws'), { children: ['api'] }, { dataRoot: 'var/data' });
+    fs.writeFileSync(path.join(at('ws'), 'var', 'data', '.variables'), 'ALFRED_CODE_HISTORY=5\n');
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_HISTORY: '5' });
+    assert.ok(!fs.existsSync(path.join(at('ws'), '.alfred')), 'nothing is made under the parent\'s .alfred');
 });
 
 test('chainValues reads nothing with the switch at 0 or for a project with no parent', () =>
@@ -453,7 +431,9 @@ test('chainValues reads nothing with the switch at 0 or for a project with no pa
 test('stampedAncestors lists every stamped folder above, linked or not, nearest first', () =>
 {
     const at = tree({ 'ws': { stamp: true }, 'ws/mid': { stamp: true }, 'ws/mid/plain': {}, 'ws/mid/plain/kid': { stamp: true } });
-    assert.deepStrictEqual(ws.stampedAncestors(at('ws/mid/plain/kid'), { env: env0 }), [at('ws/mid'), at('ws')]);
+    const above = ws.stampedAncestors(at('ws/mid/plain/kid'), { env: env0 });
+    assert.deepStrictEqual([...above], [at('ws/mid'), at('ws')]);
+    assert.deepStrictEqual({ ignored: above.ignored, cut: above.cut }, { ignored: null, cut: [] });
 });
 
 test('ancestorExcludes lists the stack\'s copies and the unedited seed, never the user\'s own', () =>
@@ -467,7 +447,7 @@ test('ancestorExcludes lists the stack\'s copies and the unedited seed, never th
     fs.writeFileSync(path.join(root, 'NOTES.md'), '# notes\n');
     const seedHash = hashItem(path.join(root, '.claude', 'AGENTS.md'));
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `sha: x\nlibrary-rules: alfred-house=${'a'.repeat(64)}\nmanaged-env: \nmanaged-files: AGENTS.md=${seedHash}\n`);
-    const got = ws.ancestorExcludes(root, { childIgnores: [{ category: 'instructions', name: 'NOTES.md' }, { category: 'instructions', name: 'MISSING.md' }] }).sort();
+    const got = ws.ancestorExcludes(root, { childIgnores: [{ category: 'instructions', name: 'NOTES.md' }, { category: 'instructions', name: 'MISSING.md' }, { category: 'rule', name: 'alfred-house' }] }).sort();
     assert.deepStrictEqual(got, [
         path.join(root, '.claude', 'AGENTS.md'),
         path.join(rules, 'alfred-agent-awareness.md'),
@@ -476,6 +456,44 @@ test('ancestorExcludes lists the stack\'s copies and the unedited seed, never th
     ].sort());
     fs.writeFileSync(path.join(root, '.claude', 'AGENTS.md'), '# seed, edited by the user\n');
     assert.ok(!ws.ancestorExcludes(root, {}).includes(path.join(root, '.claude', 'AGENTS.md')), 'an edited AGENTS.md is the user\'s');
+});
+
+// Workspace stage 4c: a library rule of an ancestor is a row only while it sits natively in that ancestor's .claude/rules
+// and the child ignores it or a nearer member (the child included) holds a file of that name in either folder.
+const LIB_STAMP = `sha: x\nlibrary-rules: alfred-house=${'a'.repeat(64)}\nmanaged-env: \n`;
+const putRule = (dir, folder, name = 'alfred-house') => { fs.mkdirSync(path.join(dir, ...folder.split('/')), { recursive: true }); fs.writeFileSync(path.join(dir, ...folder.split('/'), `${name}.md`), `# ${name}\n`); };
+const rulesTree = () =>
+{
+    const at = tree({ 'ws': { stamp: true }, 'ws/mid': { stamp: true }, 'ws/mid/kid': { stamp: true } });
+    for (const r of ['ws', 'ws/mid']) fs.writeFileSync(path.join(at(r), '.claude', 'alfred-code.stamp'), LIB_STAMP);
+    return at;
+};
+
+test('ancestorExcludes: a moved ancestor gets no library row', () =>
+{
+    const at = rulesTree();
+    putRule(at('ws'), '.alfred/stack/rules');
+    putRule(at('ws'), '.claude/rules', 'alfred-agent-awareness');
+    putRule(at('ws/mid/kid'), '.alfred/stack/rules');
+    const got = ws.ancestorExcludes(at('ws'), { childIgnores: [{ category: 'rule', name: 'alfred-house' }], nearer: [at('ws/mid/kid')] });
+    assert.deepStrictEqual(got, [path.join(at('ws'), '.claude', 'rules', 'alfred-agent-awareness.md')], 'the generated row stays, no library row');
+});
+
+test('ancestorExcludes: of two ancestors not yet moved only the farther one\'s rows are written, and a name the child ignores or holds itself is excluded at the nearer one too', () =>
+{
+    const row = (root) => path.join(root, '.claude', 'rules', 'alfred-house.md');
+    const rows = (at, ignores = []) => [at('ws/mid'), at('ws')].flatMap((a, i, all) => ws.ancestorExcludes(a, { childIgnores: ignores, nearer: [at('ws/mid/kid'), ...all.slice(0, i)] }));
+    let at = rulesTree();
+    for (const r of ['ws', 'ws/mid']) putRule(at(r), '.claude/rules');
+    assert.deepStrictEqual(rows(at), [row(at('ws'))], 'the nearer copy keeps loading, the farther one is excluded');
+    assert.deepStrictEqual(rows(at, [{ category: 'rule', name: 'alfred-house' }]).sort(), [row(at('ws')), row(at('ws/mid'))].sort(), 'an ignored name is excluded at both');
+    at = rulesTree();
+    for (const r of ['ws', 'ws/mid']) putRule(at(r), '.claude/rules');
+    putRule(at('ws/mid/kid'), '.alfred/stack/rules');
+    assert.deepStrictEqual(rows(at).sort(), [row(at('ws')), row(at('ws/mid'))].sort(), 'the child\'s own file replaces both');
+    at = rulesTree();
+    putRule(at('ws'), '.claude/rules');
+    assert.deepStrictEqual(rows(at), [], 'one ancestor not yet moved and no nearer holder: it keeps loading');
 });
 
 test('excludeGlobs on darwin and win32 writes a class per cased letter and each metacharacter as a one-character class', () =>
@@ -567,18 +585,137 @@ test('the kill switch asks nothing: off in the launch env or in the child\'s set
     assert.strictEqual(ws.instructionsBothLine('off'), null);
 });
 
+// W3 Task 1, P1 (F12): a released child keeps every rule the loader sent it - the store's rules reached it as a member's.
+test('release: the rule loader sends a released child the names it sent before (F12)', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    fs.mkdirSync(path.join(at('ws'), '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'stack', 'rules', 'alfred-one.md'), '# one\n');
+    const sent = () => require('../stack/hooks/rules-session.js').rulesFor(at('ws/api'), env0, { host: 'claude' }).always.map((r) => r.name);
+    const before = sent();
+    assert.ok(before.includes('alfred-one'), JSON.stringify(before));
+    // W3 Task 6: re-pointed at the mark's route - one project released, the rules it read kept as its own.
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), only: at('ws/api'), keepRules: true, env: env0 }), ['api']);
+    assert.deepStrictEqual(sent(), before);
+    const copy = path.join(at('ws/api'), '.alfred', 'stack', 'rules', 'alfred-one.md');
+    assert.strictEqual(fs.readFileSync(copy, 'utf8'), '# one\n');
+    const childStamp = fs.readFileSync(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'), 'utf8');
+    assert.match(childStamp, new RegExp(`^library-rules: .*alfred-one=${hashItem(copy)}`, 'm'));
+    assert.doesNotMatch(childStamp, /^member-picks:/m);
+});
+
+test('release: with no option no rule is copied - a root\'s uninstall, as today', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    fs.mkdirSync(path.join(at('ws'), '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'stack', 'rules', 'alfred-one.md'), '# one\n');
+    markStamp(at('ws/api'), 'own-picks: skill/npm');
+    const stampBefore = fs.readFileSync(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'), 'utf8');
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), env: env0 }), ['api']);
+    assert.ok(!fs.existsSync(path.join(at('ws/api'), '.alfred', 'stack', 'rules', 'alfred-one.md')));
+    assert.strictEqual(readWorkspaceValues(at('ws/api')).parent, undefined);
+    assert.deepStrictEqual(readWorkspaceValues(at('ws')).children || [], []);
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'), 'utf8'), stampBefore.replace(/^own-picks: .*\n/m, ''));
+});
+
+// W3 Task 6 [F12]: three holders - top (a grandparent), ws (the parent), api (the child, ignoring alfred-two, holding its
+// own alfred-three) - and a path rule in ws.
+const keepTree = () =>
+{
+    const at = tree({ top: { stamp: true, record: { role: 'root', children: ['ws'] } }, 'top/ws': { stamp: true, record: { parent: '..', children: ['api'] } },
+        'top/ws/api': { stamp: true, git: true, record: { parent: '..', ignore: { rule: ['alfred-two'] } } } });
+    const put = (rel, name, text = `# ${name}\n`) => { const d = path.join(at(rel), '.alfred', 'stack', 'rules'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, `${name}.md`), text); };
+    for (const n of ['alfred-one', 'alfred-two', 'alfred-three']) put('top/ws', n);
+    put('top/ws', 'alfred-path', '---\npaths:\n  - "src/**"\n---\n# path\n');
+    put('top', 'alfred-top');
+    put('top/ws/api', 'alfred-three', '# three, the child\'s\n');
+    markStamp(at('top/ws/api'), `library-rules: alfred-three=${'c'.repeat(64)}`);
+    return at;
+};
+
+test('keepRules: an ignored rule, a name the child holds, a rule two members up, a path rule', () =>
+{
+    const at = keepTree();
+    const api = at('top/ws/api');
+    const logs = [];
+    assert.deepStrictEqual(ws.keepRules(api, { env: env0, log: (l) => logs.push(l) }), ['alfred-one', 'alfred-path', 'alfred-top']);
+    const store = path.join(api, '.alfred', 'stack', 'rules');
+    assert.ok(!fs.existsSync(path.join(store, 'alfred-two.md')), 'an ignored rule is not copied');
+    assert.strictEqual(fs.readFileSync(path.join(store, 'alfred-three.md'), 'utf8'), '# three, the child\'s\n');
+    const st = fs.readFileSync(path.join(api, '.claude', 'alfred-code.stamp'), 'utf8');
+    assert.match(st, new RegExp(`alfred-three=${'c'.repeat(64)}`), 'the child\'s own row is not rewritten');
+    for (const n of ['alfred-one', 'alfred-path', 'alfred-top']) assert.match(st, new RegExp(`${n}=${hashItem(path.join(store, `${n}.md`))}`));
+    assert.deepStrictEqual(logs, ['workspace: 3 rules this project read from the workspace copied into its own store (alfred-one, alfred-path, alfred-top)']);
+});
+
+test('keepRules: no chain copies nothing and prints nothing', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    fs.mkdirSync(path.join(at('ws'), '.alfred', 'stack', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'stack', 'rules', 'alfred-one.md'), '# one\n');
+    const logs = [];
+    assert.deepStrictEqual(ws.keepRules(at('ws/api'), { env: env0, log: (l) => logs.push(l) }), []);
+    assert.deepStrictEqual(logs, []);
+    assert.ok(!fs.existsSync(path.join(at('ws/api'), '.alfred', 'stack', 'rules', 'alfred-one.md')));
+});
+
+test('keepRules: the process environment is untouched', () =>
+{
+    const at = keepTree();
+    fs.writeFileSync(path.join(at('top/ws'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\n');
+    const script = path.join(at('top'), 'probe.js');
+    fs.writeFileSync(script, [
+        `const ws = require(${JSON.stringify(path.join(__dirname, 'install', 'workspace.js'))});`,
+        'const before = JSON.stringify(process.env);',
+        `const got = ws.keepRules(${JSON.stringify(at('top/ws/api'))}, { env: ${JSON.stringify(env0)} });`,
+        'const after = JSON.stringify(process.env);',
+        'const prelude = Object.keys(require.cache).some((k) => k.endsWith(\'hook-prelude.js\'));',
+        'process.stdout.write(JSON.stringify({ same: before === after, prelude, got }));',
+    ].join('\n'));
+    const env = { ...process.env };
+    delete env.ALFRED_CODE_SCORING;
+    const out = JSON.parse(execFileSync(process.execPath, [script], { cwd: at('top/ws'), env, encoding: 'utf8' }));
+    assert.deepStrictEqual(out, { same: true, prelude: false, got: ['alfred-one', 'alfred-path', 'alfred-top'] });
+});
+
+test('release: only releases the one project and leaves the holder\'s record alone', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/web': { stamp: true, git: true, record: { parent: '..' } } });
+    const file = path.join(at('ws'), '.alfred', 'workspace.json');
+    const bytes = fs.readFileSync(file, 'utf8');
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), only: at('ws/api'), env: env0 }), ['api']);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), bytes);
+    assert.strictEqual(readWorkspaceValues(at('ws/api')).parent, undefined);
+    assert.strictEqual(ws.chain(at('ws/web'), { env: env0 }).members.length, 1, 'the other child still chains');
+});
+
+test('keepOnLeave: the ignored line', () =>
+{
+    const layout = require('../stack/hooks/layout.js');
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\n');
+    const keys = layout.VARIABLE_KEYS.filter((k) => !layout.MEMBER_NEVER.has(k) && k !== 'ALFRED_CODE_SCORING');
+    const logs = [];
+    ws.keepOnLeave(at('ws/api'), { env: env0, log: (l) => logs.push(l), ignored: '..' });
+    assert.deepStrictEqual(logs, [`workspace: .. ignores this project - ${keys.length} values it does not hold read the stack's defaults (${keys.join(', ')}); a rule that workspace sent arrives only from this project's own store now - /alfred-code:configure adds one back`]);
+    const plain = [];
+    ws.keepOnLeave(at('ws/api'), { env: env0, log: (l) => plain.push(l) });
+    assert.deepStrictEqual(plain, [`workspace: .. is gone - ${keys.length} values read the stack's defaults here now (${keys.join(', ')}); the next update seeds them`]);
+});
+
 test('releaseChildren leaves a listed child that names another parent as it was - its own lines kept, never named released', () =>
 {
     // ws lists g/x, but x's parent line names g: a stale line in ws, and x is g's child.
     const at = tree({ 'home': {}, 'home/ws': { stamp: true, record: { children: ['g', 'g/x'] } }, 'home/ws/g': { stamp: true, record: { parent: '..', children: ['x'] } }, 'home/ws/g/x': { stamp: true, record: { parent: '..' } } });
     markStamp(at('home/ws/g/x'), 'own-picks: skill/npm');
-    markStamp(at('home/ws/g/x'), 'own-env: ALFRED_CODE_SCORER');
+    markStamp(at('home/ws/g/x'), 'own-env: ALFRED_CODE_SCORING');
     const logs = [];
     const released = ws.releaseChildren({ projectRoot: at('home/ws'), env: {}, log: (l) => logs.push(l) });
     assert.deepStrictEqual(released, ['g']);
     const xStamp = fs.readFileSync(path.join(at('home/ws/g/x'), '.claude', 'alfred-code.stamp'), 'utf8');
     assert.match(xStamp, /^own-picks: skill\/npm$/m);
-    assert.match(xStamp, /^own-env: ALFRED_CODE_SCORER$/m);
+    assert.match(xStamp, /^own-env: ALFRED_CODE_SCORING$/m);
     assert.strictEqual(readWorkspaceValues(at('home/ws/g/x')).parent, '..');
     assert.ok(!logs.some((l) => /released g\/x/.test(l)), logs.join('\n'));
 });
@@ -916,77 +1053,339 @@ test('AC5 asks: configure lists Keep first for a standalone, a root and a child'
 });
 
 // D5's join and leave: a joiner's stack seeds leave its own file (they would beat the members); what it typed stays.
-test('pruneOnJoin drops each key still at its ledger hash, keeps a typed or changed one, never DOCS_VERSIONING, and names the count kept', () =>
+test('pruneChained (join) drops each key still at its ledger hash, keeps a typed or changed one, never DOCS_VERSIONING, and names the count kept', () =>
 {
     const H = stampLib.valueHash;
-    const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER_LEVEL=${H('80')},.variables:ALFRED_CODE_HISTORY=${H('5')},.variables:ALFRED_CODE_DOCS_VERSIONING=${H('git')},settings.json:ALFRED_CODE_DATA_PATH=${H('.alfred')}\n`;
-    const at = roleTree({ p: { stamp: stampText, git: true, vars: '# mine\nALFRED_CODE_SCORER_LEVEL=80\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n' } });
+    const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING_LEVEL=${H('80')},.variables:ALFRED_CODE_HISTORY=${H('5')},.variables:ALFRED_CODE_DOCS_VERSIONING=${H('git')},settings.json:ALFRED_CODE_DATA_PATH=${H('.alfred')}\n`;
+    const at = roleTree({ p: { stamp: stampText, git: true, vars: '# mine\nALFRED_CODE_SCORING_LEVEL=80\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n' } });
     const lines = [];
-    const got = ws.pruneOnJoin(at('p'), { env: ON, log: (l) => lines.push(l) });
-    assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_SCORER_LEVEL'], own: ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_CORRECTION_NUDGE'] });
+    const got = ws.pruneChained(at('p'), { env: ON, log: (l) => lines.push(l), seeds: true });
+    assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_SCORING_LEVEL'], own: ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_CORRECTION_NUDGE'] });
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), '# mine\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n');
     const ledger = stampLib.readLedger(path.join(at('p'), '.claude', 'alfred-code.stamp'));
     assert.deepStrictEqual(Object.keys(ledger.env['.variables']).sort(), ['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_HISTORY'], 'the dropped key\'s row goes with it');
-    assert.deepStrictEqual(lines, ['workspace: 3 of this project\'s values kept as its own (ALFRED_CODE_HISTORY, ALFRED_CODE_DOCS_VERSIONING, ALFRED_CODE_CORRECTION_NUDGE) - 1 stack seed dropped, so the workspace\'s value reaches it']);
+    assert.deepStrictEqual(lines, ['workspace: 1 stack seeds and values equal to the workspace\'s removed from .alfred/.variables (ALFRED_CODE_SCORING_LEVEL) - 3 kept as this project\'s own (ALFRED_CODE_HISTORY, ALFRED_CODE_DOCS_VERSIONING, ALFRED_CODE_CORRECTION_NUDGE)']);
 });
 
-test('pruneOnJoin keeps an installer answer off the catalog default (--auto-compact on) as the project\'s own, though it sits at its ledger hash (D5)', () =>
+test('pruneChained (join) keeps an installer answer off the catalog default (--auto-compact on) as the project\'s own, though it sits at its ledger hash (D5)', () =>
 {
     const H = stampLib.valueHash;
     const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_AUTO_COMPACT=${H('1')},.variables:ALFRED_CODE_HISTORY=${H('3')}\n`;
     const at = roleTree({ p: { stamp: stampText, git: true, vars: 'ALFRED_CODE_AUTO_COMPACT=1\nALFRED_CODE_HISTORY=3\n' } });
-    const got = ws.pruneOnJoin(at('p'), { env: ON, log: () => {} });
+    const got = ws.pruneChained(at('p'), { env: ON, log: () => {}, seeds: true });
     assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_HISTORY'], own: ['ALFRED_CODE_AUTO_COMPACT'] });
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_AUTO_COMPACT=1\n');
 });
 
-// B1 of the 2026-11-03 usage audit: the scorer's old seeds (0, empty) are a reseed's old values, so a joiner still holding
+// B1 of the 2026-11-03 usage audit: the scoring's old seeds (0, empty) are a reseed's old values, so a joiner still holding
 // them at their ledger hash drops them like any seed - the workspace's value reaches it; a 0 typed over the new seed stays.
-test('pruneOnJoin drops an old stack seed a reseed migration names (the scorer\'s 0 and empty list), keeps one typed over the new seed', () =>
+test('pruneChained (join) drops an old stack seed a reseed migration names (the scoring\'s 0 and empty list), keeps one typed over the new seed', () =>
 {
     const H = stampLib.valueHash;
-    const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('0')},.variables:ALFRED_CODE_SCORER_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\nALFRED_CODE_SCORER_OUTPUTS=\n' } });
-    assert.deepStrictEqual(ws.pruneOnJoin(old('p'), { env: ON, log: () => {} }), { dropped: ['ALFRED_CODE_SCORER', 'ALFRED_CODE_SCORER_OUTPUTS'], own: [] });
-    const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORER=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORER=0\n' } });
-    assert.deepStrictEqual(ws.pruneOnJoin(typed('p'), { env: ON, log: () => {} }), { dropped: [], own: ['ALFRED_CODE_SCORER'] });
+    const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING=${H('0')},.variables:ALFRED_CODE_SCORING_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORING=0\nALFRED_CODE_SCORING_OUTPUTS=\n' } });
+    assert.deepStrictEqual(ws.pruneChained(old('p'), { env: ON, log: () => {}, seeds: true }), { dropped: ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_OUTPUTS'], own: [] });
+    const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORING=0\n' } });
+    assert.deepStrictEqual(ws.pruneChained(typed('p'), { env: ON, log: () => {}, seeds: true }), { dropped: [], own: ['ALFRED_CODE_SCORING'] });
 });
 
 test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
 {
     const H = stampLib.valueHash;
     const at = roleTree({
-        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        ws: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_HISTORY=${H('5')}\n`, record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
         'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
     });
     const before = layoutLib.variablesOf(at('ws/api'), { env: { ...ON } }).values;
     const got = ws.keepOnLeave(at('ws/api'), { env: ON, log: () => {} });
-    assert.deepStrictEqual(got.written.sort(), ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_SCORER_LEVEL']);
+    assert.deepStrictEqual(got.written.sort(), ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_SCORING_LEVEL']);
     assert.deepStrictEqual(got.defaults, []);
-    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
     const ledger = stampLib.readLedger(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'));
     assert.deepStrictEqual(ledger.env['.variables'], { ALFRED_CODE_HISTORY: H('5') }, 'the root\'s seed stays a seed; its typed 90 is the child\'s own now');
     const own = { ...ON, ALFRED_CODE_WORKSPACE: '0' };
-    assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORER_LEVEL, before.ALFRED_CODE_SCORER_LEVEL, 'the value reads the same with the chain cut');
+    assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORING_LEVEL, before.ALFRED_CODE_SCORING_LEVEL, 'the value reads the same with the chain cut');
 
     const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
     const lines = [];
     const g = ws.keepOnLeave(gone('kid'), { env: ON, log: (l) => lines.push(l) });
     assert.deepStrictEqual(g.written, []);
-    assert.ok(g.defaults.includes('ALFRED_CODE_SCORER_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
+    assert.ok(g.defaults.includes('ALFRED_CODE_SCORING_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
     assert.match(lines.join('\n'), /^workspace: \.\. is gone - \d+ values read the stack's defaults here now \(ALFRED_CODE_/m);
+});
+
+// W1: every run that writes a joined child's .variables drops each value equal to the one the chain hands it.
+const W1 = { LEVEL: 'ALFRED_CODE_SCORING_LEVEL', HISTORY: 'ALFRED_CODE_HISTORY', NUDGE: 'ALFRED_CODE_CORRECTION_NUDGE', DOCS: 'ALFRED_CODE_DOCS_VERSIONING' };
+const W1_ROOT = `${W1.LEVEL}=90\n${W1.HISTORY}=5\n${W1.NUDGE}=inject\n${W1.DOCS}=git\n`;
+// ws (root) over ws/api (child) and, with `lib`, ws/api/lib (grandchild); returns the `at` of roleTree.
+const w1Tree = ({ api, root = W1_ROOT, stamp = 'sha: x\nmanaged-env: \n', lib, apiRecord } = {}) => roleTree({
+    ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: root },
+    'ws/api': { stamp, git: true, record: apiRecord || (lib === undefined ? { parent: '..' } : { parent: '..', children: ['lib'] }), ...(api === undefined ? {} : { vars: api }) },
+    ...(lib === undefined ? {} : { 'ws/api/lib': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: lib } }),
+});
+const varsText = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', '.variables'), 'utf8'); } catch { return null; } };
+const stampText = (dir) => fs.readFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'utf8');
+// One call, the read checked unchanged unless `seeds` (a join may drop a seed the members answer otherwise).
+const prune = (dir, { env = ON, seeds = false } = {}) =>
+{
+    const lines = [];
+    const before = layoutLib.variablesOf(dir, { env }).values;
+    const got = ws.pruneChained(dir, { env, log: (l) => lines.push(l), ...(seeds ? { seeds } : {}) });
+    if (!seeds) assert.deepStrictEqual(layoutLib.variablesOf(dir, { env }).values, before, 'the read never changes');
+    return { ...got, lines };
+};
+
+test('pruneChained: an equal value leaves with its row, a different one stays', () =>
+{
+    const H = stampLib.valueHash;
+    const at = w1Tree({ api: `# mine\n${W1.LEVEL}=90\n${W1.HISTORY}=9\nMY_OWN=1\nALFRED_CODE_HOOKS_OFF=x\n\nnot a line\n`,
+        stamp: `sha: x\nmanaged-env: .variables:${W1.LEVEL}=${H('90')},.variables:${W1.HISTORY}=${H('9')}\n` });
+    const r = prune(at('ws/api'));
+    assert.deepStrictEqual([r.dropped, r.own], [[W1.LEVEL], [W1.HISTORY]]);
+    assert.strictEqual(varsText(at('ws/api')), `# mine\n${W1.HISTORY}=9\nMY_OWN=1\nALFRED_CODE_HOOKS_OFF=x\n\nnot a line\n`);
+    assert.deepStrictEqual(Object.keys(stampLib.readLedger(path.join(at('ws/api'), '.claude', 'alfred-code.stamp')).env['.variables']), [W1.HISTORY]);
+    assert.deepStrictEqual(r.lines, [`workspace: 1 values equal to the workspace's removed from .alfred/.variables (${W1.LEVEL}) - 1 kept as this project's own (${W1.HISTORY})`]);
+    // a second call changes nothing (Review Focus 3)
+    const [text, st] = [varsText(at('ws/api')), stampText(at('ws/api'))];
+    const again = prune(at('ws/api'));
+    assert.deepStrictEqual([again.dropped, again.own, again.lines], [[], [W1.HISTORY], []]);
+    assert.deepStrictEqual([varsText(at('ws/api')), stampText(at('ws/api'))], [text, st]);
+});
+
+test('pruneChained: equal is the same string (D1)', () =>
+{
+    const cases = [[W1.LEVEL, '90', '90', true], [W1.LEVEL, '"90"', '90', true], [W1.LEVEL, '90', '\'90\'', true], [W1.NUDGE, 'inject ', 'inject', true],
+        [W1.LEVEL, '90', '9', false], [W1.LEVEL, '1', 'true', false], [W1.NUDGE, 'Inject', 'inject', false], [W1.LEVEL, '90', null, false]];
+    for (const [key, mine, theirs, gone] of cases)
+    {
+        const at = w1Tree({ api: `${key}=${mine}\n`, root: theirs === null ? '' : `${key}=${theirs}\n` });
+        assert.deepStrictEqual(prune(at('ws/api')).dropped, gone ? [key] : [], `${key}: ${mine} against ${theirs}`);
+    }
+});
+
+test('pruneChained: never removed (D3) - DOCS_VERSIONING, WORKSPACE, an ignore env key, one a member between ignores', () =>
+{
+    const keep = (at, rel) => { const text = varsText(at(rel)); const r = prune(at(rel)); assert.deepStrictEqual([r.dropped, r.lines, varsText(at(rel))], [[], [], text]); };
+    keep(w1Tree({ api: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n`, root: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n` }), 'ws/api');
+    const ig = w1Tree({ api: `${W1.LEVEL}=90\n` });
+    ws.writeWorkspace(ig('ws/api'), (m) => ws.addIgnore(m, 'env', W1.LEVEL), { env: ON });
+    keep(ig, 'ws/api');
+    const deep = w1Tree({ api: `${W1.HISTORY}=7\n`, lib: `${W1.LEVEL}=90\n` });
+    ws.writeWorkspace(deep('ws/api'), (m) => ws.addIgnore(m, 'env', W1.LEVEL), { env: ON });
+    keep(deep, 'ws/api/lib');
+});
+
+test('pruneChained: doubt keeps (D5) - the switch off, a garbage or missing record, a member file absent, a folder or empty', () =>
+{
+    const doubt = [
+        ['the switch off in the launch env', () => {}, { ...ON, ALFRED_CODE_WORKSPACE: '0' }],
+        ['the child\'s own WORKSPACE=0', (at) => fs.appendFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_WORKSPACE=0\n')],
+        ['the root\'s record garbage', (at) => fs.writeFileSync(jsonOf(at('ws')), '{')],
+        ['the root\'s stamp gone', (at) => fs.unlinkSync(path.join(at('ws'), '.claude', 'alfred-code.stamp'))],
+        ['the root lists no child', (at) => putWorkspace(at('ws'), { role: 'root' })],
+        ['the root\'s file gone', (at) => fs.unlinkSync(path.join(at('ws'), '.alfred', '.variables'))],
+        ['the root\'s file a folder', (at) => { const f = path.join(at('ws'), '.alfred', '.variables'); fs.unlinkSync(f); fs.mkdirSync(f); }],
+        ['the root\'s file empty', (at) => fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), '')],
+    ];
+    for (const [name, spoil, env = ON] of doubt)
+    {
+        const at = w1Tree({ api: `${W1.LEVEL}=90\n` });
+        spoil(at);
+        const text = varsText(at('ws/api'));
+        const r = prune(at('ws/api'), { env });
+        assert.deepStrictEqual([r.dropped, r.lines, varsText(at('ws/api'))], [[], [], text], name);
+    }
+});
+
+test('pruneChained: an absent file is not created, an empty one stays empty, a file that empties stays (D6), CRLF kept', () =>
+{
+    const none = w1Tree({});
+    assert.deepStrictEqual(prune(none('ws/api')).lines, []);
+    assert.strictEqual(varsText(none('ws/api')), null);
+    const empty = w1Tree({ api: '' });
+    assert.deepStrictEqual([prune(empty('ws/api')).lines, varsText(empty('ws/api'))], [[], '']);
+    const lone = w1Tree({ api: `${W1.LEVEL}=90\n` });
+    prune(lone('ws/api'));
+    assert.strictEqual(varsText(lone('ws/api')), '');
+    const commented = w1Tree({ api: `# only mine\n${W1.LEVEL}=90\n` });
+    prune(commented('ws/api'));
+    assert.strictEqual(varsText(commented('ws/api')), '# only mine\n');
+    const crlf = w1Tree({ api: `# c\r\n${W1.LEVEL}=90\r\n${W1.HISTORY}=9\r\n` });
+    prune(crlf('ws/api'));
+    assert.strictEqual(varsText(crlf('ws/api')), `# c\r\n${W1.HISTORY}=9\r\n`);
+});
+
+// A member's empty line is unset to the loader (valueIn), which reads on to the next member - so the chain does too.
+test('pruneChained: depth - against the nearest holder, a member\'s empty line is read past as the loader reads it', () =>
+{
+    const deep = w1Tree({ root: `${W1.LEVEL}=90\n${W1.HISTORY}=5\n`, api: `${W1.HISTORY}=7\n`, lib: `${W1.LEVEL}=90\n${W1.HISTORY}=7\n` });
+    assert.deepStrictEqual(prune(deep('ws/api/lib')).dropped, [W1.LEVEL, W1.HISTORY]);
+    const far = w1Tree({ root: `${W1.LEVEL}=90\n${W1.HISTORY}=5\n`, api: `${W1.HISTORY}=7\n`, lib: `${W1.HISTORY}=5\n` });
+    assert.deepStrictEqual(prune(far('ws/api/lib')).dropped, []);
+    const blank = w1Tree({ root: `${W1.LEVEL}=90\n`, api: `${W1.LEVEL}=\n`, lib: `${W1.LEVEL}=90\n` });
+    assert.deepStrictEqual(prune(blank('ws/api/lib')).dropped, [W1.LEVEL]);
+    // an own empty line is unset too, never a value equal to the workspace's: it stays, and the read is the same either way
+    const both = w1Tree({ root: `${W1.LEVEL}=90\n`, api: `${W1.LEVEL}=\n`, lib: `${W1.LEVEL}=\n` });
+    assert.deepStrictEqual(prune(both('ws/api/lib')).dropped, []);
+});
+
+test('pruneChained: a write that fails removes nothing and says so', () =>
+{
+    const H = stampLib.valueHash;
+    const at = w1Tree({ api: `${W1.LEVEL}=90\n${W1.HISTORY}=9\n`, stamp: `sha: x\nmanaged-env: .variables:${W1.LEVEL}=${H('90')}\n` });
+    const vars = require('./install/variables.js');
+    const real = vars.write;
+    const [text, st] = [varsText(at('ws/api')), stampText(at('ws/api'))];
+    vars.write = () => ({ changed: false, why: 'locked' });
+    try
+    {
+        const r = prune(at('ws/api'));
+        assert.deepStrictEqual([r.dropped, r.own, r.lines], [[], [W1.HISTORY], ['!! workspace: .alfred/.variables could not be written (locked) - nothing was removed from it']]);
+    }
+    finally { vars.write = real; }
+    assert.deepStrictEqual([varsText(at('ws/api')), stampText(at('ws/api'))], [text, st]);
+});
+
+test('pruneChained: a run never marks join-prune; a join does (Review Focus 3)', () =>
+{
+    const stamp = `sha: x\nmanaged-env: settings.json:${W1.HISTORY}=${stampLib.valueHash('3')}\n`;
+    const run = w1Tree({ api: `${W1.LEVEL}=90\n`, stamp });
+    prune(run('ws/api'));
+    assert.doesNotMatch(stampText(run('ws/api')), /^join-prune:/m);
+    const join = w1Tree({ api: `${W1.LEVEL}=90\n`, stamp });
+    prune(join('ws/api'), { seeds: true });
+    assert.match(stampText(join('ws/api')), /^join-prune: settings$/m);
+});
+
+test('pruneChained: the join\'s two rules in one call, and a run\'s one', () =>
+{
+    const H = stampLib.valueHash;
+    const spec = { api: `${W1.HISTORY}=3\n${W1.LEVEL}=90\n${W1.NUDGE}=log\n`, stamp: `sha: x\nmanaged-env: .variables:${W1.HISTORY}=${H('3')}\n` };
+    const join = w1Tree(spec);
+    const j = prune(join('ws/api'), { seeds: true });
+    assert.deepStrictEqual([j.dropped, j.own], [[W1.HISTORY, W1.LEVEL], [W1.NUDGE]]);
+    assert.ok(j.lines[0].startsWith(`workspace: 2 stack seeds and values equal to the workspace's removed from .alfred/.variables (${W1.HISTORY}, ${W1.LEVEL})`), j.lines[0]);
+    const run = w1Tree(spec);
+    const r = prune(run('ws/api'));
+    assert.deepStrictEqual([r.dropped, r.own], [[W1.LEVEL], [W1.HISTORY, W1.NUDGE]]);
+});
+
+// Task 2: a layer the loader reads between the own file and the members keeps the line (layout.js ownLayers' order).
+const layers = (spec = {}) =>
+{
+    const at = w1Tree({ api: `${W1.LEVEL}=90\n`, ...(spec.tree || {}) });
+    const acct = fs.mkdtempSync(path.join(TMP, 'acct-'));
+    const put = (file, v) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, typeof v === 'string' ? v : JSON.stringify(v)); };
+    if (spec.project !== undefined) put(path.join(at('ws/api'), '.claude', 'settings.json'), spec.project);
+    if (spec.local !== undefined) put(path.join(at('ws/api'), '.claude', 'settings.local.json'), spec.local);
+    if (spec.account !== undefined) put(path.join(acct, 'settings.json'), spec.account);
+    return { child: at('ws/api'), env: { ...ON, CLAUDE_CONFIG_DIR: acct, ...(spec.env || {}) } };
+};
+const stays = (name) => `workspace: 0 values equal to the workspace's removed from .alfred/.variables (none) - 1 kept as this project's own (${W1.LEVEL}); `
+    + `${W1.LEVEL} equals the workspace's and stays: ${name} holds another value`;
+const lv = (v) => ({ env: { [W1.LEVEL]: v } });
+
+test('pruneChained layers: each layer alone at another value keeps the line and names it (Review Focus 1)', () =>
+{
+    for (const [spec, name] of [[{ project: lv('70') }, 'settings.json'], [{ account: lv('70') }, 'account settings'], [{ env: { [W1.LEVEL]: '70' } }, 'the run\'s environment']])
+    {
+        const { child, env } = layers(spec);
+        const r = prune(child, { env });
+        assert.deepStrictEqual([r.dropped, r.lines], [[], [stays(name)]], name);
+    }
+});
+
+// The installer loads the hook prelude, whose applyVariables writes the cwd project's winners into process.env - the
+// child's own line among them. The run's layer is the launch value it overwrote (the matrix's M5, 2026-11-13).
+test('pruneChained layers: the run\'s environment is the launch value, not what applyVariables wrote over it', () =>
+{
+    const { child, env } = layers({ env: { [W1.LEVEL]: '70' } });
+    layoutLib.applyVariables(child, env);
+    assert.strictEqual(env[W1.LEVEL], '90', 'the prelude wrote the own line over the launch value');
+    assert.deepStrictEqual(prune(child, { env }).lines, [stays('the run\'s environment')]);
+    const same = layers({});
+    layoutLib.applyVariables(same.child, same.env);
+    assert.deepStrictEqual(prune(same.child, { env: same.env }).dropped, [W1.LEVEL], 'no launch value: the line leaves');
+});
+
+// The final review's Important finding: the loader reads a 3.10 name (layout.OLD_KEYS, until 4.0.0) wherever the new one
+// has no value, in every layer and member - so a layer or member holding only the old name answers once the line leaves.
+test('pruneChained layers: a 3.10 key name in any layer, the own file or a member keeps the line (until 4.0.0)', () =>
+{
+    const OLD = layoutLib.OLD_KEYS[W1.LEVEL];
+    const old70 = { env: { [OLD]: '70' } };
+    for (const [spec, name] of [[{ project: old70 }, 'settings.json'], [{ account: old70 }, 'account settings'], [{ env: { [OLD]: '70' } }, 'the run\'s environment'],
+        [{ tree: { api: `${W1.LEVEL}=90\n${OLD}=70\n` } }, 'this file\'s 3.10 name']])
+    {
+        const { child, env } = layers(spec);
+        const r = prune(child, { env });
+        assert.deepStrictEqual([r.dropped, r.lines], [[], [stays(name)]], name);
+    }
+    // a middle member holding only the old name hands its value, so the grandchild's line is its own
+    const at = w1Tree({ api: `${OLD}=70\n`, lib: `${W1.LEVEL}=90\n` });
+    const r = prune(at('ws/api/lib'));
+    assert.deepStrictEqual([r.dropped, r.own], [[], [W1.LEVEL]]);
+});
+
+test('pruneChained layers: each layer alone at the same value drops the line', () =>
+{
+    for (const spec of [{ project: lv('90') }, { account: lv('90') }, { env: { [W1.LEVEL]: '90' } }, { project: lv(90) }])
+    {
+        const { child, env } = layers(spec);
+        assert.deepStrictEqual(prune(child, { env }).dropped, [W1.LEVEL], JSON.stringify(spec));
+    }
+});
+
+test('pruneChained layers: the first holder decides', () =>
+{
+    const a = layers({ project: lv('90'), account: lv('70') });
+    assert.deepStrictEqual(prune(a.child, { env: a.env }).dropped, [W1.LEVEL]);
+    const b = layers({ project: lv('70'), account: lv('90') });
+    assert.deepStrictEqual(prune(b.child, { env: b.env }).lines, [stays('settings.json')]);
+    for (const empty of ['', null])
+    {
+        const c = layers({ account: lv(empty), env: { [W1.LEVEL]: '70' } });
+        assert.deepStrictEqual(prune(c.child, { env: c.env }).lines, [stays('the run\'s environment')], String(empty));
+    }
+});
+
+test('pruneChained layers: settings.local.json is no layer, and a layer that cannot be read holds nothing', () =>
+{
+    const local = layers({ local: lv('70') });
+    assert.strictEqual(layoutLib.variablesOf(local.child, { env: local.env }).values[W1.LEVEL], '70');
+    assert.deepStrictEqual(prune(local.child, { env: local.env }).dropped, [W1.LEVEL]);
+    assert.strictEqual(layoutLib.variablesOf(local.child, { env: local.env }).values[W1.LEVEL], '70');
+    for (const spec of [{ project: '{ garbage' }, { project: 'null' }, {}, { project: { env: [1] } }, { project: { env: 'x' } }])
+    {
+        const { child, env } = layers(spec);
+        assert.deepStrictEqual(prune(child, { env }).dropped, [W1.LEVEL], JSON.stringify(spec));
+    }
+});
+
+test('pruneChained layers: a kept key is named at every call; a seed at a join leaves whatever a layer holds', () =>
+{
+    const { child, env } = layers({ project: lv('70') });
+    const text = varsText(child);
+    assert.deepStrictEqual(prune(child, { env }).lines, [stays('settings.json')]);
+    assert.deepStrictEqual(prune(child, { env }).lines, [stays('settings.json')]);
+    assert.strictEqual(varsText(child), text);
+    const seed = layers({ project: lv('70'), tree: { api: `${W1.LEVEL}=80\n`, root: `${W1.LEVEL}=80\n`,
+        stamp: `sha: x\nmanaged-env: .variables:${W1.LEVEL}=${stampLib.valueHash('80')}\n` } });
+    const j = prune(seed.child, { env: seed.env, seeds: true });
+    assert.deepStrictEqual(j.dropped, [W1.LEVEL]);
+    assert.doesNotMatch(j.lines.join('\n'), /stays/);
 });
 
 test('releaseChildren writes each value a child read from the parent into the child\'s file before its parent line goes (D5)', () =>
 {
     const at = roleTree({
-        ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
+        ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: 'ALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n' },
         'ws/api': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_CORRECTION_NUDGE=inject\n' },
     });
     const before = layoutLib.variablesOf(at('ws/api'), { env: ON }).values;
     const logs = [];
     assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), env: ON, log: (l) => logs.push(l) }), ['api']);
     assert.deepStrictEqual(readWorkspaceValues(at('ws/api')), {});
-    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORER_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
+    assert.strictEqual(fs.readFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_CORRECTION_NUDGE=inject\nALFRED_CODE_SCORING_LEVEL=90\nALFRED_CODE_HISTORY=5\n');
     assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: ON }).values, before, 'every value reads the same once released');
     assert.match(logs.join('\n'), /^workspace: api: 2 values this project read from the workspace written into \.alfred\/\.variables/m);
 });
@@ -1159,6 +1558,7 @@ test('older-project lines: named for an older child of a converted record, for t
     assert.ok(ws.writeWorkspace(e('ws'), (r) => r, { runRoot: e('ws') }).converted);
     assert.deepStrictEqual(ws.olderProjectLines({ conversions: ws.takeConversions(), release: '3.11.0', compare: compareVersions, env: env0 }), [older('api', true), older('kid', true)]);
     assert.ok(compareVersions(ws.JSON_SINCE, '3.9.2') > 0, 'v3.9.2 reads only the old file');
+    assert.ok(compareVersions(ws.PLURAL_SINCE, '3.10.0') > 0, 'v3.10.0 reads no plural key');
 });
 
 test('garbage reads ask nothing: roleOf, roleAsk, rescan, subtree and the status verb over a garbage workspace.json raise no role, join or rejoin ask and print the one line', () =>
@@ -1266,4 +1666,355 @@ test('review I2: under a garbage parent record roleOf reads unknown, no role ask
         assert.match(r.lines[r.lines.length - 1], /not valid JSON - nothing was changed/, answer);
     }
     assert.strictEqual(fs.readFileSync(jsonOf(at('ws/api')), 'utf8'), before, 'the child keeps its parent');
+});
+
+// ------------------------------------------------------------------ stage 1: the plural ignore keys (Section 7)
+
+test('Section 7: the writer keeps a file\'s spelling - a new file and a plural file are written plural, any other existing file singular, plural: true rewrites it', () =>
+{
+    const fileJson = (root) => JSON.parse(fs.readFileSync(jsonOf(root), 'utf8'));
+    const fresh = project();
+    assert.ok(ws.writeWorkspace(fresh, (r) => ws.addIgnore(r, 'rule', 'a')).wrote);
+    assert.deepStrictEqual(fileJson(fresh), { ignore: { rules: ['a'] } }, 'no file yet: plural');
+    assert.strictEqual(ws.readWorkspace(fresh).singular, false);
+
+    const plural = putJson(project(), '{ "ignore": { "rules": ["a"] } }\n');
+    assert.ok(ws.writeWorkspace(plural, (r) => ws.addIgnore(r, 'hook', 'h')).changed);
+    assert.deepStrictEqual(fileJson(plural), { ignore: { rules: ['a'], hooks: ['h'] } }, 'a plural file stays plural');
+
+    const singular = putJson(project(), '{ "ignore": { "rule": ["a"] } }\n');
+    assert.strictEqual(ws.readWorkspace(singular).singular, true);
+    assert.strictEqual(ws.writeWorkspace(singular, (r) => ws.addIgnore(r, 'hook', 'h')).changed, true);
+    assert.deepStrictEqual(fileJson(singular), { ignore: { rule: ['a'], hook: ['h'] } }, 'a singular file stays singular');
+
+    // ruling 10: an existing file with no ignore keys may sit above an older member, which reads no plural key
+    const rooted = putJson(project(), '{ "role": "root" }\n');
+    assert.ok(ws.writeWorkspace(rooted, (r) => ws.addIgnore(r, 'rule', 'a')).wrote);
+    assert.deepStrictEqual(fileJson(rooted), { role: 'root', ignore: { rule: ['a'] } });
+
+    const once = putJson(project(), '{ "ignore": { "rule": ["a"] } }\n');
+    const first = ws.writeWorkspace(once, (r) => r, { plural: true });
+    assert.deepStrictEqual([first.wrote, first.changed], [true, true]);
+    assert.deepStrictEqual(fileJson(once), { ignore: { rules: ['a'] } });
+    assert.strictEqual(ws.writeWorkspace(once, (r) => r, { plural: true }).wrote, false, 'a second rewrite changes nothing');
+
+    // review focus 1: both spellings of one kind in one file - each name once, written back under the plural key
+    const both = putJson(project(), '{ "ignore": { "rule": ["a"], "rules": ["a", "b"] } }\n');
+    assert.ok(ws.writeWorkspace(both, (r) => ws.addIgnore(r, 'hook', 'h')).changed);
+    assert.deepStrictEqual(fileJson(both), { ignore: { rules: ['a', 'b'], hooks: ['h'] } });
+    // review M1: a JSON null is a value the file holds - written back, never logged as dropped
+    const nulled = putJson(project(), '{ "parent": null, "ignore": { "rule": null, "skill": ["a"] } }\n');
+    const quiet = sink();
+    assert.ok(ws.writeWorkspace(nulled, (r) => ws.addIgnore(r, 'hook', 'h'), { log: quiet.log }).changed);
+    assert.deepStrictEqual(quiet.lines.filter((l) => /dropped|replaced/.test(l)), []);
+    assert.strictEqual(fileJson(nulled).parent, null);
+    // review M2: a key that is also a name on Object.prototype is the user's own key - kept as written, no spelling read from it
+    const proto = putJson(project(), '{ "ignore": { "constructor": ["a"], "skill": ["s"] } }\n');
+    assert.strictEqual(ws.readWorkspace(proto).singular, true);
+    assert.ok(ws.writeWorkspace(proto, (r) => ws.addIgnore(r, 'hook', 'h')).changed);
+    assert.deepStrictEqual(Object.keys(fileJson(proto).ignore).sort(), ['constructor', 'hook', 'skill']);
+    assert.deepStrictEqual(fileJson(proto).ignore.constructor, ['a']);
+
+    // a stack-kind key that is no list, beside a change: written back under the file's spelling, never logged as dropped
+    const bad = putJson(project(), '{ "ignore": { "rules": "x", "hooks": ["h"] } }\n');
+    const out = sink();
+    assert.ok(ws.writeWorkspace(bad, (r) => ws.addIgnore(r, 'skill', 's'), { log: out.log }).wrote);
+    assert.deepStrictEqual(fileJson(bad), { ignore: { hooks: ['h'], skills: ['s'], rules: 'x' } });
+    assert.deepStrictEqual(out.lines.filter((l) => /dropped|replaced/.test(l)), []);
+});
+
+// Workspace stage 3, Task 3: memberPicks - the skill and seat lines the joined members below a root picked themselves.
+test('memberPicks: joined members\' own skill and seat picks, 8 folders deep, a garbage or line-less stamp named, a non-member silent', () =>
+{
+    const deep = (n) => Array.from({ length: n }, (_, i) => `d${i + 1}`).join('/');
+    const at = tree({
+        'ws': { stamp: true, record: { children: ['api', 'web', 'bad', 'bare', deep(8), deep(9)] } },
+        'ws/api': { stamp: true, record: { parent: '..' } }, 'ws/web': { stamp: true, record: { parent: '..' } },
+        'ws/bad': { stamp: true, record: { parent: '..' } }, 'ws/bare': { stamp: true, record: { parent: '..' } },
+        'ws/other': { stamp: true },
+        [`ws/${deep(8)}`]: { stamp: true, record: { parent: Array(8).fill('..').join('/') } },
+        [`ws/${deep(9)}`]: { stamp: true, record: { parent: Array(9).fill('..').join('/') } },
+    });
+    const put = (rel, text) => fs.writeFileSync(path.join(at(rel), '.claude', 'alfred-code.stamp'), text);
+    put('ws/api', 'seats-route: plugin\nown-picks: skill/csharp,agent/evidence-gatherer,rule/r\n');
+    put('ws/web', 'seats-route: copy\nown-picks: skill/devops,agent/wpf-verifier\n');
+    put('ws/bad', '\u0000\u0001 not a stamp');
+    put('ws/bare', 'seats-route: plugin\n');
+    put('ws/other', 'own-picks: skill/dotnet\n');
+    put(`ws/${deep(8)}`, 'own-picks: skill/dotnet-grpc\n');
+    put(`ws/${deep(9)}`, 'own-picks: skill/dotnet-mvc-controllers\n');
+    const got = ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'plugin' });
+    assert.deepStrictEqual(got.lines, ['agent evidence-gatherer', 'rule r', 'skill csharp', 'skill devops', 'skill dotnet-grpc']);
+    assert.deepStrictEqual(got.notes.sort(), ['member bad not counted: its stamp holds no own-picks line', 'member bare not counted: its stamp holds no own-picks line']);
+    assert.deepStrictEqual(ws.memberPicks(at('ws'), { env: env0, seatsRoute: 'copy' }).lines, ['rule r', 'skill csharp', 'skill devops', 'skill dotnet-grpc', 'agent wpf-verifier'].sort());
+});
+
+// ------------------------------------------------------------------ W3 Task 3: the installer's rule
+const wsTree = (extra = {}, rootRecord = { role: 'root', children: ['api'], ignoredChildren: ['legacy'] }) => tree({
+    ws: { stamp: true, git: true, record: rootRecord },
+    'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+    ...extra,
+});
+const ownTop = (calls) => (cmd, args, opts) => { calls.push(opts.cwd); return `${opts.cwd}\n`; };
+
+test('addIgnoredChild: adds once, takes the covered children out, refuses a path outside', () =>
+{
+    const r = { ...wfLib.emptyRecord(), children: ['api', 'legacy/app', 'legacy-old'] };
+    ws.addIgnoredChild(r, 'legacy');
+    ws.addIgnoredChild(r, 'legacy');
+    assert.deepStrictEqual([r.ignoredChildren, r.children], [['legacy'], ['api', 'legacy-old']]);
+    assert.throws(() => ws.addIgnoredChild(r, '../x'), { message: 'workspace: ignored child ../x is not a relative path inside the project' });
+});
+
+test('ignoredBy: null with no list; the path, one folder under it; a sibling sharing the prefix is null', () =>
+{
+    const none = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/legacy': { stamp: true, git: true } });
+    assert.strictEqual(ws.ignoredBy(none('ws/legacy'), { env: env0, exec: ownTop([]) }), null);
+    const at = wsTree({ 'ws/legacy': { stamp: true, git: true }, 'ws/legacy-old': { stamp: true, git: true } });
+    assert.deepStrictEqual(ws.ignoredBy(at('ws/legacy'), { env: env0, exec: ownTop([]) }), { root: at('ws'), rel: '..', ignored: true });
+    assert.strictEqual(ws.ignoredBy(at('ws/legacy-old'), { env: env0, exec: ownTop([]) }), null);
+    const under = wsTree({ 'ws/legacy/app': { stamp: true, git: true } });
+    assert.deepStrictEqual(ws.ignoredBy(under('ws/legacy/app'), { env: env0, exec: ownTop([]) }), { root: under('ws'), rel: '../..', ignored: true });
+});
+
+test('ignoredBy: either holder answers (the between tree)', () =>
+{
+    const viaRoot = tree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['mid/p'], ignoredChildren: ['mid/p'] } }, 'ws/mid': { stamp: true, git: true },
+        'ws/mid/p': { stamp: true, git: true, record: { parent: '../..' } } });
+    assert.deepStrictEqual(ws.ignoredBy(viaRoot('ws/mid/p'), { env: env0, exec: ownTop([]) }), { root: viaRoot('ws'), rel: '../..', ignored: true });
+    const viaMid = tree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['mid/p'] } }, 'ws/mid': { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['p'] } },
+        'ws/mid/p': { stamp: true, git: true, record: { parent: '../..' } } });
+    assert.deepStrictEqual(ws.ignoredBy(viaMid('ws/mid/p'), { env: env0, exec: ownTop([]) }), { root: viaMid('ws/mid'), rel: '..', ignored: true });
+});
+
+test('ignoredBy: the between tree still reads ignored after its own release - the holder is kept as `above`; a plain tree writes none', () =>
+{
+    const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['mid/p'] } }, 'ws/mid': { stamp: true, git: true },
+        'ws/mid/p': { stamp: true, git: true, record: { parent: '../..' } } });
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), only: at('ws/mid/p'), keepRules: true, env: env0 }), ['mid/p']);
+    const view = wfLib.viewOf(wfLib.readRecord(path.join(at('ws/mid/p'), '.alfred')).record);
+    assert.deepStrictEqual([view.parent, view.above], [null, '../..']);
+    assert.deepStrictEqual(ws.ignoredBy(at('ws/mid/p'), { env: env0, exec: ownTop([]) }), { root: at('ws'), rel: '../..', ignored: true });
+    const anc = ws.stampedAncestors(at('ws/mid/p'), { env: env0, exec: ownTop([]) });
+    assert.ok(anc.ignored, 'the project reads ignored');
+    assert.ok(ws.chainExcludes(anc, at('ws/mid/p'), []).some((x) => x.endsWith('CLAUDE.md')), 'the wide rows are still written');
+    const plain = wsTree({ 'ws/legacy': { stamp: true, git: true, record: { parent: '..' } } });
+    ws.releaseChildren({ projectRoot: plain('ws'), only: plain('ws/legacy'), keepRules: true, env: env0 });
+    const pv = wfLib.viewOf(wfLib.readRecord(path.join(plain('ws/legacy'), '.alfred')).record);
+    assert.deepStrictEqual([pv.parent, pv.above], [null, null], 'the nearest holder needs no above line');
+});
+
+test('ignoredBy: a third folder\'s entry and a garbage holder answer null', () =>
+{
+    const third = tree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['api'], ignoredChildren: ['api/tools'] } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..', children: ['tools'] } }, 'ws/api/tools': { stamp: true, git: true, record: { parent: '..' } } });
+    assert.strictEqual(ws.ignoredBy(third('ws/api/tools'), { env: env0, exec: ownTop([]) }), null);
+    const garbage = tree({ ws: { stamp: true, git: true }, 'ws/api': { stamp: true, git: true } });
+    fs.mkdirSync(path.join(garbage('ws'), '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(garbage('ws'), '.alfred', 'workspace.json'), '{ not json');
+    assert.strictEqual(ws.ignoredBy(garbage('ws/api'), { env: env0, exec: ownTop([]) }), null);
+});
+
+test('ignoredBy: a covered folder of the holder\'s repository answers not ignored, why same-repo; no list covers: git is never asked', () =>
+{
+    const at = wsTree({ 'ws/legacy': {} });
+    const oneTop = (cmd, args, opts) => `${at('ws')}\n`;
+    assert.deepStrictEqual(ws.ignoredBy(at('ws/legacy'), { env: env0, exec: oneTop }), { root: at('ws'), rel: '..', ignored: false, why: 'same-repo' });
+    const calls = [];
+    assert.strictEqual(ws.ignoredBy(at('ws/api'), { env: env0, exec: ownTop(calls) }), null);
+    assert.strictEqual(calls.length, 0);
+});
+
+test('ignoredBy: a folder that does not exist, and one whose record cannot be read, answer without a throw', () =>
+{
+    const at = wsTree();
+    assert.deepStrictEqual(ws.ignoredBy(path.join(at('ws'), 'legacy'), { env: env0, exec: ownTop([]) }), { root: at('ws'), rel: '..', ignored: true });
+    const bad = tree({ ws: { stamp: true, git: true }, 'ws/api': { stamp: true, git: true } });
+    fs.mkdirSync(path.join(bad('ws'), '.alfred', 'workspace.json'), { recursive: true });
+    assert.strictEqual(ws.ignoredBy(bad('ws/api'), { env: env0, exec: ownTop([]) }), null);
+});
+
+test('joinVerdict: same-repo, then ignored, then not-a-checkout', () =>
+{
+    const at = wsTree({ 'ws/legacy': {} });
+    assert.strictEqual(ws.joinVerdict(at('ws/legacy'), { env: env0, exec: () => `${at('ws')}\n` }).why, 'same-repo');
+    const v = ws.joinVerdict(at('ws/legacy'), { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual([v.ok, v.why, v.by], [false, 'ignored', '..']);
+    const plain = tree({ ws: { stamp: true, git: true, record: { role: 'root' } }, 'ws/sub': {} });
+    assert.strictEqual(ws.joinVerdict(plain('ws/sub'), { env: env0, exec: (c, a, o) => (o.cwd === plain('ws') ? `${plain('ws')}\n` : `${plain('ws')}/other\n`) }).why, 'not-a-checkout');
+});
+
+test('roleAsk: an ignored project is offered no join', () =>
+{
+    const at = wsTree({ 'ws/legacy': { git: true } });
+    const init = ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'init', log: () => {} });
+    assert.deepStrictEqual([init.case, init.options, init.why], ['init-why', ['Standalone (Recommended)', 'Root'], ws.WHY.ignored('..')]);
+    const conf = ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'configure', log: () => {} });
+    assert.deepStrictEqual(conf.options, ['Keep (Recommended)', 'Become a root']);
+    assert.strictEqual(ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'update', log: () => {} }), null, 'never answered');
+    putWorkspace(at('ws/legacy'), { parent: '..' });
+    assert.strictEqual(ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'update', log: () => {} }), null, 'a parent still recorded');
+});
+
+test('rescan: an ignored stamped folder is never listed; its unmarked sibling is', () =>
+{
+    const at = wsTree({ 'ws/legacy': { stamp: true, git: true }, 'ws/web': { stamp: true, git: true } });
+    assert.deepStrictEqual(ws.rescan(at('ws'), { env: env0, log: () => {} }), ['web']);
+});
+
+test('stampedAncestors: ignored and cut', () =>
+{
+    const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['mid'] } }, 'ws/mid': { stamp: true, git: true },
+        'ws/mid/p': { stamp: true, git: true }, 'ws/q': { stamp: true, git: true } });
+    const p = ws.stampedAncestors(at('ws/mid/p'), { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual([[...p], p.ignored, p.cut], [[at('ws/mid'), at('ws')], at('ws/mid'), [at('ws')]]);
+    const mid = ws.stampedAncestors(at('ws/mid'), { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual([[...mid], mid.ignored, mid.cut], [[at('ws')], at('ws/mid'), [at('ws')]]);
+    const q = ws.stampedAncestors(at('ws/q'), { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual([[...q], q.ignored, q.cut], [[at('ws')], null, []]);
+});
+
+// ------------------------------------------------------------------ W3 Task 4: D16's wide rows
+const WIDE_OF = (dir) => [
+    path.join(dir, 'CLAUDE.md'), path.join(dir, 'CLAUDE.local.md'), path.join(dir, '.claude', 'CLAUDE.md'),
+    path.join(dir, 'AGENTS.md'), path.join(dir, '.claude', 'AGENTS.md'), path.join(dir, '.claude', 'rules') + path.sep,
+];
+const putMcp = (dir, names) => fs.writeFileSync(path.join(dir, '.mcp.json'),
+    `${JSON.stringify({ mcpServers: Object.fromEntries(names.map((n) => [n, { command: 'node', args: [`${n}.js`] }])) }, null, 2)}\n`);
+// The root holds a generated rule and its seeded AGENTS.md, so F3 has rows for it.
+const f3Root = (at, root = 'ws') =>
+{
+    const dir = at(root);
+    fs.mkdirSync(path.join(dir, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'rules', 'alfred-agent-awareness.md'), '# generated\n');
+    fs.writeFileSync(path.join(dir, '.claude', 'AGENTS.md'), '# seed\n');
+    const seedHash = hashItem(path.join(dir, '.claude', 'AGENTS.md'));
+    fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), `sha: x\nmanaged-env: \nmanaged-files: AGENTS.md=${seedHash}\n`);
+    assert.ok(ws.ancestorExcludes(dir).length >= 2, 'F3 has rows for the root');
+};
+const legacyTree = () =>
+{
+    const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy/app'] } }, 'ws/legacy': {},
+        'ws/legacy/app': { stamp: true, git: true } });
+    f3Root(at);
+    return at;
+};
+
+test('chainExcludes: an ignored project gets six names for each folder of the range', () =>
+{
+    const at = legacyTree();
+    const anc = ws.stampedAncestors(at('ws/legacy/app'), { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual(ws.wideRange(anc), [at('ws/legacy'), at('ws')]);
+    const got = ws.chainExcludes(anc, at('ws/legacy/app'), []);
+    assert.deepStrictEqual([...got].sort(), [...WIDE_OF(at('ws/legacy')), ...WIDE_OF(at('ws'))].sort());
+    assert.strictEqual(got.length, 12);
+    assert.ok(!got.includes(path.join(at('ws'), '.claude', 'rules', 'alfred-agent-awareness.md')), 'none of the root\'s F3 rows');
+    assert.ok(got.every((p) => !p.startsWith(`${at('ws/legacy/app')}${path.sep}`) && path.dirname(p) !== at()), 'none under the project, none under top');
+    assert.deepStrictEqual(got.filter((p) => p.endsWith(path.sep)), [`${path.join(at('ws/legacy'), '.claude', 'rules')}${path.sep}`, `${path.join(at('ws'), '.claude', 'rules')}${path.sep}`]);
+});
+
+test('chainExcludes: a stamped folder below the ignored one keeps F3\'s rows', () =>
+{
+    const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['mid'] } }, 'ws/mid': { stamp: true, git: true },
+        'ws/mid/p': { stamp: true, git: true } });
+    f3Root(at, 'ws/mid');
+    const anc = ws.stampedAncestors(at('ws/mid/p'), { env: env0, exec: ownTop([]) });
+    const f3 = ws.ancestorExcludes(at('ws/mid'), { childIgnores: [], nearer: [at('ws/mid/p')] });
+    assert.ok(f3.length >= 2);
+    assert.deepStrictEqual(ws.chainExcludes(anc, at('ws/mid/p'), []), [...f3, ...WIDE_OF(at('ws'))]);
+});
+
+test('chainExcludes: nothing ignored - the rows are today\'s', () =>
+{
+    const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/solo': { stamp: true, git: true } });
+    f3Root(at);
+    const base = (anc, self, ignores) => anc.flatMap((root, i) => ws.ancestorExcludes(root, { childIgnores: ignores, nearer: [self, ...anc.slice(0, i)] }));
+    for (const rel of ['ws/api', 'ws/solo'])
+        for (const ignores of [[], [{ category: 'instructions', name: 'CLAUDE.md' }]])
+        {
+            const anc = ws.stampedAncestors(at(rel), { env: env0, exec: ownTop([]) });
+            assert.deepStrictEqual(ws.wideRange(anc), []);
+            assert.deepStrictEqual(ws.chainExcludes(anc, at(rel), ignores), base(anc, at(rel), ignores), rel);
+        }
+    assert.deepStrictEqual(ws.wideRange([]), []);
+});
+
+test('excludeGlobs: a folder becomes its path plus /**', () =>
+{
+    assert.deepStrictEqual(ws.excludeGlobs(['/w/.claude/rules/'], 'linux'), ['/w/.claude/rules/**']);
+    assert.deepStrictEqual(ws.excludeGlobs(['/w/.claude/rules/'], 'darwin'), ['/[wW]/.[cC][lL][aA][uU][dD][eE]/[rR][uU][lL][eE][sS]/**']);
+    assert.deepStrictEqual(ws.excludeGlobs(['C:\\w\\.claude\\rules\\'], 'win32'), ['[cC]:/[wW]/.[cC][lL][aA][uU][dD][eE]/[rR][uU][lL][eE][sS]/**']);
+    assert.deepStrictEqual(ws.excludeGlobs(['/w/x(1).md'], 'linux'), ['/w/x[(]1[)].md'], 'a file path is as before');
+    assert.deepStrictEqual(ws.excludeGlobs(['/w/a.md'], 'darwin'), ['/[wW]/[aA].[mM][dD]']);
+});
+
+test('mcpJsonIgnores: the range\'s servers less the project\'s own names', () =>
+{
+    const at = legacyTree();
+    putMcp(at('ws'), ['rootsrv', 'both']);
+    putMcp(at('ws/legacy'), ['mid']);
+    putMcp(at('ws/legacy/app'), ['both']);
+    const app = at('ws/legacy/app');
+    const anc = ws.stampedAncestors(app, { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [], app).sort(), ['mid', 'rootsrv']);
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [{ category: 'mcp', name: 'rootsrv' }], app).sort(), ['mid', 'rootsrv'], 'no duplicate');
+    fs.writeFileSync(path.join(at('ws/legacy'), '.mcp.json'), '{ not json');
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [], app), ['rootsrv'], 'a garbage file adds nothing');
+    fs.unlinkSync(path.join(at('ws/legacy'), '.mcp.json'));
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [], app), ['rootsrv'], 'an absent file adds nothing');
+});
+
+test('mcpJsonIgnores: an unmarked project is as today', () =>
+{
+    const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
+    putMcp(at('ws'), ['rootsrv']);
+    const anc = ws.stampedAncestors(at('ws/api'), { env: env0, exec: ownTop([]) });
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [], at('ws/api')), []);
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [{ category: 'mcp', name: 'rootsrv' }], at('ws/api')), ['rootsrv']);
+    assert.deepStrictEqual(ws.mcpJsonIgnores(anc, [{ category: 'mcp', name: 'nobody-has-it' }], at('ws/api')), []);
+});
+
+// ------------------------------------------------------------------ W3 Task 7: the verb's refusals
+const noGit = () => { throw new Error('not a git repository'); };
+const SAME_REPO_LINE = (rel) => `${rel} is part of this folder's git repository, not a project of its own - it cannot be isolated: this repository's skills, agents and local settings reach it`;
+
+test('markRefusal: each refusal and its sentence', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/legacy/app': { git: true }, 'ws/api': { stamp: true, git: true }, 'ws/api/tools': { git: true } });
+    const root = at('ws');
+    const own = { env: env0, exec: ownTop([]) };
+    for (const rel of ['../x', '/abs', '.claude', '.claude/x', '.alfred/x', 'a/../b', ''])
+        assert.strictEqual(ws.markRefusal(root, rel, own), `${rel} is not a project path below this folder`, rel);
+    // another case: refused only where the disk folds case and so finds the folder under it
+    const folds = fs.existsSync(path.join(root, 'Legacy', 'App'));
+    assert.strictEqual(ws.markRefusal(root, 'Legacy/App', own), folds ? 'Legacy/App is legacy/app on disk - a mark names the real path' : null);
+    assert.strictEqual(ws.markRefusal(root, 'legacy/app', { env: env0, exec: () => `${root}\n` }), SAME_REPO_LINE('legacy/app'));
+    assert.strictEqual(ws.markRefusal(root, 'api/tools', own), 'api/tools is held by api - mark it in api');
+});
+
+test('markRefusal: a link is refused with its real path', (t) =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/legacy/app': { git: true } });
+    try { fs.symlinkSync(path.join(at('ws'), 'legacy'), path.join(at('ws'), 'ln'), 'junction'); }
+    catch { t.skip('no link can be made here'); return; }
+    assert.strictEqual(ws.markRefusal(at('ws'), 'ln/app', { env: env0, exec: ownTop([]) }), 'ln/app is legacy/app on disk - a mark names the real path');
+});
+
+test('markRefusal: a project that is no checkout, under a root that is none, cannot be isolated', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/p': { stamp: true }, 'ws/plain': {} });
+    assert.strictEqual(ws.markRefusal(at('ws'), 'p', { env: env0, exec: noGit }),
+        "p is no git checkout of its own, and neither is this folder - it cannot be isolated: this folder's skills, agents and local settings reach it");
+    assert.strictEqual(ws.markRefusal(at('ws'), 'plain', { env: env0, exec: noGit }), null, 'a plain folder that holds no install is marked');
+});
+
+test('markRefusal: taken', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/apps/a': { stamp: true, git: true }, 'ws/apps/b': { stamp: true, git: true },
+        'ws/mid': { stamp: true, git: true }, 'ws/mid/p': { stamp: true, git: true, record: { parent: '../..' } } });
+    const own = { env: env0, exec: ownTop([]) };
+    assert.strictEqual(ws.markRefusal(at('ws'), 'new/x', own), null, 'a path with no folder yet');
+    assert.strictEqual(ws.markRefusal(at('ws'), 'apps', own), null, 'a plain folder holding two projects');
+    assert.strictEqual(ws.markRefusal(at('ws'), 'mid/p', own), null, 'its record names the root while mid is stamped between');
 });

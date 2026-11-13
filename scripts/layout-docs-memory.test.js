@@ -45,9 +45,9 @@ test('docsMemoryDir: <data root>/docs/memory, the main checkout\'s from a linked
     const wt = path.join(r.top, 'wt');
     git(r.root, 'worktree', 'add', '-q', wt);
     assert.strictEqual(layout.docsMemoryDir(wt, { env: r.env }), path.join(r.root, '.alfred', 'docs', 'memory'), 'a worktree names the MAIN checkout\'s folder');
-    // a custom data root moves it
+    // a settings key moves nothing (the fixed root, 3.11.0)
     writeLocal(r.root, { env: { ALFRED_CODE_DATA_PATH: '.data' } });
-    assert.strictEqual(layout.docsMemoryDir(r.root, { env: r.env }), path.join(r.root, '.data', 'docs', 'memory'));
+    assert.strictEqual(layout.docsMemoryDir(r.root, { env: r.env }), path.join(r.root, '.alfred', 'docs', 'memory'));
 });
 
 test('memoryDirSetting: the local file\'s value, ~/ expanded, a relative value no setting', () =>

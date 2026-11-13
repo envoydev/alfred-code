@@ -1410,3 +1410,31 @@ test('F22: --deal fresh rules prints only deal lines; a bad mode or layer exits 
     }
     finally { fs.rmSync(rawFile, { force: true }); }
 });
+
+// Workspace stage 4c, Task 4: the two locked hooks ride every selection that names hooks, and the hooks table says locked.
+test('stack-select: withAlways joins the locked hooks, so an emitted selection carries both', () =>
+{
+    const { withAlways, emitSelectionFile } = require('./stack-select.js');
+    const { LOCKED_HOOKS } = require('./install/selection.js');
+    const joined = withAlways({ rules: [], skills: [], hooks: ['guard-ungated-commit'] }, {});
+    assert.deepStrictEqual(joined.hooks.sort(), [...LOCKED_HOOKS, 'guard-ungated-commit'].sort());
+    const text = emitSelectionFile(computeClosure(graph, joined), { hooksAnswered: true });
+    for (const h of LOCKED_HOOKS) assert.match(text, new RegExp(`^hook ${h}$`, 'm'));
+    assert.deepStrictEqual(withAlways({ rules: [], skills: [], hooks: [] }, {}).hooks, [], 'an unanswered hooks layer stays unanswered - every hook ships');
+});
+
+test('stack-select: the hooks layer shows both hooks locked', () =>
+{
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lockhook-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: [], plugins: [], hooks: ['guard-ungated-commit'] }));
+    const layer = ['--table', 'hooks'];
+    const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, ...layer], { encoding: 'utf8' });
+    const rowOf = (n) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === n) || '';
+    for (const h of require('./install/selection.js').LOCKED_HOOKS) assert.match(rowOf(h), /\blocked\b/, h);
+    assert.doesNotMatch(rowOf('guard-ungated-commit'), /\blocked\b/);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

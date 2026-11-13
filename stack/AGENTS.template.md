@@ -10,16 +10,17 @@ The habits-adjust-agents-md skill fills it (create) or brings an existing one up
 ends on the deterministic check; by hand, the steps are:
 1. Write the sections from the authoring outline in the comment below - the H1 carries the folder name the
    seed stamped (`__PROJECT_NAME__` in a hand copy): make it the project's own name - then delete that comment.
-2. List no rules here: every file in .claude/rules/ loads itself (the `alfred-*` set each session, a
-   path-scoped rule on its own `paths:`), so a list only repeats them in every session.
+2. List no rules here: every rule loads itself - the library ones sent by the plugin from .alfred/stack/rules/, the
+   generated ones from .claude/rules/ (the `alfred-*` set each session, a path-scoped rule on its own `paths:`) - so a
+   list only repeats them in every session.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
 Code reads an AGENTS.md on its own only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits in
 the working directory or above it - one of those makes it ignore this file (an `@` import of this file on a
 live, unbackticked line of that CLAUDE.md keeps both loading - it resolves from the importing file, so
 `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside this file - or set Project
-instructions to claude-md-and-agents-md in /config). Never `@import` anything under .claude/rules/: those
-files auto-load, so an import pays for them twice.
+instructions to claude-md-and-agents-md in /config). Never `@import` a rule file: rules
+load on their own, so an import pays for them twice.
 In a repo with separate parts (a `web/` beside the service, packages in a monorepo) this is the ROOT
 file - shared conventions only; each part gets its own thin <part>/AGENTS.md (<part>/CLAUDE.md when this file is a CLAUDE.md) carrying just what is
 specific to that subtree (Claude loads it when it reads a file there, or at launch from that
@@ -43,7 +44,7 @@ records and whose docs outrank this file, so it never lands here), the freeze (n
 moved on), the TODO ledger (scratch notes), and the single source (everything here, nothing routed to a
 scoped rule or a skill).
 Prune it when things go wrong, and test a change by watching whether behaviour shifts. The cross-project working conventions
-are NOT here: they load from the always-on baseline rules in .claude/rules/ (installer-managed,
+are NOT here: they load from the always-on library rules in .alfred/stack/rules/ (installer-managed,
 refreshed on update) - never restate or list them in this file. (HTML comment: stripped from injection,
 so an unfilled template pays nothing for this block.) -->
 
@@ -84,8 +85,8 @@ teammate never gets them, so those items are written here in full.
 8. Operational notes - runtime constraints and gotchas that shape code decisions.
 9. Cross-cutting checklists - for each change that must move several files in lockstep, the full touch-point list.
 10. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
-   permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
-   cert / .secrets / .sensitive-data blocks.
+   permissions.deny in .claude/settings.json, the team's file - the installer seeds only the generic .env* / key /
+   cert / .secrets / .sensitive-data blocks, in each machine's .claude/settings.local.json.
 11. Code conventions - only where this project DEPARTS from the house-style skill the path-scoped
    rules attach for that file type; a line that repeats the skill or a preference is a duplicate.
 12. Testing approach - per-layer strategy, what's excluded, the integration / regression net.

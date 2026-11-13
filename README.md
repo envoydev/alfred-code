@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/envoydev/alfred-code/releases"><img alt="release" src="https://img.shields.io/github/v/release/envoydev/alfred-code"></a>
   <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="node 22.12 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-339933">
+  <img alt="node 26 recommended" src="https://img.shields.io/badge/node-26%20recommended-339933">
 </p>
 
 <p align="center">
@@ -26,15 +26,19 @@ Alfred Code reads your project, picks what it needs from a catalog of skills, ag
 
 ## Quick start
 
-You need Node 22.12 or newer, the `claude` CLI and git.
+You need Node 26 (update to it - the release is tested on 26; 22.12 is the oldest that still runs), Claude Code 2.1.296
+or newer, the `claude` CLI and git.
 
 **1. Install the plugin** - in your project folder:
 
 ```bash
 claude plugin marketplace add anthropics/claude-plugins-official
 claude plugin marketplace add envoydev/alfred-code
-claude plugin install alfred-code@envoydev --scope project
+claude plugin install alfred-code@envoydev --scope local
 ```
+
+`local` keeps the plugin and everything the stack writes to you alone. Use `--scope project` to give the plugin to
+everyone who clones the project ([which scope?](#faq)).
 
 **2. Set it up** - inside Claude Code:
 
@@ -91,7 +95,9 @@ The first time: **init**, restart, **init** again. After that: **update** when a
 | `/alfred-code:validate` | Match the install to the project again |
 | `/alfred-code:uninstall` | Remove what the install wrote, nothing else |
 
-Not sure which one? Type `/alfred-code` and it names the command to run.
+Not sure which one? Type `/alfred-code` and it names the command to run. Three more commands switch a mode on
+until you switch it off: see [Modes](#modes). To go back to an earlier release - every project on the machine moves
+with it: [`docs/rolling-back.md`](docs/rolling-back.md).
 
 ## Workflows
 
@@ -119,22 +125,65 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 
 ## Modes
 
-A mode stays on for the rest of the session once you turn it on. Its flag goes right after a `/task-*`,
-`/capture-*`, `/loop-*`, `/issue-*` or `/mode-*` command, before the request:
+A mode is a switch you type once. Type its command alone on a line, with `on` or `off`. It stays on - in this
+session and every new one in the same checkout - until you type its `off`:
 
-| Flag | What it does |
+| Command | What it does |
 | --- | --- |
-| `--mode-auto-run-on` | Auto-run: each question takes its recommended option, so runs go on without you |
-| `--mode-auto-run-off` | Auto-run off: each question waits for your answer again |
-| `--mode-output-scorer-on` | A fresh grader scores plans and root-cause verdicts before they are released |
-| `--mode-output-scorer-off` | The grader is off again |
+| `/alfred-code:mode:auto-run on` | Each question takes its recommended option, so runs go on without you. No fresh-session question either: the session compacts instead |
+| `/alfred-code:mode:scoring on` | A fresh grader scores plans and root-cause verdicts before they are released. `on 80` also sets the pass level (60 to 100, default 80) |
+| `/alfred-code:mode:auto-compact on` | Only stops the fresh-session question: a long session compacts and goes on |
 
 ```text
-/task-solve --mode-auto-run-on add paging to GET /api/loans
+/alfred-code:mode:auto-run on
+/task-solve add paging to GET /api/loans
 ```
 
-Nothing outward happens unasked under auto-run: no push, merge, deploy or publish. `/mode-auto-run <request>` turns
-auto-run on and runs the request in one go. Each prompt shows the modes that are on (`Modes ON: auto-run`).
+A mode command with no word after it says whether that mode is on. A new session says the modes left on in its first
+line, and each prompt shows them (`Modes ON: auto-run, scoring (level 80), auto-compact`).
+
+**Where a mode is kept.** In the `env` of the checkout's own `.claude/settings.local.json`, which git never shares, so
+a teammate's clone starts with every mode off. A project below its repository's top uses the top's file, and a git
+worktree uses its main checkout's. The four keys are `ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`,
+`ALFRED_CODE_SCORING` and `ALFRED_CODE_SCORING_LEVEL`; `/alfred-code:configure` shows them but changes them only
+through the commands.
+
+**Auto-run.** `auto-run on` puts every session in the checkout under auto-run, a second window included. Nothing
+outward happens unasked: no push, merge, deploy or publish. A guard's question (a discard, a write outside the
+project, a guard switched off) is still yours: its answer opens the gate only when Claude Code records that a person
+gave it, so on Claude Code older than 2.1.296 no such answer opens anything - update Claude Code. `/mode-auto-run
+<request>` turns auto-run on for one session and runs the request in one go.
+
+**Auto-compact.** `auto-compact on` also turns on Claude Code's own compaction for the checkout
+(`autoCompactEnabled: true`, with a compaction point per model), from the next session. `auto-compact off` writes
+`autoCompactEnabled: false`: Claude Code no longer compacts by itself there, and `/compact` still works. Only the typed
+`off` does that - a `0` you set by hand switches nothing in Claude Code.
+
+**No command here?** Where the core plugin is not installed (or its hooks are off), set the keys by hand in that
+file's `env` (`"ALFRED_CODE_SCORING": "1"`), and add `"autoCompactEnabled": false` beside a hand-set
+`"ALFRED_CODE_AUTO_COMPACT": "0"`. Going back to 3.10 leaves the keys in the file; remove `autoCompactEnabled` and
+`modelSettings` there by hand. The `--mode-*` flags of 3.0 to 3.10 are gone - typed after a command they print a
+pointer to the commands above and switch nothing.
+
+## Settings
+
+Most projects need none. `/alfred-code:configure` shows each setting and writes it for you; these are the places, if
+you set one by hand:
+
+| File | What goes there | In git? |
+| --- | --- | --- |
+| `.alfred/.variables` | the stack's values, one `KEY=value` per line - e.g. `ALFRED_CODE_INSTRUMENT=1` (record tool use), `ALFRED_CODE_DOCS_VERSIONING=git` (commit the docs), `ALFRED_CODE_WORKSPACE=0` (no workspace) | at `project` scope |
+| `.claude/settings.local.json`, its `env` | `ALFRED_CODE_HOOKS_OFF` (guards switched off), `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` (trees a write may reach), and the mode keys the [mode commands](#modes) write | never |
+| `.alfred/agents.json` | a seat's model for this project: `{ "claude": { "agents": { "aspnet-verifier": { "model": "opus" } } } }` - `sonnet`, `opus`, `haiku` or `fable` | your choice - the installer never writes it |
+| `.alfred/workspace.json` | in a project below a workspace root, what it should not take from the root: `{ "ignore": { "rules": ["csharp-conventions"] } }` | at `project` scope |
+
+Outside the project:
+
+- **Node 26.** Older Node 22.12+ still runs, untested.
+- **Claude Code 2.1.296 or newer.** Older clients record no 'a person answered' mark, so under auto-run no answer to a
+  guard's question opens it.
+- **Cursor.** Keep Cursor Settings -> Agents -> Third-Party Imports ('Include Third-Party Plugins, Skills, and Other
+  Configs') on, its default: that is how Cursor reads the stack's guards from `.claude/settings.local.json`.
 
 ## Supported stacks
 
@@ -152,7 +201,7 @@ auto-run on and runs the request in one go. Each prompt shows the modes that are
 | **Skills** | 88 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
-| **Hooks** | 18 | the guards, plus the docs, preferences and history hooks |
+| **Hooks** | 18 | the guards, plus the docs, preferences, history and rules hooks |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
 The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it in a browser.
@@ -161,8 +210,8 @@ The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it
 
 | Place | What goes there |
 | --- | --- |
-| `.claude/` in your project | the picked skills and rules, settings, the install stamp |
-| `.alfred/` in your project | docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
+| `.claude/` in your project | a link per picked skill, the generated rules, the install stamp, and the stack's settings in `settings.local.json` |
+| `.alfred/` in your project | the picked skills and rules (`stack/`), docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
 | `~/.claude/` | the plugin cache, the status line |
 
 `/alfred-code:uninstall` removes only what the install recorded. Every file, process and token, in detail: [`docs/install-footprint.md`](docs/install-footprint.md).
@@ -175,6 +224,11 @@ A folder of several projects can share one install's skills, rules, hooks and se
 - In a project below, install with `--scope local` (or `user`): `--scope project` writes the core into the child's committed `.claude/settings.json`.
 - Unattended, init runs only its second (bootstrap) phase: install in an interactive session and restart first, then run `ALFRED_CODE_UNATTENDED=1 claude -p "/alfred-code:init" --permission-mode auto` - print mode without a permission mode refuses every Bash call.
 - Before a project joins, its first session can ask 'allow external imports?' for the root's awareness rule. 'No' is safe: after the join that rule is excluded there.
+- A joined project keeps only its own values in `.alfred/.variables`; the rest it reads from the root. A skill or seat it picks is kept once, in the root's `.alfred/stack/`.
+- A session may write anywhere in the workspace without asking; past it, the main session asks and a subagent is refused.
+- A session started at the root gets a project's own rules and docs the first time it touches a file there.
+- To keep a project below the root out of the workspace, mark it ignored in `/alfred-code:configure` (the workspace role): it keeps what it had and stands alone.
+- At the root, `/alfred-code:status` and the usage audit cover every joined project, one table each; in a project below they cover that project alone.
 
 ## FAQ
 
@@ -188,10 +242,10 @@ No. Every write is listed in [`docs/install-footprint.md`](docs/install-footprin
 <details>
 <summary><strong>How do I turn a guard off?</strong></summary>
 
-Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.json`:
+Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.local.json`:
 
 ```json
-{ "env": { "ALFRED_CODE_HOOKS_OFF": "guard-config-protection,guard-read-whole-file" } }
+{ "env": { "ALFRED_CODE_HOOKS_OFF": "guard-answer,guard-read-whole-file" } }
 ```
 
 Or run `/alfred-code:configure` and it writes the key for you.
@@ -201,9 +255,19 @@ Or run `/alfred-code:configure` and it writes the key for you.
 <details>
 <summary><strong>Project, local or user scope?</strong></summary>
 
-- **project** (recommended) - settings go in `.claude/settings.json` and are shared through git.
-- **local** - the same, in `.claude/settings.local.json`, for you only.
+- **local** (the default) - the plugin is enabled for you alone, and `git status` shows nothing of the stack's.
+- **project** - the plugin is enabled for everyone who clones the project, and `.alfred/.variables` and the copies are tracked in git.
 - **user** - the plugins are enabled for your whole account. The copies and the stamp still live in the project.
+
+The stack writes its settings to `.claude/settings.local.json`, which never leaves your machine. A teammate who clones
+the project gets the plugin (at project scope), the tracked `.variables` and the copies under `.claude/`, and none of
+the stack's settings - no deny rows, no seat denies, no hook switches. Their first `/alfred-code:update` writes the
+deny rows, the seat denies and the seeded keys into their own local file. Where the hooks ride the plugin (the
+default), the hooks your team switched off (`ALFRED_CODE_HOOKS_OFF`) are recorded in no tracked file, so they run for
+a teammate until that teammate switches them off in `/alfred-code:configure`. A cloud session reads no local file and
+gets none of the settings at all. Cursor reads the stack's hook rows from the same file as long as its 'Include
+Third-Party Plugins, Skills, and Other Configs' setting (Cursor Settings -> Agents -> Third-Party Imports) is on,
+which is its default.
 
 That scope covers the core. Each optional item - a language server plugin, claude-hud - has its own: global (every project on your account) or this project, this project
 by default. `/alfred-code:configure` moves one.
@@ -262,6 +326,10 @@ Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-s
 
 <details>
 <summary><strong>How do I see what it actually did?</strong></summary>
+
+`/alfred-code:status` shows what is installed and what the recent sessions used. The usage audit, `/capture-usage-report`
+(add it in `/alfred-code:configure`), audits sessions one by one and writes a report per session plus a `SUMMARY.md`
+under `.alfred/statistics/usage-report/`.
 
 Set `ALFRED_CODE_INSTRUMENT` to `"1"` to record tool, skill and MCP use, then turn a session into a token report:
 

@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { seedRun, POSIX_ONLY, plantOlderRoot } = require('./seed-sandbox.js');
 const uninstall = require('./install/uninstall.js');
 const { hashItem } = require('./install/library.js');
 
@@ -233,7 +233,8 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            const settings = path.join(repo, '.claude', 'settings.json');
+            // Mode v2 stage 2: the stack's rows sit in settings.local.json at project scope, so the user's own sit beside them there.
+            const settings = path.join(repo, '.claude', 'settings.local.json');
             const data = JSON.parse(fs.readFileSync(settings, 'utf8'));
             data.env.MY_KEY = 'mine';
             data.env.ALFRED_CODE_PUSH_GATE = '0';
@@ -247,7 +248,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
             const list = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).sort() : []);
             return {
                 claude: list(path.join(repo, '.claude')),
-                settings: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+                settings: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
                 mcp: JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')),
             };
         },
@@ -258,7 +259,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
     assert.deepStrictEqual(result.settings.hooks, { Stop: [{ hooks: [USER_HOOK] }] });
     assert.deepStrictEqual(result.mcp, { mcpServers: { mine: { command: 'node', args: ['srv.js'] } } });
     assert.deepStrictEqual(Object.keys(result.settings).filter((k) => k !== 'enabledPlugins').sort(), ['env', 'hooks'], 'no attribution key, no empty list the stack wrote');
-    assert.deepStrictEqual(result.claude, ['settings.json'], `stack files left: ${result.claude}`);
+    assert.deepStrictEqual(result.claude, ['settings.local.json'], `stack files left: ${result.claude}`);
     assert.match(outs[1], /stamp removed/);
 });
 
@@ -365,7 +366,7 @@ test('uninstall: a stamp from before the ledger is refused with the route to tak
             const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
             fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').split('\n').filter((l) => !l.startsWith('managed-')).join('\n'));
         },
-        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md')) }),
+        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs')) }),
     });
     assert.strictEqual(code, 1);
     assert.match(err, /predates the install ledger.*run \/alfred-code:update once .*then uninstall/);
@@ -418,7 +419,7 @@ test('uninstall with an unreadable plugin listing refuses before any change', PO
     const { code, err, calls, result } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
         plugins: LISTING, failOk: true,
         each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), 'Error: not logged in'); },
-        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md')) }),
+        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs')) }),
     });
     assert.strictEqual(code, 1);
     assert.match(err, /claude plugin list --json.*run uninstall again/);
@@ -434,18 +435,20 @@ test('uninstall after an update over a malformed settings.json still removes eve
     let good = '';
     const { result, outs } = seedRun(['install', 'update', 'update', 'uninstall'], 'rule markdown-docs\n', {
         failOk: true,
+        // Mode v2 stage 2: the file the stack writes, and so the one that breaks, is settings.local.json.
         each: (repo, i) =>
         {
-            const file = path.join(repo, '.claude', 'settings.json');
+            const file = path.join(repo, '.claude', 'settings.local.json');
             if (i === 0) { good = fs.readFileSync(file, 'utf8'); fs.writeFileSync(file, '{ broken'); }
             if (i === 1) fs.writeFileSync(file, good);
         },
         inspect: (repo) =>
         {
-            const file = path.join(repo, '.claude', 'settings.json');
+            const file = path.join(repo, '.claude', 'settings.local.json');
             return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
         },
     });
+    assert.match(outs[1], /!! settings: \.claude\/settings\.local\.json is not valid JSON - no settings row was written or moved this run/, outs[1]);
     assert.deepStrictEqual(Object.keys(result.env || {}).filter((k) => k.startsWith('ALFRED_CODE_')), [], outs[3]);
     assert.ok(!result.attribution && !result.worktree, JSON.stringify(result));
 });
@@ -629,9 +632,9 @@ test('uninstall over a replaced account file refuses before any change and names
 
 // M4: the kept-data line read ALFRED_CODE_DATA_PATH after the settings pass had removed it, so a custom root was
 // named as the default .alfred/ - the folder the user would then look in is the wrong one.
-test('uninstall: the kept data root is the one in effect - a custom root named, never the default', POSIX_ONLY, () =>
+test('uninstall: the kept data root is the one in effect - an older custom root named, never the default', POSIX_ONLY, () =>
 {
-    const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project', '--data-path', '.data'], []] });
+    const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project'], []], each: (repo, i) => (i === 0 ? void plantOlderRoot(repo, '.data') : null) });
     assert.match(outs[1], /kept, yours or your data: .*the data root \.data\/ - /, outs[1]);
     assert.doesNotMatch(outs[1], /navigation index|browser profiles|memory database/, 'the kept line names no server data');
 });
@@ -652,7 +655,8 @@ test('uninstall lifts the memory switch-off a pre-2.10.1 stack wrote, and keeps 
                 {
                     const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
                     fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^version: .*$/m, `version: ${version}`));
-                    const data = JSON.parse(fs.readFileSync(settings, 'utf8'));
+                    // That release wrote the switch-off to settings.json at project scope; mode v2 stage 2's install writes no settings.json.
+                    const data = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : {};
                     fs.writeFileSync(settings, JSON.stringify({ ...data, autoMemoryEnabled: false, mine: 1 }, null, 2));
                 }
                 return fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null;
@@ -670,16 +674,18 @@ test('uninstall takes a ledgered switch-off back and names none as yours', POSIX
 {
     const { outs, steps } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
         args: [['--scope', 'project', '--memory', 'custom'], []],
+        // Mode v2 stage 2: the ledgered switch-off is written to settings.local.json at project scope.
         each: (repo, i) =>
         {
-            const settings = path.join(repo, '.claude', 'settings.json');
+            const settings = path.join(repo, '.claude', 'settings.local.json');
             const data = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null;
             if (i === 0) fs.writeFileSync(settings, JSON.stringify({ ...data, mine: 1 }, null, 2));
             return data;
         },
     });
     assert.strictEqual(steps[0].autoMemoryEnabled, false, outs[0]);
-    assert.match(outs[0], /settings\.json: autoMemoryEnabled: false written - /, outs[0]);
+    assert.match(outs[0], /settings\.local\.json: autoMemoryEnabled: false written - /, outs[0]);
+    assert.strictEqual(steps[1].mine, 1, 'the user\'s own key went');
     assert.strictEqual(steps[1].autoMemoryEnabled, undefined, outs[1]);
     assert.doesNotMatch(outs[1], /autoMemoryEnabled: false stays/, outs[1]);
     assert.match(outs[1], /attribution \/ worktree \/ auto-compact \/ memory keys removed/, outs[1]);
@@ -690,13 +696,14 @@ test('an update over an unreadable settings file keeps the switch-off\'s ledger 
 {
     const { outs, steps } = seedRun(['install', 'update', 'update'], 'rule markdown-docs\n', {
         args: [['--scope', 'project', '--memory', 'custom'], ['--installed-only', '--scope', 'project'], ['--installed-only', '--scope', 'project']],
+        // Mode v2 stage 2: the file the stack writes, and so the one that breaks, is settings.local.json.
         each: (repo, i) =>
         {
-            const settings = path.join(repo, '.claude', 'settings.json');
+            const settings = path.join(repo, '.claude', 'settings.local.json');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             if (i === 0) { const text = fs.readFileSync(settings, 'utf8'); fs.writeFileSync(settings, '{ not json'); fs.writeFileSync(`${settings}.good`, text); }
             if (i === 1) fs.renameSync(`${settings}.good`, settings);
-            return { row: /^managed-settings: .*settings\.json:autoMemoryEnabled=/m.test(stamp), off: i === 2 ? JSON.parse(fs.readFileSync(settings, 'utf8')).autoMemoryEnabled : null };
+            return { row: /^managed-settings: .*settings\.local\.json:autoMemoryEnabled=/m.test(stamp), off: i === 2 ? JSON.parse(fs.readFileSync(settings, 'utf8')).autoMemoryEnabled : null };
         },
     });
     assert.deepStrictEqual(steps.map((s) => s.row), [true, true, true], outs.join('\n---\n'));
@@ -789,14 +796,15 @@ test('F26: a legacy name is kept and named; an absent rule writes no line', () =
     assert.deepStrictEqual(genProject({}).lines, []);
 });
 
-test('F26: uninstall under a custom data root removes the awareness rule the capture wrote under .data/docs', POSIX_ONLY, () =>
+test('F26: uninstall under an older custom data root removes the awareness rule the capture wrote under .data/docs', POSIX_ONLY, () =>
 {
     const { result, outs } = seedRun(['install', 'uninstall'], 'skill csharp\n', {
         plugins: LISTING,
-        args: [['--data-path', '.data'], []],
+        args: [[], []],
         each: (repo, i) =>
         {
             if (i !== 0) return null;
+            plantOlderRoot(repo, '.data');
             put(path.join(repo, '.data', 'docs', 'awareness', 'PROJECT-AWARENESS.md'), '# Project awareness\n\nRun `npm test`.\n');
             put(path.join(repo, '.claude', 'rules', 'alfred-awareness.md'), inventory.composeAwarenessRule({ projectRoot: repo, docs: '.data/docs' }).text);
             return null;
@@ -806,4 +814,18 @@ test('F26: uninstall under a custom data root removes the awareness rule the cap
     assert.strictEqual(result.rule, false, outs[1]);
     assert.match(outs[1], /rule removed: alfred-awareness \(generated\)/);
     assert.doesNotMatch(outs[1], /edited since it was generated/);
+});
+
+// Workspace stage 4c: the canary is a files row of the ledger, living in .claude/rules.
+test('uninstall: the canary goes at its hash and stays when edited; .claude/rules stays when the user\'s rule is in it', POSIX_ONLY, () =>
+{
+    const at = (repo, f) => path.join(repo, '.claude', 'rules', f);
+    for (const edit of [false, true])
+    {
+        const { result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+            each: (repo, i) => { if (i !== 0) return; put(at(repo, 'mine.md'), '# my own rule\n'); if (edit) fs.appendFileSync(at(repo, 'alfred-rules.md'), '\nmy note\n'); },
+            inspect: (repo) => ({ canary: fs.existsSync(at(repo, 'alfred-rules.md')), mine: fs.existsSync(at(repo, 'mine.md')) }),
+        });
+        assert.deepStrictEqual(result, { canary: edit, mine: true }, outs[1]);
+    }
 });

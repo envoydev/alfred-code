@@ -7,7 +7,7 @@ always `<alfred-code repo>/docs/session-investigation/<project>/`.
 
 **Route 1 - the data is already generated.** Copy the WHOLE bundle set the project holds -
 `SUMMARY.md`, `_rollup.txt` as `rollup.txt`, and every per-session folder entire - out of
-`<project>/<data root>/statistics/usage-report/` (`ALFRED_CODE_DATA_PATH`, `.alfred` by default; on an install not updated to 2.8.0, `usage-report/` - or `alfred-code-usage-report/` before 2.1.7 - under its docs root: a leftover `ALFRED_CODE_DOCS_PATH` value wins, else `<data root>/docs`, `.claude/docs` before 2.0.0). Then, for
+`<project>/<data root>/statistics/usage-report/` (`<data root>` is `.alfred`; `collect-session.js --data-root <folder>` names an older install's; on an install not updated to 2.8.0, `usage-report/` - or `alfred-code-usage-report/` before 2.1.7 - under its docs root: a leftover `ALFRED_CODE_DOCS_PATH` value wins, else `<data root>/docs`, `.claude/docs` before 2.0.0). Then, for
 each copied session folder with no `collected.json`: when that session's transcript is on this machine (the
 history folders of route 3 step 1), run `node scripts/collect-session.js <transcript> --out <that folder>` - it adds
 the ledgers, the state and the receipt beside the copy; else report `collected: none (older bundle)` for it and add

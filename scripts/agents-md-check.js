@@ -23,7 +23,8 @@
 //   todo        - a TODO left in the live text
 //   template    - a live line still carries the template's own authoring text
 //   stack-rules - a `## Rules` section listing the stack's `alfred-*` rules, which an older template seeded: every
-//                 rule in `.claude/rules/` loads itself, so the list only repeats them (the user's ruling of 2026-10-21)
+//                 rule loads itself (`.alfred/stack/rules/` through the plugin, `.claude/rules/` natively), so the list
+//                 only repeats them (the user's ruling of 2026-10-21)
 //   shadowed    - a CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md on an AGENTS.md's path keeps Claude Code
 //                 from reading it (the project's or any folder above for the root file, a part's own folder for a
 //                 part's), unless it imports that AGENTS.md; the row names the CLAUDE.md, line 1
@@ -115,7 +116,7 @@ const WHY = {
     placeholder: "the template's placeholder was never filled",
     todo: 'a TODO left in the live text',
     template: "still the template's own authoring text - replace it with this project's",
-    'stack-rules': "the stack's rules list - every rule in .claude/rules/ loads itself, so this section only repeats them; remove it",
+    'stack-rules': "the stack's rules list - every rule loads itself, so this section only repeats them; remove it",
 };
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -426,7 +427,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
 
     // A `## Rules` section naming the stack's own rules is the list an older template seeded (the user's ruling of
     // 2026-10-21: the rules load themselves, so it only repeats them) - one row at its heading, offered for removal.
-    const STACK_RULE_REF = /\.claude\/rules\/(?:alfred|baseline)-|`(?:\.claude\/rules\/)?alfred-\*/;
+    const STACK_RULE_REF = /(?:\.claude|\.alfred\/stack)\/rules\/(?:alfred|baseline)-|`(?:\.claude\/rules\/)?alfred-\*/;
     let rules = null;
 
     let fence = null;

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules and hooks, installed and updated via the alfred-code plugin.",
-    "version": "3.10.0"
+    "version": "3.11.0"
   },
   "plugins": [
     {
@@ -41,7 +41,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: init installs it from scratch into a project and, typed again after the restart, bootstraps it once (tools, status line, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "3.10.0",
+      "version": "3.11.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -60,17 +60,12 @@
         "hook_profile": {
           "type": "string",
           "title": "Hook profile",
-          "description": "Which Alfred Code hooks run - one of minimal, standard, strict: minimal keeps only the rm, secret, force-push and desktop exec guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.",
+          "description": "Which Alfred Code hooks run - one of minimal, standard, strict: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.",
           "default": "standard"
         }
       },
       "commands": [
-        "./setup-plugin/commands/init.md",
-        "./setup-plugin/commands/update.md",
-        "./setup-plugin/commands/configure.md",
-        "./setup-plugin/commands/validate.md",
-        "./setup-plugin/commands/status.md",
-        "./setup-plugin/commands/uninstall.md"
+        "./setup-plugin/commands/"
       ],
       "skills": [
         "./setup-plugin/skills/alfred-code"
@@ -105,7 +100,7 @@
         "./stack/agents/issue-diagnoser-ci.md",
         "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/ng-build-error-resolver.md",
-        "./stack/agents/output-scorer.md",
+        "./stack/agents/output-scoring.md",
         "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
         "./stack/agents/test-coverage-analyzer.md",
@@ -184,19 +179,6 @@
                 ],
                 "timeout": 70,
                 "onFailure": "block"
-              }
-            ]
-          },
-          {
-            "matcher": "^mcp__.+__browser_file_upload$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node",
-                "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
-                ],
-                "timeout": 10
               }
             ]
           },
@@ -329,19 +311,6 @@
             ]
           },
           {
-            "matcher": "^mcp__.+__App$|^mcp__.+__Shell$|^mcp__.+__PowerShell$|^mcp__.+__execute_shell_command$|^mcp__.+__browser_run_code_unsafe$",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node",
-                "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js"
-                ],
-                "timeout": 10
-              }
-            ]
-          },
-          {
             "matcher": "^mcp__.+__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
@@ -456,30 +425,25 @@
                   "update-preflight"
                 ],
                 "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Bash|PowerShell|Monitor",
-            "hooks": [
+              },
               {
                 "type": "command",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
                 ],
                 "timeout": 10
               }
             ]
           },
           {
-            "matcher": "^mcp__.*",
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
             "hooks": [
               {
                 "type": "command",
                 "command": "node",
                 "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js"
                 ],
                 "timeout": 10
               }
@@ -538,6 +502,56 @@
                 "type": "command",
                 "command": "node",
                 "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "1"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "2"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "3"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "4"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "5"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js"
                 ],
                 "timeout": 10
@@ -560,6 +574,21 @@
                 "command": "node",
                 "args": [
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+                ],
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUseFailure": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
                 ],
                 "timeout": 10
               }
@@ -590,6 +619,56 @@
                 "command": "node",
                 "args": [
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "1"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "2"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "3"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "4"
+                ],
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js",
+                  "--part",
+                  "5"
                 ],
                 "timeout": 10
               },
@@ -660,14 +739,6 @@
                   "${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js"
                 ],
                 "timeout": 60
-              },
-              {
-                "type": "command",
-                "command": "node",
-                "args": [
-                  "${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"
-                ],
-                "timeout": 10
               }
             ]
           }

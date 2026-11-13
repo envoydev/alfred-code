@@ -254,3 +254,64 @@ Each probe ran in a real interactive `claude` (Sonnet) under a throwaway `CLAUDE
 
 Verdict: the paste and banner checks move to PostToolUse, where the message is on disk, and a failed check replaces
 the answers through `updatedToolOutput`, so every reader of the stored result sees the gate's marker. Not run: Windows.
+
+## W3 - G1, the ignored project's folder row (2026-11-13, Claude Code 2.1.323 macOS, 2.1.309 Windows 11 VM)
+
+The fixture, built by hand with no installer: `<dir>/CLAUDE.md` (`G1-ABOVE-CLAUDE`, above the topmost stamped folder);
+`<dir>/ws` stamped, its own repository, with `CLAUDE.md` (`G1-ROOT-CLAUDE`), a pathless `.claude/rules/hand.md`
+(`G1-ROOT-RULE`), a `.mcp.json` declaring `rootsrv` and `both`, and `ignoredChildren: ["legacy/app"]`; `ws/legacy`
+plain, with `CLAUDE.md` (`G1-PLAIN-CLAUDE`) and `.claude/rules/plain.md` (`G1-PLAIN-RULE`); `ws/legacy/app` stamped,
+its own repository, with `.claude/rules/own.md` (`G1-OWN-RULE`) and a `.mcp.json` declaring `both`. The app's
+`settings.local.json` holds `excludeGlobs(chainExcludes(stampedAncestors(app), app, []))` - D16's six names for
+`ws/legacy` and for `ws`, the rules entry written `<path>/**` - and `disabledMcpjsonServers: ["rootsrv"]`.
+
+- Red first. With the row ending `ws/.claude/rules/**` taken out, `node scripts/workspace.js check-loads --root
+  <dir>/ws/legacy/app` printed `!! check-loads: <dir>/ws/.claude/rules/hand.md loaded twice - run /alfred-code:update`
+  (macOS; on Windows the same line with `C:\...\ws\.claude\rules\hand.md`). The gate can fail.
+- Clean. The row put back, the same command printed `check-loads: clean` on both systems.
+- The marks, through the local stand-in (`meta/probes/hook-delivery.js <app> <label> --approve`): with the twelve rows,
+  `G1-ROOT-CLAUDE`, `G1-ROOT-RULE`, `G1-PLAIN-CLAUDE` and `G1-PLAIN-RULE` absent, `G1-ABOVE-CLAUDE` and `G1-OWN-RULE`
+  `main-1`; the control, the excludes emptied, read all six `main-1`. The same on both systems.
+- `claude mcp get both` in the app (the app's definition given its own args): the app's own `.mcp.json` definition;
+  `claude mcp get rootsrv`: 'Rejected (see disabledMcpjsonServers in settings)'.
+- A project that is no checkout below a stamped root that is none either (`<dir>/nogit/ws/p`, the root holding
+  `.claude/skills/g1-skill` with the description `G1-SKILL-MARK`): the mark read `main-1` - such a project is handed
+  the root's skills, which no exclude row removes.
+
+Verdict: the folder row `<path>/**` holds on macOS and Windows; the per-file fallback is not needed. A project that is
+no checkout under a root that is none cannot be kept clear of the root's skills, so the mark is refused there like a
+same-repository folder.
+
+## W3 - the matrix, the ignored project (2026-11-13, macOS, Node 22.23.3; the gate's Windows and Linux legs)
+
+Temp projects installed from this tree's clean export, each in its own sandbox: `HOME`, `USERPROFILE`,
+`CLAUDE_CONFIG_DIR` and the global git config inside it, `ANTHROPIC_API_KEY` unset, a stub `claude` on the path for
+every row but the two `check-loads` rows, which run the real one logged out in a throwaway account. The real account's
+`installed_plugins.json`, `known_marketplaces.json` and `settings.json` hashed before and after: unchanged.
+
+| Row | Case | Result |
+| --- | --- | --- |
+| M1 | the three scopes: the verb marks a path with no folder, the role ask offers no join and says why | 33 PASS |
+| M2 | a joined child marked: its values, a kept stack rule (its hash) and a root hand rule (a plain file) stay | 13 PASS |
+| M3 | re-run: the child's update twice and the verb again change no byte; the root's refresh prints `excludes current` | 7 PASS |
+| M4 | a folder never set up under the root: the loader sends it nothing after the mark | 5 PASS |
+| M5, M6 | `check-loads` with the real `claude`: clean in the ignored project, and with a row taken out it names the root's rule | 3 PASS, 1 NOT RUN |
+| M7, M16 | a 3.10.0 root and child, then this tree; a 3.10.0 `register` over a marked project keeps the mark | 7 PASS |
+| M8 | the middle line (a stamped folder never joined) and the named limit: the root's update alone writes no new row | 4 PASS |
+| M9 | the between tree: the mark in the root's list, then in `mid`'s; the root's wide rows after p's release and its next update; a third folder's entry does nothing | 8 PASS (10 with I1's two rows) |
+| M10 | a folder of the root's repository: the verb refuses, the file byte-equal; a hand-written entry writes no wide row | 2 PASS |
+| M11 | the user's own exclude row, hook row and settings key kept | 4 PASS |
+| M12 | a garbage, locked or switched-off record: the refusal line, exit 3 when locked, the file byte-equal; the switch at 0 releases nothing until it is on | 8 PASS |
+| M13 | a root that is itself a joined child marks a project; a path inside a joined child is refused; an ignored project keeps its own children | 4 PASS |
+| M14 | D16's range: the topmost stamped folder's six names, the plain folder between, nothing of the project's own, the folder above untouched | 5 PASS |
+| M15 | the mark lifted: standalone, the wide rows gone at its next update, the root's rescan lists it | 3 PASS |
+| M17 | the copy route, and a Cursor payload: the project's own store only | 5 PASS |
+
+Total 112 PASS (the account-hash row included), 0 FAIL, 1 NOT RUN; M9 then gained the two rows after the release. NOT RUN: the M5 stand-in
+marks on the installer-made tree - the hand-built G1 fixture above read them on macOS and Windows.
+
+The gate at 92f0538f on the seven workspace test files: Windows 11 VM 456 tests, 0 failed, 87 skipped; Linux (Docker)
+456 tests, 0 failed, 4 skipped; the full suite on macOS 6391 tests, 0 failed, 4 skipped.
+
+The two M9 rows after the release are the final review's I1: with `ignoredBy` reading only `parent`, which the release
+erases, both failed (`wide=false`); with the root kept as the record's `above`, both pass.

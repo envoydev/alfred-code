@@ -3,7 +3,6 @@
 // code to analyse). A tool that walks the tree reads its own ignore file and, at most, the ROOT .gitignore - never the
 // data root's nested one - so `prettier --check .` walked a project's .alfred/ and flagged 272 files (measured
 // 2026-10-14 on Prettier 3.9.1: a browser profile, the docs, serena's memories) while the project's source was clean.
-// The model cannot fix it there: an existing ignore file is a whole-file config the config guard keeps it out of.
 //
 // So each run writes ONE marked block into the ignore file of each such tool the project uses: the data root and
 // `.claude/`, where the stack's library copies live (a fresh install's Prettier run flagged 13 of them; `prettier

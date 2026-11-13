@@ -488,6 +488,15 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     assert.strictEqual(prompt(off, off.transcript(rows(19)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).stdout, '', '0 switches the route off');
     const w = project();
     assert.strictEqual(prompt(w, w.transcript(rows(19, 100000))).stdout, '', 'a carry mostly the cold floor is no offer');
+    // the mode block's auto-compact (/alfred-code:mode:auto-compact on writes it into the checkout's settings.local.json
+    // since 3.11.0, the per-session switch file gone): no fresh-session ask is made
+    const sw = project();
+    const modeFile = path.join(sw.root, '.claude', 'settings.local.json');
+    fs.mkdirSync(path.dirname(modeFile), { recursive: true });
+    fs.writeFileSync(modeFile, `${JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }, null, 2)}\n`);
+    assert.strictEqual(prompt(sw, sw.transcript(rows(19))).stdout, '', 'auto-compact on: no idle-gap offer');
+    fs.writeFileSync(modeFile, `${JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '0' } }, null, 2)}\n`);
+    assert.match(prompt(sw, sw.transcript(rows(19))).stdout, /sat idle 19\.0h/, 'switched off again: the offer is back');
     const n = project();
     assert.strictEqual(prompt(n, n.transcript(rows(19)), { prompt: '<task-notification><task-id>b1</task-id></task-notification>' }).stdout, '', 'a harness notice is no return');
     const s = project();

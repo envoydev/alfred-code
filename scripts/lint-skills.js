@@ -106,7 +106,7 @@ const NON_SKILL_TOKENS = new Set([
     'prefers-color-scheme',
     'aria-labelledby',
     'data-right',
-    // the old mode word the task, capture and loop skills name as starting nothing (`/loop-code-quality --mode-auto-run-on` is the flag now) - not a skill.
+    // the old mode word the task, capture and loop skills name as starting nothing (`/alfred-code:mode:auto-run on` is the command now) - not a skill.
     'auto-mode',
     // the commit-gate hook, referenced by name from the git preferences seed and task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
@@ -171,7 +171,7 @@ const NON_SKILL_TOKENS = new Set([
     'windows-desktop',
     'macos-desktop',
     'appium-mcp',
-    // mode-output-scorer's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
+    // mode-output-scoring's output ids (scorecard.js OUTPUTS), three of the moves its `next` prints, and the two diagnoser
     // seats its outputs table names - outputs, script words and seats, not skills.
     'designer-plan', 'root-cause', 'inline-plan', 'topic-explainer', 'upgrade-plan',
     'ask-continue', 'withhold-final', 'offer-fix',
@@ -1276,7 +1276,8 @@ const SETUP_ASK_TEMPLATES = {
     // +7: screen A's scope, root, profile and forge CLI asks (the GitHub CLI ask until 2026-10-23), step 2's permission mode, step 10's blockers and the
     // git-hygiene ask (audit 2026-10-21 commands T2-12). -1: the profile ask, with --space (the user's ruling of 2026-10-23).
     // -1: the forge CLI ask - the user picks their own tools (the user's report of 2026-11-10; --forge-cli stays for a hand run).
-    'setup-plugin/references/init-install.md': 8,
+    // -1: screen B's data-root ask - the data root is always .alfred (the fixed root, 2026-11-11).
+    'setup-plugin/references/init-install.md': 7,
     // a child install's scope ask and its local-scope git-hygiene ask, read only on `child=yes` (workspace layering,
     // 2026-10-26 - init-install.md is already past the Bash output cap, so a standalone install carries neither).
     'setup-plugin/references/init-child.md': 2,
@@ -1300,7 +1301,8 @@ const SETUP_ASK_TEMPLATES = {
     // +2: step 8's memory and navigation asks (spec P1 + P2, 2026-10-24).
     // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
     // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
-    'setup-plugin/commands/configure.md': 14,
+    // -2: step 8's data-root asks, the move and the keep-or-change one (the fixed root, 2026-11-11).
+    'setup-plugin/commands/configure.md': 13,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1310,7 +1312,8 @@ const SETUP_ASK_TEMPLATES = {
     // -1: the old-seed rename ask - the walk asks instructions-place.md's name templates instead (2026-10-22).
     // +2: the workspace join ask and the account's both-instruction-files ask (workspace layering, 2026-10-26).
     // The join ask became the role ask, one template over its five cases (workspace roles and variables D2, 2026-10-27).
-    'setup-plugin/references/update-walk.md': 6,
+    // -1: the data-root ask - the data root is always .alfred (the fixed root, 2026-11-11).
+    'setup-plugin/references/update-walk.md': 5,
     // the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26); the children's
     // asks became the scope ask - the children too, or only this project - one template with and one without them (2026-10-28).
     'setup-plugin/references/update-workspace.md': 3,
@@ -1331,6 +1334,26 @@ const SETUP_ASK_TEMPLATES = {
     // +3: the layer and environment consent rounds and the install audit's high-row ask (T2-12).
     'setup-plugin/commands/validate.md': 6,
 };
+// Every command file a commands folder holds: the `.md` files at its top and ONE folder down (a sub-folder is one more
+// `:` segment of the typed name - `mode/scoring.md` is /alfred-code:mode:scoring), as sorted paths relative to `dir`
+// with forward slashes. The manifest lists the folder, so this walk is the one list of the commands.
+function commandFiles(dir, fsLike = fs)
+{
+    const out = [];
+    let entries = [];
+    try { entries = fsLike.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+    for (const e of entries)
+    {
+        if (e.isFile() && e.name.endsWith('.md')) out.push(e.name);
+        else if (e.isDirectory())
+        {
+            let inner = [];
+            try { inner = fsLike.readdirSync(path.join(dir, e.name), { withFileTypes: true }); } catch { inner = []; }
+            for (const f of inner) if (f.isFile() && f.name.endsWith('.md')) out.push(`${e.name}/${f.name}`);
+        }
+    }
+    return out.sort();
+}
 // The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
 function setupAskFiles(root, fsLike = fs)
 {
@@ -1344,7 +1367,7 @@ function setupAskFiles(root, fsLike = fs)
     {
         const d = path.join(root, 'setup-plugin', dir);
         if (!fsLike.existsSync(d)) continue;
-        for (const f of fsLike.readdirSync(d))
+        for (const f of dir === 'commands' ? commandFiles(d, fsLike) : fsLike.readdirSync(d))
         {
             const rel = `setup-plugin/${dir}/${f}`;
             if (f.endsWith('.md') && !files.some((x) => x.file === rel)) files.push({ skill: 'setup-plugin', file: rel, text: fsLike.readFileSync(path.join(d, f), 'utf8') });
@@ -1354,7 +1377,7 @@ function setupAskFiles(root, fsLike = fs)
 }
 // A reference init reads with ONE `cat` is held at its size: init-install.md passed the Bash output cap (2026-10-27), so
 // a new screen-B call went into a reference of its own, and growing this file again would cut its tail off that read.
-const SETUP_SIZE_PINS = { 'setup-plugin/references/init-install.md': 31960 };
+const SETUP_SIZE_PINS = { 'setup-plugin/references/init-install.md': 30491 };
 function lintSetupAskPresence(files)
 {
     const findings = [];
@@ -1439,6 +1462,8 @@ function lintFlowAskPresence(texts)
 // user - while an array row whose file is gone fails the plugin's load. Neither is visible from
 // either list alone, and the package has no test that would notice. A field the manifest leaves out
 // is the default directory scan and has nothing to reconcile, so it is skipped rather than flagged.
+// COMMANDS are the exception (2026-11-12): the manifest lists the FOLDER, which Claude Code scans a sub-folder deep,
+// so no list can fall behind - and a listed file would drop its folder segment from the typed name.
 function lintPluginComponents(manifest, listings)
 {
     const findings = [];
@@ -1446,6 +1471,12 @@ function lintPluginComponents(manifest, listings)
     for (const [field, actual] of Object.entries(listings))
     {
         if (!Array.isArray(manifest[field])) continue;
+        if (field === 'commands')
+        {
+            if (manifest.commands.length !== 1 || norm(manifest.commands[0]) !== 'commands/')
+                findings.push("setup-plugin/.claude-plugin/plugin.json `commands` lists files, not the folder - it must be exactly ['./commands/'], so every command file ships and a sub-folder stays a segment of its name");
+            continue;
+        }
         const declared = new Set(manifest[field].map(norm));
         const onDisk = new Set(actual.map(f => `${field}/${f}`));
         for (const d of [...declared].sort())
@@ -2200,7 +2231,7 @@ function main()
     for (const field of ['commands', 'agents', 'hooks'])
     {
         const dir = path.join(ROOT, 'setup-plugin', field);
-        if (fs.existsSync(dir)) pluginComponentDirs[field] = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort();
+        if (fs.existsSync(dir)) pluginComponentDirs[field] = field === 'commands' ? commandFiles(dir) : fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort();
     }
 
     for (const finding of lintPluginComponents(pluginManifest, pluginComponentDirs)) flag(finding);
@@ -2606,6 +2637,29 @@ function main()
     catch (err)
     {
         flag(`the always-on surface measurement could not run: ${err.message}`);
+    }
+
+    // 73. The rule loader (rules-session.js) carries what ships: the shipped pathless rules fit three of its five parts,
+    //     every shipped glob compiles, and its locked list is recommendations.json's `always.rules`.
+    try
+    {
+        const loader = require('../stack/hooks/rules-session.js');
+        const files = fs.readdirSync(CLAUDE_RULES_DIR).filter((f) => f.endsWith('.md')).sort();
+        const texts = files.map((f) => [f, fs.readFileSync(path.join(CLAUDE_RULES_DIR, f), 'utf8')]);
+        const always = texts.filter(([, t]) => !loader.pathsOf(t).length)
+            .map(([f, t]) => ({ name: f.replace(/\.md$/, ''), rel: `.alfred/stack/rules/${f}`, text: loader.render(t) }));
+        const n = loader.parts(always).parts.length;
+        if (n > 3) flag(`the shipped pathless rules take ${n} rule-loader parts, over 3 of its 5 - trim a rule (check 73)`);
+        for (const [f, t] of texts)
+            for (const g of loader.pathsOf(t))
+                if (!loader.pathGlob(g)) flag(`${f}: glob '${g}' uses ? [ { or !, which the rule loader cannot match (check 73)`);
+        const locked = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8')).always.rules;
+        if ([...locked].sort().join() !== [...loader.LOCKED_RULES].sort().join())
+            flag(`rules-session.js LOCKED_RULES (${loader.LOCKED_RULES.join(', ')}) differs from recommendations.json always.rules (check 73)`);
+    }
+    catch (err)
+    {
+        flag(`the rule-loader check could not run: ${err.message} (check 73)`);
     }
 
     // 44 + 45. Plugin placement is computed: the core is the only plugin, and the generated entries are current.
@@ -3079,7 +3133,7 @@ const REALPATH_PINS = {
     'scripts/guard-read-write.test.js': 7,
     'scripts/guard-secret-value.test.js': 3,
     'scripts/guard-sensitive-data.test.js': 2,
-    'scripts/habits-scorer-card.test.js': 2,
+    'scripts/habits-scoring-card.test.js': 2,
     'scripts/handoff-engine.test.js': 1,
     'scripts/history-session.test.js': 3,
     'scripts/hook-prelude.test.js': 10,
@@ -3100,12 +3154,10 @@ const REALPATH_PINS = {
     'scripts/preferences.test.js': 4,
     'scripts/profile-fixture.test.js': 1,
     'scripts/scan-evidence.test.js': 1,
-    'scripts/secret-chain.test.js': 1,
     'scripts/secrets-run.test.js': 1,
     'scripts/session-scope.test.js': 1,
     'scripts/session-status.test.js': 3,
     'scripts/session-surface.test.js': 1,
-    'scripts/setup-plugin.test.js': 1,
     'scripts/shell-guards.test.js': 7,
     'scripts/shell-writes.test.js': 1,
     'scripts/source-cache.test.js': 2,
@@ -3211,7 +3263,7 @@ const RETIRED_AWARENESS_FILES = [
     [/(?<![\w-])architecture\/ORIENTATION(?![\w-])/g, '`awareness/ARCHITECTURE-ORIENTATION-AWARENESS`'],
     [/(?<![\w-])alfred-architecture\.md/g, '`alfred-awareness.md`'],
 ].map(([re, use]) => [re, use, 'file']);
-const RETIRED_FILE_EXEMPT = new RegExp([OLD_LOCATION_EXEMPT.source, '^stack/mcp/data-root\\.js$', '^stack/skills/mode-output-scorer/scripts/scorecard\\.js$', '^stack/skills/mode-output-scorer/references/outputs\\.md$',
+const RETIRED_FILE_EXEMPT = new RegExp([OLD_LOCATION_EXEMPT.source, '^stack/mcp/data-root\\.js$', '^stack/skills/mode-output-scoring/scripts/scorecard\\.js$', '^stack/skills/mode-output-scoring/references/outputs\\.md$',
     '^stack/skills/capture-awareness/scripts/awareness-state\\.js$', '^scripts/scan-evidence\\.js$', '^meta/conformance\\.json$', '^meta/skill-comply/[^/]+/fixtures/'].join('|'));
 const RETIRED_QUALITY_EXEMPT = /^stack\/hooks\/layout\.js$|^setup-plugin\/references\/update-history\.md$|\.test\.js$|^scripts\/fixtures\/|^docs\/.*-evidence\.md$|^docs\/[^/]*-\d{4}-\d{2}-\d{2}\.md$|^docs\/superpowers\/|^scripts\/lint-skills\.js$/;
 const RETIRED_QUALITY_WORDS = /older copy|renamed|retired|\blayout\b|legacy/i;
@@ -3382,7 +3434,8 @@ function lintHooksEntry(liveIn)
         out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'session-status.js', 'workspace-file.js']);
+    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'workspace-file.js',
+        'mode-settings.js', 'json-file.js']);
     const wired = new Set();
     for (const [event, blocks] of Object.entries(stack))
         for (const block of blocks)
@@ -3569,7 +3622,8 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         if (typeof row.default !== 'string') { out.push(`environment.json ${row.key} has no string \`default\` - the seed value and the walk's shown default come from it`); }
         if (!row.what) { out.push(`environment.json ${row.key} has no \`what\` - the walks print it, so a row without one cannot be asked about`); }
         if (Object.hasOwn(row, 'seed') && typeof row.seed !== 'boolean') { out.push(`environment.json ${row.key} has a \`seed\` that is not true or false - the installers skip a row only on \`seed: false\``); }
-        if (row.seed === false && row.ask) { out.push(`environment.json ${row.key} is never written (seed: false), so it cannot be asked - init would write the answer nowhere`); }
+        // A row whose answer travels as its own installer flag (`flag`) is written by that flag, never by the seed.
+        if (row.seed === false && row.ask && !row.flag) { out.push(`environment.json ${row.key} is never written (seed: false), so it cannot be asked - init would write the answer nowhere`); }
         if (row.written && !namedInSeed.has(row.key)) { out.push(`environment.json ${row.key} is marked written, but scripts/install/settings.js never names it literally - the Node seed would never set it`); }
     }
     // The two DECISIONS are special-cased by literal key name, never fed through the generic loop -
@@ -3601,6 +3655,7 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 
 module.exports = {
     hiddenChars,
+    commandFiles,
     checkSkillScriptMarkers,
     lintSkillHeadings,
     lintWorkflows,

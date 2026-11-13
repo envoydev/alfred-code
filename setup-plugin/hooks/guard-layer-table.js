@@ -100,8 +100,9 @@ if (!['AskUserQuestion', 'Bash'].includes(payload.tool_name) || !payload.transcr
 // One block row in the hook-blocks ledger, so this gate's block RATE is measured like every other guard's - in the data
 // root's statistics/ (2.8.0, stack/hooks/layout.js; this plugin's hooks ship apart from it, so the reader is inline).
 // Best-effort; a repo never set up gets none.
-// data-root-reader (meta/shared-rules.json): ALFRED_CODE_DATA_PATH, relative to the project, else .alfred.
-const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); if (/^(?:\/|[A-Za-z]:\/)/.test(raw)) return raw.replace(/\/+$/, '') || '.alfred'; const v = raw.replace(/\/{2,}/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, ''); return v && !/\s|[$%`"'*?<>|:]|(?:^|\/)\.{1,2}(?:\/|$)|^\.(?:claude|git)(?:\/|$)/.test(v) ? v : '.alfred'; };
+// data-root-reader (meta/shared-rules.json): the data root is always .alfred. An absolute ALFRED_CODE_DATA_PATH is a
+// harness's scratch and is kept; anything else is .alfred.
+const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 const blocksFile = () => path.join(path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), dataRoot(), 'statistics', 'hook-blocks'),
   `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
 const appendRow = (row) => {

@@ -27,13 +27,13 @@
 // so a plugin-launched hook there does nothing and writes nothing (no `.alfred/docs/` ledger or
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
 // or its git top level's, or - for a linked worktree - the main checkout's: the stamp, or a copied
-// engine. A copied hook is set up by definition. Four guards stay live even there (R86, IM2), each
+// engine. A copied hook is set up by definition. Three guards stay live even there (R86), each
 // skipping its block row: what they stop cannot be undone, and a user-scope core is the only guard
 // a repo never set up has.
 //
 // GATE 5 - the hook profile. The core entry's `hook_profile` userConfig (minimal / standard / strict,
 // set in /config and stored in the ACCOUNT settings' `pluginConfigs` - never a project file) reaches
-// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the four PROTECTIVE guards
+// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the three PROTECTIVE guards
 // only; `standard`, absent or anything unknown is today's set; `strict` is standard with the seeded-off
 // switches that are safe on read as on (STRICT_ON - the Stop build check). The project's csv still wins:
 // a hook it names stays off under every profile. A copied hook gets no option variable, so it reads
@@ -42,7 +42,7 @@
 // GATE 6 - a Cursor host. Cursor loads Claude Code hooks by default (a compatibility toggle) and turns a
 // Claude Stop block into an automatic follow-up with no loop limit, so a hook that asks or blocks can loop
 // a Cursor session forever. Under a Cursor PAYLOAD (cursorHost: a `cursor_version` field, or a camelCase
-// event name - Claude's are PascalCase) only the four PROTECTIVE guards run; every other hook stands down
+// event name - Claude's are PascalCase) only the three PROTECTIVE guards run; every other hook stands down
 // silently and writes no ledger row, as under GATE 4. Judged from the payload ALONE, never from the
 // environment: a `claude` session in Cursor's integrated terminal inherits Cursor's variables and keeps
 // every hook. A hook makes the check itself, right after it parsed its own payload (cursorStandDown), so no
@@ -117,16 +117,18 @@ function hookProfile(env)
     return HOOK_PROFILES.includes(value) ? value : 'standard';
 }
 
+// The rule loader carries the project's rules: no off-list or profile stands it down (workspace stage 4c).
+const UNSWITCHABLE = new Set(['rules-session']);
 function profileOff(hook, env)
 {
-    return hookProfile(env) === 'minimal' && !PROTECTIVE.has(baseName(hook));
+    return hookProfile(env) === 'minimal' && !PROTECTIVE.has(baseName(hook)) && !UNSWITCHABLE.has(baseName(hook));
 }
 
 // A hook's own on-switch (`ALFRED_CODE_<suffix>=1`), with the profile applied: strict reads a STRICT_ON
 // switch as on over the seeded 0. The csv needs no case here - a hook it names stood down before this. A DEFAULT_ON
-// switch reads an unset key as its catalog default, on (the scorer since 2026-11-03, B1); only an explicit value but 1
+// switch reads an unset key as its catalog default, on (the scoring since 2026-11-03, B1); only an explicit value but 1
 // turns it off.
-const DEFAULT_ON = new Set(['SCORER']);
+const DEFAULT_ON = new Set(['SCORING']);
 function switchOn(suffix, env)
 {
     const source = env || process.env;
@@ -140,14 +142,15 @@ function switchOn(suffix, env)
 // user's own text, and an update never rewrites it). Old name -> new, the manifest's `renamed.hooks`, copied here so the
 // prelude stays standalone; hook-prelude.test.js holds the two equal. A value may name a PART (`<hook>:<part>`, E-batch B-m6:
 // the retired memory-session.js's host traps live on as preferences-session's `host`): it switches that part off in partOff, never a hook.
-const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer', 'memory-session': 'preferences-session:host' });
+const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer', 'memory-session': 'preferences-session:host',
+    'guard-answer:scorer': 'guard-answer:scoring', 'guard-stop-contract:scorer': 'guard-stop-contract:scoring' });   // until 4.0.0
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
     const off = String(envOf(source, 'HOOKS_OFF') || '');
     if (!off.trim()) return false;
     const wanted = baseName(hook);
-    if (!wanted) return false;
+    if (!wanted || UNSWITCHABLE.has(wanted)) return false;
     return off.split(',').map(baseName).filter(Boolean).map((n) => HOOK_RENAMED[n] || n).filter((n) => !n.includes(':')).includes(wanted);
 }
 
@@ -166,10 +169,9 @@ function partOff(hook, part, env)
     const legacy = PART_SWITCHES[wanted];
     if (legacy && String(envOf(source, legacy) || '').trim() === '0') return true;
     const off = String(envOf(source, 'HOOKS_OFF') || '');
-    return off.split(',').map((entry) => HOOK_RENAMED[baseName(entry)] || entry).some((entry) => {
-        const at = entry.indexOf(':');
-        return at > 0 && `${baseName(entry.slice(0, at))}:${entry.slice(at + 1).trim().toLowerCase()}` === wanted;
-    });
+    // each entry as `<hook>:<part>` with its hook half bare (a `.js` there too), then through the renames
+    return off.split(',').map((e) => { const at = e.indexOf(':'); const k = at > 0 ? `${baseName(e.slice(0, at))}:${e.slice(at + 1).trim().toLowerCase()}` : baseName(e);
+        return HOOK_RENAMED[k] || k; }).includes(wanted);
 }
 
 // Every hook entry in a settings file - its event, its matcher ('' when it has none) and its command - whatever
@@ -414,9 +416,11 @@ function isCliInvocation(argv)
 }
 
 // R86: what these stop cannot be undone, so GATE 4 never stands them down - each reads neverSetUp()
-// itself and skips its block row there instead. The desktop exec gate joined them (final review IM2, the
-// user's ruling of 2026-09-29): the macOS Shell it gates is a shell the other three never see.
-const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec']);
+// itself and skips its block row there instead. The desktop exec gate that joined them (final review IM2) left in
+// complexity stage 1 (B12): 0 fires in 442 sessions, and the stack ships no desktop server since 2.10.1.
+const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']);
+// The hooks that answer a Cursor payload in Cursor's own shape, so GATE 6 lets them through (the rule loader, workspace stage 4a).
+const CURSOR_RUNS = new Set(['rules-session']);
 
 // UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
 // the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine
@@ -429,7 +433,7 @@ const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guar
 // file, an empty one, a torn or garbage LAST row - is a person: the behaviour they expect.
 const TRANSCRIPT_WINDOWS = [256 * 1024, 8 * 1024 * 1024];
 
-function transcriptEntrypoint(file)
+function transcriptField(file, key)
 {
     let size;
     try { size = fs.statSync(file).size; } catch { return null; }
@@ -457,7 +461,7 @@ function transcriptEntrypoint(file)
             const isRow = row !== null && typeof row === 'object' && !Array.isArray(row);
             if (last && !isRow) return null;
             last = false;
-            if (isRow && typeof row.entrypoint === 'string') return row.entrypoint;
+            if (isRow && typeof row[key] === 'string') return row[key];
         }
         // Nothing complete in this window: one row longer than it - read the wider one.
         if (start === 0 || !last) return null;
@@ -473,12 +477,20 @@ function transcriptEntrypoint(file)
 // seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
 // overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
 const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
-// A stamp an auto-run start writes (guard-fresh-session-start.js, `--mode-auto-run-on` in a family command's leading run,
-// or a typed `/mode-auto-run <request>`) names its session on a `session: <id>` line. It is live for THAT session for as
+// A stamp an auto-run start writes (guard-fresh-session-start.js, at a typed `/alfred-code:mode:auto-run on` or a typed
+// `/mode-auto-run <request>`) names its session on a `session: <id>` line. It is live for THAT session for as
 // long as the session runs - an unattended loop outlives the 8h a hand-written stamp gets - and never for another session
 // in the same project, which the age and birth checks cannot tell apart from it. A week is the backstop for a stamp whose
-// session died without its `--mode-auto-run-off`.
+// session died without its `/alfred-code:mode:auto-run off`.
 const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+// The standing auto-run (spec 3.5): the mode file's own ALFRED_CODE_AUTO_RUN=1, honoured where git vouches the file is this
+// machine's alone; memoised per process and root, and a copy without the helper honours nothing.
+const standingAt = new Map();
+const heldOwn = (root) => { try { return require('./mode-settings.js').autoRunHeld(root) === 'own'; } catch { return false; } };
+const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldOwn(root)); return standingAt.get(root); };
+// How long auto-run lasts, for the banner, the run contract and the Stop hold: the standing variable carries into new
+// sessions, a /mode-auto-run <request> stamp lasts its session (stage 3's final review, finding 7).
+const autoLasts = (root) => (root && autoRunStanding(root) ? 'auto-run stays on, new sessions included, until' : 'auto-run stays on for the session until');
 // The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
 // With `planId`, that plan's own stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); without
 // it, the root one - auto-mode's, and a pre-2.8.0 skill copy's.
@@ -490,9 +502,12 @@ function approvalStamp(input, env, planId)
         const payload = input && typeof input === 'object' ? input : {};
         const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
         if (!root) return null;
+        if (!planId && payload.session_id && autoRunStanding(root))   // every named session, no stamp file read
+            return { file: layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : '', first: 'AUTO - "ALFRED_CODE_AUTO_RUN=1"',
+                session: String(payload.session_id), skill: '', live: true, mtimeMs: Date.now() };
         if (planId && !layout) return null;
         const file = planId ? layout.approvalPath(root, planId, source)
-            : layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || `${envOf(source, 'DATA_PATH') || '.alfred'}/docs`, 'flow', 'APPROVAL');
+            : layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
         const stamp = fs.statSync(file);
         if (!stamp.isFile()) return null;
         const fd = fs.openSync(file, 'r');
@@ -541,12 +556,12 @@ function autoStampLive(input, env)
 // - readReceiptFile: the lines (no blank, `#` or `session:` line) and whether the file is live for THIS call - under 8h,
 //   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
 //   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
-// - receiptAnswered: for the five SECURITY receipts (SECRET-READ, DISCARD, DESKTOP-EXEC, CROSS-WRITE, GUARD-OFF) the transcript must
+// - receiptAnswered: for the three SECURITY receipts (DISCARD, CROSS-WRITE, GUARD-OFF; SECRET-READ left in swap 1) the transcript must
 //   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
 //   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
-//   given while auto-run was off - judged at the answer's place: a typed family command whose leading run turns auto-run
-//   on (modeFlags) puts every later answer under auto-run until a typed off-flag, so deleting the stamp or typing the
-//   off-flag afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
+//   given while auto-run was off - judged at the answer's place: a typed line that turns auto-run on (modeFlags: the
+//   mode command, or `/mode-auto-run <request>`) puts every later answer under auto-run until a typed off command, so
+//   deleting the stamp or typing the off command afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
 //   seat (`agent_id`) is anchored at its time in the seat's own transcript, and the answer must land after it.
 // A payload with no transcript (a CLI run, a test fixture) keeps the time rule alone: every real session carries one.
 const RECEIPT_MAX_MS = 8 * 60 * 60 * 1000;
@@ -615,7 +630,7 @@ function typedRowText(row)
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
     return text.trim() && !harnessPrompt(text) && !LOCAL_ONLY_RE.test(text) ? text : '';
 }
-// 'on' / 'off' when a typed line's leading run switches auto-run (the one parser), else null.
+// 'on' / 'off' when a typed line switches auto-run (the one parser), else null.
 const autoEventOf = (text) => { const f = modeFlags(text); return f.family && f.autoRun ? f.autoRun : null; };
 const normLabel = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/["'“‘”’]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 const tsOfRow = (row) => { const t = Date.parse(row && row.timestamp); return Number.isFinite(t) ? t : 0; };
@@ -629,6 +644,8 @@ function answerLabelsOf(row)
     for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normLabel(one)) labels.push(normLabel(one));
     return labels.length ? labels : null;
 }
+// Whether a person gave an answer row's answer (D25): its own `permissionDecision.source` (2.1.323) opens `user`, never `hook`.
+const byUser = (row) => { const s = row && row.permissionDecision && row.permissionDecision.source; return typeof s === 'string' && s.startsWith('user'); };
 // A hook's denial naming `marker` (exit 2 or a deny: an error tool result), or false.
 function deniedIn(row, marker)
 {
@@ -636,11 +653,11 @@ function deniedIn(row, marker)
     return Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.is_error === true && contentText(b.content).includes(marker));
 }
 const ANSWER_NEEDLE = '"answers":';
-const AUTO_NEEDLE = 'mode-auto-run';
+const AUTO_NEEDLE = 'auto-run';
 // An AskUserQuestion call in an assistant row, as Claude Code serializes it (compact JSON, the needles above alike).
 const ASK_NEEDLE = '"name":"AskUserQuestion"';
 const isTypedCandidate = (line) => line.includes('"type":"user"') && !line.includes('"tool_result"');
-// 'on' / 'off' when a transcript line is a typed row switching auto-run, else null: the one typed-flag read every judge of
+// 'on' / 'off' when a transcript line is a typed row switching auto-run, else null: the one typed-line read every judge of
 // auto-run shares. With `session`, a row naming another session is none.
 function typedAutoEvent(line, session)
 {
@@ -720,12 +737,12 @@ function receiptAnswered(input, spec)
         {
             const row = rowOf(line);
             const labels = answerLabelsOf(row);
-            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto, ids: resultIds(row) });
+            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto: auto || !byUser(row), ids: resultIds(row) });
         }
     });
     const hits = answers.filter((a) => a.ids.some((id) => asks.has(id)) && (seatAt ? a.ts > seatAt : a.at > lastDenial) && carries(a.labels));
     if (hits.some((a) => !a.auto)) return { ok: true, why: '' };
-    return { ok: false, why: hits.length ? 'the allow answer was given while auto-run was on, which answers its own asks'
+    return { ok: false, why: hits.length ? 'the allow answer was not the user\'s own: auto-run was on, or a hook gave it'
         : `no ask answered with the allow label after ${seatAt ? 'this seat\'s' : 'this guard\'s'} last denial in this session` };
 }
 // A security receipt: readReceiptFile, live only when receiptAnswered also holds. null when absent.
@@ -748,7 +765,7 @@ function receiptShutText(r, rel)
 {
     if (!r || r.live) return '';
     return `The receipt at ${rel} is not honoured: ${r.why}.` + (r.autoRun
-        ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`--mode-auto-run-off`).'
+        ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`/alfred-code:mode:auto-run off`).'
         : ' Rewrite it only on a fresh answer.') + '\n';
 }
 
@@ -757,7 +774,7 @@ function receiptShutText(r, rel)
 // compaction summary, a sidechain or a harness prompt), with the text the harness lays inside such a row cut out (a
 // reminder or an IDE note it appends, a typed command's own name and message line, a `!` command's output), and each
 // AskUserQuestion answer that is the result of an AskUserQuestion call in the same file (FA-4), with whether auto-run was
-// on when it was given (the typed flag rows, receiptAnswered's read). Only the transcript decides, so no file the model
+// on when it was given (the typed mode rows, receiptAnswered's read). Only the transcript decides, so no file the model
 // writes can (HK-03). No transcript: null. Kept per file size and mtime within one process.
 const USER_NEEDLE = '"type":"user"';
 const HARNESS_SPANS_RE = /<(system-reminder|command-name|command-message|bash-stdout|bash-stderr|local-command-stdout|local-command-stderr|local-command-caveat|ide_[a-z_]+)\b[^>]*>[\s\S]*?<\/\1>/g;
@@ -801,7 +818,7 @@ function userTurns(input)
         const row = rowOf(line);
         const result = row && row.toolUseResult;
         if (!result || typeof result !== 'object' || !result.answers || typeof result.answers !== 'object' || askTimedOut(result)) return;
-        answers.push({ at, ids: resultIds(row), answers: result.answers, auto });
+        answers.push({ at, ids: resultIds(row), answers: result.answers, auto: auto || !byUser(row) });
     });
     const answered = answers.filter((a) => a.ids.some((id) => asks.has(id))).map((a) => ({ ...a, questions: a.ids.flatMap((id) => asks.get(id) || []) }));
     const out = { typed, answered };
@@ -873,7 +890,7 @@ function typedPaths(text, { platform = process.platform, home = homeDir(), nativ
 // lastTypedPrompt's 4MB tail after the row - read by position - AND no typed row turns auto-run off after the newest such
 // row (the final review of 2026-10-30 FA-1: a stamp the model rewrote over an old on-row, after the user typed the
 // off-flag, got the model's own SHOW ask answered and opened the secret receipt). The off read is receiptAnswered's
-// typed-flag read from that row to the end, and an off-row of any session in this file counts.
+// typed-line read from that row to the end, and an off-row of any session in this file counts.
 // Its quoted words are the typed line's or, on the Skill route, the model's args, so they are never matched. A stamp with
 // no `session:` line is task-solve's hand-written waiver: its quoted words (the text after `AUTO -` when unquoted;
 // whitespace collapsed, double quotes single, the first 400 characters, at least 8 - a shorter quote matches any turn)
@@ -960,7 +977,8 @@ function typedWordsOrStart(file, words)
         {
             const row = rowOf(line);
             const labels = answerLabelsOf(row);
-            if (labels && !auto && labels.some((l) => l.startsWith('start auto here')) && resultIds(row).some((id) => asks.has(id))) found = true;
+            if (labels && !auto && byUser(row) && labels.some((l) => l.startsWith('start auto here'))
+                && resultIds(row).some((id) => asks.has(id))) found = true;
         }
     });
     return found;
@@ -989,44 +1007,51 @@ function autoStampVerified(stamp, payload)
     return ok;
 }
 
-// --- the mode flags (stack-modes spec section 1): ONE parser every reader of a mode calls -------------------------
-// A typed line opens with a command group - the first `/name` plus up to five more right after it, the terminal's
-// skill stacking as far as a hook can tell it (a `/word` that is no skill still joins; that only moves where the
-// request starts). The leading run is the mode-like tokens right after the group: the four flags, the old ones
-// (`--auto-mode`, `--score-on`, `--score-off` - a pointer, never a switch) and any other `--mode-*` (unknown). The
-// first other token ends it, so `--dry-run` and prose stay in the request; a mode-like token past it only marks the
-// line `late`. Off wins over on for one mode. A reader acts on the run only when `family` holds.
+// --- the modes: ONE parser every reader of a mode calls --------------------------------------------------------------
+// A MODE COMMAND LINE is `/alfred-code:mode:<scoring|auto-run|auto-compact>` first on the line: with exactly `on` or
+// `off` after it the mode's field is set, bare it only names the mode, and anything else is `extra` - nothing switches.
+// It reads as a flag-only `mode-` line (`family`, `flagOnly`, no request), so it opens no run. Any other typed line
+// opens with a command group - the first `/name` plus up to five more right after it, the terminal's skill stacking
+// as far as a hook can tell it (a `/word` that is no skill still joins; that only moves where the request starts).
+// The mode-like tokens right after the group are retired flags: stripped into `old`, they switch nothing. The first
+// other token ends that run, so `--dry-run` and prose stay in the request.
 const FLOW_FAMILY_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|capture|loop|issue|mode)-[a-z][a-z0-9-]*$/;
-const MODE_FLAGS = { '--mode-auto-run-on': ['autoRun', 'on'], '--mode-auto-run-off': ['autoRun', 'off'], '--mode-output-scorer-on': ['scorer', 'on'], '--mode-output-scorer-off': ['scorer', 'off'] };
-const OLD_MODE_FLAGS = new Set(['--auto-mode', '--score-on', '--score-off']);
+// The grader's skill names, the shipped one first: a copy, a typed stack or a run under the old name acts until 4.0.0.
+const SCORING_SKILLS = Object.freeze(['mode-output-scoring', 'mode-output-scorer']);   // legacy name, until 4.0.0
+const MODE_COMMAND_RE = /^\/alfred-code:mode:(scoring|auto-run|auto-compact)$/i;
+const MODE_FIELD = { scoring: 'scoring', 'auto-run': 'autoRun', 'auto-compact': 'compact' };
 const MODE_LIKE_RE = /^--(?:mode-[a-z][a-z0-9-]*|auto-mode|score-(?:on|off))$/;
 const COMMAND_TOKEN_RE = /^\/[A-Za-z0-9:_-]+$/;
 const COMMAND_GROUP_MAX = 6;
 const commandSkill = (command) => bareSkill(String(command).replace(/^\//, ''));
 function modeFlags(text)
 {
-    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scorer: null, flagOnly: false, old: [], unknown: [], late: false };
+    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false,
+        old: [], level: null };
     if (typeof text !== 'string') return flags;
     const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
     const line = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : text;
     const tokens = [...line.matchAll(/\S+/g)];
     if (!tokens.length || !COMMAND_TOKEN_RE.test(tokens[0][0])) return flags;
+    const mode = MODE_COMMAND_RE.exec(tokens[0][0]);
+    if (mode)
+    {
+        // scoring alone takes one more token of digits after on or off - the level, its range judged by the caller
+        const level = tokens.length === 3 && /^scoring$/i.test(mode[1]) && /^\d+$/.test(tokens[2][0]) ? tokens[2][0] : null;
+        const word = tokens.length === 2 || level ? tokens[1][0].toLowerCase() : '';
+        Object.assign(flags, { commands: [tokens[0][0]], family: true, flagOnly: true, mode: mode[1].toLowerCase(), extra: tokens.length > 1 && word !== 'on' && word !== 'off' });
+        if (!flags.extra && word) Object.assign(flags, { [MODE_FIELD[flags.mode]]: word, level });
+        return flags;
+    }
     let i = 0;
     while (i < tokens.length && flags.commands.length < COMMAND_GROUP_MAX && COMMAND_TOKEN_RE.test(tokens[i][0])) flags.commands.push(tokens[i++][0]);
     while (i < tokens.length && MODE_LIKE_RE.test(tokens[i][0])) flags.run.push(tokens[i++][0]);
     flags.request = i < tokens.length ? line.slice(tokens[i].index).trim() : '';
-    flags.late = tokens.slice(i).some((t) => MODE_LIKE_RE.test(t[0]));
     flags.family = flags.commands.some((c) => FLOW_FAMILY_RE.test(c.slice(1).toLowerCase()));
-    for (const token of flags.run)
-    {
-        const flag = MODE_FLAGS[token];
-        if (flag) flags[flag[0]] = flags[flag[0]] === 'off' ? 'off' : flag[1];
-        else if (OLD_MODE_FLAGS.has(token)) { if (!flags.old.includes(token)) flags.old.push(token); }
-        else if (!flags.unknown.includes(token)) flags.unknown.push(token);
-    }
+    flags.old = [...new Set(flags.run)];
     flags.flagOnly = flags.run.length > 0 && flags.request === '';
-    // `/mode-auto-run <request>`: the typed request is its own waiver, so the line reads as its own -on (round-3 M3).
-    if (flags.autoRun === null && flags.request && flags.commands.some((c) => commandSkill(c) === 'mode-auto-run')) flags.autoRun = 'on';
+    // `/mode-auto-run <request>`: the typed request is its own waiver, so the line reads as an auto-run start (round-3 M3).
+    if (flags.request && flags.commands.some((c) => commandSkill(c) === 'mode-auto-run')) flags.autoRun = 'on';
     return flags;
 }
 // Another session is RUNNING when its own transcript, beside this one, was written within the last ten minutes - the
@@ -1051,8 +1076,9 @@ function autoRunRefusal(input, env, flags)
     const source = env || process.env;
     const f = flags && typeof flags === 'object' ? flags : modeFlags('');
     if (payload.agent_id) return 'a seat never starts auto-run';
+    if (f.mode === 'auto-run') return '';   // the mode command writes the variable, never a stamp: no run or data root to refuse (D4)
     const commands = Array.isArray(f.commands) ? f.commands : [];
-    if (!f.request && !(Array.isArray(f.run) && f.run.length) && commands.some((c) => commandSkill(c) === 'mode-auto-run')) return 'type the request after /mode-auto-run';
+    if (!f.request && commands.some((c) => commandSkill(c) === 'mode-auto-run')) return 'type the request after /mode-auto-run';
     const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
     if (!root) return '';
     const current = approvalStamp({ ...payload, cwd: root }, source);
@@ -1061,7 +1087,7 @@ function autoRunRefusal(input, env, flags)
     {
         const rel = path.relative(root, current.file).split(path.sep).join('/') || current.file;
         return `another session (${current.session.slice(0, 8)}) is running a stamped run in this checkout right now, and ${rel} is its approval - `
-            + `it ends with --mode-auto-run-off there, or delete ${rel} to take over, then type the command again`;
+            + `it ends with /alfred-code:mode:auto-run off there, or delete ${rel} to take over, then type the command again`;
     }
     let dir = layout ? path.dirname(layout.statePath(root, 'approvals', 'APPROVAL', source)) : path.resolve(root, '.alfred');
     while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
@@ -1085,6 +1111,18 @@ function autoRunFor(input, env, flags)
     }
     catch { return false; }
 }
+// Why no fresh-session ask is made for this payload, else '': the project's variable (the mode file's, as the loader set it),
+// then auto-run for this prompt - the typed line first (autoRunFor). The v1 session switch file is gone (mode commands v2).
+const COMPACT_SAID = { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on' };
+function compactCause(input, env = process.env, flags = null)
+{
+    try
+    {
+        if (String(envOf(env, 'AUTO_COMPACT') || '').trim() === '1') return 'project';
+        return autoRunFor(input && typeof input === 'object' ? input : {}, env, flags) ? 'auto-run' : '';
+    }
+    catch { return ''; }
+}
 // The run marker: one per session, open while a run in auto-run goes (spec section 2). The Stop hold, its cap and the
 // dispatch guard's run-active reads key on it; the mode itself lives in the root APPROVAL stamp for the session.
 function runMarkerFile(root, sessionId, env = process.env)
@@ -1092,7 +1130,7 @@ function runMarkerFile(root, sessionId, env = process.env)
     if (!layout || !root || !sessionId) return null;
     return layout.statePath(root, 'sessions', `AUTO-RUN-${safeSession(sessionId)}`, env);
 }
-// The run a typed line opens: its first flow command, past the scorer (a stack's grader opens no run) and past a
+// The run a typed line opens: its first flow command, past the scoring (a stack's grader opens no run) and past a
 // `/mode-auto-run` with no request (a flag-only mode line switches, it opens nothing).
 function runMarkerSkill(flags)
 {
@@ -1100,7 +1138,7 @@ function runMarkerSkill(flags)
     for (const command of Array.isArray(f.commands) ? f.commands : [])
     {
         const name = commandSkill(command);
-        if (!FLOW_FAMILY_RE.test(name) || name === 'mode-output-scorer' || (name === 'mode-auto-run' && !f.request)) continue;
+        if (!FLOW_FAMILY_RE.test(name) || SCORING_SKILLS.includes(name) || (name === 'mode-auto-run' && !f.request)) continue;
         return name;
     }
     return '';
@@ -1272,7 +1310,7 @@ function unattended(input, env)
         const entry = String(source.CLAUDE_CODE_ENTRYPOINT || '').trim();
         if (entry) return entry === 'sdk-cli';
         const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
-        return file !== '' && transcriptEntrypoint(file) === 'sdk-cli';
+        return file !== '' && transcriptField(file, 'entrypoint') === 'sdk-cli';
     }
     catch { return false; }
 }
@@ -1300,7 +1338,7 @@ function cursorStandDown(input, file, argv)
     {
         if (isCliInvocation(argv)) return false;
         const name = baseName(path.basename(String(file || '')));
-        if (!name || PROTECTIVE.has(name)) return false;
+        if (!name || PROTECTIVE.has(name) || CURSOR_RUNS.has(name)) return false;
         return cursorHost(input);
     }
     catch { return false; }
@@ -1465,7 +1503,7 @@ function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
 }
 
 
-// THE SCORER'S SHARED STATE (mode-output-scorer, 2026-10-25). guard-answer reads it for the injected lines and the
+// THE SCORING'S SHARED STATE (mode-output-scoring, 2026-10-25). guard-answer reads it for the injected lines and the
 // flags, the stop contract for the backstop and the seal, so both judge one state from one reader.
 //
 // Prose only: code blocks, tables, quotes, inline spans and link targets are dropped, so a name the user quotes is talk,
@@ -1505,8 +1543,8 @@ function skillCopyState(root, name, env = process.env)
 const oursLoadable = (root, ours, env = process.env) => skillCopyState(root, ours, env) === 'on';
 
 // The automatic outputs, in the order every list of them is printed, and the phrase the injected line names each by.
-const SCORER_AUTOMATIC = Object.freeze(['designer-plan', 'root-cause', 'inline-plan']);
-const SCORER_PHRASES = Object.freeze({ 'designer-plan': 'designer plan file', 'root-cause': 'root-cause verdict', 'inline-plan': 'inline plan for work started now' });
+const SCORING_AUTOMATIC = Object.freeze(['designer-plan', 'root-cause', 'inline-plan']);
+const SCORING_PHRASES = Object.freeze({ 'designer-plan': 'designer plan file', 'root-cause': 'root-cause verdict', 'inline-plan': 'inline plan for work started now' });
 function wholeIn(value, min, max, otherwise)
 {
     const s = String(value === undefined || value === null ? '' : value).trim();
@@ -1514,63 +1552,48 @@ function wholeIn(value, min, max, otherwise)
     const n = Number(s);
     return n >= min && n <= max ? n : otherwise;
 }
-const scorerLevel = (env = process.env) => wholeIn(envOf(env, 'SCORER_LEVEL'), 60, 100, 80);
-const scorerRounds = (env = process.env) => wholeIn(envOf(env, 'SCORER_ROUNDS'), 1, 10, 3);
+const scoringLevel = (env = process.env) => wholeIn(envOf(env, 'SCORING_LEVEL'), 60, 100, 80);
+const scoringRounds = (env = process.env) => wholeIn(envOf(env, 'SCORING_ROUNDS'), 1, 10, 3);
 // The csv read case-insensitively and trimmed; a name outside the three is reported back. Unset, empty (an empty value is
 // unset, as layout.js valueIn reads it) or a list naming no valid output is the catalog default, plan files only (B1,
 // 2026-11-03): all three names grade every output.
-const SCORER_OUTPUTS_DEFAULT = Object.freeze(['designer-plan']);
-function scorerOutputs(env = process.env)
+const SCORING_OUTPUTS_DEFAULT = Object.freeze(['designer-plan']);
+function scoringOutputs(env = process.env)
 {
-    const names = String(envOf(env, 'SCORER_OUTPUTS') ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const outputs = SCORER_AUTOMATIC.filter((n) => names.includes(n));
-    return { outputs: outputs.length ? outputs : [...SCORER_OUTPUTS_DEFAULT], ignored: [...new Set(names.filter((n) => !SCORER_AUTOMATIC.includes(n)))] };
+    const names = String(envOf(env, 'SCORING_OUTPUTS') ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const outputs = SCORING_AUTOMATIC.filter((n) => names.includes(n));
+    return { outputs: outputs.length ? outputs : [...SCORING_OUTPUTS_DEFAULT], ignored: [...new Set(names.filter((n) => !SCORING_AUTOMATIC.includes(n)))] };
 }
 
 // A session id as a file or folder name: a separator, a space or any other character outside [\w.-] becomes `_`, and a
-// whole `.` or `..` is `_`, so no id names a path outside the scorer's folder (R31).
+// whole `.` or `..` is `_`, so no id names a path outside the scoring's folder (R31).
 function safeSession(id)
 {
     const s = String(id === undefined || id === null ? '' : id).replace(/[^\w.-]/g, '_');
     return /^\.*$/.test(s) ? '_' : s;
 }
-const scorerPath = (prefix) => (root, sessionId, env = process.env) => (layout ? layout.statePath(root, 'sessions', `${prefix}${safeSession(sessionId)}`, env) : null);
-// The session's switch (`on` / `off` from --mode-output-scorer-on / -off), the backstop's one-hold-per-cycle marker, and the
-// names an ignored ALFRED_CODE_SCORER_OUTPUTS entry was already reported under - one sweep prefix takes all three.
-const scorerFile = scorerPath('SCORER-');
-const scorerHeldFile = scorerPath('SCORER-HELD-');
-const scorerNotedFile = scorerPath('SCORER-NOTED-');
-function readScorerFile(root, sessionId, env = process.env)
+const scoringPath = (prefix) => (root, sessionId, env = process.env) => (layout ? layout.statePath(root, 'sessions', `${prefix}${safeSession(sessionId)}`, env) : null);
+// The backstop's one-hold-per-cycle marker and the names an ignored ALFRED_CODE_SCORING_OUTPUTS entry was already reported
+// under - one sweep prefix takes both (and the v1 session switch files it leaves behind).
+const scoringHeldFile = scoringPath('SCORING-HELD-');
+const scoringNotedFile = scoringPath('SCORING-NOTED-');
+// Usable first: either hook standing down or its `scoring` part switched off, or no loadable copy of the skill, makes the
+// scoring unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
+// usable but never on by itself. Then ALFRED_CODE_SCORING (on when unset, B1), which the mode file sets through the loader.
+function scoringState(root, sessionId, env = process.env)
 {
+    const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORING_AUTOMATIC], ignored: [], source: 'env', copy: null };
     try
     {
-        const file = scorerFile(root, sessionId, env);
-        if (!file) return null;
-        const first = fs.readFileSync(file, 'utf8').split('\n')[0].trim();
-        return first === 'on' || first === 'off' ? first : 'garbage';
-    }
-    catch { return null; }
-}
-// Usable first: either hook standing down or its `scorer` part switched off, or no loadable copy of the skill, makes the
-// scorer unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
-// usable but never on by itself. Then the session's flag file, else ALFRED_CODE_SCORER (on when unset, B1); a garbage file
-// reads as absent.
-function scorerState(root, sessionId, env = process.env)
-{
-    const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORER_AUTOMATIC], ignored: [], source: 'env', file: null, copy: null };
-    try
-    {
-        Object.assign(state, { level: scorerLevel(env), rounds: scorerRounds(env), ...scorerOutputs(env) });
-        state.file = readScorerFile(root, sessionId, env);
-        if (standDown('guard-answer', env, []) || partOff('guard-answer', 'scorer', env)
-            || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scorer', env)) return state;
-        const copy = skillCopyState(root, 'mode-output-scorer', env);
+        Object.assign(state, { level: scoringLevel(env), rounds: scoringRounds(env), ...scoringOutputs(env) });
+        if (standDown('guard-answer', env, []) || partOff('guard-answer', 'scoring', env)
+            || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scoring', env)) return state;
+        const copy = SCORING_SKILLS.map((n) => skillCopyState(root, n, env)).find((c) => c !== 'absent') || 'absent';
         state.copy = copy;   // the ON line tells a user-invocable-only copy from a switch that is off
         if (copy === 'absent' || copy === 'off') return state;
         state.usable = true;
         if (copy === 'user-invocable-only') return state;
-        if (state.file === 'on' || state.file === 'off') { state.source = 'flag'; state.on = state.file === 'on'; }
-        else state.on = switchOn('SCORER', env);
+        state.on = switchOn('SCORING', env);
         return state;
     }
     catch { return { ...state, usable: false, on: false }; }
@@ -1578,13 +1601,13 @@ function scorerState(root, sessionId, env = process.env)
 
 // A typed stack names the skill as a word of the prose: the slash form anywhere, a `<command-args>` row counting (the `>`
 // and `<`), or the bare name right after a usage word - 'using', 'with', 'via', 'run', 'stack', 'through'. A bare name in
-// other prose ('why did mode-output-scorer not run?') is talk about the tool, never a stack (final review 4).
-const STACK_RE = /(?:^|[\s(>])(?:\/|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)mode-output-scorer(?=[\s.,;:)!?<]|$)/i;
+// other prose ('why did mode-output-scoring not run?') is talk about the tool, never a stack (final review 4).
+const STACK_RE = /(?:^|[\s(>])(?:\/|(?:using|with|via|run|stack|through)\s+(?:the\s+)?)mode-output-scor(?:ing|er)(?=[\s.,;:)!?<]|$)/i;
 const stackNamed = (text) => STACK_RE.test(proseOf(String(text || '')));
 
 // The skills that READ a plan rather than write one (the backstop's T2 exemption), and the names producerMarks looks for.
 const PLAN_READERS = Object.freeze(['task-implement', 'task-verify-plan', 'task-verify-code']);
-const MARKED = Object.freeze([...PLAN_READERS, 'mode-output-scorer']);
+const MARKED = Object.freeze([...PLAN_READERS, ...SCORING_SKILLS]);
 // The names in `names` one raw transcript row marks: an assistant Skill call, or a typed user row (never a tool result)
 // holding a `<command-name>`. A row cut short, or not JSON, marks nothing.
 function producerMarks(line, names = MARKED)
@@ -1607,10 +1630,10 @@ function producerMarks(line, names = MARKED)
 // The draft folders, `<dir>/<session>/<slug>/`, which sweepStale (files only) does not take: a session folder goes once
 // its newest file is older than STALE_MS (an empty one by its own time), at most once a day per dir, inside the same
 // 50ms budget. A symlink is never followed.
-function sweepScorerFolders(dir, { now = Date.now() } = {})
+function sweepScoringFolders(dir, { now = Date.now() } = {})
 {
     if (!dir) return 0;
-    const stamp = sweepStamp(dir, 'scorer');
+    const stamp = sweepStamp(dir, 'scoring');
     try { if (now - fs.statSync(stamp).mtimeMs < SWEEP_EVERY_MS) return 0; } catch { /* no stamp yet - this call sweeps */ }
     try { fs.writeFileSync(stamp, ''); const t = new Date(now); fs.utimesSync(stamp, t, t); } catch { return 0; }
     const deadline = Date.now() + STALE_BUDGET_MS;
@@ -1767,7 +1790,7 @@ function qualityPart(skill, args)
         const hit = OLD_CAPTURE.test(b) && OLD_PART.find(([, re]) => re.test(b));
         return hit ? hit[0] : '';
     }
-    const word = (String(args || '').trim().split(/\s+/).filter((w) => !Object.hasOwn(MODE_FLAGS, w))[0] || '').toLowerCase();
+    const word = (String(args || '').trim().split(/\s+/).filter((w) => !MODE_LIKE_RE.test(w))[0] || '').toLowerCase();
     if (!word || /[/\\.]/.test(word)) return 'chain';
     return Object.keys(QUALITY_TOPICS).find((part) => QUALITY_TOPICS[part].includes(word)) || 'chain';
 }
@@ -1940,4 +1963,5 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, modeFlags, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORER_AUTOMATIC, SCORER_PHRASES, scorerLevel, scorerRounds, scorerOutputs, safeSession, scorerFile, scorerHeldFile, scorerNotedFile, readScorerFile, scorerState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScorerFolders };
+module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
+Object.assign(module.exports, { autoRunStanding, autoLasts, byUser });   // beside the one-line list, which a new name would push past 160

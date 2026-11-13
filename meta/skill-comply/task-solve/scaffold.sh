@@ -3,7 +3,7 @@
 # handler takes the request body on trust. Adding validation is input parsing - on the size
 # floor, so the task is standard and the cycle starts at its design step. The project's CLAUDE.md
 # states the order rules, so the clarify step has no fork to stop at (the 2026-11-04 smoke's both
-# arms stopped there asking for them), and the stack's variables turn the output scorer off, so the
+# arms stopped there asking for them), and the stack's variables turn the output scoring off, so the
 # plan lands under work/plans/ and the run reaches the stop after the design step.
 set -e
 git config user.email fixture@example.invalid
@@ -58,11 +58,11 @@ test('an order is created', () =>
 JS
 git add -A
 git commit -q -m 'baseline'
-# The stack's variables: the output scorer off. The installer seeds it on and may already have
+# The stack's variables: the output scoring off. The installer seeds it on and may already have
 # written the file, so its line for this key is replaced.
 mkdir -p .alfred
 V=.alfred/.variables
 touch "$V"
-grep -v -E '^(export )?ALFRED_CODE_SCORER=' "$V" > "$V.next" || true
+grep -v -E '^(export )?ALFRED_CODE_SCORING=' "$V" > "$V.next" || true
 mv "$V.next" "$V"
-echo 'ALFRED_CODE_SCORER=0' >> "$V"
+echo 'ALFRED_CODE_SCORING=0' >> "$V"

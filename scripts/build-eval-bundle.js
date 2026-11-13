@@ -70,7 +70,12 @@ function build(out, { repo = REPO, coreOnly = false } = {})
     for (const s of skills) fs.cpSync(path.join(repo, 'stack', 'skills', s), path.join(out, 'skills', s), { recursive: true });
     for (const a of agents)
         fs.writeFileSync(path.join(out, 'agents', `${a}.md`), scopePreloads(fs.readFileSync(path.join(repo, 'stack', 'agents', `${a}.md`), 'utf8'), house));
-    for (const c of core.commands) fs.copyFileSync(path.join(repo, c), path.join(out, 'commands', path.basename(c)));
+    // The core lists its commands FOLDER: copied whole, so a command one folder down keeps its path (and its name).
+    for (const c of core.commands)
+    {
+        if (fs.statSync(path.join(repo, c)).isDirectory()) fs.cpSync(path.join(repo, c), path.join(out, 'commands'), { recursive: true });
+        else fs.copyFileSync(path.join(repo, c), path.join(out, 'commands', path.basename(c)));
+    }
 
     // The trees the bundled bodies name under ${CLAUDE_PLUGIN_ROOT} - and what the scripts read - at the
     // core's own relative paths. The library cases already travel as evals/, so meta/evals is left out.
@@ -91,7 +96,7 @@ function build(out, { repo = REPO, coreOnly = false } = {})
         // `claude plugin validate --strict` refuses a manifest without it (measured, 2026-09-24).
         author: core.author,
     }, null, 2)}\n`);
-    return { skills: skills.length + 1, agents: agents.length, commands: core.commands.length, cases: cases.length };
+    return { skills: skills.length + 1, agents: agents.length, commands: fs.readdirSync(path.join(out, 'commands'), { recursive: true }).filter((f) => String(f).endsWith('.md')).length, cases: cases.length };
 }
 
 if (require.main === module)

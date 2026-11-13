@@ -1,8 +1,8 @@
 'use strict';
 // The publish gate on every transport: a merge or a branch write through an MCP server or a CLI other than `gh` needs the
 // same PUSH-GATE receipt `gh pr merge` and `git push` do; a forge call the lexicon cannot read is an ask (a deny when
-// nobody is at the terminal); a read, a quoted merge and a non-forge tool pass. Every publish the gate allows is ledgered
-// in <data root>/state/forge/ACTS-<session>.jsonl for the ref watch.
+// nobody is at the terminal); a read, a quoted merge and a non-forge tool pass. Nothing is ledgered: the act ledger and the
+// ref watch that read it left in complexity stage 1 (B9).
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
 const { reviewedTranscript } = require('./hook-test-env');
@@ -41,10 +41,11 @@ const run = (dir, payload, env = {}) => spawnSync(process.execPath, [path.join(H
 const mcp = (tool, input) => ({ tool_name: `mcp__gitlab__${tool}`, tool_input: input, mcp_server: { name: 'gitlab', source: 'user' } });
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
 const decision = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecision; } catch { return null; } };
-const acts = (dir) => {
-  const file = path.join(dir, '.alfred', 'state', 'forge', 'ACTS-forge-s1.jsonl');
-  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
-};
+
+test('stage 1 B9: forge.js carries no act ledger', () => {
+  const f = require('../stack/hooks/forge.js');
+  assert.deepEqual(['sessionFile', 'actsPath', 'ledgerRoot', 'recordAct', 'ledgerRows', 'readActs', 'confirmAct'].filter((n) => n in f), []);
+});
 
 test('an MCP merge needs the publish receipt', () => {
   const { dir } = pushRepo();
@@ -54,16 +55,11 @@ test('an MCP merge needs the publish receipt', () => {
   assert.match(r.stderr, /PUSH-GATE/);
 });
 
-test('an MCP merge with a receipt passes and is ledgered', () => {
+test('an MCP merge with a receipt passes', () => {
   const { dir } = pushRepo();
   receipt(dir, headOf(dir));
   const r = run(dir, mcp('merge_merge_request', { merge_request_iid: 4 }));
   assert.strictEqual(r.status, 0, r.stderr);
-  const rows = acts(dir);
-  assert.strictEqual(rows.length, 1);
-  assert.strictEqual(rows[0].concept, 'change.merge');
-  assert.strictEqual(rows[0].change, '4');
-  assert.strictEqual(rows[0].head, headOf(dir));
 });
 
 test('an MCP branch write needs the publish receipt', () => {
@@ -94,11 +90,10 @@ test('a glab merge is gated like gh pr merge', () => {
   assert.strictEqual(run(dir, bash('gh pr merge 12 --squash')).status, 2);
 });
 
-test('a shell merge with a receipt passes and is ledgered', () => {
+test('a shell merge with a receipt passes', () => {
   const { dir } = pushRepo();
   receipt(dir, headOf(dir));
   assert.strictEqual(run(dir, bash('glab mr merge 4')).status, 0);
-  assert.strictEqual(acts(dir)[0].concept, 'change.merge');
 });
 
 test('a quoted merge is text, not an act', () => {
@@ -194,70 +189,6 @@ test('an MCP merge sha is compared directly', () => {
   assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: reviewed })).status, 0);
 });
 
-// --- what a gated git push ledgers: one row per ref it names, so the ref watch never reads a push of one branch as
-// covering a move of another ------------------------------------------------------------------------------------------
-test('a gated git push ledgers each ref it names', () => {
-  const { dir, git } = pushRepo();
-  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
-  git('add', '-A'); git('commit', '-qm', 'b');
-  receipt(dir, headOf(dir));
-  assert.strictEqual(run(dir, bash('git push origin HEAD:refs/heads/feat/x main')).status, 0);
-  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref]), [['branch.write', 'feat/x'], ['branch.write', 'main']]);
-});
-
-test('a bare git push ledgers the branch it pushes, a --tags push no target', () => {
-  const { dir, git } = pushRepo();
-  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
-  git('add', '-A'); git('commit', '-qm', 'b');
-  receipt(dir, headOf(dir));
-  assert.strictEqual(run(dir, bash('git push')).status, 0);
-  assert.strictEqual(run(dir, bash('git push --tags')).status, 0);
-  assert.deepStrictEqual(acts(dir).map((a) => a.ref), ['main', null]);
-});
-
-test('a push naming no ref is ledgered as covering all; the act carries its tool call', () => {
-  const { dir, git } = pushRepo();
-  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
-  git('add', '-A'); git('commit', '-qm', 'b');
-  receipt(dir, headOf(dir));
-  assert.strictEqual(run(dir, { ...bash('git push --tags'), tool_use_id: 'tu-1' }).status, 0);
-  const [row] = acts(dir);
-  assert.strictEqual(row.all, true);
-  assert.strictEqual(row.tool_use_id, 'tu-1');
-});
-
-test('an auto-merge is ledgered armed', () => {
-  const { dir } = pushRepo();
-  receipt(dir, headOf(dir));
-  assert.strictEqual(run(dir, mcp('merge_merge_request', { merge_request_iid: 4, merge_when_pipeline_succeeds: true })).status, 0);
-  assert.strictEqual(run(dir, bash('gh pr merge 4 --squash')).status, 0);
-  assert.deepStrictEqual(acts(dir).map((a) => !!a.armed), [true, false]);
-});
-
-test('with the push half off, what it lets through is still ledgered', () => {
-  const { dir, git } = pushRepo();
-  const off = { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' };
-  assert.strictEqual(run(dir, mcp('accept_merge_request', { merge_request_iid: 4 }), off).status, 0);
-  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
-  git('add', '-A'); git('commit', '-qm', 'b');
-  assert.strictEqual(run(dir, bash('git push origin main'), off).status, 0);
-  assert.strictEqual(run(dir, bash('git push --dry-run origin main'), off).status, 0);
-  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref]), [['change.merge', null], ['branch.write', 'main']]);
-});
-
-// fn-9: a command that pushes and then merges is two acts, and the ref watch reads both - the merge rode along unledgered
-// behind the push.
-test('fn-9: git push && gh pr merge ledgers both acts (under a waiver - a reviewed head refuses the pair, R015)', () => {
-  const { dir, git } = pushRepo();
-  fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n');
-  git('add', '-A'); git('commit', '-qm', 'b');
-  receipt(dir, headOf(dir));
-  fs.writeFileSync(path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE'), 'WAIVED - "Skip the review, push and merge it"\n');
-  const r = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
-  assert.strictEqual(r.status, 0, r.stderr);
-  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['branch.write', 'main'], ['change.merge', '4']]);
-});
-
 // Task 4b (a side review of fn-9): the push leads the command, so the merge-only checks never saw the merge behind it -
 // its unseen-head check, and, with nothing ahead to push, the receipt itself.
 test('4b: a merge chained after a push is refused (R015: it runs after the push); alone it is checked against the change head', () => {
@@ -290,30 +221,15 @@ test('4b: a push with nothing ahead, or a dry run, does not carry a chained merg
     assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
     assert.match(r.stderr, /PUSH-GATE/, cmd);
   }
-  assert.deepStrictEqual(acts(dir), [], 'a denied act is not ledgered');
   receipt(dir, headOf(dir));
   const r = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
   assert.strictEqual(r.status, 2, r.stderr);
   assert.match(r.stderr, /so it judges only a merge that runs first/, 'a reviewed head is never compared behind a push (R015)');
-  assert.deepStrictEqual(acts(dir), [], 'a denied act is not ledgered');
   // under a waiver there is no reviewed head to compare, so the pair passes - and the level push moved nothing
   fs.writeFileSync(path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE'), 'WAIVED - "Skip the review, push and merge it"\n');
   const w = run(dir, bash('git push origin main && gh pr merge 4 --squash'));
   assert.strictEqual(w.status, 0, w.stderr);
-  assert.deepStrictEqual(acts(dir).map((a) => [a.concept, a.ref || a.change]), [['change.merge', '4']], 'the level push moved nothing, so only the merge is an act');
   assert.strictEqual(run(dir, bash('git push origin main')).status, 0, 'a level push alone still needs nothing');
-});
-
-test('a push from a worktree is ledgered where the main checkout\'s ref watch reads', () => {
-  const { dir, git } = pushRepo();
-  const wt = path.join(path.dirname(dir), 'wt');
-  git('worktree', 'add', '-q', '-b', 'feat/wt', wt);
-  fs.writeFileSync(path.join(wt, 'w.txt'), 'w\n');
-  spawnSync('git', ['-C', wt, 'add', '-A']); spawnSync('git', ['-C', wt, 'commit', '-qm', 'w']);
-  receipt(wt, headOf(wt));
-  const r = run(wt, bash('git push -u origin feat/wt'), { CLAUDE_PROJECT_DIR: dir });
-  assert.strictEqual(r.status, 0, r.stderr);
-  assert.deepStrictEqual(acts(dir).map((a) => a.ref), ['feat/wt']);
 });
 
 // Audit 2026-10-30 (hooks report, the threat table's low row): `gh pr create` was never gated, while it pushes the current
@@ -342,7 +258,6 @@ test('opening a change request from a branch no remote holds needs the publish r
   receipt(dir, headOf(dir));
   const ok = run(dir, bash('gh pr create --fill'));
   assert.strictEqual(ok.status, 0, ok.stderr);
-  assert.deepStrictEqual(acts(dir).map((a) => a.concept), ['change.create'], 'and the act is ledgered for the ref watch');
 });
 
 // --- R015: a merge with no number reads the head of its branch -----------------------------------------------------------

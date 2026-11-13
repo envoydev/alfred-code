@@ -264,7 +264,7 @@ test('M124: the Windows Service floors and the WinForms / WPF project-config cla
 
 test('M125: the migrate, project-setup and ilspy stops are ask templates the lint can hold', () =>
 {
-    const pinned = { 'dotnet-migrate': 2, 'dotnet-project-setup': 2, 'ilspy-decompile': 1 }; // +1 setup: the config-protection allowance ask (stack audit 2026-10-20 row 13)
+    const pinned = { 'dotnet-migrate': 2, 'dotnet-project-setup': 1, 'ilspy-decompile': 1 }; // setup's config-protection allowance ask left with the guard's lint-config judge (complexity stage 1 B11)
     for (const [name, n] of Object.entries(pinned))
     {
         const text = skill(name);

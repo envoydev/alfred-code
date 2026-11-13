@@ -23,7 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { hashItem } = require('./library.js');
-const { commonJsScope } = require('./copy.js');
+const { commonJsScope, ruleAt } = require('./copy.js');
 const { entryHash } = require('./stamp.js');
 const { locateSeed } = require('./seeds.js');
 
@@ -55,28 +55,29 @@ function seedPlan({ projectRoot, files = {}, instructionsKind = 'agents' })
 // Every library copy (library-*) and every other copy (managed-files) whose hash still matches - but the instruction-file
 // seed only on the user's `seed: 'remove'` answer: it is the one file the project reads as its own instructions, so the
 // uninstall asks before it goes (2026-10-23).
-function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, instructionsKind = 'agents', seed = '', log = () => {} })
+function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claudeDir, 'agents'), library = {}, files = {}, instructionsKind = 'agents', seed = '', log = () => {} })
 {
     const seeds = new Map(seedRows({ projectRoot: path.dirname(claudeDir), files, instructionsKind }).map((r) => [r.row, r.at]));
     const items = [
         ...Object.entries(library.skills || {}).map(([n, h]) => ['skill', n, path.join(skillsDir, n), h]),
-        ...Object.entries(library.agents || {}).map(([n, h]) => ['agent', n, path.join(claudeDir, 'agents', `${n}.md`), h]),
-        ...Object.entries(library.rules || {}).map(([n, h]) => ['rule', n, path.join(claudeDir, 'rules', `${n}.md`), h]),
+        ...Object.entries(library.agents || {}).map(([n, h]) => ['agent', n, path.join(agentsDir, `${n}.md`), h]),
+        ...Object.entries(library.rules || {}).map(([n, h]) => ['rule', n, ruleAt(path.dirname(claudeDir), n), h]),
         ...Object.entries(files).map(([rel, h]) =>
         {
             const [kind, name] = rel.includes('/') ? rel.split('/') : ['file', rel];
             // A seed's row is read where the seed sits (seedRows).
-            const at = seeds.has(rel) ? seeds.get(rel) : kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/'));
+            const at = seeds.has(rel) ? seeds.get(rel) : kind === 'skills' ? path.join(skillsDir, name) : kind === 'agents' ? path.join(agentsDir, name) : path.join(claudeDir, ...rel.split('/'));
             return [kind.replace(/s$/, ''), name, at, h];
         }),
     ];
     // Review finding 4: whatever the stamp named, nothing outside its own .claude folder is ever removed -
     // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file). The one exception
     // is the seed at the project root - that exact file, at the hash the stack wrote.
-    const home = { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks'), file: claudeDir };
+    const home = { skill: skillsDir, agent: agentsDir, rule: [path.join(claudeDir, 'rules'), path.join(path.dirname(claudeDir), '.alfred', 'stack', 'rules')],
+        hook: path.join(claudeDir, 'hooks'), file: claudeDir };
     const seedPaths = new Set([...seeds.values()].map((at) => path.resolve(at)));
     const isSeed = (label, at) => label === 'file' && seedPaths.has(path.resolve(at));
-    const inside = (label, at) => (Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label])) || isSeed(label, at);
+    const inside = (label, at) => [].concat(home[label] || []).some((d) => path.dirname(path.resolve(at)) === path.resolve(d)) || isSeed(label, at);
     for (const [label, name, at, hash] of items)
     {
         if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }
@@ -102,7 +103,8 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, in
     try { left = fs.readdirSync(hooksDir).filter((f) => f !== 'package.json'); } catch { left = []; }
     if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
     else if (isMarker(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - it scopes ${left.join(', ')}, left in .claude/hooks as yours`);
-    for (const dir of [skillsDir, ...['agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d))])
+    const stackDirs = ['stack/rules', 'stack'].map((d) => path.join(path.dirname(claudeDir), '.alfred', d));
+    for (const dir of [skillsDir, agentsDir, ...['skills', 'agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d)), ...stackDirs])
     {
         try { if (!fs.readdirSync(dir).length) fs.rmdirSync(dir); } catch { /* absent, or not ours to empty */ }
     }
@@ -216,7 +218,7 @@ function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () 
     let status;
     try { status = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'session-status.js')); }
     catch (e) { note(`session status: not removed - the module could not be loaded (${e.message})`); return; }
-    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot, ...(dataRoot ? { ALFRED_CODE_DATA_PATH: dataRoot } : {}) } });
+    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) });
     const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
     if (got.files) log(`  session status: ${got.files} file${got.files === 1 ? '' : 's'} removed${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
     if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);

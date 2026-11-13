@@ -28,7 +28,7 @@
 // deny-on-timeout of the agent-sdk page is the SDK callback family) - and the protective ones therefore run first
 // (RUN_ORDER). Context
 // (`additionalContext`) is joined with a newline and delivered even beside a block, as separate
-// hooks' was; `updatedInput` (the secret guard's rewrite) applies only when nothing blocks, and every
+// hooks' was; `updatedInput` (a guard's rewrite of the command) applies only when nothing blocks, and every
 // guard judged the ORIGINAL command, as it did beside the others in parallel. A guard that throws or
 // exits non-zero without JSON fails open for ITSELF - the others' verdicts stand - and the user gets
 // the same notice a separate hook's failure gave (a `systemMessage`, never seen by the model).
@@ -331,7 +331,7 @@ function combine(results)
 }
 
 // ---- the dispatcher's own checks (audit 2026-10-10) ---------------------------------------------
-// Four habits the rules state and no guard held, judged once here on the shell route - never per guard - and only where
+// Three habits the rules state and no guard held, judged once here on the shell route - never per guard - and only where
 // the stack runs its non-protective hooks (hook-prelude.js standDown: the csv, `minimal`, a repo never set up, a Cursor
 // payload):
 //   - zsh (the Bash tool runs the user's $SHELL) aborts the WHOLE command on a bare glob it cannot match and on a bare
@@ -345,8 +345,6 @@ function combine(results)
 //     summing to 120s or less bound it. A foreground `tail -f` is the same wait (deep hooks review 2026-10-16).
 //   - an unaddressed `sed -i` `s///` whose pattern matches more than one line of its file gets a note naming the lines
 //     (49cb4b82: both task cards flipped).
-//   - a recursive grep for a code identifier in the main session writes one `mode: probe` row, the rate a nudge would
-//     be weighed on (bc2fa83e: 16 grep-then-read against 1 symbol call).
 // What the first background call of an actor is told (RU04): the watch mechanics the quality-gates rule used to carry.
 const BACKGROUND_NOTE = 'Background wait (alfred-quality-gates.md): one command whose end is all that matters needs nothing more - its exit '
     + 're-invokes you. A suite of unknown length (failures show long before its end), a condition inside a run or across several '
@@ -662,24 +660,6 @@ function ownChecks(stdin)
         row({ mode: 'probe', kind: 'sed-multi-match', reason: 'probe: sed-multi-match', detail: { branch: 'sed-multi-match' } });
         out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: notes.join('\n') } }) });
     }
-
-    // -- a name-match symbol grep in the main session (log only) --
-    if (!payload.agent_id)
-    {
-        for (const w of words)
-        {
-            if (!/^(?:grep|egrep|fgrep|rg)$/.test(w.name)) continue;
-            if (w.name !== 'rg' && !w.argv.some((a) => /^-[A-Za-z]*[rR]|^--recursive$/.test(a))) continue;
-            const e = w.argv.indexOf('-e');
-            const pattern = e >= 0 ? w.argv[e + 1] || '' : w.argv.find((a) => !a.startsWith('-')) || '';
-            const ident = pattern.replace(/\\[b<>]/g, '');
-            if (/^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+$/.test(ident) || /^[A-Za-z_]\w{2,}\\?\($/.test(ident))
-            {
-                row({ mode: 'probe', kind: 'symbol-grep', reason: 'probe: symbol-grep', detail: { branch: 'symbol-grep', pattern: pattern.slice(0, 40) } });
-                break;
-            }
-        }
-    }
     return out;
 }
 
@@ -692,7 +672,7 @@ function ledgerRow(payload, prelude, fields)
         if (prelude && prelude.neverSetUp && prelude.neverSetUp()) return;
         const envOf = prelude && prelude.envOf ? prelude.envOf : (env, k) => env[`ALFRED_CODE_${k}`];
         const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
-        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, envOf(process.env, 'DOCS_PATH') || `${envOf(process.env, 'DATA_PATH') || '.alfred'}/docs`, 'hook-blocks'); } })();
+        const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks'); } })();
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
             ts: new Date().toISOString(), hook: `${SELF}.js`, event: payload.hook_event_name || '', tool: String(payload.tool_name || ''), ...fields,

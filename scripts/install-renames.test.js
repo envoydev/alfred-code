@@ -16,7 +16,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { loadManifest } = require('./install/manifest.js');
 const selection = require('./install/selection.js');
 const { hashItem } = require('./install/library.js');
-const { writeSettings, readBackSettings } = require('./install/settings.js');
+const { writeSettings } = require('./install/settings.js');
 
 const ROOT = path.join(__dirname, '..');
 const RENAMED = loadManifest(ROOT).renamed;
@@ -41,10 +41,13 @@ function inspect(repo)
     const list = (dir) => { try { return fs.readdirSync(path.join(claude, dir)).sort(); } catch { return []; } };
     let settings = {};
     try { settings = JSON.parse(read('settings.json')); } catch { settings = {}; }
+    // Mode v2 stage 2: the stack's rows (the seat denies among them) are written to settings.local.json at every scope.
+    let local = {};
+    try { local = JSON.parse(read('settings.local.json')); } catch { local = {}; }
     return {
         pickedSkills: line('picked-skills'), pickedAgents: line('picked-agents'),
         librarySkills: line('library-skills').map((e) => e.split('=')[0]),
-        skills: list('skills'), agents: list('agents'), settings,
+        skills: list('skills'), agents: list('agents'), settings, local,
     };
 }
 
@@ -55,8 +58,11 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 77, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29), and the code-style and architecture captures capture-awareness merged (2026-10-29)');
-    assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 78, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one, the 36 alfred- prefixes 2.2.0 dropped (one of them the skill-writing habit, which left the stack on 2026-10-22), the two awareness captures (2026-10-13), the code-quality loop, the three awareness captures capture-awareness merged (2026-10-16) the project code-style capture (2026-10-21) and the code explainer that explains any topic now (2026-10-22), less the two into capture-first-look, which left the stack (2026-10-25), the two mode skills task-auto and habits-output-scorer became (2026-10-27), and the three quality captures capture-quality merged plus the coverage loop, now loop-test-coverage-quality (2026-10-29), and the code-style and architecture captures capture-awareness merged (2026-10-29), and 3.11.0\'s scoring rename');
+    assert.strictEqual(Object.keys(RENAMED.agents).length, 5, 'the two failure diagnosers, then their alfred- prefix (2.2.0), and 3.11.0\'s scoring rename');
+    assert.strictEqual(RENAMED.skills['mode-output-scorer'], 'mode-output-scoring');    // legacy
+    assert.strictEqual(RENAMED.skills['habits-output-scorer'], 'mode-output-scoring', 're-pointed: one hop');
+    assert.strictEqual(RENAMED.agents['output-scorer'], 'output-scoring');    // legacy
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
         assert.ok(m.retired.skills.includes(from), `${from} is retired, so its copy is pruned`);
@@ -373,7 +379,9 @@ test('settings writer: a personal skillOverrides switch-off in settings.local.js
         fs.writeFileSync(file, JSON.stringify({ env: {} }));
         fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'project-quality-loop': 'off', 'my-own-skill': 'off' }, MY_LOCAL_KEY: 1 }));
         const logs = [];
-        const run = () => writeSettings({ file, localFile, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        // Mode v2 stage 2: the run writes settings.local.json at every scope (writeSettings' `localFile` is gone), and
+        // settings.json is the shared file its stale-row pass reads.
+        const run = () => writeSettings({ file: localFile, sharedFile: file, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
         assert.deepStrictEqual(local.skillOverrides, { 'my-own-skill': 'off', 'loop-code-quality': 'off' });
@@ -402,7 +410,8 @@ test('settings writer (I1): a seat deny in settings.local.json is re-spelled the
         const logs = [];
         // The read-back sees both seats off, so the run's agent off-list names them under the new name.
         const agentDeny = ['Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)'];
-        const run = () => writeSettings({ file, localFile, renamed: RENAMED, agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        // Mode v2 stage 2: the run writes settings.local.json at every scope; settings.json is the shared file.
+        const run = () => writeSettings({ file: localFile, sharedFile: file, renamed: RENAMED, agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
         assert.deepStrictEqual(local.permissions.deny.slice().sort(), [...agentDeny, 'Bash(my-own:*)'].sort(), local.permissions.deny.join('\n'));
@@ -414,23 +423,6 @@ test('settings writer (I1): a seat deny in settings.local.json is re-spelled the
         const before = [fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')];
         run();
         assert.deepStrictEqual([fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')], before, 'a second run changes nothing');
-    }
-    finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('readBackSettings (I1): at project and user scope a stack seat deny in settings.local.json is read, and nothing else of that file\'s deny list is', () =>
-{
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
-    try
-    {
-        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ permissions: { deny: ['Read(.env)'] } }));
-        fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ permissions: { deny: LOCAL_DENY } }));
-        for (const scope of ['project', 'user'])
-        {
-            const deny = readBackSettings(dir, scope).permissions.deny;
-            assert.deepStrictEqual(deny.slice().sort(), ['Read(.env)', ...LOCAL_DENY.slice(0, 2)].sort(), `${scope}: ${deny.join(' ')}`);
-            assert.deepStrictEqual(readBackSettings(dir, scope, { sharedOnly: true }).permissions.deny, ['Read(.env)'], `${scope}: sharedOnly stays the shared file alone`);
-        }
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -497,10 +489,12 @@ test('seed update --installed-only: a seat denied under its old name stays denie
         }, null, 2));
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare, inspect });
-    const deny = r.settings.permissions.deny;
+    // Mode v2 stage 2: the run's seat denies land in settings.local.json; the user's own entries stay in settings.json.
+    const deny = r.local.permissions.deny;
     assert.ok(deny.includes('Agent(alfred-code:issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:issue-diagnoser-runtime)'), deny.join('\n'));
     assert.ok(!deny.some((d) => /^Agent\(alfred-code[a-z0-9-]*:(ci|runtime)-failure-diagnoser\)$/.test(d)), `no stack deny keeps an old seat name:\n${deny.join('\n')}`);
-    assert.ok(deny.includes('Agent(someone-else:ci-failure-diagnoser)') && deny.includes('Bash(rm -rf:*)'), "the user's own entries stay");
+    const shared = r.settings.permissions.deny;
+    assert.ok(shared.includes('Agent(someone-else:ci-failure-diagnoser)') && shared.includes('Bash(rm -rf:*)'), "the user's own entries stay");
     assert.ok(!r.pickedAgents.some((e) => /diagnoser/.test(e)), `a denied seat is no pick: ${r.pickedAgents.join(',')}`);
     assert.deepStrictEqual(r.settings.skillOverrides, { 'capture-usage-report': 'off' }, 'the skill switch-off follows the skill');
     assert.ok(r.skills.includes('capture-usage-report') && !r.skills.includes('project-stack-usage-analyzer'), r.skills.join(' '));
@@ -826,13 +820,17 @@ test('seed update: an unrecorded rule copy under an OLDER stack opening is taken
     const own = '---\npaths: ["**/Dockerfile"]\n---\n\nOur own container notes: pin every base image by digest.\n';
     const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^(library-rules): (.*)$/gm,
         (_, k, v) => `${k}: ${v.split(',').filter((e) => !/^(markdown-docs|devops-conventions)\b/.test(e)).join(',')}`));
-    const rule = (repo, name) => { try { return fs.readFileSync(path.join(repo, '.claude', 'rules', `${name}.md`), 'utf8'); } catch { return null; } };
+    const rule = (repo, name) => { try { return fs.readFileSync(require('./install/copy.js').ruleAt(repo, name), 'utf8'); } catch { return null; } };
     const libraryRules = (repo) => ((/^library-rules: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '').split(',').map((e) => e.split('=')[0]);
     const each = (repo, i) =>
     {
         if (i === 0)
         {
             assert.ok(rule(repo, 'markdown-docs') && rule(repo, 'devops-conventions'), 'the install wrote both rules');
+            // A pre-stamp install held its rules in .claude/rules (workspace stage 4c moved them to the store).
+            const st = path.join(repo, '.alfred', 'stack', 'rules');
+            fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+            for (const f of fs.readdirSync(st)) fs.renameSync(path.join(st, f), path.join(repo, '.claude', 'rules', f));
             fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), OLD_MARKDOWN_DOCS);
             fs.writeFileSync(path.join(repo, '.claude', 'rules', 'devops-conventions.md'), own);
             unrecord(path.join(repo, '.claude', 'alfred-code.stamp'));
@@ -982,7 +980,7 @@ test('seed install --selection and update --add: a line naming an old item insta
     assert.ok(before.skills.includes('capture-usage-report') && before.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), 'the install carries both');
     assert.ok(!after.skills.includes('capture-usage-report') && !after.pickedSkills.includes('capture-usage-report'), `the dropped copy and pick are gone: ${after.skills} | ${after.pickedSkills}`);
     assert.ok(!after.pickedAgents.some((e) => /diagnoser/.test(e)), after.pickedAgents.join(','));
-    assert.ok(after.settings.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `the dropped core seat is denied under its new name\n${drop.outs[1]}`);
+    assert.ok(after.local.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `the dropped core seat is denied under its new name\n${drop.outs[1]}`);
 });
 
 // ---------- the old names stay in their homes ----------
@@ -1022,7 +1020,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
         {
             const found = line.match(old);
             if (!found) return;
-            if (recorded && found.every((n) => n === 'habits-output-scorer' || (rel === 'meta/conformance.json' && pairs[n] === 'capture-quality'))) return;
+            if (recorded && found.every((n) => ['habits-output-scorer', 'mode-output-scorer', 'output-scorer'].includes(n) || (rel === 'meta/conformance.json' && pairs[n] === 'capture-quality'))) return;
             // the skew window (the capture-awareness merge, spec 2.3): a code line that must still spell an old name - a
             // retired text kept byte for byte, an older copy a reader still meets - says so with a `// legacy` comment
             if (/\.js$/.test(rel) && /\/\/ legacy\b/.test(line)) return;

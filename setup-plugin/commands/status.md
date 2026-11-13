@@ -31,13 +31,11 @@ install records the hooks read (`alfred-code.stamp`, a copied
 
 Every install lives in the PROJECT at every scope: the stamp, the library copies, the rules, the
 copied hook engines and the settings are under `<root>/.claude/` (`<root>` = the git top level,
-else the current directory); the scope says only where the plugin rows are enabled and which
-settings file holds the stack's keys - `.claude/settings.local.json` at `local` scope (it wins over
-`settings.json` key by key), `.claude/settings.json` at `project` and `user`. Call that file the
-SCOPE FILE below. But at EVERY scope a stack key `settings.local.json` holds applies over `settings.json`,
-as Claude Code lays the two files - a value a move off `local` kept there, or one set by hand - so the
-env reads below use the STACK VIEW: `settings.json`'s `env` with every `ALFRED_CODE_*` key of
-`settings.local.json` laid over it (at `local` scope, the whole local `env`).
+else the current directory); the scope says only where the plugin rows are enabled. The stack's keys
+live in `.claude/settings.local.json` at every scope (it wins over `settings.json` key by key) - call
+that file the SCOPE FILE below. A key an older install left in `settings.json` (a value changed since
+the stack wrote it) still applies under it, as Claude Code lays the two files, so the env reads below
+use the STACK VIEW: `settings.json`'s `env` with the local `env` laid over it.
 
 ## 2. General info - always, before the question
 
@@ -48,8 +46,8 @@ One table, no ask - it is seven rows and every other area reads against it:
 | stack version (stamp) | 2.0.0 @ <short-sha> |
 | running plugin | 2.0.0 - `alfred-code@<key>`, enabled at project scope |
 | scope | project |
-| data root | .alfred (default) |
-| docs root | .alfred/docs (default) |
+| data root | .alfred |
+| docs root | .alfred/docs |
 | initialised | 2026-09-24 |
 | workspace | child of .. - own 3, ignored 1 - load check clean 2026-10-25 |
 
@@ -59,11 +57,10 @@ One table, no ask - it is seven rows and every other area reads against it:
   marketplace key (the part after `@`) and its
   scope. No CLI: `claude CLI unavailable`.
 - `scope`: the stamp's `scope:` line; absent = `project`.
-- `data root`: `ALFRED_CODE_DATA_PATH` from the scope file (`settings.local.json` over `settings.json`),
-  `(default)` when absent - the one folder for this project's docs and the hooks' state - plus the count
-  of the stamp's `data-pending:` lines when there are any (a sensitive-data move a run could not make) and
-  `data move kept` when the stamp says `data-move: kept`.
-- `docs root`: `<data root>/docs` - `ALFRED_CODE_DATA_PATH` from the scope file, `(default)` when absent; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
+- `data root`: always `.alfred` - the one folder for this project's docs and the hooks' state. A leftover
+  `ALFRED_CODE_DATA_PATH` in a settings file (retired in 3.11.0) shows the folder it names instead, marked `(leftover -
+  /alfred-code:update moves it into .alfred and removes the key)`.
+- `docs root`: `.alfred/docs`; a leftover `ALFRED_CODE_DOCS_PATH` (retired in 2.8.0) shows instead, marked `(leftover - /alfred-code:update moves the docs and removes it)`.
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 - `workspace`: one call, `node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" status --root . ; node
   "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. Its first line, `role: <role>`, opens the row:
@@ -72,8 +69,12 @@ One table, no ask - it is seven rows and every other area reads against it:
   `ignored:` lines, its `check:` line, `never` when none ran); a `gone` child line adds `, <n> gone`. Pasted under the
   table as they are: a child's `docs:` and `memory:` lines (the ancestor docs roots it reads and the workspace root's
   memory index, `ignored` where its file takes them out, `-` for none), each `secrets: <KEY> own|from <rel>` line (the
-  secrets chain by key and source, never a value),
-  each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
+  secrets chain by key and source, never a value), each `models:` line (`models: <kind> <name> = <model> (<from>)` - a
+  model `.alfred/agents.json` sets here or in a project above, `models: none`, or `models: not applied - ...` with the
+  dispatch guard off) and each `!! agents.json (<from>): ...` line (an entry that was skipped, and why),
+  the `links: <n> whole` line or each `!! link <path>: <state>` line (a skill or seat linked from `.alfred/stack`
+  that is `dangling`, `missing`, `edited` here or `stale` behind the store), the `held for members: <names>` line (the
+  picks a root holds in its store for the projects below), each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
 
 ## 3. One question - what else to show
 
@@ -137,7 +138,7 @@ the table with `denied` as its origin, since the plugin still ships it and confi
 back. `model` / `effort` are the frontmatter pins read from the agent file (the plugin's own copy
 for a carried seat).
 
-**Rules** - `.claude/rules/*.md`:
+**Rules** - `.alfred/stack/rules/*.md` (the library, sent by the plugin) and `.claude/rules/*.md` (the generated ones):
 
 | rule | scope | origin |
 |---|---|---|
@@ -148,6 +149,15 @@ for a carried seat).
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
 capture-written rule (`alfred-awareness.md`), `stack` otherwise,
 `user-authored` when clearly neither.
+
+Under the table, paste every `rules:` line the `workspace` call of section 2 printed, as printed - a refused
+ignore of a locked rule, an unmatched glob, a skipped rule file, a rule past the last part (`not sent`), `rules-session`
+named in the off-list, and each settings file whose `disableAllHooks` is true (then no rule is sent).
+
+In a workspace, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/session-surface.js" . | sed -n '/^MEMBERS ENTERED/,$p'` and
+paste the `MEMBERS ENTERED` section it prints, as printed - each joined project the newest session entered (its rules
+sent on the first file touch under it), per actor, with its parts and characters and any rule past part 5. It prints
+nothing when the session entered none.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
@@ -214,7 +224,8 @@ wired ones), `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`,
 `layout`, `history`, `fresh-session`, `shell-writes`, `hidden-chars`, `forge`, and an older install's `memory`), the shared `hook-prelude`, the dispatchers
 (`shell-guards`, `file-guards`) and the generated legacy `inject-code-style.js` - `HOOK_EXCLUDE` in
 `scripts/install/selection.js` is the list. On the plugin route the `wired` column reads `plugin` for every row and the
-matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)`.
+matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)` - except
+`rules-session` and `guard-config-protection`, which every install carries: named there, they read `locked`.
 On the copy route the set is joined against the scope file's `hooks` block:
 
 | hook | wired | matcher |
@@ -255,7 +266,7 @@ table verbatim, its update command in the close; a `floor: <spec> ... not judged
 **Environment** - the install's knobs, one row each. The variables come from ONE
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/variables.js" show --root .` - `<KEY>=<value> (<source>)` per key, the source
 `own` (this project's `.variables`), `from <rel>` (a workspace member's), `settings.local.json` or `default` - and its
-`!! variables:` notes go under the table as they are; `ALFRED_CODE_DATA_PATH` and `ALFRED_CODE_HOOKS_OFF` come from the
+`!! variables:` notes go under the table as they are; `ALFRED_CODE_HOOKS_OFF` comes from the
 STACK VIEW (`settings.local.json` over `settings.json` key by key, at every scope). The rows are the catalog's: read
 `${CLAUDE_PLUGIN_ROOT}/meta/environment.json` and print one row per `env` entry - its `key`, its value and source, and
 its `what` cut to one clause - never a copied list, which drifts (2026-10-21: a copy here had lost five of the
@@ -281,7 +292,17 @@ Windows - Claude Code's Bash tool is Git Bash). Output is `KEY=set (N chars)`, `
 used, and which they never reached, from the analyzer's own inventory block (it reads every
 transcript of this project on this machine, so a long history takes a few seconds; with no folder
 named it finds this project's transcripts itself, from its cwd, spelled the way Claude Code names the
-folder on every OS):
+folder on every OS). At a workspace root these numbers cover the root and its `<n>` children - the projects joined
+below it; anywhere else, this project alone. First the scope, its session lines dropped:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --scope | grep -v '^session: '
+```
+
+Its `scope: <n> projects` line gives the count (the children are `<n>` minus one). Each `left-out:` line - at
+`scope: 1 projects` too - becomes one `left out: <rel> (<why>)` line under the tables. Each `note:` line, and an
+`other-start-folder:` line above 0, is shown as written under the tables - the rollup's own copies are cut below. Then
+the usage:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --inventory .claude | sed -n '/^INVENTORY vs USE/,$p'
@@ -296,7 +317,8 @@ machine` and skip the table. Otherwise render one row per layer from the block's
 | agents | 2 of 14 installed | 12: ... |
 
 `used` is the block's `used X of Y installed`; `never used` is its count plus the names it lists,
-middle-truncated past ten. Its `always-on` names (rules in every prompt) are neither - add them as
+middle-truncated past ten. More than one block printed (a root): one usage table per `INVENTORY vs USE` block, headed by
+the block's `<rel>`; the always-on line and the closing caveat once, after the last table. Its `always-on` names (rules in every prompt) are neither - add them as
 one line under the table. Copy the block's closing caveat as the last line: a hooks-only plugin can
 never score used, and a catalog-sourced row proves the stack ships the artifact, not that this
 project installed it.
@@ -307,8 +329,8 @@ Then the Stop build check advisory, from the same transcripts and this project's
 node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --turn-check-advice .
 ```
 
-It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes under the usage table
-as-is; nothing printed means no row. The switch is the user's - never set it from here.
+It prints ONE `turn-check: advise - ...` line or nothing - at a root, one per project at most, and the advisory's rows go
+under the tables as printed, each already carrying its `<rel>: `. Nothing printed means no row. The switch is the user's - never set it from here.
 
 **Generated docs & data** - the capture output under the docs root from the general table, plus
 the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - its first line is the count; exit 1 prints no row):
