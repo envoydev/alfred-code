@@ -404,7 +404,7 @@ function takeLock(plan)
     }
 }
 
-const NOT_SCHEMA = (detail) => `status.json is not a schema 1 status file: ${detail} - fix the file, or delete it and run sync (it rebuilds the tasks at todo)`;
+const NOT_SCHEMA = (detail) => `status.json is not a schema 1 status file: ${detail} - the user's to repair (the docs hook refuses a model's edit): ask them to fix the file, or to delete it and run sync (it rebuilds the tasks at todo)`;
 
 // Steps 3 to 10 of the order of checks: the lock, the read, the common rules, the verb's change on a copy, the write.
 // change(status, ctx) returns { refused } or { lines } (a list, or a function of the status); ctx.created is true

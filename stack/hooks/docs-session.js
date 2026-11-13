@@ -1306,6 +1306,8 @@ function planFolderWrite(input, root) {
     for (const abs of targets) {
       const plan = layout.planOf(abs);
       if (!plan || plan.shape !== 'folder') continue;
+      // only a folder under a docs root's work/plans (this project's or a member's): a project's own plans/<x>/ is no plan (final review, finding 5)
+      if (!toPosix(path.dirname(plan.dir)).endsWith('/work/plans')) continue;
       const md = path.join(plan.dir, `${plan.id}.md`);
       const base = path.basename(abs);
       const relDir = `${toPosix(path.relative(root, plan.dir))}/`;
@@ -1324,7 +1326,9 @@ function planFolderWrite(input, root) {
         const S = planStatusEngine();
         const read = S ? S.readStatus(plan.dir) : null;
         if (!read || !read.ok || !read.status.approvedAt || read.status.reopenedAt) continue;
-        reason = `Blocked: ${rel} was approved (${read.status.approvedAt}) - the approved plan is not edited. Record a decision (decide), a deviation (deviate) or an added task (add-task) through node .claude/hooks/plan-status.js, or reopen the design on the user's answer (redesign).`;
+        // a completed plan takes no writing verb at all (the engine: 'new scope is a new plan'), so none is named
+        if (read.status.completedAt) reason = `Blocked: ${rel} was completed (${read.status.completedAt}) - a completed plan is a record, never edited. New scope starts a new plan folder.`;
+        else reason = `Blocked: ${rel} was approved (${read.status.approvedAt}) - the approved plan is not edited. Record a decision (decide), a deviation (deviate) or an added task (add-task) through node .claude/hooks/plan-status.js, or reopen the design on the user's answer (redesign).`;
         event = 'approved-plan-write';
       } else continue;
       log(root, input, { event, target: rel });

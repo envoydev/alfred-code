@@ -1012,6 +1012,21 @@ test('onPlan: a second plan\'s call moves the key; a plan outside the root nulls
     assert.strictEqual(now().plan, null);
 });
 
+test('onPlan: a mistyped --plan (no such folder) leaves the session\'s plan as it is (PF1 final review, finding 3)', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
+    const env = { CLAUDE_PROJECT_DIR: root };
+    const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
+    assert.strictEqual(call(planDir(root)), 'written');
+    for (const typo of [`${PLANS}/cvs`, path.join(root, PLANS, 'cvs'), `${PLANS}/csv/nope`]) {
+        assert.strictEqual(call(typo), 'unchanged', typo);
+        assert.strictEqual(now().plan, `${PLANS}/csv/`, `${typo} keeps the plan`);
+    }
+    putStatus(planDir(root), (s) => { s.completedAt = '2026-11-13T12:00Z'; });
+    assert.deepStrictEqual([call(planDir(root)), now().plan], ['written', null], 'a completed plan that exists still nulls it');
+});
+
 test('the Stop fallback: with no plan in the file, the history record\'s folder plan is taken (R30)', () =>
 {
     const { root, P, FILE } = sonnetSession();

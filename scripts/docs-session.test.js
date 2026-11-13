@@ -3550,6 +3550,19 @@ test('PF1: the approved plan is not edited; before approval and while reopened i
   } finally { r.rm(); }
 });
 
+test('PF1: a completed plan\'s denial says new scope is a new plan folder, naming no verb the engine refuses there (final review, finding 1)', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const plan = planFolder(r.root, 'csv', { approve: true, complete: true });
+    const s = sid();
+    assert.ok(plan.status().completedAt, 'the plan is completed');
+    const no = r.hook(pre('Edit', { file_path: plan.md, old_string: 'slice 1', new_string: 'slice one' }, s));
+    assert.ok(denied(no), 'a completed plan is not edited');
+    assert.match(reasonOf(no), /csv\.md was completed \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\) - a completed plan is a record, never edited\. New scope starts a new plan folder\./);
+    assert.doesNotMatch(reasonOf(no), /decide|deviate|add-task|redesign/, 'the engine refuses each of these on a completed plan');
+  } finally { r.rm(); }
+});
+
 test('PF1: a member\'s plan is guarded by shape; a flat plan keeps the Completed: rule', () => {
   const r = repo({ files: { 'src/a.ts': 'x\n' } });
   try {
@@ -3562,5 +3575,21 @@ test('PF1: a member\'s plan is guarded by shape; a flat plan keeps the Completed
     r.write(`${FLAT}/open.md`, '# Plan\n\n## Tasks\n- [ ] Task 1\n');
     assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'old.md'), old_string: '- [x] Task 1\n', new_string: '- [x] Task 1\n- [ ] Task 2\n' }, s))), 'the flat rule');
     assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'open.md'), old_string: '- [ ] Task 1', new_string: '- [x] Task 1' }, s))), 'an open flat plan');
+  } finally { r.rm(); }
+});
+
+test('PF1: the by-shape guard reads only a folder under work/plans; a project\'s own plans/<x>/ is not a plan folder (final review, finding 5)', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const real = planFolder(r.root, 'csv', { approve: true });
+    const own = path.join(r.root, 'src', 'plans', 'csv');   // the same shape, outside any work/plans
+    fs.mkdirSync(own, { recursive: true });
+    for (const f of ['csv.md', 'status.json']) fs.copyFileSync(path.join(real.dir, f), path.join(own, f));
+    const s = sid();
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(real.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'the work/plans folder is guarded');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(own, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'status.json under src/plans');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(own, 'csv.md'), old_string: 'slice 1', new_string: 'x' }, s))), 'its Markdown');
+    const member = planFolder(path.join(r.root, 'apps', 'api'), 'csv', { approve: true });
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(member.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'a member\'s work/plans folder stays guarded');
   } finally { r.rm(); }
 });

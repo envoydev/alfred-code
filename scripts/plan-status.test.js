@@ -271,7 +271,7 @@ test('a status.json that is not a schema 1 file is exit 3, names the field and i
         fs.writeFileSync(p.file, text);
         const r = untouched(p, () => call(p, ['sync', '--plan', 'csv']));
         assert.deepStrictEqual([r.code, r.out], [3, ''], name);
-        assert.match(r.err, /^plan-status: status\.json is not a schema 1 status file: .+ - fix the file, or delete it and run sync \(it rebuilds the tasks at todo\)\n$/, name);
+        assert.match(r.err, /^plan-status: status\.json is not a schema 1 status file: .+ - the user's to repair \(the docs hook refuses a model's edit\): ask them to fix the file, or to delete it and run sync \(it rebuilds the tasks at todo\)\n$/, name);
         assert.strictEqual(call(p, ['check', '--plan', 'csv']).code, 3, name);
     }
     const named = plan();

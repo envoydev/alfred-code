@@ -307,6 +307,8 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
       // PF1 (R28): the plan call's folder, checked, against the file's - equal is unchanged, with no build and no write
       const want = planField(root, f.plan, d);
       if (!upgrade && current && same(current.plan, want)) return 'unchanged';
+      // a --plan naming no folder on disk (a typo) names no plan: the session keeps the one it has (final review, finding 3)
+      if (want === null && current && root && !fs.existsSync(path.resolve(root, String(f.plan).replace(/\\/g, '/')))) return 'unchanged';
       if (gate && !gate()) return 'skipped';
       f.plan = want;
       if (current) { f.autoRun = autoRunOf(current); f.scorer = scoringOf(current); f.handoffPrompt = current.handoffPrompt; }
