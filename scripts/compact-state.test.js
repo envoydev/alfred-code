@@ -126,6 +126,29 @@ test('compact-state: with no plan in the transcript the newest plan under the do
     work.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: work.transcript([toolUse('Bash', { command: 'ls' })]) });
     assert.match(fs.readFileSync(work.state, 'utf8'), /^live plan: \.alfred\/docs\/work\/plans\/d\.md \(newest under the docs root\)$/m);
 
+    // PF1: a plan call names the live plan by its folder; with none in the transcript a folder plan newer than every flat
+    // file is the newest, an older one leaves the flat pick
+    const { planFolder: pf } = require('./plan-folder-fixture.js');
+    const call = project();
+    pf(call.root, 'csv');
+    call.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: call.transcript([toolUse('Bash', { command: 'node .claude/hooks/plan-status.js start --plan csv --task 1' })]) });
+    assert.match(fs.readFileSync(call.state, 'utf8'), /^live plan: \.alfred\/docs\/work\/plans\/csv\/$/m);
+    const newer = project();
+    const flat = path.join(newer.root, '.alfred', 'docs', 'work', 'plans', 'old.md');
+    fs.mkdirSync(path.dirname(flat), { recursive: true });
+    fs.writeFileSync(flat, 'old');
+    const hour = new Date(Date.now() - 3600000);
+    fs.utimesSync(flat, hour, hour);
+    pf(newer.root, 'csv');
+    newer.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: newer.transcript([toolUse('Bash', { command: 'ls' })]) });
+    assert.match(fs.readFileSync(newer.state, 'utf8'), /^live plan: \.alfred\/docs\/work\/plans\/csv\/ \(newest under the docs root\)$/m);
+    const older = project();
+    const folder = pf(older.root, 'csv');
+    for (const f of [folder.md, path.join(folder.dir, 'status.json')]) fs.utimesSync(f, hour, hour);
+    fs.writeFileSync(path.join(older.root, '.alfred', 'docs', 'work', 'plans', 'new.md'), 'new');
+    older.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: older.transcript([toolUse('Bash', { command: 'ls' })]) });
+    assert.match(fs.readFileSync(older.state, 'utf8'), /^live plan: \.alfred\/docs\/work\/plans\/new\.md \(newest under the docs root\)$/m);
+
     const none = project();
     none.run({ hook_event_name: 'PreCompact', trigger: 'manual' });
     const text = fs.readFileSync(none.state, 'utf8');
@@ -1109,6 +1132,11 @@ test('gated stops: a gated cycle\'s gate and build skills wait for a stop after 
     const d = project();
     assert.strictEqual(d.run({ ...skillCall('task-implement'), transcript_path: d.transcript([...base, ...answered, ...gate, ...answered, ...stamp]) }).status, 0,
         'step 3\'s Approved: stamp after the approval answer moves nothing');
+    // PF1: a folder plan's Markdown reaching disk is the design's artifact, as the flat write is
+    const folderPlan = call('Write', { file_path: '.alfred/docs/work/plans/csv/csv.md', content: '# plan' }, 'ok');
+    const e = project();
+    assert.strictEqual(e.run({ ...skillCall('task-verify-plan'), transcript_path: e.transcript([typed('<command-name>/task-solve</command-name>'), ...spec('gated'), ...design, ...folderPlan]) }).status, 2,
+        'a folder plan is the design\'s artifact');
 });
 
 test('compact-state: compact-points.json is read from state/sessions/, else from the legacy flow/ (2.8.0)', () =>
@@ -1669,4 +1697,119 @@ test('R132: a row naming a Windows device (CON, nul) is kept and never read', ()
     const r = engine(p, h.tp, counted('CON', `return F.settleCompactPoints({ now: ${Date.now()} });`));
     assert.deepStrictEqual([r.r, r.opens], [{ dropped: 0, settled: 0 }, 0]);
     assert.deepStrictEqual(pointsOf(p).map((x) => x.session), ['CON', 'nul']);
+});
+
+// ---- PF1 plan 2: a plan-status call sets the session plan and arms the tick hold on done; the hold passes plan calls ----
+const { planFolder, PLANS: PLAN_ROOT } = require('./plan-folder-fixture.js');
+const ENGINE = 'node .claude/hooks/plan-status.js';
+const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
+const SHELL = path.join(HOOKS_DIR, 'shell-guards.js');
+const FILES = path.join(HOOKS_DIR, 'file-guards.js');
+const heredoc = (verb, rest, body) => `${ENGINE} ${verb} ${rest} <<'EOF'\n${body}\nEOF`;
+// setup() of the U13 tick test with a folder plan in place of export.md: the carry past the trigger, the hooks fed
+// PreToolUse payloads. more.hold writes a hold file of that route before the first call.
+function folderSetup(planOpts = {}, more = {})
+{
+    const p = project();
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'pf-tick-')) };
+    const tp = p.transcript([usageRow('f', { cache_creation_input_tokens: 40000 }), usageRow('a', { cache_read_input_tokens: more.carry || 450000 })]);
+    const plan = planFolder(p.root, 'csv', { session: p.sid, ...planOpts });
+    const via = (hook, tool, input, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp, ...extra }, env, hook);
+    const edit = () => via(FILES, 'Edit', { file_path: path.join(p.root, 'src.js'), old_string: 'a', new_string: 'b' });
+    const ledger = () => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
+    const statusFile = () => path.join(p.root, '.claude', 'session-inspector', 'status', `${p.sid}.json`);
+    const resetStatus = () => fs.rmSync(statusFile(), { force: true });
+    if (more.hold)
+    {
+        const hold = { at: new Date().toISOString(), size: 0, denied: 0, route: more.hold, ctx: 450000 };
+        if (more.hold === 'idle') hold.gapMs = 3 * 3600 * 1000;
+        if (more.hold === 'tick')
+        {
+            plan.run(['done', '--plan', 'csv', '--task', '1'], 'result: ok 1\n');
+            Object.assign(hold, { plan: plan.md, dir: plan.dir, rel: plan.rel, taskId: '1', task: 'Task 1 - slice 1', resume: 'next task 2' });
+        }
+        fs.writeFileSync(path.join(env.ALFRED_CODE_HOOK_LOG_DIR, `guard-fresh-compact-${tp.replace(/[^a-zA-Z0-9]/g, '_').slice(-80)}.hold`), JSON.stringify(hold));
+    }
+    return { p, tp, env, plan, via, edit, ledger, statusFile, resetStatus };
+}
+
+test('PF1 tick: a done call past the trigger holds the next task\'s first change; the plan calls pass', () =>
+{
+    const s = folderSetup({ approve: true, start: ['1'] });
+    const done = () => s.via(SHELL, 'Bash', { command: heredoc('done', `--plan ${PLAN_ROOT}/csv --task 1`, 'result: npm test - 12 passed') });
+    assert.strictEqual(done().status, 0, 'the tick itself is never held');
+    s.plan.run(['done', '--plan', 'csv', '--task', '1'], 'result: npm test - 12 passed\n');   // the call lands
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: heredoc('cursor', '--plan csv', 'note: step 4 BUILD - mode session') }).status, 0, 'cursor passes');
+    s.plan.run(['cursor', '--plan', 'csv'], 'note: step 4 BUILD - mode session\n');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv` }).status, 0, 'resume passes');
+    const held = s.edit();
+    assert.strictEqual(held.status, 2, 'the next source edit is held');
+    const said = held.stderr.replace(/\s+/g, ' ');
+    assert.match(said, /plan task 'Task 1 - slice 1' was just ticked DONE in \.alfred\/docs\/work\/plans\/csv\//);
+    assert.match(said, /\(now: 'step 4 BUILD - mode session - next task 2'\)/, 'the status on disk at the denial');
+    assert.match(said, /a plan-status\.js cursor call passes/);
+    assert.match(s.ledger(), /"kind":"tick-offer"/);
+});
+
+test('PF1 tick: not armed on the last task, with another task in flight, under the trigger, or for a seat', () =>
+{
+    const arms = (opts, extra = {}, more = {}) =>
+    {
+        const s = folderSetup({ approve: true, start: ['1'], ...opts }, more);
+        s.via(SHELL, 'Bash', { command: `${ENGINE} done --plan csv --task ${opts.tick || '1'}` }, extra.payload);
+        return /"kind":"tick-offer"/.test(s.ledger());
+    };
+    assert.strictEqual(arms({}), true, 'the base case arms');
+    assert.strictEqual(arms({ cards: 1 }), false, 'the last task');
+    assert.strictEqual(arms({ start: ['1', '2'] }), false, 'another task is in_progress');
+    assert.strictEqual(arms({ start: ['1'], block: ['2'] }), true, 'a blocked task is parked');
+    assert.strictEqual(arms({}, {}, { carry: 100000 }), false, 'under the trigger');
+    assert.strictEqual(arms({}, { payload: { agent_id: 'a1' } }), false, 'a seat');
+    assert.strictEqual(arms({ start: [], tick: '2' }), false, 'a todo task: the engine refuses the done (R27)');
+});
+
+test('PF1 tick: a done that did not land leaves no hold (R27); unreadable status arms nothing', () =>
+{
+    const s = folderSetup({ approve: true, start: ['1'] });
+    s.via(SHELL, 'Bash', { command: `${ENGINE} done --plan csv --task 1` });          // no result: line - refused by the engine
+    assert.strictEqual(s.edit().status, 0, 'the task is still in_progress on disk: the hold is dropped');
+    assert.match(s.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"not-landed"/);
+    const g = folderSetup({ approve: true, start: ['1'] });
+    fs.writeFileSync(path.join(g.plan.dir, 'status.json'), '{');
+    g.via(SHELL, 'Bash', { command: `${ENGINE} done --plan csv --task 1` });
+    assert.doesNotMatch(g.ledger(), /tick-offer/);
+});
+
+test('PF1: the plan call sets the session plan - four spellings name one folder, complete and a seat set nothing', () =>
+{
+    const s = folderSetup({ approve: true });
+    const plan = () => { try { return JSON.parse(fs.readFileSync(s.statusFile(), 'utf8')).plan; } catch { return undefined; } };
+    for (const ref of ['csv', `${PLAN_ROOT}/csv`, `${PLAN_ROOT}/csv/csv.md`, `${PLAN_ROOT.replace(/\//g, '\\')}\\csv\\`])
+    {
+        s.resetStatus();
+        s.via(SHELL, 'Bash', { command: `${ENGINE} start --plan ${ref} --task 1` });
+        assert.strictEqual(plan(), `${PLAN_ROOT}/csv/`, ref);
+    }
+    s.resetStatus();
+    s.via(SHELL, 'Bash', { command: `${ENGINE} complete --plan csv` });
+    s.via(SHELL, 'Bash', { command: `${ENGINE} list` });
+    s.via(SHELL, 'Bash', { command: `${ENGINE} show --plan csv` });
+    s.via(SHELL, 'Bash', { command: `${ENGINE} start --plan "$P" --task 1` });
+    s.via(SHELL, 'Bash', { command: `${ENGINE} start --plan csv --task 1` }, { agent_id: 'a1' });
+    assert.strictEqual(plan(), undefined, 'complete, list, show, a variable ref and a seat write no status file');
+    s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv` });
+    assert.strictEqual(plan(), `${PLAN_ROOT}/csv/`, 'resume sets it');
+});
+
+test('PF1: the hold passes every plan call on its three routes, and still holds a call that also writes a file (F4)', () =>
+{
+    const ps = `${ENGINE} done --plan csv --task 1 @'\nresult: ok\n'@`;
+    for (const route of ['compact', 'idle', 'tick'])
+    {
+        const s = folderSetup({ approve: true, start: ['1'] }, { hold: route });
+        assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv` }).status, 0, `${route}: resume`);
+        assert.strictEqual(s.via(SHELL, 'Bash', { command: heredoc('done', '--plan csv --task 1', 'result: a > b') }).status, 0, `${route}: done with a heredoc`);
+        assert.strictEqual(s.via(SHELL, 'PowerShell', { command: ps }).status, 0, `${route}: a PowerShell here-string`);
+        assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv > out.txt` }).status, 2, `${route}: a call that also writes a file`);
+    }
 });
