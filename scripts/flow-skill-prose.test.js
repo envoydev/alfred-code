@@ -488,9 +488,12 @@ const PF_CALLS = {
     'stack/skills/task-solve/references/full-spec.md': ['sync', 'approve', 'start', 'done', 'complete'],
     'stack/skills/task-implement/SKILL.md': ['start', 'done', 'block', 'fail', 'decide', 'cursor', 'redesign', 'deviate', 'add-task', 'approve'],
     'stack/skills/task-verify-code/SKILL.md': ['show'],
+    'stack/skills/task-solve-cross/references/domain-trio-protocol.md': ['sync', 'approve', 'start', 'done', 'block', 'add-task', 'resume', 'show', 'conformance', 'complete'],
+    'stack/skills/task-solve-cross/references/agent-output-protocol.md': ['decide'],
 };
 const PF_BODIES = [...Object.keys(PF_CALLS), 'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/mode-output-scoring/SKILL.md',
-    'stack/skills/mode-output-scoring/references/outputs.md', 'stack/skills/task-implement/references/evidence.md'];
+    'stack/skills/mode-output-scoring/references/outputs.md', 'stack/skills/task-implement/references/evidence.md',
+    'stack/skills/task-solve-cross/references/execution-modes.md'];
 
 test('PF1: each body names the verbs it sends the model to', () => {
     for (const [file, verbs] of Object.entries(PF_CALLS)) {
@@ -602,4 +605,23 @@ test('PF1: task-verify-code reads what was built from show --full', () => {
     const text = flat(skill('task-verify-code'));
     assert.match(text, /what was built from `node \.claude\/hooks\/plan-status\.js show --plan <the plan folder> --full`/);
     assert.match(text, /An added task is a task, a dropped one is not missing, a recorded deviation is judged as recorded\./);
+});
+
+test('PF1 (R41): the trio protocol approves, ticks and completes through the script, in the orchestrator alone', () => {
+    const text = flat(read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'));
+    const bullet = text.slice(text.indexOf("**The plan's status file.**"));
+    assert.match(bullet, /by the orchestrator alone/);
+    assert.match(bullet, /before the first task starts: `approve --plan <the plan folder> --mode agents` when seats build \(`--mode session` INLINE\), with `words:` that answer on stdin/);
+    assert.match(bullet, /`start --task <id>` at its dispatch; `done --task <id>` with `result:`/);
+    assert.match(bullet, /INLINE, the build twin runs these itself/);
+    assert.match(bullet, /`conformance` with `verdict:` and `reviewer:`.*`complete` with `suite:`/);
+    assert.match(text, /Before the approval a card is added by editing the Markdown, then `sync`\./);
+});
+
+test('PF1: the trio protocol\'s four copies are byte-equal to the owner, and the seat rule says a seat never edits the plan', () => {
+    const owner = read('stack/skills/task-solve-cross/references/domain-trio-protocol.md');
+    for (const s of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'task-build-from-scratch'])
+        assert.strictEqual(read(`stack/skills/${s}/references/domain-trio-protocol.md`), owner, s);
+    for (const rel of ['agent-output-protocol.md', 'execution-modes.md'])
+        assert.match(flat(read(`stack/skills/task-solve-cross/references/${rel}`)), /a seat never edits the plan, its `status\.json` or `scoring\.json`, and never runs the script/, rel);
 });

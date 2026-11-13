@@ -475,3 +475,22 @@ test('ab-P4: the footprint names statistics/', () =>
     assert.match(row, /`state\/`/, 'the hooks\' state folder is named');
     assert.match(row, /`statistics\/`/, 'the ledgers folder is named');
 });
+
+// ---- PF1 (plan 2, Task 11): the implementers record an in-chat decision through the plan script; the verifiers read the build record.
+const PF_STACKS = ['aspnet', 'browser-extension', 'console', 'data', 'devops', 'ionic-angular', 'web-angular', 'windows-service', 'winforms', 'wpf'];
+const PF_DECIDE = 'In-chat, record it with `node .claude/hooks/plan-status.js decide --plan <plan>` (`choice:` and `precedent:` on stdin); in a plan that is a single file, append it to the file\'s `## Decisions` ledger (until 4.0.0); a dispatched seat reports it as `decisions:` lines for the orchestrator to fold in, never editing the shared plan file itself (siblings build in parallel).';
+const PF_RECORD = 'Diff the result against the designer\'s plan and each task\'s contract (when the brief carries a build record, the plan is the cards as that record amends them - an added task is a task, a dropped one is not missing, a recorded deviation is judged as recorded):';
+
+test('PF1: every implementer records an in-chat decision through decide, keeps the flat pointer and the decisions: report line', () =>
+{
+    for (const s of PF_STACKS) assert.ok(read(`${s}-implementer`).includes(PF_DECIDE), s);
+    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'skills', 'task-implement', 'SKILL.md'), 'utf8').includes(PF_DECIDE), 'task-implement holds the same paragraph');
+});
+test('PF1: every verifier carries the build-record clause', () =>
+{
+    for (const s of PF_STACKS) assert.ok(read(`${s}-verifier`).includes(PF_RECORD), s);
+});
+test('PF1 (R34): no designer body names a Resume: line or a card status line', () =>
+{
+    for (const s of PF_STACKS) assert.doesNotMatch(read(`${s}-solution-designer`), /`Resume:`|status: TODO/, s);
+});

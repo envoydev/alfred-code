@@ -59,7 +59,7 @@ status: DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED | BLOCKED_CONTRACT_C
 contract_version: <the card's - omitted entirely on a findings-plan dispatch>
 ```
 
-`decisions:` lines fold into the plan's `## Decisions` ledger and `ceilings:` rows into the close's known-ceilings write; a seat never edits the shared plan file itself.
+`decisions:` lines are folded in by the orchestrator through `node .claude/hooks/plan-status.js decide --plan <the plan folder> --task <id>` (`choice:`, `precedent:`), one call per line, and `ceilings:` rows into the close's known-ceilings write; a seat never edits the plan, its `status.json` or `scoring.json`, and never runs the script - siblings build in parallel and one session owns the record. Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer. Flat plans (until 4.0.0): a plan that is a single file is stamped in the file, by the closing section of the plan shape the build reads.
 
 ## Verifier output
 

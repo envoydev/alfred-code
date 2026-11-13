@@ -26,3 +26,22 @@ test('the raise-to-standard route (R42): sync, approve with words alone, start a
     assert.match(first(closed), /^plan-status: complete ok - plan csv /);
     assert.ok(plan.status().completedAt);
 });
+
+test('the trio protocol\'s order (R41): sync, approve, tasks in flight together, an added task, the verdict, the close', () => {
+    const plan = planFolder(project(), 'csv', { cards: 2 });
+    const card = '### Task - a third slice\n- estimate: 10m\n';
+    assert.match(first(plan.run(['add-task', '--plan', 'csv'], card)), /the plan is not approved/, 'no added task before the approval');
+    assert.strictEqual(plan.run(['approve', '--plan', 'csv', '--mode', 'agents'], 'words: Approve and build\n').code, 0);
+    assert.strictEqual(plan.run(['start', '--plan', 'csv', '--task', '1']).code, 0);
+    assert.strictEqual(plan.run(['start', '--plan', 'csv', '--task', '2']).code, 0, 'two seats in flight');
+    assert.strictEqual(plan.run(['add-task', '--plan', 'csv'], card).code, 0);
+    assert.match(plan.run(['resume', '--plan', 'csv']).out, /^### Task 3 - a third slice$/m, 'the added card is read from resume');
+    assert.strictEqual(plan.run(['decide', '--plan', 'csv', '--task', '1'], 'choice: a plain function\nprecedent: src/orders.js\n').code, 0);
+    for (const id of ['1', '2']) assert.strictEqual(plan.run(['done', '--plan', 'csv', '--task', id], 'result: dotnet test - 40 passed\n').code, 0);
+    assert.strictEqual(plan.run(['start', '--plan', 'csv', '--task', '3']).code, 0);
+    assert.strictEqual(plan.run(['block', '--plan', 'csv', '--task', '3'], 'needs: the staging run\n').code, 0);
+    assert.strictEqual(plan.run(['conformance', '--plan', 'csv'], 'verdict: passed\nreviewer: aspnet-verifier, pass 1\n').code, 0);
+    assert.match(first(plan.run(['complete', '--plan', 'csv'], 'suite: dotnet test - 40 passed\n')), /not done - finish or drop them, or pass --with-open/);
+    assert.match(first(plan.run(['complete', '--plan', 'csv', '--with-open'], 'suite: dotnet test - 40 passed\n')), /^plan-status: complete ok - plan csv /);
+    assert.match(plan.run(['show', '--plan', 'csv', '--full']).out, /dotnet test - 40 passed/, 'the build record carries the results');
+});
