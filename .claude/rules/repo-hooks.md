@@ -1350,7 +1350,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it that this hook is
     wired on (`Write` / `Edit` / `MultiEdit` / `NotebookEdit` and the shell route - both rows fold into their
     dispatcher, which runs the hook in-process, one process per call (2.1.5 M3) - `Agent` / `Task`, a `Skill`) is denied with this session's measured
-    carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
+    carry and cold floor until an ask is answered or the turn writes 'single short step' - or (AC-6, session be3a0031: held
+    after 9.8h idle for ~3 messages under a quoted ~26) 'fewer messages than the payback: <what>, ~N messages' with N under
+    the break-even the denial recorded in the hold (`payback`; said before any denial, the form alone counts; a
+    `fewer-than-payback` release row) - every hold text and the compact start name both exits, released with no deny when a
     fresh session would not pay back (THE VERDICT), nobody is at the terminal, a seat made the call or it has denied twice (audit
     2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in
     the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes

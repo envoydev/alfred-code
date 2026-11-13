@@ -428,6 +428,48 @@ test('compact-state: the first change after an automatic compaction is held once
     assert.strictEqual(call(a, ta, 'Edit'), 0, 'a live AUTO waiver holds nothing');
 });
 
+// AC-6 (session be3a0031): after 9.8h idle the hold asked for a fresh session while its own quoted payback was ~26
+// messages for a task of ~3. Beside 'a single short step', the hold names a second exit - work shorter than the payback
+// it quotes - in every text it prints, and the line releases a hold when its count is under the quoted payback.
+test('compact-state: every hold text names the fewer-than-payback exit, and its line releases a hold it beats (AC-6)', () =>
+{
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'payback-')) };
+    const rows = [usageRow('f', { cache_creation_input_tokens: 40000 }), usageRow('a', { cache_read_input_tokens: 316000 }), boundary('auto', 317000)];
+    const EXIT = /or fewer messages than the payback, say so in one line [-(] ?'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages'/;
+    const after = (tp, text) => fs.appendFileSync(tp, JSON.stringify(usageRow('c', { cache_read_input_tokens: 120000 }, text)) + '\n');
+    const edit = (s) => s.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: s.tp }, env);
+    const armed = () =>
+    {
+        const p = project();
+        const tp = p.transcript(rows);
+        const started = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env));
+        fs.appendFileSync(tp, JSON.stringify(usageRow('b', { cache_read_input_tokens: 120000 })) + '\n');
+        return { p, tp, started };
+    };
+    const a = armed();
+    assert.match(a.started.replace(/\s+/g, ' '), EXIT, 'the compact start names both exits');
+    const held = edit(a);
+    assert.strictEqual(held.status, 2);
+    assert.match(held.stderr.replace(/\s+/g, ' '), EXIT, 'the compaction hold names both exits');
+    const n = Number((/pays back in about (\d+) messages/.exec(held.stderr) || [])[1]);
+    assert.ok(n > 2, held.stderr);
+    after(a.tp, `fewer messages than the payback: rename the test, ~${n} messages`);
+    assert.strictEqual(edit(a).status, 2, 'a count at the quoted payback is no exit');
+    const b = armed();
+    assert.strictEqual(edit(b).status, 2);
+    after(b.tp, `Fewer messages than the payback: rename the one test, ~${n - 1} messages.`);
+    assert.strictEqual(edit(b).status, 0, 'a count under the quoted payback releases the hold');
+    const ledger = fs.readFileSync(path.join(b.p.root, '.alfred', 'statistics', 'hook-blocks', `${b.p.sid}.jsonl`), 'utf8');
+    assert.match(ledger, /"kind":"compact-hold"[^\n]*"outcome":"fewer-than-payback"/, 'its own release row');
+    const c = armed();
+    after(c.tp, 'fewer messages than the payback: fix the typo, ~2 messages');
+    assert.strictEqual(edit(c).status, 0, 'said before any hold quoted a payback, the line form is taken as the single-short-step line is');
+    const d = armed();
+    assert.strictEqual(edit(d).status, 2);
+    after(d.tp, 'fewer messages than the payback: rename the test');
+    assert.strictEqual(edit(d).status, 2, 'a line naming no count is no exit');
+});
+
 test('compact-state: the hold reaches an edit and a shell call through their one-process dispatchers (C09, 7fae0c39 / 84eedb4b)', () =>
 {
     // The measured sessions went on with Bash and Edit after the compaction; both tools carry only their dispatcher
@@ -536,6 +578,7 @@ test('compact-state: the idle gap leaves a hold the first change meets, released
     assert.match(held.stderr.replace(/\s+/g, ' '), /sat idle 19(?:\.0)?h before this turn and its prompt cache went cold; the turns since have re-written it, so the choice is priced as from now/);
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
+    assert.match(held.stderr.replace(/\s+/g, ' '), /or fewer messages than the payback, say so in one line - 'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry/, 'AC-6: the idle hold names both exits');
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 2, 'a writing shell call is a change');
     assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
     const a = setup();
@@ -875,7 +918,7 @@ test('compact-state: a plan task ticked DONE past the trigger holds the next tas
     assert.match(said, /~450k tokens per message/);
     assert.match(said, /A fresh session restarts at ~40k/);
     assert.match(said, /'Resume in a fresh session \(Recommended\)'/);
-    assert.match(said, /single short step: <what>/);
+    assert.match(said, /or fewer messages than the payback, say so in one line - 'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry/, 'AC-6: the tick hold names both exits');
     assert.match(s.ledger(), /"kind":"tick-offer"/, 'one probe row records the arm');
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 2, 'a writing shell call is a change too');
     assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');

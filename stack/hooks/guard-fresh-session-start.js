@@ -322,25 +322,34 @@ const COMPACT_NOTE = `This session compacts instead of offering a fresh session 
 // (ctx 0) the call passes and the hold stays armed, no denial spent, for the first changing call that has one. A seat's call is the parent's work in
 // flight, never held. One `compact-hold` row (`idle-hold` on the idle route) records how it ended.
 const SHORT_STEP_RE = /\b(?:single|one) short step\b/i;
-function shortStepSince(from) {
+// AC-6 (session be3a0031: held after 9.8h idle for a task of ~3 messages under a quoted payback of ~26): the second exit,
+// work shorter than the payback the hold quoted. Its count must be under the payback the hold recorded at its denial; said
+// before any denial, the line form is taken as the single-short-step line is.
+const FEWER_RE = /\bfewer messages than the payback\b[^\n]*?~\s*(\d+)\s*messages?\b/i;
+const HOLD_EXIT = `If the remaining work is a single short step, or fewer messages than the payback, say so in one line -\n`
+  + `'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry this call.`;
+// 'single-short-step' or 'fewer-than-payback' - the exit the turn stated since `from` - or ''.
+function shortStepSince(from, payback = 0) {
+  const said = (text) => (SHORT_STEP_RE.test(text) ? 'single-short-step'
+    : ((m) => (m && !(payback > 0 && Number(m[1]) >= payback) ? 'fewer-than-payback' : ''))(FEWER_RE.exec(text)));
   try {
     const p = payload.transcript_path;
     const size = fs.statSync(p).size;
     const start = Math.max(from, size - 8 * 1024 * 1024, 0);
-    if (start >= size) return false;
+    if (start >= size) return '';
     const fd = fs.openSync(p, 'r');
     const buf = Buffer.alloc(size - start);
     try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
     for (const line of buf.toString('utf8').split('\n')) {
-      if (!SHORT_STEP_RE.test(line)) continue;
+      if (!SHORT_STEP_RE.test(line) && !/fewer messages than the payback/i.test(line)) continue;
       try {
         const o = JSON.parse(line);
-        if (o.type === 'assistant' && Array.isArray(o.message && o.message.content)
-          && o.message.content.some((b) => b && b.type === 'text' && SHORT_STEP_RE.test(String(b.text || '')))) return true;
+        if (o.type !== 'assistant' || !Array.isArray(o.message && o.message.content)) continue;
+        for (const b of o.message.content) if (b && b.type === 'text' && said(String(b.text || ''))) return said(String(b.text || ''));
       } catch { /* a cut row */ }
     }
   } catch { /* unreadable - not stated */ }
-  return false;
+  return '';
 }
 // The hold waits for WORK: a shell command that writes nothing (no write target, no git write, by shell-writes.js's
 // reader) is the reading a question needs, so it passes and keeps the hold standing - on the idle route (audit 2026-10-11
@@ -402,7 +411,8 @@ function compactHold() {
   if (Date.now() - (Date.parse(hold.at) || 0) > 12 * 3600 * 1000) return release('stale');
   if (unattended(payload)) return release('unattended');
   if (fresh.askAnsweredSince(since)) return release('asked');
-  if (shortStepSince(since)) return release('single-short-step');
+  const stated = shortStepSince(since, Number(hold.payback) || 0);
+  if (stated) return release(stated);
   if (hold.via === 'ask' && typedAfterAnswer(hold)) return release('typed-after-answer');
   // the Stop branch blocked at this carry or past it since the tick: the offer was made at the close
   if (tick && Number(hold.ctx) > 0 && typeof fresh.stopOfferCtx === 'function' && fresh.stopOfferCtx() >= Number(hold.ctx)) return release('offered-at-stop');
@@ -411,9 +421,10 @@ function compactHold() {
   if (!(ctx > 0)) return;
   if (!paysAt(kind, ctx)) return release('not-worth-resuming', { ctx, floor });
   if ((Number(hold.denied) || 0) >= 2) return release('denied-twice', { ctx, floor });
-  try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1 })); } catch { /* the cap still ends it */ }
+  const verdict = fresh.freshVerdict(ctx);   // its break-even is the payback the AC-6 exit's count is held under
+  try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1, payback: verdict.breakEven })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
-  const pay = fresh.payText(ctx, fresh.freshVerdict(ctx));
+  const pay = fresh.payText(ctx, verdict);
   if (tick) {
     // the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
     let resume = String(hold.resume || '');
@@ -424,8 +435,7 @@ function compactHold() {
       + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
       + `the next task; an edit to the plan passes. Before the next task's first change, put the choice to the user as ONE\n`
       + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
-      + `resume block naming the plan), or continue here. If the remaining work is a single short step, say so in one line -\n`
-      + `'single short step: <what>' - and retry this call.`,
+      + `resume block naming the plan), or continue here. ${HOLD_EXIT}`,
     );
     process.exit(2);
   }
@@ -442,8 +452,7 @@ function compactHold() {
           + `is priced as from now, and the one offered at the prompt has not been put to the user yet. ${pay}\n`)
       + `Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
       + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
-      + `block and the plan or state file it resumes from), or continue here. If the remaining work is a single short\n`
-      + `step, say so in one line - 'single short step: <what>' - and retry this call.`,
+      + `block and the plan or state file it resumes from), or continue here. ${HOLD_EXIT}`,
     );
     process.exit(2);
   }
@@ -452,8 +461,7 @@ function compactHold() {
     + `The compaction summary's closing line - continue 'without asking the user\n`
     + `any further questions' - is the harness's default, and this hold supersedes it. Before this call, put the choice to\n`
     + `the user as ONE AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn\n`
-    + `with the paste-ready resume block and the plan or state file it resumes from), or continue here. If the remaining\n`
-    + `work is a single short step, say so in one line - 'single short step: <what>' - and retry this call.`,
+    + `with the paste-ready resume block and the plan or state file it resumes from), or continue here. ${HOLD_EXIT}`,
   );
   process.exit(2);
 }
@@ -1550,7 +1558,8 @@ if (EVENT === 'SessionStart') {
         'only where it pays - end this turn with the paste-ready invocation and the state file or plan file it resumes ' +
         'from), or continue here on the summary; when it would not pay back the change goes through and you continue ' +
         'here. Never put the choice without those numbers. If ' +
-        'the remaining work is a single short step, say so in one line (' + String.fromCharCode(39) + 'single short step: <what>' + String.fromCharCode(39) + ') and just finish it. ' +
+        'the remaining work is a single short step, or fewer messages than the payback, say so in one line (' + String.fromCharCode(39) + 'single short step: <what>' + String.fromCharCode(39) + ' or ' +
+        String.fromCharCode(39) + 'fewer messages than the payback: <what>, ~N messages' + String.fromCharCode(39) + ') and just finish it. ' +
         withNote(after),
     },
   }));

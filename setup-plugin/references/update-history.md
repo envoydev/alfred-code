@@ -1089,3 +1089,10 @@ are found under the docs folder its own settings name. Nothing to do by hand.
 A session started in one workspace child that touches a file of a sibling child gets the sibling's block and its path
 rules as before, and now the start project's own path rules as well, unless the sibling leaves one out
 (`ignore rule <name>`) or holds a rule of the same name. Nothing to do by hand.
+
+## after 3.11.0 - the fresh-session hold lets short work go on
+
+When a session is held for a fresh-session choice (after an automatic compaction, a long idle gap or a plan task ticked
+done), the hold now names a second way on beside 'a single short step': work that takes fewer messages than the
+payback the hold quotes - one line, 'fewer messages than the payback: <what>, ~N messages', then the same call again.
+Nothing to do by hand.
