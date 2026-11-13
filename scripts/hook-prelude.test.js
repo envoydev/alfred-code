@@ -1079,7 +1079,7 @@ test('snapshotReview: one file per call, so calls started together all keep thei
 // ---------------------------------------------------------------------------------------------
 // the scoring's shared state (mode-output-scoring): parses, the switch, the skill copy, the stack reader, row marks
 // ---------------------------------------------------------------------------------------------
-const { skillCopyState, oursLoadable, scoringLevel, scoringRounds, scoringOutputs, scoringState, scoringFile, safeSession, stackNamed, producerMarks, sweepScoringFolders } = require(PRELUDE);
+const { skillCopyState, oursLoadable, scoringLevel, scoringRounds, scoringOutputs, scoringState, scoringHeldFile, safeSession, stackNamed, producerMarks, sweepScoringFolders } = require(PRELUDE);
 const scoringWrite = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
 const scoringRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-root-')));
 scoringWrite(path.join(scoringRoot, '.claude', 'skills', 'mode-output-scoring', 'SKILL.md'), '---\nname: mode-output-scoring\n---\n');
@@ -1105,20 +1105,18 @@ test('scoring parses: the level, the run cap and the outputs list', () => {
         assert.deepStrictEqual(scoringOutputs({ ALFRED_CODE_SCORING_OUTPUTS: v }), { outputs, ignored }, `outputs ${v}`);
 });
 
-test('scoringState: env, the flag file, a garbage file, and every switch that makes it unusable (AC13, AC20)', () => {
+test('scoringState: env only - no session file, no file field, and every switch that makes it unusable (AC13, AC20)', () => {
     assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', scoringOn)), { usable: true, on: true, source: 'env' });
+    assert.ok(!Object.hasOwn(scoringState(scoringRoot, 's1', scoringOn), 'file'), 'no file field');
+    for (const name of ['scoringFile', 'readScoringFile', 'compactFile']) assert.strictEqual(require(PRELUDE)[name], undefined, name);
     // B1 (2026-11-03): an unset or empty switch is the catalog default, on; only an explicit value but 1 is off
     for (const v of [undefined, ''])
         assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringBase, ALFRED_CODE_SCORING: v })), { usable: true, on: true, source: 'env' }, `switch ${v}`);
     assert.deepStrictEqual(scoringState(scoringRoot, 's1', scoringBase).outputs, ['designer-plan'], 'unset outputs: plan files only');
     for (const v of ['0', 'yes', ' 2 '])
         assert.strictEqual(scoringState(scoringRoot, 's1', { ...scoringBase, ALFRED_CODE_SCORING: v }).on, false, `switch ${v}`);
-    scoringWrite(scoringFile(scoringRoot, 's2', scoringBase), 'on\nat: x\n');
-    assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's2', { ...scoringBase, ALFRED_CODE_SCORING: '0' })), { usable: true, on: true, source: 'flag' }, 'on beats env off');
-    scoringWrite(scoringFile(scoringRoot, 's3', scoringBase), 'off\nat: x\n');
-    assert.strictEqual(scoringState(scoringRoot, 's3', scoringOn).on, false, 'off beats env');
-    scoringWrite(scoringFile(scoringRoot, 's4', scoringBase), 'garbage');
-    assert.deepStrictEqual([scoringState(scoringRoot, 's4', scoringOn).source, scoringState(scoringRoot, 's4', scoringOn).file], ['env', 'garbage']);
+    scoringWrite(path.join(scoringRoot, '.alfred', 'state', 'sessions', 'SCORING-s2'), 'on\nat: x\n');   // a v1 switch file left behind
+    assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's2', { ...scoringBase, ALFRED_CODE_SCORING: '0' })), { usable: true, on: false, source: 'env' }, 'a v1 file is not read');
     for (const off of ['guard-answer', 'guard-answer:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
         assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_HOOKS_OFF: off })), { usable: false, on: false, source: 'env' }, off);
     const s = scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_SCORING_LEVEL: '95', ALFRED_CODE_SCORING_ROUNDS: '5', ALFRED_CODE_SCORING_OUTPUTS: 'root-cause' });
@@ -1165,7 +1163,7 @@ test('producerMarks: a Skill call, a typed command, a command inside a tool resu
 test('safeSession: separators, dot names and spaces never leave the scoring folder (R31)', () => {
     for (const [id, want] of [['abc-1.2', 'abc-1.2'], ['a/../b', 'a_.._b'], ['..', '_'], ['.', '_'], ['a b', 'a_b'], ['a\\b', 'a_b']])
         assert.strictEqual(safeSession(id), want, id);
-    assert.strictEqual(path.dirname(scoringFile(scoringRoot, '../x', scoringBase)), path.dirname(scoringFile(scoringRoot, 'y', scoringBase)));
+    assert.strictEqual(path.dirname(scoringHeldFile(scoringRoot, '../x', scoringBase)), path.dirname(scoringHeldFile(scoringRoot, 'y', scoringBase)));
 });
 
 test('sweepScoringFolders: an 8-day-old session folder goes, a fresh one stays, once a day', () => {

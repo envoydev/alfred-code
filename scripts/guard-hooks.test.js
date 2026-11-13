@@ -5821,10 +5821,11 @@ test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript sho
   };
   const live = (p, sid = RC) => { const s = approvalStamp({ session_id: sid, transcript_path: p.tp, cwd: p.root }, { CLAUDE_PROJECT_DIR: p.root }); return Boolean(s && s.live); };
   const env = (p) => ({ ...process.env, CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'rc-log-')) });
-  // the mode command, typed alone on its line: the start hook writes the stamp at UserPromptSubmit
-  const modeOn = (p) => runIn('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: RC, cwd: p.root, transcript_path: p.tp,
-    prompt: '/alfred-code:mode:auto-run on' }, { env: env(p) });
-  const typedOn = rc.command('alfred-code:mode:auto-run', 'on');
+  // a typed /mode-auto-run <request>: the start hook writes the stamp at its expansion (the mode command writes the
+  // project's variable since mode commands v2, no stamp)
+  const modeOn = (p) => runIn('guard-fresh-session-start.js', { hook_event_name: 'UserPromptExpansion', session_id: RC, cwd: p.root, transcript_path: p.tp,
+    expansion_type: 'slash_command', command_name: 'mode-auto-run', command_args: 'fix X', prompt: '/mode-auto-run fix X', prompt_id: `hk03-${++k}` }, { env: env(p) });
+  const typedOn = rc.command('mode-auto-run', 'fix X');
   // the prompt row written before the hook and after it
   {
     const p = fresh();

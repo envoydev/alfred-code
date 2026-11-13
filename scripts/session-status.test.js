@@ -188,15 +188,14 @@ test('T2 fullContext', () =>
     assert.strictEqual(off.resumeAt, null);
     assert.strictEqual(build({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0' }).fullContext, 'off', 'the session\'s own tier switched off');
     assert.strictEqual(build({}).fullContext, 'fresh-session');
-    // the session's own switch (/alfred-code:mode:auto-compact on) compacts as the project's variable does
+    // mode commands v2: a v1 session switch file left behind is not read; the mode file's variable compacts every session
     const mine = path.join(root, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-s1');
     fs.mkdirSync(path.dirname(mine), { recursive: true });
     fs.writeFileSync(mine, 'on\nat: 2026-11-12T00:00:00.000Z\n');
-    assert.strictEqual(build({}).fullContext, 'compact', 'the session\'s auto-compact switch');
-    fs.writeFileSync(mine, 'off\n');
-    assert.strictEqual(build({}).fullContext, 'fresh-session', 'switched off again');
-    fs.writeFileSync(path.join(path.dirname(mine), 'AUTO-COMPACT-s2'), 'on\n');
-    assert.strictEqual(build({}).fullContext, 'fresh-session', 'another session\'s switch');
+    assert.strictEqual(build({}).fullContext, 'fresh-session', 'a v1 session file is not read');
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
+    assert.strictEqual(build({}).fullContext, 'compact', 'the mode file\'s variable');
 });
 
 // Auto-run offers no fresh session (guard-fresh-session-start's context line), so the file says compact while it is on,

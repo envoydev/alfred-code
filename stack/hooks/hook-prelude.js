@@ -1073,6 +1073,7 @@ function autoRunRefusal(input, env, flags)
     const source = env || process.env;
     const f = flags && typeof flags === 'object' ? flags : modeFlags('');
     if (payload.agent_id) return 'a seat never starts auto-run';
+    if (f.mode === 'auto-run') return '';   // the mode command writes the variable, never a stamp: no run or data root to refuse (D4)
     const commands = Array.isArray(f.commands) ? f.commands : [];
     if (!f.request && commands.some((c) => commandSkill(c) === 'mode-auto-run')) return 'type the request after /mode-auto-run';
     const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
@@ -1107,23 +1108,15 @@ function autoRunFor(input, env, flags)
     }
     catch { return false; }
 }
-// Why no fresh-session ask is made for this payload, else '': the project's variable, this session's live auto-run, the
-// session's own switch (`/alfred-code:mode:auto-compact on` writes `on` as the file's first line) - in that order. This
-// prompt's typed line is read before the file, since the hook that writes the file runs beside its readers; a typed
-// `on` counts only while that writer runs. A file saying anything else, a folder or an unreadable one adds no cause.
-const COMPACT_SAID = { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on', mode: '/alfred-code:mode:auto-compact on' };
-const compactFile = (root, sessionId, env = process.env) => (layout && root && sessionId ? layout.statePath(root, 'sessions', `AUTO-COMPACT-${safeSession(sessionId)}`, env) : null);
+// Why no fresh-session ask is made for this payload, else '': the project's variable (the mode file's, as the loader set it),
+// then auto-run for this prompt - the typed line first (autoRunFor). The v1 session switch file is gone (mode commands v2).
+const COMPACT_SAID = { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on' };
 function compactCause(input, env = process.env, flags = null)
 {
     try
     {
-        const payload = input && typeof input === 'object' ? input : {};
         if (String(envOf(env, 'AUTO_COMPACT') || '').trim() === '1') return 'project';
-        if (autoRunFor(payload, env, flags)) return 'auto-run';
-        const typed = flags && flags.compact;
-        if (typed === 'on' && !hookDisabled('guard-fresh-session-start', env)) return 'mode';
-        const file = typed === 'off' ? null : compactFile(env.CLAUDE_PROJECT_DIR || payload.cwd, payload.session_id, env);
-        return file && fs.readFileSync(file, 'utf8').split(/\r?\n/)[0] === 'on' ? 'mode' : '';
+        return autoRunFor(input && typeof input === 'object' ? input : {}, env, flags) ? 'auto-run' : '';
     }
     catch { return ''; }
 }
@@ -1577,33 +1570,19 @@ function safeSession(id)
     return /^\.*$/.test(s) ? '_' : s;
 }
 const scoringPath = (prefix) => (root, sessionId, env = process.env) => (layout ? layout.statePath(root, 'sessions', `${prefix}${safeSession(sessionId)}`, env) : null);
-// The session's switch (`on` / `off` from `/alfred-code:mode:scoring on|off`), the backstop's one-hold-per-cycle marker, and the
-// names an ignored ALFRED_CODE_SCORING_OUTPUTS entry was already reported under - one sweep prefix takes all three.
-const scoringFile = scoringPath('SCORING-');
+// The backstop's one-hold-per-cycle marker and the names an ignored ALFRED_CODE_SCORING_OUTPUTS entry was already reported
+// under - one sweep prefix takes both (and the v1 session switch files it leaves behind).
 const scoringHeldFile = scoringPath('SCORING-HELD-');
 const scoringNotedFile = scoringPath('SCORING-NOTED-');
-function readScoringFile(root, sessionId, env = process.env)
-{
-    try
-    {
-        const file = scoringFile(root, sessionId, env);
-        if (!file) return null;
-        const first = fs.readFileSync(file, 'utf8').split('\n')[0].trim();
-        return first === 'on' || first === 'off' ? first : 'garbage';
-    }
-    catch { return null; }
-}
 // Usable first: either hook standing down or its `scoring` part switched off, or no loadable copy of the skill, makes the
 // scoring unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
-// usable but never on by itself. Then the session's flag file, else ALFRED_CODE_SCORING (on when unset, B1); a garbage file
-// reads as absent.
+// usable but never on by itself. Then ALFRED_CODE_SCORING (on when unset, B1), which the mode file sets through the loader.
 function scoringState(root, sessionId, env = process.env)
 {
-    const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORING_AUTOMATIC], ignored: [], source: 'env', file: null, copy: null };
+    const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORING_AUTOMATIC], ignored: [], source: 'env', copy: null };
     try
     {
         Object.assign(state, { level: scoringLevel(env), rounds: scoringRounds(env), ...scoringOutputs(env) });
-        state.file = readScoringFile(root, sessionId, env);
         if (standDown('guard-answer', env, []) || partOff('guard-answer', 'scoring', env)
             || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scoring', env)) return state;
         const copy = SCORING_SKILLS.map((n) => skillCopyState(root, n, env)).find((c) => c !== 'absent') || 'absent';
@@ -1611,8 +1590,7 @@ function scoringState(root, sessionId, env = process.env)
         if (copy === 'absent' || copy === 'off') return state;
         state.usable = true;
         if (copy === 'user-invocable-only') return state;
-        if (state.file === 'on' || state.file === 'off') { state.source = 'flag'; state.on = state.file === 'on'; }
-        else state.on = switchOn('SCORING', env);
+        state.on = switchOn('SCORING', env);
         return state;
     }
     catch { return { ...state, usable: false, on: false }; }
@@ -1982,5 +1960,5 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactFile, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringFile, scoringHeldFile, scoringNotedFile, readScoringFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
+module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
 Object.assign(module.exports, { autoRunStanding, byUser });   // beside the one-line list, which a new name would push past 160

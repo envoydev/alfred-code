@@ -682,39 +682,47 @@ function writeAutoStamp({ root, sid, skill: name, words, current }) {
   if (from) ledgerRow({ mode: 'auto', kind: 'auto-takeover', reason: `auto-run: session ${sid.slice(0, 8)} took the stamp of idle session ${from.slice(0, 8)}`, detail: { from: from.slice(0, 8), to: sid.slice(0, 8) } });
   return { file, from };
 }
-// A mode command's `[mode]` line, after its write: the command file tells the model to say that line and stop.
-function modeCommand(pre, flags, root, sid, stamp, markerFile) {
+// A mode command's `[mode]` line after its save to the mode file (mode commands v2, spec 3.3), which the command file
+// tells the model to say. A mode stays on for the checkout, new sessions included, until its off.
+const AUTO_ON = '[mode] auto-run is ON until /alfred-code:mode:auto-run off, new sessions included: each ask takes its (Recommended) option.'
+  + ' auto-compact is ON with it';
+function modeCommand(pre, flags, root, stamp, markerFile) {
   if (flags.extra) return '[mode] type the command alone on its line, then on or off';
-  const input = { ...payload, cwd: root };
-  const own = Boolean(stamp && stamp.session === sid && /^AUTO\b/.test(stamp.first));
-  if (flags.mode === 'auto-run') {
-    if (flags.autoRun === 'off') {
-      let ended = false;
-      if (own) try { fs.rmSync(stamp.file); ended = true; } catch { /* left: the mode stays on */ }
-      if (markerFile && fs.existsSync(markerFile)) try { fs.rmSync(markerFile); ended = true; } catch { /* left: the hold reads it */ }
-      if (ended) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
-      return '[mode] auto-run is OFF for this session';
-    }
-    const live = own && stamp.live;
-    if (!flags.autoRun) return `[mode] auto-run is ${live ? 'ON' : 'OFF'} for this session`;
-    const refusal = live ? '' : pre.autoRunRefusal(input, undefined, flags)
-      || (writeAutoStamp({ root, sid, skill: 'alfred-code:mode:auto-run', words: '/alfred-code:mode:auto-run on', current: stamp }) ? '' : 'the stamp could not be written');
-    ledgerRow({ mode: 'auto', kind: refusal ? 'auto-start-refused' : 'auto-start', reason: `auto-run: the mode command - ${refusal || (live ? 'the live stamp kept' : 'stamp written')}`, detail: { kept: live } });
-    return refusal ? `[mode] auto-run did not start: ${refusal}` : '[mode] auto-run is ON for this session: each ask takes its (Recommended) option, and no fresh-session ask is made';
+  if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: guard-answer.js saves it and says the line
+  const ms = require('./mode-settings.js');
+  const [input, held, envIs] = [{ ...payload, cwd: root }, ms.autoRunHeld(root), (k) => String(pre.envOf(process.env, k) ?? '').trim()];
+  const refusal = flags.autoRun === 'on' ? pre.autoRunRefusal(input, undefined, flags) : '';   // a seat: the prompt never gets here
+  const r = refusal ? { why: refusal }
+    : flags.autoRun ? ms.writeModes(root, flags.autoRun === 'on' ? { ALFRED_CODE_AUTO_RUN: '1', ALFRED_CODE_AUTO_COMPACT: '1' } : { ALFRED_CODE_AUTO_RUN: '0' })
+      : flags.compact === 'off' && pre.autoRunFor(input, undefined, flags) ? { why: 'held' }   // D11: auto-run holds it on, nothing written
+        : flags.compact ? ms.writeModes(root, { ALFRED_CODE_AUTO_COMPACT: flags.compact === 'on' ? '1' : '0' }) : null;
+  const why = r && r.why ? ms.WHY[r.why] || r.why : '';
+  if (flags.autoRun === 'on') ledgerRow({ mode: 'auto', kind: why ? 'auto-start-refused' : 'auto-start',
+    reason: `auto-run: the mode command - ${why || 'the variable written'}` });
+  if (why === 'held') return '[mode] auto-compact stays ON: auto-run is on - type /alfred-code:mode:auto-run off first';
+  if (why) return `[mode] ${flags.mode} could not be saved: ${why} - nothing changed`;
+  if (flags.autoRun === 'on') return AUTO_ON + ms.said(r);
+  if (flags.autoRun === 'off') {
+    // D7: off ends it for the checkout - any session's hook-written stamp goes; a hand-written one (no session line) stays
+    let ended = Boolean(held);
+    const file = (stamp && stamp.file) || (layout ? layout.findState(root, 'approvals', 'APPROVAL', process.env) : '');
+    try { const text = fs.readFileSync(file, 'utf8').slice(0, 4096);
+      if (/^AUTO\b/.test(text) && /^session:/m.test(text)) { fs.rmSync(file); ended = true; } } catch { /* none, or left: an old reader */ }
+    if (markerFile && fs.existsSync(markerFile)) try { fs.rmSync(markerFile); ended = true; } catch { /* left: the hold reads it */ }
+    if (ended) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
+    return `[mode] auto-run is OFF${envIs('AUTO_COMPACT') === '1' ? ' - auto-compact stays ON until /alfred-code:mode:auto-compact off' : ''}${ms.said(r)}`;
   }
-  if (flags.mode !== 'auto-compact') return '';   // scoring: guard-answer.js writes the switch and says the line
-  if (flags.compact) {
-    try {
-      const file = pre.compactFile(root, sid);
-      fs.mkdirSync(nodePath.dirname(file), { recursive: true });
-      fs.writeFileSync(file, `${flags.compact}\nat: ${new Date().toISOString()}\n`);
-    } catch (e) { return `[mode] auto-compact could not be saved: ${(e && e.code) || 'no data root'}`; }
-    ledgerRow({ mode: 'auto', kind: 'compact-flag', reason: `auto-compact ${flags.compact} for this session` });
-  }
-  const cause = pre.compactCause(input);   // the file second: off takes back only the session's own on
-  if (flags.compact === 'on') return '[mode] auto-compact is ON for this session: no fresh-session ask is made, the session compacts instead';
-  if (flags.compact === 'off') return cause ? `[mode] auto-compact stays ON: ${pre.COMPACT_SAID[cause]}` : '[mode] auto-compact is OFF for this session';
-  return cause === 'mode' ? '[mode] auto-compact is ON for this session' : cause ? `[mode] auto-compact is ON: ${pre.COMPACT_SAID[cause]}` : '[mode] auto-compact is OFF for this session';
+  if (held && held !== 'own' && flags.mode === 'auto-run')   // a 1 nobody vouches for is said, never taken
+    return `[mode] auto-run is OFF: the file holds it, but ${ms.WHY[held === 'tracked' ? held : 'unvouched']} - asks stay with you`;
+  if (!r) return `[mode] ${flags.mode} is ${(flags.mode === 'auto-run' ? pre.autoRunFor : pre.compactCause)(input, undefined, flags) ? 'ON' : 'OFF'}`;
+  ledgerRow({ mode: 'auto', kind: 'compact-flag', reason: `auto-compact ${flags.compact}` });
+  const allOff = ['FOR_1M', 'FOR_300K', 'FOR_200K', 'DEFAULT'].every((k) => envIs(`CONTEXT_WINDOW_${k}`) === '0');
+  if (flags.compact === 'off') return '[mode] auto-compact is OFF: fresh-session asks are back. From the next session Claude Code no longer compacts'
+    + ` by itself here - /compact still works${allOff ? ' - the fresh-session offer is off here too, so nothing else relieves a full context' : ''}`
+    + ms.said(r);
+  const id = (() => { try { return fresh.sessionModelId(); } catch { return null; } })();   // no engine: its own point
+  return `[mode] auto-compact is ON: no fresh-session ask is made. From the next session Claude Code compacts at ${
+    id && r.windows[id] ? `${Math.round(r.windows[id] / 1000)}k on ${id}` : 'its own point'}${ms.said(r)}`;
 }
 function modePrompt() {
   const sid = String(payload.session_id || '');
@@ -724,11 +732,11 @@ function modePrompt() {
   try { pre = require('./hook-prelude.js'); } catch { return false; }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const markerFile = pre.runMarkerFile(root, sid);
-  if (markerFile) for (const prefix of ['AUTO-RUN-', 'AUTO-TAKEN-', 'AUTO-SAID-', 'AUTO-COMPACT-']) pre.sweepStale(nodePath.dirname(markerFile), prefix);
+  if (markerFile) for (const prefix of ['AUTO-RUN-', 'AUTO-TAKEN-', 'AUTO-SAID-']) pre.sweepStale(nodePath.dirname(markerFile), prefix);
   const flags = pre.modeFlags(prompt);
   let stamp = null;
   try { stamp = pre.approvalStamp({ ...payload, cwd: root }); } catch { stamp = null; }
-  const lines = flags.mode ? [modeCommand(pre, flags, root, sid, stamp, markerFile)].filter(Boolean) : [];
+  const lines = flags.mode ? [modeCommand(pre, flags, root, stamp, markerFile)].filter(Boolean) : [];
   // a retired flag: the parser strips a flow command's leading run into `old`, and one typed with no command before
   // it is the prompt's first word. Each gets the pointer; with auto-run off for this prompt the run is said attended,
   // which outranks an older copied skill body that still reads the flag; with it on, a retired off flag is told it

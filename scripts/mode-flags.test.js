@@ -130,25 +130,31 @@ test('autoRunRefusal: one reason per refused start, empty otherwise', () => {
     fs.mkdirSync(path.dirname(stamp), { recursive: true });
     fs.writeFileSync(stamp, 'AUTO - "/alfred-code:mode:auto-run on"\nsession: other-session-1234\nskill: alfred-code:mode:auto-run\n');
     fs.writeFileSync(path.join(path.dirname(other.transcript), 'other-session-1234.jsonl'), '');
-    const why = autoRunRefusal(other.input, other.env, on);
+    // D4: the mode command line is the variable now - another session's stamped run refuses only a typed request
+    assert.strictEqual(autoRunRefusal(other.input, other.env, on), '', 'the mode command is never refused for another session');
+    const req = modeFlags('/mode-auto-run fix X');
+    const why = autoRunRefusal(other.input, other.env, req);
     assert.match(why, /another session \(other-se\)/);
     assert.match(why, /\.alfred\/state\/approvals\/APPROVAL/);
     assert.match(why, /it ends with \/alfred-code:mode:auto-run off there/);
     assert.doesNotMatch(why, /--mode-/);
     const idle = new Date(Date.now() - 11 * 60 * 1000);
     fs.utimesSync(path.join(path.dirname(other.transcript), 'other-session-1234.jsonl'), idle, idle);
-    assert.strictEqual(autoRunRefusal(other.input, other.env, on), '', 'an idle session past 10 minutes is no live run');
+    assert.strictEqual(autoRunRefusal(other.input, other.env, req), '', 'an idle session past 10 minutes is no live run');
 
     const clean = sandbox();
     assert.strictEqual(autoRunRefusal(clean.input, clean.env, on), '');
 });
 
-test('autoRunRefusal: a read-only data root refuses the start', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () => {
+test('autoRunRefusal: a read-only data root refuses a typed request, never the mode command', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () => {
     const ro = sandbox();
     const data = path.join(ro.root, '.alfred');
     fs.mkdirSync(data);
     fs.chmodSync(data, 0o500);
-    try { assert.strictEqual(autoRunRefusal(ro.input, ro.env, modeFlags('/alfred-code:mode:auto-run on')), 'the data root cannot be written'); }
+    try {
+        assert.strictEqual(autoRunRefusal(ro.input, ro.env, modeFlags('/mode-auto-run fix X')), 'the data root cannot be written');
+        assert.strictEqual(autoRunRefusal(ro.input, ro.env, modeFlags('/alfred-code:mode:auto-run on')), '', 'the mode command writes the mode file, not the data root');
+    }
     finally { fs.chmodSync(data, 0o700); }
 });
 
@@ -201,53 +207,38 @@ test('run marker: runMarkerSkill picks the first flow name past mode-output-scor
     assert.notStrictEqual(second, fs.readFileSync(file, 'utf8'));
 });
 
-// Why no fresh-session ask is made (the mode-commands spec, section 4): the project's variable, this session's live
-// auto-run, the session's own auto-compact switch - in that order; the typed line first, the file second.
-test('compactCause: project, auto-run, mode, in that order; garbage adds none', () => {
-    const { compactCause, compactFile, COMPACT_SAID } = require('../stack/hooks/hook-prelude.js');
-    assert.deepStrictEqual(COMPACT_SAID, { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on', mode: '/alfred-code:mode:auto-compact on' });
+// Why no fresh-session ask is made (mode commands v2, stage 3): the project's variable (the mode file's, through the
+// loader), then this session's auto-run - the typed line first. The session switch file and the typed compact word are gone.
+test('compactCause: project, then auto-run; no session file and no typed compact word', () => {
+    const P = require('../stack/hooks/hook-prelude.js');
+    const { compactCause, COMPACT_SAID } = P;
+    assert.deepStrictEqual(COMPACT_SAID, { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on' });
+    assert.strictEqual(P.compactFile, undefined);
     const { root } = sandbox();
     const input = { session_id: 's1', cwd: root };
     const env = { CLAUDE_PROJECT_DIR: root };
-    const file = compactFile(root, 's1', env);
-    assert.strictEqual(file, path.join(root, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-s1'));
-    assert.strictEqual(compactFile(root, '../x', env), path.join(root, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-.._x'));
-    assert.strictEqual(compactFile(root, '', env), null);
-    const write = (text) => { fs.rmSync(file, { recursive: true, force: true }); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
     assert.strictEqual(compactCause(input, env), '', 'nothing set');
-    for (const [text, want] of [['on\nat: 2026-11-12T00:00:00.000Z\n', 'mode'], ['on', 'mode'], ['on\r\n', 'mode'], ['off\nat: x\n', ''], ['', ''], ['maybe\n', ''], ['ON\n', ''], ['at: x\non\n', '']])
-    {
-        write(text);
-        assert.strictEqual(compactCause(input, env), want, JSON.stringify(text));
-    }
-    fs.rmSync(file);
-    fs.mkdirSync(file);
-    assert.strictEqual(compactCause(input, env), '', 'a folder is no switch');
-    fs.rmSync(file, { recursive: true });
-    // the typed line first: this prompt's own on / off, before the writer's file is there
-    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-compact on')), 'mode', 'on, no file yet');
-    assert.strictEqual(compactCause(input, { ...env, ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' }, modeFlags('/alfred-code:mode:auto-compact on')), '', 'the writer is off: nothing would be stored');
-    write('on\n');
-    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-compact off')), '', 'off, the file still on');
-    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-compact')), 'mode', 'the bare command reads the file');
-    assert.strictEqual(compactCause(input, env, modeFlags('/task-solve X')), 'mode');
-    assert.strictEqual(compactCause({ session_id: 's2', cwd: root }, env), '', 'another session\'s switch');
-    // auto-run outranks the session's switch, the project's variable outranks both
+    const left = path.join(root, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-s1');
+    fs.mkdirSync(path.dirname(left), { recursive: true });
+    fs.writeFileSync(left, 'on\n');
+    assert.strictEqual(compactCause(input, env), '', 'a left-over v1 session file adds no cause');
+    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-compact on')), '', 'a typed on alone adds none: the variable is the state');
     const stamp = path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL');
     fs.mkdirSync(path.dirname(stamp), { recursive: true });
     fs.writeFileSync(stamp, 'AUTO - "/alfred-code:mode:auto-run on"\nsession: s1\n');
     assert.strictEqual(compactCause(input, env), 'auto-run');
-    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-compact off')), 'auto-run', 'off takes back only the session\'s own on');
-    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-run off')), 'mode', 'this prompt ends auto-run; the switch still holds');
-    fs.rmSync(file);
+    assert.strictEqual(compactCause(input, env, modeFlags('/alfred-code:mode:auto-run off')), '', 'this prompt ends auto-run');
     assert.strictEqual(compactCause({ session_id: 's2', cwd: root }, env), '', 'a stamp naming another session');
-    assert.strictEqual(compactCause({ session_id: 's2', cwd: root }, env, modeFlags('/alfred-code:mode:auto-run on')), 'auto-run', 'this prompt starts auto-run for s2 over an idle stamp');
+    assert.strictEqual(compactCause({ session_id: 's2', cwd: root }, env, modeFlags('/alfred-code:mode:auto-run on')), 'auto-run', 'this prompt starts auto-run');
     assert.strictEqual(compactCause(input, { ...env, ALFRED_CODE_AUTO_COMPACT: '1' }), 'project');
     assert.strictEqual(compactCause(input, { ...env, ALFRED_CODE_AUTO_COMPACT: ' 1 ' }), 'project');
     assert.strictEqual(compactCause(input, { ...env, ALFRED_CODE_AUTO_COMPACT: '0' }), 'auto-run');
     fs.rmSync(stamp);
     assert.strictEqual(compactCause(input, { ...env, ALFRED_CODE_AUTO_COMPACT: 'true' }), '', 'only 1 is the project switch');
     for (const bad of [null, undefined, 42, {}]) assert.strictEqual(compactCause(bad, env), '', `${String(bad)} never throws`);
-    write('on\n');
-    assert.strictEqual(compactCause(input, {}), 'mode', 'the payload\'s cwd is the root when the env names none');
+    // the standing variable (the mode file's ALFRED_CODE_AUTO_RUN=1, own trust) is auto-run for every named session
+    const held = sandbox().root;   // a root of its own: the standing reading is kept per root for the process
+    fs.mkdirSync(path.join(held, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(held, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    assert.strictEqual(compactCause({ session_id: 's3', cwd: held }, { CLAUDE_PROJECT_DIR: held }), 'auto-run');
 });

@@ -382,7 +382,7 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
 // decides; the scoring command writes the session's SCORING- file, which outranks ALFRED_CODE_SCORING, and gets its
 // `[mode]` line - the first line of the context, since the command file tells the model to say a line starting so. A
 // seat's prompt and a missing prelude carry no line. Each other line rides after the budget with one leading space.
-const AUTO_LINE = 'auto-run: on for this session - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it';
+const AUTO_LINE = 'auto-run: on - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it';
 const SCORING_UNUSABLE = { absent: 'the scoring skill is not installed in this project', off: 'the scoring skill is switched off in this project' };
 function scoringPhrases(outputs) {
   const p = outputs.map((o) => pre.SCORING_PHRASES[o]);
@@ -420,32 +420,34 @@ function autoRunNow(flags) {
     return Boolean(stamp && stamp.live && stamp.session && stamp.session === String(payload.session_id || '') && /^AUTO\b/.test(stamp.first));
   } catch { return false; }
 }
-// The scoring for this prompt: the state, then the typed switch written where the scoring can be switched (a command
-// where it cannot be used writes nothing); a switch the file cannot take still counts here.
+// The scoring for this prompt: the state the loader's variables give, then the typed switch saved to the mode file (mode
+// commands v2) where the scoring can be switched. A level outside 60 to 100 or a failed save changes nothing (`said`).
 function scoringNow(flags, root, sid) {
   try {
     const nodePath = require('path');
-    // State hygiene (R11): the SCORING- files and the draft folders, each at most once a day per dir.
+    // State hygiene (R11): the SCORING- files (v1's switch files among them) and the draft folders, each at most once a day per dir.
     try {
-      const sessions = nodePath.dirname(pre.scoringFile(root, 'x', process.env));
+      const sessions = nodePath.dirname(pre.scoringHeldFile(root, 'x', process.env));
       pre.sweepStale(sessions, 'SCORING-');
       pre.sweepScoringFolders(nodePath.join(sessions, 'scoring'));
     } catch { /* no layout - nothing of ours to sweep */ }
     const s = pre.scoringState(root, sid, process.env);
-    if (s.file === 'garbage') ledgerRow({ mode: 'probe', kind: 'scoring-file-garbage', reason: 'probe: the session\'s scoring file holds neither on nor off - read as absent' });
     noteIgnored(root, sid, s.ignored);
     const flag = flags && s.usable && s.copy !== 'user-invocable-only' ? flags.scoring : null;
-    const file = flag && sid ? pre.scoringFile(root, sid, process.env) : null;
-    if (file) {
-      try {
-        fs.mkdirSync(nodePath.dirname(file), { recursive: true });
-        fs.writeFileSync(file, `${flag}\nat: ${new Date().toISOString()}\n`);
-        if (s.file !== flag) ledgerRow({ mode: 'probe', kind: 'scoring-flag', reason: `probe: the scoring switched ${flag} for this session`, detail: { state: flag } });
-      } catch { /* a data root that cannot be written - the switch holds for this prompt only */ }
-    }
-    if (flag) Object.assign(s, { on: flag === 'on', source: 'flag' });
-    return { ...s, flag };
+    if (!flag) return { ...s, flag };
+    const level = flags.level ? Number(flags.level) : null;   // stored canonical: 080 is 80
+    if (level !== null && (level < 60 || level > 100)) return { ...s, flag: null, said: '[mode] the level is a whole number from 60 to 100 - nothing changed' };
+    const ms = require('./mode-settings.js');
+    const r = ms.writeModes(root, { ALFRED_CODE_SCORING: flag === 'on' ? '1' : '0', ...(level ? { ALFRED_CODE_SCORING_LEVEL: String(level) } : {}) });
+    if (r.why) return { ...s, flag: null, said: `[mode] scoring could not be saved: ${ms.WHY[r.why]} - nothing changed` };
+    if (r.changed) ledgerRow({ mode: 'probe', kind: 'scoring-flag', reason: `probe: scoring ${flag} saved to the mode file`, detail: { state: flag, level } });
+    return { ...s, on: flag === 'on', level: level || s.level, flag, saved: ms.said(r) };
   } catch { return null; }
+}
+// ' (at 400k)' when a settings file names this session's model's compaction window (the engine's own reader), else ''.
+function compactAt() {
+  try { const fresh = require('./fresh-session.js'); fresh.use(payload); const c = fresh.configuredCompactWindow();
+    return c ? ` (at ${Math.round(c.n / 1000)}k)` : ''; } catch { return ''; }
 }
 // The modes for this payload, once: `prompt` is the typed text (null on the compaction route - no typed line, no stack,
 // no ON line). Returns the context lines, the scoring command's `[mode]` line and the ON line's text ('' when no mode is on).
@@ -465,7 +467,7 @@ function modesText(prompt) {
     const s = scoringNow(flags, root, sid);
     const lines = [];
     if (s && s.usable) {
-      if (s.flag === 'off') lines.push('scoring: off for this session');
+      if (s.flag === 'off') lines.push('scoring: off');
       else if (s.on) lines.push(scoringOnLine(s, auto));
       // a mode line switches and starts nothing, so it is no stack (spec section 4, round-0 M7)
       if (prompt !== null && pre.stackNamed(prompt) && !(parsed && parsed.flagOnly)) {
@@ -474,12 +476,13 @@ function modesText(prompt) {
     }
     if (auto) lines.push(AUTO_LINE);
     const scoring = Boolean(s && s.usable && s.on);
-    // auto-compact is a mode someone turned on - auto-run, or the session's own switch - never the project's variable
-    const compact = auto || (typeof pre.compactCause === 'function' && pre.compactCause(payload, { ...process.env, ALFRED_CODE_AUTO_COMPACT: '' }, flags) === 'mode');
-    const on = [auto ? 'auto-run' : '', scoring ? `scoring (level ${s.level})` : '', compact ? 'auto-compact' : ''].filter(Boolean);
+    // auto-compact: auto-run, or the variable - this prompt's typed on or off first, while the hook that saves it runs
+    const typed = flags && flags.compact && !pre.hookDisabled('guard-fresh-session-start', process.env) ? flags.compact : '';
+    const compact = auto || (typed ? typed === 'on' : Boolean(typeof pre.compactCause === 'function' && pre.compactCause(payload, process.env, flags)));
+    const on = [auto ? 'auto-run' : '', scoring ? `scoring (level ${s.level})` : '', compact ? `auto-compact${compactAt()}` : ''].filter(Boolean);
     const line = !(parsed && parsed.mode === 'scoring') || parsed.extra || !s ? ''
       : !s.usable || s.copy === 'user-invocable-only' ? `[mode] scoring is not available here: ${SCORING_UNUSABLE[s.copy] || (s.usable ? 'the scoring skill is user-invocable-only here' : 'a scoring hook is switched off')}`
-        : `[mode] scoring is ${scoring ? `ON for this session (level ${s.level})` : 'OFF for this session'}`;
+        : s.said || `[mode] scoring is ${scoring ? `ON (level ${s.level})` : `OFF${s.flag === 'off' ? ` (level ${s.level} kept)` : ''}`}${s.saved || ''}`;
     return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '', line, autoRun: auto, scoring: s };
   } catch { return none; }
 }

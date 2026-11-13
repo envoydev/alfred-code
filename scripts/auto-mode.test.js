@@ -68,8 +68,8 @@ const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/alf
 const marker = (p, sid) => path.join(p.root, '.alfred', 'state', 'sessions', `AUTO-RUN-${sid}`);
 const openRun = (p, sid, skill = 'loop-code-quality') => { fs.mkdirSync(path.dirname(marker(p, sid)), { recursive: true });
     fs.writeFileSync(marker(p, sid), `skill: ${skill}\nprompt: 0123456789ab\nat: ${new Date().toISOString()}\n`); };
-const sub = (p, sid, prompt, t) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt },
-    { CLAUDE_PROJECT_DIR: p.root });
+const sub = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt, ...extra },
+    { CLAUDE_PROJECT_DIR: p.root, ...(p.env || {}), ...env });
 
 // ---------------------------------------------------------------------------------------------
 // the stamp
@@ -131,8 +131,8 @@ test('auto-run start: after the mode command a typed flow command opens the run 
     assert.match(context(plain), /Do NOT start the run yet/, 'the offer, without auto-run');
     assert.ok(!fs.existsSync(p.gate), 'and no stamp');
     autoOn(p, 's2', big);
-    const before = fs.readFileSync(p.gate, 'utf8');
-    assert.match(before, /^AUTO - "\/alfred-code:mode:auto-run on"\nsession: s2\nskill: alfred-code:mode:auto-run\nat: \d{4}-/, 'the mode command writes its stamp to state/approvals/APPROVAL');
+    assert.ok(!fs.existsSync(p.gate), 'the mode command writes the variable, never a stamp');
+    const before = rawMode(p);
     const auto = expand(p, 's2', '/loop-code-quality src/', big);
     assert.strictEqual(auto.status, 0);
     const said = context(auto);
@@ -145,30 +145,16 @@ test('auto-run start: after the mode command a typed flow command opens the run 
     assert.doesNotMatch(said, /delete \.alfred\/state\/approvals\/APPROVAL/, 'the close never deletes the stamp');
     assert.match(fs.readFileSync(marker(p, 's2'), 'utf8'), /^skill: loop-code-quality\nprompt: [0-9a-f]{12}\nat: \d{4}-/, 'and the run marker');
     assert.ok(!fs.existsSync(p.legacy), 'and nothing to the legacy flow/');
-    assert.ok(rows(p, 's2').some((r) => r.mode === 'auto' && r.kind === 'auto-start' && r.detail.kept === true), 'the run rides the stamp: a kept auto-start row');
-    // a second flow in the same session rides the live stamp: its words and time stay
+    // a second flow in the same session rides the variable: the mode file stays as it was
     assert.match(context(expand(p, 's2', '/task-solve fix the cache', big)), /auto-run is ON for this \/task-solve run/);
-    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the live stamp is kept');
-    // another session's stamp is never overwritten while that session is still RUNNING (its own transcript, beside this
-    // one, written in the last 10 minutes): the mode command says why and how to take over, and the run asks as usual
+    assert.strictEqual(rawMode(p), before, 'the mode file is kept');
+    // every session in the checkout runs under it, another session's live transcript beside this one included (D4)
     const live = path.join(path.dirname(big), 's2.jsonl');
     fs.writeFileSync(live, '{}\n');
-    const refused = modeLine(p, 's3', `${AUTO_CMD} on`, big);
-    assert.match(refused, /^\[mode\] auto-run did not start: another session \(s2\) is running a stamped run in this checkout right now, and \.alfred\/state\/approvals\/APPROVAL is its approval - it ends with \/alfred-code:mode:auto-run off there, or delete \.alfred\/state\/approvals\/APPROVAL to take over/);
-    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the running session\'s stamp is left as it is');
-    assert.ok(rows(p, 's3').some((r) => r.kind === 'auto-start-refused'), 'one refused row');
-    assert.doesNotMatch(context(expand(p, 's3', '/task-solve-cross', big)), /auto-run is ON/);
-    assert.ok(!fs.existsSync(marker(p, 's3')), 'and no marker');
-    // the session went quiet: the new start takes over, and the stamp says whose it was
-    const quiet = new Date(Date.now() - 11 * 60 * 1000);
-    fs.utimesSync(live, quiet, quiet);
-    autoOn(p, 's3', big);
-    assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\nskill: alfred-code:mode:auto-run\nat: [^\n]+\n[\s\S]*taken-from: s2\n/);
+    assert.ok(modeLine(p, 's3', `${AUTO_CMD} on`, big).startsWith(AUTO_ON_LINE), 'the mode command is never refused for another session');
+    assert.ok(!rows(p, 's3').some((r) => r.kind === 'auto-start-refused'), 'no refused row');
     assert.match(context(expand(p, 's3', '/task-solve-cross', big)), /auto-run is ON for this \/task-solve-cross run/);
-    // no transcript for the stamp's session at all (another machine's, or cleared): no live run, replaced
-    fs.writeFileSync(p.gate, 'AUTO - "/alfred-code:mode:auto-run on"\nsession: gone-session\nskill: alfred-code:mode:auto-run\nat: 2026-10-20T00:00:00Z\n');
-    autoOn(p, 's4', big);
-    assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s4\n[\s\S]*\ntaken-from: gone-session\n/);
+    assert.ok(!fs.existsSync(p.gate), 'and still no stamp');
     fs.rmSync(live, { force: true });
 });
 
@@ -215,17 +201,18 @@ test('mode start: the mode command writes the stamp; each typed family command u
         const p = project();
         const both = (prompt) => { if (submitFirst) sub(p, 'm1', prompt, t); const r = expand(p, 'm1', prompt, t); if (!submitFirst) sub(p, 'm1', prompt, t); return r; };
         autoOn(p, 'm1', t);
-        const stamp = fs.readFileSync(p.gate, 'utf8');
-        assert.match(stamp, /^AUTO - "\/alfred-code:mode:auto-run on"\nsession: m1\nskill: alfred-code:mode:auto-run\n/);
+        const stamp = rawMode(p);   // v2: the mode file holds the mode, no stamp is written
+        assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_RUN, '1');
+        assert.ok(!fs.existsSync(p.gate), 'no stamp');
         assert.ok(!fs.existsSync(marker(p, 'm1')), 'the mode command opens no run');
         assert.match(context(both('/task-solve fix A')), /^auto-run is ON for this \/task-solve run/);
-        assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), stamp, 'the stamp is kept');
+        assert.strictEqual(rawMode(p), stamp, 'the mode file is kept');
         const first = fs.readFileSync(marker(p, 'm1'), 'utf8');
         assert.match(first, /^skill: task-solve\nprompt: [0-9a-f]{12}\n/);
         const b = both('/capture-awareness');
         assert.match(context(b), /^auto-run is ON for this \/capture-awareness run/, 'the next family command under the mode gets the contract');
         assert.match(bannerOf(b)[0], /^\*\*Auto-run: ON\*\* for \/capture-awareness /);
-        assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), stamp, 'the stamp is kept');
+        assert.strictEqual(rawMode(p), stamp, 'the mode file is kept');
         const second = fs.readFileSync(marker(p, 'm1'), 'utf8');
         assert.match(second, /^skill: capture-awareness\n/, 'a new marker');
         assert.notStrictEqual(second.split('\n')[1], first.split('\n')[1], 'for the new prompt');
@@ -251,11 +238,11 @@ test('mode prompt: a plain prompt or "stop auto-mode" keeps the stamp; the off c
     }
     assert.ok(!rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'no auto-end row');
     sub(p, 'e2', `${AUTO_CMD} off`, t);
-    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'e1')), 'another session\'s off leaves this session\'s files');
+    assert.ok(!fs.existsSync(p.gate) && fs.existsSync(marker(p, 'e1')), 'D7: any session\'s off ends the checkout\'s stamp; this session\'s run marker stays');
     const pr = project();
     autoStamp(pr, 'e3');
     openRun(pr, 'e3');
-    assert.strictEqual(modeLine(pr, 'e3', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.strictEqual(modeLine(pr, 'e3', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF');
     assert.ok(!fs.existsSync(pr.gate) && !fs.existsSync(marker(pr, 'e3')), 'both files deleted');
     assert.strictEqual(rows(pr, 'e3').filter((r) => r.kind === 'auto-end').length, 1, 'one auto-end row');
     // AC4: after the off command the next asks wait
@@ -335,7 +322,8 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
     assert.deepStrictEqual(bannerOf(on), [
         '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/alfred-code:mode:auto-run off`.',
-        "**Context:** no fresh-session hand-off - the session auto-compacts at Claude Code's own point in its 1M context window (claude-opus-5-5) and the run goes on from the summary and its state files.",
+        // v2: the command's save seeds the model's window (ALFRED_CODE_AUTO_COMPACT=1 with it), so the banner names it
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.',
     ]);
     // the second flow of the same run rides the live stamp, and says so too
     assert.match(bannerOf(typedRun(p, 'b1', '/task-solve fix the cache', t))[0], /^\*\*Auto-run: ON\*\* for \/task-solve /);
@@ -1042,7 +1030,7 @@ test('mode-auto-run: the model never calls it, and a typed /mode-auto-run mid-ru
     sub(q3, 'tb3', '/mode-auto-run', t);
     assert.ok(fs.existsSync(q3.gate), 'an empty /mode-auto-run ends nothing');
     assert.ok(!rows(q3, 'tb3').some((x) => x.kind === 'auto-end'), 'no auto-end row');
-    assert.strictEqual(modeLine(q3, 'tb3', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.strictEqual(modeLine(q3, 'tb3', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF');
     assert.ok(!fs.existsSync(q3.gate) && !fs.existsSync(marker(q3, 'tb3')), 'ended: the off command');
     assert.ok(rows(q3, 'tb3').some((x) => x.kind === 'auto-end'), 'an auto-end row');
 });
@@ -1084,16 +1072,17 @@ test('mode takeover: another session idle 10 minutes is replaced with taken-from
     fs.writeFileSync(live, '{}\n');
     autoStamp(p, 'tk-old-session');
     assert.strictEqual(autoStampLive({ session_id: 'tk-new-session', transcript_path: t }, env), false, 'another session\'s stamp is not live here');
-    assert.match(modeLine(p, 'tk-new-session', `${AUTO_CMD} on`, t), /^\[mode\] auto-run did not start: another session \(tk-old-s\) is running/);
+    // v2: the mode command writes the variable and takes nothing over; a typed /mode-auto-run <request> still writes a stamp
+    assert.match(context(typedRun(p, 'tk-new-session', '/mode-auto-run fix X', t)), /another session \(tk-old-s\) is running/);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: tk-old-session\n/, 'kept while it runs');
     const quiet = new Date(Date.now() - 11 * 60 * 1000);
     fs.utimesSync(live, quiet, quiet);
-    autoOn(p, 'tk-new-session', t);
+    assert.match(context(typedRun(p, 'tk-new-session', '/mode-auto-run fix X', t)), /^auto-run is ON for this \/mode-auto-run run/);
     assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: tk-new-session\n[\s\S]*\ntaken-from: tk-old-session\n/);
     const takeovers = rows(p, 'tk-new-session').filter((r) => r.kind === 'auto-takeover');
     assert.strictEqual(takeovers.length, 1, 'one auto-takeover row');
     assert.match(takeovers[0].reason, /tk-new-s.*tk-old-s|tk-old-s.*tk-new-s/, 'naming both sessions');
-    const notice = 'auto-run is OFF here - session tk-new-s took it; `/alfred-code:mode:auto-run on` takes it back';
+    const notice = 'auto-run is OFF here - session tk-new-s took it; `/alfred-code:mode:auto-run on` takes it back';   // the v1 wording, unchanged
     assert.ok(context(sub(p, 'tk-old-session', 'carry on', t)).includes(notice), 'the losing session is told');
     assert.ok(!context(sub(p, 'tk-old-session', 'carry on', t)).includes('took it'), 'once');
     assert.ok(!context(sub(p, 'tk-new-session', 'carry on', t)).includes('took it'), 'never the winner');
@@ -1373,8 +1362,8 @@ const AUTO_CMD = '/alfred-code:mode:auto-run';
 const COMPACT_CMD = '/alfred-code:mode:auto-compact';
 const modeLine = (p, sid, line, t, env = {}) => context(run('guard-fresh-session-start.js',
     { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: line }, { CLAUDE_PROJECT_DIR: p.root, ...env }));
-const AUTO_ON_LINE = '[mode] auto-run is ON for this session: each ask takes its (Recommended) option, and no fresh-session ask is made';
-const autoOn = (p, sid, t, env) => assert.strictEqual(modeLine(p, sid, `${AUTO_CMD} on`, t, env), AUTO_ON_LINE);
+const AUTO_ON_LINE = '[mode] auto-run is ON until /alfred-code:mode:auto-run off, new sessions included: each ask takes its (Recommended) option. auto-compact is ON with it';
+const autoOn = (p, sid, t, env) => { const said = modeLine(p, sid, `${AUTO_CMD} on`, t, env); assert.ok(said.startsWith(AUTO_ON_LINE), said); };   // a window note may follow
 const TYPE_ALONE = '[mode] type the command alone on its line, then on or off';
 const compactSwitch = (p, sid) => path.join(p.root, '.alfred', 'state', 'sessions', `AUTO-COMPACT-${sid}`);
 // A transcript with no row that turns auto-run on: the stamp a mode command writes is proven by its own typed row alone.
@@ -1389,65 +1378,62 @@ function bareTranscript()
 }
 const typedRow = (t, text) => fs.appendFileSync(t, `${JSON.stringify({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content: text } })}\n`);
 
-test('mode command: auto-run on writes the session\'s stamp, opens no run marker, says the ON line', () =>
+test('mode command: auto-run on writes the variable, no stamp, opens no run marker, says the ON line', () =>
 {
     const p = project();
     const t = bareTranscript();
-    const size = fs.statSync(t).size;
     assert.strictEqual(modeLine(p, 'm1', `${AUTO_CMD} on`, t), AUTO_ON_LINE);
-    const stamp = fs.readFileSync(p.gate, 'utf8');
-    assert.match(stamp, /^AUTO - "\/alfred-code:mode:auto-run on"\nsession: m1\nskill: alfred-code:mode:auto-run\nat: \d{4}-[\d:.TZ-]+\n/);
-    assert.match(stamp, new RegExp(`^transcript-size: ${size}$`, 'm'));
+    assert.ok(!fs.existsSync(p.gate), 'no stamp: the variable is the mode');
+    assert.deepStrictEqual(modeOf(p).env, { ALFRED_CODE_AUTO_RUN: '1', ALFRED_CODE_AUTO_COMPACT: '1' });
     assert.ok(!fs.existsSync(marker(p, 'm1')), 'no run marker: the next typed flow command opens it');
     assert.strictEqual(rows(p, 'm1').filter((r) => r.kind === 'auto-start').length, 1);
     const env = { CLAUDE_PROJECT_DIR: p.root };
-    assert.strictEqual(approvalStamp({ session_id: 'm1', transcript_path: t }, env).live, false, 'no typed row yet proves it');
-    typedRow(t, '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>');
-    assert.strictEqual(approvalStamp({ session_id: 'm1', transcript_path: t }, env).live, true, 'live once the typed row is on disk');
-    assert.strictEqual(approvalStamp({ session_id: 'm2', transcript_path: t }, env).live, false, 'never for another session');
+    assert.strictEqual(approvalStamp({ session_id: 'm1', transcript_path: t }, env).live, true, 'the standing variable needs no typed row');
+    assert.strictEqual(approvalStamp({ session_id: 'm2', transcript_path: t }, env).live, true, 'and holds for every named session');
 });
 
-test('mode command: the next typed flow command runs under the stamp and opens the marker', () =>
+test('mode command: the next typed flow command runs under the variable and opens the marker', () =>
 {
     const p = project();
     const t = bareTranscript();
     modeLine(p, 'm3', `${AUTO_CMD} on`, t);
-    typedRow(t, `${AUTO_CMD} on`);
     const x = expand(p, 'm3', '/task-solve fix X', t);
     assert.match(context(x), /^auto-run is ON for this \/task-solve run/);
     assert.match(context(x), /only the user's \/alfred-code:mode:auto-run off ends auto-run/);
     assert.match(fs.readFileSync(marker(p, 'm3'), 'utf8'), /^skill: task-solve$/m);
-    assert.match(fs.readFileSync(p.gate, 'utf8'), /^AUTO - "\/alfred-code:mode:auto-run on"/, 'the stamp keeps the mode command\'s words');
+    assert.ok(!fs.existsSync(p.gate), 'the run writes no stamp');
 });
 
-test('mode command: auto-run on typed again keeps the stamp and an open run marker', () =>
+test('mode command: auto-run on typed again changes no byte and keeps an open run marker', () =>
 {
     const p = project();
     const t = bareTranscript();
     modeLine(p, 'm4', `${AUTO_CMD} on`, t);
-    typedRow(t, `${AUTO_CMD} on`);
     expand(p, 'm4', '/task-solve fix X', t);
     const old = (Date.now() - 3600 * 1000) / 1000;
-    fs.utimesSync(p.gate, old, old);
+    fs.utimesSync(modePath(p), old, old);
     fs.utimesSync(marker(p, 'm4'), old, old);
-    const before = [fs.statSync(p.gate).mtimeMs, fs.statSync(marker(p, 'm4')).mtimeMs, fs.readFileSync(p.gate, 'utf8')];
+    const before = [fs.statSync(modePath(p)).mtimeMs, fs.statSync(marker(p, 'm4')).mtimeMs, rawMode(p)];
     assert.strictEqual(modeLine(p, 'm4', `${AUTO_CMD} on`, t), AUTO_ON_LINE);
-    assert.deepStrictEqual([fs.statSync(p.gate).mtimeMs, fs.statSync(marker(p, 'm4')).mtimeMs, fs.readFileSync(p.gate, 'utf8')], before);
-    assert.strictEqual(rows(p, 'm4').filter((r) => r.kind === 'auto-start' && r.detail && r.detail.kept).length >= 1, true, 'the kept start is a row');
+    assert.deepStrictEqual([fs.statSync(modePath(p)).mtimeMs, fs.statSync(marker(p, 'm4')).mtimeMs, rawMode(p)], before);
+    assert.strictEqual(rows(p, 'm4').filter((r) => r.kind === 'auto-start').length >= 2, true, 'each start is a row');
 });
 
-test('mode command: auto-run off deletes the stamp and the marker', () =>
+test('mode command: auto-run off writes 0, deletes the checkout\'s hook-written stamp and this session\'s marker (D7)', () =>
 {
     const p = project();
     const t = transcript();
     autoStamp(p, 'm5');
     openRun(p, 'm5');
-    assert.strictEqual(modeLine(p, 'm6', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
-    assert.ok(fs.existsSync(p.gate) && fs.existsSync(marker(p, 'm5')), 'another session\'s off leaves this session\'s files');
-    assert.strictEqual(modeLine(p, 'm5', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session');
+    assert.strictEqual(modeLine(p, 'm6', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF');
+    assert.ok(!fs.existsSync(p.gate) && fs.existsSync(marker(p, 'm5')), 'another session\'s off ends the stamp; the run marker is that session\'s');
+    assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_RUN, '0');
+    assert.strictEqual(rows(p, 'm6').filter((r) => r.kind === 'auto-end').length, 1, 'one auto-end row');
+    autoStamp(p, 'm5');
+    assert.strictEqual(modeLine(p, 'm5', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF');
     assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(marker(p, 'm5')), 'both files deleted');
     assert.strictEqual(rows(p, 'm5').filter((r) => r.kind === 'auto-end').length, 1, 'one auto-end row');
-    assert.strictEqual(modeLine(p, 'm5', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF for this session', 'typed again: the same line');
+    assert.strictEqual(modeLine(p, 'm5', `${AUTO_CMD} off`, t), '[mode] auto-run is OFF', 'typed again: the same line');
     assert.strictEqual(rows(p, 'm5').filter((r) => r.kind === 'auto-end').length, 1, 'and no second row');
     // a stamp written by hand (a solve flow's no-stops waiver, no session line) is no auto-run of this hook's
     const h = project();
@@ -1456,7 +1442,7 @@ test('mode command: auto-run off deletes the stamp and the marker', () =>
     assert.ok(fs.existsSync(h.gate), 'a hand-written stamp stays');
 });
 
-test('mode command: auto-run on is refused while another session\'s run is live', () =>
+test('mode command: auto-run on beside another session\'s live stamped run is not refused, and leaves that stamp (D4)', () =>
 {
     const p = project();
     const t = bareTranscript();
@@ -1464,55 +1450,53 @@ test('mode command: auto-run on is refused while another session\'s run is live'
     autoStamp(p, other);
     fs.writeFileSync(path.join(path.dirname(t), `${other}.jsonl`), '');
     const before = fs.readFileSync(p.gate, 'utf8');
-    const said = modeLine(p, 'm8', `${AUTO_CMD} on`, t);
-    assert.match(said, new RegExp(`^\\[mode\\] auto-run did not start: another session \\(${other.slice(0, 8)}\\) is running a stamped run`));
-    assert.match(said, /it ends with \/alfred-code:mode:auto-run off there/);
+    assert.strictEqual(modeLine(p, 'm8', `${AUTO_CMD} on`, t), AUTO_ON_LINE);
     assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the other session\'s stamp stands');
-    assert.strictEqual(rows(p, 'm8').filter((r) => r.kind === 'auto-start-refused').length, 1);
-    assert.ok(!rows(p, 'm8').some((r) => r.kind === 'auto-start'));
+    assert.strictEqual(rows(p, 'm8').filter((r) => r.kind === 'auto-start').length, 1);
+    assert.ok(!rows(p, 'm8').some((r) => r.kind === 'auto-start-refused'));
 });
 
-test('mode command: auto-compact on and off write the session\'s file', () =>
+test('mode command: auto-compact on and off write the mode file, never a session file', () =>
 {
     const p = project();
     const t = bareTranscript();
-    assert.strictEqual(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), '[mode] auto-compact is ON for this session: no fresh-session ask is made, the session compacts instead');
-    assert.match(fs.readFileSync(compactSwitch(p, 'c1'), 'utf8'), /^on\nat: \d{4}-[\d:.TZ-]+\n$/);
-    assert.strictEqual(modeLine(p, 'c1', `${COMPACT_CMD} off`, t), '[mode] auto-compact is OFF for this session');
-    assert.match(fs.readFileSync(compactSwitch(p, 'c1'), 'utf8'), /^off\nat: \d{4}-[\d:.TZ-]+\n$/);
-    assert.deepStrictEqual(rows(p, 'c1').filter((r) => r.kind === 'compact-flag').map((r) => r.reason), ['auto-compact on for this session', 'auto-compact off for this session']);
-    assert.ok(!fs.existsSync(p.gate), 'auto-compact writes no auto-run stamp');
+    assert.match(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), /^\[mode\] auto-compact is ON: no fresh-session ask is made\. From the next session Claude Code compacts at /);
+    assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '1');
+    assert.match(modeLine(p, 'c1', `${COMPACT_CMD} off`, t), /^\[mode\] auto-compact is OFF: fresh-session asks are back\./);
+    assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '0');
+    assert.deepStrictEqual(rows(p, 'c1').filter((r) => r.kind === 'compact-flag').map((r) => r.reason), ['auto-compact on', 'auto-compact off']);
+    assert.ok(!fs.existsSync(compactSwitch(p, 'c1')) && !fs.existsSync(p.gate), 'no session file, no auto-run stamp');
 });
 
-test('mode command: auto-compact off under the project variable, and under a live auto-run, says it stays on and why', () =>
+test('mode command: auto-compact off writes 0 over the launch variable; under auto-run it stays on and says why', () =>
 {
     const p = project();
     const t = transcript();
-    assert.strictEqual(modeLine(p, 'c2', `${COMPACT_CMD} off`, t, { ALFRED_CODE_AUTO_COMPACT: '1' }), '[mode] auto-compact stays ON: ALFRED_CODE_AUTO_COMPACT=1');
-    assert.match(fs.readFileSync(compactSwitch(p, 'c2'), 'utf8'), /^off\n/, 'the session\'s own switch is still written');
+    assert.match(modeLine(p, 'c2', `${COMPACT_CMD} off`, t, { ALFRED_CODE_AUTO_COMPACT: '1' }), /^\[mode\] auto-compact is OFF: /);
+    assert.strictEqual(modeLine(p, 'c2', COMPACT_CMD, t, { ALFRED_CODE_AUTO_COMPACT: '1' }), '[mode] auto-compact is OFF', 'the file outranks the launch env');
     autoStamp(p, 'c2');
-    assert.strictEqual(modeLine(p, 'c2', `${COMPACT_CMD} off`, t), '[mode] auto-compact stays ON: auto-run is on');
-    assert.strictEqual(modeLine(p, 'c2', COMPACT_CMD, t), '[mode] auto-compact is ON: auto-run is on');
-    assert.strictEqual(modeLine(p, 'c2', COMPACT_CMD, t, { ALFRED_CODE_AUTO_COMPACT: '1' }), '[mode] auto-compact is ON: ALFRED_CODE_AUTO_COMPACT=1');
+    const before = rawMode(p);
+    assert.strictEqual(modeLine(p, 'c2', `${COMPACT_CMD} off`, t), '[mode] auto-compact stays ON: auto-run is on - type /alfred-code:mode:auto-run off first');
+    assert.strictEqual(rawMode(p), before, 'nothing written');
+    assert.strictEqual(modeLine(p, 'c2', COMPACT_CMD, t), '[mode] auto-compact is ON');
 });
 
 test('mode command: a bare command reports and changes nothing', () =>
 {
     const p = project();
     const t = transcript();
-    assert.strictEqual(modeLine(p, 'b1', AUTO_CMD, t), '[mode] auto-run is OFF for this session');
-    assert.strictEqual(modeLine(p, 'b1', COMPACT_CMD, t), '[mode] auto-compact is OFF for this session');
-    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 'b1')) && !rows(p, 'b1').length, 'no file, no row');
+    assert.strictEqual(modeLine(p, 'b1', AUTO_CMD, t), '[mode] auto-run is OFF');
+    assert.strictEqual(modeLine(p, 'b1', COMPACT_CMD, t), '[mode] auto-compact is OFF');
+    assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null && !rows(p, 'b1').length, 'no file, no row');
     autoStamp(p, 'b1');
     fs.mkdirSync(path.dirname(compactSwitch(p, 'b2')), { recursive: true });
     fs.writeFileSync(compactSwitch(p, 'b2'), 'on\n');
     const before = [fs.readFileSync(p.gate, 'utf8'), fs.statSync(p.gate).mtimeMs, fs.statSync(compactSwitch(p, 'b2')).mtimeMs];
-    assert.strictEqual(modeLine(p, 'b1', AUTO_CMD, t), '[mode] auto-run is ON for this session');
-    assert.strictEqual(modeLine(p, 'b2', AUTO_CMD, t), '[mode] auto-run is OFF for this session', 'another session\'s stamp');
-    assert.strictEqual(modeLine(p, 'b2', COMPACT_CMD, t), '[mode] auto-compact is ON for this session');
+    assert.strictEqual(modeLine(p, 'b1', AUTO_CMD, t), '[mode] auto-run is ON', 'its own live stamp');
+    assert.strictEqual(modeLine(p, 'b2', AUTO_CMD, t), '[mode] auto-run is OFF', 'another session\'s stamp');
+    assert.strictEqual(modeLine(p, 'b2', COMPACT_CMD, t), '[mode] auto-compact is OFF', 'a v1 session file is not read');
     assert.deepStrictEqual([fs.readFileSync(p.gate, 'utf8'), fs.statSync(p.gate).mtimeMs, fs.statSync(compactSwitch(p, 'b2')).mtimeMs], before);
-    fs.writeFileSync(compactSwitch(p, 'b2'), 'maybe\n');
-    assert.strictEqual(modeLine(p, 'b2', COMPACT_CMD, t), '[mode] auto-compact is OFF for this session', 'a garbage switch is off');
+    assert.strictEqual(rawMode(p), null, 'and no mode file');
     assert.strictEqual(modeLine(p, 'b2', '/alfred-code:mode:scoring', t), '', 'scoring is the answer hook\'s to say');
 });
 
@@ -1522,7 +1506,7 @@ test('mode command: anything but on or off changes nothing', () =>
     const t = transcript();
     for (const line of [`${AUTO_CMD} yes`, `${AUTO_CMD} on now`, `${AUTO_CMD} on off`, `${COMPACT_CMD} 1`, '/alfred-code:mode:scoring /task-solve x', `${AUTO_CMD} on\nfix the login`])
         assert.strictEqual(modeLine(p, 'x1', line, t), TYPE_ALONE, line);
-    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 'x1')) && !rows(p, 'x1').length);
+    assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null && !rows(p, 'x1').length);
 });
 
 test('mode command: a seat\'s prompt and a harness prompt are never read', () =>
@@ -1533,10 +1517,10 @@ test('mode command: a seat\'s prompt and a harness prompt are never read', () =>
     assert.strictEqual(context(seat), '');
     assert.strictEqual(modeLine(p, 's9', `<task-notification>\n<task-id>x</task-id>\n${AUTO_CMD} on`, t), '');
     assert.strictEqual(modeLine(p, 's9', `Another Claude session sent a message:\n<agent-message from="a1b2">\n${COMPACT_CMD} on\n</agent-message>`, t), '');
-    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 's9')));
+    assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null);
 });
 
-test('mode command: a data root that cannot be written', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
+test('mode command: a data root that cannot be written saves the mode; a .claude that cannot be written says so', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
 {
     const p = project();
     const t = bareTranscript();
@@ -1544,13 +1528,20 @@ test('mode command: a data root that cannot be written', { skip: process.platfor
     fs.rmSync(data, { recursive: true });
     fs.mkdirSync(data);
     fs.chmodSync(data, 0o500);
+    try { assert.strictEqual(modeLine(p, 'r1', `${AUTO_CMD} on`, t), AUTO_ON_LINE, 'the mode file is not the data root'); }
+    finally { fs.chmodSync(data, 0o700); }
+    const q = project();
+    const claude = path.join(q.root, '.claude');
+    fs.mkdirSync(claude);
+    fs.chmodSync(claude, 0o500);
     try
     {
-        assert.strictEqual(modeLine(p, 'r1', `${AUTO_CMD} on`, t), '[mode] auto-run did not start: the data root cannot be written');
-        assert.strictEqual(modeLine(p, 'r1', `${COMPACT_CMD} on`, t), '[mode] auto-compact could not be saved: EACCES');
+        assert.strictEqual(modeLine(q, 'r2', `${AUTO_CMD} on`, t), '[mode] auto-run could not be saved: the file cannot be written - nothing changed');
+        assert.strictEqual(modeLine(q, 'r2', `${COMPACT_CMD} on`, t), '[mode] auto-compact could not be saved: the file cannot be written - nothing changed');
     }
-    finally { fs.chmodSync(data, 0o700); }
-    assert.ok(!fs.existsSync(p.gate) && !fs.existsSync(compactSwitch(p, 'r1')));
+    finally { fs.chmodSync(claude, 0o700); }
+    assert.ok(rawMode(q) === null && !fs.existsSync(q.gate));
+    assert.strictEqual(rows(q, 'r2').filter((r) => r.kind === 'auto-start-refused').length, 1);
 });
 
 const GONE = (flag) => `'${flag}' is gone: type /alfred-code:mode:auto-run on|off or /alfred-code:mode:scoring on|off on its own line`;
@@ -1625,8 +1616,7 @@ test('old flag: the answer hook\'s scoring switch and ON line read no retired fl
     const answer = (sid, text, scoring) => JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: text },
         { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_SCORING: scoring }).stdout || '{}');
     const said = (sid, text, scoring) => String((answer(sid, text, scoring).hookSpecificOutput || {}).additionalContext || '');
-    const { scoringFile } = require('../stack/hooks/hook-prelude.js');
-    const switches = () => ['g1', 'g2', 'g3', 'g4'].filter((sid) => fs.existsSync(scoringFile(p.root, sid)));
+    const switches = () => (rawMode(p) === null ? [] : ['the mode file']);   // v2: a scoring switch is the mode file's
     for (const text of ['go --mode-output-scorer-on', '/task-solve fix x --mode-output-scorer-on', '/task-solve --mode-output-scorer-on x', '/mode-output-scoring --mode-output-scorer-on',
         '/review-code --mode-output-scorer-on x', 'what does `/task-solve --mode-output-scorer-on` do', '--score-on', '/task-solve --score-on x'])
         assert.doesNotMatch(said('g1', text, '0'), /scoring: on|\[mode\]/, text);
@@ -1674,9 +1664,9 @@ test('fresh-session offers: off under each cause, and each string names the caus
         expansion_type: 'slash_command', command_name: 'loop-code-quality', command_args: 'src/', prompt: '/loop-code-quality src/', prompt_id: randomUUID() }, env);
     const asked = (sid, labels) => run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Stage 1 is closed. Next?', labels)] },
         session_id: sid, cwd: p.root, transcript_path: big }, env);
-    const MINE = '\\/alfred-code:mode:auto-compact on';
+    const MINE = 'ALFRED_CODE_AUTO_COMPACT=1';   // v2: the command saves the project's variable
     assert.strictEqual(modeLine(p, 'f1', `${COMPACT_CMD} on`, big, { ALFRED_CODE_HOOK_LOG_DIR: log }).startsWith('[mode] auto-compact is ON'), true);
-    assert.strictEqual(close('f1').status, 0, 'the session\'s switch: the close ends the turn');
+    assert.strictEqual(close('f1').status, 0, 'the variable: the close ends the turn');
     const told = start('f1');
     assert.doesNotMatch(context(told), /Do NOT start the run yet/);
     assert.match(context(told), new RegExp(`^This session compacts instead of offering a fresh session \\(${MINE}\\): past its window's trigger`));
@@ -1690,11 +1680,11 @@ test('fresh-session offers: off under each cause, and each string names the caus
     const project1 = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here'])] },
         session_id: 'f2', cwd: p.root, transcript_path: big }, { ...env, ALFRED_CODE_AUTO_COMPACT: '1' });
     assert.match(project1.stderr, /while this session compacts instead \(ALFRED_CODE_AUTO_COMPACT=1\)/);
-    // with nothing set, and after the switch goes off, the offers are back
-    assert.strictEqual(close('f3').status, 2, 'another session: the Stop offer holds the close');
-    assert.match(context(start('f3')), /Do NOT start the run yet/);
+    // every session in the checkout reads it; after the switch goes off, the offers are back for each
+    assert.strictEqual(close('f3').status, 0, 'another session compacts too');
     modeLine(p, 'f1', `${COMPACT_CMD} off`, big, { ALFRED_CODE_HOOK_LOG_DIR: log });
     assert.match(context(start('f1')), /Do NOT start the run yet/, 'switched off: the offer is back');
+    assert.strictEqual(close('f4').status, 2, 'another session: the Stop offer holds the close');
 });
 
 // Mode v2 stage 3, Task 4 (done-2's unit half): the mode file's own ALFRED_CODE_AUTO_RUN=1 puts every session under
@@ -1711,3 +1701,91 @@ test('the standing auto-run: the mode file\'s 1 answers asks for every session, 
     fs.writeFileSync(path.join(path.dirname(t), 'sess-a.jsonl'), '');
     assert.doesNotMatch(context(typedRun(p, 'sess-b', '/mode-auto-run fix X', t)), /did not start/);
 });
+
+// ---------------------------------------------------------------------------------------------
+// mode commands v2 (stage 3, Task 6): the three commands write the mode block of the project's local settings file
+// and stay on until off; the session files go (spec 3.3)
+// ---------------------------------------------------------------------------------------------
+const GIT = spawnSync('git', ['--version']).status === 0;
+const ENVS = WINDOW_SEEDS;
+const ALL_FOUR_OFF = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '0' };
+const modePath = (p) => path.join(p.root, '.claude', 'settings.local.json');
+const rawMode = (p) => { try { return fs.readFileSync(modePath(p), 'utf8'); } catch { return null; } };
+const modeOf = (p) => JSON.parse(rawMode(p));
+const line = context;
+const gitOf = (cwd, ...args) => spawnSync('git', ['-C', cwd, '-c', 'user.email=t@x', '-c', 'user.name=t', ...args], { encoding: 'utf8' });
+const putModeIn = (dir, env) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env })); };
+// a repository whose local settings file git tracks (and holds `env`)
+function trackedModeProject(env = {})
+{
+    const p = project();
+    gitOf(p.root, 'init', '-q');
+    putModeIn(path.join(p.root, '.claude'), env);
+    gitOf(p.root, 'add', '-f', '.claude');
+    gitOf(p.root, 'commit', '-qm', 'tracked');
+    return p;
+}
+// a `.claude` that is a link to a folder elsewhere: git cannot vouch for the file
+function linkedClaudeProject(env = {})
+{
+    const p = project();
+    const real = fs.mkdtempSync(path.join(TMP, 'real-claude-'));
+    putModeIn(real, env);
+    fs.symlinkSync(real, path.join(p.root, '.claude'), 'dir');
+    return p;
+}
+// a repository with no machine-wide ignore list: the run's HOME is a folder of its own
+function gitProject()
+{
+    const p = project();
+    gitOf(p.root, 'init', '-q');
+    const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+    p.env = { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home };
+    return p;
+}
+const liveTranscript = (p, sid) => fs.writeFileSync(path.join(TMP, `${sid}.jsonl`), '');
+const sessionFiles = (p) => { try { return fs.readdirSync(path.join(p.root, '.alfred', 'state', 'sessions')); } catch { return []; } };
+const AUTO_ON = '[mode] auto-run is ON until /alfred-code:mode:auto-run off, new sessions included: each ask takes its (Recommended) option. auto-compact is ON with it';
+
+test('v2 auto-run on: both keys, both Claude Code keys, no stamp file', () => { const p = project(); const r = sub(p, 'A', '/alfred-code:mode:auto-run on', transcript());
+    assert.strictEqual(line(r), AUTO_ON); assert.deepStrictEqual(modeOf(p).env, { ALFRED_CODE_AUTO_RUN: '1', ALFRED_CODE_AUTO_COMPACT: '1' });
+    assert.strictEqual(modeOf(p).autoCompactEnabled, true); assert.ok(!fs.existsSync(p.gate)); assert.strictEqual(rows(p, 'A').filter((x) => x.kind === 'auto-start').length, 1); });
+test('v2 the same command twice changes no byte and says the same line', () => { const p = project(); sub(p, 'A', '/alfred-code:mode:auto-run on', transcript()); const b = rawMode(p);
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run on', transcript())), AUTO_ON); assert.strictEqual(rawMode(p), b); });
+test('v2 auto-run on while another session holds a live stamped run: not refused (D4)', () => { const p = project(); autoStamp(p, 'B'); liveTranscript(p, 'B');
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run on', transcript())), AUTO_ON); });
+test('v2 auto-run off ends it for the checkout: the variable 0, another session\'s stamp gone, a hand-written stamp kept (D7)', () => { const p = project();
+    sub(p, 'A', '/alfred-code:mode:auto-run on', transcript()); autoStamp(p, 'B');
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run off', transcript())), '[mode] auto-run is OFF - auto-compact stays ON until /alfred-code:mode:auto-compact off');
+    assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_RUN, '0'); assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '1'); assert.ok(!fs.existsSync(p.gate));
+    fs.writeFileSync(p.gate, 'AUTO - by hand\n'); sub(p, 'A', '/alfred-code:mode:auto-run off', transcript()); assert.ok(fs.existsSync(p.gate)); });
+test('v2 auto-run off that cannot be saved deletes nothing', { skip: !GIT }, () => { const p = trackedModeProject(); autoStamp(p, 'B');
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run off', transcript())), '[mode] auto-run could not be saved: git tracks the file - nothing changed'); assert.ok(fs.existsSync(p.gate)); });
+test('v2 auto-run on under an unknown trust: refused before any byte', { skip: !GIT }, () => { const p = linkedClaudeProject(); const b = rawMode(p);
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run on', transcript())), '[mode] auto-run could not be saved: git cannot say the file is yours alone - nothing changed');
+    assert.strictEqual(rawMode(p), b); assert.strictEqual(rows(p, 'A').filter((x) => x.kind === 'auto-start-refused').length, 1); });
+test('v2 bare auto-run: ON, OFF, and the reason when the file holds a 1 nobody vouches for', { skip: !GIT }, () => { const p = project();
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF'); sub(p, 'A', '/alfred-code:mode:auto-run on', transcript());
+    assert.strictEqual(line(sub(p, 'B', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is ON');
+    assert.strictEqual(line(sub(trackedModeProject({ ALFRED_CODE_AUTO_RUN: '1' }), 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF: the file holds it, but git tracks the file - asks stay with you');
+    assert.strictEqual(line(sub(linkedClaudeProject({ ALFRED_CODE_AUTO_RUN: '1' }), 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF: the file holds it, but git cannot say the file is yours alone - asks stay with you'); });
+test('v2 auto-compact on: the window in the reply, at its own point for a tier of 0, the replaced note', () => { const p = project();
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), ENVS)), '[mode] auto-compact is ON: no fresh-session ask is made. From the next session Claude Code compacts at 400k on claude-opus-5-5');
+    assert.match(line(sub(project(), 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), { ...ENVS, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' })), /Claude Code compacts at its own point$/);
+    const q = project(); fs.mkdirSync(path.join(q.root, '.claude'), { recursive: true }); fs.writeFileSync(modePath(q), '{"autoCompactEnabled":false}');
+    assert.match(line(sub(q, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS)), / - replaced autoCompactEnabled false$/); });
+test('v2 auto-compact off: 0 and false; refused under auto-run (D11); the all-four-off tail', () => { const p = project(); sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS);
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-compact off', transcript(), ENVS)), '[mode] auto-compact is OFF: fresh-session asks are back. From the next session Claude Code no longer compacts by itself here - /compact still works');
+    assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '0'); assert.strictEqual(modeOf(p).autoCompactEnabled, false);
+    assert.match(line(sub(project(), 'A', '/alfred-code:mode:auto-compact off', transcript(), ALL_FOUR_OFF)), / - the fresh-session offer is off here too, so nothing else relieves a full context$/);
+    const r = project(); sub(r, 'A', '/alfred-code:mode:auto-run on', transcript()); const b = rawMode(r);
+    assert.strictEqual(line(sub(r, 'B', '/alfred-code:mode:auto-compact off', transcript())), '[mode] auto-compact stays ON: auto-run is on - type /alfred-code:mode:auto-run off first'); assert.strictEqual(rawMode(r), b); });
+test('v2 the first command in a project with no local file creates it, and says the unignored line once in a repository', { skip: !GIT }, () => { const p = gitProject();
+    assert.match(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS)), / - \.claude\/settings\.local\.json was created and git does not ignore it here: add it to \.gitignore$/);
+    assert.doesNotMatch(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS)), /was created/); });
+test('v2 no session file is written or read any more', () => { const p = project(); sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS);
+    assert.ok(!sessionFiles(p).some((f) => f.startsWith('AUTO-COMPACT-')));
+    const q = project(); fs.mkdirSync(path.join(q.root, '.alfred', 'state', 'sessions'), { recursive: true }); fs.writeFileSync(path.join(q.root, '.alfred', 'state', 'sessions', 'AUTO-COMPACT-A'), 'on\n');
+    assert.strictEqual(line(sub(q, 'A', '/alfred-code:mode:auto-compact', transcript())), '[mode] auto-compact is OFF'); });
+test('v2 a seat\'s prompt and a harness prompt write nothing', () => { const p = project(); sub(p, 'A', '/alfred-code:mode:auto-run on', transcript(), {}, { agent_id: 'seat-1' });
+    assert.ok(!fs.existsSync(modePath(p))); });
