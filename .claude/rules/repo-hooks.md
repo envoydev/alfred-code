@@ -600,7 +600,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Grep walk included, and a Read naming `offset` / `limit` by the lines it asks for (64KB chunks, up to 64MB in; audit
     2026-10-30 HK-07: a 600KB dotenv and a 910KB `terraform.tfstate` passed whole); a credential past the head of a file
     printed whole is a stated ceiling, and `--redacted` of one is a note naming `--presence`. A UTF-16 file
-    (either byte order) is judged by its decoded content.
+    (either byte order) is judged by its decoded content. A `.json` / `.jsonc` the strict parser rejects (SG1-F2, 3.12:
+    JSONC's `//` and `/* */` comments, a trailing comma, a truncated file) is read leniently (`jsonDoc`: `stripJsonc`
+    drops comments and trailing commas outside strings), else by its `"key": "value"` pairs (`jsonPairs`), on every
+    route that judges content - `secretIn` (Read, Grep, the MCP reads), the masker's `valuesOf`, `--presence` and
+    `--redacted` (a lenient file's view is re-emitted from its parse, without its comments). A commented-out pair is no
+    pair, as a dotenv comment is none; a known shape in one is still masked by the line pass.
     THE SHELL ROUTE (swap 1 of the complexity audit, Task 2, 2026-11-11): nothing is judged by what a command MIGHT
     print and nothing is rewritten - no `updatedInput` is ever written, and the dump, env, variable, git-probe,
     walk-probe, feeder, engine and runtime-code judges left with the rewrite (about 3,000 lines of the guard). Above

@@ -1768,3 +1768,90 @@ test('fixed root Cursor: the secret guard finds the store with no ALFRED_CODE va
   assert.doesNotMatch(read.stderr, /nobody can answer/);
   assert.ok(!(read.stdout + read.stderr).includes(STORE_VAL), 'no value is printed');
 });
+
+// SG1-F2 (3.12): a `.json` / `.jsonc` the strict parser rejects - a truncated file, a trailing comma, JSONC's `//` and
+// `/* */` comments (tsconfig, `.vscode/settings.json`, a devcontainer) - passed the Read, Grep and MCP routes, `--presence`
+// said `absent` and `--redacted` printed the value. A value with no known shape, so only the key judgement can catch it.
+const F2_VAL = 'pw-' + 'r6'.repeat(6);
+const F2_KEY = 'dbPassword';
+// a comment marker and a `,}` inside a STRING are text: the lenient read keeps both whole
+const F2_URL = 'https://example.test/a//b /* not a comment */';
+const F2_NOTE = 'x, }';
+const F2_SHAPES = {
+  'truncated/app.json': `{\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}",\n  "other": {\n    "a": 1,\n`,
+  'trailing/app.json': `{\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}",\n  "list": [1, 2,],\n}\n`,
+  'line-comment/app.json': `{\n  // the database\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}"\n}\n`,
+  'block-comment/app.json': `{\n  /* the database,\n     two lines */\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}"\n}\n`,
+  'jsonc/settings.jsonc': `{\n  // a comment\n  "url": "${F2_URL}",\n  "note": "${F2_NOTE}",\n  "${F2_KEY}": "${F2_VAL}", /* tail */\n}\n`,
+};
+const F2_CLEAN = {
+  'clean/broken.json': '{\n  "name": "app",\n  "url": "https://example.test/x",\n',
+  'clean/tsconfig.json': '{\n  // the compiler\n  "compilerOptions": { "strict": true, "outDir": "dist", },\n  /* paths */\n  "include": ["src"],\n}\n',
+};
+let f2Fx = null;
+const f2Fixture = () => f2Fx || (f2Fx = coreProject({ ...F2_SHAPES, ...F2_CLEAN, 'valid/app.json': JSON.stringify({ name: 'app', [F2_KEY]: F2_VAL }, null, 2) + '\n' }));
+const f2Run = (payload, fx) => {
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home, CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '' };
+  delete env.ALFRED_CODE_DOCS_PATH;
+  return spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `f2-${++maskSeq}`, cwd: fx.project, ...payload }), encoding: 'utf8', env });
+};
+const f2Pre = (tool, input, fx) => f2Run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, permission_mode: 'bypassPermissions' }, fx);
+// What the masker hands back for `command`, which printed `stdout`.
+const f2Masked = (command, stdout, fx) => {
+  const r = f2Run({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_response: said(stdout) }, fx);
+  return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput.stdout : stdout;
+};
+
+test('SG1-F2: a credential in a .json / .jsonc the strict parser rejects is judged on every content route', () => {
+  const fx = f2Fixture();
+  for (const rel of [...Object.keys(F2_SHAPES), 'valid/app.json']) {
+    const file = path.join(fx.project, ...rel.split('/'));
+    const dir = path.dirname(file);
+    const read = f2Pre('Read', { file_path: file }, fx);
+    assert.strictEqual(read.status, 2, `${rel}: Read`);
+    assert.match(read.stderr, new RegExp(`credential under \`${F2_KEY}\``), `${rel}: the denial names the key`);
+    assert.strictEqual(f2Pre('Grep', { pattern: 'name|url', path: file, output_mode: 'content' }, fx).status, 2, `${rel}: a content Grep of the file`);
+    assert.strictEqual(f2Pre('Grep', { pattern: F2_KEY, path: dir, output_mode: 'content' }, fx).status, 2, `${rel}: a content Grep walking its folder`);
+    assert.strictEqual(f2Pre('mcp__filesystem__read_text_file', { path: file }, fx).status, 2, `${rel}: a filesystem server read`); // mcp-fixture
+    // the masker: the bare value a command printed (no `"key": "value"` line the shape pass could read) is masked by value
+    const bare = f2Masked(`node pick.js ${rel}`, `${F2_VAL}\n`, fx);
+    assert.ok(!bare.includes(F2_VAL), `${rel}: the masker shows the bare value masked`);
+    assert.ok(bare.includes(SET(F2_VAL)), `${rel}: as <set (N chars)>`);
+    assert.ok(!f2Masked(`cat ${rel}`, F2_SHAPES[rel] || '', fx).includes(F2_VAL), `${rel}: a cat`);
+    // --presence: one key, and the keyless listing
+    assert.strictEqual(presence(file, F2_KEY).stdout, `${F2_KEY}=set (${F2_VAL.length} chars)\n`, `${rel}: --presence KEY`);
+    assert.match(presence(file).stdout, new RegExp(`^${F2_KEY}=set \\(${F2_VAL.length} chars\\)$`, 'm'), `${rel}: --presence lists the key`);
+    // --redacted: the value-free view
+    const view = cli('--redacted', file).stdout;
+    assert.ok(!view.includes(F2_VAL), `${rel}: --redacted masks the value`);
+    assert.ok(view.includes(SET(F2_VAL)), `${rel}: --redacted shows it as <set (N chars)>`);
+  }
+});
+
+test('SG1-F2: a comment marker or a trailing-comma shape inside a string is text, not syntax', () => {
+  const file = path.join(f2Fixture().project, 'jsonc', 'settings.jsonc');
+  assert.strictEqual(presence(file, 'url', 'note').stdout, `url=set (${F2_URL.length} chars)\nnote=set (${F2_NOTE.length} chars)\n`, 'both strings read whole');
+  const view = cli('--redacted', file).stdout;
+  assert.ok(view.includes(JSON.stringify(F2_URL)), 'the redacted view keeps the url whole');
+  assert.ok(view.includes(JSON.stringify(F2_NOTE)), 'and the note');
+});
+
+test('SG1-F2: a broken or commented .json with no credential stays readable, a valid one is judged as before', () => {
+  const fx = f2Fixture();
+  for (const rel of Object.keys(F2_CLEAN)) {
+    const file = path.join(fx.project, ...rel.split('/'));
+    const read = f2Pre('Read', { file_path: file }, fx);
+    assert.deepStrictEqual([read.status, read.stdout], [0, ''], `${rel}: a Read passes, no ask`);
+    assert.strictEqual(f2Pre('Grep', { pattern: 'a', path: file, output_mode: 'content' }, fx).status, 0, `${rel}: a content Grep passes`);
+    assert.match(cli('--redacted', file).stdout, /^# credential guard: redacted view of .* - 0 credential value\(s\)/, `${rel}: a redacted view masking nothing`);
+  }
+  assert.strictEqual(presence(path.join(fx.project, 'clean', 'tsconfig.json'), 'compilerOptions.outDir').stdout, 'compilerOptions.outDir=set (4 chars)\n', 'a JSONC key path reads');
+  assert.strictEqual(presence(path.join(fx.project, 'clean', 'broken.json'), 'name').stdout, 'name=set (3 chars)\n', 'a truncated file\'s pair reads');
+});
+
+test('SG1-F2: a JSONC past MAX_BYTES is judged by its head, a comment and all', () => {
+  const big = `{\n  // generated\n  "${F2_KEY}": "${F2_VAL}",\n  "rows": [\n` + '    "filler-row-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'.repeat(12000) + '  ]\n}\n';
+  assert.ok(big.length > 512 * 1024);
+  const fx = coreProject({ 'big/settings.jsonc': big });
+  assert.strictEqual(f2Pre('Read', { file_path: path.join(fx.project, 'big', 'settings.jsonc') }, fx).status, 2, 'the head holds the credential');
+});
