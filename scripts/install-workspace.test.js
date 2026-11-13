@@ -1909,7 +1909,7 @@ test('a release that cannot finish freezes the workspace part', POSIX_ONLY, () =
         update('api', { before: (work) => { markApi(work); fs.writeFileSync(lock(work), 'held\n'); }, after: (work) => { const s = apiState(work); fs.unlinkSync(lock(work)); return s; } }),
         update('api', { after: apiState })]);
     const [before, held, freed] = r.steps.slice(1);
-    assert.match(r.outs[2], /api could not be released \(.*\) - run \/alfred-code:update there/);
+    assert.match(r.outs[2], /api could not be released \(.*\) - the next update retries/);
     assert.strictEqual(JSON.parse(held.rec).parent, '..', 'the parent is still recorded');
     assert.strictEqual(held.links, before.links, 'no link was replaced');
     assert.strictEqual(r.codes[2], 0);

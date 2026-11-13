@@ -458,6 +458,31 @@ test('ancestorExcludes lists the stack\'s copies and the unedited seed, never th
     assert.ok(!ws.ancestorExcludes(root, {}).includes(path.join(root, '.claude', 'AGENTS.md')), 'an edited AGENTS.md is the user\'s');
 });
 
+// 3.12, a W3 deferred minor: an `ignore instructions <folder>` row is a folder row (a trailing separator), so its glob ends in
+// `/**` and Claude Code skips every file below it - before, the bare path matched no file and check-loads named a miss
+// the update never cleared.
+test('ancestorExcludes: an ignored instructions folder is a folder row, its glob ending in /**', () =>
+{
+    const at = tree({ 'ws': { stamp: true } });
+    const root = at('ws');
+    fs.mkdirSync(path.join(root, 'team-notes'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'team-notes', 'a.md'), '# a\n');
+    const got = ws.ancestorExcludes(root, { childIgnores: [{ category: 'instructions', name: 'team-notes' }] });
+    assert.ok(got.includes(path.join(root, 'team-notes') + path.sep), JSON.stringify(got));
+    assert.match(ws.excludeGlobs([path.join(root, 'team-notes') + path.sep])[0], /\/\*\*$/);
+});
+
+// 3.12, a W3 deferred minor: the mark folds a children entry by the disk's own case rule, not the platform's.
+test('addIgnoredChild folds a children entry by the fold it is handed; diskFolds reads the disk', () =>
+{
+    assert.deepStrictEqual(ws.addIgnoredChild({ children: ['Api', 'web'], ignoredChildren: [] }, 'api', true).children, ['web']);
+    assert.deepStrictEqual(ws.addIgnoredChild({ children: ['Api', 'web'], ignoredChildren: [] }, 'api', false).children, ['Api', 'web']);
+    const at = tree({ 'ws/Mixed': {} });
+    const folds = fs.existsSync(path.join(at('ws'), 'mixed'));
+    assert.strictEqual(ws.diskFolds(at('ws/Mixed')), folds);
+    assert.strictEqual(ws.diskFolds(at('ws')), folds, 'a lower-case folder is read through its swapped spelling too');
+});
+
 // Workspace stage 4c: a library rule of an ancestor is a row only while it sits natively in that ancestor's .claude/rules
 // and the child ignores it or a nearer member (the child included) holds a file of that name in either folder.
 const LIB_STAMP = `sha: x\nlibrary-rules: alfred-house=${'a'.repeat(64)}\nmanaged-env: \n`;
@@ -602,6 +627,22 @@ test('release: the rule loader sends a released child the names it sent before (
     const childStamp = fs.readFileSync(path.join(at('ws/api'), '.claude', 'alfred-code.stamp'), 'utf8');
     assert.match(childStamp, new RegExp(`^library-rules: .*alfred-one=${hashItem(copy)}`, 'm'));
     assert.doesNotMatch(childStamp, /^member-picks:/m);
+});
+
+// 3.12, W3 deferred minors: under `only` the note is read inside that project's own update, so it names the retry; an
+// unstamped project (a first install over a kept record that still names a parent) is named, not frozen silently.
+test('release under only: a failed keep says the next update retries; an unstamped project is named, not released', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', ignoredChildren: ['api', 'fresh'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/fresh': { git: true, record: { parent: '..' } } });
+    fs.mkdirSync(path.join(at('ws/api'), '.alfred'), { recursive: true });
+    fs.writeFileSync(lockOf(at('ws/api')), '');
+    const notes = [];
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), only: at('ws/api'), keepRules: true, env: env0, note: (l) => notes.push(l) }), []);
+    assert.deepStrictEqual(notes, ['workspace: api could not be released (locked) - the next update retries']);
+    const logs = [];
+    assert.deepStrictEqual(ws.releaseChildren({ projectRoot: at('ws'), only: at('ws/fresh'), keepRules: true, env: env0, log: (l) => logs.push(l) }), []);
+    assert.deepStrictEqual(logs, ['workspace: fresh is ignored by this workspace and its record still names a parent - this first install leaves the workspace part as it is; the next update releases it']);
 });
 
 test('release: with no option no rule is copied - a root\'s uninstall, as today', () =>

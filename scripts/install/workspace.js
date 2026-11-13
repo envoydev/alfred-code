@@ -65,13 +65,39 @@ function addChild(record, rel)
     return record;
 }
 
-// W3: a path below this root the workspace ignores - once, and no child line at or below it stays.
-function addIgnoredChild(record, rel)
+// W3: a path below this root the workspace ignores - once, and no child line at or below it stays. `fold` (3.12): whether
+// the disk folds case (diskFolds), so a children entry in another case leaves with the mark there and only there.
+function addIgnoredChild(record, rel, fold = false)
 {
     if (!isChildPath(rel)) throw new Error(`workspace: ignored child ${rel} is not a relative path inside the project`);
     if (!record.ignoredChildren.includes(rel)) record.ignoredChildren.push(rel);
-    record.children = record.children.filter((c) => !workspaceFile.covered([rel], '', `/${c}`, false));
+    record.children = record.children.filter((c) => !workspaceFile.covered([rel], '', `/${c}`, fold));
     return record;
+}
+
+// Whether the disk under `folder` folds case (3.12): the nearest existing folder on its path with a cased letter in its
+// name, read through its case-swapped spelling - the same file there means it folds. No such folder: the platform's rule.
+function diskFolds(folder)
+{
+    let at = path.resolve(folder);
+    for (;;)
+    {
+        const name = path.basename(at);
+        const swapped = [...name].map((c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase())).join('');
+        if (name && swapped !== name && fs.existsSync(at))
+        {
+            try
+            {
+                const a = fs.statSync(at, { bigint: true });
+                const b = fs.statSync(path.join(path.dirname(at), swapped), { bigint: true });
+                return a.ino === b.ino && a.dev === b.dev;
+            }
+            catch { return false; }
+        }
+        const up = path.dirname(at);
+        if (up === at) return process.platform === 'win32' || process.platform === 'darwin';
+        at = up;
+    }
 }
 
 function removeChild(record, rel)
@@ -831,6 +857,29 @@ function subtree(projectRoot, { env = process.env, maxDepth = 8, log = printLine
 
 const RESCAN_SKIP = new Set(['.git', 'node_modules', '.claude']);
 
+// The stamped projects at or below `folder` (3.12, ignore-child's closing lines), relative to `root`: a stamped folder ends
+// the walk down its branch; RESCAN_SKIP, no link followed, depth `maxDepth`.
+function stampedUnder(root, folder, { maxDepth = 5 } = {})
+{
+    if (isStamped(folder)) return [relPosix(realOf(root), realOf(folder))];
+    const found = [];
+    const walk = (dir, depth) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            if (!d.isDirectory() || d.isSymbolicLink() || RESCAN_SKIP.has(d.name)) continue;
+            const child = path.join(dir, d.name);
+            if (isStamped(child)) found.push(relPosix(realOf(root), realOf(child)));
+            else if (depth + 1 < maxDepth) walk(child, depth + 1);
+        }
+    };
+    walk(folder, 0);
+    return found.sort();
+}
+
 // Stamped folders under the project with no `parent` in their record, nor a 2.11 `parent none` line still in the old
 // file - projects installed before their root, offered as children. A stamped folder ends the walk down that branch:
 // what is below it is that project's.
@@ -1065,7 +1114,8 @@ function ancestorExcludes(ancestorRoot, { childIgnores = [], nearer = [] } = {})
     {
         if (i.category !== 'instructions') continue;
         const file = path.join(ancestorRoot, ...i.name.split('/'));
-        if (fs.existsSync(file)) out.push(file);
+        // A folder is a folder row (its trailing separator), so its glob ends in `/**` and covers every file below (3.12).
+        if (fs.existsSync(file)) out.push(isDir(file) ? `${file.replace(/[\\/]+$/, '')}${path.sep}` : file);
     }
     return [...new Set(out)];
 }
@@ -1850,10 +1900,14 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
     const root = realOf(projectRoot);
     const released = [];
     const stale = [];
-    const again = only ? 'run /alfred-code:update there' : 'run uninstall again';
+    // Under `only` the note is read inside that project's own update, so it names the retry.
+    const again = only ? 'the next update retries' : 'run uninstall again';
     for (const rel of only ? [relPosix(root, realOf(only))] : readWorkspace(root, { env, dataRoot }).view.children)
     {
         const child = only ? realOf(only) : path.join(root, ...rel.split('/'));
+        // A first install over a kept record that still names a parent: nothing to release yet, and the run says so.
+        if (only && isDir(child) && !isStamped(child) && readWorkspace(child).view.parent)
+            log(`workspace: ${rel} is ignored by this workspace and its record still names a parent - this first install leaves the workspace part as it is; the next update releases it`);
         if (!isDir(child) || !isStamped(child)) continue;
         const points = (record) => { const v = record.parent; return v && realKey(path.resolve(child, ...v.split('/'))) === realKey(root); };
         // A child that names another parent is that parent's: its line here is stale, and it is left as it is.
@@ -2082,7 +2136,7 @@ module.exports = {
     ruleNotes, keepRules,
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
-    setParent, setRole, setAbove, addChild, addIgnoredChild, removeChild, addIgnore, removeIgnore,
+    setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
     realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,

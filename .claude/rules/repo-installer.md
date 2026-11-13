@@ -322,7 +322,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   (`releaseChildren({ only, keepRules })`: its record written before its links move), and the cascade below it. Three
   limits: the walkers read the parent's list alone; a root's run refreshes an ignored project's exclude rows, never its
   server rows, which its own run writes; the lift is a hand edit (the entry out of `ignoredChildren`), after which the
-  project stays standalone until its role ask joins it.
+  project stays standalone until its role ask joins it. The verb's closing lines (3.12): a failed child update's `!!` reasons, a cascade failure below named apart (its summary's failed or skipped count - the cascade exits 0), a child whose switch is 0 named as released nothing, and under a plain folder each stamped project `stampedUnder` finds; the mark folds `children` by the disk's own rule (`diskFolds`), never the platform's.
 - **The store and the links (workspace stage 3, 2026-11-12; `install/links.js`, `install-store.test.js`, `links.test.js`).**
   A kind's HOME (`links.homeOf`) is `<project>/.alfred/stack/<kind>` when git cannot commit a link there, else
   `.claude/<kind>` as before. The git state of `.claude/<kind>` (`gitState`): `none` (no repository) and `ignored` are

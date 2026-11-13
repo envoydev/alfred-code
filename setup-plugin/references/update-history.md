@@ -1079,3 +1079,13 @@ A run that moves a `local`-scope install to `project` or `user` scope now reseed
 the local scope's own `local` to `git` when the project is a git repository whose own rules do not keep the docs out,
 with one `ALFRED_CODE_DOCS_VERSIONING 'local' -> 'git' (the local scope's own seed, reseeded for <scope> scope)` line -
 report it. Before, the docs stayed out of git after the move. A value typed by hand, or `--docs-versioning`, stays.
+
+## after 3.11.0 - ignore-child's lines say what happened
+
+`workspace.js ignore-child` now prints a failed child update's own `!!` reasons under its failure line, names a failure
+in the cascade below a child as the cascade's (`... but a project below it did not`), says when a child's
+`ALFRED_CODE_WORKSPACE` is 0 that its update released nothing, and under a plain folder names each installed project
+that never joined. On a disk that folds case, a `children` entry spelled in another case leaves with the mark. An
+update that cannot release an ignored project says the next update retries, and a first install over a record that
+still names a parent says why it leaves the workspace part as it is. An `ignore instructions <folder>` row now covers
+every file below the folder, so `check-loads` stops naming them. Report each line.

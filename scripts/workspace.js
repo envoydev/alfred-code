@@ -497,6 +497,10 @@ const FAILED_LINE = /^(?:==>)?\s*\d+ step\(s\) reported a failure above/m;
 // ignore-child's three closing lines (W3 Task 7).
 const IGNORED_RELEASED = (rel) => `workspace: ${rel} ignored - nothing of this workspace reaches it`;
 const IGNORED_STAMPED = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
+const IGNORED_SWITCH_OFF = (rel) => `workspace: ${rel} ignored - its ALFRED_CODE_WORKSPACE is 0, so its update released nothing: it keeps its parent line, and Claude Code still loads this workspace's instruction files there until the switch is on and an update runs there`;
+const IGNORED_BELOW_FAILED = (rel) => `!! workspace: ${rel} ignored and its own update finished, but a project below it did not (the cascade lines above) - run /alfred-code:update in that project`;
+// A cascade's summary line: a failed or skipped project below is a cascade that did not finish (the cascade exits 0).
+const CASCADE_SHORT = /^cascade: done \d+ updated, (\d+) failed, (\d+) skipped/m;
 const IGNORED_NO_INSTALL = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
 
 function cascade(out)
@@ -617,27 +621,41 @@ function ignoreChild(out)
         if (kept.why) throw new Exit(1, `!! workspace: ${r.rel} could not keep its values (${kept.why}) - nothing marked`);
         ws.keepRules(r.root, { env: childEnv, log: say });
     }
-    const w = ws.writeWorkspace(root, (m) => ws.addIgnoredChild(m, rel), { env, log: out });
+    const w = ws.writeWorkspace(root, (m) => ws.addIgnoredChild(m, rel, ws.diskFolds(root)), { env, log: out });
     if (!w.ok) throw new Exit(w.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${w.why})`);
     let failed = false;
     for (const r of joinedRows)
     {
         const run = rt.spawnCommand(process.execPath, [installer(source), 'update', '--source', source, '--scope', stamp.installScope(r.root), '--installed-only', '--keep-pins'],
             { cwd: r.root, encoding: 'utf8', stdio: 'pipe', timeout: 600000 });
-        let ok = !run.error && run.status === 0 && !FAILED_LINE.test(String(run.stdout || ''));
-        if (ok)
+        const said = String(run.stdout || '');
+        if (run.error || run.status !== 0 || FAILED_LINE.test(said))
         {
-            const below = rt.spawnCommand(process.execPath, [__filename, 'cascade', '--root', r.root, '--source', source], { encoding: 'utf8', stdio: 'pipe', timeout: 600000, env });
-            for (const l of String(below.stdout || '').split('\n').filter(Boolean)) out(l);
-            ok = !below.error && below.status === 0;
+            // The update's own !! reasons, as the cascade prints them.
+            const why = said.split('\n').filter((l) => /^==>\s+!! /.test(l)).map((l) => `  ${l.replace(/^==>\s+/, '')}`);
+            if (run.error) why.push(`  !! ${run.error.message}`);
+            else if (run.status !== 0) why.push(`  !! the run exited ${run.status}`);
+            for (const l of why.slice(0, 5)) out(l);
+            failed = true;
+            out(`!! workspace: ${r.rel} is ignored but its own update did not finish - run /alfred-code:update there`);
+            continue;
         }
-        if (!ok) { failed = true; out(`!! workspace: ${r.rel} is ignored but its own update did not finish - run /alfred-code:update there`); continue; }
+        // A switch at 0 freezes the workspace part of that update: nothing was released, and nothing below runs.
+        if (!ws.workspaceOn({ env, projectRoot: r.root })) { out(IGNORED_SWITCH_OFF(r.rel)); continue; }
+        const below = rt.spawnCommand(process.execPath, [__filename, 'cascade', '--root', r.root, '--source', source], { encoding: 'utf8', stdio: 'pipe', timeout: 600000, env });
+        const cascadeSaid = String(below.stdout || '');
+        for (const l of cascadeSaid.split('\n').filter(Boolean)) out(l);
+        const short = CASCADE_SHORT.exec(cascadeSaid);
+        if (below.error || below.status !== 0 || (short && (Number(short[1]) || Number(short[2])))) { failed = true; out(IGNORED_BELOW_FAILED(r.rel)); continue; }
         out(IGNORED_RELEASED(r.rel));
     }
     if (!joinedRows.length)
     {
+        // A plain folder holding installed projects that never joined: each of them is named, as a project there would be.
         const folder = path.join(root, ...rel.split('/'));
-        out(fs.existsSync(path.join(folder, '.claude', BRAND.stamp)) ? IGNORED_STAMPED(rel) : IGNORED_NO_INSTALL(rel));
+        const stamped = fs.existsSync(folder) ? ws.stampedUnder(root, folder) : [];
+        if (stamped.length) for (const s of stamped) out(IGNORED_STAMPED(s));
+        else out(IGNORED_NO_INSTALL(rel));
     }
     if (failed) throw new Exit(1, '');
 }
