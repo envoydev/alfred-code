@@ -61,7 +61,7 @@ const shown = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
 
 function emptyRecord()
 {
-    return { parent: null, role: null, above: null, children: [], ignore: {}, parentNone: false };
+    return { parent: null, role: null, above: null, children: [], ignoredChildren: [], ignore: {}, parentNone: false };
 }
 
 function addIgnore(record, category, name)
@@ -150,13 +150,15 @@ function fromObject(obj)
         if (key === 'parent') { if (isParent(value)) record.parent = value; else bad('parent', value, 'parent'); }
         else if (key === 'role') { if (isRole(value)) record.role = value; else bad('role', value, 'role'); }
         else if (key === 'above') { if (isAbove(value)) record.above = value; else bad('above', value, 'above'); }
-        else if (key === 'children')
+        else if (key === 'children' || key === 'ignoredChildren')
         {
-            if (!Array.isArray(value)) { bad('children', value, 'children (not a list)'); continue; }
+            // W3: the paths below a root the workspace ignores read by the children's rules
+            const [list, label] = key === 'children' ? [record.children, 'child'] : [record.ignoredChildren, 'ignored child'];
+            if (!Array.isArray(value)) { bad(key, value, `${key} (not a list)`); continue; }
             for (const child of value)
             {
-                if (!isChildPath(child)) bad('children', child, 'child', true);
-                else if (!record.children.includes(child)) record.children.push(child);
+                if (!isChildPath(child)) bad(key, child, label, true);
+                else if (!list.includes(child)) list.push(child);
             }
         }
         else if (key === 'ignore')
@@ -188,6 +190,7 @@ function union(json, legacy)
     out.above = json.above ?? legacy.above;
     out.parentNone = legacy.parentNone && json.parent == null && json.role == null;
     for (const child of [...json.children, ...legacy.children]) if (!out.children.includes(child)) out.children.push(child);
+    out.ignoredChildren = [...json.ignoredChildren];
     for (const source of [json.ignore, legacy.ignore]) for (const [category, names] of Object.entries(source)) for (const name of names) addIgnore(out, category, name);
     return out;
 }
@@ -244,12 +247,24 @@ function finish(read)
     return read;
 }
 
-// The installer's view of a record: { parent, parentNone, role, above, children, ignores: [{ category, name }] }.
+// Whether `folderKey` is at or below `<holderKey>/<entry>` for an entry of `entries` - the two keys real paths, `/`
+// separated; lower-cased where the disk folds case. Pure: no file is read (W3).
+function covered(entries, holderKey, folderKey, fold = process.platform === 'win32' || process.platform === 'darwin')
+{
+    const low = (s) => (fold ? s.toLowerCase() : s);
+    const folder = low(folderKey);
+    return (entries || []).some((entry) => { const at = low(`${holderKey}/${entry}`); return folder === at || folder.startsWith(`${at}/`); });
+}
+
+// The installer's view of a record: { parent, parentNone, role, above, children, ignoredChildren, ignores: [{ category,
+// name }] } - `children` less every entry at or below an ignored path.
 function viewOf(record)
 {
     const ignores = [];
     for (const [category, names] of Object.entries(record.ignore || {})) for (const name of names) ignores.push({ category, name });
-    return { parent: record.parent, parentNone: !!record.parentNone, role: record.role, above: record.above, children: [...record.children], ignores };
+    const ignoredChildren = [...(record.ignoredChildren || [])];
+    const children = record.children.filter((c) => !covered(ignoredChildren, '', `/${c}`));
+    return { parent: record.parent, parentNone: !!record.parentNone, role: record.role, above: record.above, children, ignoredChildren, ignores };
 }
 
 // The object to write: keys in the fixed order (parent or role, above, children, ignore), each invalid value back by its
@@ -276,6 +291,10 @@ function renderRecord(record, unknown = {}, invalid = [], singular = false)
     const badChildren = scalar('children');
     if (record.children.length === 0 && badChildren) out.children = badChildren.value;
     else if (children.length) out.children = children;
+    const ignoredChildren = [...(record.ignoredChildren || []), ...entries('ignoredChildren')];
+    const badIgnored = scalar('ignoredChildren');
+    if (!(record.ignoredChildren || []).length && badIgnored) out.ignoredChildren = badIgnored.value;
+    else if (ignoredChildren.length) out.ignoredChildren = ignoredChildren;
     const badIgnore = scalar('ignore');
     const ignored = Object.values(record.ignore).some((names) => names.length);
     if (!ignored && badIgnore) out.ignore = badIgnore.value;
@@ -304,5 +323,5 @@ function renderRecord(record, unknown = {}, invalid = [], singular = false)
 
 module.exports = {
     JSON_NAME, LEGACY_NAME, LOCK_NAME, CATEGORIES, PLURAL, PARENT_RE,
-    isChildPath, isIgnoreName, isIgnoreEntry, emptyRecord, parseLegacy, readRecord, viewOf, renderRecord,
+    isChildPath, isIgnoreName, isIgnoreEntry, emptyRecord, parseLegacy, readRecord, viewOf, renderRecord, covered,
 };

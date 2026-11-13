@@ -77,10 +77,14 @@ Recommended option for every ask, `update=ask-local` excepted, as the walk does.
 Join these installed projects as children of this one? <each rescan: rel>. Each then takes this install's set and keeps its own picks.
 - 'Join as children (Recommended)' - each join is written now, and the cascade below updates them unless the scope ask's answer was 'No, only this project'
 - 'Leave them standalone' - nothing is written; the next --rescan lists them again
+- 'Ignore them' - never offered again; nothing of this workspace reaches them
 ```
 
 'Join as children' runs `node "$TMP/repo/scripts/workspace.js" join --root <rel> --answer join` for each `rescan:` row,
-before the cascade; a `!!` line names one that could not join, and the rest still do.
+before the cascade; a `!!` line names one that could not join, and the rest still do. 'Ignore them' runs
+`node "$TMP/repo/scripts/workspace.js" ignore-child --root . --add <rel> --source "$TMP/repo"` for each `rescan:` row,
+before the cascade; a row the verb refuses - a folder of this repository - is named with its `!!` line and stays
+listed, the rest are marked.
 
 ## The cascade - after this project's own installer run
 

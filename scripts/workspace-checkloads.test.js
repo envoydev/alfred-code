@@ -109,6 +109,35 @@ test('a miss is named when an excluded path fires', () =>
     assert.match(s.cli(), new RegExp(`^!! check-loads: ${path.join(s.real.root, '.claude', 'rules', 'alfred-security.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} loaded twice - run /alfred-code:update$`, 'm'));
 });
 
+// W3 Task 1, P2 (F13): an excluded FOLDER (the `ignore instructions` route puts one among the paths) - a file loaded from
+// below it is a miss named by the file.
+test('a file loaded from below an excluded folder is a miss named by the file', () =>
+{
+    const s = setup({ events: (r) => [path.join(r.root, '.claude', 'rules', 'hand.md')] });
+    fs.writeFileSync(path.join(s.root, '.claude', 'rules', 'hand.md'), '# hand\n');
+    putWorkspace(s.child, { parent: '..', ignore: { instructions: ['.claude/rules'] } });
+    assert.deepStrictEqual(s.check(), { state: 'misses', misses: [path.join(s.real.root, '.claude', 'rules', 'hand.md')] });
+});
+
+// W3 Task 5: a folder row matches below its separator only - a sibling sharing the prefix, or a file beside it, is no miss.
+test('a file beside an excluded folder is no miss', () =>
+{
+    const s = setup({ events: (r) => [path.join(r.root, '.claude', 'rules-old', 'x.md'), path.join(r.root, '.claude', 'other.md')] });
+    put(path.join(s.root, '.claude', 'rules-old', 'x.md'), '# old\n');
+    put(path.join(s.root, '.claude', 'other.md'), '# other\n');
+    putWorkspace(s.child, { parent: '..', ignore: { instructions: ['.claude/rules'] } });
+    assert.deepStrictEqual(s.check(), { state: 'clean', misses: [] });
+});
+
+test('an ignored project: a root rule loaded from the wide folder row is a miss', () =>
+{
+    const s = setup({ events: (r) => [path.join(r.root, '.claude', 'rules', 'hand.md'), path.join(r.child, '.claude', 'rules', 'own.md')] });
+    put(path.join(s.root, '.claude', 'rules', 'hand.md'), '# hand\n');
+    putWorkspace(s.child, {});
+    putWorkspace(s.root, { role: 'root', ignoredChildren: ['api'] });
+    assert.deepStrictEqual(s.check(), { state: 'misses', misses: [path.join(s.real.root, '.claude', 'rules', 'hand.md')] });
+});
+
 test('an ancestor seed AGENTS.md named by the debug load line is a miss', () =>
 {
     const s = setup({ agents: (r) => path.join(r.root, '.claude', 'AGENTS.md') });

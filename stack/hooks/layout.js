@@ -321,6 +321,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
     let { file, state, view } = wsRead(startData ? path.join(start, ...startData.split('/')) : wsDir(start, env));
     if (state === 'garbage') garbage.push(wsRel(start, file));
     const startIgnores = view.ignores;
+    let ignoredBy = null;
     while (members.length < maxDepth && view.parent)
     {
         const value = view.parent;
@@ -340,6 +341,8 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
             refuse(`${wsRel(start, parentFile)} is not valid JSON`);
             break;
         }
+        // W3: a folder at or below a path the parent's record ignores takes nothing from it - the walk ends, unsaid.
+        if (workspaceFile.covered(parentView.ignoredChildren, keyOf(parent), keyOf(current))) { ignoredBy = label; break; }
         if (!parentView.children.some((c) => keyOf(path.join(parent, ...c.split('/'))) === keyOf(current)))
         {
             refuse(`${label} does not list this folder as a child`);
@@ -353,7 +356,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         file = parentFile;
         view = parentView;
     }
-    return { members, notes, ignores: startIgnores, garbage };
+    return { members, notes, ignores: startIgnores, garbage, ignoredBy };
 }
 
 // ---- the stack's variables (workspace roles and variables, D3 / D4) --------------------------------------------------

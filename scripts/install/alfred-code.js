@@ -2065,8 +2065,11 @@ function installHooksAndRules(ctx)
     });
     ctx.library.rules = rulesLibrary.rules;
     pruneAway(ctx, away);
+    // W3: a project every stamped folder above is cut from (the workspace ignores it) seeds its own - with the switch on.
+    const above = workspace.stampedAncestors(ctx.projectRoot, { env: ctx.env });
+    const cut = Boolean(ctx.workspace && ctx.workspace.on) && above.length === above.cut.length;
     ctx.canary = seeds.seedCanary({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, priorHash: ctx.ledger?.files?.['rules/alfred-rules.md'],
-        log: ctx.log, on: ctx.rulesDir === links.storeOf(ctx.projectRoot, 'rules') && !workspace.stampedAncestors(ctx.projectRoot, { env: ctx.env }).length });
+        log: ctx.log, on: ctx.rulesDir === links.storeOf(ctx.projectRoot, 'rules') && (!above.length || cut) });
     // After the new copies landed: a throw before this point leaves the old rules loading, never none.
     // An old install's retired copies sit in .claude/rules whether or not this run moved the rest (workspace stage 4c).
     for (const dir of new Set([ctx.rulesDir, path.join(ctx.claudeDir, 'rules')]))

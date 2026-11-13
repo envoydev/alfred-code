@@ -163,15 +163,23 @@ function projectOf(start, prelude)
     if (found || roots.some((d) => prelude.INSTALL_RECORDS.some((r) => fs.existsSync(path.join(d, '.claude', ...r))))) return found || null;
     const home = require('node:os').homedir();
     for (let at = path.dirname(roots[roots.length - 1]); at !== path.dirname(at) && at !== home; at = path.dirname(at))
-        if (fs.existsSync(path.join(at, ...STAMP))) return at;
+    {
+        if (!fs.existsSync(path.join(at, ...STAMP))) continue;
+        // W3: a folder the stamped one's record ignores (or a record nobody can read) is sent nothing.
+        const file = require(path.join(__dirname, 'workspace-file.js'));
+        const { pathKey } = require(path.join(__dirname, 'layout.js'));
+        const read = file.readRecord(path.join(at, '.alfred'));
+        if (read.state === 'garbage' || file.covered(read.record.ignoredChildren, pathKey(at), pathKey(start))) return null;
+        return at;
+    }
     return null;
 }
 
 // The rules for a session or seat started in `start`: each holder's (the project, then its workspace members) store
 // rules, the nearest holder winning by name, a native `.claude/rules` file at one holder first (Claude Code only).
-function rulesFor(start, env = process.env, { host = 'claude' } = {})
+// `prelude` can be handed in (W3's keepRules): the installer walks with a stub, never loading hook-prelude.js into its process.
+function rulesFor(start, env = process.env, { host = 'claude', prelude = loadPrelude() } = {})
 {
-    const prelude = loadPrelude();
     const layout = require(path.join(__dirname, 'layout.js'));
     let from = path.resolve(start);
     try { from = fs.realpathSync.native(from); } catch { /* as given */ }

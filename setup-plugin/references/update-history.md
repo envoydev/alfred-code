@@ -1044,3 +1044,9 @@ names as `stays` is equal to the workspace's but sits over another value in a se
 environment; it is left alone. A run that does not write the file - a local-scope run in a project whose
 `.variables` git tracks, or a project whose data folder another ignore rule hides - removes nothing from it and
 prints no line; the next run that writes the file does.
+
+## after 3.10.0 - a root can ignore a project below it
+
+A workspace root can mark a project below it ignored (`/alfred-code:configure`'s workspace role, or update's ask about
+projects installed below): nothing of the workspace reaches it - its values and the rules it read are kept as its own
+first, and its next update releases it. Nothing to do by hand.

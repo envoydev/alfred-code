@@ -1302,7 +1302,7 @@ const SETUP_ASK_TEMPLATES = {
     // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
     // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
     // -2: step 8's data-root asks, the move and the keep-or-change one (the fixed root, 2026-11-11).
-    'setup-plugin/commands/configure.md': 12,
+    'setup-plugin/commands/configure.md': 13,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).

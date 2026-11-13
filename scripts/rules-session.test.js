@@ -416,6 +416,19 @@ test('rulesFor: a start in a sub-folder and in a linked worktree', () =>
     assert.strictEqual(at(wt).project, t.api);
 });
 
+// W3 Task 1, P3 (F3's third walk): a folder the root's record marks ignored is sent nothing, though no install is in it.
+test('rulesFor: a marked folder with no install below a stamped root is sent nothing', () =>
+{
+    const t = W();
+    store(t.root, 'a');
+    const tool = path.join(t.root, 'tool');
+    fs.mkdirSync(path.join(tool, '.git'), { recursive: true });
+    ws(t.root, { parent: 'root', children: ['api'], ignoredChildren: ['tool'] });
+    const r = at(tool);
+    assert.strictEqual(r.project, null);
+    assert.deepStrictEqual(r.always, []);
+});
+
 test('rulesFor: a repository never set up below a stamped root is served', () =>
 {
     const t = W();
@@ -1175,4 +1188,65 @@ test('path rule: a start-chain record written before this change still reads', (
     store(w.root, 'ts', scoped('**/*.ts', 'M-ROOT-TS'));
     put(LAYOUT.statePath(w.root, 'sessions', `rules-${SID}-main.json`, {}), JSON.stringify({ sent: ['ts'] }));
     assert.strictEqual(touch(w.root, path.join(w.root, 'a.ts')), '');
+});
+
+// W3 Task 2: the loader's own walk for a folder with no install below a stamped root.
+test('rulesFor: an entry naming a folder above the start sends nothing', () =>
+{
+    const t = W();
+    store(t.root, 'a');
+    const tool = path.join(t.root, 'tools', 'tool');
+    fs.mkdirSync(path.join(tool, '.git'), { recursive: true });
+    ws(t.root, { parent: 'root', children: ['api'], ignoredChildren: ['tools'] });
+    assert.strictEqual(at(tool).project, null);
+});
+
+test('rulesFor: a sibling whose name starts with the listed path is served', () =>
+{
+    const t = W();
+    store(t.root, 'a');
+    const old = path.join(t.root, 'tool-old');
+    fs.mkdirSync(path.join(old, '.git'), { recursive: true });
+    ws(t.root, { parent: 'root', children: ['api'], ignoredChildren: ['tool'] });
+    const r = at(old);
+    assert.strictEqual(r.project, t.root);
+    assert.deepStrictEqual(names(r.always), ['a']);
+});
+
+test('rulesFor: a garbage record in the root sends a folder with no install nothing', () =>
+{
+    const t = W();
+    store(t.root, 'a');
+    const tool = path.join(t.root, 'tool');
+    fs.mkdirSync(path.join(tool, '.git'), { recursive: true });
+    put(path.join(t.root, '.alfred', 'workspace.json'), '{ not json');
+    assert.strictEqual(at(tool).project, null);
+});
+
+test('start: a marked folder with no install prints nothing, on a Claude Code and a Cursor payload', () =>
+{
+    const t = W();
+    store(t.root, 'a');
+    const tool = path.join(t.root, 'tool');
+    fs.mkdirSync(path.join(tool, '.git'), { recursive: true });
+    put(path.join(tool, 'f.ts'), 'x');
+    ws(t.root, { parent: 'root', children: ['api'], ignoredChildren: ['tool'] });
+    for (const [args, payload] of [[['--part', '1'], START()], [['--part', '1'], { hook_event_name: 'sessionStart', cursor_version: '1.7.0' }], [[], READ(path.join(tool, 'f.ts'))]])
+    {
+        const r = run(tool, args, payload);
+        assert.strictEqual(r.status, 0, JSON.stringify(payload));
+        assert.strictEqual(r.stdout.trim(), '', JSON.stringify(payload));
+    }
+});
+
+// W3 Task 6 [F12]: the installer hands the loader a stub prelude, so it walks with that and loads no hook-prelude.js.
+test('rulesFor: a prelude handed in is the one it walks with', () =>
+{
+    const os = require('node:os');
+    const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rules-prelude-')));
+    const [a, b] = [path.join(top, 'a'), path.join(top, 'b')];
+    for (const d of [path.join(a, '.alfred'), b]) fs.mkdirSync(d, { recursive: true });
+    const loader = require(LOADER);
+    const got = loader.rulesFor(b, {}, { prelude: { checkoutsOf: () => [a], INSTALL_RECORDS: [] } });
+    assert.strictEqual(got.project, a);
 });

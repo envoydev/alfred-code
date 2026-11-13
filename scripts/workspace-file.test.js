@@ -272,7 +272,7 @@ test('viewOf: the installer view of a record', () =>
 {
     const view = wf.viewOf({ ...wf.emptyRecord(), parent: '..', children: ['api'], ignore: { docs: ['root'], skill: ['a', 'b'] } });
     assert.deepStrictEqual(view, {
-        parent: '..', parentNone: false, role: null, above: null, children: ['api'],
+        parent: '..', parentNone: false, role: null, above: null, children: ['api'], ignoredChildren: [],
         ignores: [{ category: 'docs', name: 'root' }, { category: 'skill', name: 'a' }, { category: 'skill', name: 'b' }],
     });
 });
@@ -369,4 +369,56 @@ test('Section 7: an unknown ignore key is still a problem and is written back wh
     const r = wf.readRecord(dirWith({ json: { ignore: { rulez: ['a'], rules: 'x' } } }));
     assert.deepStrictEqual(r.problems, ["invalid ignore category 'rulez' kept, not applied", "invalid ignore rule (not a list) 'x' kept, not applied"]);
     assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).ignore, { rulez: ['a'], rules: 'x' });
+});
+
+// W3 Task 2: `ignoredChildren` - the paths below a root the workspace ignores - and `covered`, the one predicate.
+test('ignoredChildren: valid entries are read once each', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { role: 'root', ignoredChildren: ['legacy/app', 'clients', 'clients'] } }));
+    assert.deepStrictEqual(r.record.ignoredChildren, ['legacy/app', 'clients']);
+    assert.deepStrictEqual(r.problems, []);
+});
+
+test('ignoredChildren: an entry with \'..\', an absolute path or a backslash is kept, not applied and named', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { role: 'root', ignoredChildren: ['../x', '/abs', 'a\\b', 'ok'] } }));
+    assert.deepStrictEqual(r.record.ignoredChildren, ['ok']);
+    for (const bad of ['../x', '/abs', 'a\\b']) assert.ok(r.problems.includes(`invalid ignored child '${bad}' kept, not applied`), JSON.stringify(r.problems));
+    assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).ignoredChildren, ['ok', '../x', '/abs', 'a\\b']);
+});
+
+test('ignoredChildren: a value that is no list is kept whole and named', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { role: 'root', ignoredChildren: 'api' } }));
+    assert.deepStrictEqual(r.record.ignoredChildren, []);
+    assert.ok(r.problems.includes('invalid ignoredChildren (not a list) \'api\' kept, not applied'), JSON.stringify(r.problems));
+    assert.strictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).ignoredChildren, 'api');
+});
+
+test('viewOf: children less every entry at or below an ignored path', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { role: 'root', children: ['api', 'legacy/app', 'legacy-old', 'web'], ignoredChildren: ['legacy', 'web'] } }));
+    const view = wf.viewOf(r.record);
+    assert.deepStrictEqual(view.children, ['api', 'legacy-old']);
+    assert.deepStrictEqual(view.ignoredChildren, ['legacy', 'web']);
+    assert.strictEqual(r.record.children.length, 4);
+});
+
+test('renderRecord: ignoredChildren sits after children and before ignore; an empty list is left out', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { ignore: { skill: ['x'] }, ignoredChildren: ['old'], children: ['api'], role: 'root' } }));
+    assert.deepStrictEqual(Object.keys(wf.renderRecord(r.record, r.unknown, r.invalid)), ['role', 'children', 'ignoredChildren', 'ignore']);
+    const none = wf.readRecord(dirWith({ json: { role: 'root', ignoredChildren: [] } }));
+    assert.ok(!Object.hasOwn(wf.renderRecord(none.record, none.unknown, none.invalid), 'ignoredChildren'));
+});
+
+test('covered: the path, a folder under it, a sibling sharing its prefix', () =>
+{
+    assert.strictEqual(wf.covered(['app'], '/r', '/r/app', false), true);
+    assert.strictEqual(wf.covered(['app'], '/r', '/r/app/x', false), true);
+    for (const folder of ['/r/app-old', '/r', '/q/app']) assert.strictEqual(wf.covered(['app'], '/r', folder, false), false, folder);
+    assert.strictEqual(wf.covered([], '/r', '/r/app'), false);
+    assert.strictEqual(wf.covered(undefined, '/r', '/r/app'), false);
+    assert.strictEqual(wf.covered(['App'], '/r', '/r/app', true), true);
+    assert.strictEqual(wf.covered(['App'], '/r', '/r/app', false), false);
 });
