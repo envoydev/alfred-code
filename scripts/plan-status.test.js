@@ -584,3 +584,126 @@ test('sync and approve after a reopen: an added task stays as it was, after the 
     untouched(p, () => refused(call(p, ['sync', '--plan', 'csv']), 2, /^plan-status: sync refused: task 4 - an added task holds this id\n$/));
     untouched(p, () => refused(call(p, ['approve', '--plan', 'csv', '--mode', 'session']), 2, /^plan-status: approve refused: task 4 - an added task holds this id\n$/));
 });
+
+// A plan taken part of the way through a build: task 1 done, 2 blocked, 3 dropped, an added task 4, a decision, a deviation.
+function built()
+{
+    const p = approved();
+    const c = (argv, stdin = '', at = T0) => ok(call(p, [argv[0], '--plan', 'csv', ...argv.slice(1)], stdin, at));
+    c(['start', '--task', '1'], '', '2026-11-13T10:06:00Z');
+    c(['deviate', '--task', '1'], 'what: a DTO, not the entity\nwhy: the entity leaks the tenant id\nasked: yes, use a DTO\n', '2026-11-13T10:30:00Z');
+    c(['done', '--task', '1'], 'result: dotnet test - 4 passed, 0 failed\ncost: $5 `echo`\n', '2026-11-13T10:37:00Z');
+    c(['start', '--task', '2'], '', '2026-11-13T10:40:00Z');
+    c(['decide', '--task', '2'], 'choice: stream with IAsyncEnumerable\nprecedent: ExportController.cs:41\n', '2026-11-13T10:41:00Z');
+    c(['block', '--task', '2'], 'needs: the staging database\n');
+    c(['drop', '--task', '3'], 'why: the docs page moved to another plan\n', '2026-11-13T10:50:00Z');
+    c(['add-task', '--after', '2'], CARD);
+    c(['cursor'], 'note: step 4 BUILD - mode session\n');
+    return p;
+}
+const HEAD = (verb) => `plan-status: ${verb} ok - plan csv (${REL})`;
+
+test('show: the stamps that are set, one to a line, then Resume and Tasks; a read never writes or waits on the lock', () =>
+{
+    const p = plan();
+    assert.deepStrictEqual(lines(ok(call(p, ['show', '--plan', 'csv']))), [`plan-status: show - no status yet - run sync - plan csv (${REL})`]);
+    assert.deepStrictEqual(lines(ok(call(p, ['resume', '--plan', 'csv']))), [`plan-status: resume - no status yet - run sync - plan csv (${REL})`]);
+    refused(call(p, ['show', '--plan', 'gone']), 2, /^plan-status: no plan folder at \.alfred\/docs\/work\/plans\/gone\/\n$/);
+    ok(call(p, ['sync', '--plan', 'csv']));
+    assert.deepStrictEqual(lines(ok(call(p, ['show', '--plan', 'csv']))), [HEAD('show'), 'Resume: next task 1', 'Tasks: 0 of 3 done']);
+    ok(call(p, ['gate', '--plan', 'csv'], GATE));
+    ok(call(p, ['approve', '--plan', 'csv'], 'words: go ahead\n', '2026-11-13T10:05:00Z'));
+    edit(p, (s) => { s.tasks.forEach((t) => Object.assign(t, { status: 'done', startedAt: '2026-11-13T10:06Z', doneAt: '2026-11-13T10:30Z', result: 'r' })); });
+    ok(call(p, ['conformance', '--plan', 'csv'], 'verdict: conforms\nreviewer: r\n'));
+    ok(call(p, ['cursor', '--plan', 'csv'], 'note: step 5 CLOSE\n'));
+    ok(call(p, ['complete', '--plan', 'csv'], SUITE, '2026-11-13T12:00:00Z'));
+    fs.writeFileSync(`${p.file}.lock`, '1');
+    const t0 = Date.now();
+    const shown = untouched(p, () => ok(call(p, ['show', '--plan', 'csv'])));
+    assert.ok(Date.now() - t0 < 1000, 'no lock taken');
+    assert.deepStrictEqual(lines(shown), [HEAD('show'), 'Gated: passed', 'Approved: 2026-11-13T10:05Z - "go ahead"', 'Conformance: conforms', 'Completed: 2026-11-13T12:00Z', 'Resume: step 5 CLOSE - no task left', 'Tasks: 3 of 3 done']);
+    fs.writeFileSync(p.file, '{');
+    assert.strictEqual(call(p, ['show', '--plan', 'csv']).code, 3);
+    assert.strictEqual(call(p, ['resume', '--plan', 'csv']).code, 3);
+});
+
+test('show --full: the status lines, then the five sections; a $ in a result stays text', () =>
+{
+    assert.deepStrictEqual(ok(call(built(), ['show', '--plan', 'csv', '--full'])).out.split('\n'), [
+        HEAD('show'), 'Approved: 2026-11-13T10:05Z - mode session', 'Resume: step 4 BUILD - mode session - next task 2', 'Tasks: 1 of 3 done', '',
+        '## Tasks', '1 done - Export projection - 25m estimated, 31m taken', '  result: dotnet test - 4 passed, 0 failed', '  cost: $5 `echo`',
+        '2 blocked - Streamed endpoint - 30m estimated', '  needs: the staging database', '4 todo - Rate limit the export - 15m estimated', '',
+        '## Decisions', '- task 2 (2026-11-13T10:41Z)', '  choice: stream with IAsyncEnumerable', '  precedent: ExportController.cs:41', '',
+        '## Deviations', '- task 1 (2026-11-13T10:30Z)', '  what: a DTO, not the entity', '  why: the entity leaks the tenant id', '  asked: "yes, use a DTO"', '',
+        '## Dropped', '- 3 - Docs page - the docs page moved to another plan', '',
+        '## Added cards', '### Task 4 - Rate limit the export', '', '- files: src/limit.cs', '- estimate: 15m', '', '',
+    ]);
+    const fresh = plan();
+    ok(call(fresh, ['sync', '--plan', 'csv']));
+    const out = ok(call(fresh, ['show', '--plan', 'csv', '--full'])).out;
+    for (const h of ['Decisions', 'Deviations', 'Dropped', 'Added cards']) assert.ok(out.includes(`## ${h}\nnone\n`), h);
+    const none = plan({ md: markdown([]) });
+    ok(call(none, ['sync', '--plan', 'csv']));
+    assert.ok(ok(call(none, ['show', '--plan', 'csv', '--full'])).out.includes('## Tasks\nnone\n'));
+});
+
+test('resume: the status lines, the Markdown up to ## Tasks, then each open card - an added one from the status file', () =>
+{
+    const p = built();
+    const out = ok(call(p, ['resume', '--plan', 'csv'])).out;
+    const cut = out.indexOf('\n\n');
+    assert.deepStrictEqual(out.slice(0, cut).split('\n'), [HEAD('resume'), 'Approved: 2026-11-13T10:05Z - mode session', 'Resume: step 4 BUILD - mode session - next task 2', 'Tasks: 1 of 3 done']);
+    const rest = out.slice(cut + 2);
+    assert.ok(rest.startsWith('# CSV export - plan\n\nOriented: docs.js show api\nAsked: none\n'));
+    assert.ok(rest.includes('### Task 2 - Streamed endpoint\n\n- files: src/x.cs\n- estimate: 30m\n'));
+    assert.ok(rest.includes('### Task 4 - Rate limit the export\n\n- files: src/limit.cs\n- estimate: 15m\n'), 'the added card, numbered');
+    assert.ok(rest.indexOf('### Task 2 - ') < rest.indexOf('### Task 4 - '), 'array order');
+    for (const gone of ['### Task 1 - ', '### Task 3 - ', '## Decisions', '### Task - ']) assert.ok(!rest.includes(gone), gone);
+    fs.rmSync(mdOf(p));
+    const bare = ok(call(p, ['resume', '--plan', 'csv'])).out;
+    assert.ok(bare.includes('!! csv.md is missing\n') && bare.includes('### Task 2 - Streamed endpoint\n(no card in the plan)\n') && bare.includes('### Task 4 - Rate limit the export\n'));
+});
+
+test('parseCall: the verb, the plan ref and the task from a shell command\'s text', () =>
+{
+    const rows = [
+        ['node .claude/hooks/plan-status.js done --plan .alfred/docs/work/plans/csv --task 3 <<\'EOF\'\nresult: ok\nEOF', { verb: 'done', plan: '.alfred/docs/work/plans/csv', task: '3' }],
+        ['node .claude/hooks/plan-status.js resume --plan csv', { verb: 'resume', plan: 'csv', task: null }],
+        ['cd api && node "../.claude/hooks/plan-status.js" start --task 2 --plan "my plans/csv"', { verb: 'start', plan: 'my plans/csv', task: '2' }],
+        ['node \'.claude/hooks/plan-status.js\' show --plan \'csv\' --full | head -5', { verb: 'show', plan: 'csv', task: null }],
+        ['@\'\nresult: 4 passed\n\'@ | node .claude\\hooks\\plan-status.js done --plan .alfred\\docs\\work\\plans\\csv --task 3', { verb: 'done', plan: '.alfred\\docs\\work\\plans\\csv', task: '3' }],
+        ['node .claude/hooks/plan-status.js list', { verb: 'list', plan: null, task: null }],
+        ['node .claude/hooks/plan-status.js check --all', { verb: 'check', plan: null, task: null }],
+        ['node .claude/hooks/plan-status.js done --plan $PLAN --task 3', null],
+        ['node .claude/hooks/plan-status.js done --plan "`cat p`" --task 3', null],
+        ['node .claude/hooks/plan-status.js tick --plan csv', null],
+        ['node .claude/hooks/plan-status.js done --task 3', null],
+        ['node .claude/hooks/plan-status.js check', null],
+        ['echo plan-status.js done --plan csv', null],
+        ['node scripts/build.js --plan csv', null],
+    ];
+    for (const [command, want] of rows) assert.deepStrictEqual(P.parseCall(command), want, command);
+    for (const not of [undefined, null, 7, '']) assert.strictEqual(P.parseCall(not), null);
+});
+
+test('race: two processes, fifty writes each - the file parses and holds all hundred', async () =>
+{
+    const p = approved();
+    const child = (tag) => new Promise((resolve, reject) =>
+    {
+        const code = `const P = require(${JSON.stringify(ENGINE)}); const at = { cwd: ${JSON.stringify(p.root)}, env: { CLAUDE_PROJECT_DIR: ${JSON.stringify(p.root)} } };
+            for (let i = 0; i < 50; i++) { let r; do { r = P.run(['decide', '--plan', 'csv'], { ...at, stdin: 'choice: ${tag}' + i + '\\nprecedent: p\\n' }); } while (r.code === 4);
+                if (r.code !== 0) throw new Error(r.err); }`;
+        const c = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'ignore', 'pipe'] });
+        let err = '';
+        c.stderr.on('data', (d) => { err += d; });
+        c.on('error', reject);
+        c.on('close', (status) => (status === 0 ? resolve() : reject(new Error(err))));
+    });
+    await Promise.all([child('a'), child('b')]);
+    const s = read(p);
+    assert.deepStrictEqual(P.validate(s), []);
+    const want = ['a', 'b'].flatMap((tag) => Array.from({ length: 50 }, (_, i) => `${tag}${i}`));
+    assert.deepStrictEqual(s.decisions.map((d) => d.choice).sort(), want.sort());
+    assert.deepStrictEqual(fs.readdirSync(p.dir).sort(), ['csv.md', 'status.json'], 'no lock and no temp file left');
+});

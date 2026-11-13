@@ -733,6 +733,149 @@ function verbAddTask(plan, ctx)
     }, ctx);
 }
 
+// ---- the reading verbs (no lock, no write) ----
+
+// The plan's status for a reading verb: { status } or a finished answer (no folder, no status yet, garbage).
+function readFor(plan, verb)
+{
+    if (!fs.existsSync(plan.dir)) throw new Refusal(2, `no plan folder at ${plan.rel}`);
+    const read = readStatus(plan.dir);
+    if (read.ok) return { status: read.status };
+    if (read.why === 'absent') return { answer: { code: 0, out: [`plan-status: ${verb} - no status yet - run sync - plan ${plan.id} (${plan.rel})`] } };
+    throw new Refusal(3, NOT_SCHEMA(read.detail));
+}
+
+function statusLines(st)
+{
+    const out = [];
+    if (st.gate) out.push(`Gated: ${fold(st.gate.verdict)}`);
+    if (st.approvedAt) out.push(approvedLine(st));
+    if (st.conformance) out.push(`Conformance: ${fold(st.conformance.verdict)}`);
+    if (st.completedAt) out.push(`Completed: ${st.completedAt}`);
+    out.push(`Resume: ${resumeText(st)}`, tasksLine(st));
+    return out;
+}
+
+// A labelled value, its later lines indented with it.
+const field = (label, text) => `  ${label}: ${String(text)}`.split('\n').map((l, i) => (i ? `  ${l}` : l));
+const section = (title, body) => [`## ${title}`, ...(body.length ? body : ['none']), ''];
+// An added task's card as `### Task <id> - <title>`, then the card's text below its own first line.
+const addedCard = (t) => [`### Task ${t.id} - ${t.title}`, ...t.card.split('\n').slice(1)];
+
+function fullLines(st)
+{
+    const tasks = st.tasks.flatMap((t) =>
+    {
+        const parts = [];
+        if (t.estimateMin !== null) parts.push(`${t.estimateMin}m estimated`);
+        if (t.status === 'done' && t.startedAt && t.doneAt) parts.push(`${minutesBetween(t.startedAt, t.doneAt)}m taken`);
+        const head = `${t.id} ${t.status} - ${t.title}${parts.length ? ` - ${parts.join(', ')}` : ''}`;
+        const extra = t.status === 'done' && t.result !== null ? field('result', t.result)
+            : t.status === 'blocked' && t.needs !== null ? field('needs', t.needs)
+                : t.status !== 'done' && t.status !== 'blocked' && t.why !== null ? field('why', t.why) : [];
+        return [head, ...extra];
+    });
+    const entry = (e, labels) => [`- ${e.task ? `task ${e.task}` : 'plan'} (${e.at})`,
+        ...labels.flatMap((l) => (e[l] === null || e[l] === undefined ? [] : field(l, l === 'asked' ? `"${e[l]}"` : e[l])))];
+    return [
+        ...section('Tasks', tasks),
+        ...section('Decisions', st.decisions.flatMap((e) => entry(e, ['choice', 'precedent']))),
+        ...section('Deviations', st.deviations.flatMap((e) => entry(e, ['what', 'why', 'asked']))),
+        ...section('Dropped', st.dropped.map((d) => `- ${d.id} - ${d.title}${d.why ? ` - ${fold(d.why)}` : ''}`)),
+        ...section('Added cards', st.tasks.filter((t) => t.card !== null).flatMap(addedCard)),
+    ];
+}
+
+function verbShow(plan, ctx)
+{
+    const r = readFor(plan, 'show');
+    if (r.answer) return r.answer;
+    const out = [`plan-status: show ok - plan ${plan.id} (${plan.rel})`, ...statusLines(r.status)];
+    if (ctx.flags.full) out.push('', ...fullLines(r.status));
+    return { code: 0, out };
+}
+
+// The Markdown's lines outside fences, each with its fence state, so a quoted heading is never read as one.
+function headingAt(lines)
+{
+    let fence = null;
+    return lines.map((line) =>
+    {
+        const marker = /^(`{3,}|~{3,})/.exec(line);
+        if (fence) { if (marker && marker[1][0] === fence) fence = null; return false; }
+        if (marker) { fence = marker[1][0]; return false; }
+        return /^#{2,3} /.test(line);
+    });
+}
+
+function verbResume(plan, ctx)
+{
+    const r = readFor(plan, 'resume');
+    if (r.answer) return r.answer;
+    const st = r.status;
+    const out = [`plan-status: resume ok - plan ${plan.id} (${plan.rel})`, ...statusLines(st), ''];
+    let lines = null;
+    try { lines = fs.readFileSync(plan.md, 'utf8').replace(/\r\n?/g, '\n').split('\n'); }
+    catch { out.push(`!! ${plan.id}.md is missing`); }
+    const heading = lines ? headingAt(lines) : [];
+    if (lines)
+    {
+        let end = lines.findIndex((l, i) => heading[i] && /^## Tasks\s*$/.test(l));
+        if (end < 0) end = lines.findIndex((l, i) => heading[i] && CARD_RE.test(l));
+        out.push(...lines.slice(0, end < 0 ? lines.length : end));
+    }
+    for (const t of st.tasks.filter((x) => x.status !== 'done'))
+    {
+        const at = lines ? lines.findIndex((l, i) => heading[i] && l.startsWith(`### Task ${t.id} - `)) : -1;
+        if (at >= 0)
+        {
+            let end = lines.findIndex((l, i) => i > at && heading[i]);
+            if (end < 0) end = lines.length;
+            out.push(...lines.slice(at, end));
+        }
+        else if (t.card !== null) out.push(...addedCard(t));
+        else out.push(`### Task ${t.id} - ${t.title}`, '(no card in the plan)');
+    }
+    return { code: 0, out };
+}
+
+// ---- parseCall: a plan-status call in a shell command's text (the hooks' one reader of the call) ----
+
+const CALL_RE = /(?:^|[\s;&|(])node\s+(?:"([^"\n]*plan-status\.js)"|'([^'\n]*plan-status\.js)'|([^\s'";&|()<>]*plan-status\.js))(?=\s|$)/;
+// The words of a command line up to its first |, ;, &, < or > outside quotes, each with its quotes removed.
+function wordsOf(text)
+{
+    const words = [];
+    let word = null;
+    let quote = null;
+    for (const ch of text)
+    {
+        if (quote) { if (ch === quote) quote = null; else word += ch; continue; }
+        if (ch === '"' || ch === "'") { quote = ch; word = word === null ? '' : word; continue; }
+        if (ch === '\n' || '|;&<>'.includes(ch)) break;
+        if (/\s/.test(ch)) { if (word !== null) words.push(word); word = null; continue; }
+        word = (word === null ? '' : word) + ch;
+    }
+    if (word !== null) words.push(word);
+    return words;
+}
+
+function parseCall(command)
+{
+    if (typeof command !== 'string' || !command) return null;
+    const m = CALL_RE.exec(command);
+    if (!m) return null;
+    const words = wordsOf(command.slice(m.index + m[0].length));
+    const verb = words[0];
+    if (![...VERBS.write, ...VERBS.read].includes(verb)) return null;
+    const valueOf = (flag) => { const i = words.indexOf(flag); return i >= 0 && i + 1 < words.length ? words[i + 1] : null; };
+    const plan = valueOf('--plan');
+    if (plan !== null && /[$`]/.test(plan)) return null;
+    const namesNone = verb === 'list' || (verb === 'check' && words.includes('--all'));
+    if (!namesNone && plan === null) return null;
+    return { verb, plan, task: valueOf('--task') };
+}
+
 // Every problem of one plan's status.json: null when it has none, or [] when absent.
 function problemsOf(dir)
 {
@@ -816,6 +959,8 @@ const HANDLERS = {
     reopen: (ctx) => verbReopen(ctx.plan, ctx),
     'add-task': (ctx) => verbAddTask(ctx.plan, ctx),
     drop: (ctx) => verbDrop(ctx.plan, ctx),
+    show: (ctx) => verbShow(ctx.plan, ctx),
+    resume: (ctx) => verbResume(ctx.plan, ctx),
     check: (ctx) => verbCheck(ctx),
     list: (ctx) => verbList(ctx),
 };
@@ -877,7 +1022,7 @@ function run(argv, { now = () => new Date(), stdin = '', cwd = process.cwd(), en
 
 module.exports = {
     SCHEMA, MAX_BYTES, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS, VERBS,
-    stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run,
+    stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run, parseCall,
     // for the verbs a later task adds
     mutate, syncTasks, HANDLERS, Refusal, tasksLine, newTask, labelled, cut, usage,
 };
