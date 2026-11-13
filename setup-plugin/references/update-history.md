@@ -1096,3 +1096,10 @@ When a session is held for a fresh-session choice (after an automatic compaction
 done), the hold now names a second way on beside 'a single short step': work that takes fewer messages than the
 payback the hold quotes - one line, 'fewer messages than the payback: <what>, ~N messages', then the same call again.
 Nothing to do by hand.
+
+## after 3.11.0 - the secret guard reads a .json with comments or a trailing comma
+
+A `.json` or `.jsonc` file the strict JSON parser rejects - a `//` or `/* */` comment (a tsconfig, `.vscode/settings.json`,
+a devcontainer), a trailing comma, a truncated file - is now judged like a valid one: a Read of one holding a credential
+asks (or is refused where nobody can answer), a content Grep of it is refused, `--presence` answers for its keys and
+`--redacted` masks its values. Such a file with no credential reads as before. Nothing to do by hand.

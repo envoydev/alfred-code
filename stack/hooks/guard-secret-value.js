@@ -587,12 +587,52 @@ function windowText(file, window) {
 }
 // A JSON document cut at MAX_BYTES (or a window inside one) no longer parses: its `"key": "value"` pairs are judged one by
 // one, the way the whole document's would be (HK-07: a 910KB terraform state's `"password"`).
+const JSON_PAIR_RE = /("((?:[^"\\\n]|\\.){1,200})"\s*:\s*")((?:[^"\\\n]|\\.){0,4000})"/g;
+// A JSON string's escapes read as the parser reads them; a malformed escape keeps the raw text.
+const jsonUnescape = (raw) => { try { return JSON.parse(`"${raw}"`); } catch { return raw; } };
+// Every `"key": "value"` pair on one line, [key, value] - the reading of a JSON no parser takes (SG1-F2).
+const jsonPairs = (text) => [...String(text).matchAll(JSON_PAIR_RE)].map((m) => [jsonUnescape(m[2]), jsonUnescape(m[3])]);
 function jsonPairIn(text, labels) {
-  for (const m of text.matchAll(/"((?:[^"\\\n]|\\.){1,200})"\s*:\s*"((?:[^"\\\n]|\\.){0,4000})"/g)) {
-    const [, k, v] = m;
-    if (labels ? SECRET_SHAPE.test(v) : pairHoldsCredential(k, v)) return k;
-  }
+  for (const [k, v] of jsonPairs(text)) if (labels ? SECRET_SHAPE.test(v) : pairHoldsCredential(k, v)) return k;
   return null;
+}
+// SG1-F2 (3.12): a `.json` / `.jsonc` the strict parser rejects - JSONC's `//` and `/* */` comments (a tsconfig,
+// `.vscode/settings.json`, a devcontainer), a trailing comma, a truncated file - was judged by no reader, so a credential
+// in one passed the Read, Grep and MCP routes, `--presence` said `absent` and `--redacted` printed it. Such a file is
+// read leniently (`jsonDoc`), and one no lenient read parses (a truncated file) by its `"key": "value"` pairs.
+const JSONISH_FILE = /\.jsonc?$/i;
+// JSONC's comments and trailing commas removed OUTSIDE strings. Two string-aware passes, so a `//` or `/*` inside a
+// string (`"https://..."`) and a `,}` inside one stay text. A string ends at its closing quote or, unterminated, at
+// the line's end (JSON allows no raw newline in one), so a torn string swallows no later line. The result may still not
+// parse (a truncated file); the caller then reads the pairs.
+function stripJsonc(text) {
+  const stringEnd = (s, i) => { let j = i + 1; while (j < s.length && s[j] !== '"' && s[j] !== '\n') j += s[j] === '\\' ? 2 : 1; return Math.min(j + 1, s.length); };
+  let bare = '';
+  for (let i = 0; i < text.length;) {
+    if (text[i] === '"') { const j = stringEnd(text, i); bare += text.slice(i, j); i = j; continue; }
+    if (text.startsWith('//', i)) { const j = text.indexOf('\n', i); i = j < 0 ? text.length : j; continue; } // the newline stays
+    if (text.startsWith('/*', i)) { const j = text.indexOf('*/', i + 2); bare += ' '; i = j < 0 ? text.length : j + 2; continue; }
+    bare += text[i++];
+  }
+  let out = '';
+  for (let i = 0; i < bare.length;) {
+    if (bare[i] === '"') { const j = stringEnd(bare, i); out += bare.slice(i, j); i = j; continue; }
+    // a comma whose next non-blank character closes an object or array is a trailing comma
+    if (bare[i] === ',') {
+      let j = i + 1;
+      while (j < bare.length && /\s/.test(bare[j])) j++;
+      if (bare[j] === '}' || bare[j] === ']') { i++; continue; }
+    }
+    out += bare[i++];
+  }
+  return out;
+}
+// The document a JSON text holds - strict first, then, for a `.json` / `.jsonc` file only, the lenient read - or
+// undefined when neither parses (`null` is a document: the text `null`).
+function jsonDoc(text, file) {
+  try { return JSON.parse(text); } catch { /* not strict JSON */ }
+  if (!JSONISH_FILE.test(String(file))) return undefined;
+  try { return JSON.parse(stripJsonc(text)); } catch { return undefined; }
 }
 // `window`: a Read's { offset, limit } - judged on its own lines when the file is past MAX_BYTES.
 function secretIn(file, window = null) {
@@ -608,8 +648,10 @@ function secretIn(file, window = null) {
     if (text == null) return null;
   } catch { return null; }
   const labels = TRANSLATION_PATH.test(String(file));
-  try { return secretKeyIn(JSON.parse(text), '', 0, labels); } catch { /* not JSON, or cut */ }
-  if (cut) { const hit = jsonPairIn(text, labels); if (hit) return hit; }
+  const doc = jsonDoc(text, file);
+  if (doc !== undefined) return secretKeyIn(doc, '', 0, labels);
+  // not JSON, cut at MAX_BYTES, or a `.json` / `.jsonc` no lenient read parses (SG1-F2: a truncated file): its pairs
+  if (cut || JSONISH_FILE.test(String(file))) { const hit = jsonPairIn(text, labels); if (hit) return hit; }
   const other = otherPairs(text, file);
   if (other) for (const p of other.pairs) if (pairCounts(p)) return p[0];
   return dotenvShaped(text, file) ? secretLineIn(text) : null;
@@ -1071,25 +1113,26 @@ if (process.argv[2] === '--presence') {
   let entries = {};
   let doc = null;
   let listed = null; // the names a keyless listing shows, for a format whose pairs carry two spellings
-  if (text != null) {
-    try {
-      const j = JSON.parse(text);
-      doc = j && typeof j === 'object' ? j : null;
-      entries = (j && typeof j.env === 'object' && j.env) ? j.env : (j && typeof j === 'object' && !Array.isArray(j) ? j : {});
-    } catch {
-      const other = otherPairs(text, file);
-      if (other) {
-        // the first spelling wins: `default.aws_secret_access_key` before a later profile's bare key
-        for (const [k, v] of other.pairs) if (!Object.prototype.hasOwnProperty.call(entries, k)) entries[k] = v;
-        // a path, or a bare name no path ends in: `github.com.oauth_token`, never `oauth_token` beside it
-        listed = other.pairs.map(([k]) => k).filter((k, i, all) => all.indexOf(k) === i && (other.kind === 'netrc' ? /\./.test(k)
-          : other.kind === 'urls' ? k !== 'password' : /\./.test(k) || !all.some((x) => x.endsWith(`.${k}`))));
-      }
-      if (!other || dotenvShaped(text, file)) {
-        for (const line of text.split(LINES)) {
-          const m = line.match(DOTENV_LINE);
-          if (m && !Object.prototype.hasOwnProperty.call(entries, m[1])) { entries[m[1]] = unquote(m[2]); if (listed && !listed.includes(m[1])) listed.push(m[1]); }
-        }
+  // strict, else - a `.json` / `.jsonc` - the lenient read (SG1-F2)
+  const j = text != null ? jsonDoc(text, file) : undefined;
+  if (j !== undefined) {
+    doc = j && typeof j === 'object' ? j : null;
+    entries = (j && typeof j.env === 'object' && j.env) ? j.env : (j && typeof j === 'object' && !Array.isArray(j) ? j : {});
+  } else if (text != null) {
+    // SG1-F2: a `.json` / `.jsonc` no lenient read parses (a truncated file) answers by its `"key": "value"` pairs
+    if (JSONISH_FILE.test(String(file))) for (const [k, v] of jsonPairs(text)) if (!Object.prototype.hasOwnProperty.call(entries, k)) entries[k] = v;
+    const other = otherPairs(text, file);
+    if (other) {
+      // the first spelling wins: `default.aws_secret_access_key` before a later profile's bare key
+      for (const [k, v] of other.pairs) if (!Object.prototype.hasOwnProperty.call(entries, k)) entries[k] = v;
+      // a path, or a bare name no path ends in: `github.com.oauth_token`, never `oauth_token` beside it
+      listed = other.pairs.map(([k]) => k).filter((k, i, all) => all.indexOf(k) === i && (other.kind === 'netrc' ? /\./.test(k)
+        : other.kind === 'urls' ? k !== 'password' : /\./.test(k) || !all.some((x) => x.endsWith(`.${k}`))));
+    }
+    if (!other || dotenvShaped(text, file)) {
+      for (const line of text.split(LINES)) {
+        const m = line.match(DOTENV_LINE);
+        if (m && !Object.prototype.hasOwnProperty.call(entries, m[1])) { entries[m[1]] = unquote(m[2]); if (listed && !listed.includes(m[1])) listed.push(m[1]); }
       }
     }
   }
@@ -1181,9 +1224,17 @@ if (process.argv[2] === '--redacted') {
         }
         return node;
       };
-      body = JSON.stringify(walk(JSON.parse(text)), null, 2) + '\n';
+      // strict, else - a `.json` / `.jsonc` - the lenient read, re-emitted without its comments (SG1-F2)
+      const doc = jsonDoc(text, file);
+      if (doc === undefined) throw new Error('no JSON document');
+      body = JSON.stringify(walk(doc), null, 2) + '\n';
     } catch {
-      body = maskFormatText(text, file, mask, () => { masked++; });
+      // SG1-F2: a `.json` / `.jsonc` no lenient read parses (a truncated file) - each `"key": "value"` pair's value masked
+      // in place as the walk above masks a leaf by its key; the format pass then masks shapes and embedded passwords
+      const pairsMasked = JSONISH_FILE.test(String(file))
+        ? text.replace(JSON_PAIR_RE, (all, head, k, raw) => (maskable(jsonUnescape(k), jsonUnescape(raw)) ? `${head}${mask(jsonUnescape(raw))}"` : all))
+        : text;
+      body = maskFormatText(pairsMasked, file, mask, () => { masked++; });
     }
     // The runnable presence command, absolute: the guard ships inside the plugin, and pilot 3's first presence call
     // guessed `.claude/hooks/`, where only the docs and history engines are copied.
@@ -1491,16 +1542,8 @@ function valuesOf(file, { every = false } = {}) {
     }
     return out;
   }
-  let json;
-  try { json = JSON.parse(text); } catch { json = undefined; }
-  if (json === undefined) {
-    const hit = secretIn(file); // source code, a doc, a translation bundle: nothing
-    if (!hit) return out;
-    const names = new Map(((otherPairs(text, file) || {}).pairs || []).map(([k, v]) => [String(v), k]));
-    for (const l of text.split(LINES)) { const m = l.match(DOTENV_LINE); if (m) names.set(unquote(m[2]), m[1]); }
-    maskFormatText(text, file, (v) => put(names.get(v) || hit, v), (v) => v && put(hit, v));
-    return out;
-  }
+  // strict, else - a `.json` / `.jsonc` - the lenient read (SG1-F2)
+  const json = jsonDoc(text, file);
   const open = every && (JSON_CONFIG.test(String(file)) || realOf(file) === realOf(pathMod.join(accountDir(), 'settings.json')));
   const labels = TRANSLATION_PATH.test(String(file));
   const walk = (node, key, parent, all) => {
@@ -1510,6 +1553,17 @@ function valuesOf(file, { every = false } = {}) {
     } else if (Array.isArray(node)) node.forEach((x) => walk(x, all ? key : '', parent, all));
     else if (node && typeof node === 'object') for (const [k, v] of Object.entries(node)) walk(v, k, key, all || (open && /^(?:env|headers)$/.test(k)));
   };
+  if (json === undefined) {
+    // SG1-F2: a `.json` / `.jsonc` no lenient read parses (a truncated file) - each `"key": "value"` pair is judged as the
+    // walk judges a leaf, so the bare value is masked wherever it prints; the format pass below adds what it finds
+    if (JSONISH_FILE.test(String(file))) for (const [k, v] of jsonPairs(text)) walk(v, k, '', false);
+    const hit = secretIn(file); // source code, a doc, a translation bundle: nothing
+    if (!hit) return out;
+    const names = new Map(((otherPairs(text, file) || {}).pairs || []).map(([k, v]) => [String(v), k]));
+    for (const l of text.split(LINES)) { const m = l.match(DOTENV_LINE); if (m) names.set(unquote(m[2]), m[1]); }
+    maskFormatText(text, file, (v) => put(names.get(v) || hit, v), (v) => v && put(hit, v));
+    return out;
+  }
   walk(json, '', '', false);
   return out;
 }
