@@ -1066,10 +1066,9 @@ function writeSettings(opts)
                 && acwPrior[compactAt(id)] === valueHash(JSON.stringify(entry.autoCompactWindow));
         };
         const env = { ...memberEnv, ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
-        // Only where the project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1, seeded `0`): with
-        // the offers on, a window at the trigger would compact the session before the offer could reach anyone.
-        const compacts = String(env.ALFRED_CODE_AUTO_COMPACT || '').trim() === '1';
-        const seeds = !compacts || topLevel(data) || topLevel(sibling) || topLevel(account) ? {} : compactWindowSeeds(compactWindows.models, env);
+        // Only where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1): else a window would pre-empt the fresh-session offer.
+        const seeds = String(env.ALFRED_CODE_AUTO_COMPACT || '').trim() !== '1' || topLevel(data) || topLevel(sibling) || topLevel(account)
+            ? {} : compactWindowSeeds(compactWindows.models, env);
         const seeded = [];
         const moved = [];
         for (const [id, value] of Object.entries(seeds))

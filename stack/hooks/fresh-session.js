@@ -59,23 +59,15 @@ function tierKeyOf(window) {
   return w >= 1000000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M' : w >= 300000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K'
     : w >= 200000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' : null;
 }
-// The auto-compact window per model - { <model id>: <tokens> } - at its window tier's trigger, read from `env` (the env a
-// settings file applies): an unset or garbage tier takes that env's DEFAULT, else DEFAULT_SEED; `0` skips the tier; a
-// trigger at or past its window is held at 90% of it, inside the 100,000-1,000,000 Claude Code accepts. A model under 200K
-// has no tier and keeps Claude Code's own window; an id the stamp's ledger cannot read back (stamp.js SETTINGS_PATH) gets
-// no row. Whether the project compacts at all (ALFRED_CODE_AUTO_COMPACT) is the caller's test.
+// { <model id>: <tokens> }: each tier's trigger from `env` (unset or garbage: its DEFAULT, else DEFAULT_SEED; `0` skips it), held
+// at 90% of the window and inside 100k-1M; under 200K no row. ALFRED_CODE_AUTO_COMPACT is the caller's test.
 function compactWindowSeeds(models, env = {}) {
   const num = (key) => { const n = parseInt(env && Object.hasOwn(env, key) ? env[key] : NaN, 10); return Number.isNaN(n) || n < 0 ? null : n; };
   const dflt = num('ALFRED_CODE_CONTEXT_WINDOW_DEFAULT') ?? DEFAULT_SEED;
   const out = {};
   for (const [id, n] of Object.entries(models && typeof models === 'object' && !Array.isArray(models) ? models : {})) {
-    const window = Number(n);
-    const key = tierKeyOf(window);
-    if (!key || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
-    let at = num(key) ?? dflt;
-    if (!(at > 0)) continue;
-    if (at >= window) at = Math.floor(window * 0.9);
-    out[id] = Math.max(100000, Math.min(1000000, at));
+    const at = tierKeyOf(n) && /^[a-z0-9][a-z0-9-]{0,99}$/.test(id) ? num(tierKeyOf(n)) ?? dflt : 0;
+    if (at > 0) out[id] = Math.max(100000, Math.min(1000000, at >= Number(n) ? Math.floor(Number(n) * 0.9) : at));
   }
   return out;
 }
