@@ -305,7 +305,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **A project the workspace ignores (W3, 3.11.0; `install-workspace.test.js`, `workspace-cli.test.js`).** A root's
   `ignoredChildren` (`workspace.json`) marks a path below it: `workspace-file.js covered` is the one predicate, the
   walkers (`subtree`, `refreshBelow`, the rescan) cut at a covered folder, and `ignoredBy` answers from the TWO holders -
-  the folder the project's record names as `parent`, then the nearest stamped one. `stampedAncestors` carries the cut:
+  the folder the project's record names as `parent` (with none, as `above`: a released project whose root sat past a
+  nearer stamped folder keeps that root there, the between tree), then the nearest stamped one. `stampedAncestors` carries the cut:
   an ignored project writes no ancestor rows for the folders the mark cuts and instead the six names per folder of the
   range from the ignored path's parent up to the topmost stamped ancestor (`WIDE`: `CLAUDE.md`, `CLAUDE.local.md`,
   `.claude/CLAUDE.md`, `AGENTS.md`, `.claude/AGENTS.md`, `.claude/rules/` as `<path>/**`), and `mcpJsonIgnores` disables
