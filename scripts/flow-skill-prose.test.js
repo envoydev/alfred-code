@@ -486,9 +486,11 @@ const PF_CALLS = {
     'stack/skills/task-solve/SKILL.md': ['resume', 'show', 'gate', 'approve', 'conformance', 'complete', 'cursor', 'decide'],
     'stack/skills/task-solve/references/step-mechanics.md': ['approve', 'decide', 'show'],
     'stack/skills/task-solve/references/full-spec.md': ['sync', 'approve', 'start', 'done', 'complete'],
+    'stack/skills/task-implement/SKILL.md': ['start', 'done', 'block', 'fail', 'decide', 'cursor', 'redesign', 'deviate', 'add-task', 'approve'],
+    'stack/skills/task-verify-code/SKILL.md': ['show'],
 };
 const PF_BODIES = [...Object.keys(PF_CALLS), 'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/mode-output-scoring/SKILL.md',
-    'stack/skills/mode-output-scoring/references/outputs.md'];
+    'stack/skills/mode-output-scoring/references/outputs.md', 'stack/skills/task-implement/references/evidence.md'];
 
 test('PF1: each body names the verbs it sends the model to', () => {
     for (const [file, verbs] of Object.entries(PF_CALLS)) {
@@ -578,4 +580,26 @@ test('PF1: task-solve keeps its state in the plan folder, resumes through the sc
     assert.doesNotMatch(text, /Stamp `(?:Approved|Completed|Conformance)/);
     assert.doesNotMatch(text.replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /`Resume:` line is the one cursor|work\/plans\/<feature>\.md|work\/plans\/csv\.md/);
     assert.strictEqual(asks(skill('task-solve')).length, 11, 'no ask template added or dropped');
+});
+
+test('PF1: task-implement ticks through the script, runs fail before its ask alone, and carries the foreign-start ask', () => {
+    const text = flat(skill('task-implement'));
+    assert.match(text, /run `node \.claude\/hooks\/plan-status\.js start --plan <the plan folder> --task <id>` before touching code/);
+    assert.match(text, /`fail --task <id>` \(`why:`\) - before this ask and before no other/);
+    assert.match(text, /`Re-design this slice` runs `redesign --task <id>`.*`Continue against the delta` runs `deviate --task <id>` with the answer as `asked:`.*`Stop the build here` runs `cursor` alone/);
+    const all = asks(skill('task-implement'));
+    assert.strictEqual(all.length, 11);
+    const foreign = all.find((a) => /was started by another session/.test(a.question));
+    assert.deepStrictEqual(foreign.options, ['Leave it to that session (Recommended)', 'Take it over here']);
+    for (const lead of [/another session started this task - stops here with ONE ask \(plain-text options where the harness lacks the tool\)/,
+        /gets ONE approval ask before task 1 \(plain-text options where the harness lacks the tool\)/])
+        assert.match(text, lead, 'each ask this change adds or rewords keeps the plain-text fallback');
+    assert.doesNotMatch(text.replace(/in a plan that is a single file[^;]*;/, '').replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /IN_PROGRESS|`DONE`|`FAILED`|Approved: line/);
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'task-implement', text: skill('task-implement') }]), [], 'check 61 holds the new template and the pin');
+});
+
+test('PF1: task-verify-code reads what was built from show --full', () => {
+    const text = flat(skill('task-verify-code'));
+    assert.match(text, /what was built from `node \.claude\/hooks\/plan-status\.js show --plan <the plan folder> --full`/);
+    assert.match(text, /An added task is a task, a dropped one is not missing, a recorded deviation is judged as recorded\./);
 });

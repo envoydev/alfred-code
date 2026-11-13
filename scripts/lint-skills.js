@@ -1254,7 +1254,8 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 const ASK_FLOW_TEMPLATES = {
     // +1 task-solve: the step-5 findings stop (usage audit 2026-11-03 U28: improvised, it marked 'Close now' over an in-area MATERIAL).
     'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
-    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+    // +1 task-implement (PF1): the foreign-start ask - a `start` that prints `!!`, another session started the task.
+    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 11, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
     'capture-quality': 8, // R127: absent and unstamped ask apart
     // capture-awareness's router (2026-10-30): the chain's run ask and mode ask and the description match's part pick.

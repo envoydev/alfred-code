@@ -190,7 +190,7 @@ test('177c5743#5: a documentation plan has its own card - target, change, eviden
 {
     const pw = read('stack/skills/habits-plan-writing/SKILL.md');
     const card = (/A documentation plan[\s\S]*?```text\n([\s\S]*?)```/.exec(pw) || [])[1] || '';
-    assert.deepStrictEqual([...card.matchAll(/^- (\w+):/gm)].map((m) => m[1]), ['status', 'target', 'change', 'evidence', 'verification', 'estimate']);
+    assert.deepStrictEqual([...card.matchAll(/^- (\w+):/gm)].map((m) => m[1]), ['target', 'change', 'evidence', 'verification', 'estimate']);   // PF1: no status line - the script records it
     assert.match(flat(pw), /four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`/);
 });
 
@@ -253,5 +253,5 @@ test('5984019e#2 #3: a trivial or small close re-checks its size by script and c
     assert.match(spec, /`node "\$SPEC" --touched <trivial\|small>`/);
     assert.match(spec, /On `raise to standard` the size rises where the run stands/);
     const body = read('stack/skills/task-solve/SKILL.md').replace(/^---\n[\s\S]*?\n---\n/, '');
-    assert.ok(body.length < 17700, `the body stays under its cap: ${body.length}`);
+    assert.ok(body.length < 18000, `the body stays under its cap (I29: 18,000 since PF1): ${body.length}`);
 });
