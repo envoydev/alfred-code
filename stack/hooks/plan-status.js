@@ -937,6 +937,7 @@ function verbList(ctx)
 {
     const plans = layout.planFiles(ctx.root, ctx.env);
     const folders = plans.filter((p) => p.shape === 'folder').sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    // PF1 flat plan - until 4.0.0: list counts the single-file plans beside the folders
     const flat = plans.length - folders.length;
     const out = ['plan-status: list ok'];
     for (const p of folders)

@@ -127,6 +127,7 @@ function planFiles(root, env = process.env)
                 const mtimeMs = Math.max(mdSt.mtimeMs, statusSt && statusSt.isFile() ? statusSt.mtimeMs : 0);
                 found.push({ id: name, shape: 'folder', md, dir: full, mtimeMs });
             }
+            // PF1 flat plan - until 4.0.0: a single-file plan is listed beside the folders
             else if (st.isFile() && /\.md$/i.test(name))
                 found.push({ id: name.replace(/\.md$/i, ''), shape: 'flat', md: full, dir: null, mtimeMs: st.mtimeMs });
         }

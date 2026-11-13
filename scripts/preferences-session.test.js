@@ -684,6 +684,7 @@ test('PF-5: a capture\'s writes under the docs root pass; a plan still waits and
         for (const f of ['.alfred/docs/architecture/ARCHITECTURE.md', '.alfred/docs/awareness/project.md', '.alfred/docs/quality/report.md', '.alfred/docs/ORIENTATION.md', '.alfred/.sensitive-data'])
             assert.ok(!denied(p.hook(pre('Write', { file_path: f, content: 'x' }, sid()))), f);
         assert.ok(denied(p.hook(pre('Write', { file_path: '.alfred/docs/work/plans/p.md', content: 'x' }, sid()))));
+        assert.ok(denied(p.hook(pre('Write', { file_path: '.alfred/docs/work/plans/csv/csv.md', content: 'x' }, sid()))), 'PF1: a plan folder\'s Markdown, as the flat plan');
         assert.ok(denied(p.hook(pre('Write', { file_path: '.alfred/docs/plans/old.md', content: 'x' }, sid()))), 'the pre-2.8.0 plans folder too');
         assert.ok(denied(p.hook(pre('Write', { file_path: 'src/a.ts', content: 'x' }, sid()))));
     }

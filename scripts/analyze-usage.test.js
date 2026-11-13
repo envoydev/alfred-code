@@ -1263,6 +1263,25 @@ test('U03: unheld stops need an open flow; a probe receipt counts as checked', (
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// PF1 (plan 2, Task 6): a plan folder's flow closes on the engine's `complete ok` line in its call's result.
+test('PF1: unheld stops close on the plan script\'s complete line, never on a refused complete', () => {
+  const dir = tmp();
+  const endTurn = (id, n, text) => scAsst(id, scT(n), usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const flowWith = (out) => {
+    let body = scHuman(scT(0), '<command-name>/task-solve</command-name>\n<command-args>fix the parser</command-args>');
+    body += scAsst('p1', scT(1), usage(1, 0, 100, 5), [scBash('pc1', "node .claude/hooks/plan-status.js complete --plan csv <<'EOF'\nsuite: npm test - ok\nEOF")]) + toolRes(scT(2), 'pc1', out);
+    body += endTurn('p2', 3, 'Closed.') + scHuman(scT(4), 'thanks, now the readme');
+    return body;
+  };
+  const closed = path.join(dir, 'closed.jsonl');
+  fs.writeFileSync(closed, flowWith('plan-status: complete ok - plan csv (.alfred/docs/work/plans/csv/)\nCompleted: 2026-11-13T10:42Z\n'));
+  assert.deepStrictEqual(run([closed]).main.unheldStopCandidates, [], 'the flow is closed by the script');
+  const refused = path.join(dir, 'refused.jsonl');
+  fs.writeFileSync(refused, flowWith('plan-status: complete refused: task 2 is in_progress'));
+  assert.deepStrictEqual(run([refused]).main.unheldStopCandidates.map((c) => c.stopTs), [scT(3)], 'a refused complete closes nothing');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('U02: a green claim after a node <suite>.test.cjs run in the same turn is backed', () => {
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');

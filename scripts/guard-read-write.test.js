@@ -594,6 +594,12 @@ test('2.8.0: a plan under the docs root\'s work/plans/ reads whole, as one under
   const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
   assert.equal(rd('.alfred/docs/work/plans/plan.md'), 0, 'the plan under work/plans/');
   assert.equal(rd('work/plans/other.md'), 2, 'a work/plans/ folder outside the docs root is no plan');
+  fs.mkdirSync(path.join(plans, 'csv'), { recursive: true });
+  fs.writeFileSync(path.join(plans, 'csv', 'csv.md'), '# plan\n' + 'x'.repeat(70 * 1024) + '\n');
+  fs.mkdirSync(path.join(dir, 'work', 'plans', 'csv'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'work', 'plans', 'csv', 'csv.md'), '# other\n' + 'x'.repeat(70 * 1024) + '\n');
+  assert.equal(rd('.alfred/docs/work/plans/csv/csv.md'), 0, 'PF1: a plan folder\'s Markdown reads whole');
+  assert.equal(rd('work/plans/csv/csv.md'), 2, 'PF1: outside the docs root it is no plan');
 });
 
 test('a 61KB draft under state/sessions/scoring/ reads whole; a 61KB .md elsewhere under state/ still blocks', () => {

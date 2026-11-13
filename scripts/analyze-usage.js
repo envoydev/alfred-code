@@ -81,6 +81,7 @@ const { usageScope, sessionsDirOf } = require('./usage-scope.js');
 // The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
 // call of one of these opens a phase; any other skill loaded while one is open serves it.
 // A plan's close stamp (U03): `Completed: <date>` opening a line, a list marker or bold allowed.
+// PF1 flat plan - until 4.0.0: a single-file plan closes on its own Completed: line
 const COMPLETED_STAMP_RE = /(?:^|\n)[ \t]*(?:[-*][ \t]+)?\**Completed:\**[ \t]*\S/;
 // A COMMIT-GATE receipt with a probe of what ran (U03): habits-commit-checkpoint's `receipt.js commit ... --probe '<what
 // ran>'`, run as `node "$R" commit` with R bound to it), or a hand-written receipt naming COMMIT-GATE beside a `--probe` /
@@ -2179,6 +2180,8 @@ async function analyzeTranscript(file, window) {
   // inside a flow; and a COMMIT-GATE receipt carrying a probe of what ran checks the next commit (the receipt quotes checks
   // from earlier turns; 'NOT RUN' checks nothing).
   let stopFlowOpen = false;
+  // PF1: a plan folder closes on the engine's `complete ok` line in the result of the call that ran `complete`
+  const planCompleteCalls = new Set();
   let receiptProbed = false;
   const stopCandidate = (ts) => { if (prevAssistantNoTool) { if (stopFlowOpen) s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: ts || null }); prevAssistantNoTool = null; } };
   s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
@@ -2774,6 +2777,7 @@ async function analyzeTranscript(file, window) {
           const commits = (cmdCode.match(/(?:^|[;&|(\n]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
           const merges = (cmdCode.match(/(?:^|[;&|(\n]\s*)gh\s+pr\s+merge\b/g) || []).length;
           if (COMPLETED_STAMP_RE.test(cmdStr)) stopFlowOpen = false;
+          if (/plan-status\.js["']?\s+complete\b/.test(cmdStr)) planCompleteCalls.add(c.id);
           const probe = RECEIPT_PROBE_RE.exec(cmdStr);
           if (probe && RECEIPT_RE.test(cmdStr)) receiptProbed = !/^\s*NOT RUN\b/i.test(probe.slice(1).find((x) => x != null) || '');
           if (commits || merges) {
@@ -2999,6 +3003,10 @@ async function analyzeTranscript(file, window) {
         const text = typeof textParts === 'string' ? textParts : JSON.stringify(textParts || '');
         const chars = text.length;
         if (imgs) s.imageResults = (s.imageResults || 0) + imgs;
+        if (planCompleteCalls.has(c.tool_use_id)) {
+          const plain = typeof c.content === 'string' ? c.content : parts ? parts.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n') : '';
+          if (/(?:^|\n)plan-status: complete ok - plan /.test(plain)) stopFlowOpen = false;
+        }
         const info = toolById.get(c.tool_use_id);
         const ix = callIdxById.get(c.tool_use_id);
         if (ix && o.timestamp && !ix.resultTs) ix.resultTs = o.timestamp;
