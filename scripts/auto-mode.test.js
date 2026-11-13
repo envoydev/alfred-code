@@ -768,35 +768,45 @@ function throughStamp(managed)
     return readLedger(file);
 }
 
-test('auto-mode window: install seeds it per model in the project file, ledgers it, and an update re-derives only its own', () =>
+test('auto-mode window: the settings pass writes no window - under --auto-compact on and under a hand-set 1', () =>
 {
+    // Mode commands v2 stage 3: the windows are writeModes's alone (scripts/install/modes.js refresh, install-modes.test.js).
     const dir = fs.mkdtempSync(path.join(TMP, 'win-'));
     fs.mkdirSync(path.join(dir, '.claude'));
     const said = [];
     const first = writer(dir, { log: (l) => said.push(l) });
-    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { autoCompactWindow: 400000 }, 'claude-haiku-4-5': { autoCompactWindow: 180000 }, 'claude-x-500k': { autoCompactWindow: 280000 } });
-    assert.ok(said.some((l) => /settings\.json: autoCompactWindow per model - 180000 on 1 model, 280000 on 1 model, 400000 on 1 model/.test(l)), said.join('\n'));
-    const ledger = first.managed.settings['settings.json'];
-    assert.strictEqual(ledger['modelSettings.claude-opus-5-5.autoCompactWindow'], valueHash('400000'));
-    // a re-run changes nothing
-    const again = [];
-    assert.deepStrictEqual(throughStamp(first.managed).settings['settings.json'], ledger, 'every window row survives the stamp');
-    const second = writer(dir, { prior: throughStamp(first.managed), log: (l) => again.push(l) });
-    assert.ok(!again.some((l) => /autoCompactWindow/.test(l)), 'idempotent');
-    // the user changes one, the trigger moves: the stack's two follow, the user's stays
-    const data = read(dir);
-    data.modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
-    data.env = { ...data.env, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000' };
-    data.modelSettings['claude-opus-5-5'].effortLevel = 'high';
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
-    const third = writer(dir, { prior: throughStamp(second.managed) });
-    const ms = read(dir).modelSettings;
-    assert.deepStrictEqual(ms['claude-opus-5-5'], { autoCompactWindow: 350000, effortLevel: 'high' }, 're-derived, the other key kept');
-    assert.strictEqual(ms['claude-haiku-4-5'].autoCompactWindow, 120000, "the user's value stays");
-    assert.strictEqual(third.managed.settings['settings.json']['modelSettings.claude-haiku-4-5.autoCompactWindow'], undefined, 'and is not the stack\'s');
-    // uninstall removes the stack's own, keeps the user's and the other key
-    settings.removeManagedSettings({ claudeDir: path.join(dir, '.claude'), ledger: throughStamp(third.managed) });
+    assert.strictEqual(read(dir).modelSettings, undefined);
+    assert.ok(!said.some((l) => /autoCompactWindow per model/.test(l)), said.join('\n'));
+    assert.ok(!Object.keys(first.managed.settings['settings.json'] || {}).some((k) => k.startsWith('modelSettings.')), 'and no window row ledgered');
+    const hand = fs.mkdtempSync(path.join(TMP, 'hand-'));
+    fs.mkdirSync(path.join(hand, '.claude'));
+    fs.writeFileSync(path.join(hand, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
+    writer(hand, { local: true, autoCompact: null });
+    const local = read(hand, 'settings.local.json');
+    assert.strictEqual(local.modelSettings, undefined);
+    assert.strictEqual(local.env.ALFRED_CODE_AUTO_COMPACT, '1', 'the typed mode stays as typed');
+});
+
+test('auto-mode window: the rows an earlier release ledgered leave at their hash, one the user changed stays', () =>
+{
+    const dir = fs.mkdtempSync(path.join(TMP, 'gone-'));
+    fs.mkdirSync(path.join(dir, '.claude'));
+    const rows = { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 180000, 'claude-x-500k': 280000 };
+    const prior = throughStamp({ settings: { 'settings.json': Object.fromEntries(Object.entries(rows)
+        .map(([id, v]) => [`modelSettings.${id}.autoCompactWindow`, valueHash(String(v))])) } });
+    assert.strictEqual(Object.keys(prior.settings['settings.json']).length, 3, 'every window row survives the stamp');
+    const modelSettings = Object.fromEntries(Object.entries(rows).map(([id, v]) => [id, { autoCompactWindow: v }]));
+    modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
+    modelSettings['claude-opus-5-5'].effortLevel = 'high';
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ modelSettings }));
+    const said = [];
+    writer(dir, { prior, log: (l) => said.push(l) });
     assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { effortLevel: 'high' }, 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
+    assert.ok(said.some((l) => /autoCompactWindow removed for claude-opus-5-5, claude-x-500k/.test(l)), said.join('\n'));
+    // a modelSettings that is not an object is never touched
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ modelSettings: 'garbage' }));
+    writer(dir, { prior });
+    assert.strictEqual(read(dir).modelSettings, 'garbage');
 });
 
 test('settings-writer: uninstall takes the seeded scoring rows back and keeps one the user changed', () =>
@@ -814,71 +824,31 @@ test('settings-writer: uninstall takes the seeded scoring rows back and keeps on
     assert.strictEqual(env.ALFRED_CODE_SCORING_ROUNDS, '6', "the user's value stays");
 });
 
-test('auto-mode window: a window the user set for every model, or for this one elsewhere, is left alone', () =>
-{
-    const fresh = () => { const d = fs.mkdtempSync(path.join(TMP, 'own-')); fs.mkdirSync(path.join(d, '.claude')); return d; };
-    let dir = fresh();
-    writer(dir, { account: { autoCompactWindow: 500000 } });
-    assert.strictEqual(read(dir).modelSettings, undefined, 'the account file sets one window for all - this file would outrank it');
-    dir = fresh();
-    writer(dir, { account: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 600000 } } } });
-    assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-haiku-4-5', 'claude-x-500k'], 'a model the account names is the account\'s');
-    // Mode v2 stage 2 removed the two-file write (writeSettings' localFile): the run writes settings.local.json at every
-    // scope, and the sibling it never hides is settings.json, handed in as `inherited` - the local-scope case below.
-    dir = fresh();
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 250000 }));
-    writer(dir);
-    assert.strictEqual(read(dir).modelSettings, undefined, 'this file\'s own top-level window');
-    dir = fresh();
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ modelSettings: 'garbage' }));
-    writer(dir);
-    assert.strictEqual(read(dir).modelSettings, 'garbage', 'a modelSettings that is not an object is never touched');
-    dir = fresh();
-    writer(dir, { windows: null });
-    assert.strictEqual(read(dir).modelSettings, undefined, 'no compactWindows option, nothing seeded');
-    // settings.local.json (every scope since mode v2 stage 2): settings.json's own entry is never hidden by a local seed
-    dir = fresh();
-    writer(dir, { local: true, inherited: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 450000 } } } });
-    assert.deepStrictEqual(Object.keys(read(dir, 'settings.local.json').modelSettings), ['claude-haiku-4-5', 'claude-x-500k']);
-});
-
-test('compact instead: ALFRED_CODE_AUTO_COMPACT is seeded 0, --auto-compact writes it over, and the windows follow it', () =>
+test('compact instead: ALFRED_CODE_AUTO_COMPACT is never seeded, --auto-compact on writes 1, off takes the key out', () =>
 {
     const dir = fs.mkdtempSync(path.join(TMP, 'switch-'));
     fs.mkdirSync(path.join(dir, '.claude'));
     let said = [];
     const log = (l) => said.push(l);
     const first = writer(dir, { autoCompact: null, log });
-    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '0', 'seeded 0');
-    assert.strictEqual(read(dir).modelSettings, undefined, 'and no window: the fresh-session offers stay');
+    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, undefined, 'never seeded');
     said = [];
     const on = writer(dir, { autoCompact: { value: '1' }, prior: throughStamp(first.managed), log });
     assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '1');
-    assert.ok(said.some((l) => /env: ALFRED_CODE_AUTO_COMPACT '0' -> '1' \(--auto-compact\)/.test(l)), said.join('\n'));
-    assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-opus-5-5', 'claude-haiku-4-5', 'claude-x-500k'], 'every model seeded in the same run');
+    assert.ok(said.some((l) => /env: ALFRED_CODE_AUTO_COMPACT absent -> '1' \(--auto-compact\)/.test(l)), said.join('\n'));
+    assert.strictEqual(read(dir).modelSettings, undefined, 'no window from this pass');
     // an update without the flag keeps the answer and changes nothing
     said = [];
     const kept = writer(dir, { autoCompact: null, prior: throughStamp(on.managed), log });
     assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '1');
     assert.ok(!said.some((l) => /AUTO_COMPACT|autoCompactWindow/.test(l)), said.join('\n'));
-    // back to the offers: the stack's windows leave, one the user set stays
-    const data = read(dir);
-    data.modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
+    // off takes the key out, a 1 included
     said = [];
     writer(dir, { autoCompact: { value: '0' }, prior: throughStamp(kept.managed), log });
-    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, '0');
-    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
-    assert.ok(said.some((l) => /autoCompactWindow removed for claude-opus-5-5, claude-x-500k/.test(l)), said.join('\n'));
-    // a value the user put in by hand (configure's env step) is read without the flag - in settings.local.json, the file
-    // the run writes at every scope since mode v2 stage 2 (no second file is read beside it)
-    const hand = fs.mkdtempSync(path.join(TMP, 'hand-'));
-    fs.mkdirSync(path.join(hand, '.claude'));
-    fs.writeFileSync(path.join(hand, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_COMPACT: '1' } }));
-    writer(hand, { local: true, autoCompact: null });
-    assert.strictEqual(Object.keys(read(hand, 'settings.local.json').modelSettings || {}).length, 3, 'the hand-typed value is read without the flag');
+    assert.strictEqual(read(dir).env.ALFRED_CODE_AUTO_COMPACT, undefined);
+    assert.ok(said.some((l) => /env: ALFRED_CODE_AUTO_COMPACT '1' removed \(--auto-compact off\)/.test(l)), said.join('\n'));
     // the flag is refused before anything is written when it is neither on nor off
-    const bad = spawnSync(process.execPath, [path.join(__dirname, 'install', 'alfred-code.js'), 'install', '--auto-compact', 'maybe'], { cwd: hand, encoding: 'utf8' });
+    const bad = spawnSync(process.execPath, [path.join(__dirname, 'install', 'alfred-code.js'), 'install', '--auto-compact', 'maybe'], { cwd: dir, encoding: 'utf8' });
     assert.notStrictEqual(bad.status, 0);
     assert.match(bad.stderr + bad.stdout, /--auto-compact must be 'on' or 'off'/);
 });

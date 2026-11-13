@@ -33,7 +33,6 @@ const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
 const historySession = require('../../stack/hooks/history-session.js');
-const { compactWindowSeeds } = require('../../stack/hooks/fresh-session.js');
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
 // The turn check's Stop row rides history-session's Stop process too (the user's ruling of 2026-10-16).
 const foldDispatchers = (rows, opts) => historySession.wiringRows(fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts));
@@ -535,10 +534,17 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoComp
         return true;
     };
 
-    // 3d. COMPACT INSTEAD OF A FRESH SESSION (`--auto-compact on|off`, setup's screen-B answer), written over a value
-    // already there; without the flag the absent-only seed below writes `0`. The window pass
-    // in writeSettings reads the value this leaves.
-    if (autoCompact && autoCompact.value && !fromChain('ALFRED_CODE_AUTO_COMPACT', 'auto-compact', autoCompact.value))
+    // 3d. COMPACT INSTEAD OF A FRESH SESSION (`--auto-compact on|off`, setup's screen-B answer): `on` writes `1` over a
+    // value already there, `off` takes the key out (a `1` included) - nothing seeds it since mode commands v2, and the mode
+    // file's own key is writeModes's (modes.js refresh).
+    if (autoCompact && autoCompact.value === '0')
+    {
+        const { into, lab, mine } = at('ALFRED_CODE_AUTO_COMPACT');
+        const old = into.ALFRED_CODE_AUTO_COMPACT;
+        if (old !== undefined) { delete into.ALFRED_CODE_AUTO_COMPACT; if (mine) changed = true; }
+        log(`  ${lab} env: ALFRED_CODE_AUTO_COMPACT ${old === undefined ? 'absent, unchanged' : `'${old}' removed`} (--auto-compact off)`);
+    }
+    else if (autoCompact && autoCompact.value && !fromChain('ALFRED_CODE_AUTO_COMPACT', 'auto-compact', autoCompact.value))
     {
         const { into, lab, mine } = at('ALFRED_CODE_AUTO_COMPACT');
         const old = into.ALFRED_CODE_AUTO_COMPACT;
@@ -565,7 +571,6 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoComp
         if (row.written) continue;                       // step 5 owns these
         if (row.seed === false) continue;                // never written: the launch env or a hand-set value only
         if (seeds && !seeds(row.key)) continue;
-        if (row.key === 'ALFRED_CODE_AUTO_COMPACT' && autoCompact && autoCompact.value && !heldHere(row.key)) continue;   // decided above
         if (row.key === 'ALFRED_CODE_MEMORY' && memory && memory.value && !heldHere(row.key)) continue;                  // decided above
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
         if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
@@ -829,13 +834,23 @@ function writeSettings(opts)
     let fileText;
     try { ({ data, text: fileText } = readSettings(file)); }
     catch (err) { note(err.message); return { written: false, refused: true }; }
+    // The mode block (modes.js): the user's typed modes, out of every pass below and back in place before the write. A value
+    // still at the stack's own ledger row that B1's reseed list corrects is corrected in place (a 2.12 seed of SCORER 0).
+    const modeRows = (prior && prior.env && prior.env[label]) || {};
+    const putModesBack = require('./modes.js').setAside(data, label, (key, from, value) =>
+    {
+        const row = (migrations.reseed || []).find(([k, bad]) => k === key && bad === String(value));
+        if (!row || modeRows[from] !== valueHash(value)) return value;
+        log(`  ${label} env: ${key} reset to ${row[2]} (the stack's old seed)`);
+        return row[2];
+    });
     // THE MOVE (workspace roles and variables, D5): `variablesFile` is the project's .variables where this run keeps the
     // stack's variables - null keeps them in this file, as before 3.0.0 (git ignores the data root, a local-scope run over
     // a tracked file, a caller that names none). The file's values join the env every pass below reads, the file winning
     // (D4 step 3 over 4), so the seeds, the migrations and the window and memory passes see one view; after them the
     // moved keys leave this file for .variables, each only once it reads back equal (the one-way gate).
     const vars = variablesFile ? require('./variables.js') : null;
-    const { VARIABLE_KEYS, MEMBER_NEVER: NEVER_CHAINED } = require('../../stack/hooks/layout.js');
+    const { VARIABLE_KEYS, MODE_KEYS, MEMBER_NEVER: NEVER_CHAINED } = require('../../stack/hooks/layout.js');
     const MOVED = new Set(VARIABLE_KEYS);
     const renameFrom = new Set((migrations.renames || []).filter(([, to]) => MOVED.has(to)).map(([from]) => from));
     const movable = (key) => MOVED.has(key) || renameFrom.has(key);
@@ -1034,9 +1049,12 @@ function writeSettings(opts)
         const names = [key, ...(migrations.renames || []).filter(([, to]) => to === key).map(([from]) => from)];
         return names.some((n) => rows[n] === valueHash(value));
     };
+    // A mode is never seeded into the file it is typed in: with no .variables to take a seed, the mode keys get none here.
+    const childSeeds = childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null;
+    const noModeSeed = label === 'settings.local.json' && !vars;
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, autoCompact, memory, hooksOff, hooksAnswered,
         renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, log, label, overlayLabel: label, stackWrote,
-        seeds: childEnv ? (key) => !MOVED.has(key) || NEVER_CHAINED.has(key) || (childEnv.ignored || []).includes(key) : null, seedLabel: vars ? (key) => (MOVED.has(key) || Object.hasOwn(fileValues, key) ? '.variables' : label) : null,
+        seeds: childSeeds || noModeSeed ? (key) => (!childSeeds || childSeeds(key)) && !(noModeSeed && MODE_KEYS.includes(key)) : null, seedLabel: vars ? (key) => (MOVED.has(key) || Object.hasOwn(fileValues, key) ? '.variables' : label) : null,
         chain: childEnv && childEnv.linked ? { values: memberEnv, ignored: childEnv.ignored || [] } : null }) && !vars) changed = true;
     // D5: a decision for a key settings.local.json holds lands there, where it takes effect over .variables - said so.
     const overrides = new Set();
@@ -1044,68 +1062,25 @@ function writeSettings(opts)
     if (vars && overlay)
         for (const [key, flag] of [['ALFRED_CODE_AUTO_COMPACT', autoCompact], ['ALFRED_CODE_MEMORY', memory], ['ALFRED_CODE_DOCS_VERSIONING', docsVersioning]])
             if (flag && flag.value && Object.hasOwn(overlay, key)) overridden(key);
-    // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
-    // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
-    // at 76k of a 100k window - so it is this project's standing setting, never a per-run one, written in the project's
-    // own file at every scope and never in the account's (every project's). Per model under
-    // `modelSettings`, add-only, each entry the stack's only while it holds the value the ledger recorded: an update
-    // re-derives it, a value the user set stays. Left out: a model the sibling project file or the account file names,
-    // since this file would outrank theirs, and every model when one of the three sets the top-level window for all.
-    const acwOwned = new Set();
+    // The auto-compact window per model: since mode commands v2 the windows are writeModes's alone (modes.js refresh, after
+    // this pass, from the mode file's ALFRED_CODE_AUTO_COMPACT). This pass only takes back a row an earlier release seeded and
+    // ledgered here while it still holds that value; one the user changed is theirs and stays.
     const acwPrior = prior && prior.settings ? prior.settings[label] || {} : null;
-    if (compactWindows && (data.modelSettings === undefined || plain(data.modelSettings)))
+    if (compactWindows && plain(data.modelSettings) && acwPrior)
     {
-        const sibling = plain(compactWindows.inherited) ? compactWindows.inherited : {};
-        const account = plain(compactWindows.account) ? compactWindows.account : {};
-        const topLevel = (o) => plain(o) && o.autoCompactWindow !== undefined;
-        const named = (o, id) => plain(o) && plain(o.modelSettings) && plain(o.modelSettings[id]) && o.modelSettings[id].autoCompactWindow !== undefined;
         const held = (id) =>
         {
-            const entry = plain(data.modelSettings) ? data.modelSettings[id] : undefined;
-            return plain(entry) && Object.hasOwn(entry, 'autoCompactWindow') && Boolean(acwPrior)
-                && acwPrior[compactAt(id)] === valueHash(JSON.stringify(entry.autoCompactWindow));
+            const entry = data.modelSettings[id];
+            return plain(entry) && Object.hasOwn(entry, 'autoCompactWindow') && acwPrior[compactAt(id)] === valueHash(JSON.stringify(entry.autoCompactWindow));
         };
-        const env = { ...memberEnv, ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
-        // Only where the project compacts instead (ALFRED_CODE_AUTO_COMPACT=1): else a window would pre-empt the fresh-session offer.
-        const seeds = String(env.ALFRED_CODE_AUTO_COMPACT || '').trim() !== '1' || topLevel(data) || topLevel(sibling) || topLevel(account)
-            ? {} : compactWindowSeeds(compactWindows.models, env);
-        const seeded = [];
-        const moved = [];
-        for (const [id, value] of Object.entries(seeds))
-        {
-            if (named(sibling, id) || named(account, id)) continue;
-            const entry = plain(data.modelSettings) ? data.modelSettings[id] : undefined;
-            if (entry !== undefined && !plain(entry)) continue;
-            if (!entry || !Object.hasOwn(entry, 'autoCompactWindow'))
-            {
-                ((data.modelSettings ??= {})[id] ??= {}).autoCompactWindow = value;
-                seeded.push(id);
-                acwOwned.add(id);
-            }
-            else if (held(id))
-            {
-                if (entry.autoCompactWindow !== value) { entry.autoCompactWindow = value; moved.push(id); }
-                acwOwned.add(id);
-            }
-        }
-        // An entry the stack wrote for a model it no longer seeds here - a row the table dropped, a tier switched off, a
-        // window the user set in another file since - leaves; one the user changed is theirs and stays.
-        const gone = plain(data.modelSettings) ? Object.keys(data.modelSettings).filter((id) => !acwOwned.has(id) && held(id)) : [];
+        const gone = Object.keys(data.modelSettings).filter(held);
         for (const id of gone)
         {
             delete data.modelSettings[id].autoCompactWindow;
             if (!Object.keys(data.modelSettings[id]).length) delete data.modelSettings[id];
         }
-        if (plain(data.modelSettings) && !Object.keys(data.modelSettings).length) delete data.modelSettings;
-        if (seeded.length || moved.length)
-        {
-            const byValue = new Map();
-            for (const id of [...seeded, ...moved]) byValue.set(data.modelSettings[id].autoCompactWindow, (byValue.get(data.modelSettings[id].autoCompactWindow) || 0) + 1);
-            const spread = [...byValue].sort((a, b) => a[0] - b[0]).map(([v, n]) => `${v} on ${n} model${n === 1 ? '' : 's'}`).join(', ');
-            log(`  ${label}: autoCompactWindow per model - ${spread}: ALFRED_CODE_AUTO_COMPACT=1, so each model compacts at its window's fresh-session trigger instead of offering a fresh session (read at session start)`);
-        }
-        if (gone.length) log(`  ${label}: autoCompactWindow removed for ${gone.join(', ')} - the stack wrote it and no longer seeds it here`);
-        if (seeded.length || moved.length || gone.length) changed = true;
+        if (!Object.keys(data.modelSettings).length) delete data.modelSettings;
+        if (gone.length) { log(`  ${label}: autoCompactWindow removed for ${gone.join(', ')} - the stack wrote it and no longer seeds it here`); changed = true; }
     }
     // CUSTOM MEMORY (ALFRED_CODE_MEMORY=custom, applyEnv 3e): Claude Code's own memory off in this project's own file at every
     // scope, ledgered, so a switch back or an uninstall takes it back. A value the user set is theirs - kept, and named where it
@@ -1211,7 +1186,6 @@ function writeSettings(opts)
     }
     // The per-model windows this run seeded or still holds at the recorded value. No release before 2.5.0 seeded them,
     // so a stamp with no ledger adopts nothing here.
-    for (const id of acwOwned) managedAttr[compactAt(id)] = valueHash(JSON.stringify(data.modelSettings[id].autoCompactWindow));
     if (memOwned) managedAttr.autoMemoryEnabled = valueHash(JSON.stringify(data.autoMemoryEnabled));
     const managed = { file: label, env: managedEnv, deny: managedDeny, hooks: managedHooks,
         settings: Object.keys(managedAttr).length ? { [label]: managedAttr } : {} };
@@ -1296,8 +1270,10 @@ function writeSettings(opts)
 
     // The keys this file held before the run and no longer holds - each now in .variables (a renamed one under its new name).
     // What left a settings file for .variables: this file's own variables (at local scope) and the rows the move carried.
+    if (putModesBack(data, managedEnv[label])) changed = true;
     const fromSettings = new Set([...[...settingsHad].filter((k) => !own || !Object.hasOwn(own, k)), ...Object.keys(take).filter(movable)]);
-    const variablesMoved = moved.length ? [...fromSettings].filter((k) => !(plain(data.env) && Object.hasOwn(data.env, k))) : [];
+    // A key a migration retired on the way (3.11.0: ALFRED_CODE_AUTO_COMPACT=0) left the file but never reached .variables.
+    const variablesMoved = moved.length ? [...fromSettings].filter((k) => !(plain(data.env) && Object.hasOwn(data.env, k)) && moved.includes(renamedTo(k))) : [];
     if (!changed) return { written: false, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));

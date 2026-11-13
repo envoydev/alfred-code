@@ -534,6 +534,23 @@
    },
    "why": "the grader's names say scoring everywhere since 3.11.0; the value moves to the new key in every file that holds it",
    "then": "nothing"
+  },
+  {
+   "id": "auto-compact-seed-retired",
+   "since": "3.11.0",
+   "detect": {
+    "settings_env_value": {
+     "key": "ALFRED_CODE_AUTO_COMPACT",
+     "equals": "0"
+    }
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_AUTO_COMPACT",
+    "when_value": "0"
+   },
+   "why": "the key is no longer seeded since 3.11.0: auto-compact is a mode, switched by /alfred-code:mode:auto-compact on|off in the checkout's own settings.local.json, so the seeded `0` in settings.json or .variables says nothing; a `1` stays and is copied into that file once",
+   "then": "nothing"
   }
  ]
 }

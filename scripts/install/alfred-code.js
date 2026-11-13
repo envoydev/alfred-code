@@ -45,6 +45,7 @@ const { takeLock, sleepMs } = require('./file-lock.js');
 const links = require('./links.js');
 const fixedRoot = require('./fixed-root.js');
 const variables = require('./variables.js');
+const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
 const { readJson, formatOf, stringifyLike } = require('./json-file.js');
@@ -751,6 +752,9 @@ function runLayers(ctx)
     variablesStep(ctx);
     dropOldScoringState(ctx);
     installHooksAndRules(ctx);
+    // Mode commands v2: one writeModes call refreshes Claude Code's own two keys from the mode block the settings pass left.
+    if (!ctx.args.printPlan) modes.refresh({ projectRoot: ctx.projectRoot, configDir: ctx.configDir, dataRoot: ctx.dataInfo.root,
+        autoCompact: ctx.args.autoCompact, held: ctx.compactHeld, log: ctx.log });
     if (workspace.workspaceStep(ctx).created) warnUnignoredLocal(ctx.projectRoot, path.join(ctx.claudeDir, 'settings.local.json'), ctx);
     // Each project an older release would now misread, the records this run converted being workspace.json.
     for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(ctx.source.dir), compare: compareVersions, env: ctx.env })) ctx.log(`  ${line}`);
@@ -985,6 +989,7 @@ function variablesStep(ctx)
             if (!value || value === current(key)) continue;
             ctx.log(`  !! variables: ${key} - .variables is tracked here; change it with the team (no .variables.local yet)`);
             ctx.args[flag] = undefined;
+            if (flag === 'autoCompact') ctx.compactHeld = true;   // the mode file is left as it is (modes.js refresh)
         }
         return;
     }
@@ -2445,6 +2450,7 @@ function runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile
     workspace.releaseChildren({ projectRoot, env, dataRoot: keptRoot, log: (m) => log(`  ${m}`), note });
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note,
         variablesFile: variables.fileOf(projectRoot, { env: {}, dataRoot: keptRoot }) });
+    modes.remove({ projectRoot, log });
     const homeDir = (k) => links.homeOf(projectRoot, k, { write: false }).dir;
     links.removeLinks({ projectRoot, record: stampLayer.readLinks(file), log });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: homeDir('skills'), agentsDir: homeDir('agents'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });

@@ -1880,11 +1880,20 @@ test('settings-writer: a rename reaches an override, and the new name never reac
 
 test('settings-writer: a flag\'s decision for a key the override holds lands in the override', () =>
 {
+    const p = pair(undefined, { env: { ALFRED_CODE_MEMORY: 'default' } });
+    const variablesFile = ownVars(p);
+    const r = write(p.localFile, { keepOwn: true, variablesFile, memory: { value: 'custom' } });
+    assert.strictEqual(p.local().env.ALFRED_CODE_MEMORY, 'custom');
+    assert.ok(r.logs.some((l) => l.includes('variables: ALFRED_CODE_MEMORY set in .claude/settings.local.json (it overrides .variables here)')), r.logs.join('\n'));
+});
+
+test('settings-writer: --auto-compact on leaves the mode file\'s own 0 as typed and writes 1 into .variables (mode commands v2)', () =>
+{
     const p = pair(undefined, { env: { ALFRED_CODE_AUTO_COMPACT: '0' } });
     const variablesFile = ownVars(p);
-    const r = write(p.localFile, { keepOwn: true, variablesFile, autoCompact: { value: '1' } });
-    assert.strictEqual(p.local().env.ALFRED_CODE_AUTO_COMPACT, '1');
-    assert.ok(r.logs.some((l) => l.includes('variables: ALFRED_CODE_AUTO_COMPACT set in .claude/settings.local.json (it overrides .variables here)')), r.logs.join('\n'));
+    write(p.localFile, { keepOwn: true, variablesFile, autoCompact: { value: '1' } });
+    assert.strictEqual(p.local().env.ALFRED_CODE_AUTO_COMPACT, '0', 'the mode file is writeModes\'s (modes.js refresh)');
+    assert.match(fs.readFileSync(variablesFile, 'utf8'), /^ALFRED_CODE_AUTO_COMPACT=1$/m);
 });
 
 test('settings-writer: carried keys land in the env and keep their ledger row; a key the file holds wins', () =>

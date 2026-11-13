@@ -328,11 +328,12 @@ test('a 2.12.0 tree with the switch at 1: own-env keys land in the child\'s file
     assert.strictEqual(before.local[OFF], 'guard-ungated-commit:push,docs-session:gate', r.outs[2]);
     assert.ok(before.ownEnv.split(',').includes(OLD_LEVEL), `v2.12.0 recorded the child's own value: ${before.ownEnv}`);
     assert.deepStrictEqual(after.effective, reseeded(before.effective), r.outs[4]);
-    assert.strictEqual(after.vars[LEVEL], '95', 'the own-env key landed in the child\'s file');
-    // Mode v2 stage 2 (Review Focus 3): the root's value, changed since the stack wrote it, stays in the root's settings.json,
-    // which the chain does not read - so the child keeps its copy, and the value it reads is the same.
-    assert.strictEqual(after.vars[SC], '1', 'the child keeps the copy the chain cannot give it');
-    assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== OFF), [], JSON.stringify(after.local));
+    // mode commands v2 stage 3: the scoring keys are modes - each stays in the child's own settings.local.json under its new
+    // name (the mode file's block), never moved into .variables
+    assert.deepStrictEqual([after.local[LEVEL], after.local[SC]], ['95', '1'], `the modes stay in the mode file: ${JSON.stringify(after.local)}\n${r.outs[4]}`);
+    assert.ok(!Object.hasOwn(after.vars, LEVEL) && !Object.hasOwn(after.vars, SC), `no mode in .variables: ${JSON.stringify(after.vars)}`);
+    // a mode the child's own settings.local.json holds stays there as v2.12.0 left it (mode commands v2: the mode file's block)
+    assert.deepStrictEqual(Object.keys(after.local).filter((k) => k.startsWith('ALFRED_CODE_') && k !== OFF && !layoutLib.MODE_KEYS.includes(k)), [], JSON.stringify(after.local));
     assert.strictEqual(after.ownEnv, null, 'the own-env line went');
     assert.strictEqual(after.local[OFF], 'docs-session:gate', 'HOOKS_OFF keeps only the child\'s own entries');
     assert.deepStrictEqual(after.off, ['docs-session:gate', 'guard-ungated-commit:push'], 'the root\'s part entry still reaches the child');
@@ -488,12 +489,12 @@ const NOT_JOINED = /ignored - this project is not a joined child/;
 
 test('F10: a linked child given the inherited value writes nothing', POSIX_ONLY, () =>
 {
-    const r = childRun(['--auto-compact', 'off']);
+    const r = childRun(['--auto-compact', 'on'], (work) => variablesLib.write(path.join(at(work, '.'), '.alfred', '.variables'), { [AC]: '1' }));
     const got = r.steps[1];
-    assert.strictEqual(got.root[AC], '0', 'the root holds the seed');
+    assert.strictEqual(got.root[AC], '1', 'the root holds the value');
     assert.ok(!Object.hasOwn(got.vars, AC), `no own copy in .variables: ${JSON.stringify(got.vars)}\n${r.outs[1]}`);
     assert.ok(!Object.hasOwn(got.env, AC), 'none in settings.json');
-    assert.match(r.outs[1], /ALFRED_CODE_AUTO_COMPACT '0' comes from the workspace - nothing written \(the --auto-compact answer equals it\)/);
+    assert.match(r.outs[1], /ALFRED_CODE_AUTO_COMPACT '1' comes from the workspace - nothing written \(the --auto-compact answer equals it\)/);
     assert.doesNotMatch(r.outs[1], NOT_JOINED);
 });
 
@@ -505,22 +506,22 @@ test('F10: a linked child given another value writes it as its own', POSIX_ONLY,
     assert.doesNotMatch(r.outs[1], NOT_JOINED);
 });
 
-test('F10: the catalog default decides when no member sets the key', POSIX_ONLY, () =>
+test('F10: --auto-compact off writes nothing where no member sets the key (mode commands v2: off takes the key out)', POSIX_ONLY, () =>
 {
-    const r = childRun(['--auto-compact', 'off'], (work) => variablesLib.write(path.join(at(work, '.'), '.alfred', '.variables'), { [AC]: null }));
+    const r = childRun(['--auto-compact', 'off']);
     const got = r.steps[1];
-    assert.ok(!Object.hasOwn(got.root, AC), 'the root holds no value');
-    assert.ok(!Object.hasOwn(got.vars, AC), `the default '0' is what the child reads already: ${JSON.stringify(got.vars)}\n${r.outs[1]}`);
-    assert.match(r.outs[1], /ALFRED_CODE_AUTO_COMPACT '0' comes from the workspace - nothing written/);
+    assert.ok(!Object.hasOwn(got.root, AC), 'the root holds no value - nothing seeds it');
+    assert.ok(!Object.hasOwn(got.vars, AC), `${JSON.stringify(got.vars)}\n${r.outs[1]}`);
+    assert.match(r.outs[1], /ALFRED_CODE_AUTO_COMPACT absent, unchanged \(--auto-compact off\)/);
 });
 
 test('F10: an unlinked child with a parent line writes its answer', POSIX_ONLY, () =>
 {
     const r = scenario([
         { at: '.' },
-        { at: 'api', args: ['--auto-compact', 'off'], before: (work) => edit(work, 'api', (m) => wsLib.setParent(m, '..')), after: (work) => ({ vars: varsOf(work, 'api') }) },
+        { at: 'api', args: ['--auto-compact', 'on'], before: (work) => edit(work, 'api', (m) => wsLib.setParent(m, '..')), after: (work) => ({ vars: varsOf(work, 'api') }) },
     ]);
-    assert.strictEqual(r.steps[1].vars[AC], '0', r.outs[1]);
+    assert.strictEqual(r.steps[1].vars[AC], '1', r.outs[1]);
     assert.doesNotMatch(r.outs[1], /comes from the workspace - nothing written/);
 });
 
@@ -545,7 +546,8 @@ test('a child reading AUTO_COMPACT=1 and MEMORY=custom from its root gets the au
         update('api', { after: (work) => ({ api: settingsOf(work, 'api') }) }),
     ]);
     const got = r.steps[1];
-    assert.deepStrictEqual([got.from.ALFRED_CODE_AUTO_COMPACT, got.from.ALFRED_CODE_MEMORY], ['..', '..'], 'the child reads both from the root');
+    // mode commands v2: the root's 1 is copied into the child's own mode file once, which writes its windows (modes.js refresh)
+    assert.deepStrictEqual([got.from.ALFRED_CODE_AUTO_COMPACT, got.from.ALFRED_CODE_MEMORY], ['settings.local.json', '..'], 'the mode in its own file, memory from the root');
     const rows = Object.values(got.api.modelSettings || {}).filter((e) => e && e.autoCompactWindow !== undefined);
     assert.ok(rows.length > 0, `no autoCompactWindow row in the child: ${JSON.stringify(got.api.modelSettings)}\n${r.outs[1]}`);
     assert.strictEqual(got.api.autoMemoryEnabled, false, r.outs[1]);

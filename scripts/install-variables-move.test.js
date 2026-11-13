@@ -26,6 +26,7 @@ const { reseed: RESEEDS, retired: RETIRED, renames: RENAMES } = require('./insta
 const SETTINGS_KEYS = ['ALFRED_CODE_HOOKS_OFF'];
 // A `seed: false` row (WORKSPACE, FRESH_SESSION_PAYBACK) is never written into a project, so it never moves either.
 const UNSEEDED = require('../meta/environment.json').env.filter((r) => r.seed === false).map((r) => r.key);
+const DEFAULTS = Object.fromEntries(require('../meta/environment.json').env.map((r) => [r.key, r.default]));
 const SEEDED = CATALOG.filter((k) => !SETTINGS_KEYS.includes(k) && !UNSEEDED.includes(k));
 const MOVED_LINE = /variables: (\d+) keys moved to \.alfred\/\.variables - a teammate on 2\.12\.0 or older reads none of them until they update; a downgrade needs them put back in \.claude\/settings\.json by hand/;
 
@@ -33,13 +34,17 @@ const MOVED_LINE = /variables: (\d+) keys moved to \.alfred\/\.variables - a tea
 // every other value an older install holds is carried across unchanged.
 // An older release's keys under the names this release renamed them to (3.11.0: scorer -> scoring), then the reseeds.
 const renamedKey = (k) => (RENAMES.find(([from]) => from === k) || [k, k])[1];
-const reseeded = (env) =>
+const reseeded = (env, keepModes = false) =>
 {
     const out = {};
     for (const [k, v] of Object.entries(env)) if (!(renamedKey(k) !== k && Object.hasOwn(env, renamedKey(k)))) out[renamedKey(k)] = v;
     for (const [k, bad, to] of RESEEDS) if (out[k] === bad) out[k] = to;
+    // a key retired at the stack's own seed (3.11.0: ALFRED_CODE_AUTO_COMPACT=0) reads as its default once it is gone
+    for (const [k, when] of RETIRED) if (when != null && out[k] === when && !(keepModes && MODES.includes(k))) out[k] = String(DEFAULTS[k] ?? '');
     return out;
 };
+// The four modes: never seeded into, moved out of or ledgered in the mode file - a typed value there stays as typed.
+const MODES = layout.MODE_KEYS;
 
 const exportOf = releaseExport;
 // The steps of an update over `tag`: that release installs, this tree updates.
@@ -125,7 +130,8 @@ test('AC7: the user\'s own .alfred/ line keeps the keys in settings.local.json a
         inspect: (repo) => ({ vars: fs.existsSync(varsFile(repo)) ? varsOf(repo) : null, env: envIn(repo, 'settings.local.json'), shared: envIn(repo, 'settings.json') }),
     });
     assert.ok(!result.vars || !Object.keys(result.vars).length, `a key went into an ignored .variables: ${JSON.stringify(result.vars)}`);
-    for (const key of SEEDED) assert.ok(Object.hasOwn(result.env, key), `${key} was not seeded into settings.local.json`);
+    for (const key of SEEDED.filter((k) => !MODES.includes(k))) assert.ok(Object.hasOwn(result.env, key), `${key} was not seeded into settings.local.json`);
+    for (const key of MODES) assert.ok(!Object.hasOwn(result.env, key), `${key} was seeded into the mode file`);
     assert.deepStrictEqual(catalogIn(result.shared), [], 'no stack key in settings.json');
     assert.match(out, /!! variables: \.alfred\/\.variables is ignored by \.gitignore:2 - the keys are kept in settings\.local\.json; ignore \/\.alfred\/\* and re-include !\/\.alfred\/\.variables, then update/, out);
 });
@@ -204,12 +210,15 @@ for (const scope of ['project', 'user', 'local'])
             assert.deepStrictEqual([after.local.attribution, after.local.worktree], [before.shared.attribution, before.shared.worktree]);
             assert.ok(Object.hasOwn(after.ledger['settings.local.json'] || {}, OFF), 'the off-list\'s ledger row names settings.local.json');
         }
-        assert.deepStrictEqual(after.effective, reseeded(before.effective), outs[1]);
+        assert.deepStrictEqual(after.effective, reseeded(before.effective, scope === 'local'), outs[1]);   // a mode in the mode file stays as it is
         assert.deepStrictEqual([after.effective.ALFRED_CODE_SCORING, after.effective.ALFRED_CODE_SCORING_OUTPUTS], ['1', 'designer-plan'], 'the old scoring seeds moved');
-        assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k)), [], JSON.stringify(after.env));
+        // at local scope the mode file is the stack's file: its mode keys stay there, as v2.12.0 left them (its old SCORER 0 seed reset)
+        const stays = (k) => scope === 'local' && MODES.includes(renamedKey(k));
+        assert.deepStrictEqual(catalogIn(after.env).filter((k) => !SETTINGS_KEYS.includes(k) && !stays(k)), [], JSON.stringify(after.env));
         const want = reseeded(before.env);
-        for (const key of SEEDED) assert.strictEqual(after.vars[key], want[key], `${key} did not move unchanged`);
-        const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(renamedKey(k)));
+        for (const key of SEEDED.filter((k) => !stays(k))) assert.strictEqual(after.vars[key], want[key], `${key} did not move unchanged`);
+        for (const key of SEEDED.filter(stays)) assert.strictEqual(after.env[key], want[key], `${key} did not stay in the mode file as v2.12.0 left it`);
+        const moved = Object.entries(before.ledger[file] || {}).filter(([k]) => SEEDED.includes(renamedKey(k)) && !stays(k));
         assert.ok(moved.length > 0, 'v2.12.0 ledgered its seeds');
         for (const [key, hash] of moved)
         {
@@ -242,7 +251,10 @@ test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ig
     // (complexity stage 1 B9: v2.12.0 seeded ALFRED_CODE_FORGE_WATCH)
     const before = JSON.parse(steps[0].settings);
     before.env = reseeded(before.env);
-    for (const [key, onlyWhen] of RETIRED) if (onlyWhen == null) delete before.env[key];
+    const raw = JSON.parse(steps[0].settings).env;
+    for (const [key, onlyWhen] of RETIRED) if (onlyWhen == null || raw[key] === onlyWhen) delete before.env[key];
+    // and the modes: a stack seed of one is never carried into the mode file (it equals the default the loader reads)
+    for (const key of MODES) delete before.env[key];
     // and 3.11.0's scoring rename: the seat deny re-spelled in place
     before.permissions.deny = before.permissions.deny.map((r) => r.replace(/^Agent\(alfred-code:output-scorer\)$/, 'Agent(alfred-code:output-scoring)'));    // legacy
     // the move writes the rows in its own order, so the top-level and env keys are compared in order of name; the layout byte for byte
@@ -374,7 +386,7 @@ test('AC16 (installer half): a local-scope run over a tracked .variables writes 
 
 for (const scope of ['project', 'local'])
 {
-    test(`AC23: at ${scope} scope AUTO_COMPACT=1 and MEMORY=custom keep every autoCompactWindow row and autoMemoryEnabled false byte-identical; 0 in .variables removes the rows`, skipWithout('v2.12.0'), () =>
+    test(`AC23: at ${scope} scope AUTO_COMPACT=1 and MEMORY=custom keep the windows and autoMemoryEnabled false; the mode file is the switch from then on`, skipWithout('v2.12.0'), () =>
     {
         // Mode v2 stage 2: v2.12.0 wrote these rows into settings.json at project scope; from the update on they sit in
         // settings.local.json at every scope, and settings.json keeps none of them.
@@ -396,11 +408,16 @@ for (const scope of ['project', 'local'])
         });
         const [before, after, again, off] = steps;
         assert.ok(/autoCompactWindow/.test(before.own) && /"autoMemoryEnabled":false/.test(before.own), before.own);
-        assert.strictEqual(after.own, before.own, outs[1]);
-        assert.deepStrictEqual(after.settingsRows, before.settingsRows);
+        // Mode commands v2: the windows are writeModes's now (the team's 1 copied into the mode file once), never ledgered
+        const windows = (own) => JSON.stringify(JSON.parse(own).modelSettings);
+        assert.strictEqual(windows(after.own), windows(before.own), outs[1]);
+        assert.match(after.own, /"autoMemoryEnabled":false/);
+        const noWindows = (rows) => Object.fromEntries(Object.entries(rows).filter(([k]) => !k.startsWith('modelSettings.')));
+        assert.deepStrictEqual(after.settingsRows, noWindows(before.settingsRows));
         if (scope !== 'local') assert.strictEqual(after.shared, '{}', 'settings.json keeps no window or memory row');
         assert.strictEqual(again.tree, after.tree, 'the second update changed a file');
-        assert.doesNotMatch(off.own, /autoCompactWindow/, outs[3]);
+        // a 0 in .variables no longer moves them: the mode file's own 1 is the switch (/alfred-code:mode:auto-compact off)
+        assert.strictEqual(windows(off.own), windows(after.own), outs[3]);
         assert.match(off.own, /"autoMemoryEnabled":false/);
     });
 }

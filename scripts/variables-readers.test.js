@@ -12,7 +12,7 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 // The keys that move into `.variables`: the catalog minus the one that stays in the settings (spec D3).
 const MOVED = require('../meta/environment.json').env.map((r) => r.key)
-    .filter((k) => k !== 'ALFRED_CODE_HOOKS_OFF')
+    .filter((k) => k !== 'ALFRED_CODE_HOOKS_OFF' && k !== 'ALFRED_CODE_AUTO_RUN')   // auto-run is a mode, never a variable
     .map((k) => k.slice('ALFRED_CODE_'.length));
 
 // Readers still to convert, as `<file>:<key suffix | env-lookup>` - none since T12c: every reader goes through the loader.
@@ -32,6 +32,10 @@ const ALLOWED = {
     'scripts/lint-skills.js:DOCS_VERSIONING': 'a lint check that the seed special-cases the catalog key - no settings read',
     'stack/skills/mode-output-scoring/scripts/scorecard.js:SCORING_LEVEL': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child"',
     'stack/skills/mode-output-scoring/scripts/scorecard.js:SCORING_ROUNDS': 'setting() reads layout.variablesOf at the project root, held by "the scorecard reads SCORING_LEVEL=90 from the root\'s .variables in a child"',
+    'stack/hooks/mode-settings.js:AUTO_COMPACT': 'writeModes writes the mode file itself - the mode block is the user\'s typed mode, read there by design (mode commands v2), held by mode-settings.test.js',
+    'stack/hooks/mode-settings.js:env-lookup': 'autoRunHeld and writeModes read the mode file\'s own env - the mode file is the mode\'s one home, held by mode-settings.test.js',
+    'scripts/install/modes.js:AUTO_COMPACT': 'refresh reads the mode file\'s own key to copy a team 1 once, the loader\'s values (layout.variablesOf) for the team\'s, held by install-modes.test.js',
+    'scripts/install/modes.js:env-lookup': 'setAside, refresh and remove handle the mode block in the mode file itself, held by install-modes.test.js',
     'stack/hooks/hook-prelude.js:AUTO_COMPACT': 'compactCause reads the env it is handed - the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORING': 'switchOn reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORING_LEVEL': 'reads the hook\'s env, which applyVariables fills',

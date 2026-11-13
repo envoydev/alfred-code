@@ -127,6 +127,24 @@ test('set ALFRED_CODE_HOOKS_OFF=x exits 1 naming settings.local.json', (t) =>
     assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=4\n');
 });
 
+test('set refuses a mode key: exit 1, the command named, nothing written - another pair in the call included', (t) =>
+{
+    const { dir, env } = sandbox(t);
+    const root = project(dir);
+    put(varsOf(root), 'ALFRED_CODE_HISTORY=5\n');
+    put(localOf(root), '{ "env": { "MY_KEY": "a" } }\n');
+    const commands = { ALFRED_CODE_AUTO_RUN: 'auto-run on\\|off', ALFRED_CODE_AUTO_COMPACT: 'auto-compact on\\|off',
+        ALFRED_CODE_SCORING: 'scoring on\\|off', ALFRED_CODE_SCORING_LEVEL: 'scoring on\\|off <level>' };
+    for (const [key, words] of Object.entries(commands))
+    {
+        const run = cli(['set', '--root', root, 'ALFRED_CODE_HISTORY=4', `${key}=1`], env);
+        assert.strictEqual(run.status, 1, run.stdout + run.stderr);
+        assert.match(run.stdout + run.stderr, new RegExp(`${key} is a mode - type /alfred-code:mode:${words}`));
+        assert.strictEqual(read(varsOf(root)), 'ALFRED_CODE_HISTORY=5\n', key);
+        assert.strictEqual(read(localOf(root)), '{ "env": { "MY_KEY": "a" } }\n', key);
+    }
+});
+
 test('a credential-shaped value is refused, the key named, the value in no output or file (AC17)', (t) =>
 {
     const { dir, env } = sandbox(t);
