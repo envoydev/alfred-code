@@ -35,10 +35,11 @@ const denial = (receipt, tool = 'Write') => ({ type: 'user', sessionId: S, times
   content: `PreToolUse:${tool} hook error: [node "guard.js"]: Blocked: ... write .alfred/state/approvals/${receipt} and retry` }] } });
 // An ask and its answer as Claude Code writes them: the model's call, then the harness's result row naming the call's id.
 // `options` are [label, description] pairs; `tool` other than AskUserQuestion is the forged shape (FA-4).
-const asked = (question, options, picked, tool = 'AskUserQuestion') => {
+const asked = (question, options, picked, tool = 'AskUserQuestion', source) => {
   const id = `toolu_${++ids}`;
   const input = { questions: [{ question, header: 'Next', multiSelect: false, options: options.map(([label, description]) => ({ label, description })) }] };
-  return [call(tool, input, id), result(id, `User has answered your questions: "${question}"="${picked}".`, { toolUseResult: { questions: input.questions, answers: { [question]: picked } } })];
+  return [call(tool, input, id), result(id, `User has answered your questions: "${question}"="${picked}".`,
+    { ...require('./hook-test-env').userPick(source), toolUseResult: { questions: input.questions, answers: { [question]: picked } } })];
 };
 const jsonl = (rows) => rows.flat().map((r) => JSON.stringify(r)).join('\n') + '\n';
 
@@ -887,4 +888,14 @@ test('4c store: a filesystem server write and move ask; every stand-down still a
   asks(file, 'the file dispatcher');
   const sh = spawned('shell-guards.js', { session_id: S, cwd: p.root, transcript_path: p.tp, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: `echo x > ${RULE}` } }, { env: p.env, cwd: p.root });
   asks(sh, 'the shell dispatcher');
+});
+
+// ---- D25 (mode commands v2 stage 3, Task 5): the own-ask discard opens only on an answer a person gave ----
+test('D25 pickedInAsk: the model\'s own ask answered by a hook opens no discard; answered by the user it does', () => {
+  const p = dirtyRepo('d25-discard');
+  const before = fs.readFileSync(path.join(p.root, 'a.txt'));
+  const DISCARD = [['Discard (Recommended)', 'drop the change'], ['Keep it', 'leave it']];
+  assert.equal(rm(p.write([typed('clean up'), asked('Discard a.txt?', DISCARD, 'Discard (Recommended)', 'AskUserQuestion', 'hook')]), 'git checkout -- a.txt').status, 2, 'a hook gave the pick');
+  assert.ok(fs.readFileSync(path.join(p.root, 'a.txt')).equals(before), 'the dirty file is untouched');
+  assert.equal(rm(p.write([typed('clean up'), asked('Discard a.txt?', DISCARD, 'Discard (Recommended)', 'AskUserQuestion', 'user_temporary')]), 'git checkout -- a.txt').status, 0, 'the user picked it');
 });

@@ -141,5 +141,11 @@ function foreignWords(count, seed = 1)
     return words.join(' ');
 }
 
+// Who gave an ask's answer, as Claude Code 2.1.323 writes it on the answer row (meta/probes/answer-source.js measured
+// `permissionDecision.source`: `user_temporary` for a pick, `hook` for a hook's answer). Spread into an answer row;
+// `null` writes no field (an older client's row).
+const userPick = (source = 'user_temporary') =>
+    (source === null ? {} : { permissionDecision: { decision: 'accept', source, grantScope: 'once', reasonCode: 'unknown' } });
+
 module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
-    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS };
+    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick };

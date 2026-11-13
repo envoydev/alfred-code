@@ -641,6 +641,8 @@ function answerLabelsOf(row)
     for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normLabel(one)) labels.push(normLabel(one));
     return labels.length ? labels : null;
 }
+// Whether a person gave an answer row's answer (D25): its own `permissionDecision.source` (2.1.323) opens `user`, never `hook`.
+const byUser = (row) => { const s = row && row.permissionDecision && row.permissionDecision.source; return typeof s === 'string' && s.startsWith('user'); };
 // A hook's denial naming `marker` (exit 2 or a deny: an error tool result), or false.
 function deniedIn(row, marker)
 {
@@ -732,12 +734,12 @@ function receiptAnswered(input, spec)
         {
             const row = rowOf(line);
             const labels = answerLabelsOf(row);
-            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto, ids: resultIds(row) });
+            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto: auto || !byUser(row), ids: resultIds(row) });
         }
     });
     const hits = answers.filter((a) => a.ids.some((id) => asks.has(id)) && (seatAt ? a.ts > seatAt : a.at > lastDenial) && carries(a.labels));
     if (hits.some((a) => !a.auto)) return { ok: true, why: '' };
-    return { ok: false, why: hits.length ? 'the allow answer was given while auto-run was on, which answers its own asks'
+    return { ok: false, why: hits.length ? 'the allow answer was not the user\'s own: auto-run was on, or a hook gave it'
         : `no ask answered with the allow label after ${seatAt ? 'this seat\'s' : 'this guard\'s'} last denial in this session` };
 }
 // A security receipt: readReceiptFile, live only when receiptAnswered also holds. null when absent.
@@ -813,7 +815,7 @@ function userTurns(input)
         const row = rowOf(line);
         const result = row && row.toolUseResult;
         if (!result || typeof result !== 'object' || !result.answers || typeof result.answers !== 'object' || askTimedOut(result)) return;
-        answers.push({ at, ids: resultIds(row), answers: result.answers, auto });
+        answers.push({ at, ids: resultIds(row), answers: result.answers, auto: auto || !byUser(row) });
     });
     const answered = answers.filter((a) => a.ids.some((id) => asks.has(id))).map((a) => ({ ...a, questions: a.ids.flatMap((id) => asks.get(id) || []) }));
     const out = { typed, answered };
@@ -972,7 +974,8 @@ function typedWordsOrStart(file, words)
         {
             const row = rowOf(line);
             const labels = answerLabelsOf(row);
-            if (labels && !auto && labels.some((l) => l.startsWith('start auto here')) && resultIds(row).some((id) => asks.has(id))) found = true;
+            if (labels && !auto && byUser(row) && labels.some((l) => l.startsWith('start auto here'))
+                && resultIds(row).some((id) => asks.has(id))) found = true;
         }
     });
     return found;
@@ -1980,4 +1983,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactFile, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringFile, scoringHeldFile, scoringNotedFile, readScoringFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-module.exports.autoRunStanding = autoRunStanding;
+Object.assign(module.exports, { autoRunStanding, byUser });   // beside the one-line list, which a new name would push past 160

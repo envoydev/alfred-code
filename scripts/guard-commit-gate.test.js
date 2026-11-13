@@ -7,7 +7,7 @@ const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
 // Non-English text is generated from code points (foreignWords): no other language is written into this repo's code.
-const { reviewedTranscript, REVIEW_ROW, foreignWords } = require('./hook-test-env');
+const { reviewedTranscript, REVIEW_ROW, foreignWords, userPick } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -1326,7 +1326,7 @@ test('audit 2026-10-10 C17: an answered: ask that came before every review is no
   const dir = scratchRepo();
   // the edits came before the 09:10 review these rows date, so the review saw them (the freshness check, 2026-10-22)
   for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.utimesSync(path.join(dir, f), new Date('2026-10-10T08:00:00Z'), new Date('2026-10-10T08:00:00Z'));
-  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
+  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, ...userPick(), toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
   const review = (ts) => ({ type: 'assistant', timestamp: ts, message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'task-verify-code' } }] } });
   const early = writeTranscript(dir, 'ask-first', [answer('2026-10-10T09:17:02Z'), review('2026-10-10T09:25:41Z'), resultRow('2026-10-10T09:28:00Z')]);
   const late = writeTranscript(dir, 'review-first', [review('2026-10-10T09:10:00Z'), resultRow('2026-10-10T09:12:00Z'), answer('2026-10-10T09:17:02Z')]);
@@ -1346,7 +1346,7 @@ test('audit 2026-10-10 C17: an answered: ask that came before every review is no
 
 test('2026-10-22 own reviewers: review-code and review-security are reviews the gate reads, the built-in is not, and the denial names ours', () => {
   const dir = scratchRepo();
-  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
+  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, ...userPick(), toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
   const skill = (ts, name) => ({ type: 'assistant', timestamp: ts, message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: name } }] } });
   const ours = ['review-code', 'review-security'].map((name) => [name, writeTranscript(dir, `ask-first-${name}`, [answer('2026-10-22T09:17:02Z'), skill('2026-10-22T09:25:41Z', name), resultRow('2026-10-22T09:28:00Z')])]);
   const builtin = writeTranscript(dir, 'ask-first-builtin', [answer('2026-10-22T09:17:02Z'), skill('2026-10-22T09:25:41Z', 'security-review')]);
@@ -2055,7 +2055,7 @@ test('audit 2026-10-10 C17: a refused consent quote names the option the user pi
   const { dir, git } = pushRepo();
   fs.writeFileSync(path.join(dir, 'b.txt'), forty()); git('add', '-A'); git('commit', '-qm', 'b');
   // the transcript first: a PUSH-GATE written before the session began is absent
-  const tp = writeTranscript(dir, 'picked', [{ type: 'user', timestamp: '2026-10-10T14:52:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'answered' }] }, toolUseResult: { answers: { 'Publish now?': 'Publish (Recommended)' } } }]);
+  const tp = writeTranscript(dir, 'picked', [{ type: 'user', timestamp: '2026-10-10T14:52:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'answered' }] }, ...userPick(), toolUseResult: { answers: { 'Publish now?': 'Publish (Recommended)' } } }]);
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { auth: 'authorized: "commit and oush to develop"' }));
   const r = gateWith(dir, 'git push', { transcript_path: tp });
   assert.equal(r.status, 2, 'a typo carries no publish verb (bda299a8)');
@@ -2112,7 +2112,7 @@ test('deep review: a non-English quote is no consent and names the answered: rou
   const { dir: pdir } = pushRepo();
   fs.writeFileSync(path.join(pdir, 'a.txt'), 'seed\nnext\n');
   spawnSync('git', ['-C', pdir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
-  const tp = writeTranscript(pdir, 'waiver', [{ type: 'user', timestamp: '2026-10-16T10:00:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'answered' }] }, toolUseResult: { answers: { 'Push without the review?': 'Skip the review and push' } } }]);
+  const tp = writeTranscript(pdir, 'waiver', [{ type: 'user', timestamp: '2026-10-16T10:00:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'answered' }] }, ...userPick(), toolUseResult: { answers: { 'Push without the review?': 'Skip the review and push' } } }]);
   const waive = (line, env = {}) => { writeReceipt(pdir, 'PUSH-GATE', `${line}\n`); return gateWith(pdir, 'git push', { transcript_path: tp }, env); };
   assert.equal(waive('WAIVED - answered: Skip the review and push').status, 0, 'a waiver the user picked');
   const none = waive('WAIVED - answered: Skip the lint and push');
@@ -2244,4 +2244,37 @@ test('the WAIVED refusal names the receipt route when a review ran unseen', () =
   assert.match(s.stderr, /waives nothing/);
   // the denial's fixed footer names receipt.js for every refusal; the route sentence is what an unseen review adds
   assert.doesNotMatch(s.stderr, /ran in this session but no result line reached/, 'no review left unseen, no route');
+});
+
+// ---- D25 (mode commands v2 stage 3, Task 5): a picked waiver counts only when its own row says a person picked it ----
+test('D25: a skip label a hook answered is no waiver; the user\'s is; the answered: consent reads every answer; no prelude, no waiver', () => {
+  const { dir } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
+  const SKIP = 'Skip the review and push';
+  const tpOf = (name, source, label = SKIP, q = 'Push without the review?') => writeTranscript(dir, name, [{ type: 'user', timestamp: '2026-11-13T10:00:00Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'answered' }] }, ...userPick(source), toolUseResult: { answers: { [q]: label } } }]);
+  const waive = (tp, run = runIn) => { writeReceipt(dir, 'PUSH-GATE', `WAIVED - answered: ${SKIP}\n`);
+    return run('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git push' }, transcript_path: tp }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }); };
+  const byHook = waive(tpOf('d25-hook', 'hook'));
+  assert.equal(byHook.status, 2, 'a hook picked the skip');
+  assert.match(byHook.stderr, /the answered: waiver was picked by no person \(a hook gave that answer\) - a skipped review needs the user/);
+  assert.equal(waive(tpOf('d25-user', 'user_temporary')).status, 0, 'the user picked the skip');
+  const consentTp = tpOf('d25-consent', 'hook', 'Push (Recommended)', 'Push now?');   // the transcript first: a receipt older than the session is absent
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { auth: 'answered: Push (Recommended)' }));
+  const consent = gateWith(dir, 'git push', { transcript_path: consentTp });
+  assert.equal(consent.status, 0, `the answered: consent reads every answer, a hook's too\n${consent.stderr}`);
+  // a prelude older than this gate (no byUser) reads no answer as a person's - a gate with no prelude at all judges
+  // nothing, since shell-writes.js needs it (its stated fail-open)
+  const older = fs.mkdtempSync(path.join(TMP, 'older-prelude-'));
+  fs.cpSync(HOOKS, older, { recursive: true });
+  const preludeCopy = path.join(older, 'hook-prelude.js');
+  const current = fs.readFileSync(preludeCopy, 'utf8');
+  const withoutByUser = current.replace(/(Object\.assign\(module\.exports, \{[^}]*?), byUser\b/, '$1');
+  assert.notEqual(withoutByUser, current, 'the copy lost its byUser export');
+  fs.writeFileSync(preludeCopy, withoutByUser);
+  const runOlder = (hook, payload, opts) => spawnSync(process.execPath, [path.join(older, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  const refused = waive(tpOf('d25-older', 'user_temporary'), runOlder);
+  assert.equal(refused.status, 2, 'a prelude with no byUser: the skip is refused');
+  assert.match(refused.stderr, /picked by no person/);
 });

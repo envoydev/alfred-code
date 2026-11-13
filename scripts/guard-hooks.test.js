@@ -5,7 +5,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
-const { reviewedTranscript, REVIEW_ROW } = require('./hook-test-env');
+const { reviewedTranscript, REVIEW_ROW, userPick } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -2542,7 +2542,7 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   assert.equal(w(guard, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: cfg }).status, 2, 'the whole account dir as an allowance does not');
   fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
     + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
-      toolUseResult: { answers: { 'Write there?': `Allow writes into ${shownTree} for this session` } } }) + '\n'); pause(30);
+      ...userPick(), toolUseResult: { answers: { 'Write there?': `Allow writes into ${shownTree} for this session` } } }) + '\n'); pause(30);
   stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: gap-1\n${plugins}\n`);
   assert.equal(w(guard).status, 0, "the user's allow answer and its receipt open it");
   assert.equal(sh(`rm -rf ${cfg}`).status, 2, 'but not a removal of the account folder that holds it');
@@ -2953,7 +2953,7 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   // the user's own allow answer, which the session's transcript holds - the result of an AskUserQuestion call (FA-4)
   fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
     + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
-      toolUseResult: { answers: { 'Write outside?': `Allow writes into ${fs.realpathSync.native(other)} for this session` } } }) + '\n'); pause(30);
+      ...userPick(), toolUseResult: { answers: { 'Write outside?': `Allow writes into ${fs.realpathSync.native(other)} for this session` } } }) + '\n'); pause(30);
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, `# allowed by the user in this session\n${other}\n`);
   assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target } }).status, 0, 'the receipt opens the named tree');
@@ -4731,7 +4731,7 @@ test('askAnsweredSince: only an ask\'s own answer counts - not a printed file, n
   assert.equal(at([res('The user declined to answer the questions.')]), true, 'a declined ask is answered too');
   assert.equal(at([res('1\t# notes\n2\tThe user answered: "x"="y" - a quoted line in a file')]), false, 'a Read printing the wording is no answer');
   assert.equal(at([res('No response after 60s — the user may be away from keyboard. Proceed using your best judgment.\nBefore going idle the user had selected: "Go?"="Yes".')]), false, 'an idle timeout');
-  assert.equal(at([res('Your questions have been answered: "Go?"="Yes".', { toolUseResult: { answers: { 'Go?': 'Yes' }, afkTimeoutMs: 60000 } })]), false, 'a row whose result carries afkTimeoutMs');
+  assert.equal(at([res('Your questions have been answered: "Go?"="Yes".', { ...userPick(), toolUseResult: { answers: { 'Go?': 'Yes' }, afkTimeoutMs: 60000 } })]), false, 'a row whose result carries afkTimeoutMs');
   eng.use({});
 });
 
@@ -5520,9 +5520,9 @@ const rc = {
   command: (name, args, sid = RC) => rc.typed(`<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`, sid),
   denial: (receipt, tool = 'Read') => ({ type: 'user', sessionId: RC, timestamp: rcAt(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `d${rcClock}`, is_error: true,
     content: `PreToolUse:${tool} hook error: [node "guard.js"]: Blocked: ... write .alfred/state/approvals/${receipt} and retry` }] } }),
-  answer: (label) => ({ type: 'user', sessionId: RC, timestamp: rcAt(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `a${rcClock}`,
+  answer: (label, source) => ({ type: 'user', sessionId: RC, timestamp: rcAt(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `a${rcClock}`,
     content: `User has answered your questions: "Go on?"="${label}". You can now continue with the user's answers in mind.` }] },
-  toolUseResult: { questions: [{ question: 'Go on?', options: [] }], answers: { 'Go on?': label } } }),
+  ...userPick(source), toolUseResult: { questions: [{ question: 'Go on?', options: [] }], answers: { 'Go on?': label } } }),
   said: (text) => ({ type: 'assistant', sessionId: RC, timestamp: rcAt(), message: { id: `m${rcClock}`, role: 'assistant', content: [{ type: 'text', text }] } }),
   skill: (skill, args) => ({ type: 'assistant', sessionId: RC, timestamp: rcAt(), message: { id: `m${rcClock}`, role: 'assistant', content: [{ type: 'tool_use', id: `s${rcClock}`, name: 'Skill', input: { skill, args } }] } }),
 };

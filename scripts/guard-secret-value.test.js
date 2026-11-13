@@ -4,6 +4,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { userPick } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -1719,7 +1720,7 @@ test('swap 1 ask: a SECRET-READ-ALLOW receipt opens nothing', () => {
       content: `PreToolUse:Read hook error: [node "guard.js"]: Blocked: ... write .alfred/state/approvals/${receiptName} and retry` }] } }),
     row({ type: 'assistant', message: { id: 'q1', role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_q1', name: 'AskUserQuestion', input: { questions: [{ question: 'Show it?', options: [] }] } }] } }),
     row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_q1', content: `User has answered your questions: "Show it?"="${SHOW}".` }] },
-      toolUseResult: { questions: [{ question: 'Show it?', options: [] }], answers: { 'Show it?': SHOW } } }),
+      ...userPick(), toolUseResult: { questions: [{ question: 'Show it?', options: [] }], answers: { 'Show it?': SHOW } } }),
   ].join('\n') + '\n');
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
   for (const dir of [path.join(fx.project, '.alfred', 'state', 'approvals'), path.join(fx.project, '.alfred', 'docs', 'flow')]) {

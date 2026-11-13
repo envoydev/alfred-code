@@ -828,7 +828,8 @@ function transcriptScan() {
         if (answers && typeof answers === 'object') {
           const labels = [];
           for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normQuote(one)) labels.push(normQuote(one));
-          if (labels.length) _scan.answers.push({ ts: tsOf(row), labels, text: Object.values(answers).map(String).join(', ') });
+          if (labels.length) _scan.answers.push({ ts: tsOf(row), labels, text: Object.values(answers).map(String).join(', '),
+            user: (() => { try { return prelude().byUser(row) === true; } catch { return false; } })() });   // D25: who gave it
         }
       }
       // a seat's own result: a review seat's report, unless it is a background seat's launch notice (a report past 1MB
@@ -996,16 +997,17 @@ function answeredWaiver(line) {
   const label = m[1].trim();
   if (!WAIVER_WORDS.test(label)) return { problem: `the answered: waiver (${JSON.stringify(label).slice(0, 60)}) skips no review - its label names the skip ('Skip the review and commit')` };
   if (!answeredAt(label)) return { problem: `the answered: waiver (${JSON.stringify(label).slice(0, 60)}) matches no ask answered in this session${answerHint()}` };
+  if (!answeredAt(label, true)) return { problem: 'the answered: waiver was picked by no person (a hook gave that answer) - a skipped review needs the user' };
   let nobody = false;
   try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
   if (nobody) return { problem: 'the answered: waiver was given while nobody is at the terminal (auto-mode answers its own Recommended option) - a skipped review needs the user' };
   return { problem: null };
 }
-// When the latest answer carrying `label` landed, or 0 when no answer carries it.
-function answeredAt(label) {
+// When the latest answer carrying `label` landed - with `own`, only an answer a person gave - or 0 when none carries it.
+function answeredAt(label, own) {
   const want = normQuote(String(label).replace(/^option\s+\d+\s*/i, '').replace(/["'\u201c\u2018\u201d\u2019]/g, ''));
   let at = 0;
-  for (const a of transcriptScan().answers) if (a.ts > at && a.labels.includes(want)) at = a.ts;
+  for (const a of transcriptScan().answers) if (a.ts > at && a.labels.includes(want) && (!own || a.user)) at = a.ts;
   return at;
 }
 

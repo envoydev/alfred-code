@@ -1816,3 +1816,13 @@ test('a session-named stamp file of another session does not outrank the variabl
     writeStamp(p, 'other-session');
     assert.strictEqual(inChild(p, 'approvalStamp({ session_id: \'mine\', cwd: ROOT }).session'), 'mine');
 });
+
+// ---- the answer's source (mode commands v2 stage 3, Task 5, D25): who gave an ask's answer, from its own row ----
+test('byUser: a string opening user, on the row itself, and nothing else', () =>
+{
+    const P = require(PRELUDE);
+    const pd = (source) => ({ permissionDecision: { source } });
+    for (const row of [pd('user_temporary'), pd('user_permanent'), pd('user')]) assert.strictEqual(P.byUser(row), true);
+    for (const row of [pd('hook'), pd('USER_TEMPORARY'), pd('superuser'), pd(['user_temporary']), pd({ a: 1 }), pd(1), pd(''), pd(undefined), {}, null, undefined,
+        { toolUseResult: { permissionDecision: { source: 'user_temporary' } } }]) assert.strictEqual(P.byUser(row), false, JSON.stringify(row));
+});
