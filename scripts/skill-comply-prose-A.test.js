@@ -37,7 +37,7 @@ test('CAP-1: the full-spec definition lives in references/full-spec.md and SKILL
     const names = ref.indexOf('\n## What a full spec names\n');
     assert.ok(names > 0 && names < ref.indexOf('\n## The check\'s lookup\n'), 'the definition opens the reference, before the lookup');
     assert.ok(flat(ref).includes('A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate, and so does any doubt. `scripts/spec-check.js` reads the request for all five.'));
-    assert.ok(body(read(SKILL)).length < 17700, 'the body stays under its cap');
+    assert.ok(body(read(SKILL)).length < 18000, 'the body stays under its cap');   // PF1 spent the 300-char room (plan 2, Task 9 ruling)
 });
 
 test('U31: the approve template carries the fresh-session row', () =>

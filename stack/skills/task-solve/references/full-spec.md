@@ -61,8 +61,7 @@ Before a trivial or small run's close stop, run the same script from the project
 line. It prints ONE `size check:` line: the files the run touched (the tracked diff plus new files, minus
 the stack's data root, `.claude/` and what was untracked when the change began) against the row's cap, and the
 close's `Progress:` line quotes it. On `raise to standard` the size rises where the run stands - write
-the plan file with the work done as ticked tasks, then take standard's step-4 stop (the reviewer ask),
-step 5 and step 6; the small row's close is gone.
+the plan folder's `<feature>.md` with the work as its tasks, then record it through `node .claude/hooks/plan-status.js`, in this order - the route has no step-3 ask, and a task is neither started nor closed on a plan that is not approved: `sync`; `approve` with `words:` the request that asked for the work, verbatim, and no `--mode`; per task `start --task <id>`, then `done --task <id>` with `result:` the command this run already ran and its quoted result. Then take standard's step-4 stop (the reviewer ask), step 5 and step 6, whose close runs `complete`; the small row's close is gone. Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer. Flat plans (until 4.0.0): a plan that is a single file is stamped in the file, by the closing section of the plan shape the build reads.
 
 ## The merged path
 

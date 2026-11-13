@@ -281,7 +281,7 @@ test('task-solve: the spec-check lookup lives in references/full-spec.md, the ve
     assert.match(ref, /SPEC=\.claude\/skills\/task-solve\/scripts\/spec-check\.js/);
     assert.ok(copiesOf(shared()['full-spec-script']).includes('stack/skills/task-solve/references/full-spec.md'));
     assert.deepStrictEqual(registryFindings('full-spec-script'), []);
-    assert.ok(b.length < 17700, `the move frees room under the 18,000 cap: ${b.length}`);
+    assert.ok(b.length < 18000, `the body stays under the 18,000 cap: ${b.length}`);   // PF1 spent the 300-char room (plan 2, Task 9 ruling)
 });
 
 // MATERIAL task-solve-cross/references/issue-investigation.md:93: the fix decision is a marked ask.

@@ -483,6 +483,9 @@ const PF_CALLS = {
     'stack/skills/task-design/SKILL.md': ['sync'],
     'stack/skills/task-design/references/write-and-hand-off.md': ['sync'],
     'stack/skills/task-verify-plan/SKILL.md': ['gate', 'sync'],
+    'stack/skills/task-solve/SKILL.md': ['resume', 'show', 'gate', 'approve', 'conformance', 'complete', 'cursor', 'decide'],
+    'stack/skills/task-solve/references/step-mechanics.md': ['approve', 'decide', 'show'],
+    'stack/skills/task-solve/references/full-spec.md': ['sync', 'approve', 'start', 'done', 'complete'],
 };
 const PF_BODIES = [...Object.keys(PF_CALLS), 'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/mode-output-scoring/SKILL.md',
     'stack/skills/mode-output-scoring/references/outputs.md'];
@@ -555,4 +558,24 @@ test('PF1: the design writes the folder and syncs it; the gate hands its block t
     assert.match(hand, /`Tasks: 0 of <N> done`.*grep the Markdown for `Oriented:` and `Asked:`/);
     assert.match(flat(skill('task-verify-plan')), /hand the whole eight-field block above to `node \.claude\/hooks\/plan-status\.js gate --plan <the plan folder>` on stdin, as printed/);
     assert.match(flat(skill('mode-output-scoring')), /a brief names no file of the plan folder but the draft/);
+});
+
+test('PF1 (R42): the raise-to-standard route records sync, an approval in the request\'s words, each task, then the close', () => {
+    const text = flat(read('stack/skills/task-solve/references/full-spec.md'));
+    assert.match(text, /in this order[^.]*: `sync`; `approve` with `words:` the request that asked for the work, verbatim, and no `--mode`; per task `start --task <id>`, then `done --task <id>`/);
+    assert.match(text, /step 6, whose close runs `complete`/);
+    assert.doesNotMatch(text, /with the work done as ticked tasks/);
+});
+
+test('PF1: task-solve keeps its state in the plan folder, resumes through the script and reads the close from show --full', () => {
+    const text = flat(skill('task-solve'));
+    assert.match(text, /## State - the plan folder is truth and cursor/);
+    assert.match(text, /run `node \.claude\/hooks\/plan-status\.js resume --plan <the plan folder>`/);
+    assert.match(text, /Each stop runs `cursor` before its ask\./);
+    assert.strictEqual((text.match(/Each stop runs `cursor`/g) || []).length, 1, 'said once');
+    assert.match(text, /read from `show --full` - its `## Tasks` and `## Deviations` sections/);
+    assert.match(flat(read('stack/skills/task-solve/references/step-mechanics.md')), /paste its output under a `Build record` heading/, 'the conformance rules carry the build record (one home)');
+    assert.doesNotMatch(text, /Stamp `(?:Approved|Completed|Conformance)/);
+    assert.doesNotMatch(text.replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /`Resume:` line is the one cursor|work\/plans\/<feature>\.md|work\/plans\/csv\.md/);
+    assert.strictEqual(asks(skill('task-solve')).length, 11, 'no ask template added or dropped');
 });

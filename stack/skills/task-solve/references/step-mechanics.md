@@ -34,8 +34,8 @@ Two build modes, the recommendation decided per plan by the `Execution:` verdict
   multiple of its dispatched build).
 
 The verdict maps straight to the mark: `parallel seats` recommends agents, `serial` or `batched`
-recommends session. The plan's `Approved:` line is written after this ask is answered, quoting the answer - never
-in the edit that appends the gate block, ahead of the ask. A plan whose cards own their files and verify alone recommends agents - building
+recommends session. The approval is recorded (`approve`) after this ask is answered, quoting the answer - never
+in the same step as the gate block, ahead of the ask. A plan whose cards own their files and verify alone recommends agents - building
 it one card after another loses time and buys no quality. A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
 available; where it is not, the ask offers session only and says so.
 
@@ -54,8 +54,8 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   resumed session re-writes it only from the user's waiver words typed in THAT session, else the
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
-  re-dispatch under AUTO rides the still-live waiver. A plan written after the stamp that carries its `Completed:`
-  line spends it too: the dispatch hook passes no seat on it, so a next run needs the user's waiver words again.
+  re-dispatch under AUTO rides the still-live waiver. A plan completed after the stamp was written
+  spends it too: the dispatch hook passes no seat on it, so a next run needs the user's waiver words again.
 - **The hand-written stamp goes LAST.** Step 6 deletes it only after the close stop's ask is answered, or after
   the close printed when nothing is pending - never before the ask. With the stamp gone the hooks read the session
   as attended, so the ask waits for a user who is away (usage audit 2026-11-03: deleted first, a close ask sat 3.8 hours).
@@ -79,9 +79,9 @@ spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-o
 session the only orchestrator:
 
 - **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-run the hook's `AUTO` stamp already stands - leave it)
-  (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan file's name without `.md`. Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
+  (the dispatch hook blocks an unstamped implementer). It is the plan's own - `<plan id>` is the plan folder's name. Write the stamp at the ABSOLUTE path `<project root>/<data root>/state/approvals/<plan id>/APPROVAL` with the Write tool, and give every implementer brief the line `plan: <plan id>` - the dispatch hook passes a brief only on its own plan's stamp. DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
-- **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
+- **The contract version.** MINT it - `<the date of the plan's Approved: line as show prints it>-<plan slug>` - and put it in EVERY
   dispatch prompt verbatim, with the seat's literal note name:
   `note: <feature>/<contract_version>/<seat>/<task>` (the seat stores its note under that name on the handoff bus).
 - **The card's docs anchors ride the brief** - the `docs.js where <file>` section ids the design
@@ -96,14 +96,14 @@ session the only orchestrator:
 - **Fast seat gates.** Each seat's green gate stays fast - build + fast tests, never integration
   replays or another minutes-long run; the slow full run happens once, in this session, at the
   step-5 review / step-6 done-gate. A red build/test routes per the repair-agent rules; tick the
-  same plan file per task as reports land.
+  plan's status file per task as reports land.
 
 ## The build bar - both modes
 
 Both modes build to the bar `task-implement` and every `<stack>-implementer` seat carry - the
 quality loop's five stages met on the first pass, comments carrying the why, each judgment call
-decided against the codebase's precedent - and the plan's `## Decisions` ledger grows as they
-land: appended directly in session mode, folded in from each seat's `decisions:` report lines as
+decided against the codebase's precedent - and the plan's decisions grow through `decide` as they
+land: recorded directly in session mode, folded in from each seat's `decisions:` report lines as
 its report lands in agents mode. A mid-build how-to-build question is a protocol violation.
 Build-time stops are for what the BUILD cannot decide - scope beyond the plan, a decision the plan
 left open that the code now forces, an EXTERNAL blocker (a dependency down, a credential missing, a
@@ -138,7 +138,7 @@ this flow. The user can inspect the diff themselves at this stop before answerin
 
 The reviewer the step-4 stop chose RUNS: a Skill tool call on `task-verify-code`, or an Agent dispatch
 of the seat - reviewing from memory of an earlier load is not running it, and a COMMIT-GATE receipt may
-only name a review that ran. Point it at the plan file - its task cards and `## Decisions` ledger.
+only name a review that ran. Point it at the plan folder's Markdown - its task cards and `## Decisions` - and give it the build record: run `show --full` and paste its output under a `Build record` heading.
 Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the SAME
 reviewer again before anything is stamped: a punch-list fix is unreviewed code. Then the body's
 `Conformance:` stamp.
@@ -176,3 +176,5 @@ flag or path turned green - is doc drift too, whatever the code surface: the clo
 AGENTS.md line or the run-book section (`<docs-path>/awareness/RUN-AND-DEBUG-AWARENESS.md`) that still
 prints the old command, beside the command that worked. A plan's `## Decisions` entry is not that
 record - the plan closes, the run book is what the next session reads.
+
+Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer. Flat plans (until 4.0.0): a plan that is a single file is stamped in the file, by the closing section of the plan shape the build reads.
