@@ -740,21 +740,24 @@ test('auto-mode dispatch: the run\'s stamp approves its implementer seats past 8
 const CATALOG = require('../meta/environment.json').env;
 const MODELS = { 'claude-opus-5-5': 1000000, 'claude-haiku-4-5': 200000, 'claude-x-500k': 500000 };
 
-const ON = { ALFRED_CODE_AUTO_COMPACT: '1' };
-test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger, only where the project compacts instead', () =>
+const fresh = require('../stack/hooks/fresh-session.js');
+test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger (the engine\'s seeds)', () =>
 {
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, ON, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 180000, 'claude-x-500k': 280000 }, 'the seeded triggers');
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, {}, CATALOG), {}, 'the catalog seeds ALFRED_CODE_AUTO_COMPACT 0: the fresh-session offers stay, nothing compacts early');
-    for (const v of ['0', 'yes', 'true', ''])
-        assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ALFRED_CODE_AUTO_COMPACT: v }, CATALOG), {}, `'${v}' is not 1`);
-    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: 'x' }, CATALOG),
-        { 'claude-opus-5-5': 350000, 'claude-x-500k': 280000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '50000' }, CATALOG),
+    assert.deepStrictEqual(fresh.compactWindowSeeds(MODELS, WINDOW_SEEDS), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 180000, 'claude-x-500k': 280000 }, 'the seeded triggers');
+    assert.deepStrictEqual(fresh.compactWindowSeeds(MODELS, WINDOW_SEEDS), fresh.compactWindowSeeds(MODELS, { ...WINDOW_SEEDS, ALFRED_CODE_AUTO_COMPACT: '0' }), 'the key is not read here');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ big: 1000000 }, {}), { big: 180000 }, 'an unset tier takes DEFAULT_SEED');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ big: 1000000 }, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: 'x', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '250000' }), { big: 250000 }, 'garbage takes the default trigger');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ big: 1000000 }, { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }), {}, '0 skips the tier');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ small: 150000 }, { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '120000' }), {}, 'a model under 200K never gets a row');
+    assert.strictEqual(require('./install/settings.js').compactWindowSeeds, undefined);
+    assert.deepStrictEqual(fresh.compactWindowSeeds(MODELS, { ...WINDOW_SEEDS, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '350000', ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '0', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: 'x' }),
+        { 'claude-opus-5-5': 350000, 'claude-x-500k': 180000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the default trigger');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ a: 200000, b: 1000000 }, { ...WINDOW_SEEDS, ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000', ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '50000' }),
         { a: 180000, b: 100000 }, 'a trigger past its window is held at 90% of it, and the value never under Claude Code\'s 100,000');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, ON, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ small: 150000, edge: 199999, at: 200000 }, { ...ON, ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '120000' }, CATALOG),
-        { at: 180000 }, 'a window under 200K is no tier, and auto-compact never takes ALFRED_CODE_CONTEXT_WINDOW_DEFAULT (the user\'s ruling, 2026-10-21)');
-    assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, ON, CATALOG), {}, 'nor an id the stamp could not read back');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ tiny: 50000, junk: 'x' }, WINDOW_SEEDS), {}, 'a row under 100k or not a number seeds nothing');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ small: 150000, edge: 199999, at: 200000 }, { ...WINDOW_SEEDS, ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '120000' }),
+        { at: 180000 }, 'a window under 200K is no tier');
+    assert.deepStrictEqual(fresh.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, WINDOW_SEEDS), {}, 'nor an id the stamp could not read back');
 });
 
 function writer(dir, opts = {})

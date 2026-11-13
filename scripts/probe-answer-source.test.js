@@ -4,6 +4,7 @@
 // to a fixed file, so the probe's reading, its exit codes and the child's isolation are checked with no Claude Code
 // and no request.
 const test = require('node:test');
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

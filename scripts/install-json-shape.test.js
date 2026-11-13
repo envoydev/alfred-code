@@ -83,7 +83,8 @@ test('every indented JSON write in the installer and the init settings writers g
 {
     const dir = path.join(__dirname, 'install');
     const files = [...fs.readdirSync(dir).filter((n) => n.endsWith('.js')).map((n) => [n, path.join(dir, n)]),
-        ...PERSON_FILE_WRITERS.map((n) => [n, path.join(__dirname, n)])].sort(([a], [b]) => a.localeCompare(b));
+        ...PERSON_FILE_WRITERS.map((n) => [n, path.join(__dirname, n)]),
+        ['json-file.js', path.join(__dirname, '..', 'stack', 'hooks', 'json-file.js')]].sort(([a], [b]) => a.localeCompare(b));
     const counts = {};
     const lines = [];
     for (const [name, file] of files)

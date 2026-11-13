@@ -1275,6 +1275,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
     // The installer's own list, so a module added there is never a stack hook here.
     const MODULES = require('./install/alfred-code.js').HOOK_MODULES;
+    for (const f of ['mode-settings.js', 'json-file.js']) assert.ok(MODULES.includes(f) && fs.existsSync(path.join(ROOT, 'stack', 'hooks', f)), f);
     const read = (repo) => ({
         files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
         off: hooksOffOf(repo),

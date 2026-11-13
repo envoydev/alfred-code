@@ -420,10 +420,7 @@ function untrackedLocal(file) {
   const claude = fs.lstatSync(dir, { throwIfNoEntry: false });
   if (!claude || !claude.isDirectory() || fs.existsSync(path.join(dir, '.git'))) return false;
   if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) return false;
-  const env = { GIT_OPTIONAL_LOCKS: '0' };
-  for (const [k, v] of Object.entries(process.env)) if (!/^GIT_/i.test(k)) env[k] = v;
-  return require('child_process').spawnSync('git', ['-c', 'core.fsmonitor=false', 'ls-files', '--error-unmatch', '--', ':(icase).claude/settings.local.json'],
-    { cwd: path.dirname(dir), stdio: 'ignore', timeout: 3000, env }).status === 1;
+  try { return require('./mode-settings.js').localGitStatus(file) === 1; } catch { return false; }
 }
 let trustedMemory;
 function ownMemory(t) {

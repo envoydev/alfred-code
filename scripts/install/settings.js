@@ -33,7 +33,7 @@ const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
 const historySession = require('../../stack/hooks/history-session.js');
-const { tierKeyOf } = require('../../stack/hooks/fresh-session.js');
+const { compactWindowSeeds } = require('../../stack/hooks/fresh-session.js');
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
 // The turn check's Stop row rides history-session's Stop process too (the user's ruling of 2026-10-16).
 const foldDispatchers = (rows, opts) => historySession.wiringRows(fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts));
@@ -76,42 +76,6 @@ const hookEntry = (command, timeout, file, event) => ({ type: 'command', command
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 
-// THE AUTO-COMPACT WINDOW PER MODEL (the user's rulings, 2026-10-14): where the project compacts instead of offering a
-// fresh session (ALFRED_CODE_AUTO_COMPACT=1), each model `hooks/model-windows.json` lists compacts where the fresh-session
-// gate would have offered a resume - its window tier's ALFRED_CODE_CONTEXT_WINDOW_FOR_* value (fresh-session.js tierKeyOf:
-// 1M and up -> _1M, 300K and up -> _300K, 200K and up -> _200K, under 200K none), read from the env this file applies - instead of at the window Claude Code tunes for the model
-// (settings reference: unset by default; measured near 390k on a 1M window, fresh-session.js). A tier switched off (`0`) seeds nothing;
-// a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
-// the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
-function compactWindowSeeds(models, env = {}, catalog = [])
-{
-    // Only where the project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT, seeded `0`): with the
-    // offers on, a window at the trigger would compact the session before the offer could reach anyone.
-    const mode = env && Object.hasOwn(env, 'ALFRED_CODE_AUTO_COMPACT') ? env.ALFRED_CODE_AUTO_COMPACT : (catalog.find((r) => r.key === 'ALFRED_CODE_AUTO_COMPACT') || {}).default;
-    if (String(mode || '').trim() !== '1') return {};
-    const seedOf = (key) => parseInt((catalog.find((r) => r.key === key) || {}).default, 10);
-    const tier = (key) =>
-    {
-        const n = parseInt(env && Object.hasOwn(env, key) ? env[key] : NaN, 10);
-        return Number.isNaN(n) || n < 0 ? seedOf(key) : n;   // garbage reads as the seed, as fresh-session.js freshAt does
-    };
-    const out = {};
-    for (const [id, n] of Object.entries(plain(models) ? models : {}))
-    {
-        const window = Number(n);
-        // only an id the stamp's ledger reads back (stamp.js SETTINGS_PATH), or its window could never be taken back
-        if (!(window >= 100000) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
-        // the model's own capacity picks its tier; one under 200K has none and keeps Claude Code's own window - the
-        // fresh-session fallback ALFRED_CODE_CONTEXT_WINDOW_DEFAULT is never an auto-compact window (the user's ruling, 2026-10-21)
-        const key = tierKeyOf(window);
-        if (!key) continue;
-        let at = tier(key);
-        if (!(at > 0)) continue;
-        if (at >= window) at = Math.floor(window * 0.9);
-        out[id] = Math.max(100000, Math.min(1000000, at));
-    }
-    return out;
-}
 const compactAt = (id) => `modelSettings.${id}.autoCompactWindow`;
 // A seeded setting's dotted path (`attribution.commit`, `modelSettings.<id>.autoCompactWindow`): the object holding its last
 // key, or null when a step on the way is missing or not an object.
@@ -1102,7 +1066,10 @@ function writeSettings(opts)
                 && acwPrior[compactAt(id)] === valueHash(JSON.stringify(entry.autoCompactWindow));
         };
         const env = { ...memberEnv, ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
-        const seeds = topLevel(data) || topLevel(sibling) || topLevel(account) ? {} : compactWindowSeeds(compactWindows.models, env, catalog);
+        // Only where the project compacts instead of offering a fresh session (ALFRED_CODE_AUTO_COMPACT=1, seeded `0`): with
+        // the offers on, a window at the trigger would compact the session before the offer could reach anyone.
+        const compacts = String(env.ALFRED_CODE_AUTO_COMPACT || '').trim() === '1';
+        const seeds = !compacts || topLevel(data) || topLevel(sibling) || topLevel(account) ? {} : compactWindowSeeds(compactWindows.models, env);
         const seeded = [];
         const moved = [];
         for (const [id, value] of Object.entries(seeds))
@@ -1706,6 +1673,6 @@ function moveToLocal({ claudeDir, ledger, shippedDeny = [], log = () => {}, note
     return carried;
 }
 
-module.exports = { mergedOverride, compactWindowSeeds, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal,
+module.exports = { mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal,
     isStackKey, writeSettings, wiringsOf, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, localUnusable, readBackSettings,
     unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

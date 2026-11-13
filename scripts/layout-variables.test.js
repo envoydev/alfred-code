@@ -54,9 +54,37 @@ const varsOf = (root, env = ON) => layout.variablesOf(root, { env: { ...env } })
 const K = (s) => `ALFRED_CODE_${s}`;
 const setVars = (root, text) => fs.writeFileSync(path.join(root, '.alfred', '.variables'), text);
 
-test('VARIABLE_KEYS equals the catalog minus the hook switch-offs', () =>
+// Mode v2 stage 3: the mode file and the four mode keys.
+test('modeFile: the root file for a project at its top, the top file for a child below it, its own outside a repository', () =>
 {
-    const catalog = require('../meta/environment.json').env.map((r) => r.key).filter((k) => k !== K('HOOKS_OFF'));
+    const at = tree({ '.': { git: true }, 'api': { vars: '' } });
+    const [top, child] = [at('.'), at('api')];
+    const loose = tree({ '.': {} })('.');
+    assert.strictEqual(layout.modeFile(top), path.join(top, '.claude', 'settings.local.json'));
+    assert.strictEqual(layout.modeFile(child, { platform: 'linux' }), path.join(top, '.claude', 'settings.local.json'));
+    assert.strictEqual(layout.modeFile(child, { platform: 'win32' }), path.join(child, '.claude', 'settings.local.json'));
+    assert.strictEqual(layout.modeFile(loose), path.join(loose, '.claude', 'settings.local.json'));
+});
+test('MODE_KEYS: the four, AUTO_RUN outside VARIABLE_KEYS, the other three inside', () =>
+{
+    assert.deepStrictEqual(layout.MODE_KEYS, [K('AUTO_RUN'), K('AUTO_COMPACT'), K('SCORING'), K('SCORING_LEVEL')]);
+    assert.ok(!layout.VARIABLE_KEYS.includes(K('AUTO_RUN')));
+    for (const k of layout.MODE_KEYS.slice(1)) assert.ok(layout.VARIABLE_KEYS.includes(k), k);
+});
+test('a same-repository child reads the three modes from the top file, over its own local file and its .variables', { skip: process.platform === 'win32' }, () =>
+{
+    const at = tree({ '.': { git: true, local: { env: { [K('SCORING')]: '0', [K('SCORING_LEVEL')]: '75', [K('AUTO_RUN')]: '1', [K('HISTORY')]: '9' } } },
+        'api': { vars: `${K('SCORING_LEVEL')}=90\n`, local: { env: { [K('SCORING')]: '1' } } } });
+    const { values } = varsOf(at('api'), UNSET);
+    assert.strictEqual(values[K('SCORING')], '0');
+    assert.strictEqual(values[K('SCORING_LEVEL')], '75');
+    assert.strictEqual(values[K('AUTO_RUN')], undefined, 'never read by the loader');
+    assert.notStrictEqual(values[K('HISTORY')], '9', 'only the mode keys cross');
+});
+
+test('VARIABLE_KEYS equals the catalog minus the hook switch-offs and the auto-run mode key', () =>
+{
+    const catalog = require('../meta/environment.json').env.map((r) => r.key).filter((k) => k !== K('HOOKS_OFF') && k !== K('AUTO_RUN'));
     assert.deepStrictEqual([...layout.VARIABLE_KEYS].sort(), catalog.sort());
 });
 

@@ -59,6 +59,26 @@ function tierKeyOf(window) {
   return w >= 1000000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M' : w >= 300000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K'
     : w >= 200000 ? 'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K' : null;
 }
+// The auto-compact window per model - { <model id>: <tokens> } - at its window tier's trigger, read from `env` (the env a
+// settings file applies): an unset or garbage tier takes that env's DEFAULT, else DEFAULT_SEED; `0` skips the tier; a
+// trigger at or past its window is held at 90% of it, inside the 100,000-1,000,000 Claude Code accepts. A model under 200K
+// has no tier and keeps Claude Code's own window; an id the stamp's ledger cannot read back (stamp.js SETTINGS_PATH) gets
+// no row. Whether the project compacts at all (ALFRED_CODE_AUTO_COMPACT) is the caller's test.
+function compactWindowSeeds(models, env = {}) {
+  const num = (key) => { const n = parseInt(env && Object.hasOwn(env, key) ? env[key] : NaN, 10); return Number.isNaN(n) || n < 0 ? null : n; };
+  const dflt = num('ALFRED_CODE_CONTEXT_WINDOW_DEFAULT') ?? DEFAULT_SEED;
+  const out = {};
+  for (const [id, n] of Object.entries(models && typeof models === 'object' && !Array.isArray(models) ? models : {})) {
+    const window = Number(n);
+    const key = tierKeyOf(window);
+    if (!key || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
+    let at = num(key) ?? dflt;
+    if (!(at > 0)) continue;
+    if (at >= window) at = Math.floor(window * 0.9);
+    out[id] = Math.max(100000, Math.min(1000000, at));
+  }
+  return out;
+}
 const FRESH_AT_1M = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', DEFAULT_AT);
 const FRESH_AT_300K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', DEFAULT_AT);
 const FRESH_AT_200K = freshAt('ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', DEFAULT_AT);
@@ -1065,7 +1085,7 @@ function stopOfferCtx(p = payload) {
 }
 
 module.exports = {
-  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
+  use, freshAt, FRESH_AT_200K, FRESH_AT_300K, FRESH_AT_1M, DEFAULT_AT, DEFAULT_SEED, tierKeyOf, compactWindowSeeds, FRESH_OFF, COMPACT_INSTEAD, sessionModelId,
   tableWindow, recordSessionModel, knownWindow, ctxThreshold, ctxThresholdWhy, triggerReason, triggerText, coldFloor, firstUsage, worthResuming, contextNow,
   RESUME_READ, CACHE_READ_RATES, WRITE_RATES, modelKey, readRateOf, paybackOf, cacheTtl, freshVerdict, rateX, payText, notPayText,
   verdictRow, verdictProbe,

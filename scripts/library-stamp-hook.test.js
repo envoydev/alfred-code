@@ -21,7 +21,7 @@ const stampOf = (version) => `sha: ${'a'.repeat(40)}\nversion: ${version}\npicke
 // across folders (2.1.6 to 2.10.0 stamp.js read the browser engine order from stack/mcp/data-root.js at load). The pinned
 // test below walks the eager requires, so a missing file is never the six silent no-ops it was - develop went red on
 // exactly this in 2.1.6, an eager `../../` require the old `./`-only pin never saw.
-const HOOK_INSTALL_FILES = ['scripts/install/stamp.js', 'scripts/install/brand.js', 'scripts/install/json-file.js'];
+const HOOK_INSTALL_FILES = ['scripts/install/stamp.js', 'scripts/install/brand.js', 'scripts/install/json-file.js', 'stack/hooks/json-file.js'];
 // A plugin root holding the files the hook reads - the stamp reader (with the prelude its install-state
 // read walks) and the release version - and a project with (or without) a stamp. `record` leaves a
 // copied engine in the project, `globalStamp` a stamp in the account dir the hook must never read.
@@ -200,11 +200,13 @@ test('the installer files the hook loads standalone are copied whole: every eage
         const f = queue.shift();
         if (eager.has(f)) continue;
         eager.add(f);
-        for (const m of fs.readFileSync(path.join(REPO, f), 'utf8').matchAll(/^const [^\n]*= require\('(\.{1,2}\/[\w./-]+\.js)'\)/gm))
+        for (const m of fs.readFileSync(path.join(REPO, f), 'utf8').matchAll(/^(?:const [^\n]*=|module\.exports =) require\('(\.{1,2}\/[\w./-]+\.js)'\)/gm))
             queue.push(path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1])));
     }
     assert.deepStrictEqual([...eager].filter((f) => !HOOK_INSTALL_FILES.includes(f)), [], 'a file stamp.js or brand.js now requires at load is not in the plugin fixture (and the hook would fail open, silently)');
     assert.deepStrictEqual(HOOK_INSTALL_FILES.filter((f) => !eager.has(f)), [], 'the fixture copies a file nothing loads eagerly any more');
     // The one place a BOM strip must not diverge: json-file.js is what every installer reader uses.
     assert.ok(fs.existsSync(path.join(REPO, 'scripts', 'install', 'json-file.js')));
+    assert.ok(fs.existsSync(path.join(REPO, 'stack', 'hooks', 'json-file.js')));
+    assert.strictEqual(require('./install/json-file.js'), require('../stack/hooks/json-file.js'), 'the installer path is the hooks module, re-exported');
 });

@@ -374,6 +374,9 @@ const VARIABLE_KEYS = Object.freeze([
     'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_WORKSPACE',
 ]);
 const VARIABLE_SET = new Set(VARIABLE_KEYS);
+// The four modes the mode commands switch, kept in the mode file (modeFile). AUTO_RUN is no variable: the loader never reads it.
+const MODE_KEYS = Object.freeze(['ALFRED_CODE_AUTO_RUN', 'ALFRED_CODE_AUTO_COMPACT', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL']);
+const MODE_SET = new Set(MODE_KEYS);
 // until 4.0.0: the four keys 3.11.0 renamed are read as their new key wherever that key has no value in the same file
 // (a tracked file a teammate has not updated yet); new key -> old key.
 const OLD_KEYS = Object.freeze({
@@ -521,6 +524,9 @@ function ownLayers(projectRoot, env, layers = 'all', dataRoot = '.alfred')
     const claude = path.join(checkout, '.claude');
     const all = layers === 'all';
     const local = layers === 'team' ? null : settingsEnv(path.join(claude, 'settings.local.json'));
+    // A same-repository child reads the modes from the file Claude Code keeps at the top (modeFile), over its own.
+    const modeAt = layers === 'team' ? null : modeFile(checkout);
+    const mode = modeAt && pathKey(modeAt) !== pathKey(path.join(claude, 'settings.local.json')) ? settingsEnv(modeAt) : null;
     const shared = settingsEnv(path.join(claude, 'settings.json'));
     const account = all ? settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json')) : null;
     let main;
@@ -532,7 +538,7 @@ function ownLayers(projectRoot, env, layers = 'all', dataRoot = '.alfred')
     for (const key of VARIABLE_KEYS)
     {
         if (all && key === SWITCH_KEY && String(env[key]) === '0') { values[key] = '0'; from[key] = 'env'; continue; }
-        let value = valueIn(local, key);
+        let value = valueIn(MODE_SET.has(key) ? mode : null, key) ?? valueIn(local, key);
         if (value !== undefined)
         {
             values[key] = value;
@@ -843,6 +849,8 @@ function localSettingsFile(root, { home = require('os').homedir(), platform = pr
     if (platform === 'win32') return dirKey(top) === dirKey(root) ? path.join(root, '.claude', 'settings.local.json') : null;
     return path.join(worktreeMain(top) || top, '.claude', 'settings.local.json');
 }
+// The mode file: the local file Claude Code reads for this folder, else the folder's own (no repository, Windows below the top).
+const modeFile = (root, opts) => localSettingsFile(root, opts) || path.join(path.resolve(root), '.claude', 'settings.local.json');
 // R171: a start folder's settings.local.json that Claude Code 2.1.211+ no longer keeps there (it keeps the file at the
 // repository root, localSettingsFile) and that sets autoMemoryDirectory: { file, dir, rootFile }, else null. Claude Code
 // still reads the older file while the root one sets no key, but the write guard trusts only the root file, so the
@@ -1152,5 +1160,6 @@ module.exports = {
     settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
+    MODE_KEYS, modeFile,
     VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
 };
