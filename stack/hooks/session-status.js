@@ -124,6 +124,9 @@ function handoffPrompt(root, branch, deps) {
     if (!count || !branch || branch === 'HEAD') return null;
     const open = H.openPlan(root, branch, count);
     if (!open) return null;
+    // PF1 (R26): a folder plan is resumed through the writer script, which prints its state and its open cards
+    if (open.dir) return `Run node .claude/hooks/plan-status.js resume --plan ${open.dir}, check that branch ${branch} is checked out, and continue from its Resume: line (${open.resume}).`.slice(0, PROMPT_MAX);
+    // PF1 flat plan - until 4.0.0
     return `Read ${open.plan}, check that branch ${branch} is checked out, and continue from its Resume: line (${open.resume}).`.slice(0, PROMPT_MAX);
   } catch { return null; }
 }
@@ -268,7 +271,8 @@ const scoringOf = (s) => (s.scorer && typeof s.scorer === 'object' && !Array.isA
 const sameButTime = (a, b) => FIELDS.every((k) => k === 'updatedAt' || same(a[k], b[k]));
 
 // 'always' writes; 'modes' (UserPromptSubmit) compares autoRun and the scorer first and builds only on a difference;
-// 'changed' (Stop) writes when any field but updatedAt differs, carrying the prompt's autoRun and scorer from the file.
+// 'changed' (Stop) writes when any field but updatedAt differs, carrying the prompt's autoRun and scorer from the file;
+// 'plan' (a plan call at PreToolUse, PF1 R28) compares the checked folder with the file's first and carries the rest.
 // `gate` (the prompt's stand-down) runs only once a write is due - after the compare, never on an unchanged prompt (R137).
 function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
   const d = depsOf(deps);
@@ -287,7 +291,26 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     // whatever else changed, so it gains the key (R2)
     const upgrade = Boolean(current) && !('plan' in current);
     if (current && !('plan' in f)) f.plan = current.plan;
-    if (when === 'modes') {
+    const root = rootOf(p, d.env);
+    if (when === 'changed' && !f.plan) {
+      // PF1 (R30): at Stop, a file with no plan takes the history record's folder plan - the session's newest plan write
+      // or plan call - when the fresh-session hook set none (it is off, or the plan was named before 3.12)
+      const entry = f.entry !== undefined ? f.entry : d.history && d.history.entryFor && root ? d.history.entryFor(root, id) : null;
+      f.entry = entry;   // buildStatus takes it as read: the record is read once per write
+      const named = entry && typeof entry.plan === 'string' ? entry.plan.replace(/\\/g, '/') : '';
+      if (named && root && !named.startsWith('~/') && !path.posix.isAbsolute(named) && !/^[A-Za-z]:\//.test(named) && d.layout && d.layout.planOf) {
+        const plan = d.layout.planOf(path.resolve(root, named));
+        if (plan && plan.shape === 'folder') f.plan = plan.dir;
+      }
+    }
+    if (when === 'plan') {
+      // PF1 (R28): the plan call's folder, checked, against the file's - equal is unchanged, with no build and no write
+      const want = planField(root, f.plan, d);
+      if (!upgrade && current && same(current.plan, want)) return 'unchanged';
+      if (gate && !gate()) return 'skipped';
+      f.plan = want;
+      if (current) { f.autoRun = autoRunOf(current); f.scorer = scoringOf(current); f.handoffPrompt = current.handoffPrompt; }
+    } else if (when === 'modes') {
       // ...unless the file says auto-run without compact - an older core's file, corrected now, not at the next Stop (R116)
       if (!upgrade && current && compactSame(current, p, d) && same(current.autoRun, f.autoRun) && same(current.scorer, f.scorer)
         && (current.autoRun !== true || current.fullContext === 'compact')) return 'unchanged';
@@ -308,10 +331,19 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
       // a changed autoRun changes fullContext too: rebuilt, the handoff prompt carried so history is not read twice
       if (again && autoRunOf(again) !== next.autoRun) next = buildStatus(p, { ...f, autoRun: autoRunOf(again), scorer: scoringOf(again), handoffPrompt: next.handoffPrompt }, d);
       else if (again) next.scorer = scoringOf(again);
+      // PF1: a plan call landing since the first read keeps its plan
+      if (again && !same(again.plan, current.plan)) next.plan = planField(root, again.plan, d);
     } else if (when === 'modes') {
       // A Stop writing the handoff prompt since the first read keeps it: the rename would undo it (R135).
       const again = readStatusFile(file, id);
       if (again && !same(again.handoffPrompt, current ? current.handoffPrompt : null)) next.handoffPrompt = again.handoffPrompt;
+      // PF1: a plan call landing since the first read keeps its plan
+      if (again && !same(again.plan, current ? current.plan : null)) next.plan = planField(root, again.plan, d);
+    } else if (when === 'plan' && current) {
+      // a prompt's or a Stop's values that landed since the first read are kept; a changed autoRun rebuilds fullContext
+      const again = readStatusFile(file, id);
+      if (again && autoRunOf(again) !== next.autoRun) next = buildStatus(p, { ...f, autoRun: autoRunOf(again), scorer: scoringOf(again), handoffPrompt: again.handoffPrompt }, d);
+      else if (again) { next.scorer = scoringOf(again); next.handoffPrompt = again.handoffPrompt; }
     }
     const dir = path.dirname(file);
     const dirExisted = fs.existsSync(dir);
@@ -325,7 +357,6 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     const ms = Math.max(0, d.clock() - t0);
     probeRow(p, { kind: 'status-write', result: ms > SLOW_MS ? 'slow' : 'ok', ms }, d);
     const base = path.dirname(path.dirname(path.dirname(dir)));
-    const root = rootOf(p, d.env);
     if (!fileExisted && root) appendBase(root, base, d);
     if (!dirExisted && p.hook_event_name !== 'SessionStart') ensureExcluded([base], d);
     return 'written';
@@ -572,6 +603,14 @@ function onSessionStart(payload, entry) {
 function onStop(payload, entry) {
   try { return writeStatus(payload, { entry }, { when: 'changed' }); } catch { return 'skipped'; }
 }
+// PF1 (D12, R28): a plan call at PreToolUse names the plan the session works on; a seat's call sets nothing.
+function onPlan(payload, folder, gate) {
+  try {
+    const p = objectOf(payload);
+    if (!p || p.agent_id || typeof folder !== 'string' || !folder) return 'skipped';
+    return writeStatus(p, { plan: folder }, { when: 'plan', gate: typeof gate === 'function' ? gate : undefined });
+  } catch { return 'skipped'; }
+}
 function onPrompt(payload, modes, gate) {
   try {
     if (!modes || typeof modes.autoRun !== 'boolean') return 'skipped';
@@ -582,5 +621,5 @@ function onPrompt(payload, modes, gate) {
 module.exports = {
   FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
   baseOf, rootOf, ownBase, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusBases, pruneStatus,
-  ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, modesLine,
+  ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, onPlan, modesLine,
 };
