@@ -19,15 +19,15 @@ run-time load.
 
 ## State - the plan folder is truth and cursor
 
-- **The plan folder** (`<docs-path>/work/plans/<feature>/`): `<feature>.md` the design, frozen at approval; `status.json` every stamp, task status and evidence, and the resume note - the one cursor (step, modes, next task). Each stop runs `cursor` before its ask. Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer. On any conflict, the folder wins.
-- **Handoff notes** (the handoff bus, `node .claude/hooks/handoff.js`) are the seats' hand-offs in agents mode
+- **The plan folder** (`<docs-path>/work/plans/<feature>/`): `<feature>.md` the design, frozen at approval; `status.json` every stamp, tick and the resume note - the one cursor (step, modes, next task). Each stop runs `cursor` before its ask. Never edit `status.json`, `scoring.json` or an approved plan: only the script writes. On any conflict, the folder wins.
+- **Handoff notes** (`node .claude/hooks/handoff.js`) are the seats' hand-offs in agents mode
   (`<feature>/<contract_version>/<seat>/<task>`), never a second cursor.
 
 **On invocation, resume before starting:** `node .claude/hooks/handoff.js left <feature>` (the run's seat notes, by name;
-`list <feature>/<contract_version>` prints them), and run `node .claude/hooks/plan-status.js resume --plan <the plan folder>` - the stamps, the `Resume:` line, the open cards. A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
+`list <feature>/<contract_version>` prints them), and run `node .claude/hooks/plan-status.js resume --plan <the plan folder>`. A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
 already passed. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
-A NEW cycle starting after a finished one in this same session offers the fresh-session hand-off
+A NEW cycle after a finished one in this session offers the fresh-session hand-off
 in its first ask, after the in-session option. A cycle mid-build reads `Resume: step 4 BUILD - mode session - next task 2`.
 
 Invoked with no request and no plan to resume, the one reply is an ask for the task - nothing runs before its answer.
@@ -128,8 +128,8 @@ Each step that names a skill INVOKES it via the Skill tool - again on every new 
 chat, even when an earlier cycle loaded it. One exception: a capture named in a
 close-out line (step 6) is a POINTER for the user to type, never a call this run makes.
 
-1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first. It writes the plan folder's `<feature>.md` and syncs it -
-   the artifact, not the chat - with its design rules settled IN it, so step 5 reviews against a plan that already decided them. *Stop* -
+1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first. It writes the plan folder's `<feature>.md` and syncs it,
+   with its design rules settled IN it, so step 5 reviews against a plan that already decided them. *Stop* -
    none on a full spec, where step 2 follows in the same step (above).
 2. **GATE** - run `task-verify-plan` over the plan in the mode step 1 ran - no mode ask. It
    records its eight-field block through `gate`: `Gated: passed`; `passed - <N> fixes applied` for the
@@ -143,8 +143,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - 'Apply it to the plan' - <the audit's reason>
    ```
 
-   A declined audit goes through `gate`, its last line `Gated: skipped by user - <their words>`, the other fields `NOT RUN` - never
-   blank, never a faked pass. *Stop* - except on a pass with no open item, where step 3's approval
+   A declined audit goes through `gate` as `Gated: skipped by user - <their words>`, the rest `NOT RUN` -
+   never a faked pass. *Stop* - except on a pass with no open item, where step 3's approval
    ask is this stop too ('Not yet' is the route-back).
 3. **APPROVE** - Read `references/step-mechanics.md` now - this ask's mode-fit rule and the
    mechanics of steps 4-6 are its content, not homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
@@ -183,7 +183,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    The harness compacting the context mid-build is a stop too (under AUTO, one line, then continue):
 
    ```ask
-   Context compacted during task <N>; the plan's status file holds every tick. Fresh: <the cold floor>, here: <carry>.
+   Context compacted during task <N>; the status file holds every tick. Fresh: <the cold floor>, here: <carry>.
    - 'Continue the build here (Recommended)' - on the compacted summary
    - 'Resume in a fresh session' - the resume block ends this turn; this chat stops here
    ```
@@ -200,7 +200,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ```
 
    The mark moves to the seat when the reviewer-fit rule picks it for the assembled diff.
-5. **CONFORMANCE** (unless skipped - a skip is recorded with `conformance` and `skipped:` the user's words) - INVOKE the reviewer chosen at the step-4 stop, and
+5. **CONFORMANCE** (unless skipped - `conformance` with `skipped:` the user's words) - INVOKE the reviewer chosen at the step-4 stop, and
    re-review each punch-list fix, by the step mechanics' conformance rules. Record
    the verdict with `conformance`, `verdict:` and `reviewer: <reviewer>, <the pass that cleared the last fix delta>`. The stop's
    `Result:` carries the review's named fields as it emitted them. *Stop* - an open finding's ask:
@@ -213,7 +213,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
 
 6. **CLOSE** - the done gate
    (load `habits-done-gate` - each acceptance criterion, and each Verify or Done-when bullet of a
-   card the ask cited, demonstrated by a run this session, quoted). Record the close: `complete`, `suite:` the final gate's command and quoted result (`--with-open` if a task stays open). The evidence table and `Deviations:` are read from `show --full` - its `## Tasks` and `## Deviations` sections - never retyped. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count (`references/step-mechanics.md`).
+   card the ask cited, demonstrated by a run this session, quoted). Record the close: `complete`, `suite:` the final gate's command and quoted result (`--with-open` if a task stays open). The evidence table and `Deviations:` are read from `show --full` - its `## Tasks` and `## Deviations` sections. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count (`references/step-mechanics.md`).
    The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names|none>` -
    plus `Deviations: <each Decisions entry that departs from the Asked: words, one apiece | none>`,
    under AUTO the user's first sight of them.
@@ -259,7 +259,6 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
   APPROVE stamp records the user's decision, not yours; an answer that names no build mode
   approves nothing.
 - Never dispatch a seat the user did not choose at a stop - dispatch is explicit-only house-wide.
-- Never keep cycle state only in chat or a note: a stamp, tick or cursor not in the plan's status file does
-  not exist.
+- Never keep cycle state only in chat or a note: a stamp, tick or cursor not in the status file does not exist.
 
 Flat plans (until 4.0.0) are stamped in the file.

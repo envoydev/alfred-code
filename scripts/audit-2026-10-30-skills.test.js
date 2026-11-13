@@ -36,10 +36,10 @@ test('SKF-04: the two reviewers read their target with one registered text', () 
     assert.strictEqual(count.exec(flat(security))[0], count.exec(flat(code))[0], 'the Dispatch count sentence is shared');
 });
 
-// The compaction re-attach keeps a skill's first 5,000 tokens; the repo pins that at 18,000 body chars (17,700 until PF1)
+// The compaction re-attach keeps a skill's first 5,000 tokens; the repo pins that at 17,700 body chars (18,000 for a while in PF1, restored by the owner 2026-11-14)
 // (audit-2026-10-20-skills.test.js, task-solve's cap). A rule past it is gone after a compaction.
 const body = (name) => skill(name).replace(/^---\n[\s\S]*?\n---\n/, '');
-const REATTACH = 18000;
+const REATTACH = 17700;
 const inside = (name, marker) =>
 {
     const at = flat(body(name)).indexOf(flat(marker));

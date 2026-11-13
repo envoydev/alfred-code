@@ -174,7 +174,7 @@ test('the clauses stay inside the always-on budget, and task-solve inside its re
     const { alwaysOnSurface } = require('./always-on-surface.js');
     const s = alwaysOnSurface({ rulesDir: path.join(ROOT, 'stack', 'rules'), agentsDir: path.join(ROOT, 'stack', 'agents'), skillsDir: path.join(ROOT, 'stack', 'skills') });
     assert.ok(s.total < 80000, `${s.total}`);
-    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 18000, 'task-solve stays under its re-attach cap (I29: 18,000 since PF1)');
+    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, 'task-solve stays under its re-attach cap (I29: 17,700)');
 });
 
 // C07 (fabea019): a stop 22 minutes into a cycle, at 275k on a 1M window, printed a resume block, and the model's
@@ -190,6 +190,6 @@ test('C07: task-solve puts the fresh-session option and resume block only past a
     assert.match(mech, /## Conformance - step 5 The reviewer the step-4 stop chose RUNS: a Skill tool call on `task-verify-code`, or an Agent dispatch of the seat/);
     assert.match(mech, /a punch-list fix is unreviewed code/);
     assert.match(mech, /- Conformance - step 5 /, 'listed in the contents');
-    // the room this kept under the re-attach cap (17,700, 18,000 since PF1) went to the fresh-session shared line (spec 2026-10-28 section 5)
-    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 18000, `task-solve stays under its cap: ${body('stack/skills/task-solve/SKILL.md').length}`);
+    // the room this kept under the re-attach cap (17,700) went to the fresh-session shared line (spec 2026-10-28 section 5)
+    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, `task-solve stays under its cap: ${body('stack/skills/task-solve/SKILL.md').length}`);
 });
