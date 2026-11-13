@@ -454,6 +454,7 @@ function main() {
   const start = root;
   process.env.CLAUDE_PROJECT_DIR = root;
   // before the domain gate: a plan file lives under the docs root whether or not a domain does
+  if (event === 'PreToolUse' && planFolderWrite(input, root)) return;
   if (event === 'PreToolUse' && stampedPlanWrite(input, root)) return;
   if (event === 'PreToolUse' && stampAfterTimeoutWrite(input, root)) return;
   if (event === 'SessionStart') {
@@ -1284,6 +1285,57 @@ function stampAfterTimeoutWrite(input, root) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
   return true;
 }
+// PF1 (spec 6, D12): a plan folder's status.json and scoring.json are written by their scripts only, and its approved
+// Markdown is frozen. By shape - <plans>/<id>/ holding <id>.md - so a workspace member's plan is held with no member
+// lookup, and for any actor. The JSON denial stands whatever the file holds (R31); the approval denial reads the status
+// and fails open on anything it cannot read. A folder with no Markdown is no plan (R32).
+let planStatusMod;
+const planStatusEngine = () => { if (planStatusMod === undefined) { try { planStatusMod = require('./plan-status.js'); } catch { planStatusMod = null; } } return planStatusMod; };
+function planFolderWrite(input, root) {
+  try {
+    if (!layout || typeof layout.planOf !== 'function') return false;
+    const name = input.tool_name || '';
+    const t = input.tool_input || {};
+    const targets = [];
+    if (/^(?:Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
+      for (const p of [t.file_path, t.notebook_path]) if (typeof p === 'string' && p) targets.push(path.resolve(root, p));
+    } else if (isShellTool(name) && typeof t.command === 'string') {
+      const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+      for (const w of writeTargets(t.command)) if (!isUnknown(w)) targets.push(path.resolve(base, w.replace(/^['"]|['"]$/g, '')));
+    }
+    for (const abs of targets) {
+      const plan = layout.planOf(abs);
+      if (!plan || plan.shape !== 'folder') continue;
+      const md = path.join(plan.dir, `${plan.id}.md`);
+      const base = path.basename(abs);
+      const relDir = `${toPosix(path.relative(root, plan.dir))}/`;
+      const rel = toPosix(path.relative(root, abs));
+      let reason = null;
+      let event = null;
+      if (base === 'status.json' || base === 'scoring.json') {
+        let isFile = false;
+        try { isFile = fs.statSync(md).isFile(); } catch { /* no Markdown: no plan */ }
+        if (!isFile) continue;
+        reason = base === 'status.json'
+          ? `Blocked: ${rel} is written by plan-status.js only, never by hand. Record it through the script: node .claude/hooks/plan-status.js <verb> --plan ${relDir} (start, done, block, decide, deviate, add-task, cursor - text on stdin).`
+          : `Blocked: ${rel} is written by scorecard.js only, never by hand. It is rewritten when a grading run releases.`;
+        event = 'plan-json-write';
+      } else if (base === `${plan.id}.md`) {
+        const S = planStatusEngine();
+        const read = S ? S.readStatus(plan.dir) : null;
+        if (!read || !read.ok || !read.status.approvedAt || read.status.reopenedAt) continue;
+        reason = `Blocked: ${rel} was approved (${read.status.approvedAt}) - the approved plan is not edited. Record a decision (decide), a deviation (deviate) or an added task (add-task) through node .claude/hooks/plan-status.js, or reopen the design on the user's answer (redesign).`;
+        event = 'approved-plan-write';
+      } else continue;
+      log(root, input, { event, target: rel });
+      blockRow(root, input, reason);
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+      return true;
+    }
+  } catch { /* fail-open */ }
+  return false;
+}
+// PF1 flat plan - until 4.0.0: the Completed: stamp of a single-file plan
 function stampedPlanWrite(input, root) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
