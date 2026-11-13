@@ -237,6 +237,7 @@ function askGapArm() {
 const PLAN_FILE_RE = /(?:^|[\\/])plans[\\/][^\\/]+\.md$/i;
 const STATUS_RE = /^\s*[-*]\s*\**status\**\s*:\s*\**\s*`?([A-Za-z_]+)/im;
 const DONE_LINE_RE = /^\s*[-*]\s*\**status\**\s*:\s*\**\s*`?DONE\b/im;
+// PF1 flat plan - until 4.0.0: the tick as an edit of a single-file plan
 function tickCall() {
   try {
     if (payload.agent_id || !/^(?:Edit|MultiEdit|Write)$/.test(String(payload.tool_name || ''))) return null;
@@ -250,8 +251,38 @@ function tickCall() {
     return { file: nodePath.resolve(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), file) };
   } catch { return null; }
 }
+// PF1 (D12, spec 6): a main-session shell call of the plan writer script names its plan. The substring test is all a call
+// that names no plan pays; the engine is required on first use, and one that did not load is no evidence.
+let planStatusMod;
+const planStatusEngine = () => { if (planStatusMod === undefined) { try { planStatusMod = require('./plan-status.js'); } catch { planStatusMod = null; } } return planStatusMod; };
+function planCall() {
+  try {
+    if (payload.agent_id || !/^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || ''))) return null;
+    const command = (payload.tool_input || {}).command;
+    if (typeof command !== 'string' || !command.includes('plan-status.js')) return null;
+    const S = planStatusEngine();
+    const call = S && S.parseCall(command);
+    if (!call || !call.plan) return null;
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const res = S.resolvePlan(call.plan, { cwd: payload.cwd || root, env: process.env });
+    if (!res || !res.ok) return null;
+    return { verb: call.verb, task: call.task, dir: res.dir, md: res.md, rel: res.rel };
+  } catch { return null; }
+}
+const PLAN_CALL = IS_HOLD_CALL && !IS_SKILL_CALL ? planCall() : null;
+// The set: a call that works on the plan names it as the session's (resume, or a writing verb but complete, whose close
+// the Stop's re-check nulls); the history-session stand-down gates the write as it gates the prompt's.
+if (PLAN_CALL && (PLAN_CALL.verb === 'resume' || (planStatusEngine().VERBS.write.includes(PLAN_CALL.verb) && PLAN_CALL.verb !== 'complete'))) {
+  try {
+    let gate = () => true;
+    try { const prelude = require('./hook-prelude.js'); gate = () => !prelude.standDown('history-session'); } catch { /* no prelude: the write stands */ }
+    require('./session-status.js').onPlan(payload, PLAN_CALL.dir, gate);
+  } catch { /* the Stop's fallback sets it */ }
+}
 const ASK_GAP = IS_HOLD_CALL && !IS_SKILL_CALL ? askGapArm() : null;
-const TICK = IS_HOLD_CALL && !IS_SKILL_CALL ? tickCall() : null;
+const TICK = IS_HOLD_CALL && !IS_SKILL_CALL
+  ? tickCall() || (PLAN_CALL && PLAN_CALL.verb === 'done' && PLAN_CALL.task ? { file: PLAN_CALL.md, dir: PLAN_CALL.dir, rel: PLAN_CALL.rel, taskId: String(PLAN_CALL.task) } : null)
+  : null;
 // The common case - no hold pending - leaves before anything else is read.
 if (IS_HOLD_CALL && !IS_SKILL_CALL && !ASK_GAP && !TICK && !fs.existsSync(compactHoldFile())) process.exit(0);
 if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact', 'PostModelSwitch'].includes(EVENT)) process.exit(0);
@@ -400,6 +431,7 @@ function compactHold() {
   const idle = hold.route === 'idle';
   const tick = hold.route === 'tick';
   // the tick route: the plan's own edits pass - its Resume line and Decisions ledger are written after the tick
+  // PF1 flat plan - until 4.0.0
   if (tick && /^(?:Write|Edit|MultiEdit)$/.test(String(payload.tool_name || '')) && samePath((payload.tool_input || {}).file_path, hold.plan)) return;
   if (/^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
   const kind = idle ? 'idle-hold' : tick ? 'tick-hold' : 'compact-hold';
@@ -407,6 +439,18 @@ function compactHold() {
     try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
     ledgerRow({ mode: 'probe', kind, reason: `probe: ${idle ? 'idle-gap' : tick ? 'plan-tick' : 'post-compaction'} hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
   };
+  // PF1 (R27): a folder plan's tick hold stands only once its done landed - the engine refused it (no result:, a lock
+  // held), so the task is not done on disk at this changing call: dropped, and the call passes
+  let folderStatus = null;
+  if (tick && hold.dir) {
+    const S = planStatusEngine();
+    const read = S ? S.readStatus(String(hold.dir)) : null;
+    if (read && read.ok) {
+      folderStatus = read.status;
+      const task = (read.status.tasks || []).find((t) => t.id === String(hold.taskId));
+      if (!task || task.status !== 'done') return release('not-landed');
+    }
+  }
   const since = Number(hold.size) || 0;
   if (Date.now() - (Date.parse(hold.at) || 0) > 12 * 3600 * 1000) return release('stale');
   if (unattended(payload)) return release('unattended');
@@ -425,8 +469,22 @@ function compactHold() {
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1, payback: verdict.breakEven })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
   const pay = fresh.payText(ctx, verdict);
+  if (tick && hold.dir) {
+    // PF1: the cursor as the status file holds it NOW - the build moves it after the tick through the script
+    let resume = String(hold.resume || '');
+    try { if (folderStatus) resume = planStatusEngine().resumeText(folderStatus) || resume; } catch { /* the text read at the tick */ }
+    process.stderr.write(
+      `Held once: plan task '${hold.task}' was just ticked DONE in ${hold.rel}, and the next task is a clean point\n`
+      + `to resume from. ${pay}\n`
+      + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
+      + `the next task; a plan-status.js cursor call passes. Before the next task's first change, put the choice to the user as ONE\n`
+      + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
+      + `resume block naming the plan), or continue here. ${HOLD_EXIT}`,
+    );
+    process.exit(2);
+  }
   if (tick) {
-    // the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
+    // PF1 flat plan - until 4.0.0: the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
     let resume = String(hold.resume || '');
     try { resume = resumeLine(fs.readFileSync(String(hold.plan), 'utf8')) || resume; } catch { /* the line read at the tick */ }
     process.stderr.write(
@@ -541,7 +599,46 @@ const tickOfferCtx = () => { try { return parseInt(fs.readFileSync(tickOfferFile
 // flight (another IN_PROGRESS card not parked on a run - a seat building it), the offers off, a carry at or under the
 // trigger or under the re-offer step since the last offer of any route, or a resume that would not pay back. Nobody at the
 // terminal - a live AUTO waiver included - logs the skip instead. A standing hold is kept.
+// PF1: the tick of a folder plan, judged before the done call runs (R27): the named task must be in flight on disk, and
+// counting it as done another task must be left, none other in_progress (a blocked one is parked).
+function armTickFolder() {
+  const S = planStatusEngine();
+  if (!S) return;
+  const read = S.readStatus(TICK.dir);
+  if (!read || !read.ok) return;
+  const st = read.status;
+  if (st.completedAt || st.reopenedAt) return;
+  const tasks = Array.isArray(st.tasks) ? st.tasks : [];
+  const task = tasks.find((t) => t.id === TICK.taskId);
+  if (!task || !['in_progress', 'blocked'].includes(task.status)) return;
+  const others = tasks.filter((t) => t !== task);
+  const open = others.filter((t) => t.status !== 'done');
+  if (!open.length || others.some((t) => t.status === 'in_progress')) return;
+  armTickHold(`Task ${task.id} - ${task.title}`, open.length, TICK.rel, { plan: TICK.file, dir: TICK.dir, rel: TICK.rel, taskId: TICK.taskId, resume: S.resumeText(st) });
+}
+// The tests both shapes share once a task is ticked with others open, and the hold it leaves.
+function armTickHold(task, openCount, planShown, holdFields) {
+  if (FRESH_OFF) return;
+  const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
+  const trigger = ctxThreshold();
+  if (trigger === null || !(ctx > trigger)) return;
+  const since = Math.max(typeof fresh.stopOfferCtx === 'function' ? fresh.stopOfferCtx() : 0,
+    typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0, tickOfferCtx());
+  if (since && ctx < since * (Number(fresh.REOFFER_GROWTH) || 1.5)) return;
+  if (!paysAt('tick', ctx)) return;
+  const detail = { ctx, trigger, task, plan: planShown, open: openCount };
+  if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'tick-offer', reason: UNATTENDED_SKIP, detail }); return; }
+  try { fs.writeFileSync(tickOfferFile(), String(ctx)); } catch { /* the next tick re-judges */ }
+  try {
+    if (fs.existsSync(compactHoldFile())) return;
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'tick', ctx, task, ...holdFields }));
+    sweepOffers();
+  } catch { return; }
+  ledgerRow({ mode: 'probe', kind: 'tick-offer', reason: 'probe: the tick hold armed - a plan task ticked DONE past the trigger', detail });
+}
+// PF1 flat plan - until 4.0.0
 function armTick() {
+  if (TICK.dir) return armTickFolder();
   let before;
   try { const st = fs.statSync(TICK.file); if (!st.isFile() || st.size > 2 * 1024 * 1024) return; before = fs.readFileSync(TICK.file, 'utf8'); } catch { return; }
   const after = planAfter(before, payload.tool_name, payload.tool_input || {});
@@ -553,24 +650,7 @@ function armTick() {
   const open = [...now.values()].filter((c) => c.status !== 'DONE');
   if (!open.length || /^Completed:/m.test(after)) return;
   if ([...was].some(([id, c]) => c.status === 'IN_PROGRESS' && !c.parked && now.has(id) && now.get(id).status !== 'DONE')) return;
-  if (FRESH_OFF) return;
-  const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
-  const trigger = ctxThreshold();
-  if (trigger === null || !(ctx > trigger)) return;
-  const since = Math.max(typeof fresh.stopOfferCtx === 'function' ? fresh.stopOfferCtx() : 0,
-    typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0, tickOfferCtx());
-  if (since && ctx < since * (Number(fresh.REOFFER_GROWTH) || 1.5)) return;
-  if (!paysAt('tick', ctx)) return;
-  const task = ticked[0][1].title;
-  const detail = { ctx, trigger, task, plan: relPlan(TICK.file), open: open.length };
-  if (unattended(payload)) { ledgerRow({ mode: 'unattended', kind: 'tick-offer', reason: UNATTENDED_SKIP, detail }); return; }
-  try { fs.writeFileSync(tickOfferFile(), String(ctx)); } catch { /* the next tick re-judges */ }
-  try {
-    if (fs.existsSync(compactHoldFile())) return;
-    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'tick', plan: TICK.file, ctx, task, resume: resumeLine(after) }));
-    sweepOffers();
-  } catch { return; }
-  ledgerRow({ mode: 'probe', kind: 'tick-offer', reason: 'probe: the tick hold armed - a plan task ticked DONE past the trigger', detail });
+  armTickHold(ticked[0][1].title, open.length, relPlan(TICK.file), { plan: TICK.file, resume: resumeLine(after) });
 }
 if (IS_HOLD_CALL && !IS_SKILL_CALL) {
   if (ASK_GAP) armAskGap();
@@ -816,31 +896,49 @@ function livePlan() {
     fs.closeSync(fd);
     const lines = buf.toString('utf8').split('\n');
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].includes('"tool_use"') || !/plans[\\/]/.test(lines[i])) continue;
+      if (!lines[i].includes('"tool_use"') || !(/plans[\\/]/.test(lines[i]) || lines[i].includes('plan-status.js'))) continue;
       let o;
       try { o = JSON.parse(lines[i]); } catch { continue; }
       const blocks = (o && o.message && Array.isArray(o.message.content)) ? o.message.content : [];
       for (let j = blocks.length - 1; j >= 0; j--) {
         const input = blocks[j] && blocks[j].type === 'tool_use' ? blocks[j].input || {} : {};
+        // PF1: a call of the plan writer script names its plan's folder
+        if (typeof input.command === 'string' && input.command.includes('plan-status.js')) {
+          const S = planStatusEngine();
+          const call = S && S.parseCall(input.command);
+          const res = call && call.plan ? S.resolvePlan(call.plan, { cwd: projectRoot(), env: process.env }) : null;
+          if (res && res.ok) return res.rel;
+        }
+        // PF1 flat plan - until 4.0.0
         const hit = String(input.file_path || input.command || '').match(/[^\s'"]*plans[\\/][^\s'"]+\.md/g);
         if (hit) return hit[hit.length - 1];
       }
     }
   } catch { /* no transcript - fall through to the docs root */ }
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  // PF1: the newest folder plan under the plans folder, by its Markdown's or status.json's time
+  let folder = null;
   try {
-    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    // work/plans/ since 2.8.0; plans/ (2.2.2) and superpowers/plans/ until an update moves them (layout.js LAYOUT_MOVES,
-    // docs.migratePlans).
+    for (const p of layout && layout.planFiles ? layout.planFiles(root) : []) {
+      if (p.shape === 'folder' && (!folder || p.mtimeMs > folder.t)) folder = { rel: `${nodePath.relative(root, p.dir).split(nodePath.sep).join('/')}/`, t: p.mtimeMs };
+    }
+  } catch { /* none */ }
+  let flat = null;
+  try {
+    // PF1 flat plan - until 4.0.0: work/plans/ since 2.8.0; plans/ (2.2.2) and superpowers/plans/ until an update moves
+    // them (layout.js LAYOUT_MOVES, docs.migratePlans).
     for (const sub of [['work', 'plans'], ['plans'], ['superpowers', 'plans']]) {
       const dir = nodePath.resolve(root, docsRootEnv(), ...sub);
       let names;
       try { names = fs.readdirSync(dir); } catch { continue; }
       const newest = names.filter((f) => f.endsWith('.md'))
         .map((f) => ({ f, t: fs.statSync(nodePath.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
-      if (newest) return `${nodePath.relative(root, nodePath.join(dir, newest.f)).split(nodePath.sep).join('/')} (newest under the docs root)`;
+      if (newest) { flat = { rel: nodePath.relative(root, nodePath.join(dir, newest.f)).split(nodePath.sep).join('/'), t: newest.t }; break; }
     }
   } catch { /* no plans folder */ }
-  return null;
+  // a folder plan wins a tie
+  const pick = folder && (!flat || folder.t >= flat.t) ? folder : flat;
+  return pick ? `${pick.rel} (newest under the docs root)` : null;
 }
 // The open stamps: every receipt in <data root>/state/approvals/, then one a pre-2.8.0 hook or skill copy left in the old
 // flow/ - only a receipt's name there (layout.js flowKind), never the session scratch it shared the folder with.
