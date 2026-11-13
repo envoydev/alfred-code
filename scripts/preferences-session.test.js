@@ -2477,8 +2477,8 @@ test('member: a seat in a worktree of the root\'s repository editing the child\'
     const p = joined({ apiRepo: false });
     try
     {
-        const g = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: p.root, encoding: 'utf8' });
-        g('add', '-A'); g('commit', '-q', '-m', 'x');
+        const g = (...args) => { const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: p.root, encoding: 'utf8' }); assert.strictEqual(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`); };
+        g('add', '-A', '--', '.', ':!web'); g('commit', '-q', '-m', 'x'); // web/ is a repository of its own with no commit
         g('worktree', 'add', '-q', '.claude/worktrees/w1');
         const file = path.join(p.root, '.claude', 'worktrees', 'w1', 'api', 'src', 'y.ts');
         const hook = require(HOOK);
