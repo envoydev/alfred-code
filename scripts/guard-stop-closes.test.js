@@ -632,6 +632,13 @@ test('scoring backstop: T1, T2, both T3 writes and a settled T3 seat with no Sco
     assert.strictEqual(scoring([typed('go'), make(`B-${name}`)], `done\n${SCORED}`, { session_id: `B-${name}` }, ALL), 0, name);
   }
 });
+// PF1 (plan 2, Task 5): a plan folder's Markdown is a plan file for T2, as a flat plan is - scoringOwed is unchanged.
+test('scoring backstop: a Write of a plan folder\'s Markdown with no Scored line is held once, as the flat write is (PF1)', () => {
+  const T2F = call('t2f', 'Write', { file_path: `${ROOT}/.alfred/docs/work/plans/csv/csv.md`, content: 'p' });
+  assert.strictEqual(scoring([typed('go'), T2F], 'done', { session_id: 'PF-T2' }, ALL), 2);
+  backed('PF-T2b');
+  assert.strictEqual(scoring([typed('go'), T2F], `done\n${SCORED}`, { session_id: 'PF-T2b' }, ALL), 0);
+});
 test('scoring backstop: a draft in another session\'s folder is no T1 for this one (R31)', () => {
   assert.strictEqual(scoring([typed('go'), T1('other')], 'done', { session_id: 'N1' }), 0);
   assert.ok(!fs.existsSync(scoringHeldFile(ROOT, 'N1')));

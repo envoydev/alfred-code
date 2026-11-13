@@ -1616,3 +1616,65 @@ test('guard-stop-contract: a plan read whole with its Repro section and a Comple
   assert.doesNotMatch(ctxOf(askIn(transcript('repro-closed', [marker, ...read('r2', `${open}4→Completed: 2026-11-09\n`), done]), oneQ)), /no `Repro:` line/, 'a closed one does not');
   assert.doesNotMatch(ctxOf(askIn(transcript('repro-closed-bold', [marker, ...read('r3', `${open}4→**Completed:** 2026-11-09\n`), done]), oneQ)), /no `Repro:` line/, 'the bold spelling too');
 });
+
+// PF1 (plan 2, Task 5): a plan folder closes on the engine's `complete ok` line in the result of its `complete` call - the
+// same close the flat `Completed:` write gives every reader of it - and a folder plan path is a plan path for the Repro
+// note, while a plan the script reported closed owes none (R25).
+const pfCall = (id, command, out) => [
+  { type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }], usage: { cache_read_input_tokens: 900 } } },
+  { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: out }] } },
+];
+const PF_CLOSED = 'plan-status: complete ok - plan csv (.alfred/docs/work/plans/csv/)\nCompleted: 2026-11-13T10:42Z\nResume: step 6 CLOSE - no task left\n';
+const PF_COMPLETE = "node .claude/hooks/plan-status.js complete --plan .alfred/docs/work/plans/csv <<'EOF'\nsuite: npm test - 40 passed\nEOF";
+
+test('PF1: the script\'s complete line closes the cycle for the re-offer (U13), the new-cycle ask (C08), U09 and U08', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  // U13: the re-offer after the close and a typed turn
+  const floor = assistantRow('pf-floor', 'the first turn', { cache_creation_input_tokens: 20000 });
+  const ask = (id, ctx) => ({ type: 'assistant', message: { id: `m-${id}`, usage: { cache_read_input_tokens: ctx }, content: [{ type: 'tool_use', id, name: 'AskUserQuestion',
+    input: { questions: [{ question: 'Continue here or resume fresh?', header: 'Session', multiSelect: false,
+      options: [{ label: 'Resume in a fresh session (Recommended)', description: 'x' }, { label: 'Continue here', description: 'y' }] }] } }] } });
+  const declined = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+    content: 'Your questions have been answered: "Continue here or resume fresh?"="Continue here". You can now continue with these answers in mind.' }] } });
+  const reoffer = runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript('pf-reoffer', [floor, typed('build the export'),
+    ...pfCall('toolu_pfc', PF_COMPLETE, PF_CLOSED), ask('toolu_pa1', 400000), declined('toolu_pa1'), typed('now the docs page'),
+    assistantRow('pf-c1', 'The docs page is written and linked from the index.', { cache_read_input_tokens: 450000 })]) }, { env: logEnv() });
+  assert.equal(reoffer.status, 2, 'U13: the next turn past the trigger re-offers once');
+  // C08: the new cycle's first ask is sent back once
+  const base = [marker, assistantRow('pf-f', 'first', { cache_creation_input_tokens: 40000 }), ...pfCall('pf-w1', PF_COMPLETE, PF_CLOSED)];
+  const hot = assistantRow('pf-h', 'Result: design done. Progress: 1 of 6 steps. Leftovers: none.', { cache_read_input_tokens: 362000 });
+  const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const c08 = askIn(transcript('pf-nc-new', [...base, typed('now the manager view'), hot]), q, logEnv());
+  assert.equal(c08.status, 2, 'C08: the new cycle\'s first ask is sent back');
+  assert.match(c08.stderr, /add a fresh-session option to this first ask of a new cycle/);
+  // U09: a plain question after the close opens no cycle; an ask naming a plan does
+  const u09 = [...base, typed('which node do I have here?'), assistantRow('pf-h2', 'Node 24 is installed through nvm.', { cache_read_input_tokens: 362000 })];
+  assert.equal(askIn(transcript('pf-u09-plain', u09), [{ question: 'Should I install Node 26 through nvm now?', options: [{ label: 'Install it now (Recommended)', description: 'nvm' }, { label: 'Leave it', description: 'stay' }] }], logEnv()).status, 0,
+    'U09: a plain question opens no cycle');
+  assert.equal(askIn(transcript('pf-u09-plan', u09), [{ question: 'How next?', options: [{ label: 'Write the plan first (Recommended)', description: 'a plan file' }, { label: 'Stop', description: 'hold' }] }], logEnv()).status, 2,
+    'U09: an ask naming a plan still opens one');
+  // U08: no field notes past the close and a typed turn
+  const cycle = [marker, assistantRow('pf-d', 'Design done.', { cache_read_input_tokens: 900 }), ...pfCall('pf-w2', PF_COMPLETE, PF_CLOSED)];
+  const reply = assistantRow('pf-r', 'It retries three times, then fails the job.', { cache_read_input_tokens: 900 });
+  assert.equal(ctxOf(askIn(transcript('pf-u08-past', [...cycle, typed('what does the retry setting do now?'), reply]), oneQ)), '', 'U08: an ask past the cycle is no stop');
+  assert.match(ctxOf(askIn(transcript('pf-u08-close', [...cycle, reply]), oneQ)), /THREE named fields[\s\S]*notes purged/, 'U08: the close ask before a typed turn keeps its notes');
+});
+
+test('PF1: a folder plan path owes the Repro note; a plan the script reported closed does not (R25)', () => {
+  const marker = { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } };
+  const read = (id, file, body) => [
+    { type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: `/p/.alfred/docs/work/plans/${file}` } }], usage: { cache_read_input_tokens: 900 } } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: body }] } },
+  ];
+  const open = '1→# Cache fix\n2→## Repro\n3→the stale read returns the old value\n';
+  const done = assistantRow('pf-rp', 'Read the plan.', { cache_read_input_tokens: 900 });
+  assert.match(ctxOf(askIn(transcript('pf-repro-folder', [marker, ...read('r1', 'csv/csv.md', open), done]), oneQ)), /no `Repro:` line/, 'the folder path is a plan path');
+  const resumed = pfCall('pf-rs', 'node .claude/hooks/plan-status.js resume --plan csv',
+    `plan-status: resume ok - plan csv (.alfred/docs/work/plans/csv/)\nCompleted: 2026-11-13T10:42Z\n## Repro\nthe stale read\n`);
+  assert.doesNotMatch(ctxOf(askIn(transcript('pf-repro-resume', [marker, ...resumed, done]), oneQ)), /no `Repro:` line/, 'the resume result carries Completed:');
+  assert.doesNotMatch(ctxOf(askIn(transcript('pf-repro-closed', [marker, ...resumed, ...read('r2', 'csv/csv.md', open), done]), oneQ)), /no `Repro:` line/,
+    'R25: the Markdown of a plan the script reported closed');
+  assert.match(ctxOf(askIn(transcript('pf-repro-other', [marker, ...resumed, ...read('r3', 'other/other.md', open), done]), oneQ)), /no `Repro:` line/,
+    'another plan still owes it');
+});
