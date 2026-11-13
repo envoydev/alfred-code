@@ -1074,3 +1074,12 @@ An update over 3.10.0 left `guard-answer:scorer` in `ALFRED_CODE_HOOKS_OFF` in `
 had written its own settings there before 3.11.0 moved them to `settings.local.json`. The hooks still read the old
 name until 4.0.0, so nothing switched back on; the update now re-spells it as `guard-answer:scoring` in both files.
 Nothing to do by hand.
+
+## after 3.11.0 - the usage scope's loose ends
+
+The usage audit and status's usage table read a workspace a little more exactly. A run started in a sub-folder of a
+project with no git repository reads that project, as one started in a repository's sub-folder already did. The session
+you run the audit from is left out of the scope's counts and session list, as the rollup already left it out. A project
+in the workspace with no session yet still gets its inventory block, every name it installed listed unused. A project
+is named as ignored only by the workspace that holds it, and only where the mark stands. A child's older block ledgers
+are found under the docs folder its own settings name. Nothing to do by hand.

@@ -1038,17 +1038,27 @@ function findSessionFiles(root, depth = 0, out = []) {
 }
 
 // W2: the folder a session was started in - the `cwd` of its first row carrying one, read from the first MB alone (a
-// line that ends past it is not read), else null. Never throws.
+// line that ends past it is not read), else null. Never throws. 3.12 #9: read in 64 KB steps, each whole line parsed as
+// it arrives, so a transcript whose first rows are short costs one small read; only a longer row grows what is held.
 const HEAD_BYTES = 1048576;
+const HEAD_STEP = 65536;
 function startFolderOf(file) {
+  const cwdOf = (l) => { try { const row = JSON.parse(l); return row && typeof row.cwd === 'string' && row.cwd ? row.cwd : null; } catch { return null; } };
   let fd;
   try {
     fd = fs.openSync(file, 'r');
-    const buf = Buffer.alloc(HEAD_BYTES + 1);
-    const n = fs.readSync(fd, buf, 0, buf.length, 0);
-    const end = n < buf.length ? n : buf.lastIndexOf(10, n - 1) + 1;
-    for (const l of buf.subarray(0, end).toString('utf8').split('\n')) {
-      try { const row = JSON.parse(l); if (row && typeof row.cwd === 'string' && row.cwd) return row.cwd; } catch { /* torn or no JSON */ }
+    const step = Buffer.alloc(HEAD_STEP);
+    let held = Buffer.alloc(0);
+    for (let pos = 0; pos <= HEAD_BYTES;) {
+      const n = fs.readSync(fd, step, 0, Math.min(HEAD_STEP, HEAD_BYTES + 1 - pos), pos);
+      if (n === 0) return cwdOf(held.toString('utf8'));
+      pos += n;
+      held = Buffer.concat([held, step.subarray(0, n)]);
+      for (let nl = held.indexOf(10); nl >= 0; nl = held.indexOf(10)) {
+        const cwd = cwdOf(held.subarray(0, nl).toString('utf8'));
+        if (cwd) return cwd;
+        held = held.subarray(nl + 1);
+      }
     }
   } catch { /* missing or unreadable */ } finally { if (fd !== undefined) fs.closeSync(fd); }
   return null;
@@ -1529,36 +1539,54 @@ function houseBare(name) {
   return Object.hasOwn(houseRenamed, bare) ? houseRenamed[bare] : bare;
 }
 
+// 3.12 #5: a member of the scope no session was started in still has an install - read from its own `.claude` (the
+// flag's folder for the start project), never the catalog, its every name installed in 0 of 0 sessions.
+function addInventoryOnly(acc, dir) {
+  const inv = resolveInventory(dir, null, null, null, null);
+  installRows(acc, inv, loadMcpInventory(inv), {});
+}
+
 function addSessionUse(acc, main, agents, inventoryDir, bundleDir) {
   acc.sessions += 1;
   const { inv, mcp } = inventoryFor(acc, inventoryDir, main, bundleDir);
+  if (!acc.vintage) acc.vintage = buildVintage(inv, main);
+  installRows(acc, inv, mcp, main);
+  sessionUseRows(acc, inv, main, agents);
+}
+
+// One name counted installed once more in `map`.
+function installRow(map, name, source, extra) {
+  let r = map.get(name);
+  if (!r) { r = { name, source, used: 'no', how: {}, firstTs: null, sessionsUsed: 0, installedIn: 0 }; map.set(name, r); }
+  r.installedIn += 1;
+  // a real project inventory outranks a catalog label, and both outrank 'observed'
+  if (source === 'installed' || r.source === 'observed') r.source = source;
+  Object.assign(r, extra || {});
+  return r;
+}
+
+// The installed side of one inventory: each name it holds counted installed once more, the sources it was read from.
+function installRows(acc, inv, mcp, main) {
   acc.sources.add(inv.why);
   acc.mcpSources.add(mcp.source);
-  if (!acc.vintage) acc.vintage = buildVintage(inv, main);
   const invSource = inv.kind === 'catalog' ? 'catalog' : 'installed';
-  const install = (map, name, source, extra) => {
-    let r = map.get(name);
-    if (!r) { r = { name, source, used: 'no', how: {}, firstTs: null, sessionsUsed: 0, installedIn: 0 }; map.set(name, r); }
-    r.installedIn += 1;
-    // a real project inventory outranks a catalog label, and both outrank 'observed'
-    if (source === 'installed' || r.source === 'observed') r.source = source;
-    Object.assign(r, extra || {});
-    return r;
-  };
   // A roster-sourced name is INSTALLED by the session's own record, whatever the disk side is.
   const rostered = (list) => (list && list.length ? 'installed' : invSource);
-  for (const s of inv.skills) install(acc.skills, s.name, rostered(main.availableSkills));
-  for (const a of inv.agents) install(acc.agents, a.name, rostered(main.availableAgents));
+  for (const s of inv.skills) installRow(acc.skills, s.name, rostered(main.availableSkills));
+  for (const a of inv.agents) installRow(acc.agents, a.name, rostered(main.availableAgents));
   for (const r of inv.rules) {
-    const row = install(acc.rules, r.name, invSource);
+    const row = installRow(acc.rules, r.name, invSource);
     // A rule path-scoped in ANY install is observable; only one that is always-on everywhere is not.
     if (!r.alwaysOn) row.alwaysOn = false;
     else if (row.alwaysOn !== false) row.alwaysOn = true;
     if (row.used === 'no' && row.alwaysOn) row.used = 'not observable';
     if (row.used === 'not observable' && row.alwaysOn === false) row.used = 'no';
   }
-  for (const m of mcp.names || []) install(acc.mcps, m, 'installed');
+  for (const m of mcp.names || []) installRow(acc.mcps, m, 'installed');
+}
 
+// The used side of one session: every skill, seat, rule, plugin and server it reached.
+function sessionUseRows(acc, inv, main, agents) {
   const srcs = [main, ...agents.map((a) => a.stats)];
   const seen = new Set();
   const ensure = (map, name, extra) => {
@@ -1733,7 +1761,7 @@ function addSessionUse(acc, main, agents, inventoryDir, bundleDir) {
   }
   for (const p of plugins) {
     const row = acc.plugins_.get(p.name);
-    if (loadedHere.has(p.name) || (row && seen.has(row))) install(acc.plugins_, p.name, 'installed');
+    if (loadedHere.has(p.name) || (row && seen.has(row))) installRow(acc.plugins_, p.name, 'installed');
   }
   // A namespace no registry lists is scored here - in EVERY session that used it. Skipping a name
   // whose row already existed scored it only in the first session, so it never read above 1.
@@ -3680,6 +3708,18 @@ const TURN_CHECK_THRESHOLD = 3;
 // session's file not moved yet still sits.
 const blockDirsOf = (root, docsPath) => [path.resolve(root, '.alfred', 'statistics', 'hook-blocks'),
   path.resolve(root, String(docsPath || '.alfred/docs'), 'hook-blocks')];
+// The `env` objects of a project's settings as the hooks layer them - local over project over account; junk is none.
+function settingsEnvsOf(root) {
+  const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const readSettings = (f) => { try { const d = parseJson(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
+  return [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
+    .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
+}
+// One stack setting (`DOCS_PATH`) as `envs` answer it: the first non-empty value, else undefined.
+const settingIn = (envs, suffix) => {
+  const { envOf } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
+  return envs.map((env) => envOf(env, suffix)).find((v) => v !== undefined && v !== '');
+};
 // The probe tallies a rollup sums, and the lines one sum prints - the conditions of the totals' own lines.
 const newProbes = () => ({ doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() });
 const probeLines = (p) => [
@@ -3689,16 +3729,15 @@ const probeLines = (p) => [
   p.rationalization.closes ? rationalizationLine(p.rationalization) : null,
 ].filter(Boolean);
 // `sessions`: a folder, walked, or a list of transcript files (one project of the usage scope).
-function turnCheckAdvice(sessions, projectRoot, exclude = new Map()) {
+// `launch`: whether this run's own env answers after the settings - the start project's, never another member's (3.12 #4).
+function turnCheckAdvice(sessions, projectRoot, exclude = new Map(), { launch = true } = {}) {
   const { envOf, hookProfile, CORE_PLUGIN } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
   const root = path.resolve(projectRoot);
   const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
   const readSettings = (f) => { try { const d = parseJson(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
   // The data and docs paths are settings keys: the hooks see local over project over account, so the same order answers
   // here; junk is no setting. TURN_CHECK is one of the stack's variables: the hooks' loader answers it (D4).
-  const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
-    .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
-  const setting = (suffix) => [...envs, process.env].map((env) => envOf(env, suffix)).find((v) => v !== undefined && v !== '');
+  const setting = (suffix) => settingIn([...settingsEnvsOf(root), ...(launch ? [process.env] : [])], suffix);
   const { variablesOf } = require(path.join(__dirname, '..', 'stack', 'hooks', 'layout.js'));
   // Review finding 9: the strict hook profile runs the Stop build check whatever TURN_CHECK says, so it
   // is advised nothing. A hook reads the profile as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the shell a command
@@ -4223,7 +4262,8 @@ function printInventoryBlock(invUse, rel) {
   if (!invUse) return;
   const many = invUse.source.sessions > 1;
   const tag = rel === undefined ? '' : ` [${rel}]`;
-  console.log(`\nINVENTORY vs USE${tag} (what the install HAS against what ${many ? `these ${invUse.source.sessions} sessions` : 'this session'}`
+  if (!invUse.source.sessions) console.log(`\nINVENTORY vs USE${tag} (what the install HAS - no session of this project in the run, so nothing was touched)`);
+  else console.log(`\nINVENTORY vs USE${tag} (what the install HAS against what ${many ? `these ${invUse.source.sessions} sessions` : 'this session'}`
     + ' touched - a name listed and unused was installed and never reached)');
   console.log(`  source: skills/agents/rules from ${invUse.source.skills_agents_rules}; plugins from ${invUse.source.plugins}; MCP from ${invUse.source.mcps}`);
   for (const L of inventoryLayers(invUse)) {
@@ -5165,11 +5205,20 @@ async function runAnalysis() {
   if (liveId && !excludeWhy.has(liveId)) excludeWhy.set(liveId, 'CLAUDE_CODE_SESSION_ID');
 
   // W2: the scope as lines, for the skill and status - ids, paths and counts, read from each transcript's head alone.
+  // 3.12 #6: the live session and each --exclude-session leave the counts and the session lines as they leave the
+  // rollup, each named once on an `excluded:` line.
   if (args.includes('--scope')) {
     const got = sessionsOf(scope);
-    const out = [`scope: ${scope.projects.length} projects`, ...got.members.map((m) => `project: ${m.rel}\t${m.root}\t${m.files.length}`)];
+    const excluded = [];
+    const members = got.members.map((m) => ({ ...m, files: m.files.filter((f) => {
+      const why = excludeWhy.get(path.basename(f, '.jsonl'));
+      if (why) excluded.push(`excluded: ${path.basename(f, '.jsonl')}\t${m.rel}\t${why}`);
+      return !why;
+    }) }));
+    const out = [`scope: ${scope.projects.length} projects`, ...members.map((m) => `project: ${m.rel}\t${m.root}\t${m.files.length}`)];
     out.push(...scope.leftOut.map((l) => `left-out: ${l.rel}\t${l.why}`));
-    for (const m of got.members) out.push(...m.files.map((f) => `session: ${path.basename(f, '.jsonl')}\t${m.rel}\t${f}`));
+    for (const m of members) out.push(...m.files.map((f) => `session: ${path.basename(f, '.jsonl')}\t${m.rel}\t${f}`));
+    out.push(...excluded);
     if (got.other) out.push(`other-start-folder: ${got.other}`);
     console.log([...out, ...scope.notes.map((n) => `note: ${n}`)].join('\n'));
     return;
@@ -5183,7 +5232,7 @@ async function runAnalysis() {
   // A named folder sets no scope: the flag's value is the project, as before.
   if (adviceRoot) {
     const members = scope ? sessionsOf(scope).members : [{ rel: null, files: target, root: adviceRoot }];
-    const runs = members.map((m) => ({ project: m.rel, ...turnCheckAdvice(m.files, m.root, excludeWhy) }));
+    const runs = members.map((m, i) => ({ project: m.rel, ...turnCheckAdvice(m.files, m.root, excludeWhy, { launch: i === 0 }) }));
     const many = runs.length > 1;
     if (asJson) console.log(JSON.stringify(many ? runs : (({ project, ...one }) => one)(runs[0]), null, 2));
     else for (const r of runs) if (r.row) console.log(many ? `${r.project}: ${r.row}` : r.row);
@@ -5225,12 +5274,13 @@ async function runAnalysis() {
     const rollupJson = { sessions: [] };
     // The probe tallies of the corpus's OWN sessions, each read from its own ledger file.
     // W2: the start project's sessions read the flag's folder; another member's, the first of its own two that holds the
-    // session's file, else nothing - no measurement, never a zero read off the start project's folder.
+    // session's file, else nothing - no measurement, never a zero read off the start project's folder. 3.12 #4: the second
+    // is under the docs root the member's own settings name (never the start session's env), as the hooks wrote it.
     const probeSum = blockDir ? newProbes() : null;
     const ledgerDirOf = (f, part) => {
       if (!part || ownerOf.get(f) === got.members[0].rel) return blockDir;
       const root = got.members.find((m) => m.rel === ownerOf.get(f)).root;
-      return blockDirsOf(root).find((d) => fs.existsSync(path.join(d, path.basename(f)))) || null;
+      return blockDirsOf(root, settingIn(settingsEnvsOf(root), 'DOCS_PATH')).find((d) => fs.existsSync(path.join(d, path.basename(f)))) || null;
     };
     for (const f of files) {
       const ledgerDir = probeSum ? ledgerDirOf(f, parts.get(ownerOf.get(f))) : null;
@@ -5271,7 +5321,12 @@ async function runAnalysis() {
       if (asJson && many) rollupJson.sessions[rollupJson.sessions.length - 1].project = rel;
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    const memberInv = [...parts].map(([rel, p]) => [rel, p.acc.sessions ? finishInventoryUse(p.acc) : null]);
+    // 3.12 #5: a member no session ran in is read from its own install, so its block still names what it holds.
+    for (const m of many ? got.members : []) {
+      const p = parts.get(m.rel);
+      if (!p.acc.sessions) addInventoryOnly(p.acc, m.rel === got.members[0].rel && inventoryDir ? inventoryDir : path.join(m.root, '.claude'));
+    }
+    const memberInv = [...parts].map(([rel, p]) => [rel, finishInventoryUse(p.acc)]);
     if (scope && (many || scope.leftOut.length || got.other || scope.notes.length))
       Object.assign(rollupJson, { leftOut: scope.leftOut, otherStartFolder: got.other, notes: scope.notes });
     if (many) rollupJson.projects = memberInv.map(([rel, inventory]) => {

@@ -766,7 +766,8 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
     // W2: at a workspace root the usage numbers span the root and its children, and what was left out is named.
     assert.match(f, /At a workspace root these numbers cover the root and its `<n>` children/);
-    assert.match(status, /scripts\/analyze-usage\.js" --scope \| grep -v '\^session: '/);
+    // 3.12 #6: --scope names the live session on an `excluded:` line, which status drops with the session lines
+    assert.match(status, /scripts\/analyze-usage\.js" --scope \| grep -v -e '\^session: ' -e '\^excluded: '/);
     assert.match(f, /Each `left-out:` line - at `scope: 1 projects` too - becomes one `left out: <rel> \(<why>\)` line under the tables/);
     // review #8: the scope's own notes (a start in a sub-folder, a garbage record) and the other-start count reach the reader
     assert.match(f, /Each `note:` line, and an `other-start-folder:` line above 0, is shown as written under the tables/);
