@@ -483,6 +483,11 @@ const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
 // in the same project, which the age and birth checks cannot tell apart from it. A week is the backstop for a stamp whose
 // session died without its `/alfred-code:mode:auto-run off`.
 const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+// The standing auto-run (spec 3.5): the mode file's own ALFRED_CODE_AUTO_RUN=1, honoured where git vouches the file is this
+// machine's alone; memoised per process and root, and a copy without the helper honours nothing.
+const standingAt = new Map();
+const heldOwn = (root) => { try { return require('./mode-settings.js').autoRunHeld(root) === 'own'; } catch { return false; } };
+const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldOwn(root)); return standingAt.get(root); };
 // The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
 // With `planId`, that plan's own stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); without
 // it, the root one - auto-mode's, and a pre-2.8.0 skill copy's.
@@ -494,6 +499,9 @@ function approvalStamp(input, env, planId)
         const payload = input && typeof input === 'object' ? input : {};
         const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
         if (!root) return null;
+        if (!planId && payload.session_id && autoRunStanding(root))   // every named session, no stamp file read
+            return { file: layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : '', first: 'AUTO - "ALFRED_CODE_AUTO_RUN=1"',
+                session: String(payload.session_id), skill: '', live: true, mtimeMs: Date.now() };
         if (planId && !layout) return null;
         const file = planId ? layout.approvalPath(root, planId, source)
             : layout ? layout.findState(root, 'approvals', 'APPROVAL', source) : path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
@@ -1012,7 +1020,8 @@ const COMMAND_GROUP_MAX = 6;
 const commandSkill = (command) => bareSkill(String(command).replace(/^\//, ''));
 function modeFlags(text)
 {
-    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
+    const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false,
+        old: [], level: null };
     if (typeof text !== 'string') return flags;
     const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
     const line = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : text;
@@ -1021,9 +1030,11 @@ function modeFlags(text)
     const mode = MODE_COMMAND_RE.exec(tokens[0][0]);
     if (mode)
     {
-        const word = tokens.length === 2 ? tokens[1][0].toLowerCase() : '';
+        // scoring alone takes one more token of digits after on or off - the level, its range judged by the caller
+        const level = tokens.length === 3 && /^scoring$/i.test(mode[1]) && /^\d+$/.test(tokens[2][0]) ? tokens[2][0] : null;
+        const word = tokens.length === 2 || level ? tokens[1][0].toLowerCase() : '';
         Object.assign(flags, { commands: [tokens[0][0]], family: true, flagOnly: true, mode: mode[1].toLowerCase(), extra: tokens.length > 1 && word !== 'on' && word !== 'off' });
-        if (!flags.extra && word) flags[MODE_FIELD[flags.mode]] = word;
+        if (!flags.extra && word) Object.assign(flags, { [MODE_FIELD[flags.mode]]: word, level });
         return flags;
     }
     let i = 0;
@@ -1969,3 +1980,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactFile, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringFile, scoringHeldFile, scoringNotedFile, readScoringFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
+module.exports.autoRunStanding = autoRunStanding;

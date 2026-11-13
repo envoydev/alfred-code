@@ -1696,3 +1696,18 @@ test('fresh-session offers: off under each cause, and each string names the caus
     modeLine(p, 'f1', `${COMPACT_CMD} off`, big, { ALFRED_CODE_HOOK_LOG_DIR: log });
     assert.match(context(start('f1')), /Do NOT start the run yet/, 'switched off: the offer is back');
 });
+
+// Mode v2 stage 3, Task 4 (done-2's unit half): the mode file's own ALFRED_CODE_AUTO_RUN=1 puts every session under
+// auto-run through the installed readers, with no stamp file.
+test('the standing auto-run: the mode file\'s 1 answers asks for every session, and one session\'s start is no refusal for another', () =>
+{
+    const p = project();
+    fs.mkdirSync(path.join(p.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(p.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    for (const sid of ['sess-a', 'sess-b'])
+        assert.deepStrictEqual(answered(ask(p, sid, [q('Go on?', ['Yes (Recommended)', 'No'])])), { 'Go on?': 'Yes (Recommended)' }, sid);
+    assert.ok(!fs.existsSync(p.gate), 'no stamp file');
+    const t = transcript();
+    fs.writeFileSync(path.join(path.dirname(t), 'sess-a.jsonl'), '');
+    assert.doesNotMatch(context(typedRun(p, 'sess-b', '/mode-auto-run fix X', t)), /did not start/);
+});

@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const { modeFlags, autoRunRefusal, runMarkerFile, runMarkerSkill, writeRunMarker, otherSessionLive, FLOW_FAMILY_RE } = require('../stack/hooks/hook-prelude.js');
 
-const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [] };
+const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [], level: null };
 
 // The 2.2.0 old prefix, built at run time: the rename sweep fails any tracked file that spells an old name.
 const OLD_FLOW = ['alfred', 'task-solve'].join('-');
@@ -42,6 +42,20 @@ const ROWS = [
         { mode: 'auto-run', autoRun: 'on', commands: [AUTO], family: true, flagOnly: true }],
     ['<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>off</command-args>', { mode: 'auto-run', autoRun: 'off' }],
     ['<command-name>/alfred-code:mode:auto-compact</command-name>\n<command-args></command-args>', { mode: 'auto-compact', compact: null, extra: false }],
+    // the scoring level slot (stage 3): one more token of digits after on or off, scoring alone; the parser judges no range
+    [`${SCORING} on 75`, { scoring: 'on', level: '75', extra: false }],
+    [`${SCORING} off 85`, { scoring: 'off', level: '85', extra: false }],
+    [`${SCORING} on 59`, { scoring: 'on', level: '59', extra: false }],
+    [`${SCORING} on 101`, { scoring: 'on', level: '101', extra: false }],
+    [`${SCORING} on`, { scoring: 'on', level: null }],
+    [`${SCORING} 75`, { scoring: null, level: null, extra: true }],
+    [`${SCORING} on 75 now`, { scoring: null, level: null, extra: true }],
+    [`${SCORING} on high`, { scoring: null, level: null, extra: true }],
+    [`${SCORING} on 7.5`, { scoring: null, level: null, extra: true }],
+    [`${SCORING} on -75`, { scoring: null, level: null, extra: true }],
+    [`${AUTO} on 75`, { autoRun: null, level: null, extra: true }],
+    [`${COMPACT} off 75`, { compact: null, level: null, extra: true }],
+    ['<command-name>/alfred-code:mode:scoring</command-name>\n<command-args>on 75</command-args>', { scoring: 'on', level: '75', extra: false }],
     // a retired flag switches nothing: the leading run is stripped into `old`
     ['/task-solve --mode-auto-run-on X', { family: true, autoRun: null, scoring: null, mode: null, old: ['--mode-auto-run-on'], run: ['--mode-auto-run-on'], request: 'X', flagOnly: false }],
     ['/task-solve --mode-auto-run-off X', { autoRun: null, old: ['--mode-auto-run-off'], request: 'X' }],

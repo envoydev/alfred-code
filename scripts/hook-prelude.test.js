@@ -1712,3 +1712,107 @@ test('until 4.0.0: a stored part switch spelled with .js on the hook name still 
   }
   assert.strictEqual(prelude.partOff('docs-session', 'block', { ALFRED_CODE_HOOKS_OFF: 'docs-session.js:block' }), true, 'an unrenamed part with .js');
 });
+
+// ---- the standing auto-run (mode commands v2 stage 3, Task 4): the mode file's own ALFRED_CODE_AUTO_RUN=1 ----
+// Each case loads the prelude in a child of its own, since autoRunStanding is memoised per process.
+const STAND_GIT = spawnSync('git', ['--version']).status === 0;
+const standTmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'standing-')));
+test.after(() => fs.rmSync(standTmp, { recursive: true, force: true }));
+const standAcct = fs.mkdtempSync(path.join(standTmp, 'acct-'));
+const K_RUN = 'ALFRED_CODE_AUTO_RUN';
+const putJson = (file, o) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(o)); };
+const modeFileIn = (root) => path.join(root, '.claude', 'settings.local.json');
+const stampOf = (p) => require('../stack/hooks/layout.js').statePath(p.root, 'approvals', 'APPROVAL', {});
+const gitIn = (cwd, args) => execFileSync('git', args, { cwd, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: path.join(standTmp, 'none.gitconfig'), GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x' } });
+const blank = (name) => ({ name, root: fs.mkdtempSync(path.join(standTmp, `${name}-`)) });
+const withMode = (p, value = '1') => { putJson(modeFileIn(p.root), { env: { [K_RUN]: value } }); return p; };
+const inRepo = (p) => { gitIn(p.root, ['init', '-q']); return p; };
+const standing = () => withMode(blank('standing'));
+const envOnly = () => ({ ...blank('env-only'), env: { [K_RUN]: '1' } });
+const sharedOnly = () => { const p = blank('shared-only'); putJson(path.join(p.root, '.claude', 'settings.json'), { env: { [K_RUN]: '1' } }); return p; };
+const variablesOnly = () => { const p = blank('variables-only'); fs.mkdirSync(path.join(p.root, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(p.root, '.alfred', '.variables'), `${K_RUN}=1\n`); return p; };
+const trackedRepoWith1 = () => { const p = withMode(inRepo(blank('tracked'))); gitIn(p.root, ['add', '-f', '.claude/settings.local.json']);
+    gitIn(p.root, ['commit', '-qm', 'x']); return p; };
+const linkedClaudeWith1 = () => { const p = blank('linked'); const real = fs.mkdtempSync(path.join(standTmp, 'real-'));
+    putJson(path.join(real, 'settings.local.json'), { env: { [K_RUN]: '1' } }); fs.symlinkSync(real, path.join(p.root, '.claude'), 'dir'); return p; };
+const numberOne = () => { const p = blank('number'); putJson(modeFileIn(p.root), { env: { [K_RUN]: 1 } }); return p; };
+const repoStanding = () => withMode(inRepo(blank('repo-standing')));
+const repoWithout1 = () => withMode(inRepo(blank('repo-without')), '0');
+const writeStamp = (p, sid) => { fs.mkdirSync(path.dirname(stampOf(p)), { recursive: true });
+    fs.writeFileSync(stampOf(p), `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`); };
+let hiddenHooks = null;
+const hiddenPrelude = () =>
+{
+    if (!hiddenHooks)
+    {
+        hiddenHooks = path.join(standTmp, 'hooks-without-helper');
+        fs.cpSync(HOOKS_DIR, hiddenHooks, { recursive: true, filter: (src) => path.basename(src) !== 'mode-settings.js' });
+    }
+    return path.join(hiddenHooks, 'hook-prelude.js');
+};
+// `expr` is an expression whose JSON is returned, or with `statement` a statement run for its effect.
+function inChild(p, expr, { hideHelper = false, statement = false, pathPrefix = null } = {})
+{
+    const script = [`const { approvalStamp, autoStampLive, autoRunFor, autoRunStanding } = require(${JSON.stringify(hideHelper ? hiddenPrelude() : PRELUDE)});`,
+        `const ROOT = ${JSON.stringify(p.root)}; const PLAN_ID = 'some-plan';`,
+        statement ? `${expr}; process.stdout.write('null');` : `const out = (${expr}); process.stdout.write(JSON.stringify(out === undefined ? null : out));`].join('\n');
+    const env = { ...process.env, ...(p.env || {}), CLAUDE_CONFIG_DIR: standAcct };
+    delete env.CLAUDE_PROJECT_DIR;
+    if (pathPrefix) env.PATH = `${pathPrefix}${path.delimiter}${env.PATH}`;
+    const r = spawnSync(process.execPath, ['-e', script], { cwd: p.root, env, encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`${p.name}: ${r.stderr}`);
+    return JSON.parse(r.stdout);
+}
+// The git calls a statement makes: a logging `git` shim first on the child's PATH.
+function gitCalls(p, statement)
+{
+    const shim = fs.mkdtempSync(path.join(standTmp, 'shim-'));
+    const log = path.join(shim, 'calls.log');
+    const real = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(shim, 'git'), `#!/bin/sh\necho call >> "${log}"\nexec "${real}" "$@"\n`, { mode: 0o755 });
+    inChild(p, statement, { statement: true, pathPrefix: shim });
+    return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').length : 0;
+}
+
+test('the variable: every session is under auto-run, and no stamp file is read or written', () =>
+{
+    const p = standing();
+    for (const sid of ['sess-a', 'sess-b'])
+    {
+        const s = inChild(p, `approvalStamp({ session_id: '${sid}', cwd: ROOT })`);
+        assert.deepStrictEqual({ first: s.first, session: s.session, live: s.live, skill: s.skill },
+            { first: 'AUTO - "ALFRED_CODE_AUTO_RUN=1"', session: sid, live: true, skill: '' });
+    }
+    assert.strictEqual(inChild(p, 'autoRunFor({ session_id: \'sess-b\', cwd: ROOT }, undefined, null)'), true);
+    assert.ok(!fs.existsSync(stampOf(p)));
+});
+test('no session id: not under it', () =>
+{
+    const p = standing();
+    assert.strictEqual(inChild(p, 'approvalStamp({ cwd: ROOT })'), null);
+    assert.strictEqual(inChild(p, 'autoStampLive({ cwd: ROOT })'), false);
+});
+test('a plan\'s own stamp is not answered from the variable', () =>
+    assert.strictEqual(inChild(standing(), 'approvalStamp({ session_id: \'s\', cwd: ROOT }, undefined, PLAN_ID)'), null));
+test('not honoured: the launch env, settings.json, .variables, a tracked file, a linked .claude, the number 1', { skip: !STAND_GIT || process.platform === 'win32' }, () =>
+{
+    for (const p of [envOnly(), sharedOnly(), variablesOnly(), trackedRepoWith1(), linkedClaudeWith1(), numberOne()])
+    {
+        assert.strictEqual(inChild(p, 'autoRunStanding(ROOT)'), false, p.name);
+        assert.strictEqual(inChild(p, 'autoStampLive({ session_id: \'s\', cwd: ROOT })'), false, p.name);
+    }
+});
+test('a copy without the helper honours nothing', () => assert.strictEqual(inChild(standing(), 'autoRunStanding(ROOT)', { hideHelper: true }), false));
+test('git is asked at most once per process, and never when the value is not 1', { skip: !STAND_GIT || process.platform === 'win32' }, () =>
+{
+    assert.strictEqual(gitCalls(repoStanding(), 'for (let i = 0; i < 5; i++) approvalStamp({ session_id: \'s\', cwd: ROOT })'), 1);
+    assert.strictEqual(gitCalls(repoWithout1(), 'approvalStamp({ session_id: \'s\', cwd: ROOT })'), 0);
+});
+test('a session-named stamp file of another session does not outrank the variable', () =>
+{
+    const p = standing();
+    writeStamp(p, 'other-session');
+    assert.strictEqual(inChild(p, 'approvalStamp({ session_id: \'mine\', cwd: ROOT }).session'), 'mine');
+});
