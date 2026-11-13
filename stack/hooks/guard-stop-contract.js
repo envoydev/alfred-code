@@ -2724,7 +2724,7 @@ if (payload.hook_event_name === 'Stop') {
     blockDetail('auto-continue', autoStamp.first.slice(0, 120));
     process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
-      + `print its close and delete ${autoMarker} - that ends this run; auto-run stays on for the session until\n`
+      + `print its close and delete ${autoMarker} - that ends this run; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
       + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if only the\n'
       + 'user can decide the next step (an ask with no Recommended option, a push), put that ask now.');
     process.exit(2);

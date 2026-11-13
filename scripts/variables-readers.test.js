@@ -37,6 +37,10 @@ const ALLOWED = {
     'scripts/install/modes.js:AUTO_COMPACT': 'refresh reads the mode file\'s own key to copy a team 1 once, the loader\'s values (layout.variablesOf) for the team\'s, held by install-modes.test.js',
     'scripts/install/modes.js:env-lookup': 'setAside, refresh and remove handle the mode block in the mode file itself, held by install-modes.test.js',
     'stack/hooks/hook-prelude.js:AUTO_COMPACT': 'compactCause reads the env it is handed - the hook\'s env, which applyVariables fills',
+    // modeCommand's envIs is envOf(process.env, k) - the hook's env, which applyVariables fills; the file is scanned since
+    // the standing contract names .claude/settings.local.json (stage 3's final review, finding 7)
+    ...Object.fromEntries(['AUTO_COMPACT', 'CONTEXT_WINDOW_FOR_1M', 'CONTEXT_WINDOW_FOR_300K', 'CONTEXT_WINDOW_FOR_200K', 'CONTEXT_WINDOW_DEFAULT']
+        .map((k) => [`stack/hooks/guard-fresh-session-start.js:${k}`, 'modeCommand\'s envIs reads envOf(process.env, k), which applyVariables fills'])),
     'stack/hooks/hook-prelude.js:SCORING': 'switchOn reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORING_LEVEL': 'reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:SCORING_OUTPUTS': 'reads the hook\'s env, which applyVariables fills',

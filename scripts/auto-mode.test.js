@@ -140,7 +140,7 @@ test('auto-run start: after the mode command a typed flow command opens the run 
     assert.doesNotMatch(said, /Do NOT start the run yet/, 'the offer is never made under auto-run');
     for (const rule of [/\(Recommended\) option/, /Do not end a turn between steps/, /never push, merge, deploy or send anything out/, /fresh-session hand-off is never taken/,
         /never write an APPROVED or AUTO line over it/, /an unpushed commit is a Leftovers line/,
-        /delete \.alfred\/state\/sessions\/AUTO-RUN-s2 if its `skill:` line names this run - that ends this run; auto-run stays on for the session until \/alfred-code:mode:auto-run off/])
+        /delete \.alfred\/state\/sessions\/AUTO-RUN-s2 if its `skill:` line names this run - that ends this run; auto-run stays on, new sessions included, until \/alfred-code:mode:auto-run off/])
         assert.match(said, rule);
     assert.doesNotMatch(said, /delete \.alfred\/state\/approvals\/APPROVAL/, 'the close never deletes the stamp');
     assert.match(fs.readFileSync(marker(p, 's2'), 'utf8'), /^skill: loop-code-quality\nprompt: [0-9a-f]{12}\nat: \d{4}-/, 'and the run marker');
@@ -321,7 +321,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     assert.match(said, /^auto-run is ON for this \/loop-code-quality run/, 'the contract first, its shape unchanged');
     assert.strictEqual(said.split(BANNER_HEAD).length, 2, 'the banner once');
     assert.deepStrictEqual(bannerOf(on), [
-        '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/alfred-code:mode:auto-run off`.',
+        '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on, new sessions included, until you type `/alfred-code:mode:auto-run off`.',
         // v2: the command's save seeds the model's window (ALFRED_CODE_AUTO_COMPACT=1 with it), so the banner names it
         '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.',
     ]);
@@ -1671,6 +1671,26 @@ test('the standing auto-run: the mode file\'s 1 answers asks for every session, 
     fs.writeFileSync(path.join(path.dirname(t), 'sess-a.jsonl'), '');
     assert.doesNotMatch(context(typedRun(p, 'sess-b', '/mode-auto-run fix X', t)), /did not start/);
 });
+// Task 10's final review, finding 7: under the standing variable the banner, the run contract and the Stop hold said the
+// mode lasts the session, and the contract named a stamp file that does not exist.
+test('the standing auto-run: the banner, the contract and the Stop hold say it carries into new sessions and name the settings file', () =>
+{
+    const p = project();
+    fs.mkdirSync(path.join(p.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(p.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    const t = transcript();
+    const on = typedRun(p, 'st1', '/loop-code-quality src/', t);
+    assert.strictEqual(on.status, 0, on.stderr);
+    const said = context(on);
+    assert.match(bannerOf(on)[0], /auto-run stays on, new sessions included, until you type `\/alfred-code:mode:auto-run off`\.$/);
+    assert.match(said, /auto-run is on for this checkout, new sessions included \(\.claude\/settings\.local\.json holds ALFRED_CODE_AUTO_RUN=1\)/);
+    assert.doesNotMatch(said, /holds the user's words/, 'no stamp file is named');
+    assert.match(said, /auto-run stays on, new sessions included, until \/alfred-code:mode:auto-run off\./);
+    const held = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'st1', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(held.status, 2, held.stderr);
+    assert.match(held.stderr, /auto-run stays on, new sessions included, until\s+\/alfred-code:mode:auto-run off\./);
+});
 
 // ---------------------------------------------------------------------------------------------
 // mode commands v2 (stage 3, Task 6): the three commands write the mode block of the project's local settings file
@@ -1729,8 +1749,11 @@ test('v2 auto-run off ends it for the checkout: the variable 0, another session\
     assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run off', transcript())), '[mode] auto-run is OFF - auto-compact stays ON until /alfred-code:mode:auto-compact off');
     assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_RUN, '0'); assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '1'); assert.ok(!fs.existsSync(p.gate));
     fs.writeFileSync(p.gate, 'AUTO - by hand\n'); sub(p, 'A', '/alfred-code:mode:auto-run off', transcript()); assert.ok(fs.existsSync(p.gate)); });
-test('v2 auto-run off that cannot be saved deletes nothing', { skip: !GIT }, () => { const p = trackedModeProject(); autoStamp(p, 'B');
-    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run off', transcript())), '[mode] auto-run could not be saved: git tracks the file - nothing changed'); assert.ok(fs.existsSync(p.gate)); });
+// The final review's finding 2 (a ruling over spec 3.3's 'deleted only after the save'): off is the safe direction, so a
+// refused save still ends the run; with no run to end the line stays 'nothing changed'.
+test('v2 auto-run off that cannot be saved still ends the run; with none, nothing changed', { skip: !GIT }, () => { const p = trackedModeProject(); autoStamp(p, 'B');
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run off', transcript())), '[mode] auto-run could not be saved: git tracks the file - this session\'s run is ended, the file is unchanged'); assert.ok(!fs.existsSync(p.gate));
+    assert.strictEqual(line(sub(trackedModeProject(), 'A', '/alfred-code:mode:auto-run off', transcript())), '[mode] auto-run could not be saved: git tracks the file - nothing changed'); });
 test('v2 auto-run on under an unknown trust: refused before any byte', { skip: !GIT }, () => { const p = linkedClaudeProject(); const b = rawMode(p);
     assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-run on', transcript())), '[mode] auto-run could not be saved: git cannot say the file is yours alone - nothing changed');
     assert.strictEqual(rawMode(p), b); assert.strictEqual(rows(p, 'A').filter((x) => x.kind === 'auto-start-refused').length, 1); });
@@ -1759,3 +1782,21 @@ test('v2 no session file is written or read any more', () => { const p = project
     assert.strictEqual(line(sub(q, 'A', '/alfred-code:mode:auto-compact', transcript())), '[mode] auto-compact is OFF'); });
 test('v2 a seat\'s prompt and a harness prompt write nothing', () => { const p = project(); sub(p, 'A', '/alfred-code:mode:auto-run on', transcript(), {}, { agent_id: 'seat-1' });
     assert.ok(!fs.existsSync(modePath(p))); });
+// Task 10's final review, finding 2: off returned on a refused save before it deleted the run's stamp and marker, so in a
+// checkout whose settings file git tracks, holds broken JSON or cannot be written, the only off command ended nothing.
+test('auto-run off ends a live run even when the mode file cannot be saved: the stamp and the marker go, the file is unchanged', { skip: !GIT }, () =>
+{
+    for (const make of [() => trackedModeProject({ MY_KEY: 'mine' }), () => { const p = project(); putModeIn(path.join(p.root, '.claude'), {}); fs.writeFileSync(modePath(p), '{ broken'); return p; }])
+    {
+        const p = make();
+        const t = transcript();
+        autoStamp(p, 'off1');
+        openRun(p, 'off1');
+        const before = rawMode(p);
+        const r = sub(p, 'off1', `${AUTO_CMD} off`, t);
+        assert.match(line(r), /^\[mode\] auto-run could not be saved: .+ - this session's run is ended, the file is unchanged$/, line(r));
+        assert.ok(!fs.existsSync(p.gate), 'the stamp is gone');
+        assert.ok(!fs.existsSync(marker(p, 'off1')), 'the run marker is gone');
+        assert.strictEqual(rawMode(p), before, 'no byte of the file changed');
+    }
+});

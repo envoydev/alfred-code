@@ -44,9 +44,14 @@ function tierEnv(root, file, env) {
   return { ...env, ...Object.fromEntries(Object.entries(values).filter(([k]) => k.startsWith('ALFRED_CODE_CONTEXT_WINDOW_'))) };
 }
 // Step 4: Claude Code's own two keys, from ALFRED_CODE_AUTO_COMPACT once the updates are in (spec 3.4's table).
-function compactStep(data, file, updates, env, out) {
+// `had`: the block held the key before the updates - a removal of a key never there leaves both of Claude Code's keys
+// untouched (spec 3.4; the final review's finding 1: init's --auto-compact off took a user's own window).
+function compactStep(data, file, updates, env, out, had) {
   const models = (readObj(path.join(__dirname, 'model-windows.json')) || {}).models || {};
-  if (updates[COMPACT] === null) return void (delete data.autoCompactEnabled, Object.keys(models).forEach((id) => setWindow(data, id)));
+  if (updates[COMPACT] === null) {
+    if (had) { delete data.autoCompactEnabled; Object.keys(models).forEach((id) => setWindow(data, id)); }
+    return;
+  }
   const value = (data.env || {})[COMPACT];
   if (value === '0' && updates[COMPACT] === '0') data.autoCompactEnabled = false;
   if (value !== '1') return;
@@ -76,18 +81,21 @@ function writeModes(root, updates = {}, env = process.env) {
   const trust = localTrust(file);
   if (trust === 'tracked' || (trust !== 'own' && updates[AUTO_RUN] === '1')) return refuse(trust === 'tracked' ? 'tracked' : 'unvouched');
   const [out, block] = [refuse(''), data.env || {}];
+  const had = Object.hasOwn(block, COMPACT);
   let emptied = false;
   for (const key of layout.MODE_KEYS.filter((k) => Object.hasOwn(updates, k)))
     if (updates[key] !== null) block[key] = String(updates[key]);
     else if (Object.hasOwn(block, key)) emptied = delete block[key] && !Object.keys(block).length;
   if (Object.keys(block).length) data.env = block;
   else if (emptied) delete data.env;
-  compactStep(data, file, updates, (data.env || {})[COMPACT] === '1' ? tierEnv(root, file, env) : env, out);
+  compactStep(data, file, updates, (data.env || {})[COMPACT] === '1' ? tierEnv(root, file, env) : env, out, had);
   const next = stringifyLike(data, formatOf(text ?? ''));
   if (next === text || (text === null && !Object.keys(data).length)) return out;
   const target = (() => { try { return fs.realpathSync.native(file); } catch { return file; } })();   // a link keeps its target
   const tmp = path.join(path.dirname(target), `.settings.local.json.${process.pid}.tmp`);
-  try { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(tmp, next); fs.renameSync(tmp, target); }
+  // the target's permission bits carry over the rename: a 0600 file holding a credential stays 0600 (final review, finding 5)
+  const mode = (() => { try { return fs.statSync(target).mode & 0o7777; } catch { return null; } })();
+  try { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(tmp, next); if (mode !== null) fs.chmodSync(tmp, mode); fs.renameSync(tmp, target); }
   catch { try { fs.unlinkSync(tmp); } catch { /* none made */ } return refuse('unwritable'); }
   out.unignored = text === null && Boolean(layout.gitTopOf(path.dirname(path.dirname(file))))
     && localGitStatus(file, ['check-ignore', '-q', '--', '.claude/settings.local.json']) === 1;

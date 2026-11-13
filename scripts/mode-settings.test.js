@@ -308,6 +308,31 @@ test('a hook\'s env and the installer\'s give the same bytes', () =>
     M.writeModes(b, { [K('AUTO_COMPACT')]: '1' }, { ...layout.variablesOf(b, { env: { CLAUDE_CONFIG_DIR: ENV.CLAUDE_CONFIG_DIR } }).values, CLAUDE_CONFIG_DIR: ENV.CLAUDE_CONFIG_DIR });
     assert.strictEqual(raw(a), raw(b));
 });
+// Task 10's final review, finding 1: init passes --auto-compact off for every walk answer but 'Compact and go on', and the
+// removal took the user's own autoCompactEnabled and windows from a file that never held the key (spec 3.4: untouched).
+test('a removal of the compact key the file never held leaves Claude Code\'s keys byte-identical', () =>
+{
+    const root = P();
+    putRaw(root, `${JSON.stringify({ autoCompactEnabled: false, modelSettings: { [K1M]: { autoCompactWindow: 300000 } } }, null, 2)}\n`);
+    const before = raw(root);
+    const r = M.writeModes(root, { [K('AUTO_COMPACT')]: null }, ENV);
+    assert.strictEqual(r.why, '');
+    assert.strictEqual(raw(root), before);
+    put(root, { env: { [K('AUTO_COMPACT')]: '1' }, autoCompactEnabled: true, modelSettings: { [K1M]: { autoCompactWindow: 360000 } } });
+    M.writeModes(root, { [K('AUTO_COMPACT')]: null }, ENV);
+    assert.deepStrictEqual(obj(root), {}, 'the key there: both of Claude Code\'s keys leave with it');
+});
+// Task 10's final review, finding 5: the temp file and the rename reset the mode, so a 0600 settings file holding a
+// credential under `env` became 0644 after a mode command or the installer's refresh.
+test('a write keeps the file\'s permission bits', { skip: process.platform === 'win32' }, () =>
+{
+    const root = P();
+    put(root, { env: { MY_TOKEN_NAME: 'x' } });
+    fs.chmodSync(modeFileOf(root), 0o600);
+    M.writeModes(root, { [K('SCORING')]: '1' }, ENV);
+    assert.strictEqual(obj(root).env[K('SCORING')], '1');
+    assert.strictEqual(fs.statSync(modeFileOf(root)).mode & 0o777, 0o600);
+});
 // Task 10's matrix, M12: a session started in a sub-folder reads that folder's variables, none of the top's, and its
 // windows went into the top's file at the DEFAULT trigger until the top's next update rewrote them.
 test('a sub-folder session writes the top\'s windows from the top\'s tier triggers, the bytes the top\'s own write gives', { skip: !GIT }, () =>

@@ -488,6 +488,9 @@ const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 const standingAt = new Map();
 const heldOwn = (root) => { try { return require('./mode-settings.js').autoRunHeld(root) === 'own'; } catch { return false; } };
 const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldOwn(root)); return standingAt.get(root); };
+// How long auto-run lasts, for the banner, the run contract and the Stop hold: the standing variable carries into new
+// sessions, a /mode-auto-run <request> stamp lasts its session (stage 3's final review, finding 7).
+const autoLasts = (root) => (root && autoRunStanding(root) ? 'auto-run stays on, new sessions included, until' : 'auto-run stays on for the session until');
 // The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
 // With `planId`, that plan's own stamp (<data root>/state/approvals/<plan id>/APPROVAL, layout.js approvalPath); without
 // it, the root one - auto-mode's, and a pre-2.8.0 skill copy's.
@@ -1961,4 +1964,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-Object.assign(module.exports, { autoRunStanding, byUser });   // beside the one-line list, which a new name would push past 160
+Object.assign(module.exports, { autoRunStanding, autoLasts, byUser });   // beside the one-line list, which a new name would push past 160

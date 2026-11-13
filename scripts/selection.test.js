@@ -210,3 +210,17 @@ test('install: rules-session named in the off-list is reported in one line, and 
     assert.match(outs[1], /rules: rules-session is named in the off-list - it carries the project's rules and still runs; leave a rule out with ignore rule/);
     for (const f of ['\\.claude/settings\\.json', '\\.claude/settings\\.local\\.json', 'acct/settings\\.json']) assert.match(outs[1], new RegExp(`rules: disableAllHooks is true in \\S*${f}`), f);
 });
+
+// Stage 3's final review, finding 9: the compact key's description said a `0` lets Claude Code compact at its own point,
+// when the mode writer turns a typed `0` into `autoCompactEnabled: false`; the start hook's manifest note still told the
+// v1 story (a session stamp and a per-session switch file).
+test('the compact key and the start hook describe the mode block as it works', () =>
+{
+    const root = path.join(__dirname, '..');
+    const cat = JSON.parse(fs.readFileSync(path.join(root, 'meta', 'environment.json'), 'utf8'));
+    const what = cat.env.find((r) => r.key === 'ALFRED_CODE_AUTO_COMPACT').what;
+    assert.doesNotMatch(what, /Unset or `0`/, 'unset and 0 are not the same');
+    assert.match(what, /`0`[^.]*`autoCompactEnabled: false`/, 'a typed 0 turns Claude Code\'s own compaction off');
+    const manifest = fs.readFileSync(path.join(root, 'meta', 'stack-manifest.json'), 'utf8');
+    assert.doesNotMatch(manifest, /AUTO-COMPACT-<session>|writes or deletes the session's AUTO stamp/);
+});

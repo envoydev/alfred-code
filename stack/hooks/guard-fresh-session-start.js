@@ -700,18 +700,21 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
   if (flags.autoRun === 'on') ledgerRow({ mode: 'auto', kind: why ? 'auto-start-refused' : 'auto-start',
     reason: `auto-run: the mode command - ${why || 'the variable written'}` });
   if (why === 'held') return '[mode] auto-compact stays ON: auto-run is on - type /alfred-code:mode:auto-run off first';
-  if (why) return `[mode] ${flags.mode} could not be saved: ${why} - nothing changed`;
-  if (flags.autoRun === 'on') return AUTO_ON + ms.said(r);
+  // D7: off ends it for the checkout - any session's hook-written stamp goes; a hand-written one (no session line) stays.
+  // Off is the safe direction, so the run's stamp and marker go even when the file could not be saved (final review, 2).
+  let ended = false;
   if (flags.autoRun === 'off') {
-    // D7: off ends it for the checkout - any session's hook-written stamp goes; a hand-written one (no session line) stays
-    let ended = Boolean(held);
     const file = (stamp && stamp.file) || (layout ? layout.findState(root, 'approvals', 'APPROVAL', process.env) : '');
     try { const text = fs.readFileSync(file, 'utf8').slice(0, 4096);
       if (/^AUTO\b/.test(text) && /^session:/m.test(text)) { fs.rmSync(file); ended = true; } } catch { /* none, or left: an old reader */ }
     if (markerFile && fs.existsSync(markerFile)) try { fs.rmSync(markerFile); ended = true; } catch { /* left: the hold reads it */ }
-    if (ended) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
-    return `[mode] auto-run is OFF${envIs('AUTO_COMPACT') === '1' ? ' - auto-compact stays ON until /alfred-code:mode:auto-compact off' : ''}${ms.said(r)}`;
+    if (ended || (held && !why)) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
   }
+  if (why && ended) return `[mode] ${flags.mode} could not be saved: ${why} - this session's run is ended, the file is unchanged`;
+  if (why) return `[mode] ${flags.mode} could not be saved: ${why} - nothing changed`;
+  if (flags.autoRun === 'on') return AUTO_ON + ms.said(r);
+  if (flags.autoRun === 'off')
+    return `[mode] auto-run is OFF${envIs('AUTO_COMPACT') === '1' ? ' - auto-compact stays ON until /alfred-code:mode:auto-compact off' : ''}${ms.said(r)}`;
   if (held && held !== 'own' && flags.mode === 'auto-run')   // a 1 nobody vouches for is said, never taken
     return `[mode] auto-run is OFF: the file holds it, but ${ms.WHY[held === 'tracked' ? held : 'unvouched']} - asks stay with you`;
   if (!r) return `[mode] ${flags.mode} is ${(flags.mode === 'auto-run' ? pre.autoRunFor : pre.compactCause)(input, undefined, flags) ? 'ON' : 'OFF'}`;
@@ -1364,6 +1367,10 @@ function acwIgnoredNote() {
       + 'and applies it to the running session (code.claude.com/docs/en/model-config) - say so to the user once, never claim the old value holds.';
   } catch { return ''; }
 }
+// How long auto-run lasts here (hook-prelude.js autoLasts); with no prelude, the session wording.
+const PROJECT_ROOT = () => process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+const lasts = () => { try { return require('./hook-prelude.js').autoLasts(PROJECT_ROOT()); } catch { return 'auto-run stays on for the session until'; } };
+const standingHere = () => { try { return require('./hook-prelude.js').autoRunStanding(PROJECT_ROOT()); } catch { return false; } };
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
   // the model's own capacity, never a declared default: with none known, no window is quoted and the trigger is said
@@ -1382,7 +1389,8 @@ function modeBanner(autoOn) {
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
     ? `**Auto-run: ON** for ${name} - every question takes its (Recommended) option without waiting for you; one with no `
-      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on for this session until you type `/alfred-code:mode:auto-run off`.'
+      + 'recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; '
+      + `${lasts()} you type \`/alfred-code:mode:auto-run off\`.`
     : `**Auto-run: OFF** for ${name} - each question waits for your answer.`
       + (autoRefused ? ` (auto-run did NOT start: ${autoRefused}.)` : '');
   const at = ctxThreshold();
@@ -1459,7 +1467,8 @@ if (auto && !auto.marker && !auto.markerFailed) {
 if (auto) {
   const m = auto.marker;
   const contract = (auto.markerFailed ? '!! the run marker could not be written - each ask still takes its (Recommended) option, but no hook sends a turn back between steps; tell the user so in one line.\n' : '')
-    + `auto-run is ON for this /${auto.run} run: auto-run is on for this session (${auto.file} holds the user's words)${m ? `, and ${m} marks this run` : ''}. `
+    + `auto-run is ON for this /${auto.run} run: ${standingHere() ? 'auto-run is on for this checkout, new sessions included (.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1)'
+      : `auto-run is on for this session (${auto.file} holds the user's words)`}${m ? `, and ${m} marks this run` : ''}. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
     + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
@@ -1472,7 +1481,7 @@ if (auto) {
     + "(5) A `--mode-*` token in the arguments is a retired flag, not a target - leave it out. "
     + `(6) The stamp is the session's approval: never write an APPROVED or AUTO line over it and never delete it - only the user's /alfred-code:mode:auto-run off ends auto-run. An answered ask is the go - carry on in the same turn. `
     + (m ? `(7) When the whole run is finished, print its close and delete ${m} if its \`skill:\` line names this run - that ends this run; ` : '(7) When the whole run is finished, print its close - that ends this run; ')
-    + 'auto-run stays on for the session until /alfred-code:mode:auto-run off. '
+    + `${lasts()} /alfred-code:mode:auto-run off. `
     + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close${m ? ` and delete ${m}` : ''}.`
     + (AUTO_SELF_RE.test(auto.run) ? ` ${solveFlowLine()}` : '');
   if (SAY) expansionOut(contract);
