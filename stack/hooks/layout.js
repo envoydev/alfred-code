@@ -605,13 +605,24 @@ const hooksOffOf = (projectRoot, { env = process.env } = {}) => resolveVariables
 // Each winner set on `env` once per env object (a second call returns []); the HOOKS_OFF csv becomes the union of what
 // `env` holds (a launch or account switch-off) and the merge - an entry is only ever added. Returns the keys set.
 const APPLIED = new WeakSet();
+// The launch value of each key applyVariables wrote over, per env object: `launchEnv(env)` hands the env as launched
+// (W1: a run's own layer is what it was started with, never the project's winner the prelude wrote into it).
+const LAUNCH = new WeakMap();
+const launchEnv = (env = process.env) =>
+{
+    const out = { ...env };
+    for (const [key, value] of Object.entries(LAUNCH.get(env) || {})) if (value === undefined) delete out[key]; else out[key] = value;
+    return out;
+};
 function applyVariables(projectRoot, env = process.env)
 {
     if (APPLIED.has(env)) return [];
     APPLIED.add(env);
     const { values, hooksOff } = resolveVariables(projectRoot, env);
     const set = [];
-    for (const [key, value] of Object.entries(values)) if (env[key] !== value) { env[key] = value; set.push(key); }
+    const launch = {};
+    LAUNCH.set(env, launch);
+    for (const [key, value] of Object.entries(values)) if (env[key] !== value) { launch[key] = env[key]; env[key] = value; set.push(key); }
     const held = csvOf(env[HOOKS_OFF_KEY]);
     const union = [...new Set([...held, ...csvOf(hooksOff)])];
     if (union.length > held.length) { env[HOOKS_OFF_KEY] = union.join(','); set.push(HOOKS_OFF_KEY); }
@@ -1161,5 +1172,5 @@ module.exports = {
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     MODE_KEYS, modeFile,
-    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,
+    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, valueIn,
 };

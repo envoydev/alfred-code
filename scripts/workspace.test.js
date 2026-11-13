@@ -932,39 +932,39 @@ test('AC5 asks: configure lists Keep first for a standalone, a root and a child'
 });
 
 // D5's join and leave: a joiner's stack seeds leave its own file (they would beat the members); what it typed stays.
-test('pruneOnJoin drops each key still at its ledger hash, keeps a typed or changed one, never DOCS_VERSIONING, and names the count kept', () =>
+test('pruneChained (join) drops each key still at its ledger hash, keeps a typed or changed one, never DOCS_VERSIONING, and names the count kept', () =>
 {
     const H = stampLib.valueHash;
     const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING_LEVEL=${H('80')},.variables:ALFRED_CODE_HISTORY=${H('5')},.variables:ALFRED_CODE_DOCS_VERSIONING=${H('git')},settings.json:ALFRED_CODE_DATA_PATH=${H('.alfred')}\n`;
     const at = roleTree({ p: { stamp: stampText, git: true, vars: '# mine\nALFRED_CODE_SCORING_LEVEL=80\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n' } });
     const lines = [];
-    const got = ws.pruneOnJoin(at('p'), { env: ON, log: (l) => lines.push(l) });
+    const got = ws.pruneChained(at('p'), { env: ON, log: (l) => lines.push(l), seeds: true });
     assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_SCORING_LEVEL'], own: ['ALFRED_CODE_HISTORY', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_CORRECTION_NUDGE'] });
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), '# mine\nALFRED_CODE_HISTORY=9\nALFRED_CODE_DOCS_VERSIONING=git\nALFRED_CODE_CORRECTION_NUDGE=inject\n');
     const ledger = stampLib.readLedger(path.join(at('p'), '.claude', 'alfred-code.stamp'));
     assert.deepStrictEqual(Object.keys(ledger.env['.variables']).sort(), ['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_HISTORY'], 'the dropped key\'s row goes with it');
-    assert.deepStrictEqual(lines, ['workspace: 3 of this project\'s values kept as its own (ALFRED_CODE_HISTORY, ALFRED_CODE_DOCS_VERSIONING, ALFRED_CODE_CORRECTION_NUDGE) - 1 stack seed dropped, so the workspace\'s value reaches it']);
+    assert.deepStrictEqual(lines, ['workspace: 1 stack seeds and values equal to the workspace\'s removed from .alfred/.variables (ALFRED_CODE_SCORING_LEVEL) - 3 kept as this project\'s own (ALFRED_CODE_HISTORY, ALFRED_CODE_DOCS_VERSIONING, ALFRED_CODE_CORRECTION_NUDGE)']);
 });
 
-test('pruneOnJoin keeps an installer answer off the catalog default (--auto-compact on) as the project\'s own, though it sits at its ledger hash (D5)', () =>
+test('pruneChained (join) keeps an installer answer off the catalog default (--auto-compact on) as the project\'s own, though it sits at its ledger hash (D5)', () =>
 {
     const H = stampLib.valueHash;
     const stampText = `sha: x\nmanaged-env: .variables:ALFRED_CODE_AUTO_COMPACT=${H('1')},.variables:ALFRED_CODE_HISTORY=${H('3')}\n`;
     const at = roleTree({ p: { stamp: stampText, git: true, vars: 'ALFRED_CODE_AUTO_COMPACT=1\nALFRED_CODE_HISTORY=3\n' } });
-    const got = ws.pruneOnJoin(at('p'), { env: ON, log: () => {} });
+    const got = ws.pruneChained(at('p'), { env: ON, log: () => {}, seeds: true });
     assert.deepStrictEqual(got, { dropped: ['ALFRED_CODE_HISTORY'], own: ['ALFRED_CODE_AUTO_COMPACT'] });
     assert.strictEqual(fs.readFileSync(path.join(at('p'), '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_AUTO_COMPACT=1\n');
 });
 
 // B1 of the 2026-11-03 usage audit: the scoring's old seeds (0, empty) are a reseed's old values, so a joiner still holding
 // them at their ledger hash drops them like any seed - the workspace's value reaches it; a 0 typed over the new seed stays.
-test('pruneOnJoin drops an old stack seed a reseed migration names (the scoring\'s 0 and empty list), keeps one typed over the new seed', () =>
+test('pruneChained (join) drops an old stack seed a reseed migration names (the scoring\'s 0 and empty list), keeps one typed over the new seed', () =>
 {
     const H = stampLib.valueHash;
     const old = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING=${H('0')},.variables:ALFRED_CODE_SCORING_OUTPUTS=${H('')}\n`, git: true, vars: 'ALFRED_CODE_SCORING=0\nALFRED_CODE_SCORING_OUTPUTS=\n' } });
-    assert.deepStrictEqual(ws.pruneOnJoin(old('p'), { env: ON, log: () => {} }), { dropped: ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_OUTPUTS'], own: [] });
+    assert.deepStrictEqual(ws.pruneChained(old('p'), { env: ON, log: () => {}, seeds: true }), { dropped: ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_OUTPUTS'], own: [] });
     const typed = roleTree({ p: { stamp: `sha: x\nmanaged-env: .variables:ALFRED_CODE_SCORING=${H('1')}\n`, git: true, vars: 'ALFRED_CODE_SCORING=0\n' } });
-    assert.deepStrictEqual(ws.pruneOnJoin(typed('p'), { env: ON, log: () => {} }), { dropped: [], own: ['ALFRED_CODE_SCORING'] });
+    assert.deepStrictEqual(ws.pruneChained(typed('p'), { env: ON, log: () => {}, seeds: true }), { dropped: [], own: ['ALFRED_CODE_SCORING'] });
 });
 
 test('keepOnLeave writes each value read through the chain into the child\'s file, a seed with its ledger row; with the parent gone it names the keys that read their defaults', () =>
@@ -990,6 +990,268 @@ test('keepOnLeave writes each value read through the chain into the child\'s fil
     assert.deepStrictEqual(g.written, []);
     assert.ok(g.defaults.includes('ALFRED_CODE_SCORING_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
     assert.match(lines.join('\n'), /^workspace: \.\. is gone - \d+ values read the stack's defaults here now \(ALFRED_CODE_/m);
+});
+
+// W1: every run that writes a joined child's .variables drops each value equal to the one the chain hands it.
+const W1 = { LEVEL: 'ALFRED_CODE_SCORING_LEVEL', HISTORY: 'ALFRED_CODE_HISTORY', NUDGE: 'ALFRED_CODE_CORRECTION_NUDGE', DOCS: 'ALFRED_CODE_DOCS_VERSIONING' };
+const W1_ROOT = `${W1.LEVEL}=90\n${W1.HISTORY}=5\n${W1.NUDGE}=inject\n${W1.DOCS}=git\n`;
+// ws (root) over ws/api (child) and, with `lib`, ws/api/lib (grandchild); returns the `at` of roleTree.
+const w1Tree = ({ api, root = W1_ROOT, stamp = 'sha: x\nmanaged-env: \n', lib, apiRecord } = {}) => roleTree({
+    ws: { stamp: 'sha: x\nmanaged-env: \n', record: { children: ['api'] }, vars: root },
+    'ws/api': { stamp, git: true, record: apiRecord || (lib === undefined ? { parent: '..' } : { parent: '..', children: ['lib'] }), ...(api === undefined ? {} : { vars: api }) },
+    ...(lib === undefined ? {} : { 'ws/api/lib': { stamp: 'sha: x\nmanaged-env: \n', git: true, record: { parent: '..' }, vars: lib } }),
+});
+const varsText = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', '.variables'), 'utf8'); } catch { return null; } };
+const stampText = (dir) => fs.readFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'utf8');
+// One call, the read checked unchanged unless `seeds` (a join may drop a seed the members answer otherwise).
+const prune = (dir, { env = ON, seeds = false } = {}) =>
+{
+    const lines = [];
+    const before = layoutLib.variablesOf(dir, { env }).values;
+    const got = ws.pruneChained(dir, { env, log: (l) => lines.push(l), ...(seeds ? { seeds } : {}) });
+    if (!seeds) assert.deepStrictEqual(layoutLib.variablesOf(dir, { env }).values, before, 'the read never changes');
+    return { ...got, lines };
+};
+
+test('pruneChained: an equal value leaves with its row, a different one stays', () =>
+{
+    const H = stampLib.valueHash;
+    const at = w1Tree({ api: `# mine\n${W1.LEVEL}=90\n${W1.HISTORY}=9\nMY_OWN=1\nALFRED_CODE_HOOKS_OFF=x\n\nnot a line\n`,
+        stamp: `sha: x\nmanaged-env: .variables:${W1.LEVEL}=${H('90')},.variables:${W1.HISTORY}=${H('9')}\n` });
+    const r = prune(at('ws/api'));
+    assert.deepStrictEqual([r.dropped, r.own], [[W1.LEVEL], [W1.HISTORY]]);
+    assert.strictEqual(varsText(at('ws/api')), `# mine\n${W1.HISTORY}=9\nMY_OWN=1\nALFRED_CODE_HOOKS_OFF=x\n\nnot a line\n`);
+    assert.deepStrictEqual(Object.keys(stampLib.readLedger(path.join(at('ws/api'), '.claude', 'alfred-code.stamp')).env['.variables']), [W1.HISTORY]);
+    assert.deepStrictEqual(r.lines, [`workspace: 1 values equal to the workspace's removed from .alfred/.variables (${W1.LEVEL}) - 1 kept as this project's own (${W1.HISTORY})`]);
+    // a second call changes nothing (Review Focus 3)
+    const [text, st] = [varsText(at('ws/api')), stampText(at('ws/api'))];
+    const again = prune(at('ws/api'));
+    assert.deepStrictEqual([again.dropped, again.own, again.lines], [[], [W1.HISTORY], []]);
+    assert.deepStrictEqual([varsText(at('ws/api')), stampText(at('ws/api'))], [text, st]);
+});
+
+test('pruneChained: equal is the same string (D1)', () =>
+{
+    const cases = [[W1.LEVEL, '90', '90', true], [W1.LEVEL, '"90"', '90', true], [W1.LEVEL, '90', '\'90\'', true], [W1.NUDGE, 'inject ', 'inject', true],
+        [W1.LEVEL, '90', '9', false], [W1.LEVEL, '1', 'true', false], [W1.NUDGE, 'Inject', 'inject', false], [W1.LEVEL, '90', null, false]];
+    for (const [key, mine, theirs, gone] of cases)
+    {
+        const at = w1Tree({ api: `${key}=${mine}\n`, root: theirs === null ? '' : `${key}=${theirs}\n` });
+        assert.deepStrictEqual(prune(at('ws/api')).dropped, gone ? [key] : [], `${key}: ${mine} against ${theirs}`);
+    }
+});
+
+test('pruneChained: never removed (D3) - DOCS_VERSIONING, WORKSPACE, an ignore env key, one a member between ignores', () =>
+{
+    const keep = (at, rel) => { const text = varsText(at(rel)); const r = prune(at(rel)); assert.deepStrictEqual([r.dropped, r.lines, varsText(at(rel))], [[], [], text]); };
+    keep(w1Tree({ api: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n`, root: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n` }), 'ws/api');
+    const ig = w1Tree({ api: `${W1.LEVEL}=90\n` });
+    ws.writeWorkspace(ig('ws/api'), (m) => ws.addIgnore(m, 'env', W1.LEVEL), { env: ON });
+    keep(ig, 'ws/api');
+    const deep = w1Tree({ api: `${W1.HISTORY}=7\n`, lib: `${W1.LEVEL}=90\n` });
+    ws.writeWorkspace(deep('ws/api'), (m) => ws.addIgnore(m, 'env', W1.LEVEL), { env: ON });
+    keep(deep, 'ws/api/lib');
+});
+
+test('pruneChained: doubt keeps (D5) - the switch off, a garbage or missing record, a member file absent, a folder or empty', () =>
+{
+    const doubt = [
+        ['the switch off in the launch env', () => {}, { ...ON, ALFRED_CODE_WORKSPACE: '0' }],
+        ['the child\'s own WORKSPACE=0', (at) => fs.appendFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_WORKSPACE=0\n')],
+        ['the root\'s record garbage', (at) => fs.writeFileSync(jsonOf(at('ws')), '{')],
+        ['the root\'s stamp gone', (at) => fs.unlinkSync(path.join(at('ws'), '.claude', 'alfred-code.stamp'))],
+        ['the root lists no child', (at) => putWorkspace(at('ws'), { role: 'root' })],
+        ['the root\'s file gone', (at) => fs.unlinkSync(path.join(at('ws'), '.alfred', '.variables'))],
+        ['the root\'s file a folder', (at) => { const f = path.join(at('ws'), '.alfred', '.variables'); fs.unlinkSync(f); fs.mkdirSync(f); }],
+        ['the root\'s file empty', (at) => fs.writeFileSync(path.join(at('ws'), '.alfred', '.variables'), '')],
+    ];
+    for (const [name, spoil, env = ON] of doubt)
+    {
+        const at = w1Tree({ api: `${W1.LEVEL}=90\n` });
+        spoil(at);
+        const text = varsText(at('ws/api'));
+        const r = prune(at('ws/api'), { env });
+        assert.deepStrictEqual([r.dropped, r.lines, varsText(at('ws/api'))], [[], [], text], name);
+    }
+});
+
+test('pruneChained: an absent file is not created, an empty one stays empty, a file that empties stays (D6), CRLF kept', () =>
+{
+    const none = w1Tree({});
+    assert.deepStrictEqual(prune(none('ws/api')).lines, []);
+    assert.strictEqual(varsText(none('ws/api')), null);
+    const empty = w1Tree({ api: '' });
+    assert.deepStrictEqual([prune(empty('ws/api')).lines, varsText(empty('ws/api'))], [[], '']);
+    const lone = w1Tree({ api: `${W1.LEVEL}=90\n` });
+    prune(lone('ws/api'));
+    assert.strictEqual(varsText(lone('ws/api')), '');
+    const commented = w1Tree({ api: `# only mine\n${W1.LEVEL}=90\n` });
+    prune(commented('ws/api'));
+    assert.strictEqual(varsText(commented('ws/api')), '# only mine\n');
+    const crlf = w1Tree({ api: `# c\r\n${W1.LEVEL}=90\r\n${W1.HISTORY}=9\r\n` });
+    prune(crlf('ws/api'));
+    assert.strictEqual(varsText(crlf('ws/api')), `# c\r\n${W1.HISTORY}=9\r\n`);
+});
+
+// A member's empty line is unset to the loader (valueIn), which reads on to the next member - so the chain does too.
+test('pruneChained: depth - against the nearest holder, a member\'s empty line is read past as the loader reads it', () =>
+{
+    const deep = w1Tree({ root: `${W1.LEVEL}=90\n${W1.HISTORY}=5\n`, api: `${W1.HISTORY}=7\n`, lib: `${W1.LEVEL}=90\n${W1.HISTORY}=7\n` });
+    assert.deepStrictEqual(prune(deep('ws/api/lib')).dropped, [W1.LEVEL, W1.HISTORY]);
+    const far = w1Tree({ root: `${W1.LEVEL}=90\n${W1.HISTORY}=5\n`, api: `${W1.HISTORY}=7\n`, lib: `${W1.HISTORY}=5\n` });
+    assert.deepStrictEqual(prune(far('ws/api/lib')).dropped, []);
+    const blank = w1Tree({ root: `${W1.LEVEL}=90\n`, api: `${W1.LEVEL}=\n`, lib: `${W1.LEVEL}=90\n` });
+    assert.deepStrictEqual(prune(blank('ws/api/lib')).dropped, [W1.LEVEL]);
+    // an own empty line is unset too, never a value equal to the workspace's: it stays, and the read is the same either way
+    const both = w1Tree({ root: `${W1.LEVEL}=90\n`, api: `${W1.LEVEL}=\n`, lib: `${W1.LEVEL}=\n` });
+    assert.deepStrictEqual(prune(both('ws/api/lib')).dropped, []);
+});
+
+test('pruneChained: a write that fails removes nothing and says so', () =>
+{
+    const H = stampLib.valueHash;
+    const at = w1Tree({ api: `${W1.LEVEL}=90\n${W1.HISTORY}=9\n`, stamp: `sha: x\nmanaged-env: .variables:${W1.LEVEL}=${H('90')}\n` });
+    const vars = require('./install/variables.js');
+    const real = vars.write;
+    const [text, st] = [varsText(at('ws/api')), stampText(at('ws/api'))];
+    vars.write = () => ({ changed: false, why: 'locked' });
+    try
+    {
+        const r = prune(at('ws/api'));
+        assert.deepStrictEqual([r.dropped, r.own, r.lines], [[], [W1.HISTORY], ['!! workspace: .alfred/.variables could not be written (locked) - nothing was removed from it']]);
+    }
+    finally { vars.write = real; }
+    assert.deepStrictEqual([varsText(at('ws/api')), stampText(at('ws/api'))], [text, st]);
+});
+
+test('pruneChained: a run never marks join-prune; a join does (Review Focus 3)', () =>
+{
+    const stamp = `sha: x\nmanaged-env: settings.json:${W1.HISTORY}=${stampLib.valueHash('3')}\n`;
+    const run = w1Tree({ api: `${W1.LEVEL}=90\n`, stamp });
+    prune(run('ws/api'));
+    assert.doesNotMatch(stampText(run('ws/api')), /^join-prune:/m);
+    const join = w1Tree({ api: `${W1.LEVEL}=90\n`, stamp });
+    prune(join('ws/api'), { seeds: true });
+    assert.match(stampText(join('ws/api')), /^join-prune: settings$/m);
+});
+
+test('pruneChained: the join\'s two rules in one call, and a run\'s one', () =>
+{
+    const H = stampLib.valueHash;
+    const spec = { api: `${W1.HISTORY}=3\n${W1.LEVEL}=90\n${W1.NUDGE}=log\n`, stamp: `sha: x\nmanaged-env: .variables:${W1.HISTORY}=${H('3')}\n` };
+    const join = w1Tree(spec);
+    const j = prune(join('ws/api'), { seeds: true });
+    assert.deepStrictEqual([j.dropped, j.own], [[W1.HISTORY, W1.LEVEL], [W1.NUDGE]]);
+    assert.ok(j.lines[0].startsWith(`workspace: 2 stack seeds and values equal to the workspace's removed from .alfred/.variables (${W1.HISTORY}, ${W1.LEVEL})`), j.lines[0]);
+    const run = w1Tree(spec);
+    const r = prune(run('ws/api'));
+    assert.deepStrictEqual([r.dropped, r.own], [[W1.LEVEL], [W1.HISTORY, W1.NUDGE]]);
+});
+
+// Task 2: a layer the loader reads between the own file and the members keeps the line (layout.js ownLayers' order).
+const layers = (spec = {}) =>
+{
+    const at = w1Tree({ api: `${W1.LEVEL}=90\n`, ...(spec.tree || {}) });
+    const acct = fs.mkdtempSync(path.join(TMP, 'acct-'));
+    const put = (file, v) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, typeof v === 'string' ? v : JSON.stringify(v)); };
+    if (spec.project !== undefined) put(path.join(at('ws/api'), '.claude', 'settings.json'), spec.project);
+    if (spec.local !== undefined) put(path.join(at('ws/api'), '.claude', 'settings.local.json'), spec.local);
+    if (spec.account !== undefined) put(path.join(acct, 'settings.json'), spec.account);
+    return { child: at('ws/api'), env: { ...ON, CLAUDE_CONFIG_DIR: acct, ...(spec.env || {}) } };
+};
+const stays = (name) => `workspace: 0 values equal to the workspace's removed from .alfred/.variables (none) - 1 kept as this project's own (${W1.LEVEL}); `
+    + `${W1.LEVEL} equals the workspace's and stays: ${name} holds another value`;
+const lv = (v) => ({ env: { [W1.LEVEL]: v } });
+
+test('pruneChained layers: each layer alone at another value keeps the line and names it (Review Focus 1)', () =>
+{
+    for (const [spec, name] of [[{ project: lv('70') }, 'settings.json'], [{ account: lv('70') }, 'account settings'], [{ env: { [W1.LEVEL]: '70' } }, 'the run\'s environment']])
+    {
+        const { child, env } = layers(spec);
+        const r = prune(child, { env });
+        assert.deepStrictEqual([r.dropped, r.lines], [[], [stays(name)]], name);
+    }
+});
+
+// The installer loads the hook prelude, whose applyVariables writes the cwd project's winners into process.env - the
+// child's own line among them. The run's layer is the launch value it overwrote (the matrix's M5, 2026-11-13).
+test('pruneChained layers: the run\'s environment is the launch value, not what applyVariables wrote over it', () =>
+{
+    const { child, env } = layers({ env: { [W1.LEVEL]: '70' } });
+    layoutLib.applyVariables(child, env);
+    assert.strictEqual(env[W1.LEVEL], '90', 'the prelude wrote the own line over the launch value');
+    assert.deepStrictEqual(prune(child, { env }).lines, [stays('the run\'s environment')]);
+    const same = layers({});
+    layoutLib.applyVariables(same.child, same.env);
+    assert.deepStrictEqual(prune(same.child, { env: same.env }).dropped, [W1.LEVEL], 'no launch value: the line leaves');
+});
+
+// The final review's Important finding: the loader reads a 3.10 name (layout.OLD_KEYS, until 4.0.0) wherever the new one
+// has no value, in every layer and member - so a layer or member holding only the old name answers once the line leaves.
+test('pruneChained layers: a 3.10 key name in any layer, the own file or a member keeps the line (until 4.0.0)', () =>
+{
+    const OLD = layoutLib.OLD_KEYS[W1.LEVEL];
+    const old70 = { env: { [OLD]: '70' } };
+    for (const [spec, name] of [[{ project: old70 }, 'settings.json'], [{ account: old70 }, 'account settings'], [{ env: { [OLD]: '70' } }, 'the run\'s environment'],
+        [{ tree: { api: `${W1.LEVEL}=90\n${OLD}=70\n` } }, 'this file\'s 3.10 name']])
+    {
+        const { child, env } = layers(spec);
+        const r = prune(child, { env });
+        assert.deepStrictEqual([r.dropped, r.lines], [[], [stays(name)]], name);
+    }
+    // a middle member holding only the old name hands its value, so the grandchild's line is its own
+    const at = w1Tree({ api: `${OLD}=70\n`, lib: `${W1.LEVEL}=90\n` });
+    const r = prune(at('ws/api/lib'));
+    assert.deepStrictEqual([r.dropped, r.own], [[], [W1.LEVEL]]);
+});
+
+test('pruneChained layers: each layer alone at the same value drops the line', () =>
+{
+    for (const spec of [{ project: lv('90') }, { account: lv('90') }, { env: { [W1.LEVEL]: '90' } }, { project: lv(90) }])
+    {
+        const { child, env } = layers(spec);
+        assert.deepStrictEqual(prune(child, { env }).dropped, [W1.LEVEL], JSON.stringify(spec));
+    }
+});
+
+test('pruneChained layers: the first holder decides', () =>
+{
+    const a = layers({ project: lv('90'), account: lv('70') });
+    assert.deepStrictEqual(prune(a.child, { env: a.env }).dropped, [W1.LEVEL]);
+    const b = layers({ project: lv('70'), account: lv('90') });
+    assert.deepStrictEqual(prune(b.child, { env: b.env }).lines, [stays('settings.json')]);
+    for (const empty of ['', null])
+    {
+        const c = layers({ account: lv(empty), env: { [W1.LEVEL]: '70' } });
+        assert.deepStrictEqual(prune(c.child, { env: c.env }).lines, [stays('the run\'s environment')], String(empty));
+    }
+});
+
+test('pruneChained layers: settings.local.json is no layer, and a layer that cannot be read holds nothing', () =>
+{
+    const local = layers({ local: lv('70') });
+    assert.strictEqual(layoutLib.variablesOf(local.child, { env: local.env }).values[W1.LEVEL], '70');
+    assert.deepStrictEqual(prune(local.child, { env: local.env }).dropped, [W1.LEVEL]);
+    assert.strictEqual(layoutLib.variablesOf(local.child, { env: local.env }).values[W1.LEVEL], '70');
+    for (const spec of [{ project: '{ garbage' }, { project: 'null' }, {}, { project: { env: [1] } }, { project: { env: 'x' } }])
+    {
+        const { child, env } = layers(spec);
+        assert.deepStrictEqual(prune(child, { env }).dropped, [W1.LEVEL], JSON.stringify(spec));
+    }
+});
+
+test('pruneChained layers: a kept key is named at every call; a seed at a join leaves whatever a layer holds', () =>
+{
+    const { child, env } = layers({ project: lv('70') });
+    const text = varsText(child);
+    assert.deepStrictEqual(prune(child, { env }).lines, [stays('settings.json')]);
+    assert.deepStrictEqual(prune(child, { env }).lines, [stays('settings.json')]);
+    assert.strictEqual(varsText(child), text);
+    const seed = layers({ project: lv('70'), tree: { api: `${W1.LEVEL}=80\n`, root: `${W1.LEVEL}=80\n`,
+        stamp: `sha: x\nmanaged-env: .variables:${W1.LEVEL}=${stampLib.valueHash('80')}\n` } });
+    const j = prune(seed.child, { env: seed.env, seeds: true });
+    assert.deepStrictEqual(j.dropped, [W1.LEVEL]);
+    assert.doesNotMatch(j.lines.join('\n'), /stays/);
 });
 
 test('releaseChildren writes each value a child read from the parent into the child\'s file before its parent line goes (D5)', () =>

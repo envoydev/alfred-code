@@ -418,7 +418,7 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
         assert.strictEqual(joined.settings[NUDGE], 'inject', `${when}: the typed value stays in settings.json`);
         assert.strictEqual(joined.effective[NUDGE], 'inject', `${when}: the typed value is still the one read`);
         // the join's prune reads .variables alone, so the typed value settings.json keeps is not counted there
-        assert.match(r.outs[4], /^workspace: 1 of this project's values kept as its own \(ALFRED_CODE_DOCS_VERSIONING\) - \d+ stack seeds? dropped, so the workspace's value reaches it$/m, r.outs[4]);
+        assert.match(r.outs[4], /^workspace: \d+ stack seeds and values equal to the workspace's removed from \.alfred\/\.variables \(.*\) - 1 kept as this project's own \(ALFRED_CODE_DOCS_VERSIONING\)$/m, r.outs[4]);
         assert.strictEqual(left.vars[LEVEL], '90', `${when}: leaving wrote the root's value back: ${r.outs[5]}`);
         assert.deepStrictEqual(left.effective, joined.effective, when);
     }
@@ -476,6 +476,65 @@ test('a 2.12.0 child registered with the switch off keeps every value through th
     assert.strictEqual(got.vars.ALFRED_CODE_AUTO_COMPACT, '1', 'its init answer moved');
     assert.strictEqual(got.effective[LEVEL], '80');
     assert.ok(!/a stack seed, so the workspace's value reaches this project/.test(r.outs[3]), r.outs[3]);
+});
+
+// W1: every run that writes a joined child's .variables drops each value equal to the one the chain hands it, ledger rows
+// included. A mode key lives in the mode file since mode v2 stage 3, so the equal key here is a plain variable.
+const W1_EQ = 'ALFRED_CODE_MAXIMUM_RUN_AGENTS';
+const W1_OWN = 'ALFRED_CODE_HISTORY';
+const W1_PRUNED = /equal to the workspace's removed/;
+const w1Read = (work) => ({
+    vars: varsOf(work, 'api'), text: readOr(path.join(at(work, 'api'), '.alfred', '.variables')), effective: effectiveOf(work, 'api'),
+    env: lineOf(stampOf(work, 'api'), 'managed-env') || '', root: varsOf(work, '.'),
+});
+const w1Join = (work) => { setVar(work, '.', { [W1_EQ]: '7' }); setVar(work, 'api', { [W1_EQ]: '7', [W1_OWN]: '9' }); join(work, 'api'); return w1Read(work); };
+
+test('W1: an update in a joined child drops every value equal to the workspace\'s in that run, rows included, and the re-run changes nothing', POSIX_ONLY, () =>
+{
+    const r = scenario([{ at: '.' }, { at: 'api', after: w1Join }, update('api', { after: w1Read }), update('api', { after: w1Read })]);
+    const [before, first, again] = [r.steps[1], r.steps[2], r.steps[3]];
+    assert.ok(Object.keys(before.vars).length > 2, `the standalone child held its seeds: ${before.text}`);
+    const equal = Object.keys(first.vars).filter((k) => !layoutLib.MEMBER_NEVER.has(k) && first.root[k] === first.vars[k]);
+    assert.deepStrictEqual(equal, [], `no value equal to the root's is left: ${first.text}\n${r.outs[2]}`);
+    assert.ok(!Object.hasOwn(first.vars, W1_EQ), first.text);
+    assert.strictEqual(first.vars[W1_OWN], '9');
+    const rows = [...first.env.matchAll(/\.variables:([A-Z0-9_]+)=/g)].map((m) => m[1]);
+    assert.deepStrictEqual(rows.filter((k) => !Object.hasOwn(first.vars, k)), [], `no row for a key the file no longer holds: ${first.env}`);
+    assert.deepStrictEqual(first.effective, before.effective, r.outs[2]);
+    assert.match(r.outs[2], new RegExp(`^==>\\s+workspace: \\d+ values equal to the workspace's removed from \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\) - \\d+ kept as this project's own`, 'm'), r.outs[2]);
+    assert.deepStrictEqual([again.text, again.env], [first.text, first.env], r.outs[3]);
+    assert.ok(!W1_PRUNED.test(r.outs[3]), r.outs[3]);
+});
+
+test('W1: nothing is pruned by --print-plan, with the switch at 0 or by an uninstall', POSIX_ONLY, () =>
+{
+    const tail = [
+        update('api', { args: (work) => ['--print-plan', '--plan-out', path.join(work, 'plan.json')], after: w1Read }),
+        update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, after: w1Read }),
+        { at: 'api', act: 'uninstall', after: w1Read },
+    ];
+    tail.forEach((step, i) =>
+    {
+        const r = scenario([{ at: '.' }, { at: 'api', after: w1Join }, step]);
+        if (i < 2) assert.strictEqual(r.steps[2].text, r.steps[1].text, `step ${i}: ${r.outs[2]}`);
+        assert.ok(!W1_PRUNED.test(r.outs[2]), `step ${i}: ${r.outs[2]}`);
+    });
+});
+
+test('W1: a local-scope run leaves a .variables git tracks as it is', POSIX_ONLY, () =>
+{
+    const git = (work, ...a) => rt.execCommand('git', ['-C', at(work, 'api'), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a]);
+    const status = (work) => String(git(work, 'status', '--porcelain', '--untracked-files=all') || '');
+    const r = scenario([
+        { at: '.' },
+        { at: 'api', after: (work) => { w1Join(work); git(work, 'add', '-f', '.alfred/.variables'); git(work, 'commit', '-q', '-m', 'own'); return { ...w1Read(work), status: status(work) }; } },
+        update('api', { args: ['--scope', 'local'], after: (work) => ({ ...w1Read(work), status: status(work) }) }),
+    ]);
+    const [before, after] = [r.steps[1], r.steps[2]];
+    assert.strictEqual(before.vars[W1_EQ], '7', before.text);
+    assert.strictEqual(after.text, before.text, r.outs[2]);
+    assert.ok(!/\.variables/.test(after.status), after.status);
+    assert.ok(!W1_PRUNED.test(r.outs[2]), r.outs[2]);
 });
 
 // F10 (the 2026-10-28 workspace run): a child joined BEFORE its install, given the value its workspace already hands it,

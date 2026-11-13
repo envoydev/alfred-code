@@ -417,7 +417,7 @@ function readOwnEnv(file)
 // 'declined' when the D5 ask was answered 'Leave it' for this project, else ''.
 const readInstructionsBoth = (file) => ((lineOf(file, 'instructions-both') || [])[0] === 'declined' ? 'declined' : '');
 // True when a join answered between runs left this project's 2.12 values in settings for the next run to prune
-// (workspace.js pruneOnJoin); the stamp that run writes carries no such line.
+// (workspace.js pruneChained under `seeds`); the stamp that run writes carries no such line.
 const readJoinPrune = (file) => (lineOf(file, 'join-prune') || [])[0] === 'settings';
 
 // One `key: value` line set, replaced or (value null) removed in place, the rest of the stamp left byte for byte - for
