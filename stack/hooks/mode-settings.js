@@ -33,6 +33,16 @@ function setWindow(data, id, value) {
   else if (plain(ms[id]) && delete ms[id].autoCompactWindow && !Object.keys(ms[id]).length) delete ms[id];
   if (!Object.keys(ms).length) delete data.modelSettings;
 }
+// The tier triggers the windows are seeded from: the mode file's own folder's, when the file is another folder's (a session
+// started in a sub-folder or a worktree reads its start folder's variables, which hold none of them) - so the command typed
+// there writes the bytes the top's own write and the installer's refresh give (Task 10's matrix, M12).
+const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+function tierEnv(root, file, env) {
+  const owner = path.dirname(path.dirname(file));
+  if (realOr(root) === realOr(owner)) return env;
+  const values = layout.variablesOf(owner, { env }).values;
+  return { ...env, ...Object.fromEntries(Object.entries(values).filter(([k]) => k.startsWith('ALFRED_CODE_CONTEXT_WINDOW_'))) };
+}
 // Step 4: Claude Code's own two keys, from ALFRED_CODE_AUTO_COMPACT once the updates are in (spec 3.4's table).
 function compactStep(data, file, updates, env, out) {
   const models = (readObj(path.join(__dirname, 'model-windows.json')) || {}).models || {};
@@ -72,7 +82,7 @@ function writeModes(root, updates = {}, env = process.env) {
     else if (Object.hasOwn(block, key)) emptied = delete block[key] && !Object.keys(block).length;
   if (Object.keys(block).length) data.env = block;
   else if (emptied) delete data.env;
-  compactStep(data, file, updates, env, out);
+  compactStep(data, file, updates, (data.env || {})[COMPACT] === '1' ? tierEnv(root, file, env) : env, out);
   const next = stringifyLike(data, formatOf(text ?? ''));
   if (next === text || (text === null && !Object.keys(data).length)) return out;
   const target = (() => { try { return fs.realpathSync.native(file); } catch { return file; } })();   // a link keeps its target

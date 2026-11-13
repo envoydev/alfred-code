@@ -308,3 +308,18 @@ test('a hook\'s env and the installer\'s give the same bytes', () =>
     M.writeModes(b, { [K('AUTO_COMPACT')]: '1' }, { ...layout.variablesOf(b, { env: { CLAUDE_CONFIG_DIR: ENV.CLAUDE_CONFIG_DIR } }).values, CLAUDE_CONFIG_DIR: ENV.CLAUDE_CONFIG_DIR });
     assert.strictEqual(raw(a), raw(b));
 });
+// Task 10's matrix, M12: a session started in a sub-folder reads that folder's variables, none of the top's, and its
+// windows went into the top's file at the DEFAULT trigger until the top's next update rewrote them.
+test('a sub-folder session writes the top\'s windows from the top\'s tier triggers, the bytes the top\'s own write gives', { skip: !GIT }, () =>
+{
+    const TIERS = 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M=320000\nALFRED_CODE_CONTEXT_WINDOW_FOR_300K=250000\nALFRED_CODE_CONTEXT_WINDOW_FOR_200K=150000\n';
+    const env = { CLAUDE_CONFIG_DIR: ENV.CLAUDE_CONFIG_DIR };
+    const [top, other] = [gitInit(), gitInit()];
+    for (const r of [top, other]) setVars(r, TIERS);
+    fs.mkdirSync(path.join(top, 'app'));
+    M.writeModes(path.join(top, 'app'), { [K('AUTO_COMPACT')]: '1' }, { ...env });
+    M.writeModes(other, { [K('AUTO_COMPACT')]: '1' }, { ...layout.variablesOf(other, { env }).values, ...env });
+    assert.strictEqual(modeFileOf(path.join(top, 'app')), file(top), 'the sub-folder resolves to the top\'s file');
+    assert.strictEqual(obj(top).modelSettings[K1M].autoCompactWindow, 320000, raw(top));
+    assert.strictEqual(raw(top), raw(other));
+});
