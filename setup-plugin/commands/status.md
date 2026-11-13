@@ -293,10 +293,11 @@ used, and which they never reached, from the analyzer's own inventory block (it 
 transcript of this project on this machine, so a long history takes a few seconds; with no folder
 named it finds this project's transcripts itself, from its cwd, spelled the way Claude Code names the
 folder on every OS). At a workspace root these numbers cover the root and its `<n>` children - the projects joined
-below it; anywhere else, this project alone. First the scope, its session lines dropped:
+below it; anywhere else, this project alone. First the scope, its session lines dropped (and the `excluded:` one naming
+this session):
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --scope | grep -v '^session: '
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --scope | grep -v -e '^session: ' -e '^excluded: '
 ```
 
 Its `scope: <n> projects` line gives the count (the children are `<n>` minus one). Each `left-out:` line - at

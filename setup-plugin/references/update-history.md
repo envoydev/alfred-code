@@ -1058,3 +1058,12 @@ joined below it - a subtotal and an inventory block per project, the advisory on
 each project the workspace leaves out. Each session's bundle is written in its own project's data root, so a child's
 bundles stay in the child; the root's `SUMMARY.md` lists them all. In a child or a standalone project nothing changes.
 Nothing to do by hand.
+
+## after 3.11.0 - the usage scope's loose ends
+
+The usage audit and status's usage table read a workspace a little more exactly. A run started in a sub-folder of a
+project with no git repository reads that project, as one started in a repository's sub-folder already did. The session
+you run the audit from is left out of the scope's counts and session list, as the rollup already left it out. A project
+in the workspace with no session yet still gets its inventory block, every name it installed listed unused. A project
+is named as ignored only by the workspace that holds it, and only where the mark stands. A child's older block ledgers
+are found under the docs folder its own settings name. Nothing to do by hand.

@@ -136,13 +136,64 @@ test('a root whose one child is left out still names it - ignored, gone, naming 
         [{ one: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy'] } }, 'one/legacy': { stamp: true, git: true } }, { rel: 'legacy', why: 'ignored' }],
         [{ one: { stamp: true, git: true, record: { role: 'root', children: ['old'] } } }, { rel: 'old', why: 'gone' }],
         [{ one: { stamp: true, git: true, record: { role: 'root', children: ['x'] } }, 'one/x': { stamp: true, git: true } }, { rel: 'x', why: 'names another parent' }],
-        [{ one: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy'] } }, 'one/legacy': {} }, { rel: 'legacy', why: 'ignored' }],
+        [{ one: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy'] } }, 'one/legacy': { git: true } }, { rel: 'legacy', why: 'ignored' }],
     ];
     for (const [spec, row] of cases)
     {
         const s = scope(tree(spec), 'one');
         assert.deepStrictEqual([rels(s), s.leftOut], [['.'], [row]], row.why);
     }
+});
+
+// 3.12 #3: an entry is named only by its holder, and only when ignoredBy answers `ignored` - a mark W3 voids is no mark.
+test('a listed entry another project holds, and one inside the lister\'s own repository, are never named', () =>
+{
+    const held = tree({
+        ws: { stamp: true, git: true, record: { role: 'root', children: ['api'], ignoredChildren: ['api/tools'] } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/api/tools': { stamp: true, git: true },
+    });
+    assert.deepStrictEqual([rels(scope(held, 'ws')), scope(held, 'ws').leftOut], [['.', 'api'], []]);
+    const own = tree({ one: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['legacy'] } }, 'one/legacy': {} });
+    assert.deepStrictEqual([rels(scope(own, 'one')), scope(own, 'one').leftOut], [['.'], []]);
+});
+
+test('a walked row whose holder\'s mark is void (its own repository) is counted, never ignored', () =>
+{
+    const t = tree({
+        ws: { stamp: true, git: true, record: { role: 'root', children: ['x/app'] } },
+        'ws/x': { stamp: true, git: true, record: { ignoredChildren: ['app'] } },
+        'ws/x/app': { stamp: true, record: { parent: '../..' } },
+    });
+    const s = scope(t, 'ws');
+    assert.deepStrictEqual([rels(s), s.leftOut], [['.', 'x/app'], []]);
+});
+
+// 3.12 #2 (ruling): with no git, the project is the nearest folder at or above the start holding the install record -
+// the hooks' record (layout.holdsRecord) - never the home folder, whose .claude is the account's; none, the start.
+test('a start in a sub-folder of a project in no repository: the project\'s root, and the note naming the start', () =>
+{
+    const t = tree({ solo: { stamp: true }, 'solo/src/deep': {} });
+    const s = scope(t, 'solo/src/deep');
+    assert.strictEqual(s.projects[0].root, t('solo'));
+    assert.ok(s.notes.includes('scope: started in src/deep - the sessions read are those started at the project root'), s.notes.join('\n'));
+    const engine = tree({ eng: {}, 'eng/src': {} });
+    fs.mkdirSync(path.join(engine('eng'), '.claude', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(engine('eng'), '.claude', 'hooks', 'docs.js'), '');
+    assert.strictEqual(scope(engine, 'eng/src').projects[0].root, engine('eng'));
+});
+
+test('a start in no repository with no record above it, or only the home folder\'s: the start alone, no note', () =>
+{
+    const t = tree({ plain: {}, 'plain/src': {} });
+    const s = scope(t, 'plain/src');
+    assert.deepStrictEqual([s.projects[0].root, s.notes], [t('plain/src'), []]);
+    const scratch = path.join(t.home, 'scratch', 'src');
+    fs.mkdirSync(scratch, { recursive: true });
+    fs.mkdirSync(path.join(t.home, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(t.home, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+    const h = usageScope(scratch, { env: t.env });
+    assert.deepStrictEqual([h.projects[0].root, h.notes], [fs.realpathSync.native(scratch), []]);
 });
 
 test('the switch off names nothing left out, and reads the project alone', () =>
