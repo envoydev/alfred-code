@@ -1715,7 +1715,8 @@ const engineOn = ({ configDir, claudeDir }) => (spec, scope) =>
 {
     const file = scope === 'user' ? path.join(configDir, 'settings.json')
         : path.join(claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
-    const on = (readJson(file).enabledPlugins || {})[spec];
+    // A file holding the JSON `null` parses, and readJson hands it back: it names no plugin.
+    const on = ((readJson(file) || {}).enabledPlugins || {})[spec];
     return typeof on === 'boolean' ? on : undefined;
 };
 
@@ -2191,7 +2192,7 @@ function ledgerOf(ctx)
     const envNow = (name) =>
     {
         if (name === variables.FILE) return variables.read(variables.fileOf(ctx.projectRoot, { env: {}, dataRoot: ctx.dataInfo.root })).values;
-        const env = readJson(path.join(ctx.claudeDir, name)).env;
+        const env = (readJson(path.join(ctx.claudeDir, name)) || {}).env;
         return env && typeof env === 'object' ? env : {};
     };
     const still = (name, keys) => (name !== variables.FILE && unreadable(name) ? { ...keys }
@@ -2463,7 +2464,7 @@ function runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile
     for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(path.join(__dirname, '..', '..')), compare: compareVersions, env })) log(`  ${line}`);
     const accountHash = ((ledger.account || {})['settings.json'] || {})[workspace.INSTRUCTION_KEY];
     if (accountHash) dropAccountKey({ projectRoot, configDir, accountFile, hash: accountHash, log, note });
-    const stillOff = ['settings.json', 'settings.local.json'].filter((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
+    const stillOff = ['settings.json', 'settings.local.json'].filter((n) => (readJson(path.join(claudeDir, n)) || {}).autoMemoryEnabled === false);
     // Docs memory (P3): the folder is the user's lessons, kept whole; with the row gone Claude Code reads its default place.
     const memoryAt = path.resolve(projectRoot, docsPath, 'memory');
     const memoryKept = layout().memoryFiles(memoryAt).length ? `, the docs memory ${path.relative(projectRoot, memoryAt).split(path.sep).join('/')}/ (Claude Code reads its default place again)` : '';

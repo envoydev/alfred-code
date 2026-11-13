@@ -154,6 +154,24 @@ test('install-scope: a settings.json that does not parse never aborts update --i
     assert.match(outs[1], /action: update/, 'a malformed settings.json must not abort the run');
 });
 
+// W1's matrix (M7, 2026-11-13): a settings file holding the JSON `null` parses, and readJson hands null back - three
+// readers took a property of it and the run died with 'Cannot read properties of null'.
+test('install-scope: a settings.json or settings.local.json holding null never aborts an update', POSIX_ONLY, () =>
+{
+    for (const [name, env] of [['settings.json', {}], ['settings.local.json', {}],
+        ['settings.json', { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' }]])
+    {
+        const { outs, errs, codes } = seedRun(['install', 'update'], SELECTION, {
+            args: [['--scope', 'project'], ['--scope', 'project', '--installed-only']], failOk: true, env,
+            plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.10.0', scope: 'project', enabled: true }]),
+            each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(repo, '.claude', name), 'null\n'); return null; },
+        });
+        assert.doesNotMatch(String(errs[1]), /Cannot read properties of null/, name);
+        assert.deepStrictEqual(codes, [0, 0], `${name} ${JSON.stringify(env)}: ${String(errs[1]).slice(0, 300)}`);
+        assert.match(outs[1], /action: update/, name);
+    }
+});
+
 // I2 (R47, fix round 1): a hand-added permissions.allow/ask survives update --installed-only
 // untouched. NOT an M7 regression proof (verified empirically in fix round 2 by reverting the
 // scope-aware read-back line): writeSettings merges permissions.deny into its OWN fresh read of the
