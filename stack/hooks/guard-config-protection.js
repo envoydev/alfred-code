@@ -298,6 +298,9 @@ const CORE_FALSE_RE = new RegExp(`(?<![\\w-])${CORE_PLUGIN}(?:@[\\w.-]+)?["'\\]\
 // What a settings text switches off - { off: the protective guards its csv names, all: disableAllHooks is true, twins: the
 // guarded hooks it wires a copied twin of, core: enabledPlugins holds the core at false, coreOn: the core keys it holds at
 // true } - read as JSON (a BOM, comments and trailing commas forgiven), or null when it is no object.
+// Mode commands v2: auto-run is the user's typed word, so a write that leaves the variable at 1 is never the model's.
+const [AUTO_RUN_KEY, AUTO_RUN_DENY] = ['ALFRED_CODE_AUTO_RUN', 'auto-run is turned on by typing /alfred-code:mode:auto-run on, never by a write'];
+const AUTO_RUN_RE = new RegExp(`${AUTO_RUN_KEY}["'\\\\\\s]*[:=]\\s*["']?1(?![\\w.])`);
 function offState(text) {
   const src = String(text == null ? '' : text).replace(/^\uFEFF/, '');
   let data = null;
@@ -308,7 +311,8 @@ function offState(text) {
   const plugins = data.enabledPlugins && typeof data.enabledPlugins === 'object' && !Array.isArray(data.enabledPlugins) ? data.enabledPlugins : {};
   const coreKeys = Object.keys(plugins).filter(isCoreId);
   return { off: new Set(csv.split(',').map(offEntry).filter((n) => PROTECTIVE_GUARDS.includes(n))), all: data.disableAllHooks === true, twins: wiredTwins(data),
-    core: coreKeys.some((k) => plugins[k] === false), coreOn: new Set(coreKeys.filter((k) => plugins[k] === true)) };
+    core: coreKeys.some((k) => plugins[k] === false), coreOn: new Set(coreKeys.filter((k) => plugins[k] === true)),
+    autoRun: env[AUTO_RUN_KEY] != null && String(env[AUTO_RUN_KEY]).trim() === '1' };
 }
 // A text that is no settings object (a fragment, a command, a script) by what it names: a guard's name as a word,
 // `disableAllHooks` unless set false, a guarded hook's path under `.claude/hooks/`, and the core's key named false. What
@@ -316,9 +320,10 @@ function offState(text) {
 function namedState(text) {
   const s = String(text || '');
   return { off: new Set(PROTECTIVE_GUARDS.filter((n) => new RegExp(`(?<![\\w-])${n}(?:\\.js)?(?![\\w-])`, 'i').test(s))),
-    all: /disableAllHooks/.test(s) && !/disableAllHooks["'\\\s]*[:=]\s*["']?false\b/i.test(s), twins: twinNames(s), core: CORE_FALSE_RE.test(s), coreOn: undefined };
+    all: /disableAllHooks/.test(s) && !/disableAllHooks["'\\\s]*[:=]\s*["']?false\b/i.test(s),
+    twins: twinNames(s), core: CORE_FALSE_RE.test(s), coreOn: undefined, autoRun: AUTO_RUN_RE.test(s) };
 }
-const NOTHING_OFF = { off: new Set(), all: false, twins: new Set(), core: false, coreOn: new Set() };
+const NOTHING_OFF = { off: new Set(), all: false, twins: new Set(), core: false, coreOn: new Set(), autoRun: false };
 const stateOf = (text) => (text == null ? NOTHING_OFF : offState(text) || namedState(text));
 // The state of a file's WHOLE new text (a Write, an applied Edit, a copy's source): a text that is no settings object -
 // empty, or JSON Claude Code cannot load - enables no plugin, so a core key it held is dropped.
@@ -326,12 +331,14 @@ const wholeState = (text) => (text == null ? NOTHING_OFF : offState(text) || { .
 const merged = (states) => {
   const known = states.filter((s) => s.coreOn);
   return { off: new Set(states.flatMap((s) => [...s.off])), all: states.some((s) => s.all), twins: new Set(states.flatMap((s) => [...s.twins])),
-    core: states.some((s) => s.core), coreOn: known.length ? new Set(known.flatMap((s) => [...s.coreOn])) : undefined };
+    core: states.some((s) => s.core), coreOn: known.length ? new Set(known.flatMap((s) => [...s.coreOn])) : undefined,
+    autoRun: states.some((s) => s.autoRun) };
 };
 const switchedOff = (file, before, after) => {
   const added = [...after.off].filter((n) => !before.off.has(n));
   const twins = [...after.twins].filter((n) => !before.twins.has(n));
   const core = (after.core && !before.core) || Boolean(before.coreOn && before.coreOn.size && after.coreOn && !after.coreOn.size);
+  if (after.autoRun && !before.autoRun) return { ...file, added, twins, all: false, core: false, autoRun: true };
   return added.length || twins.length || (after.all && !before.all) || core ? { ...file, added, twins, all: after.all && !before.all, core } : null;
 };
 // The plugin route is live when this run is the plugin's copy (Claude Code sets CLAUDE_PLUGIN_ROOT for a plugin hook) and
@@ -890,6 +897,8 @@ function guardOffDenial(off) {
     switched = FS_WRITE_TOOL.test(String(payload.tool_name || '')) ? guardOffFs()
       : shell && shell.isShellTool(payload.tool_name) ? guardOffShell() : guardOffFile();
   } catch { switched = null; /* a judge that throws passes the call: the guard fails open */ }
+  if (switched && switched.autoRun) { global.BLOCK_DETAIL = { branch: 'auto-run-write', file: switched.shown };   // no ask, no receipt
+    process.stderr.write(`Blocked: this write leaves ${AUTO_RUN_KEY} at 1 in ${switched.shown} - ${AUTO_RUN_DENY}.\n`); process.exit(2); }
   if (switched) guardOffDenial(switched);
 }
 

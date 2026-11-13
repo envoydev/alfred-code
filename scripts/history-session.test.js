@@ -484,3 +484,47 @@ test('T8 a glob character in the path is escaped', () => {
     assert.strictEqual(r.status, 0, 'git check-ignore reads it as ignored');
   } finally { rmDir(root); rmDir(home); }
 });
+
+// --- mode commands v2 stage 3, Task 7: the session-start line - the first prompt's ON line, said when the session opens
+const standingProject = ({ history: n = 0 } = {}) => {
+  const root = project();
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+  for (let i = 0; i < n; i++) run(root, { hook_event_name: 'Stop', session_id: `h${i}`, transcript_path: transcript(root, `h${i}`, [[`Ship ${i}?`, 'Yes']]) });
+  return root;
+};
+const startOut = (root, extra = {}) => run(root, { hook_event_name: 'SessionStart', session_id: 'st1', cwd: root, transcript_path: path.join(root, 'absent.jsonl'), ...extra }).stdout;
+const promptOut = (root, prompt) => JSON.parse(run(root, { hook_event_name: 'UserPromptSubmit', session_id: 'st1', cwd: root, prompt, transcript_path: path.join(root, 'absent.jsonl') }, {}, path.join(HOOKS, 'guard-answer.js')).stdout || '{}');
+for (const source of ['startup', 'resume', 'clear']) test(`v2 SessionStart ${source}: one JSON object with the modes line`, () => {
+  const root = standingProject();
+  try {
+    const out = startOut(root, { source });
+    assert.strictEqual(out.trim().split('\n').length, 1, out);
+    assert.match(JSON.parse(out).systemMessage, /^Modes ON: auto-run/);
+  } finally { rmDir(root); }
+});
+test('v2 SessionStart compact, a seat, and no mode on: no systemMessage', () => {
+  const root = standingProject();
+  const plain = project();
+  try {
+    assert.ok(!JSON.parse(startOut(root, { source: 'compact' }) || '{}').systemMessage, 'compact');
+    assert.ok(!JSON.parse(startOut(root, { source: 'startup', agent_id: 'a1' }) || '{}').systemMessage, 'a seat');
+    assert.strictEqual(startOut(plain, { source: 'startup' }), '', 'no mode on, no history: no output');
+  } finally { rmDir(root); rmDir(plain); }
+});
+test('v2 the history block and the modes line leave in one object', () => {
+  const root = standingProject({ history: 2 });
+  try {
+    const o = JSON.parse(startOut(root, { source: 'startup' }));
+    assert.ok(o.hookSpecificOutput.additionalContext.length > 0);
+    assert.match(o.systemMessage, /^Modes ON: /);
+  } finally { rmDir(root); }
+});
+test('v2 the same words as the first prompt\'s ON line', () => {
+  const root = standingProject();
+  try {
+    const at = JSON.parse(startOut(root, { source: 'startup' })).systemMessage;
+    assert.ok(at);
+    assert.strictEqual(at, promptOut(root, 'hello').systemMessage);
+  } finally { rmDir(root); }
+});

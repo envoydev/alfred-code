@@ -446,8 +446,8 @@ function scoringNow(flags, root, sid) {
 }
 // ' (at 400k)' when a settings file names this session's model's compaction window (the engine's own reader), else ''.
 function compactAt() {
-  try { const fresh = require('./fresh-session.js'); fresh.use(payload); const c = fresh.configuredCompactWindow();
-    return c ? ` (at ${Math.round(c.n / 1000)}k)` : ''; } catch { return ''; }
+  try { const fresh = require('./fresh-session.js'); fresh.use(payload); const n = fresh.autoCompactWindow();
+    return n ? ` (at ${Math.round(n / 1000)}k)` : ''; } catch { return ''; }
 }
 // The modes for this payload, once: `prompt` is the typed text (null on the compaction route - no typed line, no stack,
 // no ON line). Returns the context lines, the scoring command's `[mode]` line and the ON line's text ('' when no mode is on).

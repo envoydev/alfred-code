@@ -66,48 +66,49 @@ function readStdinBounded(timeoutMs) {
 }
 
 // The history half: fail-open and silent, whatever happens here the turn check still runs. It returns the entry upsert
-// wrote, for the status file's branch, or null.
+// wrote, for the status file's branch, or null - and at a session start the block it renders, for main to send.
+const NONE = { entry: null, block: '' };
 function history(payload) {
-  if (historyOff) return null;
+  if (historyOff) return NONE;
   let H;
-  try { H = require(path.join(__dirname, 'history.js')); } catch { return null; }
+  try { H = require(path.join(__dirname, 'history.js')); } catch { return NONE; }
   const count = H.historyCount(envOf(process.env, 'HISTORY'));
-  if (!count) return null;
+  if (!count) return NONE;
   // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-  if (cursorOff) return null;
+  if (cursorOff) return NONE;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const event = payload.hook_event_name || '';
   try {
     if (event === 'Stop') {
-      return H.upsert(root, payload);
+      return { entry: H.upsert(root, payload), block: '' };
     } else if (event === 'SessionStart' && !payload.agent_id) {
       // A seat's own compaction runs SessionStart inside the seat with the MAIN session's id (loading audit 2026-10-21
       // G3): it would rewrite the main session's entry and inject the branch history into a seat - neither happens.
       const entry = H.upsert(root, payload);
       H.prune(H.historyDir(root), 200, 180);
       const block = entry ? H.renderStartBlock(H.lastForBranch(root, entry.branch, count, entry.session), H.historyCap(count), root) : '';
-      if (block) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: block } }));
-      return entry;
+      return { entry, block };
     }
   } catch { /* history never costs the turn check */ }
-  return null;
+  return NONE;
 }
 
 // The session status file (session-status.js, 2026-10-29): written under this hook's own gates, after its output -
-// ALFRED_CODE_HISTORY=0 is no gate, the file is written with no handoff prompt. No stdout.
+// ALFRED_CODE_HISTORY=0 is no gate, the file is written with no handoff prompt. Returns the session start's modes line.
 function status(payload, entry) {
-  if (historyOff) return;
+  if (historyOff) return '';
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-  if (cursorOff) return;
+  if (cursorOff) return '';
   try {
     const S = require(path.join(__dirname, 'session-status.js'));
     const event = payload.hook_event_name || '';
-    if (event === 'SessionStart' && !payload.agent_id) S.onSessionStart(payload, entry);
-    else if (event === 'Stop') S.onStop(payload, entry);
+    if (event === 'SessionStart' && !payload.agent_id) return S.onSessionStart(payload, entry) || '';
+    if (event === 'Stop') S.onStop(payload, entry);
   } catch { /* the status file never costs the turn */ }
+  return '';
 }
 
 // The turn check's step, when its file ships beside this one; its own gates decide whether it runs at all.
@@ -121,8 +122,10 @@ async function main() {
   let payload;
   try { payload = JSON.parse(await readStdinBounded(STDIN_TIMEOUT_MS)); } catch { return 0; }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 0;
-  const entry = history(payload);
-  status(payload, entry);
+  const { entry, block } = history(payload);
+  const line = status(payload, entry);
+  if (block || line) process.stdout.write(JSON.stringify({ ...(line ? { systemMessage: line } : {}),   // ONE object, both halves
+    ...(block ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: block } } : {}) }));
   if ((payload.hook_event_name || '') !== 'Stop') return 0;
   const r = turnCheck(payload);
   if (r.code === 2 && r.stderr) { process.stderr.write(r.stderr); return 2; }

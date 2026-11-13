@@ -8,7 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const FIELDS = Object.freeze(['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'handoffPrompt']);
+const FIELDS = Object.freeze(['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'autoCompact',
+  'handoffPrompt']);
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const PRUNE_MS = 7 * 86400000;
 const SLOW_MS = 200;
@@ -105,6 +106,9 @@ function statusFile(payload, deps) {
   } catch { return null; }
 }
 
+const compactOn = (p, d) => (d.prelude && d.prelude.compactCause ? Boolean(d.prelude.compactCause(p, d.env)) : null);
+// The prompt writes an auto-compact-only change at once; a window's own change waits for the Stop.
+const compactSame = (s, p, d) => { try { return !s.autoCompact || s.autoCompact.on === compactOn(p, d); } catch { return true; } };
 function scoringField(state) {
   return state && typeof state === 'object' && state.usable ? { on: Boolean(state.on), level: state.level, rounds: state.rounds } : null;
 }
@@ -131,7 +135,8 @@ function buildStatus(payload, fields, deps) {
   const f = fields && typeof fields === 'object' ? fields : {};
   const id = String(p.session_id || '');
   const root = rootOf(p, d.env);
-  const out = { schema: 1, session: id, fullContext: 'off', updatedAt: new Date().toISOString(), model: null, window: null, resumeAt: null, autoRun: false, scorer: null, handoffPrompt: null };
+  const out = { schema: 1, session: id, fullContext: 'off', updatedAt: new Date().toISOString(), model: null, window: null, resumeAt: null,
+    autoRun: false, scorer: null, autoCompact: null, handoffPrompt: null };
   try {
     if ('autoRun' in f) out.autoRun = Boolean(f.autoRun);
     else if (d.prelude && d.prelude.autoRunFor) out.autoRun = Boolean(d.prelude.autoRunFor(p, d.env, null));   // R118
@@ -157,6 +162,8 @@ function buildStatus(payload, fields, deps) {
     if ('scorer' in f) out.scorer = f.scorer || null;
     else if (d.prelude && d.prelude.scoringState && root) out.scorer = scoringField(d.prelude.scoringState(root, id, d.env));
   } catch { out.scorer = null; }
+  try { const on = compactOn(p, d); if (d.fresh && on !== null) out.autoCompact = { on, at: on ? posInt(d.fresh.autoCompactWindow()) : null }; }
+  catch { out.autoCompact = null; }   // null: the engine cannot be loaded
   try {
     if ('handoffPrompt' in f) out.handoffPrompt = typeof f.handoffPrompt === 'string' && f.handoffPrompt ? f.handoffPrompt.slice(0, PROMPT_MAX) : null;
     else {
@@ -252,7 +259,8 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     const f = { ...(fields && typeof fields === 'object' ? fields : {}) };
     if (when === 'modes') {
       // ...unless the file says auto-run without compact - an older core's file, corrected now, not at the next Stop (R116)
-      if (current && same(current.autoRun, f.autoRun) && same(current.scorer, f.scorer) && (current.autoRun !== true || current.fullContext === 'compact')) return 'unchanged';
+      if (current && compactSame(current, p, d) && same(current.autoRun, f.autoRun) && same(current.scorer, f.scorer)
+        && (current.autoRun !== true || current.fullContext === 'compact')) return 'unchanged';
       if (gate && !gate()) return 'skipped';
       if (current) f.handoffPrompt = current.handoffPrompt;
     } else if (when === 'changed' && current) {
@@ -503,21 +511,33 @@ function removeStatus(root, deps) {
   return out;
 }
 
-// The callers' one line each.
+// The modes a status names, in the words and order of the first prompt's ON line (guard-answer.js); '' when none is on.
+function modesLine(s) {
+  const [sc, ac] = s && typeof s === 'object' ? [scoringOf(s), s.autoCompact || {}] : [null, {}];
+  const on = [s && s.autoRun === true && 'auto-run', sc && sc.on && `scoring (level ${sc.level})`,
+    ac.on && `auto-compact${posInt(ac.at) ? ` (at ${Math.round(ac.at / 1000)}k)` : ''}`].filter(Boolean);
+  return on.length ? `Modes ON: ${on.join(', ')}` : '';
+}
+
+// The callers' one line each. The session start returns the modes line (startup, resume, clear - a compaction says none).
 function onSessionStart(payload, entry) {
+  let line = '';
   try {
     const p = objectOf(payload);
-    if (!p || p.agent_id || !ID_RE.test(String(p.session_id || ''))) return;
+    if (!p || p.agent_id || !ID_RE.test(String(p.session_id || ''))) return '';
     const d = depsOf();
     writeStatus(p, { entry }, { when: 'always', deps: d });
+    if (['startup', 'resume', 'clear'].includes(p.source)) line = modesLine(readStatusFile(statusFile(p, d) || '', String(p.session_id))
+      || buildStatus(p, { entry, handoffPrompt: null }, d));
     const root = rootOf(p, d.env);
     const base = baseOf(p, d.env);
-    if (!root || !base) return;
+    if (!root || !base) return line;
     pruneStatus(root, base, String(p.session_id), Date.now(), d);
     for (const result of ensureExcluded(statusBases(root, base, d), d)) {
       if (result === 'failed' || result === 'late') probeRow(p, { kind: 'status-exclude', result }, d);
     }
   } catch { /* fail-open */ }
+  return line;
 }
 function onStop(payload, entry) {
   try { return writeStatus(payload, { entry }, { when: 'changed' }); } catch { return 'skipped'; }
@@ -532,5 +552,5 @@ function onPrompt(payload, modes, gate) {
 module.exports = {
   FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
   baseOf, rootOf, ownBase, statusFile, scoringField, handoffPrompt, buildStatus, writeStatus, statusBases, pruneStatus,
-  ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt,
+  ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, modesLine,
 };

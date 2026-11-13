@@ -225,6 +225,51 @@ test('SYS-01: GUARD-OFF-ALLOW is a security receipt - this session, under 8h, af
   assert.equal(configWrite(p, f, content, { transcript: false }).status, 2, 'older than 8h');
 });
 
+// ---- mode commands v2 stage 3, Task 7: no write turns auto-run on ---------------------------------------------------
+const AUTO_DENY = /auto-run is turned on by typing \/alfred-code:mode:auto-run on, never by a write/;
+const autoFiles = (p) => [path.join(p.root, '.claude', 'settings.local.json'), path.join(p.root, '.claude', 'settings.json'), path.join(p.home, '.claude', 'settings.json')];
+test('v2 auto-run: a Write adding the variable at 1 to any watched settings file is denied outright', () => {
+  const p = project('v2-auto-write').write([typed('tidy the settings')]);
+  for (const file of autoFiles(p))
+  {
+    const r = configWrite(p, file, settings({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    assert.equal(r.status, 2, `${file}\n${r.stderr}`);
+    assert.match(r.stderr, AUTO_DENY);
+    assert.doesNotMatch(r.stderr, /GUARD-OFF-ALLOW|AskUserQuestion/, 'no ask, no receipt');
+  }
+});
+test('v2 auto-run: an Edit flipping 0 to 1 is denied; a live receipt for the guard-off ask does not open it', () => {
+  const p = project('v2-auto-edit');
+  const local = p.file('.claude/settings.local.json', '{"env":{"ALFRED_CODE_AUTO_RUN":"0"}}');
+  const options = [['Keep the guards on (Recommended)', 'leave it'], ['Allow this guard switch-off', 'the user wants it off']];
+  p.write([typed('switch it'), denial('GUARD-OFF-ALLOW'), asked('Switch the rm guard off?', options, 'Allow this guard switch-off')]).receipt('GUARD-OFF-ALLOW', `session: ${S}\n*\n`);
+  const r = configEdit(p, local, '"0"', '"1"');
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, AUTO_DENY);
+});
+test('v2 auto-run: a shell write that leaves it at 1 is denied', () => {
+  const p = project('v2-auto-shell').write([typed('tidy the settings')]);
+  const local = path.join(p.root, '.claude', 'settings.local.json');
+  for (const command of [`printf '{"env":{"ALFRED_CODE_AUTO_RUN":"1"}}' > ${local}`, `node -e "require('fs').writeFileSync('${local}', JSON.stringify({env:{ALFRED_CODE_AUTO_RUN:'1'}}))"`])
+  {
+    const r = configShell(p, command);
+    assert.equal(r.status, 2, `${command}\n${r.stderr}`);
+    assert.match(r.stderr, AUTO_DENY);
+  }
+});
+test('v2 auto-run: removing it, setting 0, and a write that keeps a 1 already there all pass this check', () => {
+  const p = project('v2-auto-pass').write([typed('tidy the settings')]);
+  const local = p.file('.claude/settings.local.json', '{"env":{"ALFRED_CODE_AUTO_RUN":"1","X":"a"}}');
+  for (const content of ['{"env":{"X":"a"}}', '{"env":{"ALFRED_CODE_AUTO_RUN":"0"}}', '{"env":{"ALFRED_CODE_AUTO_RUN":"1","X":"b"}}'])
+    assert.doesNotMatch(configWrite(p, local, content).stderr, AUTO_DENY, content);
+});
+test('v2 auto-run: the same key in a file the guard does not watch is not its business', () => {
+  const p = project('v2-auto-other').write([typed('tidy the settings')]);
+  const r = configWrite(p, path.join(p.root, 'notes.json'), '{"env":{"ALFRED_CODE_AUTO_RUN":"1"}}');
+  assert.doesNotMatch(r.stderr, AUTO_DENY);
+  assert.equal(r.status, 0);
+});
+
 test('SYS-01: malformed input fails open, and both dispatchers carry the ask', () => {
   const p = project('sys01-edge').write([typed('go')]);
   for (const bad of ['not json', '"a string"', '{}', JSON.stringify({ tool_name: 'Write', tool_input: {} }), JSON.stringify({ tool_name: 'Write', tool_input: { file_path: 7, content: 1 } })])
