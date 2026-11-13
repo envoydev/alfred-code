@@ -1050,3 +1050,11 @@ prints no line; the next run that writes the file does.
 A workspace root can mark a project below it ignored (`/alfred-code:configure`'s workspace role, or update's ask about
 projects installed below): nothing of the workspace reaches it - its values and the rules it read are kept as its own
 first, and its next update releases it. Nothing to do by hand.
+
+## after 3.10.0 - the usage audit and status cover a whole workspace
+
+At a workspace root the usage audit (`capture-usage-report`) and status's usage table cover the root and every project
+joined below it - a subtotal and an inventory block per project, the advisory one row per project, and a line naming
+each project the workspace leaves out. Each session's bundle is written in its own project's data root, so a child's
+bundles stay in the child; the root's `SUMMARY.md` lists them all. In a child or a standalone project nothing changes.
+Nothing to do by hand.

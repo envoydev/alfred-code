@@ -180,8 +180,10 @@ const wholeRow = (id, source, to, inData = true, name = undefined) => ({
 });
 const realProject = (ctx) => realOrSelf(ctx.fs, ctx.project);
 // context.json: the catalog variables the project's own files set and where each came from (layout.variablesOf, files
-// only), the instrumentation switch they resolve, and the plugins installed for this session - user scope or naming
-// this project - from the session's own account. No other key of any settings file is read.
+// only), plus each key those leave unanswered that a workspace member's .variables answers (W2, `from` the member's
+// rel - the loader's own walk, so an ignored key, a never-member key and the switch off add nothing), the
+// instrumentation switch they resolve, and the plugins installed for this session - user scope or naming this
+// project - from the session's own account. No other key of any settings file is read.
 function contextBody(ctx)
 {
     const v = variables(ctx);
@@ -207,10 +209,17 @@ function contextBody(ctx)
     const instrument = v.values.ALFRED_CODE_INSTRUMENT ?? null;
     return JSON.stringify({ variables: vars, instrument, plugins }, null, 2) + '\n';
 }
+const OWN_LAYERS = new Set(['settings.local.json', 'own', 'env']);
 const variables = (ctx) =>
 {
-    if (!ctx.cache.variables) ctx.cache.variables = layout.variablesOf(ctx.project, { env: ctx.stripped, layers: 'files', dataRoot: ctx.dataRootRel });
-    return ctx.cache.variables;
+    if (ctx.cache.variables) return ctx.cache.variables;
+    const read = (layers) => layout.variablesOf(ctx.project, { env: ctx.stripped, layers, dataRoot: ctx.dataRootRel });
+    const v = read('files');
+    const all = read('all');
+    for (const [key, value] of Object.entries(all.values))
+        if (v.values[key] === undefined && !OWN_LAYERS.has(all.from[key])) { v.values[key] = value; v.from[key] = all.from[key]; }
+    ctx.cache.variables = v;
+    return v;
 };
 
 const APPROVAL_MAX_BYTES = 65536;

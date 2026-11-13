@@ -764,6 +764,15 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
     assert.doesNotMatch(status, /claude mcp list/, 'status lists no MCP server since 2.10.1');
     assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
+    // W2: at a workspace root the usage numbers span the root and its children, and what was left out is named.
+    assert.match(f, /At a workspace root these numbers cover the root and its `<n>` children/);
+    assert.match(status, /scripts\/analyze-usage\.js" --scope \| grep -v '\^session: '/);
+    assert.match(f, /Each `left-out:` line - at `scope: 1 projects` too - becomes one `left out: <rel> \(<why>\)` line under the tables/);
+    // review #8: the scope's own notes (a start in a sub-folder, a garbage record) and the other-start count reach the reader
+    assert.match(f, /Each `note:` line, and an `other-start-folder:` line above 0, is shown as written under the tables/);
+    assert.match(f, /one usage table per `INVENTORY vs USE` block, headed by the block's `<rel>`; the always-on line and the closing caveat once/);
+    assert.match(f, /the advisory's rows go under the tables as printed, each already carrying its `<rel>: `/);
+    assert.match(flat(cmdBody('validate')), /At a workspace root the advisory covers the root and each child, each row carrying its `<rel>: `/);
     assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
     for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
         assert.match(status, new RegExp(`^\\| ${row} \\|`, 'm'), `the general table has its ${row} row`);

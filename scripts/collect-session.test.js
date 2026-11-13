@@ -1122,3 +1122,73 @@ test('a withhold bundle\'s session-inspector status copy has handoffPrompt null'
     run(fx, ['--out', consent]);
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(consent, 'context', 'session-inspector-status.json'), 'utf8')).handoffPrompt, 'Resume: the plan text');
 });
+
+// --- W2 Task 5: the collector reads the project of the transcript's cwd and the keys a member answers ---
+
+// The fixture's project joined below its parent folder: both stamped, the parent's record listing it.
+function joinedSession(opts = {}, childRecord = { parent: '..' })
+{
+    const fx = makeSession({ git: true, ...opts });
+    for (const dir of [fx.root, fx.project]) fx.write(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+    putWorkspace(fx.root, { role: 'root', children: ['project'] });
+    putWorkspace(fx.project, childRecord);
+    return fx;
+}
+const contextOf = (fx) => JSON.parse(fs.readFileSync(path.join(fx.out, 'context.json'), 'utf8'));
+
+test('the default project is the project the transcript\'s cwd belongs to', (t) =>
+{
+    const fx = makeSession({ git: true }); t.after(fx.cleanup);
+    fs.mkdirSync(path.join(fx.project, 'src'), { recursive: true });
+    const { transcriptRows } = require('./collect-fixture.js');
+    fs.writeFileSync(fx.transcript, transcriptRows({ sid: fx.sid, project: path.join(fx.project, 'src'),
+        plan: path.join(fx.docsRoot, 'work', 'plans', 'p.md'), firstMs: fx.firstMs, lastMs: fx.lastMs }).map(line).join(''));
+    assert.ok(samePath(run(fx).project, fx.project));
+});
+
+test('context.json for a joined child lists a key only a member holds, with the member\'s rel', (t) =>
+{
+    const fx = joinedSession(); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\n');
+    const rc = run(fx);
+    const c = contextOf(fx);
+    assert.deepStrictEqual(c.variables.ALFRED_CODE_INSTRUMENT, { value: '1', from: '..' });
+    assert.strictEqual(c.instrument, '1');
+    assert.strictEqual(row(rc, 'tools-usage').why, 'not written');
+});
+
+test('context.json for a joined child: a key the child\'s own files hold is as before', (t) =>
+{
+    const fx = joinedSession({ instrument: '0' }); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\n');
+    const rc = run(fx);
+    assert.deepStrictEqual(contextOf(fx).variables.ALFRED_CODE_INSTRUMENT, { value: '0', from: 'own' });
+    assert.strictEqual(row(rc, 'tools-usage').why, 'instrumentation off');
+});
+
+test('a standalone project\'s context.json is the files read alone (a guard)', (t) =>
+{
+    const fx = makeSession({ git: true }); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\n');
+    run(fx);
+    const c = contextOf(fx);
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in c.variables), JSON.stringify(c.variables));
+    assert.strictEqual(c.instrument, null);
+});
+
+test('nothing a child must not read reaches its bundle: an ignored env key, a never-member key, the parent\'s secrets, the switch off', (t) =>
+{
+    const fx = joinedSession({}, { parent: '..', ignore: { env: ['ALFRED_CODE_INSTRUMENT'] } }); t.after(fx.cleanup);
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\nALFRED_CODE_DOCS_VERSIONING=1\nALFRED_CODE_TURN_CHECK=1\n');
+    fx.write(path.join(fx.root, '.alfred', '.secrets'), 'W2_TOKEN=W2-SECRET-MARK\n');
+    run(fx);
+    const c = contextOf(fx);
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in c.variables) && !('ALFRED_CODE_DOCS_VERSIONING' in c.variables), JSON.stringify(c.variables));
+    assert.deepStrictEqual(c.variables.ALFRED_CODE_TURN_CHECK, { value: '1', from: '..' }, 'a key the child may read still is');
+    assert.ok(!grepBundle(fx.out, 'W2-SECRET-MARK'));
+    const off = joinedSession({}); t.after(off.cleanup);
+    off.write(path.join(off.root, '.alfred', '.variables'), 'ALFRED_CODE_TURN_CHECK=1\n');
+    off.write(path.join(off.dataRoot, '.variables'), 'ALFRED_CODE_WORKSPACE=0\n');
+    run(off);
+    assert.ok(Object.values(contextOf(off).variables).every((v) => ['own', 'settings.local.json', 'env'].includes(v.from)), JSON.stringify(contextOf(off).variables));
+});

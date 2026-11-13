@@ -292,7 +292,17 @@ Windows - Claude Code's Bash tool is Git Bash). Output is `KEY=set (N chars)`, `
 used, and which they never reached, from the analyzer's own inventory block (it reads every
 transcript of this project on this machine, so a long history takes a few seconds; with no folder
 named it finds this project's transcripts itself, from its cwd, spelled the way Claude Code names the
-folder on every OS):
+folder on every OS). At a workspace root these numbers cover the root and its `<n>` children - the projects joined
+below it; anywhere else, this project alone. First the scope, its session lines dropped:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --scope | grep -v '^session: '
+```
+
+Its `scope: <n> projects` line gives the count (the children are `<n>` minus one). Each `left-out:` line - at
+`scope: 1 projects` too - becomes one `left out: <rel> (<why>)` line under the tables. Each `note:` line, and an
+`other-start-folder:` line above 0, is shown as written under the tables - the rollup's own copies are cut below. Then
+the usage:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --inventory .claude | sed -n '/^INVENTORY vs USE/,$p'
@@ -307,7 +317,8 @@ machine` and skip the table. Otherwise render one row per layer from the block's
 | agents | 2 of 14 installed | 12: ... |
 
 `used` is the block's `used X of Y installed`; `never used` is its count plus the names it lists,
-middle-truncated past ten. Its `always-on` names (rules in every prompt) are neither - add them as
+middle-truncated past ten. More than one block printed (a root): one usage table per `INVENTORY vs USE` block, headed by
+the block's `<rel>`; the always-on line and the closing caveat once, after the last table. Its `always-on` names (rules in every prompt) are neither - add them as
 one line under the table. Copy the block's closing caveat as the last line: a hooks-only plugin can
 never score used, and a catalog-sourced row proves the stack ships the artifact, not that this
 project installed it.
@@ -318,8 +329,8 @@ Then the Stop build check advisory, from the same transcripts and this project's
 node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --turn-check-advice .
 ```
 
-It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes under the usage table
-as-is; nothing printed means no row. The switch is the user's - never set it from here.
+It prints ONE `turn-check: advise - ...` line or nothing - at a root, one per project at most, and the advisory's rows go
+under the tables as printed, each already carrying its `<rel>: `. Nothing printed means no row. The switch is the user's - never set it from here.
 
 **Generated docs & data** - the capture output under the docs root from the general table, plus
 the seat handoff notes still on the bus (`node .claude/hooks/handoff.js left` - its first line is the count; exit 1 prints no row):
