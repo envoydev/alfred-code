@@ -300,3 +300,72 @@ $0): `yes`, the block in the request after the Read and not before.
 entries: no block, no error, the start's path rule sent once; its compact start removes the record and leaves the
 markers, which nothing reads. `rm -f .alfred/state/sessions/rules-*-m-????????????-[1-5]
 .alfred/state/sessions/.alfred-sweep-rules-` in the project then leaves no marker and removes nothing else.
+
+## Stage 6 - R6
+
+What Claude Code sends after a PreToolUse hook answers, the read stage 6's member holds stand on. Claude Code 2.1.323,
+macOS, the local stand-in Messages API (`meta/probes/hook-delivery.js`, $0), a plain git fixture, a stand-in hook on
+`Read` that prints its text as `additionalContext` (or, for the denial, as a `deny` reason), one cell per run:
+
+| Cell | Settings | Result |
+| --- | --- | --- |
+| main | one row, `R6-PRE-MARK` | `yes` - in the request after the Read (`main-2`) |
+| subagent | the same row; the Read made by a dispatched agent | `yes` - in the agent's next request (`main-4`, `subagent` in `order.txt`) |
+| two hooks | two rows, `R6-PRE-MARK` and `R6-PRE-MARK-2` | `yes` - both in `main-2` |
+| one joined reply | one row, both marks joined by a newline | `yes` - both in `main-2` |
+| 9,999 characters | one row ending in the mark | `yes` - whole, in `main-2` |
+| 10,001 characters | one row ending in the mark | swapped: the request carries a file path (`tool-results/hook-<call>-PreToolUse-...-additionalContext.txt`) and about 2,000 characters of the text, not the mark |
+| a 14,002-character denial | `deny`, two 7,000-character holds and a blank line between, ending in `R6-DENY-MARK` | `yes` - whole, in the next request's tool result |
+| H1, the hand-over's command | no row; an installer-made root `ws` and joined child `api` (local scope, the clean export), a section in the child's docs ending in `H1-MARK`; the session started in `ws` under `--permission-mode bypassPermissions`; one Bash step `printf 'H1-%s\n' RAN && cd api && node .claude/hooks/docs.js show preferences/GIT-PREFERENCES#h1-sec` | `yes` - `H1-RAN` and `H1-MARK` both in the tool result of `main-2`: the child's engine read the child's docs |
+| control | no row | every mark `absent` |
+
+So a PreToolUse `additionalContext` reaches the main session and a sub-agent alike, two hooks' texts and one joined
+reply both arrive, the swap to a file starts past 10,000 characters of one hook's text (9,999 arrives, 10,001 does
+not), and a denial's reason of 14,002 characters arrives whole. Stage 6 takes branch A of its entry push. The engine
+copied into a joined child, run from the child's folder with no `CLAUDE_PROJECT_DIR`, reads the child's docs - by hand
+too (exit 0, the section printed).
+
+## Stage 6 - a member's holds and the entry push
+
+Built on branch A of R6 (a PreToolUse `additionalContext` reaches the session and its seats). Claude Code 2.1.323,
+Node 22.23.3, macOS; the matrix and the cells install from a clean export of the working tree into throwaway
+projects (HOME, USERPROFILE, CLAUDE_CONFIG_DIR and TMPDIR inside each), the account files hashed equal after each.
+
+**The matrix** (`matrix.js`, 18 rows, the installed `file-guards.js` / `shell-guards.js` on the plugin route): 127
+checks pass, 2 fail, 0 not run.
+
+- M1-M5, M8-M18 pass: each child's first Edit held with its own code docs and section after its path line, at local,
+  project and user scope; the shell route's `cd api && git commit` and `git -C api commit` held with the child's git
+  doc; the `-m-` records and one claim file per child, nothing written under a child; an update over 3.10.0 in both
+  orders; a re-run byte-equal; compact and clear re-hold, resume does not; the 7,000 / 3,600 / 5,000 / 9,500 rooms at
+  one under, at and one over; the part switches; BASE's hooks over stage 6 records; a Cursor payload silent; a
+  project with no member byte-equal to BASE; a seat's worktree mapped to the child; the hand-over's own commands run
+  from the child's folder; eight parallel Reads send each piece once.
+- M6 fails on the installer, outside this change: an update writes the whole-hook entries of a child's
+  `ALFRED_CODE_HOOKS_OFF` from the stamp's picks, so a hand-typed whole-hook name goes back to empty while a
+  `<hook>:<part>` entry stays. With the entry put back, both hooks honour it.
+- M7 fails on the plan's expectation: a payload with no session id keeps its `none` / `nosession` files, as BASE
+  already does for the start's own records.
+
+**The cells** (`cells.js`, the local stand-in, $0): the main session's Read under a child carries the path line,
+the orientation, the child's tool order and the personal preferences in the next request; an agent's Read the same
+less the personal preferences; an Edit under `acceptEdits` is held and the retry lands; an agent's
+`cd api && git commit` under `bypassPermissions` is held with the child's git doc; a second-level agent is held on
+its own record. Print mode reads as nobody at the terminal, so there the docs hold is logged and not made; with an
+attended entrypoint the section and the code docs arrive in one denial.
+
+**The cost** (`timing.js`, 30 runs each, the two trees taking turns, medians in ms, this tree / BASE `d58c3ccb`):
+
+| Project | file-guards | shell-guards |
+| --- | --- | --- |
+| plain (no workspace) | 105.8 / 104.4 (+1.4) | 54.4 / 53.8 (+0.6) |
+| ws-root (calls on the root's src/) | 108.3 / 105.2 | 56.5 / 55.0 |
+| ws-child (calls under api/) | 113.7 / 74.0 (BASE holds nothing there) | 58.1 / 56.5 |
+
+The bound - a plain project's median at most 5 ms above BASE - holds for both dispatchers.
+
+**The gate** (`npm run gate`, the three changed suites, the committed tree): GREEN on the feature commits - Windows
+410 tests, 0 failed, 9 skipped; Linux 410 tests, 0 failed. RED on a throwaway branch holding the new tests over the
+BASE hooks - Windows 341 tests, 47 failed, 7 skipped; every failure is a new `entry:` or `member:` test.
+
+Not run: the Cursor cells (both hooks stand down on a Cursor payload; stage 5's block names the child's docs there).
