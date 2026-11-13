@@ -1083,3 +1083,9 @@ you run the audit from is left out of the scope's counts and session list, as th
 in the workspace with no session yet still gets its inventory block, every name it installed listed unused. A project
 is named as ignored only by the workspace that holds it, and only where the mark stands. A child's older block ledgers
 are found under the docs folder its own settings name. Nothing to do by hand.
+
+## after 3.11.0 - a sibling's files keep the start project's path rules
+
+A session started in one workspace child that touches a file of a sibling child gets the sibling's block and its path
+rules as before, and now the start project's own path rules as well, unless the sibling leaves one out
+(`ignore rule <name>`) or holds a rule of the same name. Nothing to do by hand.

@@ -186,7 +186,7 @@ function rulesFor(start, env = process.env, { host = 'claude', prelude = loadPre
     const out = { project: projectOf(from, prelude), hasStore: false, always: [], scoped: [], natives: [], notes: [] };
     if (!out.project) return out;
     const chain = layout.workspaceChain(out.project, { env });   // the switch off freezes the chain, never cuts it (4c review I3)
-    const holders = [{ root: out.project, ignores: chain ? chain.ignores : [] }, ...(chain ? chain.members : [])];
+    const holders = out.holders = [{ root: out.project, ignores: chain ? chain.ignores : [] }, ...(chain ? chain.members : [])];
     out.hasStore = holders.some((h) => isDir(path.join(h.root, ...RULES)));
     if (!out.hasStore) return out;
     const won = new Map();
@@ -359,6 +359,11 @@ function main(argv = process.argv, env = process.env)
             const p = memberPart(T, memberBlock(m, from, rules, mine, layout), base, room(), who);
             if (p && texts.push(p.text)) ledger({ kind: 'member-push', member: T, part: p.k, chars: p.text.length, unsent: p.left, tool: input.tool_name });
         }
+        // Spec Section 1: the start's own path rules (a holder off T's chain) still match, unless T's members left them out or hold the name.
+        const held = [...own.always, ...own.scoped].map((r) => r.name).concat(own.natives, (own.holders || []).slice(0, chain.length)
+            .flatMap((h) => h.ignores).filter((i) => i.category === 'rule' && !LOCKED_RULES.includes(i.name)).map((i) => i.name));
+        const roots = (own.holders || []).map((h) => h.root);
+        if (chain.length) own = { scoped: [...own.scoped, ...rules.scoped.filter((r) => !roots.includes(r.root) && !held.includes(r.name))].sort(byName) };
         const sent = record ? recordOf(record) : [];
         const push = pathPush(own, hit, sent, room(), (r, c = chain.find((x) => x.root === r.root)) => (c ? `${c.key}/${r.name}` : r.name));
         if (record && push.now.length) writeRecord(record, [...sent, ...push.now]);
