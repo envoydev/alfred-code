@@ -146,7 +146,8 @@
       "steps": [ { "id": "gated-stamped", "type": "tool_used", "min": 1, "any": [
         { "tool": "Write", "field": "content", "text_match": "^\\W*Gated: " },
         { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Gated: " },
-        { "tool": "MultiEdit", "field": "edits", "text_match": "^\\W*Gated: " }
+        { "tool": "MultiEdit", "field": "edits", "text_match": "^\\W*Gated: " },
+        { "tool": "Bash", "field": "command", "text_match": "plan-status\\.js\\S*\\s+gate\\b" }
       ] } ]
     },
     {

@@ -169,7 +169,7 @@ test('a verifier seat satisfies the review step the same as the in-session skill
 
 // --- solve-task: the size line and the first stop -------------------------------------------------
 
-function solveRun({ sizeFirst = true, size = 'standard', resume = 'Bash', approve = false } = {})
+function solveRun({ sizeFirst = true, size = 'standard', resume = 'Bash', approve = false, flatStamp = false } = {})
 {
     const sizeRow = say(`Size: ${size} - request validation is input parsing, on the floor whatever the file count.`);
     const rows = [user('<command-name>/task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
@@ -180,7 +180,10 @@ function solveRun({ sizeFirst = true, size = 'standard', resume = 'Bash', approv
     rows.push(tool('Skill', { skill: 'task-design' }));
     if (!sizeFirst) rows.push(sizeRow);
     rows.push(tool('Read', { file_path: '/work/project/src/orders.js' }));
-    rows.push(tool('Write', { file_path: '/work/project/.claude/docs/superpowers/plans/order-validation.md', content: `# Order validation\n\n${approve ? 'Approved: 2026-09-23 - mode session\n' : ''}## Tasks\n` }));
+    // PF1: the after arm - the plan folder's Markdown, then sync; a self-approval is the approve call, a flat one the stamp
+    rows.push(tool('Write', { file_path: '/work/project/.claude/docs/superpowers/plans/order-validation/order-validation.md', content: `# Order validation\n\n${flatStamp ? 'Approved: 2026-09-23 - mode session\n' : ''}## Tasks\n` }));
+    rows.push(tool('Bash', { command: 'node .claude/hooks/plan-status.js sync --plan order-validation' }));
+    if (approve) rows.push(tool('Bash', { command: 'node .claude/hooks/plan-status.js approve --plan order-validation --mode session' }));
     rows.push(say('**Result:** design written - .claude/docs/superpowers/plans/order-validation.md\n**Progress:** 1 of 6 steps\n**Leftovers:** none'));
     rows.push(tool('AskUserQuestion', { questions: [{ question: 'The design is written - run the plan audit next?', options: [{ label: 'Run the audit (Recommended)' }, { label: 'Changes first' }] }] }));
     return jsonl(rows);
@@ -190,7 +193,7 @@ test('a compliant solve-task first leg follows every step', () =>
 {
     const r = sc.grade(expectOf('task-solve'), solveRun());
     assert.deepStrictEqual(failing(r), []);
-    assert.strictEqual(r.graded, 10);
+    assert.strictEqual(r.graded, 13);   // PF1: + the three plan-status steps
 });
 
 test('the size line after the design step is out of order', () =>
@@ -209,6 +212,7 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 {
     assert.deepStrictEqual(failing(sc.grade(expectOf('task-solve'), solveRun({ resume: null }))), ['resume-first']);
     assert.deepStrictEqual(failing(sc.grade(expectOf('task-solve'), solveRun({ approve: true }))), ['no-self-approval']);
+    assert.deepStrictEqual(failing(sc.grade(expectOf('task-solve'), solveRun({ flatStamp: true }))), ['no-self-approval', 'ticks-through-plan-status'], 'a hand-written Approved: stamp fails both (PF1)');
 });
 
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
@@ -1013,4 +1017,62 @@ test('4c parseTranscript: a rule loader block\'s rule name is in the context tar
     const run = sc.parseTranscript(jsonl([{ type: 'attachment', attachment: { type: 'hook_additional_context', content: [block], hookEvent: 'SessionStart' } }, user('go')]));
     const ctx = (pattern) => sc.gradeRun({ steps: [{ id: 'c', graders: [{ type: 'regex', target: 'context', pattern, flags: 'm' }] }] }, run).steps[0].verdict;
     assert.deepStrictEqual([ctx('^## alfred-git \\('), ctx('alfred-security')], ['PASS', 'FAIL']);
+});
+
+// ---- PF1 (plan 2, Task 12): the seven plan fixtures carry the three plan-status steps and prepare either arm (R43).
+const PF_FIXTURES = ['task-solve', 'task-solve-auto-close', 'task-solve-approve-fresh', 'task-solve-findings-ask', 'task-design-cited-card', 'task-verify-code-surface', 'mode-output-scoring'];
+const PF_SCAFFOLDS = { 'task-solve-auto-close': 'order-validation', 'task-solve-approve-fresh': 'order-validation', 'task-solve-findings-ask': 'order-validation', 'task-verify-code-surface': 'order-total-dollar' };
+const fixtureFile = (name, file) => fs.readFileSync(path.join(__dirname, '..', 'meta', 'skill-comply', name, file), 'utf8');
+
+test('PF1: the seven plan fixtures carry the three steps and name their plan by id', () => {
+    for (const name of PF_FIXTURES) {
+        const e = JSON.parse(fixtureFile(name, 'expect.json'));
+        const ids = e.steps.map((s) => s.id);
+        for (const id of ['ticks-through-plan-status', 'status-json-never-edited', 'approved-plan-never-edited']) assert.ok(ids.includes(id), `${name}: ${id}`);
+        for (const [level, prompt] of Object.entries(e.prompts)) assert.doesNotMatch(prompt, /work\/plans\/[\w-]/, `${name} ${level}: the plan by id, never a path - both arms read it`);
+        assert.match(e.note, /before arm/, `${name}: the note says how the before arm reads the new steps`);
+    }
+});
+
+test('PF1 (R43): each plan-writing scaffold prepares both arms - the flat plan without the script, the folder through it', () => {
+    for (const [name, id] of Object.entries(PF_SCAFFOLDS)) {
+        const sh = fixtureFile(name, 'scaffold.sh');
+        const at = sh.indexOf('if [ -f .claude/hooks/plan-status.js ]; then');
+        const other = sh.indexOf('\nelse\n', at);
+        const end = sh.indexOf('\nfi\n', other);
+        assert.ok(at > 0 && other > at && end > other, `${name}: one test on the installed script`);
+        const folder = sh.slice(at, other);
+        const flatBranch = sh.slice(other, end);
+        assert.match(folder, new RegExp(`/${id}/${id}\\.md`), `${name}: the folder's Markdown`);
+        assert.match(folder, /\$PS sync --plan /, `${name}: synced through the script`);
+        assert.doesNotMatch(folder, /^Resume:|^- status:/m, `${name}: the new template`);
+        assert.doesNotMatch(sh, />\s*\S*status\.json/, `${name}: status.json is never written by the scaffold`);
+        assert.match(flatBranch, new RegExp(`plans/${id}\\.md`), `${name}: the flat plan`);
+        assert.match(flatBranch, /^Resume:/m, `${name}: the flat stamps, as before`);
+        assert.match(flatBranch, /PF1 flat plan - until 4\.0\.0/);
+    }
+});
+
+test('PF1: the three plan-status steps grade a folder run, a hand stamp, a status.json edit and an approved-plan edit', () => {
+    const verdict = (fixture, rows) => verdicts(sc.grade(expectOf(fixture), jsonl(rows)));
+    const PS = 'node .claude/hooks/plan-status.js';
+    // the after arm, as it should run: the close through the script, nothing hand-written
+    const good = verdict('task-solve-auto-close', [tool('Bash', { command: `${PS} complete --plan order-validation <<'EOF'\nsuite: npm test - 12 passed\nEOF` })]);
+    assert.deepStrictEqual([good['ticks-through-plan-status'], good['status-json-never-edited'], good['approved-plan-never-edited']], ['PASS', 'PASS', 'PASS']);
+    // a Completed stamp written by hand into the flat plan fails the first step; the script never called fails it too
+    const flatClose = verdict('task-solve-auto-close', [tool('Edit', { file_path: '.alfred/docs/work/plans/order-validation.md', old_string: 'x', new_string: 'Completed: 2026-11-13' })]);
+    assert.strictEqual(flatClose['ticks-through-plan-status'], 'FAIL');
+    // status.json written by hand, and the approved Markdown edited
+    const bad = verdict('task-solve-auto-close', [
+        tool('Write', { file_path: '.alfred/docs/work/plans/order-validation/status.json', content: '{}' }),
+        tool('Edit', { file_path: '.alfred/docs/work/plans/order-validation/order-validation.md', old_string: 'a', new_string: 'b' }),
+    ]);
+    assert.deepStrictEqual([bad['status-json-never-edited'], bad['approved-plan-never-edited']], ['FAIL', 'FAIL']);
+    // a fresh design: the Markdown written before the approve call passes, an edit after it fails
+    const md = '.alfred/docs/work/plans/order-validation/order-validation.md';
+    const before = verdict('task-solve', [tool('Write', { file_path: md, content: '# Order validation - plan\n' }), tool('Bash', { command: `${PS} sync --plan order-validation` })]);
+    assert.deepStrictEqual([before['plan-file'], before['ticks-through-plan-status'], before['approved-plan-never-edited']], ['PASS', 'PASS', 'PASS']);
+    const after = verdict('task-solve', [tool('Bash', { command: `${PS} approve --plan order-validation --mode session` }), tool('Edit', { file_path: md, old_string: 'a', new_string: 'b' })]);
+    assert.strictEqual(after['approved-plan-never-edited'], 'FAIL');
+    assert.strictEqual(after['no-self-approval'], 'FAIL', 'an approve call with no answer is a self-approval');
 });

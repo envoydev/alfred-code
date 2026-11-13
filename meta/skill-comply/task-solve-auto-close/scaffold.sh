@@ -106,6 +106,65 @@ test('a malformed email is a 400', () =>
     assert.strictEqual(createOrder({ ...valid, email: 'nope' }).status, 400);
 });
 JS
+PLANS=.alfred/docs/work/plans
+if [ -f .claude/hooks/plan-status.js ]; then
+# the after arm: this install carries the writer script - the plan is a folder, stamped through it
+PS="node .claude/hooks/plan-status.js"
+mkdir -p "$PLANS/order-validation"
+cat > "$PLANS/order-validation/order-validation.md" <<'MD'
+# Order validation - plan
+
+Oriented: src/orders.js outline (createOrder), test/orders.test.js outline; javascript skill loaded
+Asked: "Add request validation to the create-order handler"
+Build: npm test
+
+## Fit
+
+extend - the handler is the trust boundary for the request body; the check lands in front of the write, in the same module.
+
+## Tasks
+
+### Task 1 - validate the create-order body, 400 on a bad field
+
+- files: src/orders.js (modify), test/orders.test.js (modify)
+- anchors: src/orders.js:createOrder
+- traps: a request body is untrusted - check type and range before the write
+- test: a missing sku, a zero or fractional quantity and a malformed email each return 400
+- acceptance: `npm test` - every test green
+- log_points: none - the module has no logger
+- estimate: 15m
+
+## Decisions
+
+- the check is a plain function in the handler module - precedent: src/orders.js holds the handler and its state
+MD
+$PS sync --plan order-validation
+$PS gate --plan order-validation <<'EOF'
+Oriented:  verified
+Asked:     verified
+Decisions: 1 entry, with its precedent
+Scope:     matches
+Existence: 2 names checked, 0 unverified
+Passes:    risk pass | scope pass | existence pass | edges pass | soundness pass
+Findings:  none
+Gated:     passed - 2026-11-03
+EOF
+$PS approve --plan order-validation --mode session <<'EOF'
+words: Approve - build in this session (Recommended)
+EOF
+$PS start --plan order-validation --task 1
+$PS done --plan order-validation --task 1 <<'EOF'
+result: npm test green - 4 passed
+EOF
+$PS conformance --plan order-validation <<'EOF'
+verdict: sound
+reviewer: task-verify-code in-session, pass 1
+EOF
+$PS cursor --plan order-validation <<'EOF'
+note: step 6 CLOSE - mode session - every task DONE, review sound; next: the done gate and the close
+EOF
+else
+# the before arm (PF1 flat plan - until 4.0.0): an install from before the plan folder - the flat plan
 cat > .alfred/docs/work/plans/order-validation.md <<'MD'
 # Order validation - plan
 
@@ -147,3 +206,4 @@ extend - the handler is the trust boundary for the request body; the check lands
 
 - the check is a plain function in the handler module - precedent: src/orders.js holds the handler and its state
 MD
+fi

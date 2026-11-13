@@ -58,7 +58,7 @@ test('ab-Q2: the ten designers and their shared-rules markers name the id of the
 
 // --- the offline proof: every new step passes a trace that keeps it and fails one that breaks it -----------------
 
-const PLAN = '/work/project/.alfred/docs/work/plans/order-export.md';
+const PLAN = '/work/project/.alfred/docs/work/plans/order-export/order-export.md';   // PF1: the plan folder's Markdown
 // The output scoring is seeded on: the plan waits as its draft before it reaches work/plans/ (the 2026-11-04 smoke's
 // both arms stopped at the fix offer with the plan only there). The cycle's task.md is never the plan.
 const DRAFT = '/work/project/.alfred/state/sessions/scoring/s1/order-export/65ca8b67.draft.md';
@@ -91,7 +91,7 @@ function designRun(opts = {})
 {
     const rows = [user('<command-name>/task-design</command-name>\n<command-args>.alfred/docs/work/cards/order-export.md - design it here in this chat</command-args>'),
         tool('Skill', { skill: 'habits-clarify' }), tool('Read', { file_path: '/work/project/.alfred/docs/work/cards/order-export.md' }),
-        tool('Write', { file_path: opts.path || PLAN, content: planText(opts) })];
+        tool('Write', { file_path: opts.path || PLAN, content: planText(opts) }), tool('Bash', { command: 'node .claude/hooks/plan-status.js sync --plan order-export' })];
     if (opts.code) rows.push(tool('Write', { file_path: '/work/project/src/export.js', content: '\'use strict\';\n' }));
     rows.push(say('Plan written - .alfred/docs/work/plans/order-export.md'));
     return jsonl(rows);
