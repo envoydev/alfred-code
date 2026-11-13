@@ -5,13 +5,15 @@ Write tool and returns the whole plan in its report, `Oriented:` line first.
 
 ## Write the plan file
 
-Write the plan to `<docs-path>/work/plans/<feature>.md` before handing off: the FILE survives
+Write the plan to `<docs-path>/work/plans/<feature>/<feature>.md` before handing off: the FILE survives
 compaction and a fresh session, where the chat copy does not. Then verify the write, in the same turn:
-`wc -l` the plan file (it exists and is not empty) and grep it for `Oriented:` and `Asked:` - the two
+run `node .claude/hooks/plan-status.js sync --plan <docs-path>/work/plans/<feature>` and read its `Tasks: 0 of <N> done` line - `<N>` is the number of cards the design wrote, and a refusal names the card to fix - then grep the Markdown for `Oriented:` and `Asked:` - the two
 header lines `task-verify-plan` grades (a missing `Oriented:` MAJOR, a missing `Asked:` MINOR) -
 plus one anchor from the first task, which proves the located `file:symbol` references survived the
 write. Quote the three results. A plan nobody can find, or one missing a header, is a design run with
 no output.
+
+Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer. Flat plans (until 4.0.0): a plan that is a single file is stamped in the file, by the closing section of the plan shape the build reads.
 
 ## Hand off
 

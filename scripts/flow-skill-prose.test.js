@@ -248,7 +248,7 @@ test('M94: task-design keeps the seat method in SKILL.md and the orchestrator ha
     assert.match(flat(b), /a design flow writes it as its handoff/, 'the pinned carve-out stays');
     assert.match(flat(b), /Read `references\/write-and-hand-off\.md`/);
     const ref = read('stack/skills/task-design/references/write-and-hand-off.md');
-    for (const piece of [/wc -l/, /Brief: 'Add data export to the records list\.'/, /task-verify-plan/, /task-implement/])
+    for (const piece of [/plan-status\.js sync/, /Brief: 'Add data export to the records list\.'/, /task-verify-plan/, /task-implement/])
         assert.match(ref, piece);
     assert.ok(b.length < 12000, `the preloaded body is ${b.length} chars`);
     // Every designer seat still preloads it by the bare name of a skill that exists.
@@ -480,8 +480,12 @@ const PF_HUB = 'stack/skills/habits-plan-writing/SKILL.md';
 const PF_CALLS = {
     'stack/skills/habits-plan-writing/SKILL.md': ['sync', 'gate', 'approve', 'redesign', 'start', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop',
         'cursor', 'decide', 'deviate', 'conformance', 'complete', 'resume', 'show'],
+    'stack/skills/task-design/SKILL.md': ['sync'],
+    'stack/skills/task-design/references/write-and-hand-off.md': ['sync'],
+    'stack/skills/task-verify-plan/SKILL.md': ['gate', 'sync'],
 };
-const PF_BODIES = [...Object.keys(PF_CALLS)];
+const PF_BODIES = [...Object.keys(PF_CALLS), 'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/mode-output-scoring/SKILL.md',
+    'stack/skills/mode-output-scoring/references/outputs.md'];
 
 test('PF1: each body names the verbs it sends the model to', () => {
     for (const [file, verbs] of Object.entries(PF_CALLS)) {
@@ -538,4 +542,17 @@ test('PF1: the plan template carries no Resume: line and no status: line; the co
     assert.doesNotMatch(before, /collapses to its title|status: TODO|IN_PROGRESS|Completed: <date>/, 'the flat stamps live in the closing section only');
     assert.match(section(text, 'Flat plans (until 4.0.0)'), /Resume:.*status:.*Completed:/s);
     assert.match(description('habits-plan-writing'), /^Use when writing, stamping or resuming a plan file/, 'the description is unchanged (R33)');
+});
+
+test('PF1: the design writes the folder and syncs it; the gate hands its block to the script; the scoring target is the folder\'s Markdown', () => {
+    const FOLDER = '<docs-path>/work/plans/<feature>/<feature>.md';   // inside mode-output-scoring's `--target ...` span too
+    for (const rel of ['task-design/SKILL.md', 'task-design/references/write-and-hand-off.md', 'mode-output-scoring/SKILL.md'])
+        assert.ok(read(`stack/skills/${rel}`).includes(FOLDER), rel);
+    for (const rel of ['task-design/SKILL.md', 'task-design/references/write-and-hand-off.md', 'task-build-from-scratch/SKILL.md', 'mode-output-scoring/SKILL.md', 'mode-output-scoring/references/outputs.md'])
+        assert.doesNotMatch(read(`stack/skills/${rel}`), /work\/plans\/<feature>\.md/, `${rel}: no flat path outside a flat pointer`);
+    const hand = flat(read('stack/skills/task-design/references/write-and-hand-off.md'));
+    assert.doesNotMatch(hand, /wc -l/);
+    assert.match(hand, /`Tasks: 0 of <N> done`.*grep the Markdown for `Oriented:` and `Asked:`/);
+    assert.match(flat(skill('task-verify-plan')), /hand the whole eight-field block above to `node \.claude\/hooks\/plan-status\.js gate --plan <the plan folder>` on stdin, as printed/);
+    assert.match(flat(skill('mode-output-scoring')), /a brief names no file of the plan folder but the draft/);
 });
