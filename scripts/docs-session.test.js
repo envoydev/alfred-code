@@ -3487,3 +3487,80 @@ test('entry: the joined reply at 9,499 / 9,500 / 9,501 holds the note and both p
     }
   } finally { r.rm(); fs.rmSync(top, { recursive: true, force: true }); }
 });
+
+// ---- PF1 plan 2: a plan folder's JSON files are the scripts' alone, and an approved plan is not edited ----
+const { planFolder, PLANS: PLAN_ROOT } = require('./plan-folder-fixture.js');
+const reasonOf = (r) => JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason;
+
+test('PF1: status.json and scoring.json are written by their scripts only', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const plan = planFolder(r.root, 'csv', {});
+    fs.writeFileSync(path.join(plan.dir, 'scoring.json'), '{}\n');
+    const s = sid();
+    const at = (name) => path.join(plan.dir, name);
+    const edit = r.hook(pre('Edit', { file_path: at('status.json'), old_string: '"todo"', new_string: '"done"' }, s));
+    assert.ok(denied(edit), 'an Edit of status.json');
+    assert.match(reasonOf(edit), /status\.json is written by plan-status\.js only, never by hand.*node \.claude\/hooks\/plan-status\.js <verb> --plan \.alfred\/docs\/work\/plans\/csv\//s);
+    const write = r.hook(pre('Write', { file_path: at('scoring.json'), content: '{}' }, s));
+    assert.match(reasonOf(write), /scoring\.json is written by scorecard\.js only/);
+    for (const command of [`echo x >> ${PLAN_ROOT}/csv/status.json`, `rm ${PLAN_ROOT}/csv/status.json`, `cp a.json ${PLAN_ROOT}/csv/scoring.json`, `echo x >> "${at('status.json')}"`])   // the last: a native absolute path - C:\...\status.json on Windows (R38)
+      assert.ok(denied(r.hook(pre('Bash', { command }, s))), command);
+    assert.ok(denied(r.hook({ ...pre('Edit', { file_path: at('status.json'), old_string: 'a', new_string: 'b' }, s), agent_id: 'seat-1' })), 'a seat too');
+    fs.writeFileSync(at('status.json'), '{');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: at('status.json'), old_string: '{', new_string: '{}' }, s))), 'a garbage file is still the script\'s (R31)');
+    for (const command of [`node .claude/hooks/plan-status.js show --plan csv`, `node .claude/hooks/plan-status.js done --plan csv --task 1 <<'EOF'\nresult: a > b\nEOF`, `cat ${PLAN_ROOT}/csv/status.json`])
+      assert.ok(!denied(r.hook(pre('Bash', { command }, s))), command);
+    assert.ok(!denied(r.hook(pre('Read', { file_path: at('status.json') }, s))), 'a read');
+  } finally { r.rm(); }
+});
+
+test('PF1: a folder with no Markdown is no plan (R32)', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const s = sid();
+    for (const rel of [`${PLAN_ROOT}/notes/status.json`, `${PLAN_ROOT}/graded/scoring.json`, 'config/status.json', 'data/plans/status.json']) {
+      r.write(rel, '{}\n');
+      assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, rel), old_string: '{}', new_string: '{ }' }, s))), rel);
+    }
+  } finally { r.rm(); }
+});
+
+test('PF1: the approved plan is not edited; before approval and while reopened it is', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const plan = planFolder(r.root, 'csv', {});
+    const s = sid();
+    const edit = () => r.hook(pre('Edit', { file_path: plan.md, old_string: 'slice 1', new_string: 'slice one' }, s));
+    assert.ok(!denied(edit()), 'not approved yet');
+    plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
+    const no = edit();
+    assert.ok(denied(no), 'approved');
+    assert.match(reasonOf(no), /csv\.md was approved \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\) - the approved plan is not edited.*decide.*deviate.*add-task.*redesign/s);
+    assert.ok(denied(r.hook(pre('Write', { file_path: plan.md, content: '# x\n' }, s))), 'a Write');
+    assert.ok(denied(r.hook(pre('Bash', { command: `echo x >> ${PLAN_ROOT}/csv/csv.md` }, s))), 'a shell append');
+    plan.run(['redesign', '--plan', 'csv'], 'why: the seam moved\n');
+    assert.ok(!denied(edit()), 'reopened');
+    plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
+    assert.ok(denied(edit()), 'approved again');
+    fs.writeFileSync(path.join(plan.dir, 'status.json'), '{');
+    assert.ok(!denied(edit()), 'an unreadable status.json denies nothing');
+    const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    assert.strictEqual(rows.length, 4, 'one block row per denial: the edit, the Write, the shell append, the edit after the second approve');
+  } finally { r.rm(); }
+});
+
+test('PF1: a member\'s plan is guarded by shape; a flat plan keeps the Completed: rule', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const member = planFolder(path.join(r.root, 'apps', 'api'), 'csv', { approve: true });
+    const s = sid();
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(member.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'status.json in a member');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: member.md, old_string: 'slice 1', new_string: 'x' }, s))), 'its approved Markdown');
+    const FLAT = '.claude/docs/plans';   // this suite's plans dir (repo()'s docs root), as the stamp test above uses
+    r.write(`${FLAT}/old.md`, '# Plan\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1\n');
+    r.write(`${FLAT}/open.md`, '# Plan\n\n## Tasks\n- [ ] Task 1\n');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'old.md'), old_string: '- [x] Task 1\n', new_string: '- [x] Task 1\n- [ ] Task 2\n' }, s))), 'the flat rule');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'open.md'), old_string: '- [ ] Task 1', new_string: '- [x] Task 1' }, s))), 'an open flat plan');
+  } finally { r.rm(); }
+});
