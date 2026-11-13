@@ -1059,6 +1059,32 @@ function memberOf(file, start, { env = process.env } = {})
     const chain = up.slice(0, meet).reverse().map((root) => { const rel = wsRel(top, dirKey(root)); return { root, rel, key: hash(rel) }; });
     return { ...chain[chain.length - 1], chain };
 }
+// Stage 6: whether the start's chain lists a member outside it - the test made before memberOf, never its verdict. A start
+// whose own record names no parent and no child costs that one read; any throw is false.
+function hasMembers(start, { env = process.env } = {})
+{
+    try
+    {
+        const from = chainProjectOf(realpathOrSelf(start));
+        const { view } = wsRead(wsDir(wsReal(from), env));
+        if (!view.parent && !view.children.length) return false;
+        if (!workspaceOn({ env, projectRoot: from })) return false;
+        const roots = [from, ...workspaceChain(from, { env }).members.map((m) => m.root)];
+        const own = new Set(roots.map(dirKey));
+        return roots.some((r) => wsRead(wsDir(r, env)).view.children.some((c) => !own.has(dirKey(path.join(r, ...c.split('/'))))));
+    }
+    catch { return false; }
+}
+// Stage 6: the env a member's hold reads - its docs root and its off-list after the session's; undo() puts both back.
+function enterMember(root, env = process.env)
+{
+    const keys = ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF'];
+    const was = keys.map((k) => [k, Object.hasOwn(env, k), env[k]]);
+    const off = [...new Set([...csvOf(env.ALFRED_CODE_HOOKS_OFF), ...csvOf(hooksOffOf(root, { env }))])].join(',');
+    env.ALFRED_CODE_DOCS_PATH = docsRootOf(root, { env });
+    if (off) env.ALFRED_CODE_HOOKS_OFF = off;
+    return () => { for (const [k, had, v] of was) { if (had) env[k] = v; else delete env[k]; } };
+}
 // R3: each linked member's preferences folder, nearest first, read-only, while the switch is on. `skip` holds the files an
 // `ignore doc <file>` here or in a nearer member drops for THAT member (R0); `ignore docs root` drops the member and every
 // one past it, as it drops their docs roots.
@@ -1116,7 +1142,7 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
-    settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf,
+    settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     VARIABLE_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables,

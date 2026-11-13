@@ -960,3 +960,14 @@ preferences named, its always-on rules sent, and the root's rules it leaves out 
 up to five touches. `/alfred-code:status` lists the members the newest session entered.
 
 Nothing to do by hand.
+
+## after 3.10.0 - a workspace child's own docs hold its first edit
+
+In a session started at a workspace root, the first edit and the first git write under a joined child are now held
+with THAT child's preference docs and documented sections, each reply opening with `Project <child> - paths below are
+from <child>/.`; before, the root's docs were used. The first call under a child that is not held also brings the
+child's docs orientation, its tool order and the user's personal preferences, where the child's own copy differs
+from the root's. Expect one more hold per child per session, and again after a compaction or `/clear`. A child's own
+`ALFRED_CODE_HOOKS_OFF` switches its parts off as it does at its own start.
+
+Nothing to do by hand.

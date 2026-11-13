@@ -2218,3 +2218,530 @@ test('ta-M4: a read beside a held one waits for its record - the next part, neve
     }
     finally { p.rm(); }
 });
+
+// ---- workspace stage 6: a joined member's holds - its docs, its record, its path line ---------------------------------
+// A root `ws` (the project dir of every call) with children `api` and `web`, each its own repository, stamped and joined,
+// each with a code doc and a git doc naming it (ROOT-CODE / ROOT-GIT, API-CODE / API-GIT, WEB-CODE / WEB-GIT).
+const memberDocs = (tag) => ({
+    'PROJECT-CODE-PREFERENCES.md': `# Project code preferences\n\n## Rules\n<!-- id: rules -->\n${tag}-CODE: keep it plain.\n`,
+    'GIT-PREFERENCES.md': `# Git preferences\n\n## G1 - Names\n<!-- id: g1 -->\n- Rule: ${tag}-GIT names.\n`,
+});
+function joined({ apiPrefs = true, apiRepo = true, tools = false } = {})
+{
+    const p = project({ docs: memberDocs('ROOT'), tools });
+    p.write('.claude/alfred-code.stamp', 'sha: x\n');
+    const child = (rel, tag, prefs, repo) =>
+    {
+        const dir = path.join(p.root, rel);
+        fs.mkdirSync(dir, { recursive: true });
+        if (repo) spawnSync('git', ['init', '-q'], { cwd: dir });
+        p.write(`${rel}/.claude/alfred-code.stamp`, 'sha: x\n');
+        p.write(`${rel}/src/x.ts`, 'export const a = 1;\n');
+        if (prefs) for (const [name, text] of Object.entries(memberDocs(tag))) p.write(path.join(rel, PREFS, name), text);
+        putWorkspace(dir, { parent: '..' });
+    };
+    child('api', 'API', apiPrefs, apiRepo);
+    child('web', 'WEB', true, true);
+    putWorkspace(p.root, { children: ['api', 'web'] });
+    return p;
+}
+const API_LINE = 'Project api - paths below are from api/.';
+const keyOfRel = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
+
+test('member: the first edit under a child is denied with the child\'s code docs and the path line, the retry passes', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        const held = p.hook(edit('api/src/x.ts', s));
+        assert.ok(denied(held), held.stdout);
+        assert.ok(reason(held).startsWith(`${API_LINE}\n`), reason(held));
+        assert.match(reason(held), /API-CODE/);
+        assert.doesNotMatch(reason(held), /ROOT-CODE/);
+        assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
+    }
+    finally { p.rm(); }
+});
+
+test('member: an edit at the root first does not open the child\'s hold, and the child\'s does not open the root\'s', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        assert.match(reason(p.hook(edit('src/app.ts', s))), /ROOT-CODE/);
+        const child = p.hook(edit('api/src/x.ts', s));
+        assert.ok(denied(child)); assert.match(reason(child), /API-CODE/);
+        const t = sid();
+        assert.ok(denied(p.hook(edit('api/src/x.ts', t))));
+        const root = p.hook(edit('src/app.ts', t));
+        assert.ok(denied(root)); assert.match(reason(root), /ROOT-CODE/); assert.doesNotMatch(reason(root), /Project api/);
+    }
+    finally { p.rm(); }
+});
+
+test('member: two children, one hold each', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        assert.match(reason(p.hook(edit('api/src/x.ts', s))), /API-CODE/);
+        const web = p.hook(edit('web/src/x.ts', s));
+        assert.ok(reason(web).startsWith('Project web - paths below are from web/.\n')); assert.match(reason(web), /WEB-CODE/);
+        assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
+    }
+    finally { p.rm(); }
+});
+
+test('member: a git write inside the child is denied with the child\'s git doc, one at the root with the root\'s', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        const child = p.hook(bash('git commit -m x', s, { cwd: path.join(p.root, 'api') }));
+        assert.ok(denied(child)); assert.match(reason(child), /API-GIT/); assert.doesNotMatch(reason(child), /ROOT-GIT/);
+        const root = p.hook(bash('git commit -m x', s));
+        assert.ok(denied(root)); assert.match(reason(root), /ROOT-GIT/); assert.doesNotMatch(reason(root), /Project api/);
+    }
+    finally { p.rm(); }
+});
+
+test('member: from the root\'s folder, cd api && git commit and git -C api commit are held for the child', () =>
+{
+    const p = joined();
+    try
+    {
+        for (const command of ['cd api && git commit -m x', 'git -C api commit -m x'])
+        {
+            const r = p.hook(bash(command, sid()));
+            assert.ok(denied(r), command);
+            assert.ok(reason(r).startsWith(`${API_LINE}\n`), command);
+            assert.match(reason(r), /API-GIT/, command);
+        }
+    }
+    finally { p.rm(); }
+});
+
+test('member: a shell edit of api/src/x from the root is held with the child\'s code docs, and after a cd into it', () =>
+{
+    const p = joined();
+    try
+    {
+        for (const command of ['sed -i s/a/b/ api/src/x.ts', 'cd api/src && sed -i s/a/b/ x.ts'])
+        {
+            const r = p.hook(bash(command, sid()));
+            assert.ok(denied(r), command); assert.match(reason(r), /API-CODE/, command); assert.doesNotMatch(reason(r), /ROOT-CODE/, command);
+        }
+    }
+    finally { p.rm(); }
+});
+
+test('member: a command reaching two children is held once, for the first target\'s', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        const r = p.hook(bash('sed -i s/a/b/ api/src/x.ts web/src/x.ts', s));
+        assert.match(reason(r), /API-CODE/); assert.doesNotMatch(reason(r), /WEB-CODE/);
+        assert.match(reason(p.hook(edit('web/src/x.ts', s))), /WEB-CODE/);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a command that edits under a child and writes git elsewhere is the git call\'s', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        const root = p.hook(bash('sed -i s/a/b/ api/src/x.ts && git commit -am x', s));
+        assert.ok(denied(root)); assert.match(reason(root), /ROOT-GIT/);
+        assert.doesNotMatch(reason(root), /Project api|API-CODE/);
+        assert.equal(reason(root), reason(p.hook(bash('sed -i s/a/b/ api/src/x.ts && git commit -am x', sid()), { ALFRED_CODE_WORKSPACE: '0' })));
+        assert.match(reason(p.hook(edit('api/src/x.ts', s))), /API-CODE/);
+        const t = sid();
+        const api = p.hook(bash('git -C api commit -m x && sed -i s/a/b/ web/src/x.ts', t));
+        assert.ok(reason(api).startsWith(`${API_LINE}\n`)); assert.match(reason(api), /API-GIT/); assert.doesNotMatch(reason(api), /WEB-CODE/);
+        assert.match(reason(p.hook(edit('web/src/x.ts', t))), /WEB-CODE/);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a command the reader cannot place runs as today', () =>
+{
+    const p = joined();
+    try
+    {
+        for (const command of ['node build.js', 'sed -i s/a/b/ "$F"'])
+            assert.deepStrictEqual(out(p.hook(bash(command, sid()))), out(p.hook(bash(command, sid()), { ALFRED_CODE_WORKSPACE: '0' })), command);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a child with no preferences folder is held once with the root\'s docs', () =>
+{
+    const p = joined({ apiPrefs: false });
+    try
+    {
+        const s = sid();
+        const r = p.hook(edit('api/src/x.ts', s));
+        assert.ok(reason(r).startsWith(`${API_LINE}\n`)); assert.match(reason(r), /ROOT-CODE/);
+        assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
+        assert.match(reason(p.hook(edit('src/app.ts', s))), /ROOT-CODE/, 'the root\'s own hold is still unopened');
+    }
+    finally { p.rm(); }
+});
+
+test('member: the record carries -m-<key> and sits in the start project\'s state folder', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        p.hook(edit('api/src/x.ts', s));
+        assert.ok(p.exists(`.alfred/state/sessions/preferences-${s}-main-m-${keyOfRel('api')}.json`));
+        assert.ok(!p.exists('api/.alfred/state'));
+    }
+    finally { p.rm(); }
+});
+
+test('member: a call under the child reads the run marks from the start\'s record', () =>
+{
+    const p = joined();
+    try
+    {
+        const s = sid();
+        assert.ok(denied(p.hook(pre('Skill', { skill: 'review-code' }, s))));
+        const r = p.hook(pre('Read', { file_path: path.join(p.root, 'api', 'src', 'x.ts') }, s));
+        assert.ok(denied(r), r.stdout); assert.match(reason(r), /API-CODE/);
+        const rec = JSON.parse(p.read(`.alfred/state/sessions/preferences-${s}-main-m-${keyOfRel('api')}.json`));
+        assert.strictEqual(rec.run, undefined);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a clear start and a compact start drop the member\'s record, a resume keeps it', () =>
+{
+    const p = joined();
+    try
+    {
+        const key = keyOfRel('api');
+        const home = require('node:crypto').createHash('sha1').update(p.root).digest('hex').slice(0, 12);
+        const put = (s) =>
+        {
+            const state = path.join(p.root, `.alfred/state/sessions/preferences-${s}-main-m-${key}.json`);
+            const twin = path.join(os.tmpdir(), `alfred-code-preferences-${home}-${s}-main-m-${key}.json`);
+            for (const f of [state, twin]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, '{}'); }
+            return [state, twin];
+        };
+        for (const source of ['clear', 'compact'])
+        {
+            const s = sid();
+            const files = put(s);
+            p.hook(start(s, source));
+            assert.deepStrictEqual(files.filter((f) => fs.existsSync(f)), [], source);
+        }
+        const s = sid();
+        const kept = put(s);
+        p.hook(start(s, 'resume'));
+        assert.deepStrictEqual(kept.filter((f) => fs.existsSync(f)), kept);
+        fs.rmSync(path.join(p.root, PREFS), { recursive: true, force: true });
+        const t = sid();
+        const gone = put(t);
+        p.hook(start(t, 'compact'));
+        assert.deepStrictEqual(gone.filter((f) => fs.existsSync(f)), []);
+        for (const f of kept) fs.rmSync(f, { force: true });
+    }
+    finally { p.rm(); }
+});
+
+test('member: a child that leaves the hook out is not held', () =>
+{
+    const p = joined();
+    try
+    {
+        p.write('api/.claude/settings.json', JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'preferences-session' } }));
+        const s = sid();
+        assert.strictEqual(p.hook(edit('api/src/x.ts', s)).stdout, '');
+        assert.match(reason(p.hook(edit('src/app.ts', s))), /ROOT-CODE/);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a seat in a worktree of the root\'s repository editing the child\'s file is held with the child\'s docs', () =>
+{
+    const p = joined({ apiRepo: false });
+    try
+    {
+        const g = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: p.root, encoding: 'utf8' });
+        g('add', '-A'); g('commit', '-q', '-m', 'x');
+        g('worktree', 'add', '-q', '.claude/worktrees/w1');
+        const file = path.join(p.root, '.claude', 'worktrees', 'w1', 'api', 'src', 'y.ts');
+        const hook = require(HOOK);
+        const own = hook.ownerOf({ tool_name: 'Edit', tool_input: { file_path: file }, cwd: p.root }, p.root);
+        assert.strictEqual(own.file, path.join(p.root, 'api', 'src', 'y.ts'));
+        const r = p.hook(edit(file, sid(), { agent_id: 'seat1', agent_type: 'web-angular-implementer' }));
+        assert.ok(denied(r), r.stdout); assert.match(reason(r), /API-CODE/);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a target in the start chain, outside the workspace and in an unjoined project replies as today', () =>
+{
+    const p = joined();
+    try
+    {
+        p.write('loose/.claude/alfred-code.stamp', 'sha: x\n');
+        p.write('loose/src/x.ts', 'x\n');
+        for (const file of ['src/app.ts', path.join(os.tmpdir(), 'elsewhere.ts'), 'loose/src/x.ts'])
+            assert.deepStrictEqual(out(p.hook(edit(file, sid()))), out(p.hook(edit(file, sid()), { ALFRED_CODE_WORKSPACE: '0' })), file);
+    }
+    finally { p.rm(); }
+});
+
+test('member: a Cursor payload under a child prints nothing; a garbage member record holds once more and does not throw', () =>
+{
+    const p = joined();
+    try
+    {
+        assert.strictEqual(p.hook(edit('api/src/x.ts', sid(), { cursor_version: '1.7.0' })).stdout, '');
+        const s = sid();
+        p.write(`.alfred/state/sessions/preferences-${s}-main-m-${keyOfRel('api')}.json`, '{');
+        const r = p.hook(edit('api/src/x.ts', s));
+        assert.strictEqual(r.status, 0, r.stderr); assert.ok(denied(r)); assert.match(reason(r), /API-CODE/);
+    }
+    finally { p.rm(); }
+});
+
+// ---- workspace stage 6, Task 4: the entry push - a member's own tool order and personal doc, once per actor -----------
+const TOOLS_DOC = (order) => `# Tools preferences\n\nUpdated: 2026-10-24\n\n## T1 - Code navigation\n<!-- id: t1 -->\n- Job: navigation\n- Order: ${order}\n`;
+const PERSONAL_DOC = (tag, pad = 0) => `# Personal preferences\n\nUpdated: 2026-10-21\n\n## P1 - Short answers\n<!-- id: p1 -->\n- Rule: ${tag} lead with the verdict.${pad ? `\n- Note: ${'w '.repeat(Math.ceil(pad / 2)).slice(0, pad - 1)}w` : ''}\n`;
+const ORDER_LEAD = 'Tool order - ';
+const PERSONAL_LEAD = 'The user\'s personal preferences - ';
+const ctxOf = (r) => String(out(r).additionalContext || '');
+const timesOf = (text, s) => text.split(s).length - 1;
+// The root holds both docs; `api` its own unless a value is null (then the root's copy applies as an ancestor's).
+function entryTree({ apiTools = 'LSP > Grep', apiPersonal = PERSONAL_DOC('API'), apiCode = null } = {})
+{
+    const p = joined({ tools: true });
+    p.write(path.join(PREFS, 'TOOLS-PREFERENCES.md'), TOOLS_DOC('Grep > LSP'));
+    p.write(path.join(PREFS, 'PERSONAL-PREFERENCES.md'), PERSONAL_DOC('ROOT'));
+    if (apiTools) p.write(path.join('api', PREFS, 'TOOLS-PREFERENCES.md'), TOOLS_DOC(apiTools));
+    if (apiPersonal) p.write(path.join('api', PREFS, 'PERSONAL-PREFERENCES.md'), apiPersonal);
+    if (apiCode) p.write(path.join('api', PREFS, 'PROJECT-CODE-PREFERENCES.md'), apiCode);
+    return p;
+}
+const readIn = (file, s, extra) => pre('Read', { file_path: file }, s, extra);
+const seatIn = (id, type = 'dotnet-implementer') => ({ agent_id: id, agent_type: type });
+
+test('entry: a first Read under the child is answered with the path line and the child\'s tool order, once', () =>
+{
+    const p = entryTree();
+    try
+    {
+        const s = sid();
+        const first = ctxOf(p.hook(readIn('api/src/x.ts', s)));
+        assert.ok(first.startsWith(`${API_LINE}\n${ORDER_LEAD}`), first);
+        assert.match(first, /LSP > Grep/);
+        assert.doesNotMatch(first, /Grep > LSP/);
+        assert.strictEqual(p.hook(readIn('api/src/x.ts', s)).stdout, '', 'once');
+    }
+    finally { p.rm(); }
+});
+
+test('entry: the tool order is sent only when the child\'s own doc differs from the start project\'s', () =>
+{
+    const p = entryTree({ apiTools: 'Grep > LSP' });
+    try
+    {
+        const text = ctxOf(p.hook(readIn('api/src/x.ts', sid())));
+        assert.ok(!text.includes(ORDER_LEAD), text);
+        assert.ok(text.includes(PERSONAL_LEAD), text);
+    }
+    finally { p.rm(); }
+});
+
+test('entry: the personal preferences go to the main session only, and only when the child\'s own doc differs and is not empty', () =>
+{
+    const p = entryTree();
+    try
+    {
+        const main = ctxOf(p.hook(readIn('api/src/x.ts', sid())));
+        assert.ok(main.includes(PERSONAL_LEAD) && main.includes('API lead with the verdict'), main);
+        const seat = ctxOf(p.hook(readIn('api/src/x.ts', sid(), seatIn('agent-s1'))));
+        assert.ok(seat.includes(ORDER_LEAD) && !seat.includes(PERSONAL_LEAD), seat);
+    }
+    finally { p.rm(); }
+    for (const apiPersonal of [PERSONAL_DOC('ROOT'), '# Personal preferences\n\nUpdated: 2026-10-21\n'])
+    {
+        const q = entryTree({ apiPersonal });
+        try { assert.ok(!ctxOf(q.hook(readIn('api/src/x.ts', sid()))).includes(PERSONAL_LEAD)); }
+        finally { q.rm(); }
+    }
+});
+
+test('entry: a child with no tool-order or personal doc of its own sends nothing', () =>
+{
+    const p = entryTree({ apiTools: null, apiPersonal: null });
+    try
+    {
+        const s = sid();
+        assert.strictEqual(p.hook(readIn('api/src/x.ts', s)).stdout, '');
+        const held = reason(p.hook(edit('api/src/x.ts', s)));
+        assert.match(held, /API-CODE/);
+        assert.ok(!held.includes(ORDER_LEAD) && !held.includes(PERSONAL_LEAD), held);
+        assert.ok(!held.includes(p.root), 'the root\'s doc is named under no absolute path');
+    }
+    finally { p.rm(); }
+});
+
+test('entry: a child whose off-list names preferences-session:tools gets no tool order - its own or the session\'s', () =>
+{
+    for (const own of [true, false])
+    {
+        const p = entryTree();
+        try
+        {
+            if (own) p.write('api/.claude/settings.json', JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' } }));
+            const text = ctxOf(p.hook(readIn('api/src/x.ts', sid()), own ? {} : { ALFRED_CODE_HOOKS_OFF: 'preferences-session:tools' }));
+            assert.ok(!text.includes(ORDER_LEAD), `own ${own}: ${text}`);
+            assert.ok(text.includes(PERSONAL_LEAD), `own ${own}: the personal preferences still go`);
+        }
+        finally { p.rm(); }
+    }
+});
+
+test('entry: a guide seat\'s first call under the child gets no tool order; a seat gets no personal preferences', () =>
+{
+    const p = entryTree();
+    try
+    {
+        assert.strictEqual(p.hook(readIn('api/src/x.ts', sid(), seatIn('agent-g1', 'claude-code-guide'))).stdout, '');
+        assert.ok(!ctxOf(p.hook(readIn('api/src/x.ts', sid(), seatIn('agent-s2')))).includes(PERSONAL_LEAD));
+    }
+    finally { p.rm(); }
+});
+
+test('entry: a held first call carries the push in its denial; a compact start sends it again', () =>
+{
+    const p = entryTree();
+    try
+    {
+        const s = sid();
+        const held = p.hook(edit('api/src/x.ts', s));
+        assert.ok(denied(held));
+        assert.ok(reason(held).startsWith(`${API_LINE}\n`));
+        assert.strictEqual(timesOf(reason(held), API_LINE), 1);
+        assert.ok(reason(held).includes('API-CODE') && reason(held).includes(ORDER_LEAD) && reason(held).includes(PERSONAL_LEAD), reason(held));
+        assert.strictEqual(p.hook(readIn('api/src/x.ts', s)).stdout, '');
+        p.hook(start(s, 'compact'));
+        assert.ok(ctxOf(p.hook(readIn('api/src/x.ts', s))).includes(ORDER_LEAD), 'sent again after a compaction');
+    }
+    finally { p.rm(); }
+});
+
+test('entry: a child whose order and preferences equal the start\'s sends nothing and writes no reply', () =>
+{
+    const p = entryTree({ apiTools: 'Grep > LSP', apiPersonal: PERSONAL_DOC('ROOT') });
+    try { assert.strictEqual(p.hook(readIn('api/src/x.ts', sid())).stdout, ''); }
+    finally { p.rm(); }
+});
+
+test('entry: a personal push alone over the room still goes whole, on its own call', () =>
+{
+    const p = entryTree();
+    const long = 'a-member-folder-whose-name-is-long-enough-to-push-the-path-line-past-forty';
+    try
+    {
+        p.write(`${long}/.claude/alfred-code.stamp`, 'sha: x\n');
+        p.write(`${long}/src/x.ts`, 'x\n');
+        p.write(path.join(long, PREFS, 'PERSONAL-PREFERENCES.md'), PERSONAL_DOC('LONG', 3600));
+        putWorkspace(path.join(p.root, long), { parent: '..' });
+        putWorkspace(p.root, { children: ['api', 'web', long] });
+        const s = sid();
+        const first = ctxOf(p.hook(readIn(`${long}/src/x.ts`, s)));
+        const second = ctxOf(p.hook(readIn(`${long}/src/x.ts`, s)));
+        const personal = [first, second].find((t) => t.includes(PERSONAL_LEAD));
+        assert.ok(personal && personal.length > 3600, `${first.length} / ${second.length}`);
+        assert.match(personal, /\[\.\.\. cut at \d+ of \d+ chars/, 'the push as personalPush cut it, whole');
+    }
+    finally { p.rm(); }
+});
+
+test('entry: eight calls at once send the tool order once', async () =>
+{
+    const p = entryTree();
+    try
+    {
+        const s = sid();
+        const outs = await Promise.all(Array.from({ length: 8 }, () => p.hookAsync(readIn('api/src/x.ts', s))));
+        assert.strictEqual(timesOf(outs.map((r) => r.stdout).join('\n'), ORDER_LEAD), 1);
+    }
+    finally { p.rm(); }
+});
+
+// The boundary rows, sized to the character from two measured runs of the same tree.
+const BIG_CODE = (n) => `# Project code preferences\n\n## Rules\n<!-- id: rules -->\nAPI-CODE: ${'k '.repeat(Math.ceil(n / 2)).slice(0, n)}\n`;
+const sizedPersonal = (base, target) => PERSONAL_DOC('API', 100 + target - base);
+test('entry: hold + push in a denial at 6,999 / 7,000 / 7,001', () =>
+{
+    // the hold alone (no own docs to push), then the push alone at a known pad, each measured on this tree's shape
+    const code = BIG_CODE(3300);
+    const bare = entryTree({ apiTools: null, apiPersonal: null, apiCode: code });
+    const probe = entryTree({ apiTools: null, apiPersonal: PERSONAL_DOC('API', 100), apiCode: code });
+    let hold;
+    let push;
+    try
+    {
+        hold = reason(bare.hook(edit('api/src/x.ts', sid()))).length;
+        push = ctxOf(probe.hook(readIn('api/src/x.ts', sid()))).length - API_LINE.length - 1;
+    }
+    finally { bare.rm(); probe.rm(); }
+    for (const total of [6999, 7000, 7001])
+    {
+        const p = entryTree({ apiTools: null, apiPersonal: sizedPersonal(push, total - hold - 2), apiCode: code });
+        try
+        {
+            const s = sid();
+            const held = reason(p.hook(edit('api/src/x.ts', s)));
+            if (total <= 7000) { assert.strictEqual(held.length, total, `${total}`); assert.ok(held.includes(PERSONAL_LEAD)); continue; }
+            assert.strictEqual(held.length, hold, 'the denial ends with the hold\'s text');
+            const next = ctxOf(p.hook(readIn('api/src/x.ts', s)));
+            assert.ok(next.includes(PERSONAL_LEAD), 'the next call that is not held carries it');
+            assert.strictEqual(p.hook(readIn('api/src/x.ts', s)).stdout, '', 'entered only then');
+        }
+        finally { p.rm(); }
+    }
+});
+
+test('entry: the first hook\'s push at 3,599 / 3,600 / 3,601', () =>
+{
+    const only = entryTree({ apiPersonal: null });
+    const probe = entryTree({ apiTools: null, apiPersonal: PERSONAL_DOC('API', 100) });
+    let order;
+    let push;
+    try
+    {
+        order = ctxOf(only.hook(readIn('api/src/x.ts', sid()))).length - API_LINE.length - 1;
+        push = ctxOf(probe.hook(readIn('api/src/x.ts', sid()))).length - API_LINE.length - 1;
+    }
+    finally { only.rm(); probe.rm(); }
+    for (const total of [3599, 3600, 3601])
+    {
+        const p = entryTree({ apiPersonal: sizedPersonal(push, total - API_LINE.length - 1 - order - 2) });
+        try
+        {
+            const s = sid();
+            const first = ctxOf(p.hook(readIn('api/src/x.ts', s)));
+            if (total <= 3600) { assert.strictEqual(first.length, total, `${total}`); assert.ok(first.includes(PERSONAL_LEAD)); continue; }
+            assert.ok(first.includes(ORDER_LEAD) && !first.includes(PERSONAL_LEAD), 'the order alone');
+            assert.ok(ctxOf(p.hook(readIn('api/src/x.ts', s))).includes(PERSONAL_LEAD), 'the personal push on the next call');
+            assert.strictEqual(p.hook(readIn('api/src/x.ts', s)).stdout, '', 'entered only then');
+        }
+        finally { p.rm(); }
+    }
+});

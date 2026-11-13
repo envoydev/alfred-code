@@ -584,6 +584,7 @@ function loadMarks(files) {
   return marks;
 }
 function saveMarks(files, marks) {
+  if (files.strip) marks = Object.fromEntries(Object.entries(marks).filter(([k]) => !files.strip.includes(k)));
   for (const file of files) {
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -635,7 +636,9 @@ function releaseRecord() {
 }
 function blockRow(ctx, input, kind, reason, extra = {}) {
   try {
-    const dir = layout ? layout.statsPath(ctx.home, ['hook-blocks']) : path.resolve(ctx.home, dataRootRel(), 'statistics', 'hook-blocks');
+    const home = ctx.ledger || ctx.home;
+    if (ctx.member) extra = { member: ctx.member, ...extra };
+    const dir = layout ? layout.statsPath(home, ['hook-blocks']) : path.resolve(home, dataRootRel(), 'statistics', 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${safe(input.session_id)}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'preferences-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', ...extra, kind, reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
@@ -811,11 +814,12 @@ function shellMarks(ctx, command, targets, cwd) {
 }
 // A branch made by name (`git branch x`) is a write; the listing forms read.
 const BRANCH_LIST = /^(?:-a|--all|-r|--remotes|-l|--list|-v|-vv|--verbose|--show-current|--contains(?:=.*)?|--no-contains(?:=.*)?|--merged(?:=.*)?|--no-merged(?:=.*)?|--points-at(?:=.*)?|--format(?:=.*)?|--sort(?:=.*)?|--column(?:=.*)?|--color(?:=.*)?|--no-color)$/;
-function gitWrites(command, cwd) {
+function gitWrites(command, cwd, at) {
   let read;
   try { read = shellReader.gitText(command, cwd); } catch { return false; }
   if (read.unreadAt >= 0) return true;   // text naming git the reader could not read: judged as a write, conservatively
   for (const c of read.calls || []) {
+    if (at) at.dir = read.callDir(c);   // stage 6: on a return below, the writing call's folder
     if (c.opaque) return true;
     if (!c.sub) continue;
     // U19a: an apply that touches only the working tree is an edit, not a git write; --index, --cached and --3way (which
@@ -1182,8 +1186,43 @@ function sessionCheckout(ctx) {
   try { return layout && ctx.start ? layout.projectRootOf(ctx.start).checkout : ctx.home; } catch { return ctx.home; }
 }
 
+let PATH_LINE = '';
+const pathLine = (T) => `Project ${T} - paths below are from ${T}/.`;
+// Stage 6: the pieces an actor entering a member is still owed ride the one reply - a denial while the whole stays within
+// INLINE_CAP, else an additionalContext of ENTRY_ROOM (the first piece always goes); each is marked once written.
+let PUSH = null, WROTE = false; const ENTRY_ROOM = 3600;
 function emit(event, extra) {
+  const at = extra.permissionDecisionReason ? 'permissionDecisionReason' : 'additionalContext';
+  const keys = [];
+  for (const [key, t] of (PUSH && event === 'PreToolUse' && PUSH.pieces) || []) {
+    const next = extra[at] ? `${extra[at]}\n\n${t}` : t;
+    if (next.length > (at === 'additionalContext' ? ENTRY_ROOM : INLINE_CAP) - PATH_LINE.length - 1 && (keys.length || extra[at])) break;
+    extra[at] = next; keys.push(key);
+  }
+  for (const k of ['permissionDecisionReason', 'additionalContext']) if (PATH_LINE && extra[k]) extra[k] = `${PATH_LINE}\n${extra[k]}`;
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...extra } }));
+  WROTE = true;
+  if (keys.length) { PUSH.marks.entered = keys.length === PUSH.pieces.length || [...PUSH.sent, ...keys]; saveMarks(PUSH.files, PUSH.marks); }
+}
+const TOOLS_DOC = { key: 'TOOLS', file: 'TOOLS-PREFERENCES.md' };
+// A member's OWN copy of `d` whose body is not the one the start reads (its own or one from above), else null.
+function ownDoc(ctx, base, d) {
+  const own = readDoc(ctx, d);
+  const was = own && !own.ancestor ? readDoc(base, d) : null;
+  return own && !own.ancestor && !(was && was.text === own.text) ? own : null;
+}
+// The tool order alone for an actor entering a member: no suggestion spent, no memory line; '' with the part off.
+function orderLine(ctx, seat) {
+  try { if (prelude().partOff('preferences-session', 'tools')) return ''; } catch { /* no prelude: on */ }
+  try { const lib = toolsLib(); return lib ? lib.toolsLine({ projectRoot: ctx.home, env: process.env, seat, suggest: false }) : ''; } catch { return ''; }
+}
+function entryPieces(ctx, base, input, files, marks) {
+  const sent = Array.isArray(marks.entered) ? marks.entered : [];
+  const order = !NO_ORDER_SEAT.test(String(input.agent_type || '')) && ownDoc(ctx, base, TOOLS_DOC);
+  const pieces = [['order', order ? orderLine(ctx, input.agent_id ? seatOf(ctx, input.agent_type) : null) : ''],
+    ['personal', !input.agent_id && ownDoc(ctx, base, PERSONAL_DOC) ? personalPush(ctx) : '']].filter(([k, t]) => t && !sent.includes(k));
+  if (pieces.length) return { pieces, files, marks, sent };
+  marks.entered = true; saveMarks(files, marks); return null;
 }
 
 // A held read: the next part of the docs `seat` names; false once every entry has come, or once the main session's review
@@ -1209,6 +1248,29 @@ function seatHold(ctx, input, files, marks, seat, grep) {
   return true;
 }
 
+// Stage 6: a call's one joined member, a git write's folder before its targets, paths as the member holds them; null on a throw.
+function ownerOf(input, start) {
+  try {
+    const t = input.tool_input || {};
+    const cwd = typeof input.cwd === 'string' && input.cwd ? path.resolve(start, input.cwd) : start;
+    const held = (f) => { const d = path.dirname(path.resolve(f)); return path.join(layout.realpathOrSelf(layout.mainCounterpart(d) || d), path.basename(f)); };
+    const raw = ['file_path', 'notebook_path', 'path'].map((k) => t[k]).find((v) => typeof v === 'string' && v);
+    const command = isShell(input.tool_name) && shellReader && typeof t.command === 'string' ? t.command : '';
+    const at = {};
+    const git = !!command && gitWrites(command, cwd, at);
+    const targets = command ? shellTargets(command, cwd) : [];
+    const tries = raw ? [path.resolve(cwd, raw)] : typeof t.relative_path === 'string' && t.relative_path ? [path.resolve(start, t.relative_path)]
+      : git && at.dir ? [path.join(at.dir, 'git-call')] : targets;
+    const found = tries.map((f) => [f, layout.memberOf(f, start)]).find(([, m]) => m);
+    if (!found) return { member: null, file: '', targets, git };
+    return { member: found[1], file: held(found[0]), targets: targets.map(held), git };
+  } catch { return null; }
+}
+const RUN_KEYS = ['run', 'part', 'runAt', 'runFile', 'runId', 'arch'];
+// An actor's member records, in both places recordFiles names: a clear or a compact start drops them.
+const dropMembers = (files) => files.forEach((f) => { try { const d = path.dirname(f); const stem = path.basename(f, '.json');
+  for (const e of fs.readdirSync(d)) if (e.startsWith(stem) && /^-m-[0-9a-f]{12}\.json$/.test(e.slice(stem.length))) fs.rmSync(path.join(d, e));
+} catch {} });
 function main() {
   try { prelude().blockingStdio(); } catch { /* no prelude: the default stdio */ }
   let input;
@@ -1218,15 +1280,23 @@ function main() {
   try { cursorOff = prelude().cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
   if (cursorOff) return;
   const start = path.resolve(process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd());
-  const ctx = contextOf(start);
+  const base = contextOf(start);
+  const members = layout && layout.hasMembers && layout.hasMembers(start);
+  const owner = members && input.hook_event_name === 'PreToolUse' ? ownerOf(input, start) : null;
+  const member = owner && owner.member;
+  if (member) layout.enterMember(member.root);   // the member's docs root and off-list; nothing read or written past its off
+  try { if (member && prelude().hookDisabled('preferences-session')) return; } catch { /* no prelude: the hold runs */ }
+  const ctx = member ? Object.assign(contextOf(member.root), { ledger: base.home, member: posix(path.relative(real(start), member.root)) }) : base;
+  if (member) PATH_LINE = pathLine(ctx.member);
   // the session's own scratch (exempt): its id and the harness's scratchpad folder, absent when the session has none
   ctx.sid = typeof input.session_id === 'string' ? input.session_id : '';
   ctx.scratchpad = typeof input.scratchpad_dir === 'string' && path.isAbsolute(input.scratchpad_dir) ? input.scratchpad_dir : '';
   // The documented examples spell one seat 'agent-abc123' on one event and 'abc123' on another (docs-session.js
   // agentKey), so the prefix is dropped: the start's marks must reach the seat's own Reads.
   const actor = input.agent_id ? String(input.agent_id).replace(/^agent-/, '') : 'main';
-  const files = recordFiles(ctx, input.session_id, actor);
+  const files = Object.assign(recordFiles(base, input.session_id, member ? `${actor}-m-${member.key}` : actor), { strip: member && RUN_KEYS });
   if (input.hook_event_name === 'SessionStart') {
+    if (members && /^(?:clear|compact)$/.test(input.source)) dropMembers(files);
     if (input.source === 'clear') dropRecord(files);
     else if (input.source === 'compact') {
       // The docs left the context; the run and a seat's architecture hand-over go on.
@@ -1281,9 +1351,12 @@ function main() {
   const cwd = typeof input.cwd === 'string' && input.cwd ? path.resolve(start, input.cwd) : start;
   lockRecord(files);
   const marks = loadMarks(files);
+  const was = member ? loadMarks(recordFiles(base, input.session_id, actor)) : null;
+  if (was) for (const k of RUN_KEYS) { if (was[k] === undefined) delete marks[k]; else marks[k] = was[k]; }   // the run is the start's
+  if (member && marks.entered !== true) PUSH = entryPieces(ctx, base, input, files, marks);
   const mark = (keys) => { const fresh = keys.filter((k) => !marks[k]); if (!fresh.length) return; for (const k of fresh) marks[k] = true; saveMarks(files, marks); };
   // Who reads against the docs: a seat by its type, the main session while a review run is on.
-  const reader = () => (input.agent_id ? seatDocs(ctx, input.agent_type, !!marks.arch)
+  const reader = () => (input.agent_id ? seatDocs(base, input.agent_type, !!marks.arch)
     : runKinds(marks.run, marks.part).review ? { defs: CODE_DOCS, kind: 'code' } : null);
 
   if (name === 'Skill') {
@@ -1326,20 +1399,20 @@ function main() {
   let gitWrite = false;
   if (EDIT_TOOLS.test(name)) {
     const p = typeof t.file_path === 'string' && t.file_path ? t.file_path : typeof t.notebook_path === 'string' ? t.notebook_path : '';
-    if (p) editTargets = [path.resolve(cwd, p)];
+    if (p) editTargets = [(owner && owner.file) || path.resolve(cwd, p)];
   } else if (NAV_EDIT.test(name)) {
-    if (typeof t.relative_path === 'string' && t.relative_path) editTargets = [path.resolve(start, t.relative_path)];
+    if (typeof t.relative_path === 'string' && t.relative_path) editTargets = [(owner && owner.file) || path.resolve(start, t.relative_path)];
   } else if (isShell(name) && shellReader) {
     const command = typeof t.command === 'string' ? t.command : '';
     if (!command) return;
-    const targets = shellTargets(command, cwd);
+    const targets = owner ? owner.targets : shellTargets(command, cwd);
     mark(shellMarks(ctx, command, targets, cwd));
     // A seat's `cat` or `grep` of code reads as its Read does (the user's ruling of 2026-10-22).
     const seat = reader();
     const reads = seat ? shellReads(ctx, command, cwd) : null;
     if (reads && seatHold(ctx, input, files, marks, seat, reads.grep)) return;
     editTargets = targets;
-    gitWrite = gitWrites(command, cwd);
+    gitWrite = owner ? owner.git : gitWrites(command, cwd);
   } else if (/^mcp__/.test(name) && forgeLib) {
     gitWrite = mcpGitWrite(input);
     if (!gitWrite) return;
@@ -1379,7 +1452,8 @@ function main() {
 }
 
 module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
+Object.assign(module.exports, { ownerOf, pathLine, shellTargets });
 if (require.main === module) {
-  try { main(); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
+  try { main(); if (PUSH && !WROTE) emit('PreToolUse', { additionalContext: '' }); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
   finally { releaseRecord(); }
 }

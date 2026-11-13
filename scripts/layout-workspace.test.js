@@ -776,3 +776,47 @@ test('memberOf: a linked worktree of a member, and a sub-folder member in a work
     g(one('ws'), 'worktree', 'add', '-q', path.join(one('.'), 'wt'));
     assert.strictEqual((layout.memberOf(path.join(one('.'), 'wt', 'api', 'a.ts'), one('ws'), { env: env0 }) || {}).root, one('ws/api'));
 });
+
+// ---- workspace stage 6: a member's holds - enterMember, and hasMembers, the test made before the owner lookup ----------
+test('enterMember: the docs path and the off-list follow the member, and undo restores both', () =>
+{
+    const at = tree({ 'm': { stamp: true, settings: JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'notes/docs', ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' } }) } });
+    const env = { ...env0, ALFRED_CODE_HOOKS_OFF: 'x' };
+    const copy = { ...env };
+    const undo = layout.enterMember(at('m'), env);
+    assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, path.join(at('m'), 'notes', 'docs'));
+    assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, 'x,docs-session:gate');
+    undo();
+    assert.deepStrictEqual(env, copy);
+    const bare = { ...env0 };
+    const undo2 = layout.enterMember(at('m'), bare);
+    assert.strictEqual(bare.ALFRED_CODE_HOOKS_OFF, 'docs-session:gate');
+    undo2();
+    assert.deepStrictEqual(bare, { ...env0 });
+});
+
+test('hasMembers: true only where the start\'s chain lists another member', () =>
+{
+    const at = tree({ ...MEMBERS, 'solo': { stamp: true, git: true }, 'one': { stamp: true, git: true, record: { children: ['a'] } }, 'one/a': { stamp: true, git: true, record: { parent: '..' } } });
+    const has = (rel, env = env0) => layout.hasMembers(at(rel), { env });
+    const seen = [];
+    const read = fs.readFileSync;
+    fs.readFileSync = (p, ...rest) => { seen.push(String(p)); return read(p, ...rest); };
+    let solo;
+    try { solo = has('solo'); } finally { fs.readFileSync = read; }
+    assert.strictEqual(solo, false);
+    assert.deepStrictEqual(seen.filter((p) => !/[\\/]\.alfred[\\/](?:workspace\.json|workspace)$/.test(p)), []);
+    assert.strictEqual(has('ws'), true);
+    assert.strictEqual(has('ws/web'), true);
+    assert.strictEqual(has('one/a'), false);
+    assert.strictEqual(has('ws', { ...env0, ALFRED_CODE_WORKSPACE: '0' }), false);
+    const lone = tree({ 'ws': { stamp: true, git: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..', children: ['lib'] } }, 'ws/api/lib': { stamp: true, git: true, record: { parent: '..' } } });
+    assert.strictEqual(layout.hasMembers(lone('ws/api'), { env: env0 }), true);
+    fs.writeFileSync(path.join(at('ws'), '.alfred', 'workspace.json'), '{');
+    assert.strictEqual(has('ws'), false);
+    const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, stdio: 'ignore' });
+    const wt = tree({ 'ws': { stamp: true, git: true, record: { children: ['api'] } }, 'ws/api': { stamp: true, record: { parent: '..' } } });
+    g(wt('ws'), 'commit', '-q', '--allow-empty', '-m', 'x');
+    g(wt('ws'), 'worktree', 'add', '-q', path.join(wt('.'), 'wt'));
+    assert.strictEqual(layout.hasMembers(path.join(wt('.'), 'wt'), { env: env0 }), true);
+});

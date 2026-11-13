@@ -1782,6 +1782,38 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     file (`untrackedLocal`, Claude Code's own trust test). Known ceiling (R172, accepted 2026-11-04): an archive that
     ships its own `.git` with an index leaving the file out reads as untracked - no git check tells a crafted index from
     a real one, so trusting such a folder is the user's act when they open it.
+  - A joined member's holds (workspace stage 6, 2026-11-13). Both `preferences-session.js` and `docs-session.js` judge a
+    PreToolUse call whose file sits in a joined member by THAT member's docs. The member test runs first and is cheap:
+    `layout.hasMembers(start)` reads the start's own workspace record, so a project with no member (no record, or a
+    child that is its root's only child) never loads the owner rule and replies as before. The owner rule is
+    `preferences-session.js ownerOf(input, start)` - ONE member per call: a file tool's path, a navigation tool's
+    `relative_path`, a git write's folder (`-C`, a leading `cd`) before its targets, else the first shell write target
+    that `layout.memberOf` places in a member, each resolved where the command's own `cd` leaves it and a seat's
+    worktree path (`.claude/worktrees/<n>/...`) read as its main checkout's. `layout.enterMember(root)` then puts the
+    member's `ALFRED_CODE_DOCS_PATH` and `ALFRED_CODE_HOOKS_OFF` into the env for the call and gives back the undo, so its
+    own off-list counts beside the session's (`docs-session:gate`, `preferences-session:tools`, a whole hook). The
+    first hook holds the first Edit and first git write under the member with its code and git docs. The second holds
+    the first change under the member's source root with its sections; a member with no durable docs leaves the call to
+    the start's gate. Every such reply opens with the path line `Project <rel> - paths below are from <rel>/.`, so the
+    commands it names (`docs.js show`, `where`) are run from the member's folder. Per member and actor the state is a
+    `-m-<sha256(rel) 12>` record: the first hook's beside the start's records in `<data root>/state/sessions`, the
+    second's `docs-session-<session>-m-<key>.json` in the OS temp folder; a `compact` or `clear` start drops or re-arms
+    them for that actor, a `resume` keeps them. Writes are banked in the START's write record, start-relative, and
+    ledger rows carry `member`. THE ENTRY PUSH (R6 measured yes: a PreToolUse `additionalContext` reaches the session
+    and its seats): an actor's first call under a member that is not held is answered with what the member's own
+    docs add - the second hook's orientation (`orientation(root, docs, cap)`, the block cap lowered 200 at a time until
+    the path line and the whole text fit 5,000, so the where / show lines are never the part cut; claimed by the
+    exclusive file `docs-session-<session>-m-<key>-e-<actor>.json`, `EEXIST` dropping the piece and any other failure
+    sending it; `docs-session:block` off sends none and makes no claim), then the first hook's tool order (`orderLine`,
+    `suggest: false`, never for a `NO_ORDER_SEAT`; `preferences-session:tools` off sends none) and, main session only,
+    the personal push - each only when the member's OWN copy of the doc differs from the one the start reads (`ownDoc`),
+    recorded as `entered` under the record's lock. Rooms: a denial carries the pushes while its whole reason stays at
+    or under 7,000 (`INLINE_CAP`), else they ride the next call that is not held; an `additionalContext` push is
+    5,000 for the second hook and 3,600 for the first (whole pieces, the first always goes, so a long personal push
+    waits one call); the dispatcher joins them under 9,500 with room for one more guard's note of up to 898. The
+    finish asks, the start blocks and the typed-run records stay the start project's. A Cursor payload stands both
+    hooks down before any of this; stage 5's block names the member's docs there. The proof is the `member:` and
+    `entry:` tests of both hook suites and `docs/workspace-source-evidence.md` (Stage 6).
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired; its Stop process also runs the turn build check, above) - a machine-local record per session under `<data root>/state/history/` (no `.gitignore` of its own since 2026-10-13 - the data root's
     one file keeps it out, and an update removes the `*` file earlier releases wrote; no `watch.json`, so no docs domain): at `Stop` it
