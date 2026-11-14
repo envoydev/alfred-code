@@ -181,6 +181,14 @@ const TASK_VERBS = ['start', 'done', 'block', 'fail', 'reopen', 'add-task', 'dro
 const STDIN_VERBS = ['gate', 'approve', 'redesign', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop', 'cursor', 'decide',
     'deviate', 'conformance', 'complete'];
 const VALUE_FLAGS = ['plan', 'task', 'after', 'mode'];
+// The one-line stdin labels each verb reads, also taken as `--<label> <text>` - the shape a run reaches for first (PF1
+// A/B rep round, 2026-11-14: 3 of 3 auto-close runs wrote `complete --suite ...`, one never closed). The gate's block
+// and add-task's card stay stdin only: each is many lines.
+const LABEL_FLAGS = {
+    approve: ['words'], redesign: ['why'], done: ['result'], block: ['needs'], fail: ['why'], reopen: ['why'], drop: ['why'],
+    cursor: ['note'], decide: ['choice', 'precedent'], deviate: ['what', 'why', 'asked'],
+    conformance: ['verdict', 'reviewer', 'skipped'], complete: ['suite'],
+};
 const BOOL_FLAGS = ['with-open', 'full', 'all'];
 // What each verb takes; `need` lists the flags it cannot run without. A verb the engine has no handler for yet is an
 // unknown verb (HANDLERS below).
@@ -1027,6 +1035,32 @@ function parseArgs(argv)
     return { flags, rest };
 }
 
+// A verb's label flags taken out of its arguments and added to its stdin as `label: text` lines, after what stdin
+// carries; a label given both ways is refused, never merged.
+function labelFlags(verb, args, stdin)
+{
+    const labels = LABEL_FLAGS[verb] || [];
+    const kept = [];
+    const given = [];
+    for (let i = 0; i < args.length; i++)
+    {
+        const m = /^--([A-Za-z][\w-]*)(?:=([\s\S]*))?$/.exec(args[i]);
+        const name = m && labels.includes(m[1]) ? m[1] : null;
+        if (!name) { kept.push(args[i]); continue; }
+        const v = m[2] !== undefined ? m[2] : args[i + 1];   // --note x, or --note=x
+        if (m[2] === undefined) { if (v === undefined || v.startsWith('--')) throw new Refusal(2, `--${name} needs a value`); i++; }
+        if (given.some((g) => g.startsWith(`${name}: `))) throw new Refusal(2, `${name}: given twice - as --${name} twice`);
+        if (name in parseStdin(stdin, [name])) throw new Refusal(2, `${name}: given twice - as --${name} and on stdin`);
+        // a line of the value opening another label would start that label (parseStdin) - refused, never stored half
+        const opens = String(v).split(/\r?\n/).slice(1).map((l) => (/^([A-Za-z][\w-]*):/.exec(l) || [])[1]).find((l) => labels.includes(l));
+        if (opens) throw new Refusal(2, `--${name} holds a line opening ${opens}: - pass it as its own label`);
+        given.push(`${name}: ${v}`);
+    }
+    if (!given.length) return { args: kept, stdin };
+    const head = String(stdin || '');
+    return { args: kept, stdin: `${head}${head && !head.endsWith('\n') ? '\n' : ''}${given.join('\n')}\n` };
+}
+
 // The engine as a function: never throws, never exits.
 function run(argv, { now = () => new Date(), stdin = '', cwd = process.cwd(), env = process.env } = {})
 {
@@ -1037,13 +1071,19 @@ function run(argv, { now = () => new Date(), stdin = '', cwd = process.cwd(), en
         const all = [...VERBS.write, ...VERBS.read];
         if (!verb) throw new Refusal(2, `no verb - one of ${all.join(', ')}`);
         if (!HANDLERS[verb]) throw new Refusal(2, `unknown verb '${verb}'`);
-        const { flags, rest } = parseArgs(args);
-        if (rest.length) throw new Refusal(2, `${verb} takes no argument '${rest[0]}'`);
+        const taken = labelFlags(verb, args, stdin);
+        const { flags, rest } = parseArgs(taken.args);
+        if (rest.length)
+        {
+            const m = /^([A-Za-z][\w-]*):/.exec(rest[0]);
+            const hint = m && (LABEL_FLAGS[verb] || []).includes(m[1]) ? ` - pass ${m[1]}: on stdin or as --${m[1]} <text>` : '';
+            throw new Refusal(2, `${verb} takes no argument '${rest[0]}'${hint}`);
+        }
         const takes = TAKES[verb];
         for (const f of Object.keys(flags)) if (!takes.flags.includes(f)) throw new Refusal(2, `${verb} takes no --${f}`);
         if (verb === 'check' && Boolean(flags.plan) === Boolean(flags.all)) throw new Refusal(2, 'check needs --plan <ref> or --all');
         for (const f of takes.need) if (flags[f] === undefined) throw new Refusal(2, `${verb} needs --${f} <${f === 'plan' ? 'ref' : 'id'}>`);
-        const ctx = { verb, flags, stdin, cwd, env, at: stamp(now()), root: rootOf(cwd, env) };
+        const ctx = { verb, flags, stdin: taken.stdin, cwd, env, at: stamp(now()), root: rootOf(cwd, env) };
         if (flags.plan !== undefined)
         {
             const plan = resolvePlan(flags.plan, { cwd, env });

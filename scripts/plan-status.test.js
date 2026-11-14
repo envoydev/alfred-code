@@ -807,3 +807,27 @@ test('stdinFor: a stdin verb reads a pipe or a file, never a terminal; any other
     assert.strictEqual(P.stdinFor(['decide'], { isTTY: false, read }), 'note: x\n');
     assert.strictEqual(P.stdinFor(['decide'], { isTTY: undefined, read: () => { throw Object.assign(new Error('again'), { code: 'EAGAIN' }); } }), '');
 });
+
+test('a stdin label passed as a flag is the same label: --suite x is suite: x; twice is refused (PF1 A/B rep round, 2026-11-14)', () =>
+{
+    // 3 of 3 auto-close runs wrote `complete --suite ...` and met 'unknown flag --suite'; one never closed the plan
+    const p = approved();
+    const done = (t) => Object.assign(t, { status: 'done', startedAt: '2026-11-13T10:06Z', doneAt: '2026-11-13T10:30Z', result: 'r' });
+    ok(call(p, ['cursor', '--plan', 'csv', '--note', 'step 6 CLOSE']));
+    assert.strictEqual(read(p).resume.note, 'step 6 CLOSE');
+    ok(call(p, ['decide', '--plan', 'csv', '--choice', 'a map', '--precedent', 'none - first one']));
+    assert.deepStrictEqual([read(p).decisions.at(-1).choice, read(p).decisions.at(-1).precedent], ['a map', 'none - first one']);
+    ok(call(p, ['decide', '--plan', 'csv', '--choice', 'flag and stdin together'], 'precedent: from stdin\n'));
+    assert.strictEqual(read(p).decisions.at(-1).precedent, 'from stdin', 'a flag adds to what stdin carries');
+    untouched(p, () => refused(call(p, ['cursor', '--plan', 'csv', '--note', 'b'], 'note: a\n'), 2, /^plan-status: note: given twice - as --note and on stdin\n$/));
+    untouched(p, () => refused(call(p, ['cursor', '--plan', 'csv', '--note', 'a', '--note', 'b']), 2, /^plan-status: note: given twice - as --note twice\n$/));
+    untouched(p, () => refused(call(p, ['decide', '--plan', 'csv', '--choice', 'A\nprecedent: smuggled', '--precedent', 'real']), 2, /^plan-status: --choice holds a line opening precedent: - pass it as its own label\n$/));
+    ok(call(p, ['cursor', '--plan', 'csv', '--note=step 5 CLOSE']));
+    assert.strictEqual(read(p).resume.note, 'step 5 CLOSE', 'the --label=value spelling');
+    untouched(p, () => refused(call(p, ['cursor', '--plan', 'csv', '--note']), 2, /^plan-status: --note needs a value\n$/));
+    untouched(p, () => refused(call(p, ['cursor', '--plan', 'csv', '--suite', 'x']), 2, /^plan-status: unknown flag --suite\n$/));
+    untouched(p, () => refused(call(p, ['cursor', '--plan', 'csv', 'note: x']), 2, /^plan-status: cursor takes no argument 'note: x' - pass note: on stdin or as --note <text>\n$/));
+    edit(p, (s) => s.tasks.forEach(done));
+    ok(call(p, ['complete', '--plan', 'csv', '--suite', 'npm test - 4 passed, 0 failed'], '', '2026-11-13T12:00:00Z'));
+    assert.deepStrictEqual(read(p).completion, { suite: 'npm test - 4 passed, 0 failed', open: [] });
+});
