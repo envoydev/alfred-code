@@ -664,6 +664,38 @@ test('resume: the status lines, the Markdown up to ## Tasks, then each open card
     assert.ok(bare.includes('!! csv.md is missing\n') && bare.includes('### Task 2 - Streamed endpoint\n(no card in the plan)\n') && bare.includes('### Task 4 - Rate limit the export\n'));
 });
 
+test('resume: past the cap a shell result shows whole, the long part is named for a Read, never cut (PF1 A/B, 2026-11-14)', () =>
+{
+    // Claude Code reads back 30,000 characters of a shell result by default (BASH_MAX_OUTPUT_LENGTH); past it the result
+    // is a file and a 2KB preview, so a long plan header reached the session as a preview it never read.
+    const notes = Array.from({ length: 400 }, (_, i) => `Note ${i} - context for the build, gathered while the plan was designed, none of it scope.`);
+    const long = markdown().replace('Asked: none\n', `Asked: none\n\n## Design notes\n\n${notes.join('\n')}\n`);
+    const p = plan({ md: long });
+    ok(call(p, ['sync', '--plan', 'csv']));
+    const out = ok(call(p, ['resume', '--plan', 'csv'])).out;
+    assert.ok(out.length <= P.RESUME_MAX_CHARS, `${out.length} characters`);
+    assert.ok(P.RESUME_MAX_CHARS < 30000, 'under the host default');
+    assert.ok(out.startsWith(`${HEAD('resume')}\n`) && /\nTasks: 0 of 3 done\n/.test(out), 'the status lines');
+    assert.match(out, new RegExp(`\\nPlan: ${REL.replace(/[.]/g, '\\.')}csv\\.md - its header is [\\d,]+ characters, past what one shell result shows whole: Read the file\\.\\n`));
+    assert.ok(!out.includes('Note 0 - '), 'the header is named, not printed');
+    for (const n of ['1 - Export projection', '2 - Streamed endpoint', '3 - Docs page']) assert.ok(out.includes(`### Task ${n}\n\n- files: src/x.cs\n`), n);
+    // open cards past the cap: each heading stays, the cards are named for a Read
+    const fat = markdown([[1, 'Export projection', 25], [2, `Streamed endpoint\n\n${notes.join('\n')}`, 30], [3, 'Docs page', 10]]);
+    const q = plan({ md: fat });
+    ok(call(q, ['sync', '--plan', 'csv']));
+    const cards = ok(call(q, ['resume', '--plan', 'csv'])).out;
+    assert.ok(cards.length <= P.RESUME_MAX_CHARS, `${cards.length} characters`);
+    assert.ok(cards.includes('# CSV export - plan\n'), 'the short header still prints');
+    for (const n of ['1 - Export projection', '2 - Streamed endpoint', '3 - Docs page']) assert.ok(cards.includes(`### Task ${n}\n`), n);
+    assert.ok(!cards.includes('Note 0 - '));
+    assert.match(cards, /\nCards: the open cards above are [\d,]+ characters, past what one shell result shows whole: Read them in \.alfred\/docs\/work\/plans\/csv\/csv\.md\.\n/);
+    // a plan under the cap prints as before
+    const small = plan();
+    ok(call(small, ['sync', '--plan', 'csv']));
+    const whole = ok(call(small, ['resume', '--plan', 'csv'])).out;
+    assert.ok(whole.includes('Oriented: docs.js show api\n') && !/\nPlan: |\nCards: /.test(whole));
+});
+
 test('parseCall: the verb, the plan ref and the task from a shell command\'s text', () =>
 {
     const rows = [

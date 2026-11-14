@@ -125,7 +125,7 @@ The heredoc is one way to hand the text over; any shell's way of piping text in 
 
 Each call prints the stamp it set and ends with the `Resume:` line - the note, then the next task. A refusal prints one line saying why and writes nothing; `nothing to change` is not an error. A status file the script cannot read is the user's to repair - say so and stop.
 
-Three calls read: `resume` prints the stamps, the plan's header and each open card - what a compacted or fresh session reads to continue, never the closed cards. `show` prints the stamps alone, the block a stop quotes. `show --full` adds what the build recorded: each task's result, the decisions, the deviations, the dropped tasks and the added cards.
+Three calls read: `resume` prints the stamps, the plan's header and each open card - what a compacted or fresh session reads to continue, never the closed cards; a part too long for one shell result is named on a `Plan:` or `Cards:` line instead - Read it. `show` prints the stamps alone, the block a stop quotes. `show --full` adds what the build recorded: each task's result, the decisions, the deviations, the dropped tasks and the added cards.
 
 ## Frozen at approval
 

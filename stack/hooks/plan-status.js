@@ -14,6 +14,11 @@ const layout = require('./layout.js');
 
 const SCHEMA = 1;
 const MAX_BYTES = 1048576;
+// What `resume` prints at most. Claude Code reads back 30,000 characters of a shell result by default
+// (BASH_MAX_OUTPUT_LENGTH, code.claude.com/docs/en/env-vars); past it the session gets a file and a preview, and the
+// PF1 A/B (2026-11-14) saw a 60KB plan header reach it as a preview it never read. Past this, the long part is named
+// for a Read instead of printed.
+const RESUME_MAX_CHARS = 24000;
 const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/;
 const STATUSES = ['todo', 'in_progress', 'blocked', 'done', 'failed'];
 const KEYS = ['schema', 'title', 'updatedAt', 'approvedAt', 'completedAt', 'tasks', 'reopenedAt', 'reopens',
@@ -828,12 +833,15 @@ function verbResume(plan, ctx)
     try { lines = fs.readFileSync(plan.md, 'utf8').replace(/\r\n?/g, '\n').split('\n'); }
     catch { out.push(`!! ${plan.id}.md is missing`); }
     const heading = lines ? headingAt(lines) : [];
+    let header = [];
     if (lines)
     {
         let end = lines.findIndex((l, i) => heading[i] && /^## Tasks\s*$/.test(l));
         if (end < 0) end = lines.findIndex((l, i) => heading[i] && CARD_RE.test(l));
-        out.push(...lines.slice(0, end < 0 ? lines.length : end));
+        header = lines.slice(0, end < 0 ? lines.length : end);
     }
+    // each open card; `fromMd` cards can be named for a Read, an added card lives only in the status file
+    const cards = [];
     for (const t of st.tasks.filter((x) => x.status !== 'done'))
     {
         const at = lines ? lines.findIndex((l, i) => heading[i] && l.startsWith(`### Task ${t.id} - `)) : -1;
@@ -841,11 +849,32 @@ function verbResume(plan, ctx)
         {
             let end = lines.findIndex((l, i) => i > at && heading[i]);
             if (end < 0) end = lines.length;
-            out.push(...lines.slice(at, end));
+            cards.push({ fromMd: true, lines: lines.slice(at, end) });
         }
-        else if (t.card !== null) out.push(...addedCard(t));
-        else out.push(`### Task ${t.id} - ${t.title}`, '(no card in the plan)');
+        else if (t.card !== null) cards.push({ fromMd: false, lines: addedCard(t) });
+        else cards.push({ fromMd: false, lines: [`### Task ${t.id} - ${t.title}`, '(no card in the plan)'] });
     }
+    const chars = (rows) => rows.reduce((n, l) => n + l.length + 1, 0);
+    const md = `${plan.rel}${plan.id}.md`;
+    const big = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const cardLines = () => cards.flatMap((c) => c.lines);
+    const over = (extra = 0) => chars(out) + chars(header) + chars(cardLines()) + extra > RESUME_MAX_CHARS;
+    const nameHeader = () => { header = [`Plan: ${md} - its header is ${big(chars(header))} characters, past what one shell result shows whole: Read the file.`, '']; };
+    let cardNote = [];
+    if (over())
+    {
+        // name the part that does not fit: the header when the cards fit without it, else the cards (then the header too, if still over)
+        const cardsFit = chars(out) + chars(cardLines()) + 200 <= RESUME_MAX_CHARS;
+        if (cardsFit) nameHeader();
+        else
+        {
+            const size = chars(cards.filter((c) => c.fromMd).flatMap((c) => c.lines));
+            for (const c of cards) if (c.fromMd) c.lines = [c.lines[0], ''];
+            cardNote = ['', `Cards: the open cards above are ${big(size)} characters, past what one shell result shows whole: Read them in ${md}.`];
+            if (over(chars(cardNote))) nameHeader();
+        }
+    }
+    out.push(...header, ...cardLines(), ...cardNote);
     return { code: 0, out };
 }
 
@@ -1041,7 +1070,7 @@ function stdinFor(argv, { isTTY, read })
 }
 
 module.exports = {
-    SCHEMA, MAX_BYTES, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS, VERBS,
+    SCHEMA, MAX_BYTES, RESUME_MAX_CHARS, TIME_RE, STATUSES, KEYS, TASK_KEYS, CAPS, VERBS,
     stamp, emptyStatus, validate, readStatus, writeWhole, resolvePlan, parseStdin, parseCards, counts, resumeText, run, parseCall, stdinFor,
     // for the verbs a later task adds
     mutate, syncTasks, HANDLERS, Refusal, tasksLine, newTask, labelled, cut, usage,
