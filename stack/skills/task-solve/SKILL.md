@@ -8,9 +8,8 @@ argument-hint: "<the task, feature or bug>"
 # Solve Task - the gated single-chat vertical
 
 One task/feature/bug, six steps, and the user holds the gate between every two. The four twin
-skills do the work; this skill owns the chain, the stops, the mode choices, and the state that
-survives a compaction or a fresh session. It never designs, builds, or reviews anything itself.
-The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a
+skills do the work; this skill owns the chain, the stops, the modes and the cursor.
+Its measurements live in `references/evidence.md` - an audit appendix, not a
 run-time load.
 
 ## When to use
@@ -25,8 +24,7 @@ run-time load.
 
 **On invocation, resume before starting** - both before step 1, in this order:
 
-1. `node .claude/hooks/handoff.js left <feature>` - always, a new request included (the run's seat notes, by name;
-   `list <feature>/<contract_version>` prints them).
+1. `node .claude/hooks/handoff.js left <feature>` - always, a new request included (the seats' notes, by name).
 2. Only when `<docs-path>/work/plans/<feature>/` exists: `node .claude/hooks/plan-status.js resume --plan <that folder>`.
    A new request has no folder yet - skip it, never guess an id.
 
@@ -50,7 +48,7 @@ Progress:  <N> of <M> steps
 Leftovers: <what this run started and did not finish | none>
 ```
 
-`none` is an answer, an omitted line is not; Markdown-bold (`**Result:**`) counts, a status table in
+`none` is an answer, an omitted line is not; bold labels count, a status table in
 place of the names does not.
 
 **Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
@@ -69,8 +67,7 @@ A reply that ASKS is no pick: answer it and end the turn - the stop stays open. 
 concrete; free text comes through the built-in Other. Where the harness has no such tool, list the same options in plain
 text and END THE TURN.
 
-**The fresh-session resume.** A fresh session (`/clear`) resumes from the plan folder alone, with
-zero re-work. Once the cycle has crossed the install's
+**The fresh-session resume.** A fresh session (`/clear`) resumes from the plan folder alone. Once the cycle has crossed the install's
 fresh-session trigger (400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other), spans hours, or resumes after an idle gap past the cache, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. Below all three (a new cycle's first ask and the compaction stop aside), no ask
 carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
@@ -98,6 +95,8 @@ pre-commit checkpoint and its receipt still apply. A session past the trigger, o
 State the size in ONE line before anything else - `Size: <trivial|small|standard|cross> - <the
 signal that decided it>`, never below the `size floor:` the full-spec check prints (run it first, on
 every size) - then run only that row's steps; it rides the first stop's `Result:`, `Spec:` beside it.
+Print it as its own chat line the moment `spec-check.js` returns - before any skill load, urgency included;
+`Result:` repeats it, never replaces it.
 The size can be raised mid-run, never lowered - re-checked before a trivial or small close
 (`references/full-spec.md`); a small close's `Result:` carries `review: <reviewer> - <its verdict>`.
 
@@ -131,11 +130,11 @@ The stamps are step 2's and 3's (`gate`, `approve --mode <session|agents>`), and
 ## The steps
 
 Each step that names a skill INVOKES it via the Skill tool - again on every new cycle in the same
-chat, even when an earlier cycle loaded it. One exception: a capture named in a
-close-out line (step 6) is a POINTER for the user to type, never a call this run makes.
+chat, even when an earlier cycle loaded it. Except a capture a step-6 close-out
+line names: a POINTER for the user to type, never a call.
 
-1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first. It writes the plan folder's `<feature>.md` and syncs it,
-   with its design rules settled IN it, so step 5 reviews against a plan that already decided them. *Stop* -
+1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first, once the `Size:` and `Spec:` lines
+   are printed. It writes and syncs `<feature>.md`, its design rules settled IN it for step 5. *Stop* -
    none on a full spec, where step 2 follows in the same step (above).
 2. **GATE** - run `task-verify-plan` over the plan in the mode step 1 ran - no mode ask. It
    records its eight-field block through `gate`: `Gated: passed`; `passed - <N> fixes applied` for the
@@ -166,17 +165,17 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - 'Resume in a fresh session' - required past the fresh-session trigger above
    ```
 
-   The mark moves to the seats option when the mode-fit rule picks it for THIS plan, and to the fresh option where the resume rule above marks it. Approval and mode arrive as one answer; a typed Other answer that
-   omits the mode is re-asked, never defaulted (a mode the invocation named leaves only approve /
-   not-yet - restate it). Record it with `approve --mode <session|agents>` after the answer, quoting
-   the selected answer as the approval words - nothing builds without it.
+   The mark moves to the seats option when the mode-fit rule picks it for THIS plan, and to the fresh option where the resume rule above marks it. Approval and mode arrive as one answer; an Other answer
+   with no mode is re-asked, never defaulted (a mode the invocation named leaves only approve / not-yet - restate it).
+   Record it with `approve --mode <session|agents>` after the answer, quoting the pick as the approval
+   words - nothing builds without it.
 4. **BUILD** - per the approved mode:
    - *session*: run `task-implement` - it starts, ticks and resumes each task through the script.
    - *agents*: fan the task cards out to the matching `<stack>-implementer` seats, each dispatched
      exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), by the
      step mechanics' dispatch rules - the approval stamp first, the contract version and the card's
      docs anchors in every brief, no isolation, no `model:` override.
-   Both modes build to the step mechanics' bar, its build-time stop list included. State what blocks
+   Both modes build to the step mechanics' bar and build-time stop list. State what blocks
    and what is done, then ONE ask - never 'retry the same command' or 'you run it':
 
    ```ask
@@ -223,9 +222,9 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names|none>` -
    plus `Deviations: <each Decisions entry that departs from the Asked: words, one apiece | none>`,
    under AUTO the user's first sight of them.
-   *Stop* - this stop is where the close-out decisions live: anything PENDING (an uncommitted diff, an
-   unpushed commit, a deferred item, a cross-repo follow-up) goes into the ask; only a cycle with nothing
-   pending ends on the report alone. An uncommitted diff waits for the user's pick (`GIT-PREFERENCES.md`):
+   *Stop* - the close-out decisions: anything PENDING (an uncommitted diff, an unpushed commit, a
+   deferred item, a cross-repo follow-up) goes into the ask; only a cycle with nothing pending ends on
+   the report alone. An uncommitted diff waits for the user's pick (`GIT-PREFERENCES.md`):
 
    ```ask
    The feature is done and verified; the diff is uncommitted. Commit it on this machine?
@@ -265,6 +264,6 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
   APPROVE stamp records the user's decision, not yours; an answer that names no build mode
   approves nothing.
 - Never dispatch a seat the user did not choose at a stop - dispatch is explicit-only house-wide.
-- Never keep cycle state only in chat or a note: a stamp, tick or cursor not in the status file does not exist.
+- Never keep cycle state only in chat: a stamp, tick or cursor not in the status file does not exist.
 
 Flat plans (until 4.0.0) are stamped in the file.

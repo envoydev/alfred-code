@@ -626,3 +626,9 @@ test('PF1: the trio protocol\'s four copies are byte-equal to the owner, and the
     for (const rel of ['agent-output-protocol.md', 'execution-modes.md'])
         assert.match(flat(read(`stack/skills/task-solve-cross/references/${rel}`)), /a seat never edits the plan, its `status\.json` or `scoring\.json`, and never runs the script/, rel);
 });
+
+test('PF1 A/B rep round 2 (adverse size-first): the Size line is its own chat line the moment spec-check returns, before any skill load', () => {
+    const t = flat(section(skill('task-solve'), 'Size first'));
+    assert.match(t, /Print it as its own chat line the moment `spec-check\.js` returns - before any skill load, urgency included; `Result:` repeats it, never replaces it\./);
+    assert.match(flat(skill('task-solve')), /1\. \*\*DESIGN\*\* - run `task-design`, with `habits-clarify` loaded first, once the `Size:` and `Spec:` lines are printed\./);
+});
