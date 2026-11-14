@@ -4,8 +4,9 @@
 # project's fresh-session triggers are set low (30,000 tokens on every window tier) and the payback
 # window wide, so the cycle is past its trigger when the approve ask is put and a fresh session pays
 # back - the case where the approve template's fresh-session row is required and marked first. The
-# plan ends in a long `## Task notes` appendix the resume reads, which lifts the carry past the
-# first reply's floor.
+# plan carries long notes the resume reads (the flat plan's `## Task notes` appendix; the folder plan's
+# `## Design notes`, above `## Tasks`), which lift the carry past the first reply's floor plus the
+# resume read the verdict adds (fresh-session.js freshVerdict).
 set -e
 git config user.email fixture@example.invalid
 git config user.name fixture
@@ -87,11 +88,14 @@ extend - the handler is the trust boundary for the request body; the check lands
 
 Context for the build, gathered while the plan was designed. None of it changes the scope below.
 MD
-# About 60,000 characters of plain notes, one per review pass over a field or a seam of the handler.
+# About 23,000 characters of plain notes, one per review pass over a field or a seam of the handler - just under
+# plan-status's resume cap (RESUME_MAX_CHARS, 24,000), so resume prints them in every run. At 60,000 the cap named
+# the header for a Read and no run printed them: 3 of 9 runs ended 0.2-1k tokens short of what the verdict needs
+# above the floor (~15k), so no offer was owed (rep round of 2026-11-14); these notes add about 6k.
 TOPICS=('the sku field' 'the quantity field' 'the email field' 'the order id counter' 'the 400 response body'
   'the 201 response body' 'the in-memory store' 'the test file layout' 'the module exports' 'the request body shape'
   'the error strings' 'the npm test command')
-for i in $(seq 1 77); do
+for i in $(seq 1 28); do
   T=${TOPICS[$(( i % 12 ))]}
   cat >> "$MDF" <<MD
 
