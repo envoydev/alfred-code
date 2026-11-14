@@ -272,8 +272,8 @@ test('start: --session self allocates its own self-<hex> folder per call; a sepa
 // [needs: the retention period] when ceiling < 100, `findings` (plus a BLOCKER or a MATERIAL) in its Findings, sealed
 // unless unsealed; it returns the id. next(slug, extra) returns the printed lines of `next ... --level 80 --rounds 3
 // --rubric R100_FILE ...extra`; decide(slug, choice) returns the spawn result.
-function graded(slug, { total, ceiling = 100, blocker, material, regradeOf, retryOf, unsealed, output = 'designer-plan', findings = [] }) {
-    const s = start(slug, regradeOf ? ['--regrade-of', regradeOf] : retryOf ? ['--retry-of', retryOf] : [], output);
+function graded(slug, { total, ceiling = 100, blocker, material, regradeOf, retryOf, unsealed, output = 'designer-plan', findings = [], target, at: when }) {
+    const s = start(slug, [...(regradeOf ? ['--regrade-of', regradeOf] : retryOf ? ['--retry-of', retryOf] : []), ...(target ? ['--target', target] : [])], output);
     const tags = {};
     for (let n = total + 1; n <= ceiling; n++) tags[`c${n}`] = '[closable]';
     if (ceiling < 100) tags[`c${ceiling + 1}`] = '[needs: the retention period]';
@@ -282,10 +282,11 @@ function graded(slug, { total, ceiling = 100, blocker, material, regradeOf, retr
     if (material) items.push(`- [MATERIAL] M1 ${material}. Failure: f Trigger: t Cost: c Evidence: e Fix: x [closable]`);
     const text = card100(total, items, { tags });
     fs.writeFileSync(s['score-file'], unsealed ? text.split('\n').slice(1).join('\n') : text);
+    if (when) fs.utimesSync(s['score-file'], new Date(when), new Date(when));
     return s.id;
 }
 const next = (slug, extra = []) => cli(['next', ...at(slug), '--level', '80', '--rounds', '3', '--rubric', R100_FILE, ...extra]).stdout.split('\n').filter(Boolean);
-const decide = (slug, choice) => cli(['decide', ...at(slug), '--choice', choice]);
+const decide = (slug, choice) => cli(['decide', ...at(slug), '--choice', choice, '--rubric', R100_FILE, '--level', '80']);
 
 test('start: inline-plan prints the kind line; a designer-plan start prints none', () => {
     assert.strictEqual(start('kind1', [], 'inline-plan').kind, "inline-plan is the execution strategy's plan for work this session builds now - a request to write a plan is designer-plan, its plan file under <docs-path>/work/plans/");
@@ -626,4 +627,145 @@ test('the output-scoring seat reads in two batched turns', () => {
     assert.strictEqual((squash(body).match(/in ONE (?:more )?turn/g) || []).length, 2);
     assert.ok(squash(body).includes('a later turn only for a lookup an earlier read made necessary'));
     assert.match(front, /^tools: LSP, Read, Grep, Glob, WebFetch$/m);
+});
+
+// --- scoring.json (PF1 D11): written by scorecard.js alone, into the plan folder, from the call that releases
+const { examples, keyLines, shapeOf } = require('./plan-contract-fixture.js');
+const PLAN_DIR = path.join(ROOT, '.alfred', 'docs', 'work', 'plans');
+fs.mkdirSync(PLAN_DIR, { recursive: true });
+const planTarget = (id) => `.alfred/docs/work/plans/${id}/${id}.md`;
+const scoringFile = (id) => path.join(PLAN_DIR, id, 'scoring.json');
+const scoring = (id) => JSON.parse(fs.readFileSync(scoringFile(id), 'utf8'));
+const finding = (severity, id, title, tail = '') => `- [${severity}] ${id} ${title}. Failure: f Trigger: t Cost: c Evidence: e Fix: x${tail}`;
+
+test('scoring.json: a first release makes the plan folder and writes every round - released the best, not the last, each at from its score file', () =>
+{
+    const target = planTarget('pf-a');
+    const first = graded('pf-a', { total: 85, target, at: '2026-11-13T09:31:20Z',
+        findings: [finding('MATERIAL', 'M1', 'Rollback owner unnamed', ' [needs: the rollback owner]'), finding('MATERIAL', 'M2', 'No test for the empty export', ' [closable]')] });
+    assert.strictEqual(next('pf-a')[0], `offer-fix ${first} recommend fix`);
+    assert.strictEqual(decide('pf-a', 'fix').status, 0);
+    assert.ok(!fs.existsSync(path.join(PLAN_DIR, 'pf-a')), 'no folder while a first grading runs (D11)');
+    const second = graded('pf-a', { total: 82, target, at: '2026-11-13T09:40:59Z',
+        findings: [finding('MATERIAL', 'M1', 'Streaming limit unstated'), finding('MATERIAL', 'M2', 'No test for the empty export', ' [closable]')] });
+    const out = next('pf-a');
+    assert.deepStrictEqual([out[0], out.filter((l) => l.startsWith('!!'))], [`release ${first}`, []]);
+    const doc = scoring('pf-a');
+    assert.strictEqual(fs.readFileSync(scoringFile('pf-a'), 'utf8'), `${JSON.stringify(doc, null, 2)}\n`, 'two-space JSON, one final newline');
+    assert.deepStrictEqual(shapeOf(doc), shapeOf(examples().scoring), 'the contract\'s keys, their order and their types');
+    assert.deepStrictEqual([Object.keys(doc), Object.keys(doc.rounds[0])], [keyLines().scoring, keyLines().round]);
+    const round = (n, at, total, id) => ({ round: n, at, total, severities: { BLOCKER: 0, MATERIAL: 2, MINOR: 0 }, id, attempt: 1, self: false, accepted: false, rubric: 'rubric-r100.md', level: 80 });
+    assert.deepStrictEqual({ ...doc, rounds: doc.rounds.map(({ findings, ...r }) => r) }, { schema: 1, scale: 100, released: 1, output: 'designer-plan', releasedBefore: null, status: 'released',
+        rounds: [round(1, '2026-11-13T09:31Z', 85, first), round(2, '2026-11-13T09:40Z', 82, second)] });
+    assert.deepStrictEqual(doc.rounds[0].findings[0], { severity: 'MATERIAL', title: 'Rollback owner unnamed', disposition: 'needs-human', needs: ['the rollback owner'] });
+    assert.deepStrictEqual(fs.readdirSync(path.join(PLAN_DIR, 'pf-a')), ['scoring.json'], 'no temp file, and no Markdown of the script\'s');
+    const mtime = fs.statSync(scoringFile('pf-a')).mtimeMs;
+    next('pf-a');
+    assert.strictEqual(fs.statSync(scoringFile('pf-a')).mtimeMs, mtime, 'a closed run is never written again');
+});
+
+test('scoring.json: the four dispositions, needs-human over closable; severities leave the discarded out and count a title once', () =>
+{
+    const target = planTarget('pf-b');
+    const id = graded('pf-b', { total: 95, target, findings: [finding('MATERIAL', 'M1', 'Owner unnamed', ' [closable] [needs: the owner]'), finding('MATERIAL', 'M2', 'Empty export untested', ' [closable]'),
+        finding('MATERIAL', 'M3', 'Limit unstated'), '- [MINOR] N1 Heading order. Failure: f Trigger: t Evidence: e Fix: x', finding('MINOR', 'N2', 'Typo in the header')] });
+    graded('pf-b', { total: 95, target, regradeOf: id, findings: [finding('MATERIAL', 'M1', 'Empty export untested'), finding('MATERIAL', 'M2', 'Seen by the second grade only')] });
+    assert.strictEqual(next('pf-b')[0], `release ${id}`);
+    const [round] = scoring('pf-b').rounds;
+    assert.deepStrictEqual(round.findings, [
+        { severity: 'MATERIAL', title: 'Owner unnamed', disposition: 'needs-human', needs: ['the owner'] },
+        { severity: 'MATERIAL', title: 'Empty export untested', disposition: 'closable', needs: [] },
+        { severity: 'MATERIAL', title: 'Limit unstated', disposition: 'open', needs: [] },
+        { severity: 'MINOR', title: 'Heading order', disposition: 'discarded', needs: [] },
+        { severity: 'MINOR', title: 'Typo in the header', disposition: 'open', needs: [] },
+        { severity: 'MATERIAL', title: 'Seen by the second grade only', disposition: 'open', needs: [] }]);
+    assert.deepStrictEqual([round.severities, round.total, round.id], [{ BLOCKER: 0, MATERIAL: 4, MINOR: 1 }, 95, id]);
+});
+
+test('scoring.json: a re-grade appends and never rewrites an earlier run; released waits in releasedBefore; a final puts it back; a release names the new round', () =>
+{
+    const target = planTarget('pf-c');
+    graded('pf-c1', { total: 90, target });
+    assert.match(next('pf-c1')[0], /^release /);
+    const one = scoring('pf-c').rounds[0];
+    graded('pf-c2', { total: 60, ceiling: 78, target });                  // the folder exists: every next and decide writes
+    assert.match(next('pf-c2')[0], /^ask-continue /);
+    next('pf-c2');                                                        // a second write of the run in flight
+    let doc = scoring('pf-c');
+    assert.deepStrictEqual([doc.released, doc.releasedBefore, doc.status, doc.rounds.map((r) => r.round), doc.rounds[0]], [null, 1, 'grading', [1, 2], one]);
+    assert.strictEqual(decide('pf-c2', 'keep').status, 0);
+    doc = scoring('pf-c');
+    assert.deepStrictEqual([doc.released, doc.releasedBefore, doc.status, doc.rounds.length], [1, null, 'released', 2], 'the plan on disk is still the first draft');
+    graded('pf-c3', { total: 92, target });
+    assert.match(next('pf-c3')[0], /^release /);
+    doc = scoring('pf-c');
+    assert.deepStrictEqual([doc.released, doc.releasedBefore, doc.status, doc.rounds.map((r) => [r.round, r.total]), doc.rounds[0]], [3, null, 'released', [[1, 90], [2, 60], [3, 92]], one]);
+});
+
+test('scoring.json: a first grading that ends withheld leaves no folder; with a folder it leaves withheld; accepted below the level is marked', () =>
+{
+    graded('pf-d1', { total: 60, ceiling: 78, target: planTarget('pf-d') });
+    next('pf-d1');
+    assert.strictEqual(decide('pf-d1', 'keep').status, 0);
+    assert.ok(!fs.existsSync(path.join(PLAN_DIR, 'pf-d')));
+    graded('pf-d2', { total: 60, ceiling: 78, target: planTarget('pf-d') });
+    next('pf-d2');
+    assert.match(decide('pf-d2', 'accept').stdout, /^released [0-9a-f]+ accepted below the level\n$/);
+    let doc = scoring('pf-d');
+    assert.deepStrictEqual([doc.released, doc.status, doc.rounds.length, doc.rounds[0].accepted], [1, 'accepted', 1, true]);
+    fs.mkdirSync(path.join(PLAN_DIR, 'pf-e'));                            // a plan written by hand, graded for the first time
+    graded('pf-e', { total: 60, ceiling: 78, target: planTarget('pf-e') });
+    next('pf-e');
+    assert.deepStrictEqual([scoring('pf-e').released, scoring('pf-e').releasedBefore, scoring('pf-e').status], [null, null, 'grading']);
+    decide('pf-e', 'keep');
+    doc = scoring('pf-e');
+    assert.deepStrictEqual([doc.released, doc.releasedBefore, doc.status, doc.rounds.length], [null, null, 'withheld', 1]);
+});
+
+test('scoring.json: a flat target and another output write nothing; a folder-shape target beside a flat <id>.md says so, makes no folder and releases as before', () =>
+{
+    fs.writeFileSync(path.join(PLAN_DIR, 'pf-f.md'), '# flat\n');
+    const id = graded('pf-f', { total: 90, target: planTarget('pf-f') });
+    const r = cli(['next', ...at('pf-f'), '--level', '80', '--rounds', '3', '--rubric', R100_FILE]);
+    assert.deepStrictEqual([r.status, r.stdout.split('\n')[0]], [0, `release ${id}`]);
+    assert.ok(r.stdout.endsWith('\n!! scoring.json not written: a flat pf-f.md holds this id\n'), r.stdout);
+    assert.ok(!fs.existsSync(path.join(PLAN_DIR, 'pf-f')));
+    const before = fs.readdirSync(PLAN_DIR).sort();
+    graded('pf-g', { total: 90, target: '.alfred/docs/work/plans/pf-g.md' });
+    graded('pf-h', { total: 90, target: planTarget('pf-h'), output: 'inline-plan' });
+    for (const slug of ['pf-g', 'pf-h']) { const lines = next(slug); assert.deepStrictEqual([/^release /.test(lines[0]), lines.filter((l) => l.startsWith('!!'))], [true, []], slug); }
+    assert.deepStrictEqual(fs.readdirSync(PLAN_DIR).sort(), before);
+});
+
+test('scoring.json: an unreadable file and a missing engine each leave the release as it was', () =>
+{
+    fs.mkdirSync(path.join(PLAN_DIR, 'pf-i'));
+    fs.writeFileSync(scoringFile('pf-i'), '{');
+    const id = graded('pf-i', { total: 90, target: planTarget('pf-i') });
+    const r = cli(['next', ...at('pf-i'), '--level', '80', '--rounds', '3', '--rubric', R100_FILE]);
+    assert.deepStrictEqual([r.status, r.stdout.split('\n')[0], fs.readFileSync(scoringFile('pf-i'), 'utf8')], [0, `release ${id}`, '{']);
+    assert.ok(r.stdout.endsWith('\n!! scoring.json not written: the file on disk is not a schema 1 score file\n'), r.stdout);
+    // a copy of the skill with layout.js beside it and no plan-status.js anywhere it looks
+    const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'scoring-lone-'));
+    test.after(() => fs.rmSync(lone, { recursive: true, force: true }));
+    fs.cpSync(path.join(REPO, 'stack', 'skills', 'mode-output-scoring'), path.join(lone, 'skills', 'mode-output-scoring'), { recursive: true });
+    fs.mkdirSync(path.join(lone, 'hooks'));
+    for (const f of ['layout.js', 'workspace-file.js']) fs.copyFileSync(path.join(REPO, 'stack', 'hooks', f), path.join(lone, 'hooks', f));
+    const run = (args) => spawnSync(process.execPath, [path.join(lone, 'skills', 'mode-output-scoring', 'scripts', 'scorecard.js'), ...args], { cwd: ROOT, env: BASE_ENV, encoding: 'utf8' });
+    const s = kv(run(['start', ...at('pf-j'), '--output', 'designer-plan', '--target', planTarget('pf-j')]));
+    fs.writeFileSync(s['score-file'], card100(90));
+    const n = run(['next', ...at('pf-j'), '--level', '80', '--rounds', '3', '--rubric', R100_FILE]);
+    assert.deepStrictEqual([n.status, n.stdout.split('\n')[0]], [0, `release ${s.id}`]);
+    assert.ok(n.stdout.endsWith('\n!! scoring.json not written: the plan-status engine was not found\n'), n.stdout);
+    assert.ok(!fs.existsSync(path.join(PLAN_DIR, 'pf-j')));
+});
+
+test('inputs.md names no JSON of the plan folder', () =>
+{
+    fs.mkdirSync(path.join(PLAN_DIR, 'pf-a'), { recursive: true });
+    fs.writeFileSync(path.join(PLAN_DIR, 'pf-a', 'pf-a.md'), '# A - plan\n');
+    fs.writeFileSync(path.join(PLAN_DIR, 'pf-a', 'status.json'), '{}');
+    start('pf-k', ['--target', planTarget('pf-a')], 'inline-plan');      // the one output whose inputs name the target
+    const inputs = fs.readFileSync(path.join(dir('pf-k'), 'inputs.md'), 'utf8');
+    assert.ok(inputs.includes('pf-a/pf-a.md') && !/status\.json|scoring\.json/.test(inputs), inputs);
 });

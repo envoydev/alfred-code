@@ -93,6 +93,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // the plan script's verb (PF1, `node .claude/hooks/plan-status.js add-task`) - a verb, not a skill.
+    'add-task',
     // capture-quality's part names and topic words (its router's topic table) - a part of one skill, not a skill.
     'architecture-quality', 'code-quality', 'test-coverage-quality', 'test-coverage',
     // capture-awareness's hyphenated part names and topic words (2026-10-29), the same way.
@@ -1252,7 +1254,8 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 const ASK_FLOW_TEMPLATES = {
     // +1 task-solve: the step-5 findings stop (usage audit 2026-11-03 U28: improvised, it marked 'Close now' over an in-area MATERIAL).
     'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
-    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
+    // +1 task-implement (PF1): the foreign-start ask - a `start` that prints `!!`, another session started the task.
+    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 11, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.
     'capture-quality': 8, // R127: absent and unstamped ask apart
     // capture-awareness's router (2026-10-30): the chain's run ask and mode ask and the description match's part pick.
@@ -2202,20 +2205,20 @@ function main()
         flag('stack-graph: meta/stack-graph.json is stale - run `node scripts/stack-graph.js --write` and commit it');
     }
 
-    // 21. ONE version everywhere: the plugin manifest (what the marketplace serves from
-    //     main) and the marketplace metadata must agree - the release workflow tags each
-    //     release v<version> from the plugin manifest, so a mismatch here would ship a
-    //     release whose version differs from the marketplace's.
+    // 21. ONE version everywhere: setup-plugin's plugin.json (the release workflow tags each
+    //     release v<version> from it) and the root plugin.json the catalog serves from main
+    //     must agree, so a release never ships a manifest naming another version.
     const pluginManifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8'));
-    const marketplaceManifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    const marketplaceVersion = marketplaceManifest.metadata && marketplaceManifest.metadata.version;
+    let rootManifestVersion;
+    try { rootManifestVersion = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version; }
+    catch { rootManifestVersion = undefined; }
     if (!pluginManifest.version)
     {
         flag('setup-plugin/.claude-plugin/plugin.json has no version - the release workflow tags each release from it');
     }
-    else if (pluginManifest.version !== marketplaceVersion)
+    else if (pluginManifest.version !== rootManifestVersion)
     {
-        flag(`version drift: setup-plugin plugin.json '${pluginManifest.version}' vs .claude-plugin/marketplace.json metadata '${marketplaceVersion}' - the plugin, the marketplace, and the release must carry ONE version`);
+        flag(`version drift: setup-plugin plugin.json '${pluginManifest.version}' vs .claude-plugin/plugin.json '${rootManifestVersion}' - run \`npm run plugin-manifest\`; the plugin and the release must carry ONE version`);
     }
 
     //     package.json carries the same version: it is the repo's own metadata, and a
@@ -2663,22 +2666,22 @@ function main()
     }
 
     // 44 + 45. Plugin placement is computed: the core is the only plugin, and the generated entries are current.
-    // 46. The repo root carries no name a shared-source marketplace entry auto-discovers (spike S9c).
-    // 47. The marketplace manifest passes `claude plugin validate --strict`.
+    // 46. The repo root carries no default component path the plugin would auto-discover (spike S9c).
+    // 47. The root plugin manifest passes `claude plugin validate`, warnings included but the root CLAUDE.md one.
     for (const finding of lintPluginPlacement()) flag(finding);
     for (const finding of lintRepoRootReserved()) flag(finding);
     // 48. The core's hooks block matches the manifest's own wiring table.
     for (const finding of lintHooksEntry()) flag(finding);
-    // 49. The LIVE marketplace matches the generated entries - from Phase 3 the core is generated
-    // too, so a hand edit to any entry is drift, not a change, and a `renames` key or a hooks entry is a finding.
+    // 49. The LIVE root plugin.json matches the generated core entry - a hand edit is drift, not a change - and no
+    // marketplace.json is back at the root: the catalog lives in BRAND.catalog since 2026-11-14.
     for (const finding of lintMarketplaceEntries()) flag(finding);
     // 50. Every agent's `skills:` preload is spelled as the placement homes it - bare, the project copy.
     for (const finding of lintAgentPreloads()) flag(finding);
     // 51. The seed's CORE_DEP_PLUGINS mirrors the manifest's parked cross-marketplace dependencies.
     for (const finding of lintCoreDependencies()) flag(finding);
-    // 52. Nothing the marketplace ships depends on a plugin `bin/` entry (spike S4: Windows NOT RUN).
+    // 52. Nothing the plugin ships depends on a plugin `bin/` entry (spike S4: Windows NOT RUN).
     for (const finding of lintNoPluginBin()) flag(finding);
-    // 53. The MCP plugin entries match the generator, the installer catalog and the tree.
+    // 53. The plugin declares no MCP server and the manifest lists none.
     for (const finding of lintMcpEntries()) flag(finding);
     // 54. No shipped file names an MCP tool by its BARE server spelling - it would never resolve.
     for (const finding of lintMcpToolNames()) flag(finding);
@@ -2815,7 +2818,7 @@ function lintPluginPlacement(placeIn)
     {
         const wanted = buildMod.serialize(buildMod.buildEntries({ placement: place }));
         const have = fs.existsSync(buildMod.ENTRIES_FILE) ? fs.readFileSync(buildMod.ENTRIES_FILE, 'utf8') : null;
-        if (have !== wanted) out.push('meta/plugin-entries.json is STALE - run `npm run marketplace`; it is generated, never hand-edited.');
+        if (have !== wanted) out.push('meta/plugin-entries.json is STALE - run `npm run plugin-manifest`; it is generated, never hand-edited.');
     }
     catch (err) { out.push(`the plugin entries could not be generated: ${err.message}`); }
 
@@ -2905,29 +2908,27 @@ function lintNoPluginBin(root)
     }
     try
     {
-        const mk = JSON.parse(fs.readFileSync(path.join(base, '.claude-plugin', 'marketplace.json'), 'utf8'));
-        for (const e of mk.plugins || [])
-            for (const key of ['commands', 'skills', 'agents', 'hooks', 'mcpServers'])
-                for (const v of [].concat(e[key] || []))
-                    if (typeof v === 'string' && /(^|\/)bin(\/|$)/.test(v))
-                        out.push(`marketplace entry '${e.name}' lists \`${v}\` under ${key}, which reaches a bin/ path - unproven on Windows (spike S4).`);
+        const e = JSON.parse(fs.readFileSync(path.join(base, '.claude-plugin', 'plugin.json'), 'utf8'));
+        for (const key of ['commands', 'skills', 'agents', 'hooks', 'mcpServers'])
+            for (const v of [].concat(e[key] || []))
+                if (typeof v === 'string' && /(^|\/)bin(\/|$)/.test(v))
+                    out.push(`the plugin manifest lists \`${v}\` under ${key}, which reaches a bin/ path - unproven on Windows (spike S4).`);
     }
     catch { /* the schema check owns an unreadable manifest */ }
     return out;
 }
 
 // 53. The stack ships NO MCP server (2026-10-24, the user's ruling - the record of what it shipped is
-// stack/mcp/shipped-mcps.json): no marketplace entry declares `mcpServers`, and the manifest's `mcps` list is
+// stack/mcp/shipped-mcps.json): the plugin manifest declares no `mcpServers`, and the manifest's `mcps` list is
 // empty, every name it held in `retired.mcps`, so an update prunes what an older release installed.
 function lintMcpEntries()
 {
     const out = [];
-    let mkt;
-    try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
-    catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
-    for (const p of mkt.plugins || [])
-        if (p && p.mcpServers)
-            out.push(`the \`${p.name}\` marketplace entry declares mcpServers - the stack ships no MCP server; run \`npm run marketplace\`, which drops a server entry.`);
+    let core;
+    try { core = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/plugin.json'), 'utf8')); }
+    catch (err) { return [`.claude-plugin/plugin.json could not be read: ${err.message}`]; }
+    if (core && core.mcpServers)
+        out.push(`the \`${core.name}\` plugin manifest declares mcpServers - the stack ships no MCP server; run \`npm run plugin-manifest\`, which writes none.`);
     const manifest = readStackManifest();
     for (const row of manifest.mcps || [])
         out.push(`meta/stack-manifest.json lists MCP '${(row && row.name) || row}' - the stack ships no MCP server; move it to retired.mcps.`);
@@ -3408,7 +3409,7 @@ function repoTextFiles(root = ROOT)
 // own hooks[] wiring table, so the plugin route and the settings.json route cannot drift while both
 // exist. A matcher edited in one place and not the other is exactly the bug this catches: the copied
 // hook would still gate a tool the plugin hook no longer sees, or the reverse. `liveIn` is a parsed
-// marketplace for a test; the lint reads the committed file.
+// plugin manifest for a test; the lint reads the committed file.
 function lintHooksEntry(liveIn)
 {
     const out = [];
@@ -3421,20 +3422,19 @@ function lintHooksEntry(liveIn)
     try { wanted = build.coreEntry(); stack = build.hooksBlock(build.parseHookWirings()); }
     catch (err) { return [`the core's hooks could not be generated: ${err.message}`]; }
 
-    let mkt = liveIn;
-    if (!mkt)
+    let live = liveIn;
+    if (!live)
     {
-        try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
-        catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+        try { live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/plugin.json'), 'utf8')); }
+        catch (err) { return [`.claude-plugin/plugin.json could not be read: ${err.message}`]; }
     }
 
-    const live = (mkt.plugins || []).find(p => p && p.name === wanted.name);
-    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`npm run marketplace\`.`];
+    if (!live || live.name !== wanted.name) return [`.claude-plugin/plugin.json is not the \`${wanted.name}\` manifest - run \`npm run plugin-manifest\`.`];
     if (JSON.stringify(live.hooks) !== JSON.stringify(wanted.hooks))
-        out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
+        out.push(`the \`${wanted.name}\` plugin manifest's hooks are STALE against the manifest's hooks table - run \`npm run plugin-manifest\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'workspace-file.js',
+    const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'workspace-file.js', 'plan-status.js',
         'mode-settings.js', 'json-file.js']);
     const wired = new Set();
     for (const [event, blocks] of Object.entries(stack))
@@ -3509,79 +3509,64 @@ function lintAgentPreloads()
     return findings;
 }
 
-// 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
-// ships - so a hand-edited path list, description or dependency is drift. The core is the one PLUGIN,
-// exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
-// and the fold). An entry fetched from OUTSIDE this repo (an object `source`: `github`, `url`,
-// `git-subdir`, ...) ships none of its files, so it is the marketplace's, not the placement's - the
-// hand-written `preferred-tools` and `alfred-mods` entries (plugins.js foreignEntry, which uninstall reads too). `liveIn` is
-// a parsed marketplace for a test; the lint reads the committed file.
-function lintMarketplaceEntries(liveIn)
+// 49. The root plugin.json is GENERATED - the placement decides what the core ships - so a hand-edited path list,
+// description or hook is drift. The catalog left this repo on 2026-11-14 (BRAND.catalog serves the `envoydev`
+// marketplace and lists the core from here by its GitHub source), so a marketplace.json back at the root is a finding:
+// Claude Code would read this repo as a second catalog and `--plugin-dir .` would see two manifests. `liveIn` is a parsed
+// plugin manifest for a test; the lint reads the committed file.
+function lintMarketplaceEntries(liveIn, root)
 {
+    const base = root || ROOT;
     const findings = [];
     let live = liveIn;
     let wanted;
-    let build;
     try
     {
-        build = require('./build-marketplace.js');
-        if (!live) live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
-        wanted = build.buildEntries();
+        const build = require('./build-marketplace.js');
+        if (!live) live = JSON.parse(fs.readFileSync(path.join(base, '.claude-plugin/plugin.json'), 'utf8'));
+        wanted = build.buildEntries().find((e) => e.name === require('./plugin-placement.js').CORE);
     }
     catch (err)
     {
-        return [`the marketplace entries could not be checked: ${err.message}`];
+        return [`the plugin manifest could not be checked: ${err.message}`];
     }
-    const byName = new Map((live.plugins || []).map(p => [p.name, p]));
-    for (const entry of wanted)
-    {
-        const have = byName.get(entry.name);
-        if (!have) { findings.push(`marketplace.json is missing the generated entry ${entry.name} - run \`npm run marketplace\``); continue; }
-        if (JSON.stringify(have) !== JSON.stringify(entry))
-            findings.push(`marketplace.json entry ${entry.name} does not match the generated one - run \`npm run marketplace\`; it is generated, never hand-edited`);
-    }
-    const generated = new Set(wanted.map(e => e.name));
+    if (JSON.stringify(live) !== JSON.stringify(wanted))
+        findings.push('.claude-plugin/plugin.json does not match the generated core entry - run `npm run plugin-manifest`; it is generated, never hand-edited');
     if (live && Object.prototype.hasOwnProperty.call(live, 'renames'))
-        findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
-    // An MCP server entry has its own check (53: the stack ships none). An entry from OUTSIDE this repo is the
-    // marketplace's, never the placement's - but it is pinned to a full commit (SYS-07 of the 2026-11-03 system audit:
-    // preferred-tools floated on `ref: main`, so the catalog served whatever landed on that branch next). The one
-    // exception is the user's own repo tracking its release branch: a `github` source under `envoydev/` on `ref: main`
-    // with no `sha` floats, so a release merged there reaches the catalog with no change here (the user's ruling of
-    // 2026-11-04: one marketplace for every plugin, the mod first). A `sha` it does carry is a full one.
-    const ownFloat = (src) => src.source === 'github' && /^envoydev\/[A-Za-z0-9._-]+$/.test(String(src.repo)) && src.ref === 'main' && !Object.hasOwn(src, 'sha');
-    for (const p of live.plugins || [])
-    {
-        if (p && require('./install/plugins.js').foreignEntry(p) && !ownFloat(p.source) && !/^[0-9a-f]{40}$/.test(typeof p.source.sha === 'string' ? p.source.sha : ''))
-            findings.push(`marketplace.json entry ${p.name} is fetched from outside this repo with no 40-hex \`sha\` - pin the commit you reviewed beside its \`ref\`, or the catalog serves whatever lands on that ref next; only an envoydev/ repo on \`ref: main\` with no sha floats`);
-        if (!p || generated.has(p.name) || build.mcpEntry(p) || require('./install/plugins.js').foreignEntry(p)) continue;
-        if ((build.FOLDED_ENTRIES || []).includes(p.name))
-            findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
-        else if (Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name))
-            findings.push(`marketplace.json carries ${p.name}, a RETIRED alias no longer listed (2.2.1) - run \`npm run marketplace\`, which drops it`);
-        else findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
-    }
+        findings.push('.claude-plugin/plugin.json carries a `renames` key - a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead');
+    if (fs.existsSync(path.join(base, '.claude-plugin', 'marketplace.json')))
+        findings.push(`.claude-plugin/marketplace.json is back at the root - the catalog lives in ${require('./install/brand.js').BRAND.catalog}; list a plugin there, never here`);
     return findings;
 }
 
-// 47. The manifest the marketplace serves has to pass the CLI's own schema check. The CLI is not
-// present everywhere (a CI image, a fresh clone), and a missing tool is reported as NOT RUN rather
-// than laundered into a pass - the rule the stack applies to every other probe.
+// 47. The plugin manifest has to pass the CLI's own check. The CLI is not present everywhere (a CI image, a fresh
+// clone), and a missing tool is reported as NOT RUN rather than laundered into a pass - the rule the stack applies to
+// every other probe. Not `--strict`: the repo's own CLAUDE.md sits at the plugin root (this repo is also a project the
+// stack is developed in), and the validator warns that a root CLAUDE.md is not loaded - true and harmless. Every OTHER
+// warning of the manifest's own section counts; the plugin-directory section below it (an icon, OS metadata files
+// on disk) does not change the result and is not read.
+const VALIDATE_ACCEPTED = [/^root: CLAUDE\.md at the plugin root is not loaded/];
 function lintMarketplaceSchema()
 {
     const out = [];
     try { rt.execCommand('claude', ['--version'], { stdio: 'ignore' }); }
     catch
     {
-        console.log('lint-skills: the claude CLI is absent - `claude plugin validate --strict` NOT RUN.');
+        console.log('lint-skills: the claude CLI is absent - `claude plugin validate` NOT RUN.');
         return out;
     }
-    try { rt.execCommand('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    let text = '';
+    try { text = String(rt.execCommand('claude', ['plugin', 'validate', ROOT], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) || ''); }
     catch (err)
     {
-        const text = String(err.stdout || '') + String(err.stderr || '');
-        const said = text.trim().split('\n').filter(Boolean).slice(-4).join(' | ');
-        out.push(`\`claude plugin validate --strict\` failed on .claude-plugin/marketplace.json: ${said}`);
+        const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');
+        return [`\`claude plugin validate\` failed on .claude-plugin/plugin.json: ${said}`];
+    }
+    const own = text.split(/\n\s*Plugin directory checks/)[0];
+    for (const line of own.split('\n'))
+    {
+        const m = /^\s*\u276f\s+(.*)$/.exec(line);
+        if (m && !VALIDATE_ACCEPTED.some((re) => re.test(m[1]))) out.push(`\`claude plugin validate\` warns on the plugin manifest: ${m[1]}`);
     }
     return out;
 }

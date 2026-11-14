@@ -474,7 +474,7 @@ test('source: the core is updated at each of its scopes before the snapshot is r
         cli: run, refreshed,
     });
     assert.deepStrictEqual(run.calls, [
-        'plugin marketplace add envoydev/alfred-code',
+        'plugin marketplace add envoydev/plugins-marketplaces',
         'plugin marketplace update envoydev',
         'plugin update alfred-code@envoydev --scope user -y',
         'plugin update alfred-code@envoydev --scope project -y',
@@ -958,9 +958,9 @@ test('source: a core under another key - that key is refreshed and the core upda
 test('source: a fresh account registers the stack and takes the key the add produced', () =>
 {
     const run = cli();
-    const key = P.refreshStackSource({ listing: [], marketplaces: [], readMarketplaces: () => [{ name: 'envoydev', source: 'github', repo: 'envoydev/alfred-code' }], cli: run });
+    const key = P.refreshStackSource({ listing: [], marketplaces: [], readMarketplaces: () => [{ name: 'envoydev', source: 'github', repo: 'envoydev/plugins-marketplaces' }], cli: run });
     assert.strictEqual(key, 'envoydev');
-    assert.deepStrictEqual(run.calls, ['plugin marketplace add envoydev/alfred-code', 'plugin marketplace update envoydev']);
+    assert.deepStrictEqual(run.calls, ['plugin marketplace add envoydev/plugins-marketplaces', 'plugin marketplace update envoydev']);
 });
 
 // Live check F1: a local or fork marketplace registered under the stack's key. The GitHub add over it is refused
@@ -982,7 +982,7 @@ test('source: a marketplace already registered under the stack\'s key - a local 
 test('source: both keys registered - the one carrying the installed core is used, the other left alone', () =>
 {
     const run = cli();
-    const marketplaces = [{ name: KEY, source: 'github', repo: 'envoydev/alfred-code' }, { name: 'envoydev', source: 'github', repo: 'envoydev/alfred-code' }];
+    const marketplaces = [{ name: KEY, source: 'github', repo: 'envoydev/plugins-marketplaces' }, { name: 'envoydev', source: 'github', repo: 'envoydev/plugins-marketplaces' }];
     const key = P.refreshStackSource({ listing: [NEW_CORE('user')], marketplaces, cli: run });
     assert.strictEqual(key, KEY);
     assert.ok(!run.calls.some((c) => / envoydev(\/|$)/.test(c)), run.calls.join(' | '));
@@ -1338,7 +1338,7 @@ test('seed: on the plugin route the copied engines still run, with no copy-route
         });
         return { files: fs.readdirSync(path.join(repo, '.claude', 'hooks')).sort(), runs };
     } });
-    assert.deepStrictEqual(result.files, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json', 'package.json', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'], 'only the engines, the window table and the CommonJS marker');
+    assert.deepStrictEqual(result.files, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json', 'package.json', 'plan-status.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'], 'only the engines, the window table and the CommonJS marker');
     for (const run of result.runs)
     {
         assert.strictEqual(run.status, 0, `${run.file}: ${run.stderr}`);
@@ -1436,7 +1436,7 @@ test('seed plan: --print-plan over a project with cut plugins prints no removal 
     assert.ok(!/plugin pruned|add it back:|plugin removed/.test(out), out.split('\n').filter((l) => /plugin pruned|add it back:|plugin removed/.test(l)).join('\n'));
 });
 
-const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js', 'model-windows.json', 'package.json'];
+const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'plan-status.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js', 'model-windows.json', 'package.json'];
 function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
 {
     const os = require('node:os');

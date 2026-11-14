@@ -26,7 +26,7 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     `npm run graph` (lint fails when stale).
   - `plugin-entries.json` - the GENERATED core entry, computed by `scripts/build-marketplace.js` from
     the placement rule in `scripts/plugin-placement.js`: the core is the router skill, every seat and
-    every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run marketplace`; lint
+    every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run plugin-manifest` (which writes the root `.claude-plugin/plugin.json` too); lint
     checks 44 and 45 fail when the file is stale, a second plugin appears, or an item has no home or
     two. The 2.0.0 and 2.2.0 renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1 (the user's
     ruling of 2026-10-06) none is (the MCP prune drops each from the live file, lint 49 names one still there), and
@@ -103,7 +103,8 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only
   and no model call. `scripts/profile-fixture.js` - one throwaway project per tech profile (a `stacks` key or `bare`), installed
   from this tree on an isolated account dir: the export is registered as the stack's marketplace BEFORE the installer runs, or the
-  installer takes the released core from GitHub (measured 2026-10-16); its `MARKERS` must cover every `stacks` key (its test fails
+  installer takes the released core from GitHub (measured 2026-10-16) - through a one-entry `envoydev` catalog the run writes into the
+  export (`standInCatalog`; the real catalog lives in envoydev/plugins-marketplaces since 2026-11-14, never a git checkout); its `MARKERS` must cover every `stacks` key (its test fails
   otherwise). `--clean <workdir>` deletes the test data it wrote (each fixture, the export, the shared home - a linked export as the
   link) and prints `removed:` / `left:`, refusing a filesystem root, the home dir or a git checkout. `scripts/session-surface.js` - what a fresh session in ONE install is sent, per load point (session start, a turn,
   per tool, path rule, seat dispatch, compaction, stop) and owner, with mechanical collision flags; read-only unless `--run-hooks`,

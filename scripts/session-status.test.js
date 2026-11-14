@@ -165,7 +165,7 @@ test('T1 the file appears with every field', () =>
     assert.strictEqual(got, 'written');
     const s = readStatus(root, 's1');
     assert.deepStrictEqual(Object.keys(s), S().FIELDS);
-    assert.deepStrictEqual(S().FIELDS, ['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'autoCompact', 'handoffPrompt']);
+    assert.deepStrictEqual(S().FIELDS, ['schema', 'session', 'fullContext', 'updatedAt', 'model', 'window', 'resumeAt', 'autoRun', 'scorer', 'autoCompact', 'handoffPrompt', 'plan']);
     assert.strictEqual(s.schema, 1);
     assert.strictEqual(s.session, 's1');
     assert.strictEqual(new Date(s.updatedAt).toISOString(), s.updatedAt);
@@ -174,6 +174,7 @@ test('T1 the file appears with every field', () =>
     assert.strictEqual(typeof s.autoRun, 'boolean');
     assert.ok(s.scorer === null || (typeof s.scorer.on === 'boolean' && s.scorer.level >= 1 && s.scorer.level <= 100 && s.scorer.rounds >= 1 && s.scorer.rounds <= 10));
     assert.ok(s.handoffPrompt === null || (s.handoffPrompt.length >= 1 && s.handoffPrompt.length <= 1000));
+    assert.strictEqual(s.plan, null);
     assert.ok(fs.readFileSync(statusOf(root, 's1'), 'utf8').endsWith('}\n'), 'a final newline');
 });
 
@@ -897,4 +898,168 @@ test('SYS-03: no worktree listing, no sweep', () =>
     const fail = (cmd, argv, opts) => { if (argv.includes('worktree')) throw new Error('timed out'); return require('node:child_process').execFileSync(cmd, argv, opts); };
     assert.strictEqual(S().removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top }, exec: fail }).lines, 0);
     assert.strictEqual(fs.readFileSync(exclude, 'utf8'), pair('a'), 'today\'s behaviour: the unlisted pair stays');
+});
+
+const planStatus = require(path.join(HOOKS, 'plan-status.js'));
+const planDir = (root, id = 'csv') => { const dir = path.join(root, PLANS, id); fs.mkdirSync(dir, { recursive: true }); return dir; };
+const putStatus = (dir, change = () => {}) => { const s = planStatus.emptyStatus('CSV export', '2026-11-13T10:00Z'); change(s); fs.writeFileSync(path.join(dir, 'status.json'), `${JSON.stringify(s, null, 2)}\n`); };
+
+test('planField: the folder relative to the root, forward slashes, one trailing slash - or null', () =>
+{
+    const root = project();
+    const dir = planDir(root);
+    const F = S().planField;
+    for (const given of [`${PLANS}/csv/`, `${PLANS}/csv`, `${PLANS}/csv`.replace(/\//g, '\\'), `${PLANS}/csv/`.replace(/\//g, '\\'), dir]) assert.strictEqual(F(root, given), `${PLANS}/csv/`, given);
+    assert.strictEqual(F(root, planDir(path.join(root, 'apps', 'api'))), `apps/api/${PLANS}/csv/`, 'a workspace member below the root');
+    fs.writeFileSync(path.join(dir, 'status.json'), '{');
+    assert.strictEqual(F(root, dir), `${PLANS}/csv/`, 'kept beside garbage');
+    putStatus(dir);
+    assert.strictEqual(F(root, dir), `${PLANS}/csv/`, 'an open plan');
+    putStatus(dir, (s) => { s.completedAt = '2026-11-13T12:00Z'; });
+    assert.strictEqual(F(root, dir), null, 'completed');
+    fs.mkdirSync(path.join(root, 'src'));
+    const outside = planDir(project());
+    for (const none of [outside, `../${path.basename(path.dirname(outside))}/${PLANS}/csv/`, `${PLANS}/gone/`, 'src', `${PLANS}/`, '', null, 7, {}]) assert.strictEqual(F(root, none), null, String(none));
+    assert.strictEqual(F(null, dir), null);
+});
+
+test('a 3.11.0 file with no plan key is upgraded in place, once: at a prompt and at a Stop, autoRun and scorer kept', () =>
+{
+    for (const event of ['prompt', 'stop'])
+    {
+        const { root, P, FILE } = sonnetSession();
+        const file = JSON.parse(FILE);
+        // the Stop case carries modes that are on, so a lost carry shows; the prompt case starts as the autoCompact case above does
+        const fields = event === 'stop' ? { autoRun: true, scorer: { on: true, level: 90, rounds: 3 } } : {};
+        inChild({ CLAUDE_PROJECT_DIR: root }, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, ${JSON.stringify(fields)}, { when: 'always' });`);
+        const old = JSON.parse(fs.readFileSync(file, 'utf8'));
+        delete old.plan;                                                  // the eleven keys 3.11.0 wrote
+        fs.writeFileSync(file, `${JSON.stringify(old, null, 2)}\n`);
+        const write = event === 'stop' ? `S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed' })`
+            : `S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: false, scoring: null })`;
+        assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${write};`), 'written', event);
+        const now = JSON.parse(fs.readFileSync(file, 'utf8'));
+        assert.deepStrictEqual([Object.keys(now), now.plan, now.autoRun, now.scorer], [[...S().FIELDS], null, old.autoRun, old.scorer], event);
+        if (event === 'stop') assert.deepStrictEqual([now.autoRun, now.scorer], [true, fields.scorer]);
+        assert.strictEqual(inChild({ CLAUDE_PROJECT_DIR: root }, `return ${write};`), 'unchanged', event);
+        assert.deepStrictEqual(fs.readdirSync(path.dirname(file)), [path.basename(file)], 'no second file');
+    }
+});
+
+test('plan: set through the fields, carried by every later write, null once the plan is completed or its folder is gone', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const file = JSON.parse(FILE);
+    const dir = planDir(root);
+    const now = () => JSON.parse(fs.readFileSync(file, 'utf8'));
+    const env = { CLAUDE_PROJECT_DIR: root };
+    const start = (fields) => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, ${JSON.stringify(fields)}, { when: 'always' });`);
+    const stop = () => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed' });`);
+    start({ plan: dir });
+    assert.deepStrictEqual([now().plan, Object.keys(now()).pop()], [`${PLANS}/csv/`, 'plan']);
+    assert.strictEqual(stop(), 'unchanged', 'a Stop carries it');
+    start({});
+    assert.strictEqual(now().plan, `${PLANS}/csv/`, 'a SessionStart carries it');
+    putMode(root, { env: { ALFRED_CODE_AUTO_COMPACT: '1' } });
+    assert.strictEqual(inChild(env, `return S.onPrompt({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: false, scoring: null });`), 'written');
+    assert.strictEqual(now().plan, `${PLANS}/csv/`, 'a prompt write carries it');
+    putStatus(dir, (s) => { s.completedAt = '2026-11-13T12:00Z'; });
+    assert.deepStrictEqual([stop(), now().plan], ['written', null], 'the close\'s own Stop');
+    assert.strictEqual(stop(), 'unchanged');
+    const next = planDir(root, 'next');
+    start({ plan: next });
+    assert.strictEqual(now().plan, `${PLANS}/next/`);
+    fs.rmSync(next, { recursive: true });
+    assert.deepStrictEqual([stop(), now().plan], ['written', null], 'the folder is gone');
+});
+
+// ---- PF1 plan 2: onPlan (R28, R29), the Stop fallback (R30), the handoff text by shape (R26) ----
+test('onPlan: sets the key, compares first, carries the modes, and says nothing for a seat', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const file = JSON.parse(FILE);
+    const now = () => JSON.parse(fs.readFileSync(file, 'utf8'));
+    const env = { CLAUDE_PROJECT_DIR: root };
+    const dir = planDir(root);
+    const call = (folder, extra = '') => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse'${extra} }, ${JSON.stringify(folder)}, () => true);`);
+    inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, { autoRun: true, scorer: { on: true, level: 90, rounds: 3 } }, { when: 'always' });`);
+    const before = now();
+    assert.strictEqual(call(dir), 'written');
+    assert.deepStrictEqual([now().plan, now().autoRun, now().scorer, now().handoffPrompt], [`${PLANS}/csv/`, true, before.scorer, before.handoffPrompt]);
+    const mtime = fs.statSync(file).mtimeMs;
+    assert.strictEqual(call(dir), 'unchanged', 'the same plan again');
+    assert.strictEqual(call(`${PLANS}/csv`), 'unchanged', 'the same folder, relative and with no trailing slash');
+    assert.strictEqual(fs.statSync(file).mtimeMs, mtime, 'an unchanged call does not touch the file');
+    assert.strictEqual(call(dir, ", agent_id: 'a1'"), 'skipped', 'a seat sets nothing');
+    assert.strictEqual(inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(planDir(root, 'next'))}, () => false);`), 'skipped', 'the gate says no');
+    for (const not of [null, '', 7]) assert.strictEqual(inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(not)}, () => true);`), 'skipped', String(not));
+    assert.strictEqual(now().plan, `${PLANS}/csv/`);
+});
+
+test('onPlan: a second plan\'s call moves the key; a plan outside the root nulls it (R29)', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
+    const env = { CLAUDE_PROJECT_DIR: root };
+    const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
+    call(planDir(root));
+    call(planDir(root, 'next'));
+    assert.strictEqual(now().plan, `${PLANS}/next/`);
+    putStatus(planDir(root), (s) => { s.completedAt = '2026-11-13T12:00Z'; });
+    inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed' });`);
+    assert.strictEqual(now().plan, `${PLANS}/next/`, 'the first plan\'s close leaves the second');
+    assert.strictEqual(call(planDir(project())), 'written');
+    assert.strictEqual(now().plan, null);
+});
+
+test('onPlan: a mistyped --plan (no such folder) leaves the session\'s plan as it is (PF1 final review, finding 3)', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
+    const env = { CLAUDE_PROJECT_DIR: root };
+    const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
+    assert.strictEqual(call(planDir(root)), 'written');
+    for (const typo of [`${PLANS}/cvs`, path.join(root, PLANS, 'cvs'), `${PLANS}/csv/nope`]) {
+        assert.strictEqual(call(typo), 'unchanged', typo);
+        assert.strictEqual(now().plan, `${PLANS}/csv/`, `${typo} keeps the plan`);
+    }
+    putStatus(planDir(root), (s) => { s.completedAt = '2026-11-13T12:00Z'; });
+    assert.deepStrictEqual([call(planDir(root)), now().plan], ['written', null], 'a completed plan that exists still nulls it');
+});
+
+test('the Stop fallback: with no plan in the file, the history record\'s folder plan is taken (R30)', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
+    const env = { CLAUDE_PROJECT_DIR: root };
+    planDir(root);
+    fs.writeFileSync(path.join(root, PLANS, 'csv', 'csv.md'), '# Feature - plan\n');
+    const stop = (entry) => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, { entry: ${JSON.stringify(entry)} }, { when: 'changed' });`);
+    stop({ branch: 'main', plan: `${PLANS}/old.md` });
+    assert.strictEqual(now().plan, null, 'a flat plan sets nothing');
+    stop({ branch: 'main', plan: '~/elsewhere/plans/csv/csv.md' });
+    assert.strictEqual(now().plan, null, 'a plan under the home folder sets nothing');
+    stop({ branch: 'main', plan: `${PLANS}/csv/csv.md` });
+    assert.strictEqual(now().plan, `${PLANS}/csv/`);
+});
+
+test('handoffPrompt: the resume call for a folder plan, the Read line for a flat one (R26)', () =>
+{
+    const history = (open) => ({ openPlan: () => open, historyCount: () => 5 });
+    const text = (open) => S().handoffPrompt('/r', 'feature/x', { history: history(open), env: {} });
+    assert.strictEqual(text({ plan: `${PLANS}/csv/csv.md`, resume: 'next task 2', dir: `${PLANS}/csv/` }),
+        `Run node .claude/hooks/plan-status.js resume --plan ${PLANS}/csv/, check that branch feature/x is checked out, and continue from its Resume: line (next task 2).`);
+    assert.strictEqual(text({ plan: `${PLANS}/old.md`, resume: 'next task 2' }),
+        `Read ${PLANS}/old.md, check that branch feature/x is checked out, and continue from its Resume: line (next task 2).`);
+});
+
+test('a plan call landing between a prompt\'s two reads is kept', () =>
+{
+    const { root, P, FILE } = sonnetSession();
+    planDir(root);
+    const got = inChild({ CLAUDE_PROJECT_DIR: root }, `${fixture(FILE, P, { entry: null, autoRun: false, scorer: null, handoffPrompt: null }, {})}
+        const fresh = { ...F, use(p) { fs.writeFileSync(${FILE}, JSON.stringify({ ...JSON.parse(fs.readFileSync(${FILE}, 'utf8')), plan: '${PLANS}/csv/' })); return F.use(p); } };
+        const r = S.writeStatus({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null }, { when: 'modes', deps: { fresh } });
+        return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
+    assert.deepStrictEqual([got.r, got.s.autoRun, got.s.plan], ['written', true, `${PLANS}/csv/`]);
 });

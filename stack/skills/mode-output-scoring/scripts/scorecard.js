@@ -12,6 +12,10 @@
 //   node scorecard.js grade <score file> (--output <name> | --rubric <file>) [--level <n>] [--self]
 //   node scorecard.js next [--root <dir>] --session <id> --slug <slug> [--level <n>] [--rounds <n>] [--auto]
 //   node scorecard.js decide [--root <dir>] --session <id> --slug <slug> --choice accept|revise|answer|keep
+//        [--rubric <file>] [--level <n>]
+// A designer-plan run whose --target is a plan folder's <id>.md gets <plan folder>/scoring.json from next and decide
+// (PF1 D11), written from the call that releases and at every step of a re-grade; a problem is one `!!` line, the exit
+// code and the other lines unchanged.
 // The slug folder is <root>/<data root>/state/sessions/scoring/<session>/<slug>/. --session self allocates a self-<hex>
 // session for the SELF route; an empty or literal ${CLAUDE_SESSION_ID} session reads CLAUDE_CODE_SESSION_ID. The level is
 // --level when it is a whole number 60..100, the run cap --rounds when it is one in 1..10, else ALFRED_CODE_SCORING_LEVEL /
@@ -237,7 +241,7 @@ function readFindings(lines) {
 }
 
 function grade({ scoreText, rubric, level = 80, self = false }) {
-  const bad = (exit, why) => ({ exit, why, total: null, verdict: null, blockers: 0, open: [], fixable: [], flipped: [], ceiling: null, needs: [], discarded: [] });
+  const bad = (exit, why) => ({ exit, why, total: null, verdict: null, blockers: 0, open: [], fixable: [], flipped: [], ceiling: null, needs: [], discarded: [], findings: [] });
   const file = readScoreFile(scoreText);
   if (self) {
     if (file.self === null) return bad(3, '--self needs a score file whose first line is `self: <reason>`');
@@ -295,6 +299,12 @@ function grade({ scoreText, rubric, level = 80, self = false }) {
     ceiling,
     needs: [...new Set([...rowNeeds, ...kept.flatMap((f) => f.needs)])],
     discarded: findings.filter((f) => f.missing.length).map(({ id, severity, missing }) => ({ id, severity, missing })),
+    // PF1 D2: every finding the score file lists, in file order, with its disposition - discarded (a field missing),
+    // needs-human (only the user's answer closes it), closable, else open; `needs` only under needs-human
+    findings: findings.map((f) => {
+      const disposition = f.missing.length ? 'discarded' : f.needs.length ? 'needs-human' : f.closable ? 'closable' : 'open';
+      return { severity: f.severity, title: f.title, disposition, needs: disposition === 'needs-human' ? f.needs : [] };
+    }),
   };
 }
 
@@ -489,6 +499,7 @@ function roundsIn(ctx, log, attempt, rubric, level) {
   return [...byRound.entries()].sort((a, b) => a[0] - b[0]).map(([round, grades]) => {
     const valid = [];
     let self = false;
+    let firstValid = null;
     for (const g of grades) {
       let text;
       try { text = fs.readFileSync(path.join(ctx.folder, `${g.id}.score.md`), 'utf8'); } catch { continue; }
@@ -496,11 +507,15 @@ function roundsIn(ctx, log, attempt, rubric, level) {
       const r = grade({ scoreText: text, rubric, level, self: isSelf });
       if (r.exit > 1) continue;
       valid.push(r);
+      firstValid = firstValid || g.id;
       self = self || isSelf;
     }
     const first = grades[0];
+    // the round's findings, unique by title: the first valid grade's copy, then later grades' new titles (PF1 D2)
+    const titles = new Set();
+    const findings = valid.flatMap((r) => r.findings).filter((f) => !titles.has(f.title) && titles.add(f.title));
     return {
-      round, id: first.id, grades, valid, self,
+      round, id: first.id, attempt, firstValid, findings, grades, valid, self,
       draft: path.join(ctx.folder, `${draftOf(log, first.id)}.draft.md`),
       value: valid.length ? mean(valid.map((r) => r.total)) : null,
       ceiling: valid.length ? mean(valid.map((r) => r.ceiling)) : null,
@@ -515,6 +530,89 @@ function roundsIn(ctx, log, attempt, rubric, level) {
 }
 // The best of the rounds by value, a tie taking the later round.
 const bestOf = (rounds) => rounds.reduce((best, r) => (best === null || r.value >= best.value ? r : best), null);
+
+// scoring.json (PF1 D11): the plan folder's score file, docs/plan-folder-contract.md's shape, keys in its order. `prev`
+// is the file on disk or null; `rounds` this run's graded rounds. Entries of earlier runs stay first and untouched; this
+// run's keep the round number they already had, a new one takes one past the highest so far. `released` and `final` are
+// the round ids rounds.log marks; with neither the run is in flight and the earlier release waits in releasedBefore.
+function scoringDoc({ prev, output, rounds, released, accepted, final, at }) {
+  const old = prev ? prev.rounds : [];
+  const ids = new Set(rounds.map((r) => r.id));
+  const before = new Map(old.map((e) => [e.id, e]));
+  let top = old.reduce((n, e) => Math.max(n, e.round), 0);
+  const fresh = rounds.map((r) => {
+    const was = before.get(r.id);
+    const severities = { BLOCKER: 0, MATERIAL: 0, MINOR: 0 };
+    for (const f of r.findings) if (f.disposition !== 'discarded' && Object.hasOwn(severities, f.severity)) severities[f.severity] += 1;
+    return {
+      round: was ? was.round : (top += 1), at: r.at || (was && was.at) || at, total: r.value, severities, id: r.id,
+      attempt: r.attempt, self: r.self, accepted: !!(accepted && released === r.id), rubric: r.rubric, level: r.level, findings: r.findings,
+    };
+  });
+  const all = [...old.filter((e) => !ids.has(e.id)), ...fresh];
+  const earlier = !prev ? null : prev.status === 'grading' ? prev.releasedBefore : prev.released;
+  const statusOf = (entry) => (entry && entry.accepted ? 'accepted' : 'released');
+  let head;
+  if (released) {
+    const entry = all.find((e) => e.id === released);
+    head = { released: entry ? entry.round : null, releasedBefore: null, status: statusOf(entry) };
+  } else if (final) {
+    head = { released: earlier, releasedBefore: null, status: earlier === null ? 'withheld' : statusOf(all.find((e) => e.round === earlier)) };
+  } else {
+    head = { released: null, releasedBefore: earlier, status: 'grading' };
+  }
+  return { schema: 1, scale: 100, released: head.released, rounds: all, output, releasedBefore: head.releasedBefore, status: head.status };
+}
+
+const rubricNameOf = (args, output) => (args.rubric ? path.basename(args.rubric) : Object.hasOwn(OUTPUTS, output || '') ? OUTPUTS[output].rubric : '');
+const PLAN_DIR_RE = /[\\/]plans[\\/]([^\\/]+)[\\/]\1\.md$/;
+const notWritten = (why) => `!! scoring.json not written: ${why}`;
+// The plan-status engine beside the layout.js the loader found: the same two folders, plan-status.js for layout.js.
+function planEngine() {
+  const file = [path.join(__dirname, '..', '..', '..', 'hooks'), path.join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'hooks')]
+    .map((d) => path.join(d, 'plan-status.js')).find((f) => fs.existsSync(f));
+  return file ? require(file) : null;
+}
+const isScoreFile = (doc) => !!doc && typeof doc === 'object' && !Array.isArray(doc) && doc.schema === 1 && doc.scale === 100
+  && Array.isArray(doc.rounds) && doc.rounds.every((e) => e && Number.isInteger(e.round) && typeof e.id === 'string');
+
+// Writes scoring.json into the plan folder of a designer-plan run (PF1 D11) and returns the `!!` line, or null when
+// nothing is to be written. `was` is the log as the call began, `log` after its own appends; a run closed before this
+// call is never written again, and a first grading writes nothing until its release makes the folder.
+function writeScoring(ctx, was, log, { rubric, rubricError, level, rubricName }) {
+  if (log.output !== 'designer-plan' || !log.target) return null;
+  const target = path.resolve(ctx.root, log.target.replace(/\\/g, '/'));
+  if (!loader || typeof loader.planOf !== 'function') return PLAN_DIR_RE.test(target) ? notWritten('the plan-status engine was not found') : null;
+  const plan = loader.planOf(target);
+  if (!plan || plan.shape !== 'folder' || path.resolve(plan.md) !== target) return null;
+  if (was.released || was.final) return null;
+  if (!log.released && !isDir(plan.dir)) return null;
+  if (isFile(path.join(path.dirname(plan.dir), `${plan.id}.md`))) return notWritten(`a flat ${plan.id}.md holds this id`);
+  let engine;
+  try { engine = planEngine(); } catch { engine = null; }
+  if (!engine || typeof engine.writeWhole !== 'function' || typeof engine.stamp !== 'function') return notWritten('the plan-status engine was not found');
+  if (rubricError) return notWritten(rubricError);
+  const file = path.join(plan.dir, 'scoring.json');
+  try {
+    let prev = null;
+    if (fs.existsSync(file)) {
+      try { prev = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { prev = undefined; }
+      if (!isScoreFile(prev)) return notWritten('the file on disk is not a schema 1 score file');
+    }
+    fs.mkdirSync(plan.dir, { recursive: true });
+    const attempts = unique(log.grades.map((g) => g.attempt)).sort((a, b) => a - b);
+    const rounds = attempts.flatMap((attempt) => roundsIn(ctx, log, attempt, rubric, level)).filter((r) => r.valid.length).map((r) => {
+      let at = null;
+      try { at = engine.stamp(new Date(fs.statSync(path.join(ctx.folder, `${r.firstValid}.score.md`)).mtimeMs)); } catch { /* the entry's earlier time, else the write's */ }
+      return { id: r.id, attempt: r.attempt, self: r.self, value: r.value, findings: r.findings, at, rubric: rubricName, level };
+    });
+    const doc = scoringDoc({ prev, output: log.output, rounds, released: log.released, accepted: log.accepted, final: log.final, at: engine.stamp(new Date()) });
+    engine.writeWhole(file, `${JSON.stringify(doc, null, 2)}\n`);
+    return null;
+  } catch (e) {
+    return notWritten((e && e.code) || (e && e.message) || String(e));
+  }
+}
 
 function runNext(args) {
   const ctx = slugContext(args);
@@ -636,6 +734,8 @@ function runNext(args) {
     }
   }
   if (named && named.discarded.length) out.push(`Discarded: ${named.discarded.join('; ')}`);
+  const scoringLine = writeScoring(ctx, log, readLog(ctx.logFile), { rubric, level, rubricName: rubricNameOf(args, log.output) });
+  if (scoringLine) out.push(scoringLine);
   process.stdout.write(`${out.join('\n')}\n`);
   return 0;
 }
@@ -651,25 +751,29 @@ function runDecide(args) {
   if (!m) fail(2, 'nothing is asked - run next first');
   const [, id, action] = m;
   const choice = args.choice || '';
+  // decide takes --rubric and --level as next does (PF1 R13), for the scoring.json it writes last
+  const said = (line) => {
+    let rubric = null;
+    let rubricError = null;
+    try { rubric = rubricFrom({ rubric: args.rubric, output: log.output }); } catch (e) { if (!(e instanceof Stop)) throw e; rubricError = e.message; }
+    const scoringLine = writeScoring(ctx, log, readLog(ctx.logFile), { rubric, rubricError, level: levelOf(args.level, process.env, ctx.root), rubricName: rubricNameOf(args, log.output) });
+    process.stdout.write(`${line}\n${scoringLine ? `${scoringLine}\n` : ''}`);
+    return 0;
+  };
   if (action === 'offer-fix') {
     if (choice !== 'fix' && choice !== 'release') fail(2, `offer-fix takes fix or release, not '${choice}'`);
     const line = choice === 'fix' ? `fixing ${id}` : `released ${id}`;
     fs.appendFileSync(ctx.logFile, `${line}\n`);
-    process.stdout.write(`${line}\n`);
-    return 0;
+    return said(line);
   }
   if (!['accept', 'revise', 'answer', 'keep'].includes(choice)) fail(2, `--choice '${choice}' is not accept, revise, answer or keep`);
   if (action === 'withhold-final' && (choice === 'revise' || choice === 'answer')) fail(2, `withhold-final takes accept or keep, not ${choice}`);
   const attempt = (log.grades.find((g) => g.id === id) || { attempt: newestAttempt(log) }).attempt;
   if (choice === 'answer' && attempt !== 1) fail(2, 'answer opens attempt 2 and there is no third attempt');
-  if (choice === 'answer') {
-    process.stdout.write(`answer ${id} - write ${path.join(ctx.folder, 'answers.md')}, then start\n`);
-    return 0;
-  }
+  if (choice === 'answer') return said(`answer ${id} - write ${path.join(ctx.folder, 'answers.md')}, then start`);
   const line = choice === 'accept' ? `released ${id} accepted below the level` : choice === 'revise' ? `bought ${id}` : `final ${id}`;
   fs.appendFileSync(ctx.logFile, `${line}\n`);
-  process.stdout.write(`${line}\n`);
-  return 0;
+  return said(line);
 }
 
 const MODES = { start: runStart, grade: runGrade, next: runNext, decide: runDecide };
@@ -688,4 +792,4 @@ function main(argv) {
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { OUTPUTS, NOISE_BAND, BLOCKER_CAP, SELF_CAP, parseRubric, sealOf, readScoreFile, grade, gradeLines, levelOf, roundsOf, projectRoot, setting, dataRoot, safeSession, sessionOf, readLog };
+module.exports = { OUTPUTS, NOISE_BAND, BLOCKER_CAP, SELF_CAP, parseRubric, sealOf, readScoreFile, grade, gradeLines, levelOf, roundsOf, projectRoot, setting, dataRoot, safeSession, sessionOf, readLog, scoringDoc };

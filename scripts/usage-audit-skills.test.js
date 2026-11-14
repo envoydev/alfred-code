@@ -45,7 +45,7 @@ test('C19 6ed392a5#6 f6c591fa#2: a docs.js where listing is not a read, and the 
     assert.match(skill('task-verify-plan'), /A `docs\.js where` listing is a pointer, not a read/);
     assert.match(skill('task-design'), /A `docs\.js where` call only lists sections: read the ones it names/);
     const solve = read('stack/skills/task-solve/SKILL.md');
-    assert.match(flat(solve), /the audit's eight-field block printed as stamped into the plan - never the bare verdict/);
+    assert.match(flat(solve), /the audit's eight-field block printed as recorded through `gate` - never the bare verdict/);
     const merged = asks(solve).find((a) => /^Full spec/.test(a.question));
     assert.ok(merged, 'the merged-path ask exists');
     assert.match(merged.question, /<the Passes: line>/, 'the merged ask carries the Passes record, not only the verdict');
@@ -53,16 +53,16 @@ test('C19 6ed392a5#6 f6c591fa#2: a docs.js where listing is not a read, and the 
 
 test('C19 a1fa1b2b#2 b35afe70#2 69dbed46#6: the plan stamp is the whole eight-field block, with one fixes-applied form', () => {
     const t = skill('task-verify-plan');
-    assert.match(t, /the whole eight-field block above, under the header, never the `Gated:` line alone/);
+    assert.match(t, /hand the whole eight-field block above to `node \.claude\/hooks\/plan-status\.js gate --plan <the plan folder>` on stdin, as printed, never the `Gated:` line alone/);
     assert.doesNotMatch(t, /stamp the verdict into it - one line/);
     assert.match(t, /Gated: passed \| passed - <N> fixes applied \| <N> gaps listed - <date>/);
-    assert.match(skill('habits-plan-writing'), /The plan review's eight-field block, its `Gated: <verdict>` line last/);
+    assert.match(skill('habits-plan-writing'), /\| the plan review's eight-field block \| `gate` - the block on stdin, as printed \|/);   // PF1: recorded through the script
     assert.match(skill('task-solve'), /`passed - <N> fixes applied` for the non-judgment fixes it landed in this step, each named in the stop's `Result:` line/);
 });
 
 test('C19 0498718d#3 db6c1ae1#5: the gate inherits the design mode, and a clean pass folds its stop into the approval ask', () => {
     const t = skill('task-solve');
-    assert.match(t, /run `task-verify-plan` over the plan file in the mode step 1 ran - no mode ask/);
+    assert.match(t, /run `task-verify-plan` over the plan in the mode step 1 ran - no mode ask/);
     assert.match(t, /except on a pass with no open item, where step 3's approval ask is this stop too/);
 });
 
@@ -111,7 +111,7 @@ test('C20 a6a24815#3 + C09 e6a68237#5: the close puts the diff and the next scop
     assert.deepStrictEqual(diff.options, ['Commit now (Recommended)', 'Hold - review the diff first'], 'no third fork beside the diff');
     const next = all.find((a) => /^Next: /.test(a.question));
     assert.ok(next, 'the next-scope question is its own template');
-    assert.match(next.question, /It opens a NEW cycle in a NEW plan file\./);
+    assert.match(next.question, /It opens a NEW cycle in a NEW plan folder\./);
     assert.deepStrictEqual(next.options, ['Start it here (Recommended)', 'Leave it for later', 'Start it in a fresh session']);
     assert.match(skill('task-solve'), /A deferred item or follow-up is a SECOND question in the same AskUserQuestion call/);
 });
@@ -119,16 +119,16 @@ test('C20 a6a24815#3 + C09 e6a68237#5: the close puts the diff and the next scop
 test('C20 adaa2ef3#8 bda299a8#8 ab61627f#6 4f1c2ebb#4: the resume block ends the turn after the pick, names where it runs, and a paste into a full chat is sent back', () => {
     const t = skill('task-solve');
     // the user's ruling, 2026-10-15: 'paste the resume block above' was printed with no block on screen
-    assert.match(t, /HONOR the answer: when the user picks it, the turn ENDS with this block, after the answer - no new work in this chat\. The fence holds the command alone: the plan's `Resume:` line holds the step\./);
-    assert.match(t, /then paste and send: ```text \/task-solve <plan file> ``` Next: <its first move> -> <the steps left>\./);
+    assert.match(t, /HONOR the answer: when the user picks it, the turn ENDS with this block, after the answer - no new work in this chat\. The fence holds the command alone: `cursor` put the step in the resume note\./);
+    assert.match(t, /then paste and send: ```text \/task-solve <the plan folder> ``` Next: <its first move> -> <the steps left>\./);
     assert.match(t, /A resume paste that lands in a chat still holding the earlier cycle's conversation \(no `\/clear` between\) is answered with one line - `\/clear first, then paste it again`/);
 });
 
 test('C20 68da4b6b#4 c5000cb1#5 a1fa1b2b#3: the plan\'s Resume line is the one cursor, no cycle note to keep fresh', () => {
     const t = skill('task-solve');
-    assert.match(t, /its `Resume:` line is the one cursor \(current step, chosen modes, next task\), rewritten at EVERY stop and task tick/);
+    assert.match(t, /the resume note - the one cursor \(step, modes, next task\)\. Each stop runs `cursor` before its ask\./);
     assert.doesNotMatch(t, /`write_memory` named `<feature>\/cycle`/);
-    assert.match(skill('habits-plan-writing'), /Inside the solve flow it is the one cursor and leads with the step and the modes/);
+    assert.match(skill('habits-plan-writing'), /\| every stop, and any mid-task state \| `cursor` - `note:` the step and the modes \|/);   // PF1: the cursor is the script's
 });
 
 test('C20 8f44a003#6: the small row names its reviewer and its done gate', () => {
@@ -136,7 +136,7 @@ test('C20 8f44a003#6: the small row names its reviewer and its done gate', () =>
 });
 
 test('C20 84eedb4b#5 9a4ef375#4 fbfc2de4#6: new scope after Completed is a new plan file or an ungated: line, never appended', () => {
-    assert.match(skill('task-solve'), /New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file \(a stamped file is a record, never appended to\) - re-enter step 1, or state in one `ungated: <why>` line/);
+    assert.match(skill('task-solve'), /New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan folder \(a completed plan takes no further write - it is a record, never appended to\) - re-enter step 1, or state in one `ungated: <why>` line/);
 });
 
 test('C20 ca65b406#5: a reply for another session is drafted after the commit / publish answer', () => {
@@ -179,7 +179,7 @@ test('C21 7491ab75#2 0498718d#16: task-design offers a read fan-out at its mode 
 });
 
 test('C17 f450ea64#1 + C30 f6c591fa#5: the conformance stamp names the pass that cleared the fix delta, and the stop carries the review fields', () => {
-    assert.match(skill('task-solve'), /Stamp `Conformance: <verdict> - <reviewer>, <the pass that cleared the last fix delta>`; the stop's `Result:` carries the review's named fields as it emitted them/);
+    assert.match(skill('task-solve'), /the verdict with `conformance`, `verdict:` and `reviewer: <reviewer>, <the pass that cleared the last fix delta>`\. The stop's `Result:` carries the review's named fields as it emitted them/);
 });
 
 // ---- C18 (BLOCKER): the checkpoint checks the format of what the commit takes in, and publish reads CI ------------

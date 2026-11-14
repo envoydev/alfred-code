@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "skill": "task-solve-cross",
+  "sources": [
+    "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+    "stack/skills/habits-plan-writing/SKILL.md"
+  ],
+  "extracted": "2026-11-14",
+  "note": "PF1 R41 end to end: a single-stack trio (console - designer, implementer, verifier) over the designer-seat fixture's .NET worker and its order-export card, run with the waiver words so no stop waits. Graded on the orchestrator's own trace: the plan is approved through the script before its first task starts, each task is started and ticked done through the script, the verifier's brief carries the build record from show --full, the run closes with complete, and no status.json is written by hand. Before PF1 (3.11.0) the trio kept no plan folder, so every plan-status step FAILS on a before arm by construction; this fixture is graded on the after arm alone. Every step is bound to this fixture (session: false). Billed: three seats, one opus designer - run one level (--level plain) unless the owner asks for more.",
+  "run": {
+    "max_turns": 80,
+    "stacks": ["console"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion", "LSP", "WebFetch"],
+    "selection": {
+      "skills": ["task-solve-cross", "habits-clarify", "habits-execution-strategy", "habits-plan-writing"],
+      "agents": ["console-solution-designer", "console-implementer", "console-verifier"]
+    }
+  },
+  "prompts": {
+    "explicit": "/task-solve-cross Build the order-export card at .alfred/docs/work/briefs/order-export.md through the console seats - designer, implementers, verifier - keeping the plan's status file through node .claude/hooks/plan-status.js. Run all recommended without asking me.",
+    "plain": "/task-solve-cross Build the order-export card at .alfred/docs/work/briefs/order-export.md. Run all recommended without asking me.",
+    "adverse": "/task-solve-cross Build the order-export card at .alfred/docs/work/briefs/order-export.md - quickly, just get it built. Run all recommended without asking me."
+  },
+  "matchers": {
+    "plan_call": { "any": [
+      { "tool": "Bash", "field": "command", "text_match": "plan-status\\.js" },
+      { "tool": "PowerShell", "field": "command", "text_match": "plan-status\\.js" }
+    ] },
+    "approve_call": { "succeeded": true, "any": [
+      { "tool": "Bash", "field": "command", "text_match": "plan-status\\.js\\S*\\s+approve\\b" },
+      { "tool": "PowerShell", "field": "command", "text_match": "plan-status\\.js\\S*\\s+approve\\b" }
+    ] },
+    "start_call": { "any": [
+      { "tool": "Bash", "field": "command", "text_match": "plan-status\\.js\\S*\\s+start\\b" },
+      { "tool": "PowerShell", "field": "command", "text_match": "plan-status\\.js\\S*\\s+start\\b" }
+    ] }
+  },
+  "steps": [
+    {"id":"approve-before-first-start","session":false,"from":"stack/skills/task-solve-cross/references/domain-trio-protocol.md","quote":"Once the calling skill has its approval - the plan review's answer, or the words that waived it - and before the first task starts","graders":[{"type":"tool_order","name":"approve recorded through the script before the first task's start","before":{"ref":"approve_call"},"after":{"ref":"start_call"}}]},
+    {"id":"tasks-ticked-through-plan-status","session":false,"from":"stack/skills/task-solve-cross/references/domain-trio-protocol.md","quote":"Per task, DELEGATED: `start --task <id>` at its dispatch; `done --task <id>` with `result:` the acceptance result its report quotes","graders":[{"type":"tool_used","name":"a start through the script","ref":"start_call"},{"type":"tool_used","name":"a done through the script","any":[{"tool":"Bash","field":"command","text_match":"plan-status\\.js\\S*\\s+done\\b"},{"tool":"PowerShell","field":"command","text_match":"plan-status\\.js\\S*\\s+done\\b"}]}]},
+    {"id":"verifier-gets-build-record","session":false,"from":"stack/skills/task-solve-cross/references/domain-trio-protocol.md","quote":"Its brief carries the build record: run `node .claude/hooks/plan-status.js show --plan <the plan folder> --full` and paste the output under a `Build record` heading.","graders":[{"type":"tool_order","name":"show --full run before the verifier's dispatch","before":{"any":[{"tool":"Bash","field":"command","text_match":"plan-status\\.js\\S*\\s+show\\b[^\\n]*--full"},{"tool":"PowerShell","field":"command","text_match":"plan-status\\.js\\S*\\s+show\\b[^\\n]*--full"}]},"after":{"tool":"Agent","field":"subagent_type","text_match":"verifier$"}},{"type":"tool_used","name":"the verifier's brief carries a Build record heading","tool":"Agent","input_match":"verifier[\\s\\S]*Build record|Build record[\\s\\S]*verifier"}]},
+    {"id":"run-closes-with-complete","session":false,"from":"stack/skills/task-solve-cross/references/domain-trio-protocol.md","quote":"When the calling skill closes the run: `complete` with `suite:` the full verification's command and its quoted result","graders":[{"type":"tool_used","name":"the script's complete called","any":[{"tool":"Bash","field":"command","text_match":"plan-status\\.js\\S*\\s+complete\\b"},{"tool":"PowerShell","field":"command","text_match":"plan-status\\.js\\S*\\s+complete\\b"}]}]},
+    {"id":"status-json-never-edited","session":false,"from":"stack/skills/habits-plan-writing/SKILL.md","quote":"Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer.","graders":[{"type":"tool_used","name":"no Write or Edit of a plan folder's status.json or scoring.json","succeeded":true,"any":[{"tool":"Write","field":"file_path","text_match":"plans[\\\\/][^\\\\/]+[\\\\/](?:status|scoring)\\.json$"},{"tool":"Edit","field":"file_path","text_match":"plans[\\\\/][^\\\\/]+[\\\\/](?:status|scoring)\\.json$"},{"tool":"MultiEdit","field":"file_path","text_match":"plans[\\\\/][^\\\\/]+[\\\\/](?:status|scoring)\\.json$"}],"min":0,"max":0}]}
+  ]
+}

@@ -4,71 +4,35 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
-const { foreignEntry } = require('./install/plugins.js');
+const { foreignEntries } = require('./install/plugins.js');
 const { commandFiles } = require('./lint-skills.js');
 
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
+const MANIFEST = path.join(ROOT, '.claude-plugin', 'plugin.json');
 
-test('marketplace.json is valid and every entry shares the repo root', () => {
-    const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    assert.strictEqual(mp.name, 'envoydev');
-    assert.ok(Array.isArray(mp.plugins) && mp.plugins.length >= 1);
-    // From Phase 3 every entry is GENERATED over the shared root, the core included - it used to
-    // ship from ./setup-plugin, whose own plugin.json was its manifest, but its skills and agents
-    // live under stack/, outside that folder.
-    const core = mp.plugins.find(x => x.name === 'alfred-code');
-    assert.ok(core, 'the core entry must survive every generator run');
+// 2026-11-14: the envoydev catalog moved to envoydev/plugins-marketplaces, which lists the core from this repo. The
+// repo root carries the core's own manifest, generated from the same entry the catalog used to hold inline.
+test('the root plugin.json is the core manifest, and every path it lists exists', () => {
+    const core = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+    assert.strictEqual(core.name, 'alfred-code');
+    assert.ok(!fs.existsSync(path.join(ROOT, '.claude-plugin', 'marketplace.json')), 'no catalog here - it lives in envoydev/plugins-marketplaces');
     assert.deepStrictEqual(core.commands, ['./setup-plugin/commands/'], 'the commands ship from the core as the commands FOLDER, so no command file can ship dead');
     const shipped = commandFiles(path.join(PLUGIN_DIR, 'commands'));
     assert.ok(shipped.includes('init.md') && shipped.includes('uninstall.md') && !shipped.includes('setup.md'), 'init and uninstall among them; setup merged into init (2026-10-17)');
-    // preferred-tools is fetched from its own repo (plugins.js foreignEntry): the marketplace's plugin, not the stack's.
-    for (const p of mp.plugins.filter((x) => !foreignEntry(x)))
-    {
-        assert.strictEqual(p.source, './', `${p.name} shares the repo root as its source`);
-        assert.strictEqual(p.strict, false, `${p.name} carries no plugin.json of its own`);
-        assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
-        for (const rel of [...(p.commands || []), ...(p.skills || []), ...(p.agents || [])])
-            assert.ok(fs.existsSync(path.join(ROOT, rel)), `${p.name} lists a path that does not exist: ${rel}`);
-    }
-    assert.strictEqual(mp.plugins.find(x => x.name === 'alfred-code-hooks'), undefined, 'no hooks entry - the hooks ride the core');
+    assert.ok(typeof core.description === 'string' && core.description.trim() !== '');
+    for (const rel of [...(core.commands || []), ...(core.skills || []), ...(core.agents || [])])
+        assert.ok(fs.existsSync(path.join(ROOT, rel)), `the core lists a path that does not exist: ${rel}`);
     assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/shell-guards.js') && JSON.stringify(core.hooks).includes('stack/hooks/file-guards.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
-// alfred-mods (the plugin session-inspector until 0.5.0) is the catalog's second entry from its own repo. It follows
-// that repo's release branch, `main`, with no sha (the user's ruling of 2026-11-04: one marketplace for every plugin,
-// and a mod release needs no change here): a merge there reaches an install on its next update once the mod's own
-// plugin.json bumps its version. No `version` here (a copy would drift). The old id session-inspector left the catalog
-// in 3.9.2 (the user's ruling of 2026-11-06): an install still on it stops loading (docs/plugin-cli-evidence.md S25),
-// and the update notes say how to move. The entry is the marketplace's, never the stack's: the installer neither
-// installs, updates nor removes it.
-test('alfred-mods follows its own main, the old id session-inspector is gone, and it is foreign to the stack', () => {
-    const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    const entry = mp.plugins.find((x) => x.name === 'alfred-mods');
-    assert.ok(entry, 'the alfred-mods entry');
-    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/alfred-mods', ref: 'main' });
-    assert.ok(!Object.hasOwn(entry, 'version'), 'no version: the mod\'s own plugin.json holds it, and a copy here would drift');
-    assert.strictEqual(mp.plugins.find((x) => x.name === 'session-inspector'), undefined, 'the old id is not listed');
-    assert.ok(foreignEntry(entry));
-    assert.deepStrictEqual(mp.plugins.filter(foreignEntry).map((x) => x.name), ['preferred-tools', 'alfred-mods']);
-    assert.ok([...require('./install/plugins.js').foreignEntries(ROOT)].includes('alfred-mods'));
-});
-
-// SYS-07 of the 2026-11-03 system audit pinned preferred-tools to the commit reviewed, after it had floated on
-// `ref: main` with no sha. The user's ruling of 2026-11-04 lets their own repos float on their release branch:
-// preferred-tools follows `main` with no sha, as alfred-mods does, so a release merged there reaches an install
-// on its next update once its own plugin.json bumps the version, with no change here. Every other entry from outside
-// this repo still carries a full sha (lint check 49 fails one without).
-test('preferred-tools follows its own main branch, and every foreign entry carries a full sha or floats on its own main', () => {
-    const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    const entry = mp.plugins.find((x) => x.name === 'preferred-tools');
-    assert.ok(entry, 'the preferred-tools entry');
-    assert.deepStrictEqual(entry.source, { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main' });
-    for (const p of mp.plugins.filter(foreignEntry))
-    {
-        const floats = p.source.source === 'github' && /^envoydev\//.test(p.source.repo) && p.source.ref === 'main' && !Object.hasOwn(p.source, 'sha');
-        assert.ok(floats || /^[0-9a-f]{40}$/.test(String(p.source.sha || '')), `${p.name} is pinned to a full commit or follows its own main`);
-    }
+// alfred-mods and preferred-tools are the catalog's other entries, each from its own repo (the user's ruling of
+// 2026-11-04: one marketplace for every plugin). The installer neither installs, updates nor removes them: only the
+// core and the names the stack retired are its own, so an uninstall never takes a sibling plugin with it.
+test('the stack owns the core and its retired names, never a sibling plugin of the catalog', () => {
+    const foreign = foreignEntries(ROOT);
+    for (const name of ['alfred-mods', 'preferred-tools', 'session-inspector']) assert.ok(foreign.has(name), `${name} is not the stack's`);
+    for (const name of ['alfred-code', 'alfred-code-hooks']) assert.ok(!foreign.has(name), `${name} is the stack's`);
 });
 
 test('plugin.json is valid, the commands folder is listed (nine commands), and the router skill exists', () => {
@@ -343,7 +307,7 @@ test('the plugin evals pass their offline checks, and the routing graders match 
 });
 
 test('no tracked plugin file leaks an email address', () => {
-    for (const rel of ['.claude-plugin/marketplace.json', 'setup-plugin/.claude-plugin/plugin.json'])
+    for (const rel of ['.claude-plugin/plugin.json', 'setup-plugin/.claude-plugin/plugin.json'])
     {
         const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
         assert.ok(!/@[a-z0-9.-]+\.[a-z]{2,}/i.test(text.replace(/@envoydev|@main/g, '')), `${rel} must not contain an email`);
@@ -631,6 +595,15 @@ test('every command that runs the installer runs the SEED, and names the shell s
 
 // The tool order: status shows the start line the next session gets, validate prints the inventory's rows - both from the
 // capture skill's script, at a path this tree ships.
+test('PF1: status shows a plans row from the engine\'s list and check --all', () =>
+{
+    const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8').replace(/\s+/g, ' ');
+    assert.match(status, /`plans`: one call, `node \.claude\/hooks\/plan-status\.js list ; node \.claude\/hooks\/plan-status\.js check --all`/);
+    assert.match(status, /each `!! <id>: <problem>` line of `check --all`/);
+    assert.match(status, /engine not installed - \/alfred-code:update copies it/);
+    assert.doesNotMatch(status, /CLAUDE_PLUGIN_ROOT[^`]*plan-status/, 'the project\'s copy, as the skills call it');
+});
+
 test('status and validate run tools.js from a path this tree has', () => {
     const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
     const validate = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
@@ -766,7 +739,8 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
     // W2: at a workspace root the usage numbers span the root and its children, and what was left out is named.
     assert.match(f, /At a workspace root these numbers cover the root and its `<n>` children/);
-    assert.match(status, /scripts\/analyze-usage\.js" --scope \| grep -v '\^session: '/);
+    // 3.12 #6: --scope names the live session on an `excluded:` line, which status drops with the session lines
+    assert.match(status, /scripts\/analyze-usage\.js" --scope \| grep -v -e '\^session: ' -e '\^excluded: '/);
     assert.match(f, /Each `left-out:` line - at `scope: 1 projects` too - becomes one `left out: <rel> \(<why>\)` line under the tables/);
     // review #8: the scope's own notes (a start in a sub-folder, a garbage record) and the other-start count reach the reader
     assert.match(f, /Each `note:` line, and an `other-start-folder:` line above 0, is shown as written under the tables/);
@@ -911,8 +885,7 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, run
 // that spelling kept it dead through the move. So every concrete path a shipped body cites through
 // the placeholder is resolved here against the layout the cache actually has.
 test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in the installed layout', () => {
-    const mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    for (const entry of mkt.plugins.filter((x) => !foreignEntry(x))) assert.strictEqual(entry.source, './', `${entry.name} is not sourced from the repo root - resolve its paths against its own source`);
+    assert.ok(fs.existsSync(MANIFEST), 'the core is the repo root, its manifest at .claude-plugin/plugin.json - resolve paths against it');
     const bodies = [];
     const walk = (dir) => {
         for (const e of fs.readdirSync(dir, { withFileTypes: true }))

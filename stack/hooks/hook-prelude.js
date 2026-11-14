@@ -221,17 +221,29 @@ function covers(matchers, row)
     return matchers.includes(row);
 }
 
-// The rows the core's own entry wires each hook FILE on (its basename, no `.js`): read once per process from the
-// marketplace declaration at the plugin root this prelude ships in - the plugin cache is the whole repo.
+// The rows the core's own manifest wires each hook FILE on (its basename, no `.js`): read once per process from the
+// plugin.json at the plugin root this prelude ships in - the plugin cache is the whole repo. A snapshot from before
+// the catalog left the repo (2026-11-14) declares the core as an entry of its marketplace.json instead.
 let coreRowsCache = null;
+function coreManifest()
+{
+    const root = path.join(__dirname, '..', '..', '.claude-plugin');
+    try
+    {
+        const own = JSON.parse(fs.readFileSync(path.join(root, 'plugin.json'), 'utf8'));
+        if (own && own.name === CORE_PLUGIN) return own;
+    }
+    catch { /* an older snapshot: the marketplace entry below */ }
+    const market = JSON.parse(fs.readFileSync(path.join(root, 'marketplace.json'), 'utf8'));
+    return (Array.isArray(market && market.plugins) ? market.plugins : []).find((p) => p && p.name === CORE_PLUGIN);
+}
 function coreRows()
 {
     if (coreRowsCache) return coreRowsCache;
     const rows = new Map();
     try
     {
-        const market = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
-        const core = (Array.isArray(market && market.plugins) ? market.plugins : []).find((p) => p && p.name === CORE_PLUGIN);
+        const core = coreManifest();
         const hooks = core && core.hooks && typeof core.hooks === 'object' ? core.hooks : {};
         for (const [event, blocks] of Object.entries(hooks))
             for (const block of Array.isArray(blocks) ? blocks : [])

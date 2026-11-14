@@ -325,3 +325,29 @@ test('background-wait: a quoted, stderr-redirected or ||-ended cat of a log is a
     for (const cmd of ['cat run.log | tail -20', 'cat "run.log" | grep -c fail', 'cat run.log 2>/dev/null | tail -5', 'cat run.log 2> /dev/null | tail -5', 'cat run.log > copy.log', 'node --test $(cat "list.txt")'])
         assert.strictEqual(verdict([cmd, cmd]), 'PASS', cmd);
 });
+
+// PF1 (plan 2, Task 12): F2's held fixture records the gate through the plan script now; the flat plan's Edit that adds
+// the Gated: block still holds the claim (PF1 flat plan - until 4.0.0).
+test('F2: the old flat transcript - an Edit adding Gated: to the plan file - still holds (PF1 flat plan - until 4.0.0)', () => {
+    const F2 = cf.loadClaims().find((c) => c.id === 'F2');
+    const rows = [
+        stamped(user('audit the plan'), '2026-10-25T10:00:47.000Z'),
+        stamped(tool('Skill', { skill: 'task-verify-plan' }), '2026-10-25T10:00:48.000Z'),
+        stamped(tool('Edit', { file_path: '.alfred/docs/work/plans/csv-export.md', old_string: 'Resume: next task 1', new_string: 'Resume: next task 1\n\nGated:     passed - 2026-10-25' }), '2026-10-25T10:00:49.000Z'),
+        stamped(tool('AskUserQuestion', { questions: [{ question: 'Which way?', header: 'Way', multiSelect: false, options: [{ label: 'Build it (Recommended)', description: 'build' }, { label: 'Change the plan', description: 'change' }] }] }), '2026-10-25T10:00:50.000Z'),
+    ];
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'conformance-f2-flat-'));
+    try {
+        fs.writeFileSync(path.join(dir, 's.jsonl'), jsonl(rows));
+        assert.strictEqual(cf.gradeClaims(cf.loadBundle(path.join(dir, 's.jsonl')), [F2])[0].held, 1);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F2: the held fixture records the gate through the plan script, and the claim reads that call', () => {
+    const held = fs.readFileSync(path.join(__dirname, 'fixtures', 'conformance', 'F2', 'held', 's.jsonl'), 'utf8');
+    assert.match(held, /plan-status\.js gate --plan \.alfred\/docs\/work\/plans\/csv-export /);
+    assert.doesNotMatch(held, /"name":"Edit"/);
+    const step = cf.loadClaims().find((c) => c.id === 'F2').steps[0].graders[0];   // loadClaims folds a claim step into its grader
+    assert.ok(step.any.some((m) => m.tool === 'Bash' && m.field === 'command' && /gate/.test(m.text_match)), 'the any list carries the script call');
+    assert.match(fs.readFileSync(path.join(__dirname, 'fixtures', 'conformance', 'S2', 'violated', 's.jsonl'), 'utf8'), /work\/plans\/csv-export\/csv-export\.md/);
+});

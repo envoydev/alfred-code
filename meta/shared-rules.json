@@ -4366,10 +4366,10 @@
       ]
     },
     "plan-approved-mode-shape": {
-      "_note": "The plan file's `Approved:` line, first shape: the gated solve flow stamps it from its approval ask with the mode picked. The flow owns it; the plan-writing habit restates both shapes for whoever reads or resumes a plan (audit 2026-10-08 D12).",
+      "_note": "The plan's `Approved:` line, first shape: the gated solve flow records it from its approval ask with the mode picked - through the plan script's `approve --mode` since PF1, the flat file's own line until 4.0.0. The flow owns it; the plan-writing habit restates both shapes for whoever reads or resumes a plan (audit 2026-10-08 D12).",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
-        "marker": "`Approved: <date> - mode <session|agents>`"
+        "marker": "Record it with `approve --mode <session|agents>` after the answer"
       },
       "sites": [
         {
@@ -4379,15 +4379,15 @@
       ]
     },
     "plan-approved-verbatim-shape": {
-      "_note": "The plan file's `Approved:` line, second shape: the build skill run on its own stamps the user's words verbatim from its one approval ask. The build skill owns it; the plan-writing habit restates it (audit 2026-10-08 D12).",
+      "_note": "The approval, second shape: the build skill run on its own records the user's words verbatim from its one approval ask - through the plan script's `approve` with `words:` since PF1, the flat file's `Approved:` line until 4.0.0. The build skill owns it; the plan-writing habit restates it (audit 2026-10-08 D12).",
       "owner": {
         "file": "stack/skills/task-implement/SKILL.md",
-        "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
+        "marker": "its answer recorded through `approve` with `words:` the user's, verbatim"
       },
       "sites": [
         {
           "file": "stack/skills/habits-plan-writing/SKILL.md",
-          "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
+          "marker": "on its own, `words:` the user's, verbatim"
         }
       ]
     },

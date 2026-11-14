@@ -62,7 +62,7 @@ test('S1: the capture\'s conflict check names the locked git entries in its neve
 test('S2: the build skill names the plan file its plan id comes from, one per slice', () =>
 {
     const body = flat(read('stack/skills/task-build-from-scratch/SKILL.md'));
-    assert.ok(body.includes("(`<plan id>` is the plan file's name without `.md` - the file the protocol writes for the slice, `<docs-path>/work/plans/<feature>.md` with the slice as `<feature>`, so each slice has its own id)"), 'the plan file named');
+    assert.ok(body.includes("(`<plan id>` is the plan folder's name - the folder the protocol writes for the slice, `<docs-path>/work/plans/<feature>/` holding `<feature>.md`, with the slice as `<feature>`, so each slice has its own id)"), 'the plan folder named (PF1)');
     const protocol = flat(read('stack/skills/task-build-from-scratch/references/domain-trio-protocol.md'));
-    assert.ok(protocol.includes('you write `<docs-path>/work/plans/<feature>.md` from it'), 'the protocol writes that path');
+    assert.ok(protocol.includes('you write `<docs-path>/work/plans/<feature>/<feature>.md` from it'), 'the protocol writes that path');
 });

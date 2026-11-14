@@ -33,9 +33,13 @@ or newer, the `claude` CLI and git.
 
 ```bash
 claude plugin marketplace add anthropics/claude-plugins-official
-claude plugin marketplace add envoydev/alfred-code
+claude plugin marketplace add envoydev/plugins-marketplaces
 claude plugin install alfred-code@envoydev --scope local
 ```
+
+The `envoydev` marketplace is served from [envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces),
+which lists the plugin from this repo. Added it from `envoydev/alfred-code` before 2026-11? That copy is gone - its
+[README](https://github.com/envoydev/plugins-marketplaces#moving-from-the-old-marketplace) says how to move over.
 
 `local` keeps the plugin and everything the stack writes to you alone. Use `--scope project` to give the plugin to
 everyone who clones the project ([which scope?](#faq)).
@@ -240,6 +244,22 @@ No. Every write is listed in [`docs/install-footprint.md`](docs/install-footprin
 </details>
 
 <details>
+<summary><strong>A browser login types the key name instead of its value - why?</strong></summary>
+
+The stack ships no browser server since 2.10.1, so a Playwright server is one you registered yourself. Playwright
+puts a value in place of a key name from `.alfred/.secrets` only when it was started with `--secrets <that file>`.
+`/alfred-code:status` names each registration missing it and prints the two args to add, for example:
+
+```json
+"args": ["-y", "@playwright/mcp@latest", "--browser", "chrome", "--secrets", "/abs/path/to/project/.alfred/.secrets"]
+```
+
+Then reconnect the server with `/mcp`. Use the absolute path, and keep the file in place: Playwright reads it when it
+starts and fails to start once it is gone.
+
+</details>
+
+<details>
 <summary><strong>How do I turn a guard off?</strong></summary>
 
 Name it in `ALFRED_CODE_HOOKS_OFF`, a comma list in the `env` block of `.claude/settings.local.json`:
@@ -316,7 +336,7 @@ The flags you are most likely to want:
 
 Under managed settings:
 
-- `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/alfred-code" }`, `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
+- `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/plugins-marketplaces" }` (the `envoydev` marketplace), `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
 - Enable `alfred-code@envoydev` in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
 - `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
 

@@ -39,7 +39,7 @@ use the STACK VIEW: `settings.json`'s `env` with the local `env` laid over it.
 
 ## 2. General info - always, before the question
 
-One table, no ask - it is seven rows and every other area reads against it:
+One table, no ask - it is eight rows and every other area reads against it:
 
 | item | value |
 |---|---|
@@ -50,6 +50,7 @@ One table, no ask - it is seven rows and every other area reads against it:
 | docs root | .alfred/docs |
 | initialised | 2026-09-24 |
 | workspace | child of .. - own 3, ignored 1 - load check clean 2026-10-25 |
+| plans | 2 plans, 1 flat |
 
 - `stack version`: the stamp's version and commit - `alfred-code.stamp` (`no stamp - source never
   resolved at install time` when it is not there).
@@ -75,6 +76,11 @@ One table, no ask - it is seven rows and every other area reads against it:
   the `links: <n> whole` line or each `!! link <path>: <state>` line (a skill or seat linked from `.alfred/stack`
   that is `dangling`, `missing`, `edited` here or `stale` behind the store), the `held for members: <names>` line (the
   picks a root holds in its store for the projects below), each `mcp <name>:` line (a member's local-scope server this project cannot see) and each `!!` line.
+- `plans`: one call, `node .claude/hooks/plan-status.js list ; node .claude/hooks/plan-status.js check --all`. The row
+  is the `list` output's second line when there is one plan, else `<n> plans` (the count of plan lines) plus `, <n>
+  flat` from its `flat:` line; `no plan` as printed. The `list` lines are pasted under the table as they are, then
+  each `!! <id>: <problem>` line of `check --all`. With no `.claude/hooks/plan-status.js` the row reads `engine not
+  installed - /alfred-code:update copies it`.
 
 ## 3. One question - what else to show
 
@@ -293,10 +299,11 @@ used, and which they never reached, from the analyzer's own inventory block (it 
 transcript of this project on this machine, so a long history takes a few seconds; with no folder
 named it finds this project's transcripts itself, from its cwd, spelled the way Claude Code names the
 folder on every OS). At a workspace root these numbers cover the root and its `<n>` children - the projects joined
-below it; anywhere else, this project alone. First the scope, its session lines dropped:
+below it; anywhere else, this project alone. First the scope, its session lines dropped (and the `excluded:` one naming
+this session):
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --scope | grep -v '^session: '
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --scope | grep -v -e '^session: ' -e '^excluded: '
 ```
 
 Its `scope: <n> projects` line gives the count (the children are `<n>` minus one). Each `left-out:` line - at
@@ -371,6 +378,8 @@ node "${CLAUDE_PLUGIN_ROOT}/stack/skills/capture-preferences/scripts/tools.js" m
 
 Paste both outputs as-is in one fenced block - the stack's defaults until `/capture-preferences tools` ranks the user's own,
 then what navigation each actor gets and whether a language server covers the project. No `--lsp`: status changes nothing.
+A `browser:` line names a browser server the user registered without `--secrets` while the project's store exists -
+keep it in the block as printed; it carries the args to add.
 
 ## 5. Close
 

@@ -141,12 +141,13 @@
     {
       "id": "F2", "area": "flow",
       "claim": "The plan gate's stop follows its stamp: after task-verify-plan, the plan file's Gated: block is written before the stop's AskUserQuestion.",
-      "source": { "file": "stack/skills/task-verify-plan/SKILL.md", "marker": "stamp the verdict into it - the whole eight-field block above, under the header" },
+      "source": { "file": "stack/skills/task-verify-plan/SKILL.md", "marker": "hand the whole eight-field block above to `node .claude/hooks/plan-status.js gate --plan <the plan folder>` on stdin, as printed" },
       "window": { "opens": { "event": { "tool": "AskUserQuestion" }, "from": { "tool": "Skill", "field": "skill", "text_match": "^(?:[^:]*:)?task-verify-plan$" } } },
       "steps": [ { "id": "gated-stamped", "type": "tool_used", "min": 1, "any": [
         { "tool": "Write", "field": "content", "text_match": "^\\W*Gated: " },
         { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Gated: " },
-        { "tool": "MultiEdit", "field": "edits", "text_match": "^\\W*Gated: " }
+        { "tool": "MultiEdit", "field": "edits", "text_match": "^\\W*Gated: " },
+        { "tool": "Bash", "field": "command", "text_match": "plan-status\\.js\\S*\\s+gate\\b" }
       ] } ]
     },
     {

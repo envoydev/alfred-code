@@ -474,6 +474,7 @@ async function takeInventory({ projectRoot, env = process.env, adapters = readAd
     const sorted = Object.fromEntries(Object.keys(servers).sort().map((k) => [k, servers[k]]));
     for (const e of Object.values(sorted))
         lines.push(`tools: ${e.prefix} - ${e.type}${e.version ? ` ${e.version}` : ''} - ${Object.keys(e.tools).length} tools (${e.listed}${e.why && e.listed === 'failed' ? `: ${e.why}` : ''})`);
+    lines.push(...secretsLines({ projectRoot, env, adapters }));
     return { inventory: { version: 1, captured: String(now()).slice(0, 10), servers: sorted }, lines };
 }
 
@@ -1123,7 +1124,32 @@ function modeLines({ projectRoot, env = process.env, memory = null })
     else if (!main.own) nav = `navigation: the stack's order - ${ranks(main)}`;
     else if (main.fellBack) nav = `navigation: yours, from ${main.docRel}, reaches nothing here - the stack's order stands in: ${ranks(main)}`;
     else nav = `navigation: yours, from ${main.docRel} - main session: ${ranks(main)}; agents: ${ranks(agents)}${agents.fellBack ? " (the stack's order)" : ''}`;
-    return [...memoryLines({ projectRoot, env, preview: memory }), ...memoryPlanLines({ projectRoot, env, target: memory }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot))];
+    return [...memoryLines({ projectRoot, env, preview: memory }), ...memoryPlanLines({ projectRoot, env, target: memory }), nav, lsp.coverageLine(lsp.readCoverage(projectRoot)), ...secretsLines({ projectRoot, env })];
+}
+
+// A browser server the user registered (the stack ships none since 2.10.1) fills a login from the project's store only
+// when Playwright was started with `--secrets <dotenv file>`; without it a key name is typed as the literal text (a
+// reported login, 2026-11-13). Each such registration is named with the args to add, while the store exists - Playwright
+// reads the file at start and fails to start when it is gone, so the arg is the user's to add, never written here. The
+// store is checked for presence only; no value is read.
+function secretsLines({ projectRoot, env = process.env, adapters = readAdapters() })
+{
+    const custom = env.ALFRED_CODE_DATA_PATH && path.isAbsolute(env.ALFRED_CODE_DATA_PATH) ? env.ALFRED_CODE_DATA_PATH : null;
+    const store = path.join(custom || path.resolve(projectRoot, '.alfred'), '.secrets');
+    try { if (!fs.statSync(store).isFile()) return []; } catch { return []; }
+    const accountFile = accountFileOf(env);
+    const regs = registrations({ projectRoot, accountFile });
+    const lines = [];
+    for (const scope of ['project', 'local', 'user'])
+        for (const [name, def] of Object.entries(regs[scope].servers))
+        {
+            if (!def || typeof def !== 'object' || classify(def, { adapters }).type !== 'playwright') continue;
+            const args = Array.isArray(def.args) ? def.args.map(String) : [];
+            if (args.some((a) => a === '--secrets' || a.startsWith('--secrets='))) continue;
+            const where = scope === 'project' ? '.mcp.json' : accountFile;
+            lines.push(`browser: ${name} (${scope}, ${where}) was started without --secrets, so a login types a key name from the store literally - add "--secrets", "${store}" to its args and reconnect it with /mcp`);
+        }
+    return lines;
 }
 
 // The start line suggests the capture once per project while no doc is in place. The hook asks `wantsSuggest`, builds the
@@ -1343,6 +1369,7 @@ module.exports = {
     readAdapters, readToolsDoc, parseToolsDoc, lintToolsDoc, nextToolsId, inventoryPath, readInventory, writeInventory,
     accountFileOf, registrations, enabledPlugins, pluginRows, classify, registrationHash, prefixOf, takeInventory, refreshInventory,
     mainReach, seatReach, resolveOrder, startLine, orderFor, toolsLine, jobOrder, AGENT_PROBE, modeLines, memoryMode, docsMemoryState, memoryPlanLines, memoryStartLine, memoryOffIn, memorySetting, stackSwitchOff, teamSwitchOff, checkLsp, suggestOnce, wantsSuggest, markSuggested, SUGGEST_LINE, findToolsDoc, pluginAgentFile, validateRows, hookEngine,
+    secretsLines,
 };
 
 if (require.main === module)

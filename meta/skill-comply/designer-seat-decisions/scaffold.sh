@@ -27,6 +27,9 @@ cat > src/OrdersWorker/OrdersWorker.csproj <<'XML'
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+  </ItemGroup>
 </Project>
 XML
 cat > src/OrdersWorker/Program.cs <<'CS'
@@ -156,6 +159,7 @@ cat > tests/OrdersWorker.Tests/OrdersWorker.Tests.csproj <<'XML'
 </Project>
 XML
 cat > tests/OrdersWorker.Tests/RouteTableTests.cs <<'CS'
+using Xunit;
 using OrdersWorker.Api;
 using OrdersWorker.Orders;
 

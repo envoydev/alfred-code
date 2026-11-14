@@ -248,7 +248,7 @@ test('M94: task-design keeps the seat method in SKILL.md and the orchestrator ha
     assert.match(flat(b), /a design flow writes it as its handoff/, 'the pinned carve-out stays');
     assert.match(flat(b), /Read `references\/write-and-hand-off\.md`/);
     const ref = read('stack/skills/task-design/references/write-and-hand-off.md');
-    for (const piece of [/wc -l/, /Brief: 'Add data export to the records list\.'/, /task-verify-plan/, /task-implement/])
+    for (const piece of [/plan-status\.js sync/, /Brief: 'Add data export to the records list\.'/, /task-verify-plan/, /task-implement/])
         assert.match(ref, piece);
     assert.ok(b.length < 12000, `the preloaded body is ${b.length} chars`);
     // Every designer seat still preloads it by the bare name of a skill that exists.
@@ -469,4 +469,159 @@ test('item 4: designers orient per task-design step 1; the greenfield design rea
     const design = b.slice(b.indexOf('### 1. DESIGN'), b.indexOf('### 2.'));
     assert.ok(design.length > 0, 'the DESIGN step is found');
     assert.match(flat(design), /`PERSONAL-CODE-PREFERENCES\.md` and `ARCHITECTURE-PREFERENCES\.md`[^.]*before/);
+});
+
+// ---- PF1 (plan 2, Tasks 7-11): a plan is a folder - every body that sends the model to the plan script names the verbs
+// it calls, states the never-edit rule itself, names no hook, session or tool, and keeps one pointer to the flat shape.
+const PF_ENGINE = 'node .claude/hooks/plan-status.js';
+const PF_NEVER = /never edit `status\.json`, `scoring\.json` or an approved plan/i;
+const PF_FLAT = /Flat plans \(until 4\.0\.0\)/;
+const PF_HUB = 'stack/skills/habits-plan-writing/SKILL.md';
+const PF_CALLS = {
+    'stack/skills/habits-plan-writing/SKILL.md': ['sync', 'gate', 'approve', 'redesign', 'start', 'done', 'block', 'fail', 'reopen', 'add-task', 'drop',
+        'cursor', 'decide', 'deviate', 'conformance', 'complete', 'resume', 'show'],
+    'stack/skills/task-design/SKILL.md': ['sync'],
+    'stack/skills/task-design/references/write-and-hand-off.md': ['sync'],
+    'stack/skills/task-verify-plan/SKILL.md': ['gate', 'sync'],
+    'stack/skills/task-solve/SKILL.md': ['resume', 'show', 'gate', 'approve', 'conformance', 'complete', 'cursor', 'decide'],
+    'stack/skills/task-solve/references/step-mechanics.md': ['approve', 'decide', 'show'],
+    'stack/skills/task-solve/references/full-spec.md': ['sync', 'approve', 'start', 'done', 'complete'],
+    'stack/skills/task-implement/SKILL.md': ['start', 'done', 'block', 'fail', 'decide', 'cursor', 'redesign', 'deviate', 'add-task', 'approve'],
+    'stack/skills/task-verify-code/SKILL.md': ['show'],
+    'stack/skills/task-solve-cross/references/domain-trio-protocol.md': ['sync', 'approve', 'start', 'done', 'block', 'add-task', 'resume', 'show', 'conformance', 'complete'],
+    'stack/skills/task-solve-cross/references/agent-output-protocol.md': ['decide'],
+};
+const PF_BODIES = [...Object.keys(PF_CALLS), 'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/mode-output-scoring/SKILL.md',
+    'stack/skills/mode-output-scoring/references/outputs.md', 'stack/skills/task-implement/references/evidence.md',
+    'stack/skills/task-solve-cross/references/execution-modes.md'];
+
+test('PF1: each body names the verbs it sends the model to', () => {
+    for (const [file, verbs] of Object.entries(PF_CALLS)) {
+        const text = read(file);
+        for (const verb of verbs)
+            assert.match(text, new RegExp('`' + verb + '[` ]|plan-status\\.js ' + verb + '\\b'), `${file} names \`${verb}\``);
+    }
+});
+
+test('PF1 spec 8, the hooks: a body that names the script states the never-edit rule itself and never says a hook refuses the write', () => {
+    for (const file of PF_BODIES) {
+        const text = read(file);
+        if (!text.includes('plan-status.js')) continue;
+        assert.match(flat(text), PF_NEVER, `${file} states the never-edit rule`);
+        for (const line of text.split('\n').filter((l) => /status\.json|scoring\.json|approved plan/.test(l)))
+            assert.doesNotMatch(line, /\b(?:hook|guard)s?\b[^.\n]*\b(?:refus|den(?:y|ies|ied)|block)/i, `${file}: ${line.trim()}`);
+    }
+});
+
+test('PF1 spec 8, the session: no body names the session status file, a hook event or a session id variable', () => {
+    for (const file of PF_BODIES)
+        assert.doesNotMatch(read(file), /CLAUDE_CODE_SESSION_ID|session status file|\b(?:PreToolUse|PostToolUse|SessionStart|UserPromptSubmit|SubagentStop|PreCompact)\b/, file);
+});
+
+test('PF1 spec 8, the path and the shell: every call is the engine path with text on stdin, and names no tool', () => {
+    for (const file of PF_BODIES) {
+        const text = read(file);
+        for (const m of text.matchAll(/plan-status\.js/g))
+            assert.strictEqual(text.slice(Math.max(0, m.index - 'node .claude/hooks/'.length), m.index), 'node .claude/hooks/', `${file}: a call off the engine path at ${m.index}`);
+        for (const line of text.split('\n').filter((l) => l.includes('plan-status.js')))
+            assert.doesNotMatch(line, /CLAUDE_PLUGIN_ROOT|CLAUDE_SKILL_DIR|\bBash\b|\bPowerShell\b|the shell tool/, `${file}: ${line.trim()}`);
+    }
+    const hub = read(PF_HUB);
+    assert.strictEqual((hub.match(/<<'EOF'/g) || []).length, 1, 'the hub shows one heredoc call');
+    assert.match(flat(hub), /any shell's way of piping text in works/);
+    assert.ok(hub.includes(PF_ENGINE));
+});
+
+test('PF1: each body keeps one flat pointer', () => {
+    for (const file of Object.keys(PF_CALLS)) {
+        const text = read(file);
+        if (file === PF_HUB) assert.strictEqual((text.match(/^## Flat plans \(until 4\.0\.0\)$/gm) || []).length, 1, 'the hub holds the heading once');
+        else assert.strictEqual((text.match(new RegExp(PF_FLAT.source, 'g')) || []).length, 1, `${file} points at the flat section once`);
+    }
+});
+
+test('PF1: the plan template carries no Resume: line and no status: line; the collapse rule is gone', () => {
+    const text = skill('habits-plan-writing');
+    const template = text.slice(text.indexOf('```text'), text.indexOf('## The task card'));
+    assert.doesNotMatch(template, /^Resume:/m);
+    assert.doesNotMatch(template, /^- status:/m);
+    assert.match(flat(text), /`<docs-path>\/work\/plans\/<feature>\/`[ ,].*`<feature>\.md`.*`status\.json`.*`scoring\.json`/);
+    const before = text.slice(0, text.indexOf('## Flat plans (until 4.0.0)'));
+    assert.doesNotMatch(before, /collapses to its title|status: TODO|IN_PROGRESS|Completed: <date>/, 'the flat stamps live in the closing section only');
+    assert.match(section(text, 'Flat plans (until 4.0.0)'), /Resume:.*status:.*Completed:/s);
+    assert.match(description('habits-plan-writing'), /^Use when writing, stamping or resuming a plan file/, 'the description is unchanged (R33)');
+});
+
+test('PF1: the design writes the folder and syncs it; the gate hands its block to the script; the scoring target is the folder\'s Markdown', () => {
+    const FOLDER = '<docs-path>/work/plans/<feature>/<feature>.md';   // inside mode-output-scoring's `--target ...` span too
+    for (const rel of ['task-design/SKILL.md', 'task-design/references/write-and-hand-off.md', 'mode-output-scoring/SKILL.md'])
+        assert.ok(read(`stack/skills/${rel}`).includes(FOLDER), rel);
+    for (const rel of ['task-design/SKILL.md', 'task-design/references/write-and-hand-off.md', 'task-build-from-scratch/SKILL.md', 'mode-output-scoring/SKILL.md', 'mode-output-scoring/references/outputs.md'])
+        assert.doesNotMatch(read(`stack/skills/${rel}`), /work\/plans\/<feature>\.md/, `${rel}: no flat path outside a flat pointer`);
+    const hand = flat(read('stack/skills/task-design/references/write-and-hand-off.md'));
+    assert.doesNotMatch(hand, /wc -l/);
+    assert.match(hand, /`Tasks: 0 of <N> done`.*grep the Markdown for `Oriented:` and `Asked:`/);
+    assert.match(flat(skill('task-verify-plan')), /hand the whole eight-field block above to `node \.claude\/hooks\/plan-status\.js gate --plan <the plan folder>` on stdin, as printed/);
+    assert.match(flat(skill('mode-output-scoring')), /a brief names no file of the plan folder but the draft/);
+});
+
+test('PF1 (R42): the raise-to-standard route records sync, an approval in the request\'s words, each task, then the close', () => {
+    const text = flat(read('stack/skills/task-solve/references/full-spec.md'));
+    assert.match(text, /in this order[^.]*: `sync`; `approve` with `words:` the request that asked for the work, verbatim, and no `--mode`; per task `start --task <id>`, then `done --task <id>`/);
+    assert.match(text, /step 6, whose close runs `complete`/);
+    assert.doesNotMatch(text, /with the work done as ticked tasks/);
+});
+
+test('PF1: task-solve keeps its state in the plan folder, resumes through the script and reads the close from show --full', () => {
+    const text = flat(skill('task-solve'));
+    assert.match(text, /## State - the plan folder is truth and cursor/);
+    assert.match(text, /run `node \.claude\/hooks\/plan-status\.js resume --plan <the plan folder>`/);
+    assert.match(text, /Each stop runs `cursor` before its ask\./);
+    assert.strictEqual((text.match(/Each stop runs `cursor`/g) || []).length, 1, 'said once');
+    assert.match(text, /read from `show --full` - its `## Tasks` and `## Deviations` sections/);
+    assert.match(flat(read('stack/skills/task-solve/references/step-mechanics.md')), /paste its output under a `Build record` heading/, 'the conformance rules carry the build record (one home)');
+    assert.doesNotMatch(text, /Stamp `(?:Approved|Completed|Conformance)/);
+    assert.doesNotMatch(text.replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /`Resume:` line is the one cursor|work\/plans\/<feature>\.md|work\/plans\/csv\.md/);
+    assert.strictEqual(asks(skill('task-solve')).length, 11, 'no ask template added or dropped');
+});
+
+test('PF1: task-implement ticks through the script, runs fail before its ask alone, and carries the foreign-start ask', () => {
+    const text = flat(skill('task-implement'));
+    assert.match(text, /run `node \.claude\/hooks\/plan-status\.js start --plan <the plan folder> --task <id>` before touching code/);
+    assert.match(text, /`fail --task <id>` \(`why:`\) - before this ask and before no other/);
+    assert.match(text, /`Re-design this slice` runs `redesign --task <id>`.*`Continue against the delta` runs `deviate --task <id>` with the answer as `asked:`.*`Stop the build here` runs `cursor` alone/);
+    const all = asks(skill('task-implement'));
+    assert.strictEqual(all.length, 11);
+    const foreign = all.find((a) => /was started by another session/.test(a.question));
+    assert.deepStrictEqual(foreign.options, ['Leave it to that session (Recommended)', 'Take it over here']);
+    for (const lead of [/another session started this task - stops here with ONE ask \(plain-text options where the harness lacks the tool\)/,
+        /gets ONE approval ask before task 1 \(plain-text options where the harness lacks the tool\)/])
+        assert.match(text, lead, 'each ask this change adds or rewords keeps the plain-text fallback');
+    assert.doesNotMatch(text.replace(/in a plan that is a single file[^;]*;/, '').replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /IN_PROGRESS|`DONE`|`FAILED`|Approved: line/);
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'task-implement', text: skill('task-implement') }]), [], 'check 61 holds the new template and the pin');
+});
+
+test('PF1: task-verify-code reads what was built from show --full', () => {
+    const text = flat(skill('task-verify-code'));
+    assert.match(text, /what was built from `node \.claude\/hooks\/plan-status\.js show --plan <the plan folder> --full`/);
+    assert.match(text, /An added task is a task, a dropped one is not missing, a recorded deviation is judged as recorded\./);
+});
+
+test('PF1 (R41): the trio protocol approves, ticks and completes through the script, in the orchestrator alone', () => {
+    const text = flat(read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'));
+    const bullet = text.slice(text.indexOf("**The plan's status file.**"));
+    assert.match(bullet, /by the orchestrator alone/);
+    assert.match(bullet, /before the first task starts: `approve --plan <the plan folder> --mode agents` when seats build \(`--mode session` INLINE\), with `words:` that answer on stdin/);
+    assert.match(bullet, /`start --task <id>` at its dispatch; `done --task <id>` with `result:`/);
+    assert.match(bullet, /INLINE, the build twin runs these itself/);
+    assert.match(bullet, /`conformance` with `verdict:` and `reviewer:`.*`complete` with `suite:`/);
+    assert.match(text, /Before the approval a card is added by editing the Markdown, then `sync`\./);
+});
+
+test('PF1: the trio protocol\'s four copies are byte-equal to the owner, and the seat rule says a seat never edits the plan', () => {
+    const owner = read('stack/skills/task-solve-cross/references/domain-trio-protocol.md');
+    for (const s of ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage-quality', 'task-build-from-scratch'])
+        assert.strictEqual(read(`stack/skills/${s}/references/domain-trio-protocol.md`), owner, s);
+    for (const rel of ['agent-output-protocol.md', 'execution-modes.md'])
+        assert.match(flat(read(`stack/skills/task-solve-cross/references/${rel}`)), /a seat never edits the plan, its `status\.json` or `scoring\.json`, and never runs the script/, rel);
 });

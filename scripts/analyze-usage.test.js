@@ -1263,6 +1263,25 @@ test('U03: unheld stops need an open flow; a probe receipt counts as checked', (
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// PF1 (plan 2, Task 6): a plan folder's flow closes on the engine's `complete ok` line in its call's result.
+test('PF1: unheld stops close on the plan script\'s complete line, never on a refused complete', () => {
+  const dir = tmp();
+  const endTurn = (id, n, text) => scAsst(id, scT(n), usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const flowWith = (out) => {
+    let body = scHuman(scT(0), '<command-name>/task-solve</command-name>\n<command-args>fix the parser</command-args>');
+    body += scAsst('p1', scT(1), usage(1, 0, 100, 5), [scBash('pc1', "node .claude/hooks/plan-status.js complete --plan csv <<'EOF'\nsuite: npm test - ok\nEOF")]) + toolRes(scT(2), 'pc1', out);
+    body += endTurn('p2', 3, 'Closed.') + scHuman(scT(4), 'thanks, now the readme');
+    return body;
+  };
+  const closed = path.join(dir, 'closed.jsonl');
+  fs.writeFileSync(closed, flowWith('plan-status: complete ok - plan csv (.alfred/docs/work/plans/csv/)\nCompleted: 2026-11-13T10:42Z\n'));
+  assert.deepStrictEqual(run([closed]).main.unheldStopCandidates, [], 'the flow is closed by the script');
+  const refused = path.join(dir, 'refused.jsonl');
+  fs.writeFileSync(refused, flowWith('plan-status: complete refused: task 2 is in_progress'));
+  assert.deepStrictEqual(run([refused]).main.unheldStopCandidates.map((c) => c.stopTs), [scT(3)], 'a refused complete closes nothing');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('U02: a green claim after a node <suite>.test.cjs run in the same turn is backed', () => {
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');
@@ -2868,6 +2887,22 @@ test('startFolderOf: a first cwd row ending at the head bound, one byte under an
   };
   const at = (len) => { const f = path.join(dir, `b${len}.jsonl`); fs.writeFileSync(f, rowOf(len) + '\n' + line({ type: 'mode' })); return startFolderOf(f); };
   assert.deepStrictEqual([at(SCOPE_HEAD), at(SCOPE_HEAD - 1), at(SCOPE_HEAD + 1)], ['/w/été', '/w/été', null]);
+  // 3.12 #9: a row ending at one read step, one byte under and one over - and a file with no newline at all
+  assert.deepStrictEqual([at(65536), at(65535), at(65537)], ['/w/été', '/w/été', '/w/été']);
+  const bare = path.join(dir, 'bare.jsonl');
+  fs.writeFileSync(bare, rowOf(70000));
+  assert.strictEqual(startFolderOf(bare), '/w/été');
+});
+
+test('startFolderOf: a first cwd row in the first 64 KB costs no larger read, whatever follows it (3.12 #9)', () => {
+  const dir = tmp();
+  const f = path.join(dir, 'big.jsonl');
+  fs.writeFileSync(f, line({ type: 'mode' }) + line({ type: 'user', cwd: '/w/a' }) + 'x'.repeat(3 * SCOPE_HEAD) + '\n');
+  const real = fs.readSync;
+  const asked = [];
+  fs.readSync = (fd, buf, off, len, pos) => { asked.push(len); return real(fd, buf, off, len, pos); };
+  try { assert.strictEqual(startFolderOf(f), '/w/a'); } finally { fs.readSync = real; }
+  assert.ok(asked.length && asked.reduce((a, b) => a + b, 0) <= 65536, asked.join(','));
 });
 
 test('sessionsOf: two members sharing one folder each keep their own', () => {
@@ -2957,6 +2992,25 @@ test('--scope at a root whose one child is left out: ignored, gone, naming anoth
   }
 });
 
+test('--scope leaves the live session and each --exclude-session out of the counts and the session lines, naming each once (3.12 #6)', () => {
+  const t = scopeTree();
+  const f0 = usageFx.session(t, t('ws'), 's0');
+  usageFx.session(t, t('ws'), 's-live');
+  usageFx.session(t, t('ws/api'), 's-skip');
+  const f1 = usageFx.session(t, t('ws/api'), 's1');
+  const r = usageCli(t, t('ws'), ['--scope', '--exclude-session', 's-skip'], { CLAUDE_CODE_SESSION_ID: 's-live' });
+  assert.strictEqual(r.code, 0, r.err);
+  assert.strictEqual(r.out, [
+    'scope: 3 projects',
+    `project: .\t${t('ws')}\t1`, `project: api\t${t('ws/api')}\t1`, `project: web\t${t('ws/web')}\t0`,
+    `session: s0\t.\t${f0}`, `session: s1\tapi\t${f1}`,
+    'excluded: s-live\t.\tCLAUDE_CODE_SESSION_ID', 'excluded: s-skip\tapi\t--exclude-session', '',
+  ].join('\n'));
+  // the rollup's own count per project agrees
+  const json = JSON.parse(rollupCli(t, t('ws'), ['--json', '--exclude-session', 's-skip'], { CLAUDE_CODE_SESSION_ID: 's-live' }));
+  assert.deepStrictEqual(json.projects.map((p) => p.sessions), [1, 1, 0]);
+});
+
 test('--scope with a folder named: exit 1 with the usage lines, nothing on stdout', () => {
   const t = scopeTree();
   const r = usageCli(t, t('ws'), [t.config, '--scope']);
@@ -2974,7 +3028,7 @@ test('--scope prints no row text and reads heads only', () => {
   const r = usageCli(t, t('ws'), ['--scope']);
   assert.strictEqual(r.code, 0, r.err);
   assert.ok(!r.out.includes('W2-TEXT-MARK'));
-  assert.ok(r.out.endsWith('\n') && r.out.split('\n').filter(Boolean).every((l) => /^(scope|project|left-out|session|other-start-folder|note): /.test(l)), r.out);
+  assert.ok(r.out.endsWith('\n') && r.out.split('\n').filter(Boolean).every((l) => /^(scope|project|left-out|session|excluded|other-start-folder|note): /.test(l)), r.out);
 });
 
 test('no path named, one project: the rollup, --json and --inventory equal the named folder\'s (a guard)', () => {
@@ -3129,6 +3183,21 @@ test('inventory at a root: three blocks, each first line carrying its rel; a ski
   assert.strictEqual(blocks.length, 3);
 });
 
+test('inventory at a root: a member with no session still gets its block, every name it installed unused (3.12 #5)', () => {
+  const t = rollupTree({}, ['ws', 'ws/api']);
+  putSkill(t('ws/web'), 'web-only');
+  const out = rollupCli(t, t('ws'), []);
+  const blocks = inventoryBlocks(out);
+  assert.strictEqual(blocks.length, 3, out);
+  assert.match(blocks[2].split('\n')[0], /^INVENTORY vs USE \[web\] \(what the install HAS - no session of this project in the run, so nothing was touched\)$/);
+  assert.match(blocks[2], /^ {2}SKILLS - used 0 of 1 installed$/m);
+  assert.match(blocks[2], /^ {4}unused \(1\): web-only$/m);
+  assert.ok(!blocks[0].includes('web-only') && !blocks[1].includes('web-only'));
+  const json = JSON.parse(rollupCli(t, t('ws'), ['--json']));
+  const web = json.projects.find((p) => p.rel === 'web');
+  assert.deepStrictEqual([web.sessions, web.inventory.source.sessions, web.inventory.skills.map((s) => [s.name, s.used])], [0, 0, [['web-only', 'no']]]);
+});
+
 test('inventory, one project: the block\'s first line is today\'s', () => {
   const t = rollupTree();
   putSkill(t('ws/api'), 'api-only');
@@ -3224,6 +3293,17 @@ test('advice in a child and in a standalone project: one unprefixed row, --json 
   assert.match(advice(solo, 'solo'), /^turn-check: advise - 3 done claims/);
 });
 
+test('advice at a root: a member reads its own docs root, never the start session\'s launch DOCS_PATH (3.12 #4)', () => {
+  const t = scopeTree();
+  usageFx.session(t, t('ws/api'), 'adv-api');
+  putLedger(path.join(t('ws/api'), 'notes', 'hook-blocks'), 'adv-api', [doneRow({}), doneRow({}), doneRow({})]);
+  const r = usageCli(t, t('ws'), ['--turn-check-advice', '.'], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: '', ALFRED_CODE_DOCS_PATH: 'notes' });
+  assert.strictEqual(r.code, 0, r.err);
+  assert.ok(!/^api: /m.test(r.out), r.out);
+  fs.writeFileSync(path.join(t('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'notes' } }));
+  assert.match(usageCli(t, t('ws'), ['--turn-check-advice', '.'], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: '' }).out, /^api: turn-check: advise - 3 done claims/m);
+});
+
 test('advice: a member with no transcript folder gives no row and no throw', () => {
   const t = adviceTree({ ws: 3 });
   assert.deepStrictEqual(advice(t, 'ws').trim().split('\n').map((l) => l.split(':')[0]), ['.']);
@@ -3305,6 +3385,23 @@ test('--hook-blocks at a root: a member\'s ledger still in its pre-2.8.0 docs fo
   const t = rollupTree();
   putLedger(path.join(t('ws/api'), '.alfred', 'docs', 'hook-blocks'), 's-ws-api-2', [doneRow({}), doneRow({})]);
   assert.match(rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))]), /^api: DONE GATE \(probe\): 2 done claim\(s\)/m);
+});
+
+test('--hook-blocks at a root: a member\'s pre-2.8.0 ledger under the docs root its own settings name is read, local first (3.12 #4)', () => {
+  const env = (p) => JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: p } });
+  const t = rollupTree({ 'ws/api': { stamp: true, git: true, record: { parent: '..' }, settings: env('notes') } });
+  putLedger(path.join(t('ws/api'), 'notes', 'hook-blocks'), 's-ws-api-2', [doneRow({}), doneRow({})]);
+  assert.match(rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))]), /^api: DONE GATE \(probe\): 2 done claim\(s\)/m);
+  const l = rollupTree({ 'ws/api': { stamp: true, git: true, record: { parent: '..' }, settings: env('notes'), local: env('mine') } });
+  putLedger(path.join(l('ws/api'), 'mine', 'hook-blocks'), 's-ws-api-2', [doneRow({}), doneRow({}), doneRow({})]);
+  putLedger(path.join(l('ws/api'), 'notes', 'hook-blocks'), 's-ws-api-2', [doneRow({})]);
+  assert.match(rollupCli(l, l('ws'), ['--hook-blocks', statsOf(l('ws'))]), /^api: DONE GATE \(probe\): 3 done claim\(s\)/m);
+});
+
+test('--hook-blocks at a root: the start session\'s own DOCS_PATH names no member\'s docs root (a guard)', () => {
+  const t = rollupTree();
+  putLedger(path.join(t('ws/api'), 'notes', 'hook-blocks'), 's-ws-api-2', [doneRow({}), doneRow({})]);
+  assert.ok(!/^api: /m.test(rollupCli(t, t('ws'), ['--hook-blocks', statsOf(t('ws'))], { ALFRED_CODE_DOCS_PATH: 'notes' })));
 });
 
 test('--hook-blocks, one project and a named folder: the probe lines of today (a guard)', () => {

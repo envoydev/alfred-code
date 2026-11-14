@@ -182,7 +182,7 @@ test('full spec: the solve flow states the checklist, runs the check script and 
     // stack audit 2026-10-20 row 13: +1 task-solve (judgment item), +1 issue-diagnoser (4a / 4c close), task-version-upgrade pinned at 5;
     // usage audit 2026-11-03 U28: +1 task-solve (the step-5 findings stop); burn-down R127: +1 capture-quality (the unstamped stop)
     assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
-        'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'capture-quality': 8, 'capture-awareness': 3, 'task-implement': 10, 'task-build-from-scratch': 5,
+        'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'capture-quality': 8, 'capture-awareness': 3, 'task-implement': 11, 'task-build-from-scratch': 5,
         'task-version-upgrade': 5, 'task-design': 1, 'task-verify-plan': 2 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');

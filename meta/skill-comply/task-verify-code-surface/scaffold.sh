@@ -101,6 +101,61 @@ test('an order is created with its total, dollar sign first', () =>
     assert.strictEqual(res.body.total, '$12.50');
 });
 JS
+PLANS=.alfred/docs/work/plans
+if [ -f .claude/hooks/plan-status.js ]; then
+# the after arm: this install carries the writer script - the plan is a folder, stamped through it
+PS="node .claude/hooks/plan-status.js"
+mkdir -p "$PLANS/order-total-dollar"
+cat > "$PLANS/order-total-dollar/order-total-dollar.md" <<'MD'
+# Order total with a dollar sign - plan
+
+Oriented: src/orders.js outline (createOrder), src/money.js outline (formatMoney), test/orders.test.js outline; javascript skill loaded
+Asked: "Show the order total with a dollar sign in the create-order API response"
+Build: npm test
+
+## Fit
+
+extend - the response's total already comes from the money formatter; the symbol lands where the amount is formatted.
+
+## Tasks
+
+### Task 1 - the API response's total carries a dollar sign
+
+- files: src/money.js (modify), test/orders.test.js (modify)
+- anchors: src/money.js:formatMoney, src/orders.js:createOrder
+- traps: a formatted amount is display text - keep the cents arithmetic in integers
+- test: the create-order response's total reads '$12.50' for 5 x 250 cents
+- acceptance: `npm test` - every test green
+- log_points: none - the module has no logger
+- estimate: 10m
+
+## Decisions
+
+- the symbol goes into formatMoney - precedent: src/money.js:formatMoney is the one place an amount is formatted
+MD
+$PS sync --plan order-total-dollar
+$PS gate --plan order-total-dollar <<'EOF'
+Oriented:  verified
+Asked:     verified
+Decisions: 1 entry, with its precedent
+Scope:     matches
+Existence: 2 names checked, 0 unverified
+Passes:    risk pass | scope pass | existence pass | edges pass | soundness pass
+Findings:  none
+Gated:     passed - 2026-11-03
+EOF
+$PS approve --plan order-total-dollar --mode session <<'EOF'
+words: Approve - build in this session (Recommended)
+EOF
+$PS start --plan order-total-dollar --task 1
+$PS done --plan order-total-dollar --task 1 <<'EOF'
+result: npm test green - 1 passed
+EOF
+$PS cursor --plan order-total-dollar <<'EOF'
+note: step 5 CONFORMANCE - mode session - next: the review
+EOF
+else
+# the before arm (PF1 flat plan - until 4.0.0): an install from before the plan folder - the flat plan
 cat > .alfred/docs/work/plans/order-total-dollar.md <<'MD'
 # Order total with a dollar sign - plan
 
@@ -141,3 +196,4 @@ extend - the response's total already comes from the money formatter; the symbol
 
 - the symbol goes into formatMoney - precedent: src/money.js:formatMoney is the one place an amount is formatted
 MD
+fi

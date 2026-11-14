@@ -1616,6 +1616,39 @@ test('guard-unapproved-dispatch: an approval belongs to the plan the brief names
 });
 const layoutApproval = (root, id) => path.join(root, '.alfred', 'state', 'approvals', id, 'APPROVAL');
 
+// PF1 (plan 2, Task 6): a folder plan completed after a hand-written AUTO waiver spends it, read from its status.json.
+test('PF1 D6: a folder plan completed after a hand-written AUTO waiver spends it', () => {
+  const { planFolder, putStatus } = require('./plan-folder-fixture.js');
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'build task 1' } }, { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  const ago = (f, s) => { const t = (Date.now() - s * 1000) / 1000; fs.utimesSync(f, t, t); };
+  const stamp = stateReceipt(root, 'APPROVAL', 'AUTO - "run all recommended without asking me"\n');
+  ago(stamp, 600);
+  const plan = planFolder(root, 'cart', { approve: true, done: ['1', '2', '3'], complete: true });
+  const status = path.join(plan.dir, 'status.json');
+  const spent = disp('aspnet-implementer');
+  assert.equal(spent.status, 2);
+  assert.match(spent.stderr, /AUTO waiver at .*APPROVAL predates .*work\/plans\/cart\/ was completed \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\)/);
+  assert.equal(disp('general-purpose').status, 0, 'no generic seat is held by a spent waiver');
+  ago(status, 1200); ago(plan.md, 1200);
+  assert.equal(disp('aspnet-implementer').status, 0, 'a status.json older than the waiver leaves it standing');
+  ago(status, 60);
+  putStatus(plan.dir, (s) => { s.completedAt = null; s.completion = null; });
+  assert.equal(disp('aspnet-implementer').status, 0, 'not completed - the waiver stands');
+  fs.writeFileSync(status, '{');
+  assert.equal(disp('aspnet-implementer').status, 0, 'a garbage status.json is no evidence');
+  fs.rmSync(status);
+  assert.equal(disp('aspnet-implementer').status, 0, 'no status.json yet');
+});
+
+test('PF1: a brief naming a plan folder with a trailing slash passes on that plan\'s own stamp', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  stateReceipt(root, path.join('csv', 'APPROVAL'), 'APPROVED csv - "go"\n');
+  const r = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'aspnet-implementer', prompt: 'Build task 2.\nplan: .alfred/docs/work/plans/csv/\nfiles: src/a.ts' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  assert.equal(r.status, 0, r.stderr);
+});
+
 // D6 (the user's ruling of 2026-11-03, 'Fix it in the dispatch guard'): a hand-written AUTO waiver covers one run - a plan
 // written after it that carries its Completed: line closes that run, and the waiver no longer passes a seat.
 test('guard-unapproved-dispatch: a hand-written AUTO waiver is spent by a plan completed after it (D6)', () => {

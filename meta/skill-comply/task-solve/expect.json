@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "skill": "task-solve",
-  "sources": ["stack/skills/task-solve/SKILL.md"],
+  "sources": ["stack/skills/task-solve/SKILL.md", "stack/skills/habits-plan-writing/SKILL.md"],
   "extracted": "2026-09-23",
-  "note": "The skill is manual-only, so every level invokes it by its slash command and only the words after it change. A headless run cannot answer a stop, so the steps graded are the ones before and AT the first stop: the resume check, the size line (re-proving the Size first section - input parsing is on the floor, so the fixture task is standard), the design step, its plan file, and a stop that carries its three fields without approving or building anything. In a real session (conformance.js) the steps run on the size the run stated: the design steps on `Size: standard` alone, the stop fields on a size that stops, the floor never - it is this fixture task's. Print mode (`claude -p`) has no AskUserQuestion, so stop-after-design also takes a text stop after the design step that carries a (Recommended) option AND the Result: field - the AND keeps the clarify ask, which marks an option but reports no Result:, from passing as the stop. The scaffold's CLAUDE.md states the order rules (the 2026-11-04 smoke's both arms stopped at clarify asking for them) and its .alfred/.variables sets ALFRED_CODE_SCORING=0, so the plan lands under work/plans/ rather than the output scoring's draft.",
+  "note": "The skill is manual-only, so every level invokes it by its slash command and only the words after it change. A headless run cannot answer a stop, so the steps graded are the ones before and AT the first stop: the resume check, the size line (re-proving the Size first section - input parsing is on the floor, so the fixture task is standard), the design step, its plan file, and a stop that carries its three fields without approving or building anything. In a real session (conformance.js) the steps run on the size the run stated: the design steps on `Size: standard` alone, the stop fields on a size that stops, the floor never - it is this fixture task's. Print mode (`claude -p`) has no AskUserQuestion, so stop-after-design also takes a text stop after the design step that carries a (Recommended) option AND the Result: field - the AND keeps the clarify ask, which marks an option but reports no Result:, from passing as the stop. The scaffold's CLAUDE.md states the order rules (the 2026-11-04 smoke's both arms stopped at clarify asking for them) and its .alfred/.variables sets ALFRED_CODE_SCORING=0, so the plan lands under work/plans/ rather than the output scoring's draft. PF1: the three plan-status steps grade the after arm (plan folders, the script installed); the before arm (3.11.0, flat plans, no script) reads them as - ticks-through-plan-status FAILS by construction (no script to call), so its shipping row is better and an INCONCLUSIVE means the after arm did not go through the script; status-json-never-edited and approved-plan-never-edited pass with nothing to edit, and are WORSE only when the after arm edits one.",
   "run": {
     "max_turns": 40,
     "stacks": ["javascript"],
@@ -102,14 +102,14 @@
       "id": "plan-file",
       "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
-      "quote": "The plan file** (`<docs-path>/work/plans/<feature>.md`) is the durable truth",
+      "quote": "`<feature>.md` the design, frozen at approval",
       "graders": [
         {
           "type": "tool_used",
-          "name": "a plan written under work/plans/ (plans/ before 2.8.0)",
+          "name": "a plan written under work/plans/ - a folder's Markdown, or a flat file (plans/ before 2.8.0)",
           "tool": "Write",
           "field": "file_path",
-          "text_match": "(^|[\\\\/])plans[\\\\/][^\\\\/]+\\.md$"
+          "text_match": "(^|[\\\\/])plans[\\\\/](?:[^\\\\/]+[\\\\/])?[^\\\\/]+\\.md$"
         }
       ]
     },
@@ -154,7 +154,9 @@
           "name": "no Approved stamp written - no user answered a stop",
           "any": [
             { "tool": "Write", "field": "content", "text_match": "^\\W*Approved:" },
-            { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Approved:" }
+            { "tool": "Edit", "field": "new_string", "text_match": "^\\W*Approved:" },
+            {"tool":"Bash","field":"command","text_match":"plan-status\\.js\\S*\\s+approve\\b"},
+            {"tool":"PowerShell","field":"command","text_match":"plan-status\\.js\\S*\\s+approve\\b"}
           ],
           "min": 0,
           "max": 0
@@ -181,6 +183,9 @@
           "max": 0
         }
       ]
-    }
+    },
+    {"id":"ticks-through-plan-status","session":false,"from":"stack/skills/habits-plan-writing/SKILL.md","quote":"Everything stamped after the design goes through one script","graders":[{"type":"tool_used","name":"no plan Write or Edit adds a status: DONE, Approved: or Completed: stamp - the stamps go through the script (after arm)","succeeded":true,"any":[{"all":[{"tool":"Write","field":"file_path","text_match":"(?:^|[\\\\/])plans[\\\\/]"},{"tool":"Write","field":"content","text_match":"^\\W*(?:status: DONE|Approved:|Completed:)"}]},{"all":[{"tool":"Edit","field":"file_path","text_match":"(?:^|[\\\\/])plans[\\\\/]"},{"tool":"Edit","field":"new_string","text_match":"^\\W*(?:status: DONE|Approved:|Completed:)"}]},{"all":[{"tool":"MultiEdit","field":"file_path","text_match":"(?:^|[\\\\/])plans[\\\\/]"},{"tool":"MultiEdit","field":"edits","text_match":"^\\W*(?:status: DONE|Approved:|Completed:)"}]}],"min":0,"max":0},{"type":"tool_used","name":"the script's `sync` called (after arm)","any":[{"tool":"Bash","field":"command","text_match":"plan-status\\.js\\S*\\s+sync\\b"},{"tool":"PowerShell","field":"command","text_match":"plan-status\\.js\\S*\\s+sync\\b"}]}]},
+    {"id":"status-json-never-edited","session":false,"from":"stack/skills/habits-plan-writing/SKILL.md","quote":"Never edit `status.json`, `scoring.json` or an approved plan: the script is the only writer.","graders":[{"type":"tool_used","name":"no Write or Edit of a plan folder's status.json or scoring.json (after arm)","succeeded":true,"any":[{"tool":"Write","field":"file_path","text_match":"plans[\\\\/][^\\\\/]+[\\\\/](?:status|scoring)\\.json$"},{"tool":"Edit","field":"file_path","text_match":"plans[\\\\/][^\\\\/]+[\\\\/](?:status|scoring)\\.json$"},{"tool":"MultiEdit","field":"file_path","text_match":"plans[\\\\/][^\\\\/]+[\\\\/](?:status|scoring)\\.json$"}],"min":0,"max":0}]},
+    {"id":"approved-plan-never-edited","session":false,"from":"stack/skills/habits-plan-writing/SKILL.md","quote":"After the approval the Markdown is not edited.","graders":[{"type":"regex","name":"no Write or Edit of a plan folder's Markdown after the first approve call (after arm)","target":"trace","pattern":"plan-status\\.js\\S*\\s+approve\\b[\\s\\S]*(?:^|\\n)(?:Write|Edit|MultiEdit) [^\\n]*plans[\\\\/]+([^\\\\/\"]+)[\\\\/]+\\1\\.md","match":"not_contains"}]}
   ]
 }

@@ -22,14 +22,15 @@ Adding, changing, renaming or removing anything the plugin ships. `CLAUDE.md` ho
 
 ## Generated files are regenerated, never edited
 
-- `meta/plugin-entries.json`, the `plugins[]` of `.claude-plugin/marketplace.json` and `meta/stack-graph.json` come from `npm run marketplace` and `npm run graph`.
+- `meta/plugin-entries.json`, the root `.claude-plugin/plugin.json` and `meta/stack-graph.json` come from `npm run plugin-manifest` and `npm run graph`.
+- The catalog is not here: the `envoydev` marketplace lives in envoydev/plugins-marketplaces and lists the core from this repo. A catalog change (a description, a category, a new plugin) is a commit there.
 - `meta/skill-headings.json` comes from `npm run skill-headings`: run it after a skill's `name` or `description` changes (lint 64), so update still knows the copies made under the old heading.
 - Run them after any item is added, renamed or removed, then `npm run lint`. A stale generated file fails lint; fixing the output by hand is overwritten by the next run.
 - The repo root is a plugin source. Never add `skills/`, `commands/`, `agents/`, `hooks/hooks.json`, `bin/` or another reserved root name (`CLAUDE.md` lists them); declare hooks and servers inline in the entry.
 
 ## One version
 
-- The version lives in `setup-plugin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (`metadata.version`) and `package.json`. Bump all three together on `develop` with any release-worthy change; lint fails on drift.
+- The version lives in `setup-plugin/.claude-plugin/plugin.json`, the generated root `.claude-plugin/plugin.json` and `package.json`. Bump the first and the last, run `npm run plugin-manifest`, all together on `develop` with any release-worthy change; lint fails on drift.
 - The release tags `v<version>` from `plugin.json`. A version whose tag already names another commit fails the release job, so bump before merging, never after.
 
 ## Release

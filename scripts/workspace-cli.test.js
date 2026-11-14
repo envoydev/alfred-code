@@ -847,6 +847,54 @@ test('ignore-child: a failed child run is one !! line and exit 1; the mark stand
     assert.ok(!runs().some((l) => l.includes('--print-plan')), 'no cascade below a child whose run failed');
 });
 
+// 3.12, W3 deferred minors: the failure line carries the update's own !! reasons; a failure in the cascade below is named
+// as the cascade's, not the child's own update.
+test('ignore-child: a failed child run prints its !! reasons; a failed cascade below names the cascade', () =>
+{
+    const at = keptTree();
+    const { src } = fakeSource('==>   !! settings: something broke\n==>   1 step(s) reported a failure above - the rest of the run completed\n');
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^ {2}!! settings: something broke$/m);
+    assert.match(r.out, /^!! workspace: api is ignored but its own update did not finish - run \/alfred-code:update there$/m);
+    const below = keptTree();
+    const fake = fakeSource('==> done\n');
+    const script = path.join(fake.src, 'scripts', 'install', 'alfred-code.js');
+    fs.writeFileSync(script, fs.readFileSync(script, 'utf8').replace(/process\.stdout\.write\((.*)\);/,
+        "process.stdout.write(path.basename(process.cwd()) === 'tool' ? '==>   1 step(s) reported a failure above - the rest of the run completed\\n' : $1);"));
+    const c = cli('ignore-child', '--root', below('ws'), '--add', 'api', '--source', fake.src);
+    assert.strictEqual(c.code, 1, c.out);
+    assert.match(c.out, /^cascade: tool\tfailed$/m);
+    assert.match(c.out, /^!! workspace: api ignored and its own update finished, but a project below it did not \(the cascade lines above\) - run \/alfred-code:update in that project$/m);
+    assert.doesNotMatch(c.out, /api is ignored but its own update did not finish/);
+});
+
+test('ignore-child: a child whose workspace switch is 0 is not said to be released', () =>
+{
+    const at = keptTree();
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }));
+    const { src } = fakeSource('==> done\n');
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'api', '--source', src);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /nothing of this workspace reaches it/);
+    assert.match(r.out, /^workspace: api ignored - its ALFRED_CODE_WORKSPACE is 0, so its update released nothing: it keeps its parent line, and Claude Code still loads this workspace's instruction files there until the switch is on and an update runs there$/m);
+});
+
+test('ignore-child: a plain folder holding installed projects that never joined names each of them', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/group': {}, 'ws/group/one': { stamp: true, git: true }, 'ws/group/two/deep': { stamp: true, git: true } });
+    const r = cli('ignore-child', '--root', at('ws'), '--add', 'group');
+    assert.deepStrictEqual(r, { out: `${MIDDLE_LINE('group/one')}\n${MIDDLE_LINE('group/two/deep')}\n`, err: '', code: 0 });
+});
+
+test('ignore-child: on a disk that folds case, a children entry in another case leaves with the mark', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['Solo'] } }, 'ws/solo': { stamp: true, git: true } });
+    const folds = fs.existsSync(path.join(at('ws'), 'SOLO'));
+    assert.strictEqual(cli('ignore-child', '--root', at('ws'), '--add', 'solo').code, 0);
+    assert.deepStrictEqual(wsFile(at('ws')), folds ? { role: 'root', ignoredChildren: ['solo'] } : { role: 'root', children: ['Solo'], ignoredChildren: ['solo'] });
+});
+
 test('ignore-child: the three lines', () =>
 {
     const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/solo': { stamp: true, git: true }, 'ws/repo': { git: true } });

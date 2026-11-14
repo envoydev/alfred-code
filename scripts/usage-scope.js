@@ -44,13 +44,36 @@ function namesAnother(row, parentRow)
   return !first || ws.realKey(first.root) !== ws.realKey(parentRow.root);
 }
 
+// The project a start belongs to. In a repository, layout.projectRootOf's; in none (where it answers the start alone), the
+// nearest folder at or above the start holding the install record (3.12 #2) - the climb memberOf makes - stopping
+// below the home folder, whose .claude is the account's; with no record, the start.
+function projectOf(given, env)
+{
+  const own = layout.projectRootOf(given).project;
+  if (layout.gitTopOf(given)) return own;
+  const homes = new Set([env.HOME, env.USERPROFILE, os.homedir()].filter(Boolean).map((h) => layout.dirKey(h)));
+  for (let at = given; !homes.has(layout.dirKey(at)); at = path.dirname(at))
+  {
+    if (layout.holdsRecord(at)) return at;
+    if (path.dirname(at) === at) break;
+  }
+  return own;
+}
+
+// Whether `p` holds `folder` and its mark there stands (W3's one rule: ignoredBy names that holder, `ignored` true).
+function ignoredHere(folder, p, env)
+{
+  const by = ws.ignoredBy(folder, { env });
+  return Boolean(by && by.ignored && ws.realKey(by.root) === ws.realKey(p.root));
+}
+
 // { projects: [{ rel, root, dirs }], leftOut: [{ rel, why }], notes: [string] } - `rel` from the start project, `.` for
 // it, always first. A left-out row is named once and never beside a counted project (D20 through `ignoredBy`).
 function usageScope(start, { env = process.env } = {})
 {
   const notes = [];
   const given = path.resolve(start);
-  const top = layout.projectRootOf(given).project;
+  const top = projectOf(given, env);
   if (layout.pathKey(top) !== layout.pathKey(given))
     notes.push(`scope: started in ${posix(path.relative(top, given))} - the sessions read are those started at the project root`);
   const whole = ws.workspaceOn({ env, projectRoot: top }) && ws.chain(top).members.length === 0;
@@ -64,13 +87,14 @@ function usageScope(start, { env = process.env } = {})
     {
       const why = left.has(row.parentRel) ? `under ${row.parentRel}`
         : row.state === 'gone' ? 'gone'
-          : ws.ignoredBy(row.root, { env }) ? 'ignored'
+          : (ws.ignoredBy(row.root, { env }) || {}).ignored ? 'ignored'
             : namesAnother(row, byRel.get(row.parentRel)) ? 'names another parent' : null;
       if (why) { left.set(row.rel, why); continue; }
     }
     projects.push(row);
   }
-  // What the walk could not see: an ignored path is out of `children` already (W3), so each project's own list names it.
+  // What the walk could not see: an ignored path is out of `children` already (W3), so each project's own list names it
+  // - only where that project is the entry's holder and the mark stands (a folder of its own repository is no mark).
   if (whole) for (const p of projects)
   {
     const read = ws.readWorkspace(p.root);
@@ -78,7 +102,8 @@ function usageScope(start, { env = process.env } = {})
     for (const entry of read.view.ignoredChildren)
     {
       const rel = p.rel === '.' ? entry : `${p.rel}/${entry}`;
-      if (!left.has(rel) && !projects.some((q) => q.rel === rel)) left.set(rel, 'ignored');
+      if (left.has(rel) || projects.some((q) => q.rel === rel)) continue;
+      if (ignoredHere(path.join(p.root, ...entry.split('/')), p, env)) left.set(rel, 'ignored');
     }
   }
   const configDir = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude');

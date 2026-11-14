@@ -17,7 +17,7 @@ const SCRIPT = path.join(__dirname, 'install', 'marketplace-autoupdate.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-autoupdate-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
-const STACK = { source: 'github', repo: 'envoydev/alfred-code' };
+const STACK = { source: 'github', repo: 'envoydev/plugins-marketplaces' };
 const OTHER = { source: 'github', repo: 'someone/else' };
 let seq = 0;
 // A throwaway account dir, a project and a managed file path that does not exist - never the real ones.
@@ -75,7 +75,7 @@ test('registered with no choice anywhere: ask; a yes adds the entry with the kno
 
 test('the entry marketplace add wrote: only its autoUpdate changes - another marketplace, every other key and the file shape stay', () =>
 {
-    const user = '{\r\n    "extraKnownMarketplaces": {\r\n        "other": {\r\n            "source": {\r\n                "source": "github",\r\n                "repo": "someone/else"\r\n            }\r\n        },\r\n        "envoydev": {\r\n            "source": {\r\n                "source": "github",\r\n                "repo": "envoydev/alfred-code"\r\n            }\r\n        }\r\n    },\r\n    "model": "x"\r\n}\r\n';
+    const user = '{\r\n    "extraKnownMarketplaces": {\r\n        "other": {\r\n            "source": {\r\n                "source": "github",\r\n                "repo": "someone/else"\r\n            }\r\n        },\r\n        "envoydev": {\r\n            "source": {\r\n                "source": "github",\r\n                "repo": "envoydev/plugins-marketplaces"\r\n            }\r\n        }\r\n    },\r\n    "model": "x"\r\n}\r\n';
     const w = world({ known: { ...KNOWN(), other: { source: OTHER, autoUpdate: false } }, user });
     assert.strictEqual(au.autoUpdateState(opts(w)).state, 'ask');
     assert.strictEqual(au.applyAutoUpdate({ ...opts(w), value: true }).written, true);
@@ -161,7 +161,7 @@ test('a symlinked account settings.json stays a link: its real file gets the ent
     assert.ok(fs.lstatSync(w.userFile).isSymbolicLink(), 'the link is still a link');
     assert.strictEqual(fs.readlinkSync(w.userFile), real, 'pointing where it did');
     assert.strictEqual(read(real), '{\n    "theme": "dark",\n    "model": "x",\n    "extraKnownMarketplaces": {\n        "envoydev": {\n            "source": {\n'
-        + '                "source": "github",\n                "repo": "envoydev/alfred-code"\n            },\n            "autoUpdate": true\n        }\n    }\n}\n',
+        + '                "source": "github",\n                "repo": "envoydev/plugins-marketplaces"\n            },\n            "autoUpdate": true\n        }\n    }\n}\n',
         'the real file holds the entry, its keys, indent and line ending as they were');
     assert.deepStrictEqual([...fs.readdirSync(dots), ...fs.readdirSync(w.acct)].filter((n) => n.includes('.tmp')), [], 'no temp file left');
     assert.strictEqual(au.applyAutoUpdate({ ...opts(w), value: true }).written, false, 'a re-run writes nothing');

@@ -3841,6 +3841,34 @@ function flowLine(line, at, state) {
       if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.tool_use_id === state.lastAskId && /\btool use was rejected\b/.test(resultText(b)))) state.rejectAt = at;
     } catch { /* a cut row */ }
   }
+  // PF1 (spec 6, R23/R24): a plan folder closes through the script - the engine's own `complete ok` line in the result of
+  // the call that ran `complete`, never an echo of those words, a read of a file holding them or a refused complete.
+  if (isAssistant && line.includes('"tool_use"') && line.includes('plan-status') && /"name"\s*:\s*"(?:Bash|PowerShell|Monitor)"/.test(line)) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (b && b.type === 'tool_use' && /^(?:Bash|PowerShell|Monitor)$/.test(b.name)
+          && /plan-status\.js["']?\s+complete\b/.test(String((b.input || {}).command || ''))) state.completeCall = String(b.id || '');
+      }
+    } catch { /* a cut row */ }
+  }
+  if (isUser && line.includes('"tool_result"') && line.includes('plan-status:')) {
+    try {
+      for (const c of JSON.parse(line).message.content || []) {
+        if (!c || c.type !== 'tool_result') continue;
+        const text = resultText(c);
+        const closed = state.completeCall && c.tool_use_id === state.completeCall
+          ? /(?:^|\n)plan-status: complete ok - plan ([^\s(]+) \(([^)\r\n]+)\)\r?(?:\n|$)/.exec(text) : null;
+        if (closed) {
+          const rel = closed[2].replace(/\\/g, '/').replace(/\/*$/, '/');
+          Object.assign(state, { completed: at, typedAfter: false, typedAfterAt: -1, completedPlan: `${rel}${closed[1]}.md`, planAfter: false, editAfterAt: -1, editAfterFile: null });
+        }
+        // R25: a plan the engine reports closed - its line 1 and a `Completed:` line in one result
+        const named = /(?:^|\n)plan-status: [a-z-]+(?: ok)? - (?:nothing to change - )?plan ([^\s(]+) \(/.exec(text);
+        if (named && /(?:^|\n)Completed: \S/.test(text) && !state.closedPlans.includes(named[1])) state.closedPlans = [...state.closedPlans, named[1]].slice(-20);
+      }
+    } catch { /* a cut row */ }
+  }
+  // PF1 flat plan - until 4.0.0: a single-file plan closes on its own `Completed:` write.
   // Either separator: a Windows file_path reads `plans\\` in the raw row and `plans\` parsed (gate, Windows leg, 2026-10-11).
   if (isAssistant && line.includes('Completed:') && /plans[\\/]/.test(line) && line.includes('"tool_use"')) {
     try {
@@ -3871,7 +3899,10 @@ function flowLine(line, at, state) {
       for (const b of JSON.parse(line).message.content || []) {
         if (!b || b.type !== 'tool_use' || !/^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) continue;
         const file = String((b.input && (b.input.file_path || b.input.notebook_path)) || '');
-        if (/(?:^|[\\/])plans[\\/]/.test(file) && file !== state.completedPlan) state.planAfter = true;
+        const fwd = file.replace(/\\/g, '/');
+        const closedMd = state.completedPlan ? String(state.completedPlan).replace(/\\/g, '/') : null;
+        const isClosedPlan = !!closedMd && (fwd === closedMd || fwd.endsWith(`/${closedMd}`));
+        if (/(?:^|[\\/])plans[\\/]/.test(file) && !isClosedPlan) state.planAfter = true;
         else if (state.editAfterAt < 0 && file && !PROSE_FILE_RE.test(file) && !/(?:^|[\\/])(?:\.claude|\.alfred|docs)[\\/]/.test(file)) {
           state.editAfterAt = at;
           state.editAfterFile = file.split(/[\\/]/).pop();
@@ -3892,7 +3923,8 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
   const REPRO_HEAD_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?#{2,4}[ \t]*Repro(?:duction)?\b/i;
   // a CLOSED plan owes no Repro (2026-11-10): its Completed line, prefix- and bold-tolerant as the Read readers are
   const COMPLETED_LINE_RE = /(?:^|\n)[ \t]*(?:\d+[\t→:][ \t]*)?[-*]?\s*\**Completed:/;
-  const PLAN_RE = /(?:^|[\\/])plans[\\/][^\\/]+$/;
+  // a file directly under plans/ (PF1 flat plan - until 4.0.0) or a plan folder's <id>/<id>.md
+  const PLAN_RE = /(?:^|[\\/])plans[\\/](?:([^\\/]+)[\\/]\1\.md|[^\\/]+)$/;
   if (isAssistant && /Size\**\s*:\s*\**\s*(?:trivial|small|standard|cross)/i.test(line)) {
     try {
       const said = (JSON.parse(line).message.content || []).flatMap((b) => (!b ? []
@@ -3914,7 +3946,8 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
       const bug = /(?:^|\n)bug: (yes|no)\b/.exec(text);
       if (floor && bug) state.bugSaid = { yes: bug[1] === 'yes', at };
       if (/(?:^|\n)size check: raise to standard\b/.test(text)) state.sizeRaisedAt = at;
-      if (REPRO_HEAD_RE.test(text) && !COMPLETED_LINE_RE.test(text)) state.reproPlanAt = at;
+      // R25: the Markdown of a plan the script reported closed owes no Repro
+      if (REPRO_HEAD_RE.test(text) && !COMPLETED_LINE_RE.test(text) && !(state.planTouched && state.closedPlans.includes(state.planTouched))) state.reproPlanAt = at;
     } catch { /* a cut row */ }
   }
   if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Write|Edit|MultiEdit|NotebookEdit|Read|Skill)"/.test(line)) {
@@ -3927,8 +3960,10 @@ function cycleFacts(line, at, state, isUser, isAssistant) {
           continue;
         }
         const file = String(input.file_path || input.notebook_path || '');
-        if (PLAN_RE.test(file)) {
+        const planHit = PLAN_RE.exec(file);
+        if (planHit) {
           state.planAt = at;
+          state.planTouched = planHit[1] || '';
           const body = [input.content, input.new_string, ...(Array.isArray(input.edits) ? input.edits.map((e) => e && e.new_string) : [])].join('\n');
           if (b.name !== 'Read') state.planWriteAt = at;
           if (b.name !== 'Read' && REPRO_HEAD_RE.test(body) && !COMPLETED_LINE_RE.test(body)) state.reproPlanAt = at;
@@ -3979,19 +4014,21 @@ function flowState() {
     completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
     sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
-    autoCmd: false, stepAt: -1, rejectAt: -1, lastAskId: '', planWriteAt: -1, agentAt: -1 };
+    autoCmd: false, stepAt: -1, rejectAt: -1, lastAskId: '', planWriteAt: -1, agentAt: -1,
+    completeCall: '', closedPlans: [], planTouched: '' };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 10, upTo: 0, ...none, editFiles: [] };
+    let state = { v: 11, upTo: 0, ...none, editFiles: [], closedPlans: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
       // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1), v9
-      // where a flow step's Skill call sits (the review of 2026-11-03), v10 the newest rejected ask and a closed plan's Repro
-      if (kept && kept.v === 10 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // where a flow step's Skill call sits (the review of 2026-11-03), v10 the newest rejected ask and a closed plan's Repro,
+      // v11 the script's close, the closed plans and the plan last touched (PF1)
+      if (kept && kept.v === 11 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

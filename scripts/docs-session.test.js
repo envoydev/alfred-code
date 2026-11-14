@@ -727,7 +727,7 @@ test('deep review: the hand-back route asks nobody it should not, and a seat tha
 test('deep review: the manifest wires docs-session on SubagentHandback as its own row, outside the file dispatcher', () => {
   const rows = require('../meta/stack-manifest.json').hooks.filter((h) => h.file === 'docs-session.js').map((h) => h.matcher);
   assert.ok(rows.includes('SubagentHandback') && rows.includes('@SubagentStop'), rows.join(' '));
-  const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-code');
+  const entry = require('../.claude-plugin/plugin.json');
   const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
   assert.strictEqual(pre.length, 1);
   // the group also carries the output-scoring's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it
@@ -3238,6 +3238,23 @@ test('member: a garbage -m- state file and a payload with no session id do not t
   } finally { r.rm(); }
 });
 
+// Stage 6 M7 asked for no state file on a payload with no session id. Kept by ruling: the hook's own next call reads
+// that record back, and it is what ends a hold - with no record every id-less change would be held again.
+test('member: an id-less payload keeps its none record, and that record is what ends its hold', () => {
+  const r = joined();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-none-'));
+  const t = { TMPDIR: tmp, TMP: tmp, TEMP: tmp };
+  try {
+    const none = { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'api/src/a.ts' } };
+    const kept = () => fs.readdirSync(tmp).filter((f) => f.startsWith('docs-session-none'));
+    assert.ok(denied(r.run(none, t)));
+    assert.ok(kept().includes(`docs-session-none-m-${mKey('api')}.json`), kept().join(' '));
+    assert.ok(!denied(r.run(none, t)));
+    for (const f of kept()) fs.unlinkSync(path.join(tmp, f));
+    assert.ok(denied(r.run(none, t)));
+  } finally { r.rm(); fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 test('member: a root shell call in a workspace replies as it does with the workspace off', () => {
   const r = joined();
   try {
@@ -3469,4 +3486,110 @@ test('entry: the joined reply at 9,499 / 9,500 / 9,501 holds the note and both p
       assert.ok(text.startsWith('n'.repeat(n)) && text.includes(ORIENT_LEAD) && text.includes(ORDER_LEAD) && text.includes('The user\'s personal preferences - '), `${n}`);
     }
   } finally { r.rm(); fs.rmSync(top, { recursive: true, force: true }); }
+});
+
+// ---- PF1 plan 2: a plan folder's JSON files are the scripts' alone, and an approved plan is not edited ----
+const { planFolder, PLANS: PLAN_ROOT } = require('./plan-folder-fixture.js');
+const reasonOf = (r) => JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason;
+
+test('PF1: status.json and scoring.json are written by their scripts only', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const plan = planFolder(r.root, 'csv', {});
+    fs.writeFileSync(path.join(plan.dir, 'scoring.json'), '{}\n');
+    const s = sid();
+    const at = (name) => path.join(plan.dir, name);
+    const edit = r.hook(pre('Edit', { file_path: at('status.json'), old_string: '"todo"', new_string: '"done"' }, s));
+    assert.ok(denied(edit), 'an Edit of status.json');
+    assert.match(reasonOf(edit), /status\.json is written by plan-status\.js only, never by hand.*node \.claude\/hooks\/plan-status\.js <verb> --plan \.alfred\/docs\/work\/plans\/csv\//s);
+    const write = r.hook(pre('Write', { file_path: at('scoring.json'), content: '{}' }, s));
+    assert.match(reasonOf(write), /scoring\.json is written by scorecard\.js only/);
+    for (const command of [`echo x >> ${PLAN_ROOT}/csv/status.json`, `rm ${PLAN_ROOT}/csv/status.json`, `cp a.json ${PLAN_ROOT}/csv/scoring.json`, `echo x >> "${at('status.json')}"`])   // the last: a native absolute path - C:\...\status.json on Windows (R38)
+      assert.ok(denied(r.hook(pre('Bash', { command }, s))), command);
+    assert.ok(denied(r.hook({ ...pre('Edit', { file_path: at('status.json'), old_string: 'a', new_string: 'b' }, s), agent_id: 'seat-1' })), 'a seat too');
+    fs.writeFileSync(at('status.json'), '{');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: at('status.json'), old_string: '{', new_string: '{}' }, s))), 'a garbage file is still the script\'s (R31)');
+    for (const command of [`node .claude/hooks/plan-status.js show --plan csv`, `node .claude/hooks/plan-status.js done --plan csv --task 1 <<'EOF'\nresult: a > b\nEOF`, `cat ${PLAN_ROOT}/csv/status.json`])
+      assert.ok(!denied(r.hook(pre('Bash', { command }, s))), command);
+    assert.ok(!denied(r.hook(pre('Read', { file_path: at('status.json') }, s))), 'a read');
+  } finally { r.rm(); }
+});
+
+test('PF1: a folder with no Markdown is no plan (R32)', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const s = sid();
+    for (const rel of [`${PLAN_ROOT}/notes/status.json`, `${PLAN_ROOT}/graded/scoring.json`, 'config/status.json', 'data/plans/status.json']) {
+      r.write(rel, '{}\n');
+      assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, rel), old_string: '{}', new_string: '{ }' }, s))), rel);
+    }
+  } finally { r.rm(); }
+});
+
+test('PF1: the approved plan is not edited; before approval and while reopened it is', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const plan = planFolder(r.root, 'csv', {});
+    const s = sid();
+    const edit = () => r.hook(pre('Edit', { file_path: plan.md, old_string: 'slice 1', new_string: 'slice one' }, s));
+    assert.ok(!denied(edit()), 'not approved yet');
+    plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
+    const no = edit();
+    assert.ok(denied(no), 'approved');
+    assert.match(reasonOf(no), /csv\.md was approved \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\) - the approved plan is not edited.*decide.*deviate.*add-task.*redesign/s);
+    assert.ok(denied(r.hook(pre('Write', { file_path: plan.md, content: '# x\n' }, s))), 'a Write');
+    assert.ok(denied(r.hook(pre('Bash', { command: `echo x >> ${PLAN_ROOT}/csv/csv.md` }, s))), 'a shell append');
+    plan.run(['redesign', '--plan', 'csv'], 'why: the seam moved\n');
+    assert.ok(!denied(edit()), 'reopened');
+    plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
+    assert.ok(denied(edit()), 'approved again');
+    fs.writeFileSync(path.join(plan.dir, 'status.json'), '{');
+    assert.ok(!denied(edit()), 'an unreadable status.json denies nothing');
+    const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    assert.strictEqual(rows.length, 4, 'one block row per denial: the edit, the Write, the shell append, the edit after the second approve');
+  } finally { r.rm(); }
+});
+
+test('PF1: a completed plan\'s denial says new scope is a new plan folder, naming no verb the engine refuses there (final review, finding 1)', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const plan = planFolder(r.root, 'csv', { approve: true, complete: true });
+    const s = sid();
+    assert.ok(plan.status().completedAt, 'the plan is completed');
+    const no = r.hook(pre('Edit', { file_path: plan.md, old_string: 'slice 1', new_string: 'slice one' }, s));
+    assert.ok(denied(no), 'a completed plan is not edited');
+    assert.match(reasonOf(no), /csv\.md was completed \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\) - a completed plan is a record, never edited\. New scope starts a new plan folder\./);
+    assert.doesNotMatch(reasonOf(no), /decide|deviate|add-task|redesign/, 'the engine refuses each of these on a completed plan');
+  } finally { r.rm(); }
+});
+
+test('PF1: a member\'s plan is guarded by shape; a flat plan keeps the Completed: rule', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const member = planFolder(path.join(r.root, 'apps', 'api'), 'csv', { approve: true });
+    const s = sid();
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(member.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'status.json in a member');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: member.md, old_string: 'slice 1', new_string: 'x' }, s))), 'its approved Markdown');
+    const FLAT = '.claude/docs/plans';   // this suite's plans dir (repo()'s docs root), as the stamp test above uses
+    r.write(`${FLAT}/old.md`, '# Plan\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1\n');
+    r.write(`${FLAT}/open.md`, '# Plan\n\n## Tasks\n- [ ] Task 1\n');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'old.md'), old_string: '- [x] Task 1\n', new_string: '- [x] Task 1\n- [ ] Task 2\n' }, s))), 'the flat rule');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'open.md'), old_string: '- [ ] Task 1', new_string: '- [x] Task 1' }, s))), 'an open flat plan');
+  } finally { r.rm(); }
+});
+
+test('PF1: the by-shape guard reads only a folder under work/plans; a project\'s own plans/<x>/ is not a plan folder (final review, finding 5)', () => {
+  const r = repo({ files: { 'src/a.ts': 'x\n' } });
+  try {
+    const real = planFolder(r.root, 'csv', { approve: true });
+    const own = path.join(r.root, 'src', 'plans', 'csv');   // the same shape, outside any work/plans
+    fs.mkdirSync(own, { recursive: true });
+    for (const f of ['csv.md', 'status.json']) fs.copyFileSync(path.join(real.dir, f), path.join(own, f));
+    const s = sid();
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(real.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'the work/plans folder is guarded');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(own, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'status.json under src/plans');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(own, 'csv.md'), old_string: 'slice 1', new_string: 'x' }, s))), 'its Markdown');
+    const member = planFolder(path.join(r.root, 'apps', 'api'), 'csv', { approve: true });
+    assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(member.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'a member\'s work/plans folder stays guarded');
+  } finally { r.rm(); }
 });

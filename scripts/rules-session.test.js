@@ -1156,6 +1156,32 @@ test('member path rule: a touch inside a linked worktree of the root matches a s
     assert.ok(text.includes('Project ../ws/sub, part 1') && text.includes('M-SUB-TS'), text);
 });
 
+// Spec Section 1: the start chain's own scoped rules still match a sibling's file, unless the sibling leaves them out
+// or holds a rule of the same name.
+test('member path rule: a session in one child keeps its own path rules on a sibling\'s file', () =>
+{
+    const w = M({ web: true });
+    store(w.api, 'ts', scoped('**/*.ts', 'M-API-TS'));
+    const one = touch(w.api, path.join(w.web, 'a.ts'));
+    assert.ok(one.includes('Project ../web, part 1') && one.includes('## ts (.alfred/stack/rules/ts.md)\nM-API-TS'), one);
+    assert.strictEqual(touch(w.api, path.join(w.api, 'b.ts')), '');
+    assert.deepStrictEqual(sentOf(w.api), ['ts']);
+});
+
+test('member path rule: a sibling that ignores the start\'s rule or holds its own of the name keeps it off its file', () =>
+{
+    const w = M({ web: true });
+    ws(w.web, { parent: '..', ignore: { rules: ['ts'] } });
+    store(w.api, 'ts', scoped('**/*.ts', 'M-API-TS'));
+    assert.ok(!touch(w.api, path.join(w.web, 'a.ts')).includes('M-API-TS'));
+    assert.ok(touch(w.api, path.join(w.api, 'a.ts')).includes('M-API-TS'));
+    const v = M({ web: true });
+    store(v.api, 'ts', scoped('**/*.ts', 'M-API-TS'));
+    store(v.web, 'ts', scoped('**/*.ts', 'M-WEB-TS'));
+    const text = touch(v.api, path.join(v.web, 'a.ts'));
+    assert.ok(text.includes('M-WEB-TS') && !text.includes('M-API-TS'), text);
+});
+
 test('member: a host that names no project folder - a start below the root still finds the member', () =>
 {
     const w = M();

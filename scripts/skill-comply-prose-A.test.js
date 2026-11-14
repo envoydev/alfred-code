@@ -37,7 +37,7 @@ test('CAP-1: the full-spec definition lives in references/full-spec.md and SKILL
     const names = ref.indexOf('\n## What a full spec names\n');
     assert.ok(names > 0 && names < ref.indexOf('\n## The check\'s lookup\n'), 'the definition opens the reference, before the lookup');
     assert.ok(flat(ref).includes('A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate, and so does any doubt. `scripts/spec-check.js` reads the request for all five.'));
-    assert.ok(body(read(SKILL)).length < 17700, 'the body stays under its cap');
+    assert.ok(body(read(SKILL)).length < 18000, 'the body stays under its cap');   // PF1 spent the 300-char room (plan 2, Task 9 ruling)
 });
 
 test('U31: the approve template carries the fresh-session row', () =>
@@ -70,7 +70,9 @@ function solveRun({ spec = true, stop = 'tool' } = {})
     if (spec) rows.push(say('**Spec:** not full - gated - the request names no tests'));
     rows.push(tool('Skill', { skill: 'task-design' }));
     if (stop === 'split') rows.push(say('One fork before the plan: what does a bad body answer?\n\n1. \'A 400 with one error per field (Recommended)\' - what the handler\'s callers parse\n2. \'A 400 with the first error only\' - less to build'));
-    rows.push(tool('Write', { file_path: '/work/project/.alfred/docs/work/plans/order-validation.md', content: '# Order validation\n\n## Tasks\n' }));
+    // PF1: the after arm - the plan folder's Markdown, then sync
+    rows.push(tool('Write', { file_path: '/work/project/.alfred/docs/work/plans/order-validation/order-validation.md', content: '# Order validation\n\n## Tasks\n' }),
+        tool('Bash', { command: 'node .claude/hooks/plan-status.js sync --plan order-validation' }));
     const fields = '**Result:** design written - .alfred/docs/work/plans/order-validation.md\n**Progress:** 1 of 6 steps\n**Leftovers:** none';
     if (stop === 'tool') rows.push(say(fields),
         tool('AskUserQuestion', { questions: [{ question: 'The design is written - run the plan audit next?', header: 'Next step', options: [{ label: 'Run the audit (Recommended)', description: 'step 2' }, { label: 'Changes first', description: 'edit the plan' }], multiSelect: false }] }));
@@ -91,11 +93,11 @@ function approveRun({ options = [marked(FRESH), APPROVE, SEATS, NOT_YET], mechan
 {
     const rows = [command('.alfred/docs/work/plans/order-validation.md'),
         tool('Bash', { command: 'node .claude/hooks/handoff.js left order-validation' }),
-        tool('Read', { file_path: '/work/project/.alfred/docs/work/plans/order-validation.md' })];
+        tool('Bash', { command: 'node .claude/hooks/plan-status.js resume --plan order-validation' })];   // PF1: the after arm resumes through the script
     if (mechanics) rows.push(tool('Read', { file_path: '/work/project/.claude/skills/task-solve/references/step-mechanics.md' }));
     rows.push(tool('Skill', { skill: 'habits-execution-strategy' }),
         say('Execution: session - one task in one module.\n\n**Result:** plan gated - .alfred/docs/work/plans/order-validation.md - mechanics: read\n**Progress:** 3 of 6 steps\n**Leftovers:** none'));
-    if (stamp) rows.push(tool('Edit', { file_path: '/work/project/.alfred/docs/work/plans/order-validation.md', old_string: 'Gated:', new_string: 'Approved: 2026-11-04 - mode session\nGated:' }));
+    if (stamp) rows.push(tool('Bash', { command: 'node .claude/hooks/plan-status.js approve --plan order-validation --mode session' }));   // PF1: a self-approval through the script
     if (asText) rows.push(say(`The plan is gated. Build it in this session: one task in one module.\n\n${options.map((o, i) => `${i + 1}. '${o.label}' - ${o.description}`).join('\n')}`));
     else rows.push(approveAsk(options));
     return jsonl(rows);

@@ -282,3 +282,88 @@ test('historyCount reads the session count: 0 off, 1-10, above 10 is 10, garbage
     assert.strictEqual(H.historyCount(value), want, `ALFRED_CODE_HISTORY=${JSON.stringify(value)}`);
   assert.deepStrictEqual([1, 3, 10].map(H.historyCap), [300, 600, 1650]);
 });
+
+// ---- PF1: a folder plan (status.json beside <id>.md) read by the record, the start block and openPlan ----
+const { planFolder, PLANS } = require('./plan-folder-fixture.js');
+const MD = `${PLANS}/csv/csv.md`;
+// One history record written as upsert stores it: <historyDir>/<session>.json.
+function recordFor(root, e) {
+  const dir = H.historyDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${e.session}.json`), JSON.stringify({ offset: 1, rulings: [], commits: [], dirty: { count: 0, files: [] }, updatedAt: new Date().toISOString(), ...e }));
+}
+function folderBlock(opts, after = () => {}) {
+  const { root } = project();
+  const plan = planFolder(root, 'csv', opts);
+  after(plan);
+  const e = { session: 's1', branch: 'feature/x', updatedAt: new Date().toISOString(), offset: 9, commits: [], dirty: { count: 0, files: [] }, rulings: [], plan: MD };
+  return H.renderStartBlock([e], 600, root);
+}
+test('PF1: a folder plan shows its tasks done and its Resume: text from status.json', () => {
+  const block = folderBlock({ approve: true, done: ['1'], note: 'step 4 BUILD - mode session' });
+  assert.match(planLine(block), /, plan \.alfred\/docs\/work\/plans\/csv\/csv\.md \(1\/3 done; Resume: step 4 BUILD - mode session - next task 2\)$/, block);
+});
+test('PF1: a completed folder plan reads (completed)', () => {
+  assert.match(planLine(folderBlock({ approve: true, done: ['1', '2', '3'], complete: true })), /csv\.md \(completed\)$/);
+});
+test('PF1: a folder plan with no status.json, a garbage one and one over 1 MB keep the path alone', () => {
+  assert.match(planLine(folderBlock({ sync: false })), /, plan \.alfred\/docs\/work\/plans\/csv\/csv\.md$/);
+  for (const text of ['{', '', JSON.stringify({ schema: 2 }), `{"pad":"${'x'.repeat(1024 * 1024)}"}`])
+    assert.match(planLine(folderBlock({}, (p) => fs.writeFileSync(path.join(p.dir, 'status.json'), text))), /csv\.md$/, text.slice(0, 12));
+});
+test('PF1: openPlan gives a folder plan its dir and its resume text, skips a completed one, ends on an unreadable one', () => {
+  const { root } = project();
+  const plan = planFolder(root, 'csv', { approve: true, done: ['1'], note: 'step 4 BUILD - mode session' });
+  recordFor(root, { session: 's1', branch: 'feature/x', plan: MD });
+  assert.deepStrictEqual(H.openPlan(root, 'feature/x', 5), { plan: MD, resume: 'step 4 BUILD - mode session - next task 2', dir: `${PLANS}/csv/` });
+  for (const t of ['2', '3']) { plan.run(['start', '--plan', 'csv', '--task', t]); plan.run(['done', '--plan', 'csv', '--task', t], `result: ok ${t}\n`); }
+  assert.strictEqual(plan.run(['complete', '--plan', 'csv'], 'suite: npm test - ok\n').code, 0);
+  assert.strictEqual(H.openPlan(root, 'feature/x', 5), null, 'completed, and no older entry');
+  const other = project().root;
+  planFolder(other, 'csv', { approve: true });
+  recordFor(other, { session: 's1', branch: 'feature/x', plan: MD });
+  fs.writeFileSync(path.join(other, PLANS, 'csv', 'status.json'), '{');
+  assert.strictEqual(H.openPlan(other, 'feature/x', 5), null, 'an unreadable status.json ends the search');
+});
+// Final review finding 2: a read-only look at a plan (show, check) is no work on it - the record keeps the plan the session
+// works on, as the fresh-session hook's session plan does; resume and the writing verbs (complete included) name it.
+test('PF1: a show or check call naming a plan sets no record plan; resume and complete do', () => {
+  const bash = (command, cwd) => row({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
+  const cases = [
+    ['show', (root) => bash('node .claude/hooks/plan-status.js show --plan csv', root), null],
+    ['show --full', (root) => bash('node .claude/hooks/plan-status.js show --plan csv --full', root), null],
+    ['check', (root) => bash('node .claude/hooks/plan-status.js check --plan csv', root), null],
+    ['a write then a show of another plan', (root) => bash('node .claude/hooks/plan-status.js cursor --plan csv', root) + bash('node .claude/hooks/plan-status.js show --plan other', root), MD],
+    ['resume', (root) => bash('node .claude/hooks/plan-status.js resume --plan csv', root), MD],
+    ['complete', (root) => bash('node .claude/hooks/plan-status.js complete --plan csv', root), MD],
+  ];
+  for (const [name, rows, want] of cases) {
+    const { root } = project();
+    planFolder(root, 'csv');
+    planFolder(root, 'other');
+    const tr = transcriptFile();
+    fs.writeFileSync(tr, rows(root));
+    H.upsert(root, { session_id: 's1', transcript_path: tr, cwd: root });
+    const e = JSON.parse(fs.readFileSync(path.join(H.historyDir(root), 's1.json'), 'utf8'));
+    assert.strictEqual(e.plan, want, name);
+  }
+});
+
+test('PF1: the record keeps a folder plan from its Markdown write or a plan call; status.json, a list call and another file set nothing', () => {
+  const bash = (command, cwd) => row({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
+  const cases = [
+    [(root) => planWrite(path.join(root, PLANS, 'csv', 'csv.md')), MD],
+    [(root) => bash('node .claude/hooks/plan-status.js start --plan csv --task 1', root), MD],
+    [(root) => planWrite(path.join(root, PLANS, 'csv', 'notes.md')) + planWrite(path.join(root, PLANS, 'csv', 'status.json')) + bash('node .claude/hooks/plan-status.js list', root), null],
+    [(root) => planWrite(path.join(root, PLANS, 'old-export.md')), `${PLANS}/old-export.md`],
+  ];
+  for (const [rows, want] of cases) {
+    const { root } = project();
+    planFolder(root, 'csv');
+    const tr = transcriptFile();
+    fs.writeFileSync(tr, rows(root));
+    H.upsert(root, { session_id: 's1', transcript_path: tr, cwd: root });
+    const e = JSON.parse(fs.readFileSync(path.join(H.historyDir(root), 's1.json'), 'utf8'));
+    assert.strictEqual(e.plan, want, rows(root).slice(0, 160));
+  }
+});

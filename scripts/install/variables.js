@@ -137,10 +137,11 @@ function tracked(file)
 // match too, so it only names the rule: { ignored: false } | { ignored: true, source?, line?, own? }. `own` says the rule
 // is the data root's own .gitignore AND the stack's text (its head), which the install re-includes `.variables` in - a
 // file the user wrote there is kept as it is (docs.ensureDataIgnore), so it is not. No git, or no repository: not ignored.
-function ignoreVerdict(projectRoot, dataRoot)
+// `rel` (3.12): another path under the root - the docs root's, read when an install leaves local scope.
+function ignoreVerdict(projectRoot, dataRoot, rel = null)
 {
     const root = String(dataRoot).replace(/\\/g, '/').replace(/\/+$/, '');
-    const rel = `${root}/${FILE}`;
+    rel ??= `${root}/${FILE}`;
     const git = (args) => rt.spawnCommand('git', ['-c', 'core.fsmonitor=false', ...args],
         { cwd: projectRoot, encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
     if (git(['check-ignore', '-q', '--', rel]).status !== 0) return { ignored: false };

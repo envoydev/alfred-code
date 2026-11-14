@@ -1768,3 +1768,153 @@ test('fixed root Cursor: the secret guard finds the store with no ALFRED_CODE va
   assert.doesNotMatch(read.stderr, /nobody can answer/);
   assert.ok(!(read.stdout + read.stderr).includes(STORE_VAL), 'no value is printed');
 });
+
+// SG1-F2 (3.12): a `.json` / `.jsonc` the strict parser rejects - a truncated file, a trailing comma, JSONC's `//` and
+// `/* */` comments (tsconfig, `.vscode/settings.json`, a devcontainer) - passed the Read, Grep and MCP routes, `--presence`
+// said `absent` and `--redacted` printed the value. A value with no known shape, so only the key judgement can catch it.
+const F2_VAL = 'pw-' + 'r6'.repeat(6);
+const F2_KEY = 'dbPassword';
+// a comment marker and a `,}` inside a STRING are text: the lenient read keeps both whole
+const F2_URL = 'https://example.test/a//b /* not a comment */';
+const F2_NOTE = 'x, }';
+const F2_SHAPES = {
+  'truncated/app.json': `{\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}",\n  "other": {\n    "a": 1,\n`,
+  'trailing/app.json': `{\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}",\n  "list": [1, 2,],\n}\n`,
+  'line-comment/app.json': `{\n  // the database\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}"\n}\n`,
+  'block-comment/app.json': `{\n  /* the database,\n     two lines */\n  "name": "app",\n  "${F2_KEY}": "${F2_VAL}"\n}\n`,
+  'jsonc/settings.jsonc': `{\n  // a comment\n  "url": "${F2_URL}",\n  "note": "${F2_NOTE}",\n  "${F2_KEY}": "${F2_VAL}", /* tail */\n}\n`,
+};
+const F2_CLEAN = {
+  'clean/broken.json': '{\n  "name": "app",\n  "url": "https://example.test/x",\n',
+  'clean/tsconfig.json': '{\n  // the compiler\n  "compilerOptions": { "strict": true, "outDir": "dist", },\n  /* paths */\n  "include": ["src"],\n}\n',
+};
+let f2Fx = null;
+const f2Fixture = () => f2Fx || (f2Fx = coreProject({ ...F2_SHAPES, ...F2_CLEAN, 'valid/app.json': JSON.stringify({ name: 'app', [F2_KEY]: F2_VAL }, null, 2) + '\n' }));
+const f2Run = (payload, fx) => {
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home, CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '' };
+  delete env.ALFRED_CODE_DOCS_PATH;
+  return spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `f2-${++maskSeq}`, cwd: fx.project, ...payload }), encoding: 'utf8', env });
+};
+const f2Pre = (tool, input, fx) => f2Run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, permission_mode: 'bypassPermissions' }, fx);
+// What the masker hands back for `command`, which printed `stdout`.
+const f2Masked = (command, stdout, fx) => {
+  const r = f2Run({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_response: said(stdout) }, fx);
+  return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput.stdout : stdout;
+};
+
+test('SG1-F2: a credential in a .json / .jsonc the strict parser rejects is judged on every content route', () => {
+  const fx = f2Fixture();
+  for (const rel of [...Object.keys(F2_SHAPES), 'valid/app.json']) {
+    const file = path.join(fx.project, ...rel.split('/'));
+    const dir = path.dirname(file);
+    const read = f2Pre('Read', { file_path: file }, fx);
+    assert.strictEqual(read.status, 2, `${rel}: Read`);
+    assert.match(read.stderr, new RegExp(`credential under \`${F2_KEY}\``), `${rel}: the denial names the key`);
+    assert.strictEqual(f2Pre('Grep', { pattern: 'name|url', path: file, output_mode: 'content' }, fx).status, 2, `${rel}: a content Grep of the file`);
+    assert.strictEqual(f2Pre('Grep', { pattern: F2_KEY, path: dir, output_mode: 'content' }, fx).status, 2, `${rel}: a content Grep walking its folder`);
+    assert.strictEqual(f2Pre('mcp__filesystem__read_text_file', { path: file }, fx).status, 2, `${rel}: a filesystem server read`); // mcp-fixture
+    // the masker: the bare value a command printed (no `"key": "value"` line the shape pass could read) is masked by value
+    const bare = f2Masked(`node pick.js ${rel}`, `${F2_VAL}\n`, fx);
+    assert.ok(!bare.includes(F2_VAL), `${rel}: the masker shows the bare value masked`);
+    assert.ok(bare.includes(SET(F2_VAL)), `${rel}: as <set (N chars)>`);
+    assert.ok(!f2Masked(`cat ${rel}`, F2_SHAPES[rel] || '', fx).includes(F2_VAL), `${rel}: a cat`);
+    // --presence: one key, and the keyless listing
+    assert.strictEqual(presence(file, F2_KEY).stdout, `${F2_KEY}=set (${F2_VAL.length} chars)\n`, `${rel}: --presence KEY`);
+    assert.match(presence(file).stdout, new RegExp(`^${F2_KEY}=set \\(${F2_VAL.length} chars\\)$`, 'm'), `${rel}: --presence lists the key`);
+    // --redacted: the value-free view
+    const view = cli('--redacted', file).stdout;
+    assert.ok(!view.includes(F2_VAL), `${rel}: --redacted masks the value`);
+    assert.ok(view.includes(SET(F2_VAL)), `${rel}: --redacted shows it as <set (N chars)>`);
+  }
+});
+
+test('SG1-F2: a comment marker or a trailing-comma shape inside a string is text, not syntax', () => {
+  const file = path.join(f2Fixture().project, 'jsonc', 'settings.jsonc');
+  assert.strictEqual(presence(file, 'url', 'note').stdout, `url=set (${F2_URL.length} chars)\nnote=set (${F2_NOTE.length} chars)\n`, 'both strings read whole');
+  const view = cli('--redacted', file).stdout;
+  assert.ok(view.includes(JSON.stringify(F2_URL)), 'the redacted view keeps the url whole');
+  assert.ok(view.includes(JSON.stringify(F2_NOTE)), 'and the note');
+});
+
+// review of bb686875, I1: the pairs fallback answers the assertions above from raw text, so a naive stripper passed them.
+// A nested key path and a comment-free re-emitted view need a real parse, which a `//` inside a string breaks naively.
+test('SG1-F2: a JSONC with a comment marker in a string is parsed, not read by pairs (nested path, comment-free view)', () => {
+  const text = '{\n  "$schema": "https://json.schemastore.org/tsconfig", // the schema\n  "outer": {\n    "url": "https://a.test//b /* x */",\n    "inner": "v1v1v1",\n  },\n}\n';
+  const fx = coreProject({ 'nested/settings.jsonc': text });
+  const file = path.join(fx.project, 'nested', 'settings.jsonc');
+  assert.strictEqual(presence(file, 'outer.inner').stdout, 'outer.inner=set (6 chars)\n', 'a nested key path reads through the parse');
+  const view = cli('--redacted', file).stdout;
+  assert.ok(!view.includes('// the schema'), 'the view is re-emitted from the parse, without its comments');
+  assert.ok(view.includes(JSON.stringify('https://a.test//b /* x */')), 'and keeps the string whole');
+});
+
+// review of bb686875, I2: VS Code's workspace file carries settings in JSONC too.
+test('SG1-F2: a .code-workspace with comments and a trailing comma is judged like a .jsonc', () => {
+  const fx = coreProject({ 'proj.code-workspace': `{\n  // ws\n  "settings": { "${F2_KEY}": "${F2_VAL}", },\n}\n` });
+  const file = path.join(fx.project, 'proj.code-workspace');
+  assert.strictEqual(f2Pre('Read', { file_path: file }, fx).status, 2, 'Read');
+  assert.strictEqual(presence(file, `settings.${F2_KEY}`).stdout, `settings.${F2_KEY}=set (${F2_VAL.length} chars)\n`, '--presence');
+  assert.ok(!cli('--redacted', file).stdout.includes(F2_VAL), '--redacted masks it');
+});
+
+test('SG1-F2: a broken or commented .json with no credential stays readable, a valid one is judged as before', () => {
+  const fx = f2Fixture();
+  for (const rel of Object.keys(F2_CLEAN)) {
+    const file = path.join(fx.project, ...rel.split('/'));
+    const read = f2Pre('Read', { file_path: file }, fx);
+    assert.deepStrictEqual([read.status, read.stdout], [0, ''], `${rel}: a Read passes, no ask`);
+    assert.strictEqual(f2Pre('Grep', { pattern: 'a', path: file, output_mode: 'content' }, fx).status, 0, `${rel}: a content Grep passes`);
+    assert.match(cli('--redacted', file).stdout, /^# credential guard: redacted view of .* - 0 credential value\(s\)/, `${rel}: a redacted view masking nothing`);
+  }
+  assert.strictEqual(presence(path.join(fx.project, 'clean', 'tsconfig.json'), 'compilerOptions.outDir').stdout, 'compilerOptions.outDir=set (4 chars)\n', 'a JSONC key path reads');
+  assert.strictEqual(presence(path.join(fx.project, 'clean', 'broken.json'), 'name').stdout, 'name=set (3 chars)\n', 'a truncated file\'s pair reads');
+});
+
+test('SG1-F2: a JSONC past MAX_BYTES is judged by its head, a comment and all', () => {
+  const big = `{\n  // generated\n  "${F2_KEY}": "${F2_VAL}",\n  "rows": [\n` + '    "filler-row-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",\n'.repeat(12000) + '  ]\n}\n';
+  assert.ok(big.length > 512 * 1024);
+  const fx = coreProject({ 'big/settings.jsonc': big });
+  assert.strictEqual(f2Pre('Read', { file_path: path.join(fx.project, 'big', 'settings.jsonc') }, fx).status, 2, 'the head holds the credential');
+});
+
+// I3 (deferred from the session issues 2026-11-10): the AC-2R find reader false-blocked a `-path` + `-o` group piped into
+// `xargs grep` whose pattern names a dotenv. Swap 1 removed that reader; above the floor the command runs as written and
+// the masker covers its output. Pinned with a live credential at the root and under src/, so a returning find judge shows.
+test('I3: find -path ... \\( -name -o -name \\) | xargs grep <a dotenv-naming pattern> runs untouched above the floor', () => {
+  const fx = coreProject({ [D7E]: `API_TOKEN=${CREDS_VAL}\n`, [`src/${D7E}`]: `SRC_TOKEN=${SUB_VAL}\n`,
+    'src/a.ts': 'export const url = process.env.API_URL;\n', 'src/b.tsx': 'import "dotenv/config";\n' });
+  const find = "find . -path '*/src/*' \\( -name '*.ts' -o -name '*.tsx' \\) | xargs grep";
+  const shapes = [`${find} -n '${D7E}'`, `${find} -n 'process${D7E}'`, `${find} -n "dotenv\\|\\${D7E}"`, `${find} -ln ${D7E}`];
+  for (const command of shapes) {
+    const r = pre(command, { fx });
+    assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], command);
+  }
+  // Core mode (no masker: a client under the floor, Cursor, a background run) refuses a word that IS an existing
+  // credential file's name, whatever its verb - ruling 3's stated cost; a pattern that only contains the name passes.
+  assert.strictEqual(pre(shapes[0], { fx, ...CORE }).status, REFUSED, 'core: the bare dotenv name as a pattern');
+  assert.strictEqual(pre(shapes[1], { fx, ...CORE }).status, 0, 'core: a pattern holding the name in a longer word');
+});
+
+// SG1-F1 (seen 2026-11-10 on the 3.9.2 guard): a heredoc wrote a node script that hands the environment whole to a child
+// (`Object.assign({}, <env>, {...})`, `{ env: <env> }`) and ran it; the old env judge replaced the whole command with a
+// masked env listing, so the script was never written or run. Swap 1 removed that judge and every rewrite: the command
+// runs as written on both routes, and the masker answers nothing over output holding no credential.
+test('SG1-F1: a heredoc-written script that passes the environment to a child runs as written', () => {
+  const fx = coreFixture();
+  const node = ["cat > probe-f1.js <<'EOF'", "const { spawnSync } = require('child_process');",
+    "const childEnv = Object.assign({}, process.env, { PROBE_FLAG: '1' });",
+    "const a = spawnSync(process.execPath, ['-e', 'console.log(process.env.PROBE_FLAG)'], { env: childEnv, encoding: 'utf8' });",
+    "const b = spawnSync(process.execPath, ['-e', 'console.log(1)'], { env: process.env, encoding: 'utf8' });",
+    "console.log('flag=' + a.stdout.trim() + ' ' + b.stdout.trim());", 'EOF', 'node probe-f1.js'].join('\n');
+  const py = ["python3 - <<'EOF'", 'import os, subprocess', "env = dict(os.environ, PROBE_FLAG='1')",
+    "subprocess.run(['true'], env=env)", 'EOF'].join('\n');
+  for (const command of [node, py]) {
+    for (const opts of [{}, CORE]) {
+      const r = pre(command, { fx, ...opts });
+      assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], `${JSON.stringify(opts)}: ${command.split('\n')[0]}`);
+    }
+  }
+  // what the script printed comes back as printed: no credential in it, so the masker answers nothing
+  const after = masked(node, { response: said('flag=1 1\n') });
+  assert.deepStrictEqual([after.status, after.out], [0, ''], 'the masker leaves the output alone');
+});

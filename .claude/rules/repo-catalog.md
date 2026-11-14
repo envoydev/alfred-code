@@ -12,7 +12,8 @@ paths:
 How the skills, the 45 agents, the shipped rules and the per-project AGENTS template are delivered and held to each other. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
-  file types. Every one is LIBRARY (2.1.0) - listed by no marketplace entry, copied into
+  file types. `habits-plan-writing` is the one home of the plan folder's shape and of the flat section kept until
+  4.0.0 (PF1). Every one is LIBRARY (2.1.0) - listed by no marketplace entry, copied into
   `.claude/skills` per pick, the always ones included (locked: adopted by every update, a drop
   refused; `skillOverrides` is the per-project lever, and `library-check.js` flags a `blocked` row where
   one set `off` or `user-invocable-only` hits a skill a shipped rule still sends the model to - 2.1.5 audit
@@ -82,7 +83,8 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
     against the frozen contract);
   - 30 per-domain seats - `<stack>-solution-designer` -> `<stack>-implementer` -> `<stack>-verifier`
     across 10 stacks (ASP.NET, web Angular, WPF, WinForms, console, Windows Service, Ionic Angular, data,
-    DevOps, browser extension);
+    DevOps, browser extension); the ten implementers record an in-chat decision through `plan-status.js decide` and
+    the ten verifiers read a `Build record` from their brief (PF1, pinned in `seat-prose.test.js`);
   - seven read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`,
     `output-scoring` (mode-output-scoring's grader; both mode skills took their names in the stack-modes rename of

@@ -39,7 +39,7 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 - `CORPUS`: a sessions collection root (optional; without it S2, S3 and S5 score their static side only and each says so).
 - `WINDOW`: the context window, in tokens, the skill listing budget is judged at (default: `200000`).
 - `OWN_PLUGIN_ROOT`: the plugin the stack ships (default: the core `alfred-code` entry - generated into `./meta/plugin-entries.json` by `scripts/build-marketplace.js` and sourced from the repo root, its components declared in the entry; `./setup-plugin` holds its commands, its router skill, its own hooks, its eval cases and the `plugin.json` whose `version` the release tags). No MCP entry ships since 2.10.1 (`build-marketplace.js` drops one from the marketplace; `stack/mcp/shipped-mcps.json` is the record), so a server row in the marketplace is a finding.
-- `MARKETPLACE`: the stack's own marketplace file (default: `./.claude-plugin/marketplace.json`).
+- `MARKETPLACE`: the stack's own plugin manifest (default: `./.claude-plugin/plugin.json`; the catalog itself lives in envoydev/plugins-marketplaces).
 - `TARGET`: minimum grade (default: `A` / `9`).
 
 ## How the run goes

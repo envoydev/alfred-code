@@ -15,7 +15,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
-  rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
+  rulings`); `plan-status.js` (PF1, 3.12) is copied the same way, since the plan skills write a plan folder's
+  `status.json` through `node .claude/hooks/plan-status.js`. The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
   gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 70 (10 for each guard a dispatcher runs), from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches in exec form - `"command": "node"`, `"args":
@@ -37,7 +38,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   the plugin copy standing down beside a still-wired copied twin - only a REAL one (`yieldToCopiedTwin`, audit 2026-10-30
   HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
   on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
-  tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
+  tools; the core's rows from the plugin root's `plugin.json` (an older snapshot's `marketplace.json` entry), a guard run in-process by the plugin's
   dispatcher that dispatcher's row, the file dispatcher per call), and only entries wired when the SESSION BEGAN (E1-3:
   Claude Code reads its hooks at start, so a twin written mid-session ran nothing while the plugin copy stood down; the model can write that wiring itself under
   `bypassPermissions`, which lets protected-path writes to `.claude/` through - code.claude.com/docs/en/permission-modes,
@@ -600,7 +601,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Grep walk included, and a Read naming `offset` / `limit` by the lines it asks for (64KB chunks, up to 64MB in; audit
     2026-10-30 HK-07: a 600KB dotenv and a 910KB `terraform.tfstate` passed whole); a credential past the head of a file
     printed whole is a stated ceiling, and `--redacted` of one is a note naming `--presence`. A UTF-16 file
-    (either byte order) is judged by its decoded content.
+    (either byte order) is judged by its decoded content. A `.json` / `.jsonc` the strict parser rejects (SG1-F2, 3.12:
+    JSONC's `//` and `/* */` comments, a trailing comma, a truncated file) is read leniently (`jsonDoc`: `stripJsonc`
+    drops comments and trailing commas outside strings), else by its `"key": "value"` pairs (`jsonPairs`), on every
+    route that judges content - `secretIn` (Read, Grep, the MCP reads), the masker's `valuesOf`, `--presence` and
+    `--redacted` (a lenient file's view is re-emitted from its parse, without its comments); `.json5` and VS Code's
+    `.code-workspace` take the same path (the review of the fix, I2). In a file the lenient read parses, a commented-out
+    pair is no pair, as a dotenv comment is none; in one it cannot parse, the pairs are read over the raw text, a
+    commented pair included (the stricter side). A known shape in a comment is still masked by the line pass.
     THE SHELL ROUTE (swap 1 of the complexity audit, Task 2, 2026-11-11): nothing is judged by what a command MIGHT
     print and nothing is rewritten - no `updatedInput` is ever written, and the dump, env, variable, git-probe,
     walk-probe, feeder, engine and runtime-code judges left with the rewrite (about 3,000 lines of the guard). Above
@@ -756,7 +764,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `AUTO` (no `session:` line) is SPENT once a `.md` under `layout.planDirs` newer than the stamp carries `^Completed:\s*\S`
     - it passes no seat, implementer or generic, and the implementer denial names the plan and its line
     (`implementer-auto-spent`). Bounded per dispatch: the newest 50 plan files, none past 1 MB, an unreadable folder or
-    file no evidence; a session-named AUTO, `APPROVED` and the plan stamps are untouched.
+    file no evidence; a session-named AUTO, `APPROVED` and the plan stamps are untouched. PF1 (3.12): the plans come
+    from `layout.planFiles`, so a plan folder spends the waiver through its `status.json` - `completedAt` set, the file
+    newer than the stamp and at most `SPENT_SCAN_BYTES` - and an unreadable one is no evidence (R31); the flat
+    `Completed:` read is the marked flat branch, and an older `layout.js` copy keeps the flat loop.
     Its `no-execution-verdict` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16: 85 rows nobody
     read, and an 8MB transcript read on every main-session Agent call (+23ms on a 226MB transcript).
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
@@ -898,12 +909,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     reached it however the refusal was worded, and no run committed; with the writer counted, 6 of 6 committed): a
     main-session `Bash` / `PowerShell` call running `node <receipt.js> commit` with a `--findings` value and no
     `--dry-run` - the script by its path, or by a variable the same command set to it (`R=".../receipt.js"` then
-    `node "$R" commit`; node flags, `node.exe` and a continued line allowed) - whose result carries the writer's own
-    `wrote ...COMMIT-GATE` line. Only that line proves the write: `; echo rc=$?` makes a refused writer's call read
-    as no error, and one run hid the output with `>/dev/null`. It closes every review still open before it whose line
-    is `Findings:` - never a loop's `Outcome:` - unless a seat sent after that review had not reported before the
-    call (a foreground result, a completed notification; a call refused with an error result never ran). An echo,
-    another script, a review loaded after it: no close. The refusal names this route, in its own call with its output
+    `node "$R" commit`; node flags, `node.exe` and a continued line allowed). The write is proven by the writer's own
+    `wrote ...COMMIT-GATE` line in its result, or by the COMMIT-GATE file's time inside the call's window - the call
+    row minus 2s to the result row plus 2s (3.12: 22 of 118 receipt calls held no `wrote` line - 28 piped, 8 to
+    `/dev/null`). A refused writer exits before it writes, so `; echo rc=$?` still proves nothing; with a row whose
+    time does not parse, or no file, the line alone decides. It closes every open review whose line is `Findings:` -
+    never a loop's `Outcome:` - that it speaks for: `task-verify-code` and `review-code` always, each standing for the
+    other (the checkpoint's own review, fix, re-review flow); `review-security` when the command names it or carries
+    `--security` (all 3 measured did); `task-verify-plan` only when named (about 19 plan reviews were closed by a
+    commit receipt before). Every open review of the kind, not the newest, and no round rule (one refused 13 of 113
+    measured receipts) - unless a seat sent after that review had not reported before the call (a foreground result,
+    a completed notification; a call refused with an error result never ran). A review the receipt followed but does
+    not speak for stays open and keeps only its start time, for the `answered:` order (the earliest review time would
+    have moved at 46 of 113 receipts). The WAIVED refusal's hint lists the three code kinds only; the named-review and
+    freshness refusals carry `branch: review-unproven` / `review-stale` on the block row. An echo, another script, a
+    review loaded after it: no close. Evidence: `docs/commit-guard-review-proof-2026-11-13-evidence.md`. The refusal names this route, in its own call with its output
     shown, when every review it lists is a Findings one. A text block is ONE result line however many `Findings` lines
     it holds (a report's `**Findings:**` header and its closing line are one review's), so two reports need two
     replies.
@@ -1311,6 +1331,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     docs-session, the one sibling that denies a hand-back, asks only a seat whose own writes changed a watched file, and
     the scoring seat holds no write tool (audit 2026-10-30 HK-28, ruled not reproduced; the replay is in
     `docs-session.test.js`).
+    PLAN FOLDERS (PF1, 3.12; R23-R25): the flow state is `v: 11`, a kept `v: 10` read again from the start. A folder
+    plan's close is the RESULT of a shell call whose command runs `plan-status.js ... complete` (`completeCall`, the
+    newest such call's id): its `plan-status: complete ok - plan <id> (<rel>)` line sets what the flat `Completed:`
+    stamp sets, with `completedPlan` `<rel><id>.md`, and the same line echoed under any other call closes nothing; the
+    'new plan after the close' test compares path tails. A frozen Markdown holds no `Completed:` line, so the ids a
+    plan call's result showed completed are kept (`closedPlans`, newest 20) beside the newest folder plan a Read or
+    write named (`planTouched`), and a `## Repro` head marks nothing while that plan is closed - a closed bug plan owes
+    no `Repro:`. The flat stamp read stays, marked.
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10;
@@ -1350,7 +1378,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it that this hook is
     wired on (`Write` / `Edit` / `MultiEdit` / `NotebookEdit` and the shell route - both rows fold into their
     dispatcher, which runs the hook in-process, one process per call (2.1.5 M3) - `Agent` / `Task`, a `Skill`) is denied with this session's measured
-    carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
+    carry and cold floor until an ask is answered or the turn writes 'single short step' - or (AC-6, session be3a0031: held
+    after 9.8h idle for ~3 messages under a quoted ~26) 'fewer messages than the payback: <what>, ~N messages' with N under
+    the break-even the denial recorded in the hold (`payback`; said before any denial, the form alone counts; a
+    `fewer-than-payback` release row) - every hold text and the compact start name both exits, released with no deny when a
     fresh session would not pay back (THE VERDICT), nobody is at the terminal, a seat made the call or it has denied twice (audit
     2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in
     the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes
@@ -1412,6 +1443,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs
     name no local-scope rule). A user-scope file is named `~/`-relative with `/`, never by its whole path (audit 2026-10-20,
     the hooks track's minor list).
+    PF1 (3.12; R27, R28): on a plan folder the tick is a shell call of `plan-status.js done`, judged BEFORE it runs,
+    so it arms only when the task it names is `in_progress` or `blocked` in `status.json`; a hold whose task is not
+    `done` on disk when the next change arrives is dropped with one `tick-hold` row, outcome `not-landed` (the done
+    was refused). Every shell call naming a plan also runs `session-status.js onPlan` here (THE STATUS FILE, under
+    history-session). Measured on macOS, `shell-guards.js` PreToolUse Bash, 20 runs each: a plain `git status --short`
+    median 57.6 ms, a plan call with the status file already naming the plan 61.0 ms - 3.4 ms more. The flat
+    Edit-of-a-card tick stays, marked.
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route + a filesystem server's
     `write_file` / `edit_file` / `create_directory` by `path` and `move_file` on both its `source` and `destination`, under any
     registration name - audit 2026-11-03 SYS-02, the write half of HK-26; one more node start on those calls only) - a write outside
@@ -1637,6 +1675,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`--diff-filter=A <sha> HEAD`, 1s and 1.5s timeouts, inside the hook's 10s), a failed call lists nothing; `status`
     keeps `outgrown` for the covered rows and lists these as `addedSince`, and the start block names them in one line
     (U36: a capture written before a module existed read as current for good).
+    PLAN FOLDERS (PF1, 3.12; R31, R32; `planFolderWrite`, before the stamped-plan read, for any actor): a file-tool
+    write or a literal shell write target that `layout.planOf` reads as a folder plan is denied in two cases - a
+    `status.json` or `scoring.json` beside its `<id>.md` (`plan-json-write`, by shape whatever the file holds, `rm`
+    and `mv` of it included: the repair of a broken one is the user's), and the `<id>.md` of a plan whose
+    `status.json` reads approved and not reopened (`approved-plan-write`; the denial names `decide`, `deviate`,
+    `add-task` and `redesign`). Everything else passes: before the approval, while reopened, an absent or unreadable
+    `status.json` (fail-open), a folder with no Markdown (no plan), no `layout.planOf`, no engine.
   - `preferences-session.js` (PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep, every MCP call (a navigation server's
     two edit tools and five lookups read by tool name, N6), LSP, Skill and the shell route, the file and shell rows run inside
     their dispatchers; `SessionStart`, every source; `SubagentStart`; `UserPromptExpansion` on the run names) - the user's
@@ -1848,13 +1893,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     shown once, at its newest answer, and past the cap the ruling lines leave round-robin across sessions, each session's
     newest kept longest, then the older sessions' plan states (oldest first), then an older session's own line (audit
     2026-10-11 SD16, e90a1845: the older session's rulings were cut whole and re-asked), and the newest session's plan
-    state last, its Resume: text before its count - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
+    state last, its Resume: text before its count (a plan folder's count and Resume: text from its `status.json` through
+    the writer script, required on first use; an unreadable one gives the path alone - PF1) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off (nothing recorded or injected); an update moves the stack's
     old on seed `1` to `3` (`history-switch-is-a-count`).
     THE STATUS FILE (session-inspector, the user's contract of 2026-10-29; the sections cited are its spec's):
     `session-status.js`, a module with
     no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<cwd>/.claude/session-inspector/status/<session
     id>.json`, schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
-    `scorer`, `handoffPrompt`, a public contract that only ever gains fields. The base is the live `cwd` (A1), written only
+    `scorer`, `autoCompact`, `handoffPrompt`, `plan`, a public contract that only ever gains fields. `plan` (PF1, 3.12) is
+    `planField`: the plan folder the session works on, relative to the root with one trailing slash, carried by every write and
+    null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the live `cwd` (A1), written only
     when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
@@ -1884,6 +1932,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
     list alone, and a lone anchored line is the user's.
     `docs/install-footprint.md` lists both writes.
+    THE PLAN KEY (PF1, 3.12; R28-R30): `onPlan`, called by the fresh-session hook at a plan call's PreToolUse, is a
+    fourth `when` of `writeStatus`, `'plan'`: the candidate is checked first (`planField`) and compared with the
+    file's value - equal is `unchanged`, no build and no write - and a write carries `autoRun`, `scorer` and
+    `handoffPrompt` from the file. A call naming a plan outside the root sets `null`, the newest call winning. The Stop
+    fallback runs at Stop only (`when: 'changed'`), when the carried value is empty, and reads the history entry's
+    folder plan; SessionStart keeps `null`. A folder plan's `handoffPrompt` names `plan-status.js resume`, with no
+    backticks (R26).
+    Nine files carry `PF1 flat plan - until 4.0.0` (`scripts/plan-flat-readers.test.js` lists them): one grep finds
+    what 4.0.0 removes.
   - `forge-session.js` (`SessionStart` + `SubagentStart`) with its engine `forge.js` (a library, the classifier) and `forge-lexicon.json` (the vocabulary, overlaid by
     `<data root>/forge-lexicon.json`: words under the keys the base has, and R013's three open maps - a host's kind in
     `hints.kinds`, a known kind's CLI in `hints.clis`, its `how` (https) and tap-less `brew` in `hints.install`, never an

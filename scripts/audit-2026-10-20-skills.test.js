@@ -64,7 +64,7 @@ test('C37: repro status, the answered question, the sibling route, the stamp ord
     assert.match(spec, /a question in the arguments .* is answered in the stop's first sentence, before the fields/);
     assert.match(spec, /The files this names live in <sibling>, not here\./);
     const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
-    assert.match(mech, /The plan's `Approved:` line is written after this ask is answered, quoting the answer - never in the edit that appends the gate block/);
+    assert.match(mech, /The approval is recorded \(`approve`\) after this ask is answered, quoting the answer - never in the same step as the gate block, ahead of the ask/);   // PF1: through the script
     assert.match(mech, /each backend route that handler calls confirmed to exist in THIS repo/);
     assert.match(read('stack/skills/task-solve/SKILL.md'), /<sha> on <branch> \(<N> commits\) is not pushed to <remote>/);
 });
@@ -154,7 +154,7 @@ test('C44: the run book names the reconnect, the setup scripts and each flow\'s 
 test('C46: the per-item gaps', () =>
 {
     assert.match(flat(read('stack/skills/habits-create-ticket/SKILL.md')), /named an existing empty or placeholder ticket and asked to put the content in it: that request is the confirmation/);
-    assert.match(flat(read('stack/skills/habits-plan-writing/SKILL.md')), /A card ticked `DONE` collapses to its title, its status line, its `estimate:` line and one evidence pointer/);
+    assert.match(flat(read('stack/skills/habits-plan-writing/SKILL.md')), /a card ticked `DONE` collapses to its title, its status line, its `estimate:` line and one evidence pointer/i);   // PF1: the flat section
     const rc = read('stack/skills/habits-root-cause/SKILL.md');
     assert.match(rc, /^description: ".*build or auth error.*"$/m);
     assert.match(flat(rc), /Each option names the measured quantity it changes/);
@@ -174,7 +174,7 @@ test('the clauses stay inside the always-on budget, and task-solve inside its re
     const { alwaysOnSurface } = require('./always-on-surface.js');
     const s = alwaysOnSurface({ rulesDir: path.join(ROOT, 'stack', 'rules'), agentsDir: path.join(ROOT, 'stack', 'agents'), skillsDir: path.join(ROOT, 'stack', 'skills') });
     assert.ok(s.total < 80000, `${s.total}`);
-    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, 'task-solve stays under its re-attach cap');
+    assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, 'task-solve stays under its re-attach cap (I29: 17,700)');
 });
 
 // C07 (fabea019): a stop 22 minutes into a cycle, at 275k on a 1M window, printed a resume block, and the model's
@@ -190,6 +190,6 @@ test('C07: task-solve puts the fresh-session option and resume block only past a
     assert.match(mech, /## Conformance - step 5 The reviewer the step-4 stop chose RUNS: a Skill tool call on `task-verify-code`, or an Agent dispatch of the seat/);
     assert.match(mech, /a punch-list fix is unreviewed code/);
     assert.match(mech, /- Conformance - step 5 /, 'listed in the contents');
-    // the room this kept under the 17,700 re-attach cap went to the fresh-session shared line (spec 2026-10-28 section 5)
+    // the room this kept under the re-attach cap (17,700) went to the fresh-session shared line (spec 2026-10-28 section 5)
     assert.ok(body('stack/skills/task-solve/SKILL.md').length < 17700, `task-solve stays under its cap: ${body('stack/skills/task-solve/SKILL.md').length}`);
 });

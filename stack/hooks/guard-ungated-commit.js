@@ -767,9 +767,13 @@ function transcriptScan() {
   // reviews' reports stayed in thinking, stored empty, and no Findings line reached the transcript whatever the refusal
   // said). The call counts when it runs `node <receipt.js> commit` with a `--findings` value and no `--dry-run` - the
   // script named by its path, or by a variable the same command set to that path (`R=".../receipt.js"` then
-  // `node "$R" commit`, the shape every smoke run used) - and its result is the writer's own `wrote ...COMMIT-GATE` line.
-  // It closes every review still open whose result line is Findings (never a loop's Outcome), unless a seat sent after
-  // that review had not reported before the call. An echo, another script, or a call with no such result is no receipt.
+  // `node "$R" commit`, the shape every smoke run used). The write is proven by the writer's own `wrote ...COMMIT-GATE`
+  // line, or by the COMMIT-GATE file's time inside the call's window - its call row minus 2s to its result row plus 2s (a
+  // pipe or a redirect cut the line from 22 of 118 measured calls; 3.12, D3). It closes each open review whose result
+  // line is Findings (never a loop's Outcome) that it speaks for - the two reviews of the code always, the security
+  // review when the command names it or carries --security, the plan review when the command names it (D2) - unless a
+  // seat sent after that review had not reported before the call. An echo, another script, or a call with neither proof
+  // is no receipt.
   const RECEIPT_RUN = /(?:^|[;&|(\n])[ \t]*(?:[A-Za-z_]\w*=(?:"[^"\n]*"|'[^'\n]*'|[^\s;&|]*)[ \t]+)*(?:[^\s;&|"']*[\\/])?node(?:\.exe)?(?:[ \t]+-[^\s;&|]*)*[ \t]+("[^"\n]*"|'[^'\n]*'|[^\s;&|"']+)(?:[ \t]|\\\r?\n)+commit(?=[\s;&|]|$)/g;
   const receiptCommit = (cmd) => {
     if (typeof cmd !== 'string' || !/(?:^|\s)--findings(?:=|\s+)\S/.test(cmd) || /(?:^|\s)--dry-run\b/.test(cmd)) return false;
@@ -783,6 +787,7 @@ function transcriptScan() {
     return false;
   };
   const receiptPending = new Map();
+  const receiptCalls = [];
   const receipts = [];
   let rowNo = 0;
   let fd;
@@ -807,7 +812,7 @@ function transcriptScan() {
             if (!b) return;
             if (b.type === 'text' && typeof b.text === 'string') proofsIn(b.text, at + i);
             if (b.type !== 'tool_use' || !b.input) return;
-            if ((b.name === 'Bash' || b.name === 'PowerShell') && b.id && receiptCommit(b.input.command)) receiptPending.set(String(b.id), at + i);
+            if ((b.name === 'Bash' || b.name === 'PowerShell') && b.id && receiptCommit(b.input.command)) receiptPending.set(String(b.id), { at: at + i, ts: tsOf(row), cmd: String(b.input.command) });
             if (/^(?:Agent|Task)$/.test(b.name) && b.id) agentAt.set(String(b.id), at + i);
             const named = b.name === 'Skill' ? String(b.input.skill || b.input.command || '') : /^(?:Agent|Task)$/.test(b.name) ? String(b.input.subagent_type || '') : '';
             if (!named) return;
@@ -816,7 +821,7 @@ function transcriptScan() {
             const seat = b.name !== 'Skill' && REVIEW_SEAT.test(named);
             const review = b.name === 'Skill' && REVIEW_SKILL.test(named.trim()) ? reviewKind(named) : null;
             if (seat && b.id) seatIds.add(String(b.id));
-            calls.push({ id: b.id ? String(b.id) : '', at: at + i, seat, review, apply: () => {
+            calls.push({ id: b.id ? String(b.id) : '', at: at + i, seat, review, ts, apply: () => {
               if (b.name === 'Skill') _scan.ran.add(bareSkill(named));
               if (seat) { _scan.reviews.push(ts); _scan.reviewSeat = true; _scan.codeReviews.push({ ts, targets: briefTargets(b.input.prompt, base) }); }
               if (review) _scan.reviews.push(ts);
@@ -854,15 +859,16 @@ function transcriptScan() {
       // the receipt writer's own result: it wrote the commit receipt
       if (receiptPending.size && line.includes('"tool_result"') && line.length < 1024 * 1024) {
         for (const id of new Set([...line.matchAll(/"tool_use_id"\s*:\s*"([^"]+)"/g)].map((m) => m[1]))) {
-          const callAt = receiptPending.get(id);
-          if (callAt === undefined) continue;
+          const call = receiptPending.get(id);
+          if (call === undefined) continue;
           let row = null;
           try { row = JSON.parse(line); } catch { row = null; }
           const c = row && row.message && row.message.content;
           const own = Array.isArray(c) && c.find((x) => x && x.type === 'tool_result' && String(x.tool_use_id) === id);
-          if (!own || own.is_error === true || !/^\s*wrote\s[^\n]*COMMIT-GATE/m.test(textOf(own.content))) continue;
+          if (!own || own.is_error === true) continue;
+          // the call's own result that is no error decides: the wrote line, else the file's time (below)
           receiptPending.delete(id);
-          receipts.push({ at: callAt, receipt: true });
+          receiptCalls.push({ ...call, endTs: tsOf(row), wrote: /^\s*wrote\s[^\n]*COMMIT-GATE/m.test(textOf(own.content)) });
         }
       }
       // a background seat's completion, and the report it carries
@@ -909,7 +915,7 @@ function transcriptScan() {
           const review = reviewKind(name);
           const typedArgs = (/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1];
           const base = row.cwd || projectDir || root;
-          calls.push({ id: '', at, seat: false, review, apply: () => {
+          calls.push({ id: '', at, seat: false, review, ts, apply: () => {
             _scan.ran.add(bareSkill(name));
             _scan.reviews.push(ts);
             _scan.typedDone.push(ts);
@@ -933,9 +939,29 @@ function transcriptScan() {
     if (carry) onLine(carry);
   } catch { /* unreadable: nothing more collected */ }
   try { if (fd !== undefined) fs.closeSync(fd); } catch { /* closed */ }
+  // D3: a write whose wrote line a pipe or a redirect cut is proven by the COMMIT-GATE file's time inside the call's
+  // window - its call row minus 2s to its result row plus 2s, both rows timed. Read once, only when some call needs it.
+  const RECEIPT_WINDOW_MS = 2000;
+  let gateMs = 0;
+  if (receiptCalls.some((k) => !k.wrote)) { try { gateMs = fs.statSync(receiptRead('COMMIT-GATE')).mtimeMs; } catch { gateMs = 0; } }
+  // D2: the review kinds a receipt speaks for - the two reviews of the code always (they stand for each other), the
+  // security review when the command names it or carries --security, the plan review when the command names it.
+  const SECURITY_FLAG = /(?:^|\s)--security(?:=|\s+)\S/;
+  const speaksFor = (cmd) => {
+    const named = reviewsNamed(cmd);
+    const out = new Set(['verify-code', 'review-code']);
+    if (named.includes('review-security') || SECURITY_FLAG.test(cmd)) out.add('review-security');
+    if (named.includes('verify-plan')) out.add('verify-plan');
+    return out;
+  };
+  for (const k of receiptCalls) {
+    const inWindow = gateMs > 0 && k.ts > 0 && k.endTs > 0 && gateMs >= k.ts - RECEIPT_WINDOW_MS && gateMs <= k.endTs + RECEIPT_WINDOW_MS;
+    if (k.wrote || inWindow) receipts.push({ at: k.at, receipt: true, speaks: speaksFor(k.cmd) });
+  }
   // Each result line closes the NEWEST open review when it is that review's kind, and nothing otherwise: a review left
   // unfinished stays open under a later one, and a loop's verifier reporting Findings closes no review-code before it.
-  // A seat's report closes only a review started before the seat was sent.
+  // A seat's report closes only a review started before the seat was sent. A review a receipt followed but did not speak
+  // for stays open and keeps only its start time, for the consent order (D2).
   const reviewCalls = calls.filter((k) => k.review && !(k.id && _scan.refused.has(k.id)));
   const open = [];
   const proven = new Set();
@@ -947,7 +973,9 @@ function transcriptScan() {
     if (e.call) { open.push(e.call); continue; }
     if (e.receipt) {
       for (let j = open.length - 1; j >= 0; j--) {
-        if (reviewProof(open[j].review) === 'findings' && !seatRunning(open[j].at, e.at)) proven.add(open.splice(j, 1)[0]);
+        if (reviewProof(open[j].review) !== 'findings' || seatRunning(open[j].at, e.at)) continue;
+        if (e.speaks.has(open[j].review)) proven.add(open.splice(j, 1)[0]);
+        else open[j].seen = true;
       }
       continue;
     }
@@ -963,7 +991,10 @@ function transcriptScan() {
   }
   // O9 (burn-down 2026-11-04): the Findings reviews run but never proven, by kind - a WAIVED refusal names none through a
   // VERIFIED line, so it names these and the receipt route instead of only the waiver words.
-  _scan.unprovenFindings = [...new Set(open.filter((k) => reviewProof(k.review) === 'findings').map((k) => k.review))];
+  // D2: a review a counted receipt followed without speaking for it stays open, and keeps only its start time - for the
+  // consent order, never for what ran, what counted or what the code reviews covered.
+  for (const k of open) if (k.seen && k.ts > 0) _scan.reviews.push(k.ts);
+  _scan.unprovenFindings = [...new Set(open.filter((k) => reviewProof(k.review) === 'findings' && k.review !== 'verify-plan').map((k) => k.review))];
   return _scan;
 }
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
@@ -1378,6 +1409,7 @@ function judgeReceipt(body, opts) {
       : `A review you finished: print the review's report in your reply - its ${lineName} as text, never only in thinking - then commit again`;
     const route = kinds.size === 1 && kinds.has('findings') ? ` - or ${receiptRoute(notRun.length)}` : '';
     r.problem = `the VERIFIED line names ${notRun.join(', ')}, but no run of ${notRun.length > 1 ? 'them' : 'it'} in this session reached its result line (\`Findings:\`, a loop's \`Outcome:\`) - a launched, refused or unfinished review is not this review, nor another skill's load. ${ask}${route}. If this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
+    r.branch = 'review-unproven';
     return r;
   }
   // A commit line that names NO review still needs one (2026-10-22, a side agent's note; the user's ruling 'Need any
@@ -1402,6 +1434,7 @@ function judgeReceipt(body, opts) {
       const why = at ? `changed after the last review of the code covering ${one ? 'it' : 'them'} started (${hhmm(at)})`
         : `${one ? 'is' : 'are'} in no review of the code this session ran (the last, at ${hhmm(last)}, was pointed at other paths, or was a seat whose brief named none of ${one ? 'it' : 'them'} and no \`git diff\` of the whole change)`;
       r.problem = `${shown} ${why} - no review saw that version; run review-code on ${one ? 'it' : 'those files'} and copy its Findings field into the receipt`;
+      r.branch = 'review-stale';
       return r;
     }
   }
@@ -2110,6 +2143,8 @@ try {
 }
 const c = readReceipt('COMMIT-GATE', sessionStartMs());
 if ((c.waived || c.verified) && !c.problem) process.exit(0);
+// the review-proof refusals name their branch on the block row, so the after-release read can count each (Optional 2)
+if (c.problem && c.branch) global.BLOCK_DETAIL = { branch: c.branch };
 process.stderr.write(
   (c.stale
     ? `Blocked: git commit - the gate receipt at ${c.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round or another session is not this diff's review).\n`

@@ -106,6 +106,74 @@ test('a malformed email is a 400', () =>
     assert.strictEqual(createOrder({ ...valid, email: 'nope' }).status, 400);
 });
 JS
+PLANS=.alfred/docs/work/plans
+if [ -f .claude/hooks/plan-status.js ]; then
+# the after arm: this install carries the writer script - the plan is a folder, stamped through it; the review's
+# fields are no stamp, so they stay in the Markdown, above ## Tasks, where resume prints them
+PS="node .claude/hooks/plan-status.js"
+mkdir -p "$PLANS/order-validation"
+cat > "$PLANS/order-validation/order-validation.md" <<'MD'
+# Order validation - plan
+
+Oriented: src/orders.js outline (createOrder), test/orders.test.js outline; javascript skill loaded
+Asked: "Add request validation to the create-order handler"
+Build: npm test
+
+## Fit
+
+extend - the handler is the trust boundary for the request body; the check lands in front of the write, in the same module.
+
+## Review - pass 1 (task-verify-code in-session)
+
+Build:      `npm test` - "# pass 4 / # fail 0"
+Live-probe: `node -e` createOrder({ sku: 'A-1', quantity: 2.5, email: 'a@example.invalid' }) - status 201, quantity 2.5 stored
+Regression: callers checked: 1, vacuous tests: none
+Findings:   1 MATERIAL, 1 MINOR
+Probe code: none written
+Next run:   the fix delta - src/orders.js:validate
+
+- MATERIAL | a fractional quantity passes validation and is stored - the probe's quantity 2.5 returned 201 (src/orders.js:validate) | require `Number.isInteger(body.quantity)`, and add the 2.5 case to test/orders.test.js
+- MINOR | the error strings are inline literals the tests repeat (src/orders.js:validate) | hoist them to named constants
+
+## Tasks
+
+### Task 1 - validate the create-order body, 400 on a bad field
+
+- files: src/orders.js (modify), test/orders.test.js (modify)
+- anchors: src/orders.js:createOrder
+- traps: a request body is untrusted - check type and range before the write
+- test: a missing sku, a zero quantity and a malformed email each return 400
+- acceptance: `npm test` - every test green
+- log_points: none - the module has no logger
+- estimate: 15m
+
+## Decisions
+
+- the check is a plain function in the handler module - precedent: src/orders.js holds the handler and its state
+MD
+$PS sync --plan order-validation
+$PS gate --plan order-validation <<'EOF'
+Oriented:  verified
+Asked:     verified
+Decisions: 1 entry, with its precedent
+Scope:     matches
+Existence: 2 names checked, 0 unverified
+Passes:    risk pass | scope pass | existence pass | edges pass | soundness pass
+Findings:  none
+Gated:     passed - 2026-11-03
+EOF
+$PS approve --plan order-validation --mode session <<'EOF'
+words: Approve - build in this session (Recommended)
+EOF
+$PS start --plan order-validation --task 1
+$PS done --plan order-validation --task 1 <<'EOF'
+result: npm test green - 4 passed
+EOF
+$PS cursor --plan order-validation <<'EOF'
+note: step 5 CONFORMANCE - mode session - review pass 1 ran (task-verify-code in-session, its fields under ## Review); next: the step-5 stop
+EOF
+else
+# the before arm (PF1 flat plan - until 4.0.0): an install from before the plan folder - the flat plan
 cat > .alfred/docs/work/plans/order-validation.md <<'MD'
 # Order validation - plan
 
@@ -158,3 +226,4 @@ Next run:   the fix delta - src/orders.js:validate
 - MATERIAL | a fractional quantity passes validation and is stored - the probe's quantity 2.5 returned 201 (src/orders.js:validate) | require `Number.isInteger(body.quantity)`, and add the 2.5 case to test/orders.test.js
 - MINOR | the error strings are inline literals the tests repeat (src/orders.js:validate) | hoist them to named constants
 MD
+fi

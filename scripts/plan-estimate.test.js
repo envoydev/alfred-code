@@ -31,9 +31,9 @@ test('the estimate is working minutes, on every card or none, and frozen once th
     assert.match(pw, /`estimate:` is the working minutes the slice takes the agent that builds it, not wall-clock time/);
     assert.match(pw, /Time spent waiting \(a CI run, a deploy, an answer\) is not counted\. One whole number in steps of 5, never a range\./);
     assert.match(pw, /a plan that carries any carries one on every card/);
-    assert.match(pw, /rewritten in the same edit that changes its scope \(`files`, `test`, `acceptance`\) or adds or splits it, and only while the card is `TODO`/);
-    assert.match(pw, /From `IN_PROGRESS` on it is frozen/);
-    assert.match(pw, /scope found mid-build becomes a new card with its own estimate/);
+    // PF1: frozen at approval - the rewrite happens before it, scope found mid-build goes in through add-task
+    assert.match(pw, /An estimate is rewritten with its card's scope only before approval, followed by `sync`\./);
+    assert.match(pw, /Scope found mid-build is a new card through `add-task` with its own estimate\./);
 });
 
 test('a collapsed DONE card keeps its estimate', () =>

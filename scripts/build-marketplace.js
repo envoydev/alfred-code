@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 'use strict';
-// Generates the marketplace plugin ENTRIES from the computed placement. Nothing here creates a folder: every entry shares the repo root as its `source` and
-// lists the skill folders and agent files it ships, which is the shape spike S9 proved
+// Generates the core plugin's MANIFEST from the computed placement. Nothing here creates a folder: the manifest sits at
+// the repo root and lists the skill folders and agent files the core ships, which is the shape spike S9 proved
 // (docs/plugin-migration-evidence.md). `stack/` stays the one home per piece.
 //
-//   node scripts/build-marketplace.js --write        regenerate meta/plugin-entries.json
-//   node scripts/build-marketplace.js --check        exit 1 when that file is stale
+//   node scripts/build-marketplace.js --write             regenerate meta/plugin-entries.json
+//   node scripts/build-marketplace.js --check             exit 1 when that file is stale
+//   node scripts/build-marketplace.js --write-manifest    write the core entry as .claude-plugin/plugin.json
+//   node scripts/build-marketplace.js --hooks-entry       print the core's hooks block (lint 48)
 //
-// The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
-// meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
-// entries to the live file, leaving the marketplace metadata alone.
-//
-//   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
-//   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
+// THE CATALOG LEFT THIS REPO (2026-11-14): the `envoydev` marketplace is served from envoydev/plugins-marketplaces,
+// which lists the core from this repo by its GitHub source. So the core is no longer a marketplace ENTRY sharing the
+// root (`source: './'`, `strict: false`) but a plugin whose own .claude-plugin/plugin.json is its manifest - the same
+// fields, less the catalog's (`source`, `strict`, `category`, `tags`, which the catalog repo carries). The plugin cache
+// is still the whole repo, so every `${CLAUDE_PLUGIN_ROOT}/...` path and the installer's snapshot read are unchanged.
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
 // own .claude-plugin/plugin.json was its manifest; its seats live under stack/, outside that folder,
@@ -34,9 +35,11 @@ const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
 const historySession = require('../stack/hooks/history-session.js');
 
+const { BRAND } = require('./install/brand.js');
+
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
-const MARKETPLACE = path.join(REPO, '.claude-plugin/marketplace.json');
+const MANIFEST = path.join(REPO, '.claude-plugin/plugin.json');
 
 function readJson(file, what)
 {
@@ -47,10 +50,12 @@ function readJson(file, what)
     catch (err) { throw new Error(`${what}: ${file} is not valid JSON - ${err.message}`); }
 }
 
-function marketplaceVersion(options = {})
+// The release version: setup-plugin's plugin.json is where the release workflow reads it, so the root manifest
+// carries the same number (lint 21 holds them equal).
+function manifestVersion(options = {})
 {
-    const mkt = options.marketplace || readJson(MARKETPLACE, 'marketplace.json');
-    return (mkt.metadata && mkt.metadata.version) || '0.0.0';
+    const setup = readJson(options.setupManifest || SETUP_MANIFEST, 'setup-plugin/plugin.json');
+    return setup.version || '0.0.0';
 }
 
 // Every plugin hook runs in EXEC form: `node` itself, the script under the plugin root its first argument
@@ -75,13 +80,13 @@ function coreEntry(options = {})
     if (!commands.length) throw new Error('build-marketplace: setup-plugin/plugin.json lists no commands - the core entry would ship no guided walk');
     const entry = {
         name: CORE,
-        source: './',
+        version: options.version || manifestVersion(options),
         description: setup.description,
-        version: options.version || marketplaceVersion(options),
         author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
-        strict: false,
-        category: 'development',
-        tags: ['setup', 'installer', 'skills', 'agents', 'mcp', 'bootstrap'],
+        homepage: `https://github.com/${BRAND.slug}`,
+        repository: `https://github.com/${BRAND.slug}`,
+        license: 'MIT',
+        keywords: ['setup', 'installer', 'skills', 'agents', 'hooks', 'bootstrap'],
         // One /config row for the whole hook set, per user (pluginConfigs lives in the account settings
         // only). hook-prelude.js reads it as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; a project's
         // ALFRED_CODE_HOOKS_OFF still wins. A plain string, NOT an `options` picker: a plugin declaring
@@ -100,7 +105,7 @@ function coreEntry(options = {})
         skills: ['./setup-plugin/skills/alfred-code'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
         agents: plug.agents.map(a => `./stack/agents/${a}.md`),
         // The layer-table guard used to be auto-discovered from setup-plugin/hooks/hooks.json. At
-        // the shared root it is not, so it is declared inline - the shape Phase 2 proved for the
+        // the root it is not, so it is declared inline - the shape Phase 2 proved for the
         // stack hooks, which follow it in the same block.
         hooks: mergeHooks({
             PreToolUse: [{
@@ -164,7 +169,7 @@ function mergeHooks(first, second)
 function buildEntries(options = {})
 {
     const place = options.placement || placement(options);
-    const version = options.version || marketplaceVersion(options);
+    const version = options.version || manifestVersion(options);
     const author = options.author || { name: 'envoydev', url: 'https://github.com/envoydev' };
     // One entry: the core. Every other skill and agent is LIBRARY - listed by no entry, copied into
     // a project per pick (plugin-placement.js says why).
@@ -175,28 +180,9 @@ function serialize(entries)
 {
     return JSON.stringify({
         generatedBy: 'build-marketplace',
-        note: 'Generated by scripts/build-marketplace.js from meta/recommendations.json + meta/stack-graph.json. Do not edit by hand; run `npm run marketplace`.',
+        note: 'Generated by scripts/build-marketplace.js from meta/recommendations.json + meta/stack-graph.json. Do not edit by hand; run `npm run plugin-manifest`.',
         entries,
     }, null, 2) + '\n';
-}
-
-// An entry this generator USED to write and no longer does: the hooks entry the 2.0.0 line
-// generated before the hooks folded into the core. Never released, so it is no retirement the seed
-// prunes - only a stale entry the live file must not keep installable.
-const FOLDED_ENTRIES = ['alfred-code-hooks'];
-
-// Applies the generated entries to the live marketplace, the CORE entry included from Phase 3 on.
-// Anything the generator does not own - a hand-written extra - keeps its place, except a RETIRED or
-// FOLDED name the entries no longer carry, and every MCP server entry: the stack ships no server since
-// 2026-10-24 (the user's ruling - the record of what it shipped is stack/mcp/shipped-mcps.json), and a
-// dead entry left listed stays installable.
-const mcpEntry = (p) => Boolean(p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks);
-function applyToMarketplace(mkt, entries, { retired = [] } = {})
-{
-    const gone = new Set([...retired, ...FOLDED_ENTRIES]);
-    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name) && !mcpEntry(p));
-    mkt.plugins = kept.concat(entries);
-    return mkt;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -283,7 +269,7 @@ function main(argv)
     const entries = buildEntries({ ...options, placement: place });
 
     // The core's whole hooks block - its own two plus every stack wiring - which is what lint check
-    // 48 compares with the live core. Printed, never written: --write-marketplace writes the core.
+    // 48 compares with the live core. Printed, never written: --write-manifest writes the core.
     if (argv.includes('--hooks-entry'))
     {
         console.log(JSON.stringify(entries.find((e) => e.name === CORE).hooks, null, 2));
@@ -296,22 +282,19 @@ function main(argv)
         let have = null;
         try { have = fs.readFileSync(entriesFile, 'utf8'); } catch { /* absent counts as stale */ }
         if (have === wanted) { console.log(`plugin entries current: ${entries.length} entries`); return 0; }
-        console.error(`plugin entries are STALE: ${path.relative(REPO, entriesFile)} - run \`npm run marketplace\``);
+        console.error(`plugin entries are STALE: ${path.relative(REPO, entriesFile)} - run \`npm run plugin-manifest\``);
         return 1;
     }
-    if (argv.includes('--write-marketplace'))
+    if (argv.includes('--write-manifest'))
     {
-        const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
-        const mkt = readJson(file, 'marketplace.json');
-        const before = JSON.stringify(mkt, null, 2) + '\n';
-        const listed = entries;
-        const applied = applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins });
-        // No renames map (S11/S16): a rename strands an install; update migrates it instead.
-        delete applied.renames;
-        const after = JSON.stringify(applied, null, 2) + '\n';
-        if (before === after) { console.log(`marketplace current: ${listed.length} entries`); return 0; }
+        const file = path.resolve(arg('--manifest-file', MANIFEST));
+        const after = JSON.stringify(entries.find((e) => e.name === CORE), null, 2) + '\n';
+        let before = null;
+        try { before = fs.readFileSync(file, 'utf8'); } catch { /* absent: written below */ }
+        if (before === after) { console.log(`plugin manifest current: ${path.relative(REPO, file)}`); return 0; }
+        fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, after);
-        console.log(`marketplace written: ${listed.length} entries -> ${path.relative(REPO, file)}`);
+        console.log(`plugin manifest written -> ${path.relative(REPO, file)}`);
         return 0;
     }
     if (argv.includes('--write'))
@@ -320,7 +303,7 @@ function main(argv)
         console.log(`plugin entries written: ${entries.length} entries -> ${path.relative(REPO, entriesFile)}`);
         return 0;
     }
-    console.error('usage: build-marketplace.js --write | --write-marketplace | --check | --hooks-entry');
+    console.error('usage: build-marketplace.js --write | --write-manifest | --check | --hooks-entry');
     return 1;
 }
 
@@ -331,4 +314,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, mcpEntry, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE };
+module.exports = { buildEntries, coreEntry, serialize, parseHookWirings, hooksBlock, mergeHooks, ENTRIES_FILE, MANIFEST };

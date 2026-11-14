@@ -216,11 +216,11 @@ test('I28: the three deliberate skills drop their question-shaped triggers', () 
 });
 
 // ---- I29: the solve flow's CLOSE and Do-not fit the compaction re-attach window ----------------------------------
-test('I29: task-solve\'s body is under 18,000 chars with its stops still templated in SKILL.md', () =>
+test('I29: task-solve\'s body is under 17,700 chars with its stops still templated in SKILL.md', () =>
 {
     const text = read('stack/skills/task-solve/SKILL.md');
     const b = body(text);
-    assert.ok(b.length < 18000, `body is ${b.length} chars`);
+    assert.ok(b.length < 17700, `body is ${b.length} chars`);
     assert.ok(b.indexOf('6. **CLOSE**') > 0 && b.indexOf('## Do not') > b.indexOf('6. **CLOSE**'), 'CLOSE and Do not are both there');
     const texts = Object.fromEntries(ASK_FLOW_SKILLS.map((n) => [n, read(`stack/skills/${n}/SKILL.md`)]));
     assert.deepStrictEqual(lintFlowAskPresence(texts), [], 'every pinned ask template stayed in SKILL.md');

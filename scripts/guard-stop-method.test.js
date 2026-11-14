@@ -734,3 +734,63 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         assert.notStrictEqual(decision(reask(root, opened(QUESTION, [modeRow]), { sid })), 'deny');
     });
 }
+
+// --- PF1: a plan folder closes through the script (plan 2, Task 5; spec 6, R23-R25) ----------------------------------
+// The cycle closes on the engine's own `complete ok` line in the result of the call that ran `complete`, never on an echo
+// of those words; a new plan folder after it is a new plan, the closed plan's own Markdown is not.
+const planCallRows = (id, command, result, { is = 'Bash' } = {}) => [
+    { type: 'assistant', message: { id: `m-${id}`, role: 'assistant', content: [{ type: 'tool_use', id, name: is, input: { command } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: result }] } },
+];
+const CLOSED = 'plan-status: complete ok - plan csv (.alfred/docs/work/plans/csv/)\nCompleted: 2026-11-13T10:42Z\nResume: step 6 CLOSE - no task left\n';
+const COMPLETE = "node .claude/hooks/plan-status.js complete --plan .alfred/docs/work/plans/csv <<'EOF'\nsuite: npm test - 40 passed\nEOF";
+const flowMark = () => typed('<command-name>/task-solve</command-name>');
+
+test('PF1 close: the script\'s complete line closes the cycle', () => {
+    const root = project();
+    flowStop(root, transcript(root, [flowMark(), ...planCallRows('c1', COMPLETE, CLOSED), ...steps(root, [['prompt', 'also fix the header'], ['edit', 'src/a.ts']])]), 'The header is fixed.');
+    const rows = flowProbes(root, 'post-close-edit');
+    assert.strictEqual(rows.length, 1, 'one post-close-edit row, as the flat stamp gets');
+    assert.strictEqual(rows[0].detail.file, 'a.ts');
+});
+
+test('PF1 close: not from an echo of other words', () => {
+    const read = call('Read', { file_path: 'scripts/plan-status.test.js' });
+    const cases = [
+        ['an echo', planCallRows('c1', 'echo "plan-status: complete ok - plan csv (.alfred/docs/work/plans/csv/)"', CLOSED)],
+        ['a Read of a test file', [read.row, result(read.id, CLOSED)]],
+        ['a refused complete', planCallRows('c1', COMPLETE, 'plan-status: complete refused: task 2 is in_progress')],
+        ['a show call', planCallRows('c1', 'node .claude/hooks/plan-status.js show --plan csv', CLOSED)],
+    ];
+    for (const [name, rows] of cases) {
+        const root = project();
+        flowStop(root, transcript(root, [flowMark(), ...rows, ...steps(root, [['prompt', 'also fix the header'], ['edit', 'src/a.ts']])]), 'Done.');
+        assert.strictEqual(flowProbes(root, 'post-close-edit').length, 0, `${name}: no close`);
+    }
+});
+
+test('PF1 close: a variable plan ref and a CRLF result', () => {
+    const root = project();
+    const rows = planCallRows('c1', 'node .claude/hooks/plan-status.js complete --plan "$P" < suite.txt', CLOSED.replace(/\n/g, '\r\n'), { is: 'PowerShell' });
+    flowStop(root, transcript(root, [flowMark(), ...rows, ...steps(root, [['prompt', 'also fix the header'], ['edit', 'src/a.ts']])]), 'Done.');
+    assert.strictEqual(flowProbes(root, 'post-close-edit').length, 1);
+});
+
+test('PF1 close: a new plan folder after the close is a new plan, the closed plan\'s own Markdown is not', () => {
+    const run = (root, planFile) => {
+        const w = call('Write', { file_path: path.join(root, '.alfred', 'docs', 'work', 'plans', ...planFile), content: '# plan' });
+        flowStop(root, transcript(root, [flowMark(), ...planCallRows('c1', COMPLETE, CLOSED), typed('now the header'), w.row, result(w.id, 'ok'),
+            ...steps(root, [['edit', 'src/a.ts']])]), 'Done.');
+        return flowProbes(root, 'post-close-edit').length;
+    };
+    assert.strictEqual(run(project(), ['next', 'next.md']), 0, '(a) a new plan folder covers the edit');
+    assert.strictEqual(run(project(), ['csv', 'csv.md']), 1, '(b) the closed plan\'s own Markdown is no new plan (R24)');
+});
+
+test('PF1: an Approved: line in a resume result settles the mode (D13)', () => {
+    const root = project();
+    const rows = planCallRows('r1', 'node .claude/hooks/plan-status.js resume --plan csv',
+        'plan-status: resume ok - plan csv (.alfred/docs/work/plans/csv/)\nApproved: 2026-11-13T10:05Z - mode session\nResume: next task 1\nTasks: 0 of 3 done\n');
+    flowStop(root, transcript(root, [typed('/task-solve resume step 4'), ...rows, ...steps(root, [['edit', 'src/cart.ts'], ['edit', 'src/totals.ts']])]), 'Done.');
+    assert.strictEqual(flowProbes(root, 'no-execution-strategy').length, 0, 'the approved mode was read back');
+});

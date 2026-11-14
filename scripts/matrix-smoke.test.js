@@ -53,7 +53,7 @@ for (const route of Object.keys(ROUTES))
             inspect: (repo) => ({
                 rule: fs.readFileSync(require('./install/copy.js').ruleAt(repo, 'markdown-docs'), 'utf8'),
                 agentsMd: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')),
-                engines: ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'memory.js', 'model-windows.json', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
+                engines: ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'memory.js', 'model-windows.json', 'plan-status.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
                 stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
                 // Mode v2 stage 2: the stack's settings rows land in settings.local.json at every scope.
                 settings: json(repo, path.join('.claude', 'settings.local.json')),
@@ -63,7 +63,7 @@ for (const route of Object.keys(ROUTES))
         });
         assert.strictEqual(result.rule, fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'markdown-docs.md'), 'utf8'), 'the picked rule landed byte for byte');
         assert.ok(result.agentsMd, 'the AGENTS.md seed landed');
-        assert.deepStrictEqual(result.engines, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'], 'the hook engines and the window table are copied on every route - no memory engine since 2.10.1');
+        assert.deepStrictEqual(result.engines, ['docs.js', 'handoff.js', 'history.js', 'layout.js', 'model-windows.json', 'plan-status.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js'], 'the hook engines and the window table are copied on every route - no memory engine since 2.10.1');
         assert.strictEqual(result.mcp, null, 'nothing is registered in .mcp.json on either route - an old selection naming a server included');
         assert.ok(!calls.some((c) => /^mcp add /.test(c)), 'no claude mcp add');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');

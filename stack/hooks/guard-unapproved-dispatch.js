@@ -392,13 +392,36 @@ if (stampState && stampState.live && stampState.session && /^AUTO\b/.test(rootSt
 // untouched.
 const SPENT_SCAN_FILES = 50;
 const SPENT_SCAN_BYTES = 1024 * 1024;
-function autoSpentBy(stampFile, dirs) {
+// PF1 (spec 6): a folder plan spends the waiver through its status.json - a file of at most SPENT_SCAN_BYTES, newer than
+// the stamp, whose read is ok with completedAt set. Listed by layout.planFiles; an older layout.js copy keeps the flat loop.
+let planStatusMod;
+const planStatusEngine = () => { if (planStatusMod === undefined) { try { planStatusMod = require('./plan-status.js'); } catch { planStatusMod = null; } } return planStatusMod; };
+function folderSpent(p, stampMs) {
+  const status = path.join(p.dir, 'status.json');
+  let st;
+  try { st = fs.statSync(status); } catch { return null; }
+  if (!st.isFile() || st.size > SPENT_SCAN_BYTES || st.mtimeMs <= stampMs) return null;
+  const S = planStatusEngine();
+  const read = S ? S.readStatus(p.dir) : null;
+  return read && read.ok && read.status.completedAt ? { file: p.dir, completed: String(read.status.completedAt), folder: true } : null;
+}
+function autoSpentBy(stampFile, dirs, root) {
   let stampMs;
   try {
     stampMs = fs.statSync(stampFile).mtimeMs;
     if (/^session:/m.test(fs.readFileSync(stampFile, 'utf8').slice(0, 4096))) return null;
   } catch { return null; }
   const plans = [];
+  if (root && layout && typeof layout.planFiles === 'function') {
+    let listed = [];
+    try { listed = layout.planFiles(root); } catch { listed = []; }
+    for (const p of listed) {
+      if (p.shape === 'folder') { plans.push({ folder: p, ms: p.mtimeMs, size: 0 }); continue; }
+      // PF1 flat plan - until 4.0.0: a single-file plan's Completed: line
+      try { const st = fs.statSync(p.md); if (st.isFile()) plans.push({ file: p.md, ms: st.mtimeMs, size: st.size }); } catch { /* gone: no evidence */ }
+    }
+    dirs = [];
+  }
   for (const dir of dirs) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { continue; }
@@ -411,6 +434,7 @@ function autoSpentBy(stampFile, dirs) {
   plans.sort((a, b) => b.ms - a.ms);
   for (const p of plans.slice(0, SPENT_SCAN_FILES)) {
     if (p.ms <= stampMs) break;
+    if (p.folder) { const spent = folderSpent(p.folder, stampMs); if (spent) return spent; continue; }
     if (p.size > SPENT_SCAN_BYTES) continue;
     let text;
     try { text = fs.readFileSync(p.file, 'utf8'); } catch { continue; }
@@ -419,11 +443,12 @@ function autoSpentBy(stampFile, dirs) {
   }
   return null;
 }
+const toPosixRel = (dir) => path.relative(root, dir).split(path.sep).join('/');
 let autoSpent = null;
 if (/^AUTO\b/.test(rootStamp.first) && layout && typeof layout.planDirs === 'function' && !(stampState && stampState.session)) {
   let dirs = [];
   try { dirs = layout.planDirs(root); } catch { dirs = []; }
-  autoSpent = autoSpentBy(rootStamp.file, dirs);
+  autoSpent = autoSpentBy(rootStamp.file, dirs, root);
   if (autoSpent) rootStamp.first = '';
 }
 // PER-PLAN APPROVALS (2026-10-20, spec Part 4): two sessions on two plans shared one APPROVAL - the later approval
@@ -476,7 +501,7 @@ if (isImplementer) {
     (needed.stale
       ? `Blocked: dispatch of ${seat} - the approval stamp at ${needed.file} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
       : autoSpent
-        ? `Blocked: dispatch of ${seat} - the AUTO waiver at ${rootStamp.file} predates ${autoSpent.file}'s Completed: line (${autoSpent.completed.slice(0, 80)}) - the run it waived is closed; a new run is waived by a new AUTO line in the user's words or approved through one ask.\n`
+        ? `Blocked: dispatch of ${seat} - the AUTO waiver at ${rootStamp.file} predates ${autoSpent.folder ? `${toPosixRel(autoSpent.file)}/ was completed (${autoSpent.completed.slice(0, 80)})` : `${autoSpent.file}'s Completed: line (${autoSpent.completed.slice(0, 80)})`} - the run it waived is closed; a new run is waived by a new AUTO line in the user's words or approved through one ask.\n`
       : planId && CONSENT.test(rootStamp.first)
         ? `Blocked: dispatch of ${seat} - its brief names plan ${planId}, and no stamp records the user's approval of THAT plan (${rootStamp.file} is another run's, or a pre-2.8.0 one).\n`
         : `Blocked: dispatch of ${seat} without an approval gate.\n`) +

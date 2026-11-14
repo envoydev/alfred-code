@@ -50,6 +50,9 @@ anything of yours the install did not record stay as they are.
    claude plugin marketplace add envoydev/alfred-code#v3.10.0
    ```
 
+   A release tag up to 3.11.0 still carries its own marketplace file, so it is added from this repo; the live
+   marketplace moved to envoydev/plugins-marketplaces after it.
+
    `claude plugin marketplace list --json` shows the scope it is declared at, if not `user`.
 3. **Install 3.10.0 in each project.**
    - With the plugin: `claude plugin install alfred-code@envoydev --scope local` (the scope the project had: `local`,
@@ -85,7 +88,7 @@ Unpin the marketplace - this again uninstalls the plugin in every project - then
 
 ```bash
 claude plugin marketplace remove envoydev --scope user
-claude plugin marketplace add envoydev/alfred-code
+claude plugin marketplace add envoydev/plugins-marketplaces
 claude plugin install alfred-code@envoydev --scope local
 ```
 

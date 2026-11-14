@@ -1058,3 +1058,89 @@ joined below it - a subtotal and an inventory block per project, the advisory on
 each project the workspace leaves out. Each session's bundle is written in its own project's data root, so a child's
 bundles stay in the child; the root's `SUMMARY.md` lists them all. In a child or a standalone project nothing changes.
 Nothing to do by hand.
+
+## after 3.11.0 - a browser server started without --secrets is named
+
+A Playwright browser server you registered yourself (the stack ships none since 2.10.1) fills a login from the
+project's `.alfred/.secrets` only when it was started with `--secrets <that file>`; without it the key name is typed as
+literal text. While the store exists, `/alfred-code:status` and `/capture-preferences tools` now print one
+`browser: <server> (<scope>, <file>) was started without --secrets ...` line per such registration, with the exact two
+args to add to its `args`; add them and reconnect the server with `/mcp`. Nothing is written for you: Playwright reads
+the file when it starts and fails to start once the file is gone.
+
+## after 3.11.0 - an update re-spells a renamed hook in settings.json's off-list
+
+An update over 3.10.0 left `guard-answer:scorer` in `ALFRED_CODE_HOOKS_OFF` in `.claude/settings.json` when the stack
+had written its own settings there before 3.11.0 moved them to `settings.local.json`. The hooks still read the old
+name until 4.0.0, so nothing switched back on; the update now re-spells it as `guard-answer:scoring` in both files.
+Nothing to do by hand.
+
+## after 3.11.0 - the usage scope's loose ends
+
+The usage audit and status's usage table read a workspace a little more exactly. A run started in a sub-folder of a
+project with no git repository reads that project, as one started in a repository's sub-folder already did. The session
+you run the audit from is left out of the scope's counts and session list, as the rollup already left it out. A project
+in the workspace with no session yet still gets its inventory block, every name it installed listed unused. A project
+is named as ignored only by the workspace that holds it, and only where the mark stands. A child's older block ledgers
+are found under the docs folder its own settings name. Nothing to do by hand.
+
+## after 3.11.0 - a sibling's files keep the start project's path rules
+
+A session started in one workspace child that touches a file of a sibling child gets the sibling's block and its path
+rules as before, and now the start project's own path rules as well, unless the sibling leaves one out
+(`ignore rule <name>`) or holds a rule of the same name. Nothing to do by hand.
+
+## after 3.11.0 - the fresh-session hold lets short work go on
+
+When a session is held for a fresh-session choice (after an automatic compaction, a long idle gap or a plan task ticked
+done), the hold now names a second way on beside 'a single short step': work that takes fewer messages than the
+payback the hold quotes - one line, 'fewer messages than the payback: <what>, ~N messages', then the same call again.
+Nothing to do by hand.
+
+## after 3.11.0 - the secret guard reads a .json with comments or a trailing comma
+
+A `.json`, `.jsonc`, `.json5` or VS Code `.code-workspace` file the strict JSON parser rejects - a `//` or `/* */`
+comment (a tsconfig, `.vscode/settings.json`, a devcontainer), a trailing comma, a truncated file - is now judged like a valid one: a Read of one holding a credential
+asks (or is refused where nobody can answer), a content Grep of it is refused, `--presence` answers for its keys and
+`--redacted` masks its values. Such a file with no credential reads as before. Nothing to do by hand.
+
+## after 3.11.0 - a local-scope run names the workspace's values in a tracked .variables
+
+A local-scope init or update in a joined project whose `.variables` git tracks still leaves that file as it is - it
+is the team's - but now prints one `workspace: <n> values equal to the workspace's stay in ...` line naming each key
+a project-scope run would remove. Report it; nothing changes until a project-scope update or the team removes them.
+A `.variables` git does not track is trimmed at local scope as at project scope.
+
+## after 3.11.0 - a joined project keeps a hook its own off-list switches off
+
+A hook named whole in a joined project's own `ALFRED_CODE_HOOKS_OFF` (typed by hand, beside any `<hook>:<part>` entry)
+stays off through its updates; before, the workspace's set added the hook back and the update emptied that entry. The
+update prints `workspace: hook <name> stays off here - this project's ALFRED_CODE_HOOKS_OFF names it` - report it.
+Turning the hook back on in `/alfred-code:configure` still works.
+
+## after 3.11.0 - a local install moved to project or user scope commits its docs again
+
+A run that moves a `local`-scope install to `project` or `user` scope now reseeds `ALFRED_CODE_DOCS_VERSIONING` from
+the local scope's own `local` to `git` when the project is a git repository whose own rules do not keep the docs out,
+with one `ALFRED_CODE_DOCS_VERSIONING 'local' -> 'git' (the local scope's own seed, reseeded for <scope> scope)` line -
+report it. Before, the docs stayed out of git after the move. A value typed by hand, or `--docs-versioning`, stays.
+
+## after 3.11.0 - ignore-child's lines say what happened
+
+`workspace.js ignore-child` now prints a failed child update's own `!!` reasons under its failure line, names a failure
+in the cascade below a child as the cascade's (`... but a project below it did not`), says when a child's
+`ALFRED_CODE_WORKSPACE` is 0 that its update released nothing, and under a plain folder names each installed project
+that never joined. On a disk that folds case, a `children` entry spelled in another case leaves with the mark. An
+update that cannot release an ignored project says the next update retries, and a first install over a record that
+still names a parent says why it leaves the workspace part as it is. An `ignore instructions <folder>` row now covers
+every file below the folder, so `check-loads` stops naming them. Report each line.
+
+## after 3.11.0 - a receipt write counts whatever the shell did with its output
+
+The commit gate now counts the checkpoint's receipt write when its output was piped or hidden (`| tail -n 3`,
+`>/dev/null`): the receipt file's own time, inside that call, proves the write. A receipt also closes only the reviews
+it speaks for - the review of the code always, `review-security` when the command names it or carries `--security`,
+`task-verify-plan` only when the command names it. A commit refused with 'the VERIFIED line names verify-plan' or
+'names review-security' after a receipt was written means that review's report never reached the transcript and the
+receipt did not speak for it: print its report, or name it in the receipt - report the refusal as it reads. Nothing
+to do in an installed project; no file of it changes shape.

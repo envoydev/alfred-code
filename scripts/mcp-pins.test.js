@@ -12,14 +12,13 @@ const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
 
-test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
+test('no shipped MCP launch line runs a package on @latest - manifest or the generated plugin manifest', () =>
 {
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
     const floatingRows = manifest.mcps.filter((r) => FLOATING.test(r.args)).map((r) => r.name);
     assert.deepStrictEqual(floatingRows, [], 'meta/stack-manifest.json still launches a floating package');
-    const marketplace = JSON.parse(read('.claude-plugin/marketplace.json'));
-    const floatingEntries = marketplace.plugins
-        .flatMap((p) => Object.entries(p.mcpServers || {}).map(([name, s]) => [name, (s.args || []).join(' ')]))
+    const core = JSON.parse(read('.claude-plugin/plugin.json'));
+    const floatingEntries = Object.entries(core.mcpServers || {}).map(([name, s]) => [name, (s.args || []).join(' ')])
         .filter(([, args]) => FLOATING.test(args)).map(([name]) => name);
     assert.deepStrictEqual(floatingEntries, [], 'a generated plugin entry still launches a floating package');
 });

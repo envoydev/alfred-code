@@ -767,7 +767,7 @@
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent|SendMessage",
       "event": "",
-      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO; and a dispatch, or a SendMessage that resumes a stopped seat, while ALFRED_CODE_MAXIMUM_RUN_AGENTS of the session's agents run (agent-cap.js); an allowed dispatch naming no model takes the one the project's .alfred/agents.json sets for the seat (agent-models.js)"
+      "note": "block *-implementer dispatch without its plan's data-root state/approvals/<plan id>/APPROVAL gate file (APPROVED/AUTO; the brief names the plan on a plan: line) or a root AUTO; and a dispatch, or a SendMessage that resumes a stopped seat, while ALFRED_CODE_MAXIMUM_RUN_AGENTS of the session's agents run (agent-cap.js); an allowed dispatch naming no model takes the one the project's .alfred/agents.json sets for the seat (agent-models.js); a hand-written root AUTO is spent once a completed plan, flat or folder, is newer than it (D6 over the plan list)"
     },
     {
       "file": "guard-unapproved-dispatch.js",
@@ -797,7 +797,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth - and once more after a plan's Completed stamp and a typed turn, whatever the growth, unless a fresh-session choice was answered since that turn (usage audit 2026-11-03 U13) - and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only /alfred-code:mode:auto-run off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the session compacts instead (ALFRED_CODE_AUTO_COMPACT=1, auto-run, or /alfred-code:mode:auto-compact on) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped."
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth - and once more after a plan's Completed stamp and a typed turn, whatever the growth, unless a fresh-session choice was answered since that turn (usage audit 2026-11-03 U13) - and holds once a close after a fresh-session pick that carries no fenced paste text; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (guard-stop-contract:done in ALFRED_CODE_HOOKS_OFF off), and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test (the red-run streak probe went with the shell-result wiring, deep hooks review 2026-10-16). Under an auto-run stamp naming this session, while the run's marker (`state/sessions/AUTO-RUN-<session>`) stands, a Stop is sent back to the run until its close deletes the marker - never the stamp, which only /alfred-code:mode:auto-run off ends - held again only after a tool call (the Stop chain's workSince), and at most 49 times per marker: the 50th Stop passes with one auto-continue-cap row (audit 2026-10-14 HK05). Where the session compacts instead (ALFRED_CODE_AUTO_COMPACT=1, auto-run, or /alfred-code:mode:auto-compact on) every fresh-session offer and note stands down, and an ask still carrying a fresh-session option is denied once, handed back with it dropped.; a plan folder's close is the result of a plan-status.js complete call, never an echo of its line, and a closed folder plan owes no Repro: (state v11, PF1)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -863,7 +863,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "the post-compaction hold on an edit, and the TICK HOLD (usage audit 2026-11-03 U13): a main-session edit that ticks a plan card DONE past the trigger - tasks still open, no other card in flight, the carry past the re-offer step since the last offer, a resume that pays - holds the next task's first change for the fresh-session ask naming the plan and its Resume line, the plan's own edits passing; nobody at the terminal (a live AUTO waiver included) logs the skip - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
+      "note": "the post-compaction hold on an edit, and the TICK HOLD (usage audit 2026-11-03 U13): a main-session edit that ticks a plan card DONE past the trigger - tasks still open, no other card in flight, the carry past the re-offer step since the last offer, a resume that pays - holds the next task's first change for the fresh-session ask naming the plan and its Resume line, the plan's own edits passing; nobody at the terminal (a live AUTO waiver included) logs the skip - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3); on a plan folder the tick is a plan-status.js done call, judged before it runs - a done that did not land drops the hold as not-landed (PF1)"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -953,7 +953,7 @@
       "file": "docs-session.js",
       "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep",
       "event": "",
-      "note": "doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline"
+      "note": "doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline; a hand write of a plan folder's status.json or scoring.json (beside its <id>.md) and an edit of an approved plan's Markdown are denied - plan-status.js is the only writer (PF1)"
     },
     {
       "file": "docs-session.js",
@@ -965,7 +965,7 @@
       "file": "docs-session.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "the same read record and hold on the shell routes - run inside shell-guards.js; every Bash|PowerShell|Monitor row of a guard shell-guards.js lists is wired as that ONE dispatcher (wiringRows), never on its own"
+      "note": "the same read record and hold on the shell routes - run inside shell-guards.js; every Bash|PowerShell|Monitor row of a guard shell-guards.js lists is wired as that ONE dispatcher (wiringRows), never on its own, the plan-folder denials on a literal shell write target too"
     },
     {
       "file": "docs-session.js",
@@ -1097,13 +1097,13 @@
       "file": "history-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off; writes this session's session-inspector status file (.claude/session-inspector/status/<id>.json under its cwd, schema 1), prunes those past 7 days, keeps the folder out of git through info/exclude"
+      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off; writes this session's session-inspector status file (.claude/session-inspector/status/<id>.json under its cwd, schema 1), prunes those past 7 days, keeps the folder out of git through info/exclude; the status file's plan key names the plan folder the session works on - set by a plan-status.js call naming a plan, kept by later writes, null after its close (PF1)"
     },
     {
       "file": "history-session.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/; rewrites the status file when a value changed"
+      "note": "records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <data root>/state/history/; rewrites the status file when a value changed; a plan folder is read through its status.json (stamps, the cursor)"
     },
     {
       "file": "forge-session.js",

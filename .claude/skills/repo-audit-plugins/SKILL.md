@@ -30,7 +30,7 @@ the shipped catalog. The stack's own plugin - its packaging and how its parts wo
 - The user types `/repo-audit-plugins` to audit the third-party plugins the stack installs.
 - Not for the Alfred Code plugin itself or conflicts across its parts (`/repo-audit-system`), one hook's
   contract (`/repo-audit-hooks`) or one skill's quality (`/repo-audit-skills`); for building or changing
-  a plugin, the repo's own `plugin-authoring` skill is the guide.
+  a plugin, the repo's own `plugin-packaging` skill is the guide.
 
 ## Parameters
 

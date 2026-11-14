@@ -481,6 +481,19 @@ function foldEnv(env, migrations, log, label, { baseCsv = null, alsoInto = null,
 // `seeds` (a joined child, workspace.js envPlan): the keys a seed may fill - the workspace hands a child the rest (D4 step
 // 5), and a decision this run took (a flag, the hooks walk's answer) is written whatever it says. `seedLabel` names the
 // file a seed is said to land in (writeSettings moves the stack's variables into .variables).
+// A hook a release renamed (manifest `renamed.hooks`) stays off under its new name: an off-list entry naming the old
+// hook or part is re-spelled in place. True when the list changed.
+function respellHooksOff(env, renamedHooks, log, label)
+{
+    const was = env.ALFRED_CODE_HOOKS_OFF;
+    if (typeof was !== 'string' || !was.trim()) return false;
+    const now = was.split(',').map((h) => { const bare = csvEntryKey(h); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
+    if (now === was) return false;
+    env.ALFRED_CODE_HOOKS_OFF = now;
+    log(`  ${label} env: ALFRED_CODE_HOOKS_OFF = ${now} (a renamed hook re-spelled)`);
+    return true;
+}
+
 function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoCompact = null, memory = null, hooksOff, hooksAnswered, renamedHooks = {},
     inherited, overlay, log, label = 'settings.json', overlayLabel = 'settings.local.json', stackWrote = null, seeds = null, seedLabel = null, chain = null })
 {
@@ -618,12 +631,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoComp
         // A hook a release renamed (manifest `renamed.hooks`) stays off under its new name: the stored list is re-spelled
         // in each file that holds it, or the prelude no longer matches it and the hook the user switched off runs again.
         for (const [into, lab, mine] of [[env, label, true], ...(held ? [[held, overlayLabel, false]] : [])])
-        {
-            const was = into.ALFRED_CODE_HOOKS_OFF;
-            if (typeof was !== 'string' || !was.trim()) continue;
-            const now = was.split(',').map((h) => { const bare = csvEntryKey(h); return Object.hasOwn(renamedHooks, bare) ? renamedHooks[bare] : h; }).join(',');
-            if (now !== was) { into.ALFRED_CODE_HOOKS_OFF = now; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${now} (a renamed hook re-spelled)`); }
-        }
+            if (respellHooksOff(into, renamedHooks, log, lab) && mine) changed = true;
         if (!present('ALFRED_CODE_HOOKS_OFF'))
         {
             env.ALFRED_CODE_HOOKS_OFF = '';
@@ -1249,6 +1257,7 @@ function writeSettings(opts)
             {
                 renameEnv(shared.env, migrations, log, sharedName);
                 retireAndReseed(shared.env, migrations, log, sharedName);
+                respellHooksOff(shared.env, (renamed && renamed.hooks) || {}, log, sharedName);
             }
             if (!inheritedOverrides) rekeyOverrides(shared, renamed, log, sharedName);
             // At project and user scope the team file was the stack's until this stage: the docs step's removal, a retired
