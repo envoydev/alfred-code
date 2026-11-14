@@ -77,7 +77,9 @@ One data point, Claude Code 2.1.322 on macOS: a shell call slept 1s, wrote a fil
 1,267 ms after the call row's `timestamp` and 1,069 ms before the result row's - the call row is stamped before the
 command starts and the result row after it ends.
 
-- Linux: NOT RUN.
+- Linux (2026-11-14, Claude Code 2.1.325 in a `node:22` container, the same sleep / write / sleep call): the file's
+  mtime was 1,061 ms after the call row's `timestamp` and 1,016 ms before the result row's - 0 ms outside either end,
+  inside today's 2s slack, so nothing changes on Linux.
 - Windows: NOT RUN.
 
 The rule for the owner's probe on those systems (the design's Assumptions): measure how far the file's time lies
