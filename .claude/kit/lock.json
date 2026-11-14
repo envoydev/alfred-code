@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@d701c8f",
+  "kit": "claude-kit@0e9cac7",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
     ".claude/rules/execution.md": "66bfd60e5d39f6bcc6a5deba22fb4467186c29a3ce984b3900c861897667edfe",
