@@ -1108,11 +1108,16 @@ function readStampFile(file) {
 // agent installed' and scored every unused-but-paid-for row against a set the session never had.
 // The cache is the same layout every Claude Code install uses; when it is not readable (a bundle
 // analysed on another machine) the directory stands alone and the `why` line says so.
-// The entry's OWN item lists, from the marketplace manifest shipped in the plugin root. Null when
-// the root carries no entry of that name (a plugin with a root of its own), so the caller scans.
+// The entry's OWN item lists, from the plugin's own manifest at its root when it names the plugin (the core since the
+// catalog left its repo, 2026-11-14), else from a marketplace manifest shipped there (an older core). Null when the root
+// carries neither (a plugin with no lists of its own), so the caller scans.
 function pluginEntryItems(root, plugin) {
   let entry;
   try {
+    const own = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
+    if (own && own.name === plugin && (own.skills || own.agents || own.commands)) entry = own;
+  } catch { /* none of its own: the marketplace manifest below */ }
+  if (!entry) try {
     const mk = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8'));
     entry = (mk.plugins || []).find((x) => x && x.name === plugin);
   } catch { return null; }

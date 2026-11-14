@@ -14,6 +14,10 @@
 // installer's own (default project): `user` enables the plugins in the isolated account's settings, `local` in
 // the project's settings.local.json. --clean deletes the test data a run left in <workdir> - each profile's fixture,
 // the export and the shared home - and prints `removed:` and `left:`; the audit's results live elsewhere and stay.
+//
+// The catalog left this repo on 2026-11-14 (envoydev/plugins-marketplaces), so the export carries the core's manifest
+// and no marketplace. standInCatalog writes a one-entry `envoydev` catalog into the export, the core sourced from its
+// root, so the marketplace add registers this tree under the key the installer looks for. Never into a git checkout.
 'use strict';
 const fs = require('node:fs');
 const os = require('node:os');
@@ -83,6 +87,20 @@ function step(name, cmd, args, { cwd, env, log })
     if (r.status !== 0) throw new Error(`profile-fixture: ${name} failed (exit ${r.status}${r.error ? `, ${r.error.code || r.error.message}` : ''}) - see ${log}`);
 }
 
+// A one-entry `envoydev` catalog over the export's own root. The export is a throwaway copy, so the file lands nowhere
+// that ships; a checkout handed in as the export is refused, since lint 49 fails a marketplace.json in the repo.
+function standInCatalog(exportDir)
+{
+    const file = path.join(exportDir, '.claude-plugin', 'marketplace.json');
+    if (fs.existsSync(file)) return file;
+    if (fs.existsSync(path.join(exportDir, '.git'))) throw new Error(`profile-fixture: ${exportDir} is a git checkout - hand a clean export (scripts/clean-export.js), the stand-in catalog is written into it`);
+    const { BRAND } = require('./install/brand.js');
+    const catalog = { name: BRAND.marketplace, owner: { name: 'profile-fixture' }, plugins: [{ name: BRAND.core, source: './', description: 'this working tree' }] };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(catalog, null, 2)}\n`);
+    return file;
+}
+
 function fixture(profile, workdir, { exportDir = '', scope = '', dryRun = false, out = (l) => process.stdout.write(`${l}\n`) } = {})
 {
     const recs = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8'));
@@ -123,10 +141,12 @@ function fixture(profile, workdir, { exportDir = '', scope = '', dryRun = false,
     ];
     if (dryRun)
     {
+        out(`would write: a one-entry envoydev catalog at ${path.join(source, '.claude-plugin', 'marketplace.json')}`);
         for (const [cmd, args] of commands) out(`would run: HOME=${home} CLAUDE_CONFIG_DIR=${account} ${[cmd, ...args].join(' ')}  (in ${project})`);
     }
     else
     {
+        standInCatalog(source);
         step('marketplace add', commands[0][0], commands[0][1], { cwd: project, env, log });
         step('install', commands[1][0], commands[1][1], { cwd: project, env, log });
     }
@@ -208,4 +228,4 @@ function main(argv)
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { MARKERS, selectionFor, fixture, clean, main };
+module.exports = { MARKERS, standInCatalog, selectionFor, fixture, clean, main };

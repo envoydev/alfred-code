@@ -580,13 +580,13 @@ test('init-plan prints the auto-update line before instructions-both, and unatte
     const none = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
     assert.match(lineOf(render(none), /^auto-update:/), /^auto-update: not asked - the stack's marketplace is not registered/);
     assert.ok(!unattended(none).some((l) => l.includes('auto-update')));
-    fs.writeFileSync(path.join(acct, 'plugins', 'known_marketplaces.json'), JSON.stringify({ envoydev: { source: { source: 'github', repo: 'envoydev/alfred-code' } } }));
+    fs.writeFileSync(path.join(acct, 'plugins', 'known_marketplaces.json'), JSON.stringify({ envoydev: { source: { source: 'github', repo: 'envoydev/plugins-marketplaces' } } }));
     const asked = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
     const lines = render(asked);
     assert.ok(lines.includes('auto-update: ask envoydev'), lines.join('\n'));
     assert.match(lines[lines.length - 1], /^init-plan: /);
     assert.ok(unattended(asked).includes('unattended: auto-update -> Turn it on (Recommended)'));
-    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ extraKnownMarketplaces: { envoydev: { source: { source: 'github', repo: 'envoydev/alfred-code' }, autoUpdate: false } } }));
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ extraKnownMarketplaces: { envoydev: { source: { source: 'github', repo: 'envoydev/plugins-marketplaces' }, autoUpdate: false } } }));
     const answered = plan({ inv: INV(), root: project(), env, probe: NONE, managedFile });
     assert.match(lineOf(render(answered), /^auto-update:/), /^auto-update: off for envoydev \(/, 'a no is never asked again');
     assert.ok(!unattended(answered).some((l) => l.includes('auto-update')));

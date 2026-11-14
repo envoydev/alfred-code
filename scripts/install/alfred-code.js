@@ -50,7 +50,7 @@ const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
 const { readJson, formatOf, stringifyLike } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
-const { BRAND, marketOf } = require('./brand.js');
+const { BRAND, marketOf, movedCatalog } = require('./brand.js');
 const { envOf, hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 const USAGE = `alfred-code - install or update the Claude Code stack into a project.
@@ -282,6 +282,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             market = marketOf({ ...marketSeen, env }).key;
         }
         if (market !== BRAND.marketplace) log(`marketplace: ${market} (the key this install was registered under)`);
+        const moved = hasClaude ? movedCatalog(readMarkets(), market) : null;
+        if (moved) log(moved);
         const resolved = source.resolve();
         if (!resolved) return 1;
         // What this run READS of the last install: the project's stamp.

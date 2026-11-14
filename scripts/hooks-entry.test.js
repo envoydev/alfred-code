@@ -164,8 +164,7 @@ test('the hooks ride the core: no hooks entry is generated, and the core declare
     for (const gone of ['hooksPlugin', 'HOOKS_PLUGIN', 'applyHooksPlugin', 'applyRenames', 'MARKETPLACE_RENAMES'])
         assert.ok(!(gone in build), `${gone} is gone with the hooks entry and the renames map`);
     const core = coreEntry();
-    assert.strictEqual(core.source, './');
-    assert.strictEqual(core.strict, false);
+    assert.ok(!('source' in core) && !('strict' in core), 'the core is the root plugin.json: the catalog says where it comes from');
     const wired = JSON.stringify(core.hooks);
     for (const w of wirings) assert.ok(wired.includes(`stack/hooks/${w.file}`), `the core carries ${w.file}`);
     assert.ok(!fs.existsSync(path.join(__dirname, '..', 'hooks', 'hooks.json')), 'nothing sits at the shared root');

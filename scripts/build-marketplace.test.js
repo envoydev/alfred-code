@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, coreEntry, applyToMarketplace, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
-const { CORE_DEP_PLUGINS, foreignEntry } = require('./install/plugins.js');
+const { buildEntries, coreEntry, hooksBlock, parseHookWirings, mergeHooks, MANIFEST } = require('./build-marketplace.js');
+const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 
 const SCRIPT = path.join(__dirname, 'build-marketplace.js');
 const run = (args, opts = {}) => execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts });
@@ -16,11 +16,10 @@ const line = (h) => [h.command, ...(h.args || [])].join(' ');
 const entries = buildEntries();
 const byName = Object.fromEntries(entries.map(e => [e.name, e]));
 
-test('every entry shares ONE source and lists its own paths', () => {
+test('every entry is a manifest at the repo root and lists its own paths', () => {
     for (const e of entries)
     {
-        assert.strictEqual(e.source, './', `${e.name} must share the repo root as its source`);
-        assert.strictEqual(e.strict, false, `${e.name} carries no plugin.json of its own`);
+        assert.ok(!('source' in e) && !('strict' in e), `${e.name} is a manifest: the catalog says where it comes from`);
         assert.ok(e.version && e.author && e.description, `${e.name} needs version, author, description`);
         // The core also ships the router skill from setup-plugin/, which is not a stack skill.
         for (const s of e.skills || [])
@@ -35,7 +34,6 @@ test('every entry shares ONE source and lists its own paths', () => {
 test('the core entry carries the commands, the router skill, the inline hook, and no dependency', () => {
     const core = byName['alfred-code'];
     assert.ok(core, 'the core entry is generated from Phase 3 on');
-    assert.strictEqual(core.source, './');
     const setup = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin/.claude-plugin/plugin.json'), 'utf8'));
     assert.strictEqual(core.commands.length, setup.commands.length, 'every guided-walk command ships');
     for (const c of core.commands) assert.ok(fs.existsSync(path.join(__dirname, '..', c)), `command path: ${c}`);
@@ -82,38 +80,26 @@ test('--write is idempotent - a second run changes nothing', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('applying to a marketplace rewrites the core, leaves a hand entry and drops every MCP server entry', () => {
-    const before = {
-        name: 'envoydev',
-        metadata: { version: '9.9.9' },
-        plugins: [
-            { name: 'alfred-code', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
-            { name: 'third-party', source: './x', description: 'a hand entry' },
-            // the stack ships no server since 2026-10-24: an entry a release before left listed would stay installable
-            { name: 'alfred-navigation', source: './', description: 'an older release\'s server', mcpServers: { 'alfred-navigation': { command: 'node' } } },
-        ],
-    };
-    const after = applyToMarketplace(JSON.parse(JSON.stringify(before)), entries);
-    const core = after.plugins.find(p => p.name === 'alfred-code');
-    assert.strictEqual(core.source, './', 'the core is re-sourced to the shared root');
-    assert.ok(Array.isArray(core.commands) && core.commands.length, 'and carries its commands now');
-    assert.strictEqual(after.plugins.find(p => p.name === 'third-party').description, 'a hand entry', 'an entry this generator does not own is untouched');
-    assert.strictEqual(after.plugins.find(p => p.name === 'alfred-navigation'), undefined, 'a server entry is dropped');
-    assert.strictEqual(after.plugins.length, 1 + entries.length, 'the hand entry plus every generated entry');
+// 2026-11-14: the catalog moved to envoydev/plugins-marketplaces, which lists the core from this repo; the core's
+// manifest is the root .claude-plugin/plugin.json, generated from the same entry.
+test('--write-manifest writes the core entry as the plugin manifest, and a re-run changes nothing', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-'));
+    const file = path.join(tmp, '.claude-plugin', 'plugin.json');
+    try
+    {
+        run(['--write-manifest', '--manifest-file', file]);
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), coreEntry(), 'the manifest is the core entry');
+        const once = fs.readFileSync(file, 'utf8');
+        assert.match(run(['--write-manifest', '--manifest-file', file]), /plugin manifest current/, 'a re-run changes nothing');
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), once);
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
-// 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0'): a separate hooks
-// entry left in the live file would stay installable, and every guard it carries would fire beside
-// the core's own copy.
-test('applying to a marketplace drops the folded hooks entry, and nothing else it does not own', () => {
-    assert.deepStrictEqual(FOLDED_ENTRIES, ['alfred-code-hooks']);
-    const before = { plugins: [
-        { name: 'alfred-code-hooks', source: './', description: 'the pre-fold hooks entry', hooks: { Stop: [] } },
-        { name: 'third-party', source: './x' },
-    ] };
-    const after = applyToMarketplace(before, entries);
-    assert.strictEqual(after.plugins.find((p) => p.name === 'alfred-code-hooks'), undefined, 'the stale hooks entry is gone');
-    assert.ok(after.plugins.find((p) => p.name === 'third-party'), 'a hand entry is kept');
+test('the committed manifest is the generated core, and no marketplace file is shipped', () => {
+    assert.deepStrictEqual(SHIPPED, coreEntry(), 'run `npm run plugin-manifest`');
+    assert.ok(!fs.existsSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json')), 'the catalog lives in envoydev/plugins-marketplaces');
+    for (const key of ['source', 'strict', 'category', 'tags']) assert.ok(!(key in SHIPPED), `${key} is a catalog key, not a manifest one`);
 });
 
 test('every core hook runs in exec form: node itself, the script its first argument, no shell', () => {
@@ -201,8 +187,8 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
 
 // 2026-10-24 (the user's ruling): the stack ships no MCP server. Every server entry and the six 2.4.0 aliases left the live
 // file, and each has a retired row whose add-back registers the record's own entry under its original name.
-test('the live marketplace lists no MCP server entry, and every id it listed has a retired row with an add-json add-back', () => {
-    assert.deepStrictEqual(SHIPPED.plugins.filter((p) => p.mcpServers).map((p) => p.name), [], 'no entry carries a server');
+test('the live manifest carries no MCP server, and every id the catalog listed has a retired row with an add-json add-back', () => {
+    assert.strictEqual(SHIPPED.mcpServers, undefined, 'the core carries no server');
     for (const name of ['mcpPlugins', 'mcpAliasEntries', 'LISTED_ALIASES', 'mcpServerShapes', 'applyMcpPlugins'])
         assert.ok(!(name in require('./build-marketplace.js')), `${name} is gone with the entries`);
     const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-plugins.json'), 'utf8')).plugins;
@@ -242,102 +228,32 @@ test('malformed input fails loudly rather than emitting a short list', () => {
 // at the same scope and refuses to disable one while a dependent is enabled
 // (code.claude.com/docs/en/plugin-dependencies), so a broken edge is a project without the plugin
 // 27 skills and agents cite, not a warning.
-const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
-const shippedBy = Object.fromEntries(SHIPPED.plugins.map(e => [e.name, e]));
+const SHIPPED = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
 
-test('every shipped entry reaches the core through its dependencies, with no cycle', () => {
-    // Every MCP entry is the exception, and by design: the installer installs the core on every run, a
-    // plugin that depends on nothing can never be disabled at load by a missing one, and one that names
-    // the core blocks each core disable while it is on (I7) - an alias naming the 2.x core is unmet for
-    // the not-yet-updated installs it exists for (I6). An MCP entry carries servers and nothing else,
-    // which is how applyMcpPlugins recognises one. An entry fetched from outside this repo (preferred-tools,
-    // plugins.js foreignEntry) is the marketplace's own plugin, not a part of the stack. Everything else must
-    // reach the core, or enabling it would not enable the baseline.
-    const mcpOnly = (p) => p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
-    for (const e of SHIPPED.plugins)
-    {
-        if (e.name === 'alfred-code' || mcpOnly(e) || foreignEntry(e)) continue;
-        const seen = new Set();
-        const stack = [e.name];
-        while (stack.length)
-        {
-            const name = stack.pop();
-            if (seen.has(name)) continue;
-            seen.add(name);
-            for (const d of shippedBy[name] ? shippedBy[name].dependencies || [] : [])
-            {
-                if (typeof d !== 'string') continue;          // cross-marketplace, checked below
-                assert.ok(shippedBy[d], `${name} depends on ${d}, which this marketplace does not ship`);
-                assert.notStrictEqual(d, e.name, `${e.name} and ${d} depend on each other`);
-                stack.push(d);
-            }
-        }
-        assert.ok(seen.has('alfred-code'), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
-    }
-});
-
-test('only the core carries a cross-marketplace dependency, and the allowlist names exactly what is reached', () => {
-    const reached = new Set();
-    for (const e of SHIPPED.plugins)
-        for (const d of e.dependencies || [])
-        {
-            if (typeof d === 'string') continue;                                  // same marketplace
-            if (d.marketplace === SHIPPED.name) continue;                         // ... written the long way
-            assert.strictEqual(e.name, 'alfred-code', `${e.name} reaches outside the marketplace; only the core may`);
-            assert.ok(d.marketplace, `${e.name}'s dependency on ${d.name} names no marketplace`);
-            reached.add(d.marketplace);
-        }
-    assert.deepStrictEqual([...reached].sort(), [...(SHIPPED.allowCrossMarketplaceDependenciesOn || [])].sort(),
-        'allowCrossMarketplaceDependenciesOn must name exactly the marketplaces the entries reach into - a missing name fails the install with a cross-marketplace error, an extra one widens trust for nothing');
+test('the shipped core declares no dependency, so it loads with nothing beside it', () => {
+    assert.strictEqual(SHIPPED.dependencies, undefined);
+    assert.strictEqual(SHIPPED.allowCrossMarketplaceDependenciesOn, undefined);
 });
 
 // R109: superpowers is no stack pick at all, so no run adds it on its own.
 // claude-hud is the one plugin from another marketplace every run installs.
 // 2.2.0: claude-hud is an optional pick (the user's ruling of 2026-10-06), so no plugin rides beside the core.
 test('no plugin is added from another marketplace on every run - claude-hud is a pick, superpowers none', () => {
-    assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);
+    assert.strictEqual(SHIPPED.dependencies, undefined);
     assert.deepStrictEqual(CORE_DEP_PLUGINS, []);
     assert.ok(!CORE_DEP_PLUGINS.some((spec) => spec.split('@')[0] === 'superpowers'), `CORE_DEP_PLUGINS still names superpowers: ${CORE_DEP_PLUGINS.join(', ')}`);
 });
 
-test('a retired name is dropped from the marketplace, and a name nobody retired is kept', () =>
-{
-    const mkt = applyToMarketplace({ plugins: [{ name: 'gone-entry', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['gone-entry'] });
-    assert.strictEqual(mkt.plugins.find((p) => p.name === 'gone-entry'), undefined);
-    assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
-});
-
-// The live file carries NO renames map (S11/S16 - a rename strands an install) and no hooks entry (the fold).
-test('the live marketplace carries no renames key and no hooks entry', () => {
+// The live manifest carries NO renames map (S11/S16 - a rename strands an install).
+test('the live manifest carries no renames key', () => {
     assert.ok(!('renames' in SHIPPED), 'a renames key would move an install onto an id it never installs');
-    assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
-});
-
-test('--write-marketplace drops a renames key and the hooks entry', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-'));
-    const file = path.join(tmp, 'marketplace.json');
-    const stale = JSON.parse(JSON.stringify(SHIPPED));
-    stale.renames = { 'old-core': 'alfred-code' };
-    stale.plugins = stale.plugins.concat({ name: 'alfred-code-hooks', source: './', description: 'pre-fold', hooks: { Stop: [] } });
-    fs.writeFileSync(file, JSON.stringify(stale, null, 2) + '\n');
-    try
-    {
-        run(['--write-marketplace', '--marketplace-file', file]);
-        const after = JSON.parse(fs.readFileSync(file, 'utf8'));
-        assert.ok(!('renames' in after), 'the renames key is deleted');
-        assert.strictEqual(after.plugins.find((p) => p.name === 'alfred-code-hooks'), undefined, 'the hooks entry is dropped');
-        const once = fs.readFileSync(file, 'utf8');
-        assert.match(run(['--write-marketplace', '--marketplace-file', file]), /marketplace current/, 'a re-run changes nothing');
-        assert.strictEqual(fs.readFileSync(file, 'utf8'), once);
-    }
-    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
 test('--hooks-entry prints the core hooks block and writes nothing', () => {
-    const before = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8');
+    const before = fs.readFileSync(MANIFEST, 'utf8');
     const printed = JSON.parse(run(['--hooks-entry']));
     assert.deepStrictEqual(printed, coreEntry().hooks);
-    assert.strictEqual(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'), before);
+    assert.strictEqual(fs.readFileSync(MANIFEST, 'utf8'), before);
 });
 
 test('the core entry wires the library-stamp line at a startup, a clear and a resume - never a compaction - with a timeout', () =>
@@ -396,8 +312,7 @@ test('the README trust surface counts what the core entry carries', () =>
 // no userConfig field of the core declares one - generated or committed.
 test('no userConfig field of the core declares options, so an older CLI still loads it', () => {
     const fields = (list) => list.flatMap((e) => Object.entries(e.userConfig || {}).map(([k, f]) => [`${e.name}.${k}`, f]));
-    const committed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins
-        .filter((e) => e.name === coreEntry().name);
+    const committed = [JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))];
     const all = [...fields([coreEntry()]), ...fields(committed), ...fields(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')).entries)];
     assert.ok(all.some(([k]) => k.endsWith('.hook_profile')), 'the hook profile field is still declared');
     for (const [key, field] of all) assert.ok(!Object.hasOwn(field, 'options'), `${key} declares options`);
@@ -406,12 +321,10 @@ test('no userConfig field of the core declares options, so an older CLI still lo
     for (const name of ['minimal', 'standard', 'strict']) assert.match(profile.description, new RegExp(`\\b${name}\\b`), `the description names ${name}`);
 });
 
-// Audit 2026-11-03 SYS-06: the marketplace's hand-written metadata (the generator leaves it alone) names what the stack
-// ships - no MCP server since 2.10.1.
-test('the marketplace metadata description names no MCP server', () => {
-    const mkt = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
-    assert.match(mkt.metadata.description, /skills, agents, rules and hooks/);
-    assert.doesNotMatch(mkt.metadata.description, /\bMCP\b/i);
+// Audit 2026-11-03 SYS-06: the core's description names what the stack ships - no MCP server since 2.10.1. The
+// catalog's own metadata moved to envoydev/plugins-marketplaces with it.
+test('the manifest description names no MCP server', () => {
+    assert.doesNotMatch(SHIPPED.description, /\bMCP\b/i);
 });
 
 // O2 (inventory A): a filesystem server's read_media_file reads a file like read_file; the core entry wires the secret

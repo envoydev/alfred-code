@@ -5,7 +5,7 @@ name: release
 # pre-rebrand name a 1.x install's archive fallback asks for - tagged v<version> from the plugin manifest
 # (setup-plugin/.claude-plugin/plugin.json) - the marketplace serves that same manifest
 # from main, so the marketplace, main, and the release always carry ONE version (the
-# parity lint keeps marketplace.json equal). A RELEASE-SOURCE file inside each archive
+# parity lint keeps the root .claude-plugin/plugin.json equal). A RELEASE-SOURCE file inside each archive
 # names the exact commit and version. The installers and the setup/update/configure
 # plugin skills download releases/latest/download/... (always the newest release); a shallow
 # clone of main is their fallback - which covers the brief delete/recreate window this
@@ -57,7 +57,7 @@ jobs:
             echo "::warning::v$VERSION names $tagged - replace_tag moves it to $GITHUB_SHA"
             exit 0
           fi
-          echo "::error::v$VERSION already names $tagged, not $GITHUB_SHA - bump the version in setup-plugin/.claude-plugin/plugin.json (and marketplace.json), or re-run by hand with replace_tag"
+          echo "::error::v$VERSION already names $tagged, not $GITHUB_SHA - bump the version in setup-plugin/.claude-plugin/plugin.json (then npm run plugin-manifest), or re-run by hand with replace_tag"
           exit 1
 
       # The commits carrying this exact tree are HEAD and any parent with the same tree (develop's tip under

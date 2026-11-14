@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { MARKERS, selectionFor, fixture, clean, main } = require('./profile-fixture.js');
+const { MARKERS, standInCatalog, selectionFor, fixture, clean, main } = require('./profile-fixture.js');
 
 const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8'));
 const roots = [];
@@ -48,6 +48,23 @@ test('a dry run writes the markers and the selection and prints the marketplace 
     assert.ok(add >= 0 && install > add, 'the export is registered before the installer runs');
     assert.ok(lines.every((l) => !/would run/.test(l) || l.includes(`CLAUDE_CONFIG_DIR=${f.account}`)), 'every external command runs on the isolated account');
     assert.equal(path.dirname(f.home), dir, 'one HOME is shared across the profiles');
+});
+
+test('the export gets a one-entry envoydev catalog over its root, and a git checkout is refused', () =>
+{
+    const dir = workdir();
+    const src = path.join(dir, 'plain-export');
+    fs.mkdirSync(src);
+    const catalog = JSON.parse(fs.readFileSync(standInCatalog(src), 'utf8'));
+    assert.equal(catalog.name, 'envoydev');
+    assert.deepEqual(catalog.plugins.map((p) => [p.name, p.source]), [['alfred-code', './']]);
+    const checkout = path.join(dir, 'checkout');
+    fs.mkdirSync(path.join(checkout, '.git'), { recursive: true });
+    assert.throws(() => standInCatalog(checkout), /is a git checkout/);
+    assert.ok(!fs.existsSync(path.join(checkout, '.claude-plugin')), 'nothing written into a checkout');
+    const lines = [];
+    fixture('bare', dir, { exportDir: fakeExport(dir), dryRun: true, out: (l) => lines.push(l) });
+    assert.ok(lines.some((l) => /would write: a one-entry envoydev catalog/.test(l)), 'a dry run names the catalog and writes none');
 });
 
 test('a fixture is installed fresh: an existing project is refused, an unknown profile named', () =>

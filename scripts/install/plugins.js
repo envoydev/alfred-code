@@ -43,7 +43,7 @@ const USER_OFF_WINS = ['claude-hud'];
 const offByUser = (spec, listing) => USER_OFF_WINS.includes(bareName(spec)) && fieldOf(listing, spec, 'enabled') === false;
 
 const OFFICIAL_MARKETPLACE = 'anthropics/claude-plugins-official';
-const STACK_MARKETPLACE = BRAND.slug;
+const STACK_MARKETPLACE = BRAND.catalog;
 // The FRESH-install spelling. An install keeps the marketplace key it was registered under, which the
 // run resolves (brand.js marketKey) and spells every stack spec with - never this constant.
 const CORE_SPEC = `${BRAND.core}@${BRAND.marketplace}`;
@@ -860,17 +860,28 @@ function parseMarketplaces(json)
     catch { return []; }
 }
 
-// The names the stack's marketplace lists from OUTSIDE this repo - an object `source` (`github`, `url`, ...), the
-// hand-written preferred-tools and alfred-mods entries. They are the marketplace's plugins, not the stack's: a row of one under the stack
-// key is never uninstalled with the stack nor read back as a stack entry. Read from the snapshot's own marketplace.json;
-// one that cannot be read names none.
+// The marketplace's OWN plugins under the stack key - alfred-mods, preferred-tools, any the owner lists there later. They
+// are not the stack's: a row of one is never uninstalled with the stack nor read back as a stack entry. The stack owns
+// only the core, the hooks entry folded into it in 2.0.0 and the plugins a release retired (meta/retired-plugins.json and
+// the manifest's retired.plugins, which update prunes on their own route); every other name under the key is foreign.
+// Read from the snapshot alone, so no catalog file is needed: the catalog left this repo for BRAND.catalog
+// (2026-11-14), and a missing or unreadable retired list only narrows what the stack claims - the safe side, since a
+// foreign row is left installed. `foreignEntry` still tells a catalog entry fetched from another repo (an object
+// `source`) for the lints that read one.
 const foreignEntry = (e) => Boolean(e && e.source && typeof e.source === 'object');
 function foreignEntries(sourceDir)
 {
-    let entries;
-    try { entries = parseJson(fs.readFileSync(path.join(sourceDir, '.claude-plugin', 'marketplace.json'), 'utf8')).plugins; }
-    catch { return new Set(); }
-    return new Set((Array.isArray(entries) ? entries : []).filter(foreignEntry).map((e) => e.name));
+    const owned = new Set([BRAND.core, 'alfred-code-hooks']);
+    const add = (names) => { for (const n of Array.isArray(names) ? names : []) if (typeof n === 'string' && n) owned.add(n); };
+    try { add(((parseJson(fs.readFileSync(path.join(sourceDir, 'meta', 'stack-manifest.json'), 'utf8')).retired) || {}).plugins); }
+    catch { /* no manifest: the core alone is the stack's */ }
+    try
+    {
+        const rows = parseJson(fs.readFileSync(path.join(sourceDir, 'meta', 'retired-plugins.json'), 'utf8')).plugins;
+        add((Array.isArray(rows) ? rows : []).map((r) => r && r.name));
+    }
+    catch { /* no retired list: nothing more is the stack's */ }
+    return { has: (name) => !owned.has(String(name)), owned };
 }
 
 // The plugins THIS project's settings switch on that no install record reaches (audit 2026-10-10, session 758ce661: a

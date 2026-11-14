@@ -37,8 +37,8 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 
 - **`develop` is where work lands; `main` is the release branch.** Merging `develop` -> `main` IS the
   release: the workflow rebuilds the archive and tags `v<version>` from
-  `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `marketplace.json` metadata and `package.json`; lint enforces
-  equality) on `develop` with any release-worthy change - a merge that reuses a version whose tag names another
+  `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `package.json`, then `npm run plugin-manifest` for the root
+  `.claude-plugin/plugin.json`; lint enforces equality) on `develop` with any release-worthy change - a merge that reuses a version whose tag names another
   commit FAILS the release job (2.1.5 M27; only a manual run with `replace_tag` moves it). Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR; `npm run gate` runs both here on
   the committed tree, on macOS, Linux (Docker) and Windows (a Parallels VM) in parallel - run it by hand before
@@ -49,9 +49,11 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   2026-10-07), so no reader of the old spellings is left - not the env prefix, the stamp, the marketplace
   key, the plugin cache dir nor the seat-deny spelling. Lint check 57 fails on any of them in any tracked
   file, history included, with no marker or exemption. Everything is `alfred-code` / `ALFRED_CODE_`.
-- **The repo root is a plugin source, so twelve names are RESERVED there.** Every marketplace entry
-  shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
-  whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root
+- **The repo root is the plugin root, so twelve names are RESERVED there.** The `envoydev` marketplace is served from
+  [plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces) (2026-11-14), which lists the core from this
+  repo; its manifest is the generated root `.claude-plugin/plugin.json` (`npm run plugin-manifest`), and no
+  `marketplace.json` comes back here (lint 49). The manifest lists the paths it ships, but a root is auto-discovered
+  whatever a manifest lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root
   `agents/` or `commands/` loads once PER ENTRY, a root `.mcp.json` or `hooks/hooks.json` loads once
   and is attributed to a different entry each time. So `skills/`, `commands/`, `agents/`,
   `hooks/hooks.json`, `monitors/`, `settings.json` and `.lsp.json` never appear at the root, nor the other

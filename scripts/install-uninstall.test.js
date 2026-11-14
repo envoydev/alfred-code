@@ -187,24 +187,27 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     assert.deepStrictEqual(userCalls, [], 'a user-scope install is never uninstalled from here');
 });
 
-// The stack's marketplace also lists preferred-tools from its own GitHub repo: a row of it shares the stack key but is
-// not the stack's, and the matrix of 2026-10-27 saw uninstall take it with the core.
-test('removePlugins: a foreign entry under the stack key stays installed; foreignEntries reads it from the snapshot', () =>
+// The stack's marketplace also lists preferred-tools and alfred-mods from their own GitHub repos: a row of one shares
+// the stack key but is not the stack's, and the matrix of 2026-10-27 saw uninstall take it with the core. Since the
+// catalog left this repo (2026-11-14) the snapshot carries no marketplace.json, so the stack's own names decide: the
+// core, the folded hooks entry and every retired plugin; anything else under the key is foreign.
+test('removePlugins: a foreign entry under the stack key stays installed; foreignEntries names the stack\'s own from the snapshot', () =>
 {
     const plugins = require('./install/plugins.js');
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'foreign-'));
     try
     {
-        assert.deepStrictEqual([...plugins.foreignEntries(tmp)], [], 'no marketplace.json names none');
-        fs.mkdirSync(path.join(tmp, '.claude-plugin'));
-        fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'), '{ not json');
-        assert.deepStrictEqual([...plugins.foreignEntries(tmp)], [], 'an unreadable one names none');
-        fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'), JSON.stringify({ plugins: [
-            { name: 'alfred-code', source: './' },
-            { name: 'preferred-tools', source: { source: 'github', repo: 'envoydev/preferred-tools', ref: 'main' } },
-        ] }));
+        const bare = plugins.foreignEntries(tmp);
+        assert.ok(!bare.has('alfred-code') && bare.has('preferred-tools'), 'no manifest: the core alone is the stack\'s');
+        fs.mkdirSync(path.join(tmp, 'meta'));
+        fs.writeFileSync(path.join(tmp, 'meta', 'retired-plugins.json'), '{ not json');
+        assert.ok(plugins.foreignEntries(tmp).has('alfred-navigation'), 'an unreadable retired list claims nothing more');
+        fs.writeFileSync(path.join(tmp, 'meta', 'retired-plugins.json'), JSON.stringify({ plugins: [{ name: 'alfred-navigation' }] }));
+        fs.writeFileSync(path.join(tmp, 'meta', 'stack-manifest.json'), JSON.stringify({ retired: { plugins: ['ponytail'] } }));
         const foreign = plugins.foreignEntries(tmp);
-        assert.deepStrictEqual([...foreign], ['preferred-tools']);
+        for (const own of ['alfred-code', 'alfred-code-hooks', 'alfred-navigation', 'ponytail']) assert.ok(!foreign.has(own), `${own} is the stack's`);
+        for (const other of ['preferred-tools', 'alfred-mods', 'a-plugin-listed-later']) assert.ok(foreign.has(other), `${other} is the marketplace's`);
+        assert.ok(plugins.foreignEntries(path.join(__dirname, '..')).has('alfred-mods') && !plugins.foreignEntries(path.join(__dirname, '..')).has('alfred-navigation'), 'the real tree: the mod is foreign, a retired stack plugin is not');
 
         const rows = [
             { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.12.0', enabled: true },

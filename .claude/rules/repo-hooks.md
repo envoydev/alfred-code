@@ -38,7 +38,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   the plugin copy standing down beside a still-wired copied twin - only a REAL one (`yieldToCopiedTwin`, audit 2026-10-30
   HK-02: an entry naming the twin under matcher `Nothing`, no file on disk, stood both dispatchers down): the copied file
   on disk and entries covering every plugin row the run stands for (the event, a matcher firing on each of the row's
-  tools; the core entry's rows from the plugin root's `marketplace.json`, a guard run in-process by the plugin's
+  tools; the core's rows from the plugin root's `plugin.json` (an older snapshot's `marketplace.json` entry), a guard run in-process by the plugin's
   dispatcher that dispatcher's row, the file dispatcher per call), and only entries wired when the SESSION BEGAN (E1-3:
   Claude Code reads its hooks at start, so a twin written mid-session ran nothing while the plugin copy stood down; the model can write that wiring itself under
   `bypassPermissions`, which lets protected-path writes to `.claude/` through - code.claude.com/docs/en/permission-modes,

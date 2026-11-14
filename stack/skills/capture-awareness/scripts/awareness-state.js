@@ -201,7 +201,15 @@ function scanRules(dir)
 function entryItems(installPath, pluginName)
 {
     let entry;
+    // The plugin's own manifest when it names the plugin and lists its items (the core since the catalog left its repo,
+    // 2026-11-14), else a marketplace manifest shipped at the root (an older core).
     try
+    {
+        const own = JSON.parse(fs.readFileSync(path.join(installPath, '.claude-plugin', 'plugin.json'), 'utf8'));
+        if (own && own.name === pluginName && (own.skills || own.agents || own.commands)) entry = own;
+    }
+    catch { /* none of its own: the marketplace manifest below */ }
+    if (!entry) try
     {
         const mk = JSON.parse(fs.readFileSync(path.join(installPath, '.claude-plugin', 'marketplace.json'), 'utf8'));
         entry = (mk.plugins || []).find((x) => x && x.name === pluginName);

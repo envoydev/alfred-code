@@ -93,12 +93,12 @@ function lintStaleMcpToolNames({ files, entries, aliases } = {})
     let listed = aliases;
     try
     {
-        // The marketplace's own server entries: none since the stack stopped shipping servers (lint 53 holds it).
-        if (!shipped) shipped = (JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8')).plugins || []).filter((p) => p && p.mcpServers);
+        // The plugin's own server declaration: none since the stack stopped shipping servers (lint 53 holds it).
+        if (!shipped) shipped = [JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8'))].filter((p) => p && p.mcpServers);
         // No RETIRED alias is listed since 2.2.1, so an old spelling is stale everywhere.
         if (!listed) listed = [];
     }
-    catch (err) { return [`the marketplace could not be read, so the stale tool-name sweep did not run: ${err.message}`]; }
+    catch (err) { return [`the plugin manifest could not be read, so the stale tool-name sweep did not run: ${err.message}`]; }
     const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
     const aliased = new Map(listed.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
     const out = [];

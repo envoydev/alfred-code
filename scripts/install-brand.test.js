@@ -12,13 +12,13 @@ const { marketKey, isCore, stampFile, alwaysOn, rowOn, BRAND } = brand;
 test('the marketplace key follows the installed core, not the manifest name', () =>
 {
     assert.equal(marketKey({ listing: [{ id: 'alfred-code@any-key', enabled: true }], marketplaces: [] }), 'any-key');
-    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'envoydev', source: { repo: 'envoydev/alfred-code' } }] }), 'envoydev');
+    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'envoydev', source: { repo: 'envoydev/plugins-marketplaces' } }] }), 'envoydev');
     assert.equal(marketKey({ listing: [], marketplaces: [] }), BRAND.marketplace);
 });
 
 test('both keys registered: the one carrying the installed core wins', () =>
 {
-    const marketplaces = [{ name: 'fork-key', source: { repo: 'envoydev/alfred-code' } }, { name: 'envoydev', source: { repo: 'envoydev/alfred-code' } }];
+    const marketplaces = [{ name: 'fork-key', source: { repo: 'envoydev/plugins-marketplaces' } }, { name: 'envoydev', source: { repo: 'envoydev/plugins-marketplaces' } }];
     assert.equal(marketKey({ listing: [{ id: 'alfred-code@envoydev', enabled: true }], marketplaces }), 'envoydev');
 });
 
@@ -52,15 +52,29 @@ test('the stamp is read and written as alfred-code.stamp, and no stamp at all re
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// 2026-11-14: the catalog left this repo. A registration made before still points at it and is still the stack's key
+// (re-registering would uninstall every plugin installed from it); the run names the move in one line.
+test('a registration from the old catalog repo is still the stack, and its move is named in one line', () =>
+{
+    const old = [{ name: 'envoydev', source: { source: 'github', repo: 'envoydev/alfred-code' } }];
+    assert.equal(brand.marketOf({ listing: [], marketplaces: old }).known, true, 'the old slug is the stack');
+    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'mine', source: 'github', repo: 'envoydev/alfred-code' }] }), 'mine');
+    assert.match(brand.movedCatalog(old, 'envoydev'), /^!! the envoydev marketplace is registered from envoydev\/alfred-code, which no longer serves it - the catalog moved to envoydev\/plugins-marketplaces/);
+    assert.match(brand.movedCatalog([{ name: 'envoydev', source: 'git', url: 'https://github.com/envoydev/alfred-code.git' }], 'envoydev'), /^!! /, 'a git URL names the repo too');
+    assert.equal(brand.movedCatalog([{ name: 'envoydev', source: { source: 'github', repo: 'envoydev/plugins-marketplaces' } }], 'envoydev'), null, 'the new catalog says nothing');
+    assert.equal(brand.movedCatalog(old, 'other'), null, 'only the key this run uses');
+    assert.equal(brand.movedCatalog([], 'envoydev'), null);
+});
+
 test('the marketplace list rows are read in the shape the CLI prints them, git and github alike', () =>
 {
     // `claude plugin marketplace list --json` (evidence S7): {name, source: 'git', url} for a git
     // source, {name, source: 'github', repo} for a github one - the KEY is `name`.
-    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'old-key', source: 'github', repo: 'envoydev/alfred-code' }] }), 'old-key');
-    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'k', source: 'git', url: 'https://github.com/envoydev/alfred-code.git' }] }), 'k');
+    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'old-key', source: 'github', repo: 'envoydev/plugins-marketplaces' }] }), 'old-key');
+    assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'k', source: 'git', url: 'https://github.com/envoydev/plugins-marketplaces.git' }] }), 'k');
     assert.equal(marketKey({ listing: [], marketplaces: [{ name: 'k', source: 'github', repo: 'someone/else' }] }), BRAND.marketplace);
     // Another repo registered beside it, no core installed: the current slug's key is the one used.
-    const both = [{ name: 'other', source: 'github', repo: 'envoydev/other-repo' }, { name: 'envoydev', source: 'github', repo: 'envoydev/alfred-code' }];
+    const both = [{ name: 'other', source: 'github', repo: 'envoydev/other-repo' }, { name: 'envoydev', source: 'github', repo: 'envoydev/plugins-marketplaces' }];
     assert.equal(marketKey({ listing: [], marketplaces: both }), 'envoydev');
 });
 

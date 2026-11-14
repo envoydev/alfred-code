@@ -33,9 +33,13 @@ or newer, the `claude` CLI and git.
 
 ```bash
 claude plugin marketplace add anthropics/claude-plugins-official
-claude plugin marketplace add envoydev/alfred-code
+claude plugin marketplace add envoydev/plugins-marketplaces
 claude plugin install alfred-code@envoydev --scope local
 ```
+
+The `envoydev` marketplace is served from [envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces),
+which lists the plugin from this repo. Added it from `envoydev/alfred-code` before 2026-11? That copy is gone - its
+[README](https://github.com/envoydev/plugins-marketplaces#moving-from-the-old-marketplace) says how to move over.
 
 `local` keeps the plugin and everything the stack writes to you alone. Use `--scope project` to give the plugin to
 everyone who clones the project ([which scope?](#faq)).
@@ -332,7 +336,7 @@ The flags you are most likely to want:
 
 Under managed settings:
 
-- `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/alfred-code" }`, `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
+- `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/plugins-marketplaces" }` (the `envoydev` marketplace), `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
 - Enable `alfred-code@envoydev` in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
 - `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
 

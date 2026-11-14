@@ -727,7 +727,7 @@ test('deep review: the hand-back route asks nobody it should not, and a seat tha
 test('deep review: the manifest wires docs-session on SubagentHandback as its own row, outside the file dispatcher', () => {
   const rows = require('../meta/stack-manifest.json').hooks.filter((h) => h.file === 'docs-session.js').map((h) => h.matcher);
   assert.ok(rows.includes('SubagentHandback') && rows.includes('@SubagentStop'), rows.join(' '));
-  const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-code');
+  const entry = require('../.claude-plugin/plugin.json');
   const pre = (entry.hooks.PreToolUse || []).filter((g) => g.matcher === 'SubagentHandback');
   assert.strictEqual(pre.length, 1);
   // the group also carries the output-scoring's seal (guard-stop-contract, 2026-10-25); docs-session is its own command in it

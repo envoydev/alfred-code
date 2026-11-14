@@ -793,78 +793,54 @@ test('check 48: the core carries the manifest\'s hook wiring, and every wired ho
         'the committed core entry\'s hooks must match `build-marketplace.js --hooks-entry`');
 });
 
-// The fixtures below are the live file with one thing changed, so each finding is that change's.
-const liveMarketplace = () => JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+// The fixtures below are the live manifest with one thing changed, so each finding is that change's.
+const liveManifest = () => JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '.claude-plugin', 'plugin.json'), 'utf8'));
 
-test('check 48: a core missing a stack wiring, or a core with no hooks, is a finding', () => {
+test('check 48: a core missing a stack wiring, or a manifest that is not the core, is a finding', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
-    const lost = liveMarketplace();
-    const core = lost.plugins.find((p) => p.name === 'alfred-code');
-    core.hooks.Stop = core.hooks.Stop.slice(1);
-    assert.ok(lintHooksEntry(lost).some((f) => /core entry's hooks are STALE/.test(f)), 'a dropped Stop hook is caught');
-    const none = liveMarketplace();
-    none.plugins = none.plugins.filter((p) => p.name !== 'alfred-code');
-    assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
+    const lost = liveManifest();
+    lost.hooks.Stop = lost.hooks.Stop.slice(1);
+    assert.ok(lintHooksEntry(lost).some((f) => /hooks are STALE/.test(f)), 'a dropped Stop hook is caught');
+    const other = liveManifest();
+    other.name = 'someone-else';
+    assert.ok(lintHooksEntry(other).some((f) => /is not the `alfred-code` manifest/.test(f)), 'a manifest of another name is caught');
 });
 
 // HK-22 retired (2026-11-04): the stop judge left with its manifest row and the generator's prompt path, so a prompt
-// hook added to the core entry by hand is no wiring the manifest makes - a stale entry.
+// hook added to the core by hand is no wiring the manifest makes - a stale entry.
 test('check 48: a prompt hook added to the core by hand is a stale entry', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
-    const drifted = liveMarketplace();
-    const stop = drifted.plugins.find((p) => p.name === 'alfred-code').hooks.Stop;
+    const drifted = liveManifest();
+    const stop = drifted.hooks.Stop;
     assert.ok(!stop.flatMap((g) => g.hooks).some((h) => h.type === 'prompt'), 'the live core carries no prompt hook');
     stop[0].hooks.push({ type: 'prompt', prompt: 'Judge $ARGUMENTS', timeout: 30 });
-    assert.ok(lintHooksEntry(drifted).some((f) => /core entry's hooks are STALE/.test(f)), 'a prompt hook wired by hand is caught');
+    assert.ok(lintHooksEntry(drifted).some((f) => /hooks are STALE/.test(f)), 'a prompt hook wired by hand is caught');
 });
 
-test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {
+// 2026-11-14: the catalog moved to envoydev/plugins-marketplaces; the root carries the core's generated manifest alone.
+test('check 49: the live manifest is clean, and a hand edit, a renames key or a marketplace file back at the root fail', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
     const { lintMarketplaceEntries } = require('./lint-skills.js');
-    assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file is clean');
+    assert.deepStrictEqual(lintMarketplaceEntries(), [], 'the live manifest is clean');
 
-    // 2.2.1: no RETIRED alias is listed - a renamed MCP id left in the file is named with its fix.
-    for (const name of ['serena', 'memory', 'playwright-chrome'])
-    {
-        const stale = liveMarketplace();
-        stale.plugins.push({ name, source: './', description: 'RETIRED', skills: [] });
-        assert.ok(lintMarketplaceEntries(stale).some((f) => f.includes(`carries ${name}, a RETIRED alias no longer listed`)), `${name} left listed is a finding`);
-    }
+    const edited = liveManifest();
+    edited.description = 'edited by hand';
+    assert.ok(lintMarketplaceEntries(edited).some((f) => /does not match the generated core entry/.test(f)), 'a hand edit is a finding');
 
-    const renamed = liveMarketplace();
+    const renamed = liveManifest();
     renamed.renames = { serena: 'alfred-navigation' };
     assert.ok(lintMarketplaceEntries(renamed).some((f) => /`renames` key/.test(f)), 'a renames map is a finding');
 
-    const hooks = liveMarketplace();
-    hooks.plugins.push({ name: 'alfred-code-hooks', source: './', description: 'x', hooks: {} });
-    assert.ok(lintMarketplaceEntries(hooks).some((f) => /alfred-code-hooks.*folded into the core/.test(f)), 'a hooks entry is a finding');
-
-    // An entry fetched from outside the repo is the marketplace's own; a hand entry inside the repo is still drift.
-    const foreign = liveMarketplace();
-    foreign.plugins.push({ name: 'other-tool', source: { source: 'github', repo: 'envoydev/other-tool', ref: 'main', sha: '0123456789abcdef0123456789abcdef01234567' }, description: 'x' });
-    assert.deepStrictEqual(lintMarketplaceEntries(foreign), [], 'an object-sourced entry is not the placement\'s');
-    // SYS-07 of the 2026-11-03 system audit: an outside source floating on a branch serves whatever lands there next,
-    // so every one is pinned to its full commit - a missing, short or non-hex sha is a finding.
-    const withSource = (source) => {
-        const mp = liveMarketplace();
-        mp.plugins.push({ name: 'other-tool', source, description: 'x' });
-        return lintMarketplaceEntries(mp).some((f) => /other-tool is fetched from outside this repo with no 40-hex `sha`/.test(f));
-    };
-    for (const sha of [undefined, '33f60bf', 'not-a-sha-not-a-sha-not-a-sha-not-a-sha!', 42])
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lint49-'));
+    try
     {
-        const source = { source: 'github', repo: 'someone/other-tool', ref: 'main' };
-        if (sha !== undefined) source.sha = sha;
-        assert.ok(withSource(source), `a foreign source with sha ${JSON.stringify(sha)} is a finding`);
+        fs.mkdirSync(path.join(tmp, '.claude-plugin'));
+        fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'), '{}');
+        assert.ok(lintMarketplaceEntries(liveManifest(), tmp).some((f) => /marketplace\.json is back at the root - the catalog lives in envoydev\/plugins-marketplaces/.test(f)), 'a catalog back at the root is a finding');
     }
-    // The user's ruling of 2026-11-04: their own repo floats on its release branch, `main`, with no sha - and only so
-    assert.strictEqual(withSource({ source: 'github', repo: 'envoydev/other-tool', ref: 'main' }), false, 'an envoydev/ repo on main with no sha floats');
-    assert.ok(withSource({ source: 'github', repo: 'envoydev/other-tool', ref: 'v1.0.0' }), 'an envoydev/ repo on another ref is pinned');
-    assert.ok(withSource({ source: 'github', repo: 'envoydev/other-tool' }), 'an envoydev/ repo with no ref is pinned');
-    assert.ok(withSource({ source: 'github', repo: 'envoydev/other-tool', ref: 'main', sha: '33f60bf' }), 'a sha it carries is a full one');
-    assert.ok(withSource({ source: 'github', repo: 'envoydev-fork/other-tool', ref: 'main' }), 'only the envoydev owner floats');
-    assert.ok(withSource({ source: 'url', url: 'https://github.com/envoydev/other-tool.git', ref: 'main' }), 'only a github source floats');
-    const inside = liveMarketplace();
-    inside.plugins.push({ name: 'stray', source: './stray', description: 'x' });
-    assert.ok(lintMarketplaceEntries(inside).some((f) => /carries stray, which the placement does not produce/.test(f)), 'a relative-path hand entry is a finding');
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
@@ -936,9 +912,9 @@ test('check 52: the repo ships no plugin bin/, and one would be a finding wherev
 
     fs.rmSync(path.join(tmp, 'stack', 'bin'), { recursive: true });
     fs.mkdirSync(path.join(tmp, '.claude-plugin'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'),
-        JSON.stringify({ plugins: [{ name: 'x', commands: ['./stack/bin/tool.md'] }] }));
-    assert.match(lintNoPluginBin(tmp)[0], /lists .*bin.*under commands/, 'an entry reaching a bin/ path is a finding');
+    fs.writeFileSync(path.join(tmp, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'x', commands: ['./stack/bin/tool.md'] }));
+    assert.match(lintNoPluginBin(tmp)[0], /lists .*bin.*under commands/, 'a manifest reaching a bin/ path is a finding');
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -1042,27 +1018,27 @@ test('check 57: the match ignores case and separator, and the old marker exempts
     assert.deepStrictEqual(of('scripts/x.js', `const a = 'claude'; const b = 'stack';\n`), [], 'the two words apart are no spelling');
 });
 
-test('check 57: in the marketplace every line is checked - plugins[] included', () => {
+test('check 57: in the plugin manifest every line is checked - its paths included', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const { lintLegacyNames } = require('./lint-skills.js');
-    const of = (text) => lintLegacyNames([{ file: '.claude-plugin/marketplace.json', text }]).map((f) => f.split(' ')[0]);
-    const market = [
+    const of = (text) => lintLegacyNames([{ file: '.claude-plugin/plugin.json', text }]).map((f) => f.split(' ')[0]);
+    const manifest = [
         '{',
-        '  "name": "envoydev",',
-        '  "owner": {',
+        '  "name": "alfred-code",',
+        '  "author": {',
         `    "url": "https://github.com/envoydev/${OLD}"`,
         '  },',
-        '  "plugins": [',
-        `    { "name": "${OLD}" },`,
-        '    { "name": "alfred-code" }',
+        '  "agents": [',
+        `    "./stack/agents/${OLD}.md",`,
+        '    "./stack/agents/integration-reviewer.md"',
         '  ]',
         '}',
         '',
     ].join('\n');
-    assert.deepStrictEqual(of(market), ['.claude-plugin/marketplace.json:4', '.claude-plugin/marketplace.json:7'], 'owner.url and a plugins[] entry are both findings');
-    const live = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8');
-    assert.deepStrictEqual(of(live), [], 'the committed marketplace is clean');
+    assert.deepStrictEqual(of(manifest), ['.claude-plugin/plugin.json:4', '.claude-plugin/plugin.json:7'], 'author.url and a path entry are both findings');
+    const live = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'plugin.json'), 'utf8');
+    assert.deepStrictEqual(of(live), [], 'the committed manifest is clean');
 });
 
 test('check 57: the walk reads tracked text files, and the live tree carries no 1.x name', () => {
