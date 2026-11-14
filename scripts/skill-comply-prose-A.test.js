@@ -52,7 +52,7 @@ test('U31: the approve template carries the fresh-session row', () =>
 test('U34: an empty request is asked for, nothing runs', () =>
 {
     const text = flat(read(SKILL));
-    const at = text.indexOf('**On invocation, resume before starting:**');
+    const at = text.indexOf('**On invocation, resume before starting**');
     const u34 = text.indexOf('Invoked with no request and no plan to resume, the one reply is an ask for the task - nothing runs before its answer.');
     assert.ok(at >= 0 && u34 > at && u34 - at < 1200, 'the sentence closes the On invocation paragraph');
 });

@@ -23,8 +23,14 @@ run-time load.
 - **Handoff notes** (`node .claude/hooks/handoff.js`) are the seats' hand-offs in agents mode
   (`<feature>/<contract_version>/<seat>/<task>`), never a second cursor.
 
-**On invocation, resume before starting:** `node .claude/hooks/handoff.js left <feature>` (the run's seat notes, by name;
-`list <feature>/<contract_version>` prints them), and run `node .claude/hooks/plan-status.js resume --plan <the plan folder>`. A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
+**On invocation, resume before starting** - both before step 1, in this order:
+
+1. `node .claude/hooks/handoff.js left <feature>` - always, a new request included (the run's seat notes, by name;
+   `list <feature>/<contract_version>` prints them).
+2. Only when `<docs-path>/work/plans/<feature>/` exists: `node .claude/hooks/plan-status.js resume --plan <that folder>`.
+   A new request has no folder yet - skip it, never guess an id.
+
+A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
 already passed. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
 A NEW cycle after a finished one in this session offers the fresh-session hand-off

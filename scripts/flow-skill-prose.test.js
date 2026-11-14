@@ -418,7 +418,8 @@ test('a status-less seat return is a seat death in every orchestrator that route
 test('solve resumes by the feature and closes on the counted purge', () =>
 {
     const solve = flat(skill('task-solve'));
-    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `node \.claude\/hooks\/handoff\.js left <feature>`/);
+    // the PF1 A/B rep round (2026-11-14): the handoff lookup first and always, so 'urgent' never skips it
+    assert.match(solve, /\*\*On invocation, resume before starting\*\* - both before step 1, in this order: 1\. `node \.claude\/hooks\/handoff\.js left <feature>` - always, a new request included/);
     assert.doesNotMatch(solve, /Delete or archive the cycle note|memory_list|memory_delete/);
     assert.match(solve, /Purge the notes - `node \.claude\/hooks\/handoff\.js purge <feature>` - then the purge count \(`references\/step-mechanics\.md`\)/);
     // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
@@ -575,7 +576,7 @@ test('PF1 (R42): the raise-to-standard route records sync, an approval in the re
 test('PF1: task-solve keeps its state in the plan folder, resumes through the script and reads the close from show --full', () => {
     const text = flat(skill('task-solve'));
     assert.match(text, /## State - the plan folder is truth and cursor/);
-    assert.match(text, /run `node \.claude\/hooks\/plan-status\.js resume --plan <the plan folder>`/);
+    assert.match(text, /2\. Only when `<docs-path>\/work\/plans\/<feature>\/` exists: `node \.claude\/hooks\/plan-status\.js resume --plan <that folder>`\. A new request has no folder yet - skip it, never guess an id\./);
     assert.match(text, /Each stop runs `cursor` before its ask\./);
     assert.strictEqual((text.match(/Each stop runs `cursor`/g) || []).length, 1, 'said once');
     assert.match(text, /read from `show --full` - its `## Tasks` and `## Deviations` sections/);
