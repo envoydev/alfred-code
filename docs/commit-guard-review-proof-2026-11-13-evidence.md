@@ -80,7 +80,9 @@ command starts and the result row after it ends.
 - Linux (2026-11-14, Claude Code 2.1.325 in a `node:22` container, the same sleep / write / sleep call): the file's
   mtime was 1,061 ms after the call row's `timestamp` and 1,016 ms before the result row's - 0 ms outside either end,
   inside today's 2s slack, so nothing changes on Linux.
-- Windows: NOT RUN.
+- Windows (2026-11-14, Claude Code 2.1.325 on a Windows 11 VM, Git Bash as the shell, the same call): the file's mtime
+  was 10,482 ms after the call row's `timestamp` and 1,362 ms before the result row's - 0 ms outside either end, inside
+  today's 2s slack, so nothing changes on Windows. The wide front gap is the shell's start on Windows, inside the window.
 
 The rule for the owner's probe on those systems (the design's Assumptions): measure how far the file's time lies
 before the call row's time or after the result row's. Within 2s: inside today's slack, nothing changes. More than 2s
