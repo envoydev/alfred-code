@@ -30,6 +30,7 @@ Thumbs.db
 !.claude/skills/refining-plans/
 !.claude/skills/javascript/
 !.claude/skills/markdown-style/
+!.claude/skills/solve-task/
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/execution.md
@@ -44,6 +45,8 @@ Thumbs.db
 !.claude/rules/refining-plans.md
 !.claude/rules/superpowers-location.md
 !.claude/rules/auto-run.md
+!.claude/rules/javascript.md
+!.claude/rules/typescript.md
 !.claude/skills/repo-audit-agents/
 !.claude/skills/repo-audit-claude-md/
 !.claude/skills/repo-audit-hooks/

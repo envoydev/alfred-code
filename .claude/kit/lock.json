@@ -1,11 +1,13 @@
 {
-  "kit": "claude-kit@9945cb1",
+  "kit": "claude-kit@b5d4a9d",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
     ".claude/rules/execution.md": "66bfd60e5d39f6bcc6a5deba22fb4467186c29a3ce984b3900c861897667edfe",
+    ".claude/rules/javascript.md": "a715d15e1edcb425bda60118fbdf7c3fad89be626506983ae3cea75184c09104",
     ".claude/rules/refining-plans.md": "2d8fa69083d52597efff02b3d565ccfbaf051152331b281198eac50cbcf7f453",
     ".claude/rules/skill-authoring.md": "0c64de97bd1aa8f4da8b67474a26711aab355ec637667e184ea080832926a6c6",
     ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
+    ".claude/rules/typescript.md": "db801fc6ce44e7fe01e2ea6518e6d1b32c93e9ab028c17f1f8abb4981d958886",
     ".claude/skills/auto-run/SKILL.md": "37b3188602a7d18157d36c918e48cdd8a021b1fe9e290c82a758230e75bd7129",
     ".claude/skills/javascript/SKILL.md": "b151346a02d31b17a2f1d7e63acc2b6c58b2c9262be3e163a92b5c27ab5bb84f",
     ".claude/skills/javascript/references/async-patterns.md": "dfd68fb9e95e44442a901769aa1ed7b93368362497bd3be0d3b1580063c64614",
