@@ -71,6 +71,8 @@ function planText({ verify = ['header row', 'doubled', '403'], secondOwner = fal
     const t1 = [];
     if (zeroOrders === 'literal') t1.push('zero orders -> status 200 and body equals `id,sku,quantity,note\\r\\n` (Verify 1)');
     else if (zeroOrders === 'vague') t1.push('zero orders -> status 200 (Verify 1)');
+    // the PF1 A/B's after arm (2026-11-14): the empty export as the header LINE, a synonym of the card's header row
+    else if (zeroOrders === 'line') t1.push('(a) `orders.length = 0` then admin request: body equals the header line only');
     else if (verify.includes('header row')) t1.push('an export of zero orders is a header row only');
     if (verify.includes('doubled')) t1.push(quoteExample ? 'a note `say "hi"` exports as `"say ""hi"""`' : 'a quote in a note is doubled');
     if (verify.includes('403')) t1.push('the route answers 403 to a non-admin');
@@ -185,6 +187,7 @@ test('group B fixtures: each new step passes its canned pass trace and fails onl
     // the header-row bullet as the empty export's literal passes; a zero-orders case with no header fails
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, zeroOrders: 'literal' }))), []);
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, zeroOrders: 'vague' }))), ['verify-mapped']);
+    assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, zeroOrders: 'line' }))), []);
     // a files: line that forbids src/routes.js is no second owner; one that lists it ahead of a forbid still is
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, forbid: true }))), []);
     assert.deepStrictEqual(failing(sc.grade(card, designRun({ path: DRAFT, forbid: true, secondOwner: true }))), ['one-owner']);

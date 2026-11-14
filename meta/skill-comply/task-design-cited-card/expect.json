@@ -23,11 +23,11 @@
     "verify_mapped": { "any": [
       { "all": [
         { "tool": "Write", "field": "file_path", "text_match": "(^|[\\\\/])(?:plans[\\\\/](?:[^\\\\/]+[\\\\/])?[^\\\\/]+|scoring[\\\\/][^\\\\/]+[\\\\/][^\\\\/]+[\\\\/][0-9a-f]+\\.draft)\\.md$" },
-        { "tool": "Write", "field": "content", "text_match": ["^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Hh]eader row|\\b(?:zero|no|0) orders\\b[^\\n]*id,sku,quantity,note)", "^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Dd]oubl(?:ed|es|ing)\\b|\"\"\\w+\"\")", "^[^\\n]*\\b[Tt]ests?:[^\\n]*\\b403\\b"] }
+        { "tool": "Write", "field": "content", "text_match": ["^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Hh]eader (?:row|line)|\\b(?:zero|no|0) orders\\b[^\\n]*id,sku,quantity,note)", "^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Dd]oubl(?:ed|es|ing)\\b|\"\"\\w+\"\")", "^[^\\n]*\\b[Tt]ests?:[^\\n]*\\b403\\b"] }
       ] },
       { "all": [
         { "tool": "Edit", "field": "file_path", "text_match": "(^|[\\\\/])(?:plans[\\\\/](?:[^\\\\/]+[\\\\/])?[^\\\\/]+|scoring[\\\\/][^\\\\/]+[\\\\/][^\\\\/]+[\\\\/][0-9a-f]+\\.draft)\\.md$" },
-        { "tool": "Edit", "field": "new_string", "text_match": ["^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Hh]eader row|\\b(?:zero|no|0) orders\\b[^\\n]*id,sku,quantity,note)", "^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Dd]oubl(?:ed|es|ing)\\b|\"\"\\w+\"\")", "^[^\\n]*\\b[Tt]ests?:[^\\n]*\\b403\\b"] }
+        { "tool": "Edit", "field": "new_string", "text_match": ["^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Hh]eader (?:row|line)|\\b(?:zero|no|0) orders\\b[^\\n]*id,sku,quantity,note)", "^[^\\n]*\\b[Tt]ests?:[^\\n]*(?:[Dd]oubl(?:ed|es|ing)\\b|\"\"\\w+\"\")", "^[^\\n]*\\b[Tt]ests?:[^\\n]*\\b403\\b"] }
       ] }
     ] },
     "one_owner": { "all": [
