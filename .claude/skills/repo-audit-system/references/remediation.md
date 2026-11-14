@@ -58,8 +58,9 @@ through the same ask.
 - Not measured is not zero. A NOT MEASURED line is stated, never scored as free.
 - No move inside an observation week. A seeded default or hook behaviour under observation is recorded with
   its week's end date.
-- Preserve the display-driven split of the own plugin. Commands that list namespaced-only and a router skill
-  that lists bare are a measured choice; do not convert either to gain a component-fit point.
+- Preserve a component split the repo records as a measured choice (a `notes` line names it - for example
+  commands that list namespaced-only beside a router skill that lists bare); do not convert either side to gain a
+  component-fit point.
 - One version home. Never add a `version` to a marketplace entry whose source holds a `plugin.json` to 'be
   safe' - the manifest wins and validate warns on the pair. An entry with no `plugin.json` behind it IS the
   manifest, and its `version` is the one home.

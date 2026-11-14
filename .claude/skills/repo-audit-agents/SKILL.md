@@ -1,6 +1,6 @@
 ---
 name: repo-audit-agents
-description: Use when auditing and fixing this repo's shipped subagents (stack/agents) toward grade A - routing, expertise, tool scope, reuse. Not for skills or rules.
+description: Use when auditing and fixing this repo's shipped subagents toward grade A - routing, expertise, tool scope, reuse. Not for skills or rules.
 disable-model-invocation: true
 ---
 
@@ -28,14 +28,15 @@ repo's own maintenance tool, not part of the shipped catalog.
 
 ## When to use
 
-- The user types `/repo-audit-agents` to audit the seats in `stack/agents`, or a root they name.
+- The user types `/repo-audit-agents` to audit the repo's shipped seats (the `audit.agents` roots in
+  `.claude/kit/repo.json`), or a root they name.
 - Not for the skills (`/repo-audit-skills`) or the rule files (`/repo-audit-rules`).
 
 ## Parameters
 
-- `AGENTS_ROOT`: folder containing subagent definitions (default: `./stack/agents`). Each agent is a markdown file with YAML frontmatter (`name`, `description`, optional `tools`, optional `model`) and a system-prompt body.
-- `SKILLS_ROOT`: folder containing skills (default: `./stack/skills`). Required, because reuse and duplication are scored against the real skill catalog. If absent, note it and score skill reuse as not applicable.
-- `RULES_ROOT`: folder containing rule files (default: `./stack/rules`), plus the CLAUDE.md template at `./stack/AGENTS.template.md`. Required, because agents must refer to the rules that govern their process instead of restating them, and you may only point an agent at rules that exist. Note that agents cite rules by their deployed path (`.claude/rules/...`, where the installer places them in a target project), while existence is validated against the source catalog at `./stack/rules`. The repository's root `./CLAUDE.md` is the stack repo's own working file and is out of scope.
+- `AGENTS_ROOT`: folders containing subagent definitions (default: the `audit.agents` roots from step 1). Each agent is a markdown file with YAML frontmatter (`name`, `description`, optional `tools`, optional `model`) and a system-prompt body.
+- `SKILLS_ROOT`: folders containing skills (default: the `audit.skills` roots). Required, because reuse and duplication are scored against the real skill catalog. If absent, note it and score skill reuse as not applicable.
+- `RULES_ROOT`: folders containing rule files (default: the `audit.rules` roots), plus the instruction-file template the repo ships (the `audit.claude-md` roots, or the template its `notes` name). Required, because agents must refer to the rules that govern their process instead of restating them, and you may only point an agent at rules that exist; with none, note it and score rule reuse against the project CLAUDE.md files alone. Note that agents cite rules by their deployed path (`.claude/rules/...`, where an install places them in a target project), while existence is validated against the source catalog at `RULES_ROOT`. The repo's own working `CLAUDE.md` is out of scope unless the map lists it as shipped.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per agent (default: `4`).
 - `WRITE`: `true` edits files in place, `false` produces the report only (default: `true`).
@@ -47,21 +48,27 @@ below. When a stop or finding genuinely needs the user's answer - a proposed spl
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.
 
-1. **Principles.** Read `references/principles.md` before anything else - it defines what counts as a
+1. **Targets.** Read `.claude/kit/repo.json` -> `audit.agents`. No entry: report 'this repo ships no
+   agents - nothing to audit' and stop. Its `roots` are `AGENTS_ROOT` for this run (a root the user
+   names overrides them), and the `audit.skills` and `audit.rules` roots supply the catalogs; run
+   every `checks` command wherever this skill calls for the repo's checks, and quote its result;
+   follow every `notes` line wherever this skill touches a repo-specific mechanism (a multi-home
+   registry, an install catalog, a dispatch spelling, a seat-rename record, a session analyzer).
+2. **Principles.** Read `references/principles.md` before any phase - it defines what counts as a
    defect in every later phase (install units, name-only-what-is-guaranteed, seat versus skill, the
    dispatch price, forcing shapes, no cycles).
-2. **Phase 0 - discovery.** Follow `references/discovery.md`: every agent file and its record, the
+3. **Phase 0 - discovery.** Follow `references/discovery.md`: every agent file and its record, the
    skill and rule catalogs, the duplication map, the invocation and conflict map, the
    reference-resolution map. Do not edit anything in this phase.
-3. **Phase 1 - scoring.** Score each agent on the four dimensions in `references/rubric.md`, citing the
+4. **Phase 1 - scoring.** Score each agent on the four dimensions in `references/rubric.md`, citing the
    line or block behind every point, and map the total through its grade bands and floors. Produce the
    baseline report (the output contract below) before any editing.
-4. **Phase 1b - currency.** Check the external claims per `references/currency.md`; an unresolved
+5. **Phase 1b - currency.** Check the external claims per `references/currency.md`; an unresolved
    DRIFTED finding blocks the agent from A.
-5. **Phase 2 - remediation.** Follow `references/remediation.md`: system-level defects first (cycles,
+6. **Phase 2 - remediation.** Follow `references/remediation.md`: system-level defects first (cycles,
    contradictions, duplication clusters), then the bounded per-agent loop. Its anti-gaming guards
    override the A target.
-6. **Phase 3 - verification**, below.
+7. **Phase 3 - verification**, below.
 
 ## Phase 3 - Verification
 
@@ -71,9 +78,9 @@ After the loop, for each edited agent:
 2. Confirm the `tools` grant still covers every tool the body uses and lists nothing it does not.
 3. Confirm the behavior-preservation tasks still return matching results.
 4. Confirm no guarded rule, stop condition, or tool restriction was dropped. Diff against the snapshot to check.
-5. Confirm every skill, rule, agent, or reference the file now points to actually exists - named explicitly where the install unit guarantees it, described by what it covers otherwise, with the description matching a real catalog entry - that no body directive names a skill or MCP server the install can lack (the repo lint's optional-cite checks are green), and that any shared content lives in exactly one place.
-6. Treat a claim that the rewritten seat is cheaper or holds its contract better as unproven until dispatches show it: the analyzer's SUBAGENTS table and its dispatch-overhead row over the following sessions are the observable, so record the pre-edit numbers (preload share, output per dispatch, status words returned) beside the edit.
-7. After any rename or new seat: run `/doctor` for duplicate-name collisions across the tree, confirm every `tools` entry still resolves, and re-sum the descriptions per install unit against the 15,000-token warning. A renamed seat also gets its `retired.agents` and `renamed.agents` rows in `meta/stack-manifest.json`, and every body that dispatches it keeps the roster spelling (`alfred-code:<seat>`, `scripts/seat-dispatch-spelling.test.js`).
+5. Confirm every skill, rule, agent, or reference the file now points to actually exists - named explicitly where the install unit guarantees it, described by what it covers otherwise, with the description matching a real catalog entry - that no body directive names a skill or MCP server the install can lack (the repo's `checks` are green, any optional-cite check among them included), and that any shared content lives in exactly one place.
+6. Treat a claim that the rewritten seat is cheaper or holds its contract better as unproven until dispatches show it: the per-seat table and dispatch-overhead row of the repo's session analyzer, where its `notes` name one, over the following sessions are the observable, so record the pre-edit numbers (preload share, output per dispatch, status words returned) beside the edit.
+7. After any rename or new seat: run `/doctor` for duplicate-name collisions across the tree, confirm every `tools` entry still resolves, and re-sum the descriptions per install unit against the 15,000-token warning. A renamed or retired seat also gets the migration record the repo's `notes` name, and every body that dispatches it keeps the dispatch spelling those `notes` set (a plugin-shipped seat answers to `<plugin>:<seat>`), with the check that pins it run.
 8. Record the final grade with the same evidence-cited scoring as Phase 1.
 
 If any agent regressed on behavior, lost a guarded rule, or points at something that does not exist, restore it from the snapshot and report it as unresolved with the reason.
@@ -96,7 +103,7 @@ Produce a single report with:
 3. Duplication map: each cluster, the direction (agent-to-agent, agent-to-skill, agent-to-rule, agent-to-reference), and how it was resolved (invoke skill, cite rule, delegate to agent, shared reference, new extracted skill), or why it was left local.
 4. Invocation and conflict map: every cycle found and how it was broken, every cross-layer contradiction and its resolution (or why it is unresolved and the agents are blocked), any genericity flags with cited lines, and every named cite of an optional skill or MCP server converted to a description (file, line, before, after).
 5. Extracted-skill recommendations: procedures repeated across agents with no skill owner that should become skills, whether or not you extracted them this run.
-6. Install-unit description budget: per single-stack install, the resident description total in chars and tokens against the 15,000-token warning, the cross-cutting always-installed share, and any seat whose description overlaps a sibling's routing cases (file, the two descriptions' shared cue).
+6. Install-unit description budget: per install unit (what one install carries, per the repo's `notes`; with none, the whole shipped set), the resident description total in chars and tokens against the 15,000-token warning, the always-installed share where installs differ, and any seat whose description overlaps a sibling's routing cases (file, the two descriptions' shared cue).
 7. If `WRITE` is true, the list of files edited, moved, or created, including any new skills or shared references, and the snapshot location for rollback.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.
