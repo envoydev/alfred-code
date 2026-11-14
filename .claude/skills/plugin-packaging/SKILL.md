@@ -1,9 +1,9 @@
 ---
-name: plugin-authoring
-description: Use when creating or changing a Claude Code plugin - a `.claude-plugin/plugin.json` manifest, a `marketplace.json`, plugin commands / skills / agents / hooks / MCP or LSP config, `${CLAUDE_PLUGIN_ROOT}` paths - or when publishing, versioning or testing one (`claude plugin validate`, `--plugin-dir`, `claude plugin eval`). Covers manifest schema, layout and precedence, distribution, versioning, per-component rules, verification and the security review. Not for a project's own `.claude/` folder, and not for authoring one skill's body.
+name: plugin-packaging
+description: Use when editing plugin.json or marketplace.json, or versioning, validating or publishing a plugin. Not for mod hooks code: the built-in plugin-authoring.
 ---
 
-# Plugin authoring
+# Plugin packaging
 
 A plugin is a directory Claude Code loads as one unit: a manifest under `.claude-plugin/`, and the
 component folders beside it. Everything below is checked against the Claude Code plugins docs on
@@ -19,7 +19,9 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 - A plugin is being published, versioned, installed for a test, or measured.
 - A plugin's behaviour is being tested (`claude plugin eval`) or its cost read (`claude plugin details`).
 
-Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
+Not for a mod's hooks module - its events, the mods API, render sites and the `claude plugin test` kit: Claude Code's
+built-in `plugin-authoring` skill holds those for the running build, which is why this skill is named
+`plugin-packaging` (a project skill named like a bundled one replaces it). Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
 and not for a single skill's body - that is the skills docs (code.claude.com/docs/en/skills), the same inside or
 outside a plugin.
 

@@ -109,9 +109,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     whole-stack-absent pass, not a retirement.
   - A retired skill or seat whose copy git TRACKS in the project is the project's own commit: the retired prune
     and the ledger prune (`pruneCopies` / `pruneDroppedCopies`, `gitTracks`) keep it and name it. This repo
-    relies on it - `plugin-authoring` left the shipped catalog in 2.1.0 (`retired.skills`) and lives as this
-    repo's own skill in `.claude/skills/plugin-authoring`, tracked through the `.gitignore` negation
-    (`.claude/*`, `!.claude/skills/`, `.claude/skills/*`, `!.claude/skills/plugin-authoring/`).
+    relied on it - `plugin-authoring` left the shipped catalog in 2.1.0 (`retired.skills`) and lived on as this
+    repo's own tracked copy until claude-kit took it over as `plugin-packaging` (2026-11-14), tracked through the
+    `.gitignore` negation (`.claude/*`, `!.claude/skills/`, `.claude/skills/*`, `!.claude/skills/plugin-packaging/`).
   - The `/alfred-code` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` voids, at PostToolUse `AskUserQuestion`, the answer to an ask

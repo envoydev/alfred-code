@@ -134,8 +134,11 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 - Editing a consuming project's installed copy is local-only; mirror it into `scripts/install/` here
   (and into cursor-stack when it touches the shared baseline or a twinned agent/rule).
 - Authoring a skill in `stack/skills/`: the method is this repo's own `skill-authoring` skill (`.claude/skills/`,
-  beside `plugin-authoring`; this repo's `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`). It
-  left the stack on 2026-10-22 - it serves authoring the stack, so no install carries it. On top of it here - the
+  beside `plugin-packaging`; this repo's `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`). It
+  left the stack on 2026-10-22 - it serves authoring the stack, so no install carries it. Both skills, with
+  `auto-run`, `refining-plans`, `javascript`, `typescript`, `markdown-style` and their rules, come from
+  [claude-kit](https://github.com/envoydev/claude-kit) (`.claude/kit/lock.json` lists them): change them there and
+  sync, never here - `npm run kit:check` fails on a local edit. On top of it here - the
   parity lint, HTML + count sync, house voice. A stop's question is written as an ASK TEMPLATE - a
   fenced `ask` block, the question on its first line, then one `- '<label>' - <why>` line per option -
   and lint check 61 fails one that marks no option `(Recommended)`, or two, or lists the marked one anywhere

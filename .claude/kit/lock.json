@@ -1,0 +1,28 @@
+{
+  "kit": "claude-kit@7047a40",
+  "files": {
+    ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
+    ".claude/rules/refining-plans.md": "2d8fa69083d52597efff02b3d565ccfbaf051152331b281198eac50cbcf7f453",
+    ".claude/rules/skill-authoring.md": "0c64de97bd1aa8f4da8b67474a26711aab355ec637667e184ea080832926a6c6",
+    ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
+    ".claude/skills/auto-run/SKILL.md": "37b3188602a7d18157d36c918e48cdd8a021b1fe9e290c82a758230e75bd7129",
+    ".claude/skills/javascript/SKILL.md": "b151346a02d31b17a2f1d7e63acc2b6c58b2c9262be3e163a92b5c27ab5bb84f",
+    ".claude/skills/javascript/references/async-patterns.md": "dfd68fb9e95e44442a901769aa1ed7b93368362497bd3be0d3b1580063c64614",
+    ".claude/skills/javascript/references/modern-runtime.md": "ae9ce07e0094be0dd4dab2d985355feb3c43e672bfb5090969b3fa5c826145b0",
+    ".claude/skills/javascript/references/performance.md": "0ebf33361a2bb58d29086c7113883c4c7dc589ce17fac58c2607a3e7dbfd32f3",
+    ".claude/skills/markdown-style/SKILL.md": "9725eb78eab7034ca8d268646f5678c5378af09e0f3dedc349143835d1452705",
+    ".claude/skills/markdown-style/references/evidence.md": "ff52152685ae886552bf535c063f6dcd34eeaacbf74877ace6f23de6ad050a42",
+    ".claude/skills/markdown-style/references/style-overlay.md": "461e671eaeb6659a3fcc40713332842aa1af6da0f1dfed9483c96c49c17ded6a",
+    ".claude/skills/markdown-style/references/syntax-canon.md": "9f7263cd4cf1cb660b45cc061d090bcaa34f0e666f3f6d4564fa00bda7a5166c",
+    ".claude/skills/plugin-packaging/SKILL.md": "6af6250494b1137546cc842a12c9802dfbb74fba0bbcfecef82247537a8ee0a6",
+    ".claude/skills/plugin-packaging/references/evals.md": "511e2b92f4d77f6b41dd228bab671b01c6aa3db4d94665c01a7437e0382e2b2e",
+    ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "9287cb719f6081ecb99fe0fcd2b2ebe8359f10f82631a8b3c1d3a4be70892d96",
+    ".claude/skills/plugin-packaging/references/security-and-governance.md": "1e060dfd86fb6ad6aae9e36529e7f817bbe81994c1cd6ac08b85e141d210fa9a",
+    ".claude/skills/refining-plans/SKILL.md": "1b948ecf347af519ce43126b92b9f9327b424a685c73a7cbcf81d0075a225fd1",
+    ".claude/skills/refining-plans/references/reviewer-prompt.md": "24d7f43a615e87662c159941c6e7ee035cd8c849366ee32d295b4025bc013631",
+    ".claude/skills/refining-plans/references/rubric.md": "8c6bf43913654af755c55363ac5614cb0c86a7168b7d4cebb0567f9902507b84",
+    ".claude/skills/skill-authoring/SKILL.md": "6f9d50a754490ec266d12c61a63c14b1c92cdbc3ab0822c43207e407c20877e2",
+    ".claude/skills/typescript/SKILL.md": "2b7fc0e984c0eaca2b4a096331239b2d42b7d8e4907b9625764b1d1d4faf12d8",
+    ".claude/skills/typescript/references/typescript-style.md": "b4af215acc24fc016cbf42f5c25a4ccb3533e4fb60a3b9d8bfea05dbda690b85"
+  }
+}

@@ -199,17 +199,17 @@ test('the skill-authoring rule is this repo\'s own: it attaches on skill files a
         assert.ok(!attaches(p), `does not attach on ${p}`);
 });
 
-// plugin-authoring left the shipped catalog in 2.1.0; this repo's own copy in .claude/skills is tracked through a .gitignore negation.
-test('plugin-authoring is self-contained (it names no stack skill), and the repo notes name the habit instead of the plugin method', () => {
-    const raw = read('.claude/skills/plugin-authoring/SKILL.md');
+// plugin-packaging (the retired stack skill plugin-authoring, renamed when claude-kit took it over) is this repo's own, synced from claude-kit.
+test('plugin-packaging is self-contained (it names no stack skill), and the repo notes name the habit instead of the plugin method', () => {
+    const raw = read('.claude/skills/plugin-packaging/SKILL.md');
     const pa = squash(raw);
     const bullet = raw.split('\n').filter((l, i, all) => l.startsWith('- **Skills**') || (i && all[i - 1].startsWith('- **Skills**') && /^  \S/.test(l)));
     assert.strictEqual(bullet.length, 1, 'the Skills bullet is one line');
-    assert.ok(!pa.includes('habits-skill-writing'), 'plugin-authoring names no stack skill: it is this repo\'s own and stands alone');
+    assert.ok(!pa.includes('habits-skill-writing'), 'plugin-packaging names no stack skill: it is this repo\'s own and stands alone');
     for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers', '1,536', 'skillListingBudgetFraction',
         'user-invocable', 'description, not the body'])
-        assert.ok(!pa.includes(moved), `plugin-authoring still carries the habit's text: '${moved}'`);
-    const evals = squash(read('.claude/skills/plugin-authoring/references/evals.md'));
+        assert.ok(!pa.includes(moved), `plugin-packaging still carries the habit's text: '${moved}'`);
+    const evals = squash(read('.claude/skills/plugin-packaging/references/evals.md'));
     assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
     assert.ok(!evals.includes('habits-skill-writing'), 'the eval reference names no stack skill either');
     const md = squash(read('CLAUDE.md'));

@@ -35,7 +35,8 @@
     "scope-preloads": "node scripts/scope-agent-preloads.js --write",
     "skill-headings": "node scripts/skill-headings.js",
     "rule-openings": "node scripts/install/rule-openings.js",
-    "tool-adapters": "node scripts/tool-adapters.js --write"
+    "tool-adapters": "node scripts/tool-adapters.js --write",
+    "kit:check": "node .claude/kit/check.mjs"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"

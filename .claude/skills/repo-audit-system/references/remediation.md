@@ -40,7 +40,7 @@ before the next. A handoff is never applied here, whatever the answer.
 
 ## Packaging fixes
 
-The own plugin's packaging rows follow the `plugin-authoring` skill's loop - validate, the details number
+The own plugin's packaging rows follow the `plugin-packaging` skill's loop - validate, the details number
 with its caveats, the eval suite or its named substitute, the README statements, one version home - and go
 through the same ask.
 
