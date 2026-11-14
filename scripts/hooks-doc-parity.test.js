@@ -113,7 +113,9 @@ test('HK08: the dispatcher timeouts and guard counts in the prose are the ones H
   assert.match(rule, new RegExp(`\`shell-guards\\.js\`'s ${shellSecs} and \`file-guards\\.js\`'s ${fileSecs} `), 'the rule states the generated timeouts');
   assert.match(rule, new RegExp(`The ${nFile} guards with a file-tool row ride ONE hook`), 'the rule counts the file guards');
   assert.match(rule, new RegExp(`The ${nShell} guards with a\\s+\`Bash\\|PowerShell\\|Monitor\` row`), 'the rule counts the shell guards');
-  assert.match(read('.claude/skills/repo-audit-hooks/references/discovery.md'), new RegExp(`the ${nShell} \`Bash\\|PowerShell\\|Monitor\` PreToolUse guards`));
+  // The hooks audit's facts about this repo are its audit map since claude-kit made the audit skills generic (2026-11-14).
+  const hookNotes = JSON.parse(read('.claude/kit/repo.json')).audit.hooks.notes.join('\n');
+  assert.match(hookNotes, new RegExp(`the ${nShell} \`Bash\\|PowerShell\\|Monitor\` PreToolUse guards`, 'i'));
   const html = read('docs/alfred-code.html');
   assert.match(html, new RegExp(`The ${nShell} guards judging a Bash, PowerShell or Monitor call run in ONE process, <code>shell-guards\\.js</code> \\(timeout ${shellSecs}s`));
   assert.match(html, new RegExp(`the ${nFile} judging a file tool in another, <code>file-guards\\.js</code> \\(timeout ${fileSecs}s`));

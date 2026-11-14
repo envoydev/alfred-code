@@ -32,7 +32,7 @@
         "The install catalogs are meta/recommendations.json (seeds skills per stack profile) and meta/stack-graph.json (pulls; npm run graph rewrites it); a skill unreachable from any seed is optional, and a named load directive of an optional skill is a coupling defect.",
         "The optional-cite checks in scripts/lint-skills.js (lintOptionalCites, run by npm run lint) flag a named load directive of a skill an install can lack; they must be green.",
         "Lint check 15c caps each skill description plus when_to_use at 160 chars (since 2.1.2), and check 15 caps any description at 1,000.",
-        "Lint check 33 prints the always-on budget every run: skill descriptions, pathless rules and agent descriptions summed under 70,000 chars - quote it under Dimension 3.",
+        "Lint check 33 prints the always-on budget every run: skill descriptions, pathless rules and agent descriptions summed under 80,000 chars - quote it under Dimension 3.",
         "Skills trigger mainly through the convention rules in stack/rules, which tell the model to call the skill (the rule-forced trigger path).",
         "Offline step grader: where meta/skill-comply/<skill>/expect.json exists, node scripts/skill-comply.js grade scores a transcript step by step offline; its replay --live is a billed nested session the user must approve first, and compare applies the A/B ship rule over two replay outputs.",
         "Every stack skill is installed as a project copy (since 2.1.0), so the skillOverrides visibility override reaches it for the with/without evaluation.",
@@ -113,7 +113,7 @@
         "Child hooks to audit come from every plugin in the plugins list of meta/stack-manifest.json.",
         "Hooks are read against the root layers stack/rules, stack/skills and stack/agents.",
         "The guard-block ledger is <data root>/statistics/hook-blocks/<session>.jsonl under each audited project's generated-docs root, one row per block (timestamp, hook, event, tool, reason); node scripts/analyze-usage.js <corpus> --hook-blocks <dir> reads the per-hook block rate with its denominator.",
-        "The ten Bash|PowerShell|Monitor PreToolUse guards listed at the top of shell-guards.js are wired as ONE shell-guards.js hook that runs each guard in-process, and the seven file-tool guards in file-guards.js the same way; each guard keeps its own gates and ledger row, and a throwing guard fails open alone.",
+        "The ten `Bash|PowerShell|Monitor` PreToolUse guards listed at the top of shell-guards.js are wired as ONE shell-guards.js hook that runs each guard in-process, and the seven file-tool guards in file-guards.js the same way; each guard keeps its own gates and ledger row, and a throwing guard fails open alone.",
         "Every hook is wired in exec form: node with ${CLAUDE_PLUGIN_ROOT}/<file> as its first argument, with no shell and no quoting.",
         "Shared hook code has one home each in stack/hooks: hook-prelude.js holds the gates (the csv opt-out, the hook_profile userConfig, the stand-down beside a still-wired copied twin, a repo never set up, a Cursor host), fresh-session.js the fresh-session arithmetic, shell-writes.js the shell-write parse, hidden-chars.js the hidden-character class; a hook requires them from its own directory and never inlines them.",
         "A regex several hooks still carry inline (the Git Bash mount path) is pinned as a shared rule with marker-pinned copies in meta/shared-rules.json.",
@@ -131,7 +131,7 @@
         "npm run lint"
       ],
       "notes": [
-        "stack/AGENTS.template.md is seeded by node scripts/install/alfred-code.js as .claude/AGENTS.md (a root AGENTS.md on --instructions-at root), and only into a project that has no AGENTS.md or CLAUDE.md.",
+        "stack/AGENTS.template.md is seeded as `.claude/AGENTS.md` by node scripts/install/alfred-code.js (a root AGENTS.md on --instructions-at root), and only into a project that has no AGENTS.md or CLAUDE.md.",
         "Rule links in the template use the deployed paths (.claude/rules/...), while their existence is checked against the source catalog at stack/rules; confirm the mapping from meta/stack-manifest.json and the installer's scripts/install/ modules.",
         "Filling or improving one project's CLAUDE.md (create, or improve with every change shown first) belongs to the fill skill stack/skills/habits-adjust-agents-md/; an audit finding about how files get filled lands in that skill, not in the template.",
         "The filled-file checker is node scripts/agents-md-check.js --file <path> (read-only, no model call): it checks the named paths, each command's program on PATH or in the project, leftover placeholders, TODOs and template text; --list names the files it would check and marks an untouched seed; its rows are heuristic, so read each one before acting on it.",

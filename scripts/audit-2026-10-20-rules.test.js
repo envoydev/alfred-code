@@ -82,10 +82,11 @@ test('row 14: the navigation rule names no docs location; the template keeps no 
     assert.ok(!/navigation baseline's/.test(template + skill), 'no stale pointer left in either');
 });
 
-// The audit skill's own principles carry lint 33's real cap.
-test('the rules audit skill states lint 33 at its 80,000-char cap', () =>
+// The rules audit's facts about this repo carry lint 33's real cap. Since claude-kit made the audit skills generic
+// (2026-11-14), those facts are this repo's audit map in .claude/kit/repo.json, not the skill's own text.
+test('the rules audit map states lint 33 at its 80,000-char cap', () =>
 {
-    const p = read('.claude/skills/repo-audit-rules/references/principles.md');
+    const p = JSON.parse(read('.claude/kit/repo.json')).audit.rules.notes.join('\n');
     assert.ok(p.includes('at 80,000 chars'), 'the current cap');
     assert.ok(!p.includes('70,000'), 'the old cap');
     assert.match(read('scripts/lint-skills.js'), /const ALWAYS_ON_MAX = 80000;/, 'the lint holds the same cap');
