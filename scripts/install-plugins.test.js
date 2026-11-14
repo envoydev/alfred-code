@@ -458,7 +458,7 @@ test('update and install: a stack row already at the snapshot\'s release is not 
 test('source: the core is updated at each of its scopes before the snapshot is read, and nothing else the catalog lists', () =>
 {
     // The core is the stack's one entry since 2.10.1: a retired one (alfred-navigation, the hooks entry) is pruned by
-    // the same run, and preferred-tools - listed in the same catalog from its own repo - is the user's, updated on its
+    // the same run, and alfred-tools - listed in the same catalog from its own repo - is the user's, updated on its
     // own (the user's ruling of 2026-10-27).
     const run = cli();
     const refreshed = new Set();
@@ -466,7 +466,7 @@ test('source: the core is updated at each of its scopes before the snapshot is r
         listing: [
             { name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
             { name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
-            { name: 'preferred-tools', marketplace: 'envoydev', version: '0.1.0', scope: 'project', enabled: true },
+            { name: 'alfred-tools', marketplace: 'envoydev', version: '0.1.0', scope: 'project', enabled: true },
             { name: 'alfred-navigation', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
             { name: 'alfred-navigation', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
             { name: 'alfred-code-hooks', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },

@@ -2,22 +2,22 @@
 
 Read before the first edit. The anti-gaming guards at the end override the grade target.
 
-Set-level defects first. A D3 BLOCKER: drop the plugin from the manifest (with the HTML, README, seeds and graph) or replace it with a house hook doing the same deterministic job - and say which in the report. A duplicate home: choose by the house rule (a deterministic gate at a discrete event is a hook; procedure is a skill; the plugin's copy wins only when the packaging buys something the house copy cannot, such as an LSP wiring or a vendor-maintained MCP), then remove the other home. A `contradicts` row: the house rule wins - drop or disable the child's conflicting component (a plugin is enabled or disabled whole, so a partial fit usually means the child leaves); amend the house rule only when the child's guidance is measurably better, with the measurement and the reason in the report. A `collides` row: a negative trigger in the house skill's description for the child's phrasing, or the child dropped; two hooks on one event stay only when their jobs differ and the order is recorded. A broken `cited` route: fix the citer (describe the coverage instead of the stale name) or pin the child version that still ships it.
+Set-level defects first. A D3 BLOCKER: drop the unit from the install list (with every restatement, seed and graph edge) or replace it with a house hook doing the same deterministic job - and say which in the report. A duplicate home: choose by the house rule (a deterministic gate at a discrete event is a hook; procedure is a skill; the plugin's copy wins only when the packaging buys something the house copy cannot, such as an LSP wiring or a vendor-maintained MCP server), then remove the other home. A `contradicts` row: the house rule wins - drop or disable the child's conflicting component (a plugin is enabled or disabled whole, so a partial fit usually means the child leaves); amend the house rule only when the child's guidance is measurably better, with the measurement and the reason in the report. A `collides` row: a negative trigger in the house skill's description for the child's phrasing, or the child dropped; two hooks on one event stay only when their jobs differ and the order is recorded. A broken `cited` route: fix the citer (describe the coverage instead of the stale name) or pin the child version that still ships it.
 
-Then, for each plugin still below A / 9, a bounded loop:
+Then, for each unit still below A / 9, a bounded loop:
 
 1. Snapshot the files the edit will touch.
 2. Rank the deductions by points lost. Fix the largest first.
 3. Apply the smallest edit that removes it. Examples:
-   - Seed placement unproven: move the plugin from `always` to the stacks whose surface needs it, or to the opt-in list, on the evidence rule; regenerate the graph; keep the install closures otherwise identical.
-   - Pin form unrecorded: state it in the manifest comment (curated marketplace and explicit version, or SHA) so the next reader knows what an update means.
-   - `plugin-settings.json` row stale: re-read the keys from the installed version and update `verified`.
+   - Seed placement unproven: move the unit from the always-seeded set to the profiles whose surface needs it, or to the opt-in list, on the evidence rule; regenerate any graph built from the seeds; keep the install closures otherwise identical.
+   - Pin form unrecorded: state it beside the install-list entry (curated marketplace and explicit version, SHA, or pinned package version) so the next reader knows what an update means.
+   - Per-unit settings row stale: re-read the keys from the installed version and update its verified version.
    - Scope wrong for the audience: correct the installer's scope rule for that plugin.
-   - Manifest / HTML / README drift: fix the source and let the lint prove it.
+   - Install-list restatement drift: fix the source and let the `checks` prove it.
 4. Re-score from scratch. Do not carry the previous score forward.
 5. Repeat until A / 9, `MAX_ITERATIONS`, or a pass with no material gain.
 
-Machine-state changes are collected, not run: uninstalling a dropped plugin from the audited machines, disabling one at a scope, `claude plugin prune` for dependencies nothing needs any more (a replaced cached version goes by the 14-day sweep), removing a leftover registry entry. They go into ONE AskUserQuestion at the end, one option per action with the recommended one marked.
+Machine-state changes are collected, not run: uninstalling a dropped plugin from the audited machines, disabling one at a scope, `claude plugin prune` for dependencies nothing needs any more (a replaced cached version goes by the 14-day sweep), removing a leftover registry entry or MCP registration. They go into ONE AskUserQuestion at the end, one option per action with the recommended one marked.
 
 ## Anti-gaming guards (hard invariants)
 

@@ -14,7 +14,7 @@ For each block the mechanism map classified as misplaced: move procedures to ski
 
 ## Step 3 - Build the hub
 
-Construct or repair the map: add a governing-rules section that names every unconditional rule file with a one-line framing, convert any `@import` of an auto-loaded rules file into a plain backticked reference, add the `@AGENTS.md` import where an AGENTS.md exists and is restated, and route procedures to their skills - by name where guaranteed, by what they cover otherwise; a named pointer at a skill or MCP server the install can lack is rewritten to a description, never given a guard phrase. Reorder sections into the predictable structure from Dimension 2.
+Construct or repair the map: add a governing-rules section that names every unconditional rule file with a one-line framing (in template mode, unless the `notes` record a ruling that the template lists no rules - then repair the line saying so), convert any `@import` of an auto-loaded rules file into a plain backticked reference, add the `@AGENTS.md` import where an AGENTS.md exists and is restated, and route procedures to their skills - by name where guaranteed, by what they cover otherwise; a named pointer at a skill or MCP server the install can lack is rewritten to a description, never given a guard phrase. Reorder sections into the predictable structure from Dimension 2.
 
 ## Step 4 - Resolve duplication
 

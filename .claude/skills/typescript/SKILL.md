@@ -10,7 +10,7 @@ user-invocable: false
 
 The single organizing idea: the compiler is the cheapest test you have. Configure it to be strict, describe your data so it can check the data, and never quietly disable it.
 
-**The concrete tooling and the rule-by-rule style live in `references/typescript-style.md`** - the tsconfig (`@tsconfig/strictest`), the ESLint flat config (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`), Prettier, `.editorconfig`, and the naming / interface-vs-type / import / class-member rules those tools enforce. This SKILL.md owns the conceptual model below; where the two overlap, the reference is authoritative on the concrete rule. **Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are higher priority - follow the project where it diverges. The user's own preferences docs there rank higher still: where an entry and this skill disagree, ask the user which wins, the entry's side marked (Recommended).**
+**The concrete tooling and the rule-by-rule style live in `references/typescript-style.md`** - the tsconfig (`@tsconfig/strictest`), the ESLint flat config (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`), Prettier, `.editorconfig`, and the naming / interface-vs-type / import / class-member rules those tools enforce. This SKILL.md owns the conceptual model below; where the two overlap, the reference is authoritative on the concrete rule. **Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and code-style docs are higher priority - follow the project where it diverges.**
 
 ## When to use
 
@@ -33,15 +33,7 @@ The single organizing idea: the compiler is the cheapest test you have. Configur
 
 Keep these in one shared base `tsconfig` and have each project `extends` it. A per-project config that redefines the flags drifts; one that inherits them cannot.
 
-Where the house config-protection guard runs, an edit to a tsconfig that already exists passes when every strictness key it changes moves to its strict value - make it with the file tools, since a shell command naming a strictness key is held whatever it does - and one that removes or loosens a strictness key is held until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` and retry the same edit; a new tsconfig takes the full set from the start.
-
-```ask
-The config-protection guard holds this edit: <file> - <the change>, <N> new errors.
-- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
-- 'Keep the config as it is' - nothing changes in the file
-```
-
-Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
+A new tsconfig takes the full set from the start. In one that already exists, a red check is fixed in the code, never by removing or loosening a strictness key.
 
 ## Don't lie to the compiler
 

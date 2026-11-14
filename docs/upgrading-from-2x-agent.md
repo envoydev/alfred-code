@@ -129,10 +129,11 @@ is kept either way. Read the log (it names what it removed, never a value):
 === STEP 3 - The account-wide rows (one confirmation) ===
 The uninstall prints, never runs, commands for user-scope rows: they serve every project on the account. Gather them
 from all logs, drop duplicates, and sort them:
-- PROPOSED: `claude plugin uninstall <name>@envoydev --scope user` for every <name> except preferred-tools and
-  alfred-mods (an old session-inspector row IS proposed: it is renamed alfred-mods); every `claude mcp remove ...`
+- PROPOSED: `claude plugin uninstall <name>@envoydev --scope user` for every <name> except alfred-tools and
+  alfred-mods (an old session-inspector row IS proposed: it is renamed alfred-mods; so is an old preferred-tools row:
+  it is renamed alfred-tools); every `claude mcp remove ...`
   line.
-- KEPT unless the user says otherwise: claude-hud, typescript-lsp, csharp-lsp, preferred-tools, alfred-mods,
+- KEPT unless the user says otherwise: claude-hud, typescript-lsp, csharp-lsp, alfred-tools, alfred-mods,
   and any marketplace removal (stage 2 needs the envoydev marketplace).
 Show both lists and ask ONE question: 'Run the PROPOSED commands?' Run only what the user approves, one by one, and
 report each result.
@@ -182,7 +183,7 @@ repeat it, name its source.
 a. `claude --version`: note whether it is 2.1.312 or later (alfred-mods needs it).
 b. Each project (WORKSPACE_ROOT and CHILDREN): `.claude/alfred-code.stamp` must NOT exist. One that does: stop - it
    still holds an install; stage 1 was not finished there.
-c. `claude plugin list`: note which of alfred-code, preferred-tools, alfred-mods are already installed, whether an
+c. `claude plugin list`: note which of alfred-code, alfred-tools, alfred-mods are already installed, whether an
    alfred-mods row comes from @alfred-mods (the mod's own marketplace), and whether an old session-inspector row is left.
 d. Show the plan and ask ONE question: 'Install these plugins?' Wait for a yes.
 
@@ -190,7 +191,7 @@ d. Show the plan and ask ONE question: 'Install these plugins?' Wait for a yes.
 a. `claude plugin marketplace update envoydev`
 b. Root, from WORKSPACE_ROOT: `claude plugin install alfred-code@envoydev --scope project`
 c. Each child, from inside it: `claude plugin install alfred-code@envoydev --scope local`
-d. `claude plugin install preferred-tools@envoydev --scope user` (skip when installed)
+d. `claude plugin install alfred-tools@envoydev --scope user` (skip when installed)
 e. `claude plugin install alfred-mods@envoydev --scope user` - skip when installed, or when Step 0a found Claude Code
    older than 2.1.312 (say so). When an alfred-mods@alfred-mods row exists, install nothing: list it for the user to
    keep one of the two. When a session-inspector row is left (the mod's old name), list its

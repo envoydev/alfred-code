@@ -24,7 +24,7 @@ Then, for each agent still scoring below A / 9, run this bounded loop:
    - Unbounded autonomy: add explicit stop conditions, a loop bound, and a defined return contract to the caller.
    - Bloated body: move optional or heavy detail into a reference, collapse restated rules, delete filler. Deleting weak content raises the token score; do not replace it with different filler.
    - Duplicated content that survived the system-level pass: point to the skill, rule, agent, or reference that owns it. Do not re-solve the same duplication twice.
-   - Named cite of a skill or MCP server the install can lack: replace the name with what it covers plus the nothing-matches path; never a guard phrase beside the name, and never an install edge (`suggests:` is removed - a need is proven by evidence or seeded per stack).
+   - Named cite of a skill or MCP server the install can lack: replace the name with what it covers plus the nothing-matches path; never a guard phrase beside the name, and never an install edge (a need is decided by the repo's install catalogs, never by a cite).
    - Rigid rule wall: attach the reason to each rule, or fold redundant rules together. Keep safety, privacy, and tool-restriction rules verbatim.
    - Missing examples or output contract: add one concrete, correct example drawn from the agent's real domain.
 4. Re-score the agent from scratch against the rubric with fresh eyes. Do not carry forward the previous score.

@@ -26,12 +26,12 @@ test('the root plugin.json is the core manifest, and every path it lists exists'
     assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/shell-guards.js') && JSON.stringify(core.hooks).includes('stack/hooks/file-guards.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
-// alfred-mods and preferred-tools are the catalog's other entries, each from its own repo (the user's ruling of
+// alfred-mods and alfred-tools are the catalog's other entries, each from its own repo (the user's ruling of
 // 2026-11-04: one marketplace for every plugin). The installer neither installs, updates nor removes them: only the
 // core and the names the stack retired are its own, so an uninstall never takes a sibling plugin with it.
 test('the stack owns the core and its retired names, never a sibling plugin of the catalog', () => {
     const foreign = foreignEntries(ROOT);
-    for (const name of ['alfred-mods', 'preferred-tools', 'session-inspector']) assert.ok(foreign.has(name), `${name} is not the stack's`);
+    for (const name of ['alfred-mods', 'alfred-tools', 'session-inspector']) assert.ok(foreign.has(name), `${name} is not the stack's`);
     for (const name of ['alfred-code', 'alfred-code-hooks']) assert.ok(!foreign.has(name), `${name} is the stack's`);
 });
 
