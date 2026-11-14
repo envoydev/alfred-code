@@ -1,0 +1,21 @@
+{
+  "name": "alfred-code",
+  "claude_md": "CLAUDE.md",
+  "check_batch": "run the tests that cover the change and `npm run lint`",
+  "check_once": "the full `npm test`",
+  "not_for": "Not for a consuming project, which runs the stack's `task-solve`; not for a release, which has its own procedure.",
+  "settled": "A design already settled by a run order or the user's rulings skips the spec and goes to the plan.",
+  "checks": [
+    "   - per batch: `npm run lint` and the tests that cover the change;",
+    "   - a temp-project matrix from this working tree with CLAUDE.md's required edge cases - fresh install, update over",
+    "     an older install, re-run, the user's own config kept, missing or garbage input, every scope, every boundary -",
+    "     reading the written files, never the exit code alone;",
+    "   - the full `npm test` once, in the background, its output to a log, its tail read."
+  ],
+  "voice": "single dashes; lint check 32",
+  "commit": "never `.gitignore` or `docs/habits-scorer-flow.html`",
+  "not_here": [
+    "- The Cursor mirror (paused since 2026-09-23).",
+    "- The stack's own `task-solve` and its seats, stamps and stops."
+  ]
+}

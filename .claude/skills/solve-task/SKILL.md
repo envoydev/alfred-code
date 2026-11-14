@@ -47,8 +47,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
    House voice holds in every file written (single dashes; lint check 32). A case not run is reported NOT RUN.
 7. Review - one fresh Opus review of the whole branch, one fix pass (each fix RED then GREEN), minors deferred to
    the ledger.
-8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec, never
-   `.gitignore` or `docs/habits-scorer-flow.html`. No version bump, push or merge without the user's word.
+8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec,
+   never `.gitignore` or `docs/habits-scorer-flow.html`. No version bump, push or merge without the user's word.
 
 ## The close
 
