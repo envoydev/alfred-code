@@ -31,6 +31,8 @@ Thumbs.db
 !.claude/skills/javascript/
 !.claude/skills/markdown-style/
 !.claude/skills/solve-task/
+!.claude/skills/ts-js-testing/
+!.claude/skills/npm/
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/execution.md

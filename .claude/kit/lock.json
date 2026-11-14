@@ -1,13 +1,13 @@
 {
-  "kit": "claude-kit@b5d4a9d",
+  "kit": "claude-kit@f3528ac",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
     ".claude/rules/execution.md": "66bfd60e5d39f6bcc6a5deba22fb4467186c29a3ce984b3900c861897667edfe",
-    ".claude/rules/javascript.md": "a715d15e1edcb425bda60118fbdf7c3fad89be626506983ae3cea75184c09104",
+    ".claude/rules/javascript.md": "b7af285f1998647976ae2a1b5962cae67cbbb7a8589cd80a93ad5bd2a8086cdc",
     ".claude/rules/refining-plans.md": "2d8fa69083d52597efff02b3d565ccfbaf051152331b281198eac50cbcf7f453",
     ".claude/rules/skill-authoring.md": "0c64de97bd1aa8f4da8b67474a26711aab355ec637667e184ea080832926a6c6",
     ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
-    ".claude/rules/typescript.md": "db801fc6ce44e7fe01e2ea6518e6d1b32c93e9ab028c17f1f8abb4981d958886",
+    ".claude/rules/typescript.md": "0aa0df7089d2a5aa5120c5a6638f8e1683b93127ff603151bd5fdfa0f67c258f",
     ".claude/skills/auto-run/SKILL.md": "37b3188602a7d18157d36c918e48cdd8a021b1fe9e290c82a758230e75bd7129",
     ".claude/skills/javascript/SKILL.md": "b151346a02d31b17a2f1d7e63acc2b6c58b2c9262be3e163a92b5c27ab5bb84f",
     ".claude/skills/javascript/references/async-patterns.md": "dfd68fb9e95e44442a901769aa1ed7b93368362497bd3be0d3b1580063c64614",
@@ -17,6 +17,11 @@
     ".claude/skills/markdown-style/references/evidence.md": "ff52152685ae886552bf535c063f6dcd34eeaacbf74877ace6f23de6ad050a42",
     ".claude/skills/markdown-style/references/style-overlay.md": "461e671eaeb6659a3fcc40713332842aa1af6da0f1dfed9483c96c49c17ded6a",
     ".claude/skills/markdown-style/references/syntax-canon.md": "9f7263cd4cf1cb660b45cc061d090bcaa34f0e666f3f6d4564fa00bda7a5166c",
+    ".claude/skills/npm/SKILL.md": "92ebcc5cc44835aa60e91be638b14597d882f292d5189990ad882013e93e1ecd",
+    ".claude/skills/npm/references/ci-and-operations.md": "e2f4c580de56aed0cd1eb0e62ecb68f73c23a0960d74ed35d4dfa2d1809bf980",
+    ".claude/skills/npm/references/npm11-baseline.md": "e1f5a8bb6110ce0cd1c41c99f2a88d0711a166eec340224337bdc8152eaf1243",
+    ".claude/skills/npm/references/publishing.md": "31d1533a793cba8b92d12ffbf9005e59d53430d60f973f38e18f1ae8205ccf62",
+    ".claude/skills/npm/references/supply-chain.md": "62c4c615fbb7fd11ac4533627ffc6627869e5a32afc9637d0d32e6fe7c2de9f8",
     ".claude/skills/plugin-packaging/SKILL.md": "6af6250494b1137546cc842a12c9802dfbb74fba0bbcfecef82247537a8ee0a6",
     ".claude/skills/plugin-packaging/references/evals.md": "511e2b92f4d77f6b41dd228bab671b01c6aa3db4d94665c01a7437e0382e2b2e",
     ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "9287cb719f6081ecb99fe0fcd2b2ebe8359f10f82631a8b3c1d3a4be70892d96",
@@ -26,7 +31,9 @@
     ".claude/skills/refining-plans/references/rubric.md": "8c6bf43913654af755c55363ac5614cb0c86a7168b7d4cebb0567f9902507b84",
     ".claude/skills/skill-authoring/SKILL.md": "6f9d50a754490ec266d12c61a63c14b1c92cdbc3ab0822c43207e407c20877e2",
     ".claude/skills/solve-task/SKILL.md": "22314fa58ba989c29b9cfd3357b0a1537f7b56c5b3d6fc2726138bdeab9756f2",
-    ".claude/skills/typescript/SKILL.md": "2b7fc0e984c0eaca2b4a096331239b2d42b7d8e4907b9625764b1d1d4faf12d8",
-    ".claude/skills/typescript/references/typescript-style.md": "b4af215acc24fc016cbf42f5c25a4ccb3533e4fb60a3b9d8bfea05dbda690b85"
+    ".claude/skills/ts-js-testing/SKILL.md": "a1906af997ea55ed2157c550e197bb9a5a4c16526d680c120931f8ad30505259",
+    ".claude/skills/ts-js-testing/references/suite-audit.md": "b85d638fdf3bb8de3328bb945c9149be1aa0c42d496606b9fd847db241910d77",
+    ".claude/skills/typescript/SKILL.md": "b6b1b72a63314740b28035bba4147743e84ab3dc99f3c16d6d946871a1195a93",
+    ".claude/skills/typescript/references/typescript-style.md": "ad18a592ac853ec5f1bde4e17fa22c01f433b4cf7c38d30d061d02edb3e58ad7"
   }
 }

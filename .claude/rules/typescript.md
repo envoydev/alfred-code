@@ -9,4 +9,7 @@ Code: the rule attached, its body entered the session, and neither skill was loa
 Say which layers you loaded, or that they were already in context - the receipt is what makes the load happen. A
 compaction ends the already-in-context skip. Conventions are the source of truth, not recall.
 
+Writing or changing a `*.test.ts` / `*.spec.ts` loads `ts-js-testing` in the same action, before the first test edit
+lands.
+
 Skip one-line tweaks.

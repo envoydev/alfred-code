@@ -8,4 +8,5 @@ loaded, or say it was already in context - the receipt is what makes the load ha
 already-in-context skip. Conventions are the source of truth, not recall.
 
 It is the base-language layer; the `typescript` skill (strictness and typing, checked JS included) stacks on top of
-it. Skip one-line tweaks.
+it. Writing or changing a `*.test.js` / `*.spec.js` (or `.mjs`) loads `ts-js-testing` in the same action, before the
+first test edit lands. Skip one-line tweaks.
