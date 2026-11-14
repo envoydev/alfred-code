@@ -120,8 +120,12 @@ entry ships either an empty package or `strict: false`, never both halves declar
 ## Reserved names and governance
 
 - Reserved MARKETPLACE names (rejected on add): `claude-plugins-official`, `claude-community`,
-  `anthropic-plugins` and the other Anthropic-owned names the reference lists. Plugin names are not
-  reserved by prefix.
+  `anthropic-plugins` and the other Anthropic-owned names the reference lists.
+- Reserved PLUGIN names (measured on 2.1.325, 2026-11-14): validate ERRORS on a name starting
+  `claude-`, `anthropic-`, `anthropics-` or `cc-plugin-`, on `claude`, `anthropic`, `anthropics`,
+  `claude-code` and `claude-mods`, and on `official` beside either word; it only warns where the
+  word sits elsewhere. `claude plugin init` and `claude plugin tag` refuse an error-level name,
+  though Claude Code still loads such a plugin. Name a plugin for what it does.
 - Managed settings that shape what a user can install: `strictKnownMarketplaces`,
   `blockedMarketplaces`, `disableCommandPluginSources`, `allowManagedHooksOnly`,
   `disableSideloadFlags` (turns `--plugin-dir` / `--plugin-url` off), `pluginSuggestionMarketplaces`.
@@ -144,12 +148,14 @@ entry ships either an empty package or `strict: false`, never both halves declar
 ## CLI
 
 ```
-claude plugin init [dir]                      # scaffold a manifest + folders
-claude plugin validate <dir> [--strict]       # schema + paths; --strict fails on warnings
-claude plugin install <name>@<marketplace>    # also: --scope user|project|local
+claude plugin init <name> [--with skills agents hooks mcp lsp output-style channel]  # scaffolds ~/.claude/skills/<name>/
+claude plugin validate <dir> [--strict] [--profile directory] [--json]  # --strict fails on warnings; --profile
+                                              # directory also fails on what Anthropic's plugin directory refuses
+claude plugin install <name>@<marketplace>    # also: --scope user|project|local, --json
 claude plugin update|uninstall|enable|disable|prune
 claude plugin list [--json [--available]]       # --available lists marketplace plugins too
-claude plugin tag [path]                      # cut a release git tag from the manifest version
+claude plugin configure <plugin> [--json] [--values-stdin]  # show userConfig options, or save them from a JSON object
+claude plugin tag [path] [--dry-run] [--push]   # cut the <name>--v<version> tag; checks manifest and marketplace agree
 claude plugin details <name>@<marketplace>    # installed copy: components + always-on / on-invoke token cost
 claude --plugin-dir <dir> plugin details <name>  # the same for a working tree (commands are not inventoried)
 claude plugin eval <dir> ...                  # behavioural suite (evals.md)
@@ -158,3 +164,14 @@ claude --plugin-url <url>                     # one-session load from a URL
 claude plugin marketplace add|remove|update <source>
 /reload-plugins                               # in-session: skills, agents, hooks, plugin MCP + LSP
 ```
+
+Checked on 2.1.325 (2026-11-14: the CLI itself, the plugin-dependencies page for the tag, the SchemaStore
+catalog for the schemas), for a script that drives these commands:
+
+- `install --json` prints ONE result line on stdout: `{"command","outcome","plugin","pluginId","scope","message",
+  "installedVersion","availableVersion"}`. A plugin already installed at that scope answers `"outcome":"ok"`
+  and exit 0, so a re-run needs no special case. Parse that line, never the human message.
+- A `<name>--v<version>` tag is what a `dependencies` version constraint resolves against; a plain
+  `v<version>` tag serves a release but no dependant. A plugin nothing depends on needs only the one it uses.
+- Editors need no `$schema` key: the SchemaStore catalog matches `**/.claude-plugin/plugin.json` and
+  `**/.claude-plugin/marketplace.json` by path. A `$schema` key passes `validate --strict` if a repo wants one.

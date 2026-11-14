@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@3d4558b",
+  "kit": "claude-kit@d701c8f",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
     ".claude/rules/execution.md": "66bfd60e5d39f6bcc6a5deba22fb4467186c29a3ce984b3900c861897667edfe",
@@ -22,9 +22,9 @@
     ".claude/skills/npm/references/npm11-baseline.md": "e1f5a8bb6110ce0cd1c41c99f2a88d0711a166eec340224337bdc8152eaf1243",
     ".claude/skills/npm/references/publishing.md": "31d1533a793cba8b92d12ffbf9005e59d53430d60f973f38e18f1ae8205ccf62",
     ".claude/skills/npm/references/supply-chain.md": "62c4c615fbb7fd11ac4533627ffc6627869e5a32afc9637d0d32e6fe7c2de9f8",
-    ".claude/skills/plugin-packaging/SKILL.md": "6af6250494b1137546cc842a12c9802dfbb74fba0bbcfecef82247537a8ee0a6",
+    ".claude/skills/plugin-packaging/SKILL.md": "e726787805d6cbb150a99b67aa78662a7dfa70009d76ee55541da18088a4b51d",
     ".claude/skills/plugin-packaging/references/evals.md": "511e2b92f4d77f6b41dd228bab671b01c6aa3db4d94665c01a7437e0382e2b2e",
-    ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "9287cb719f6081ecb99fe0fcd2b2ebe8359f10f82631a8b3c1d3a4be70892d96",
+    ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "4286071092d565129e0c1434f4d16c4226b272d03ff90947f2cef6593bc28865",
     ".claude/skills/plugin-packaging/references/security-and-governance.md": "1e060dfd86fb6ad6aae9e36529e7f817bbe81994c1cd6ac08b85e141d210fa9a",
     ".claude/skills/refining-plans/SKILL.md": "1b948ecf347af519ce43126b92b9f9327b424a685c73a7cbcf81d0075a225fd1",
     ".claude/skills/refining-plans/references/reviewer-prompt.md": "24d7f43a615e87662c159941c6e7ee035cd8c849366ee32d295b4025bc013631",
