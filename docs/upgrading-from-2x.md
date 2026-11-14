@@ -66,8 +66,9 @@ Hand it to Cursor with [prompt A](/docs/upgrading-from-2x-agent.md#3-prompt-a---
    lifts the memory switch-off the old release set on Claude Code. It keeps anything you changed since, and `.alfred/`
    with your docs.
 3. It prints, never runs, the commands for rows at `user` scope - they serve every project on the account. Run the
-   ones for `@envoydev` rows other than `preferred-tools` and `alfred-mods`, and its `claude mcp remove` lines. An old
-   `session-inspector` row goes too: it is the mod's old name, installed again as `alfred-mods` in stage 3.
+   ones for `@envoydev` rows other than `alfred-tools` and `alfred-mods`, and its `claude mcp remove` lines. An old
+   `session-inspector` row goes too: it is the mod's old name, installed again as `alfred-mods` in stage 3; so does an
+   old `preferred-tools` row: it is renamed `alfred-tools`.
    Keep `claude-hud` and the `*-lsp` plugins unless you want them gone: stage 2 offers them again.
 4. Restart nothing yet. Check: no `.claude/alfred-code.stamp` left in any project, and `claude plugin list` shows no
    stack row. Review the diff and commit it as its own change.
@@ -149,7 +150,7 @@ machine.
 2. **Register the servers in the root** - in your own terminal, from the root folder, in Git Bash or PowerShell 7 (Windows
    PowerShell 5.1 strips the inner quotes). Run these yourself, not through an agent: the stack's secret guard refuses
    any shell command that names the launcher, and these commands carry no key, so they are safe to paste.
-   - Servers WITH a key go through the launcher (pins from the `preferred-tools` catalog of 2026-11-04):
+   - Servers WITH a key go through the launcher (pins from the `alfred-tools` catalog of 2026-11-04):
 
      ```bash
      claude mcp add-json context7 '{"type":"stdio","command":"node","args":[".claude/hooks/secrets-run.js","--","npx","-y","@upstash/context7-mcp@4.4.4"]}' --scope project
@@ -167,7 +168,7 @@ machine.
 
      serena's `--project-from-cwd` and Playwright's relative profile folder follow the folder the server starts in, so
      each child gets its own index and browser profile. For any other server, take its launch line from the
-     `preferred-tools` catalog (`catalog/tools.json`, its `local` route).
+     `alfred-tools` catalog (`catalog/tools.json`, its `local` route).
    - The hosted servers that sign in with OAuth (atlassian, gitlab, sentry's hosted route) hold no key in any file:
      `claude mcp add --transport http --scope project atlassian https://mcp.atlassian.com/v2/mcp`, then sign in once
      through `/mcp`.
@@ -190,7 +191,7 @@ Two things to know:
 
 - **A launched server receives every key in the chain**, not only its own: the github server also sees the sentry
   token. Keep only the keys your servers need in `.alfred/.secrets`.
-- **Updates are by hand:** `/preferred-tools:update` does not manage these entries. Move a pin by running its
+- **Updates are by hand:** `/alfred-tools:update` does not manage these entries. Move a pin by running its
   `add-json` line again with the new version (`claude mcp remove <name> -s project` first).
 
 ### alfred-mods - the session inspector
@@ -265,4 +266,4 @@ each. A child joined this way keeps its old scope and its old picks as its own.
 - [The agent prompts for stages 1 and 2](/docs/upgrading-from-2x-agent.md)
 - [README - Workspaces](/README.md#workspaces)
 - [What the install writes](/docs/install-footprint.md)
-- [preferred-tools](https://github.com/envoydev/preferred-tools)
+- [alfred-tools](https://github.com/envoydev/alfred-tools)

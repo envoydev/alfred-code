@@ -187,7 +187,7 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     assert.deepStrictEqual(userCalls, [], 'a user-scope install is never uninstalled from here');
 });
 
-// The stack's marketplace also lists preferred-tools and alfred-mods from their own GitHub repos: a row of one shares
+// The stack's marketplace also lists alfred-tools and alfred-mods from their own GitHub repos: a row of one shares
 // the stack key but is not the stack's, and the matrix of 2026-10-27 saw uninstall take it with the core. Since the
 // catalog left this repo (2026-11-14) the snapshot carries no marketplace.json, so the stack's own names decide: the
 // core, the folded hooks entry and every retired plugin; anything else under the key is foreign.
@@ -198,7 +198,7 @@ test('removePlugins: a foreign entry under the stack key stays installed; foreig
     try
     {
         const bare = plugins.foreignEntries(tmp);
-        assert.ok(!bare.has('alfred-code') && bare.has('preferred-tools'), 'no manifest: the core alone is the stack\'s');
+        assert.ok(!bare.has('alfred-code') && bare.has('alfred-tools'), 'no manifest: the core alone is the stack\'s');
         fs.mkdirSync(path.join(tmp, 'meta'));
         fs.writeFileSync(path.join(tmp, 'meta', 'retired-plugins.json'), '{ not json');
         assert.ok(plugins.foreignEntries(tmp).has('alfred-navigation'), 'an unreadable retired list claims nothing more');
@@ -206,12 +206,12 @@ test('removePlugins: a foreign entry under the stack key stays installed; foreig
         fs.writeFileSync(path.join(tmp, 'meta', 'stack-manifest.json'), JSON.stringify({ retired: { plugins: ['ponytail'] } }));
         const foreign = plugins.foreignEntries(tmp);
         for (const own of ['alfred-code', 'alfred-code-hooks', 'alfred-navigation', 'ponytail']) assert.ok(!foreign.has(own), `${own} is the stack's`);
-        for (const other of ['preferred-tools', 'alfred-mods', 'a-plugin-listed-later']) assert.ok(foreign.has(other), `${other} is the marketplace's`);
+        for (const other of ['alfred-tools', 'alfred-mods', 'a-plugin-listed-later']) assert.ok(foreign.has(other), `${other} is the marketplace's`);
         assert.ok(plugins.foreignEntries(path.join(__dirname, '..')).has('alfred-mods') && !plugins.foreignEntries(path.join(__dirname, '..')).has('alfred-navigation'), 'the real tree: the mod is foreign, a retired stack plugin is not');
 
         const rows = [
             { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.12.0', enabled: true },
-            { name: 'preferred-tools', marketplace: 'envoydev', scope: 'project', version: '0.1.0', enabled: true },
+            { name: 'alfred-tools', marketplace: 'envoydev', scope: 'project', version: '0.1.0', enabled: true },
         ];
         const calls = [];
         uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', foreign, cli: (a) => { calls.push(a.join(' ')); return true; }, log: () => {} });
