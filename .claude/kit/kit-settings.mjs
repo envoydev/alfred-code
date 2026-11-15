@@ -12,19 +12,20 @@
 //   KIT_REVIEW_MODEL      the model that reviews: the refining-plans reviewer, the review of a finished change
 //   KIT_IMPLEMENT_MODEL   the model that implements: the audit editor, a plan's build
 //   KIT_SEARCH_MODEL      the model that finds things in the code for the other three (haiku without it)
-//   KIT_SCORING=off       grading is off until the variable changes
-//   KIT_AUTO_RUN=on       auto-run is on from a session's first ask
+//   KIT_SCORING           on or off: whether specs and plans are graded in every session (on without it)
+//   KIT_AUTO_RUN          on or off: whether every session runs in auto-run from its first ask (off without it)
 //
 // A model is one of sonnet, opus, haiku, fable - what a dispatch accepts. Without a variable it is the model the
 // role's agent file names; the search role has no agent file, so its default is fixed. KIT_SCORING and KIT_AUTO_RUN
 // switch a safeguard off, so they count only from a file that is not committed: one found in .claude/settings.json
-// is ignored and named.
+// is ignored and named. They are the standing value: what the user tells a session - 'turn off scoring', 'enable
+// auto run' - outranks them for that session, in both directions (status-hook.mjs).
 // Claude Code applies a new or changed value to a session that is already open, but a deleted variable stays set
 // there until it restarts: to switch one back at once, set its other value (KIT_AUTO_RUN=off) instead of deleting it.
 // A value that cannot be used falls back to its default, and its origin says why.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { COMMITTED_SETTINGS, DEFAULT_PASS_SCORE, DEFAULT_SEARCH_MODEL, MODELS, VARIABLE } from './constants.mjs';
+import { COMMITTED_SETTINGS, DEFAULT_PASS_SCORE, DEFAULT_SEARCH_MODEL, MODELS, SWITCH, VARIABLE } from './constants.mjs';
 
 function readVariable(env, variable)
 {
@@ -94,7 +95,7 @@ export function resolveKitSettings(env, root)
         review_model: roleModel(env, root, VARIABLE.reviewModel, 'plan-grader'),
         implement_model: roleModel(env, root, VARIABLE.implementModel, 'audit-editor'),
         search_model: searchModel(env),
-        scoring: safeguard(env, VARIABLE.scoring, 'on', 'off', committedNames),
-        auto_run: safeguard(env, VARIABLE.autoRun, 'off', 'on', committedNames),
+        scoring: safeguard(env, VARIABLE.scoring, SWITCH.on, SWITCH.off, committedNames),
+        auto_run: safeguard(env, VARIABLE.autoRun, SWITCH.off, SWITCH.on, committedNames),
     };
 }

@@ -13,8 +13,9 @@ The user's bar for anything they approve before work starts is 9 or 10 out of 10
 - Again when the user's requested changes alter a graded draft's substance; a wording fix needs no new grade.
 - Also when the user asks for it in their words - 'grade this plan', 'scoring for plans', 'score the spec'.
 - Not for code diffs (the review skills own those), and not for an inline plan of five to ten lines.
-- Off for the rest of the session once a user message starts with 'stop scoring' - the always-grade rule included. A handoff after that says `ungraded - scoring stopped` in place of a score path.
-- Off as a standing default while the user's settings carry `KIT_SCORING=off` (the Settings step below finds `scoring` off): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same.
+- Off for the rest of the session once the user says to stop it or turn it off - 'stop scoring', 'turn off scoring', 'disable scoring', any words - the always-grade rule and a `KIT_SCORING=on` in the settings included. A handoff after that says `ungraded - scoring stopped` in place of a score path.
+- Off as a standing default while the user's settings carry `KIT_SCORING=off` (the Settings step below finds `scoring` off): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same, and once they say to turn scoring on or enable it, it is on for the rest of the session.
+- The session's last word on it wins over the settings, both ways. The status hook records a request that opens with such words in `kit-session.md` and reports it as `(this session)`; said any other way, append `Scoring: on - <date>` or `Scoring: off - <date>` to that file yourself.
 - Cost, measured 2026-10-24 on a 250-300-line design: 160k-280k tokens and 9-13 minutes per round on Opus; that run took five rounds (60, 86, 86, 91, 95).
 
 ## Settings
@@ -60,7 +61,7 @@ The draft scored <S>/100 after round <n> (<why it stopped>); the next round can 
 
 Recommend 'Fix all, one more round' when the ceiling is the pass score or more; under it, 'Answer <the decision> first' when your decision lifts it, else 'Hand it over as is'. The recommended option is always listed first.
 
-Under auto-run the ask is not put: the Recommended option is taken. Auto-run is on when the user's words in this session said to take the recommended options or to run without asking ('auto-run', 'auto mode'), or the `auto-run` skill is loaded - and no user message since started with 'stop auto run'. A decision only the user can make - an `Answer <the decision> first` recommendation, a MATERIAL tagged `[needs: ...]` - takes that decision's own recommended answer the same way; then the loop goes on: fix and finish on a pass, else one more grade. Write `Ruling: <the ask> - <the option taken> - <cost if wrong>` to the run's ledger when one is named (a plan's `progress.md`, a task ledger under `docs/superpowers/`), else to `refining/<slug>/rulings.md`.
+Under auto-run the ask is not put: the Recommended option is taken. Auto-run is on when the user's words in this session said to take the recommended options or to run without asking ('auto-run', 'auto mode'), or the `auto-run` skill is loaded - and the user has not since said to stop it or turn it off. A decision only the user can make - an `Answer <the decision> first` recommendation, a MATERIAL tagged `[needs: ...]` - takes that decision's own recommended answer the same way; then the loop goes on: fix and finish on a pass, else one more grade. Write `Ruling: <the ask> - <the option taken> - <cost if wrong>` to the run's ledger when one is named (a plan's `progress.md`, a task ledger under `docs/superpowers/`), else to `refining/<slug>/rulings.md`.
 
 ## In the chat
 

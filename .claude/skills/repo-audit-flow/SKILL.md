@@ -51,11 +51,11 @@ committed.
    entry stops the run as that skill says. List every target file with its size (`wc -c`), and create the run folder.
 2. **Settings.** Take the `kit status` line of the request, or run `node .claude/kit/settings.mjs`, and write `run.md`: the kind, `WRITE`, the planner's and the
    editor's model, the pass score and `Plan grade: on` or `off`, each with its source - the user's words in this
-   session, the settings, or the default. The plan grade is off when a user message this session began with 'stop
-   scoring', the
-   settings say `scoring` is off, or the run is report-only (`WRITE` is `false`); a grade the user asked for in their
-   words turns it on in the last two cases. After a compaction, Read `run.md` and `ledger.md` before the next
-   dispatch or ask: they are how the run outlives the summary.
+   session, the settings, or the default. The plan grade is off when that line's `scoring` is off - this
+   session's last word on it outranks the settings, both ways - or the run is report-only (`WRITE` is `false`); a
+   grade the user asked for in their words turns it on, except after they said in this session to stop scoring. After
+   a compaction, Read `run.md` and `ledger.md` before the next dispatch or ask: they are how the run outlives the
+   summary.
 3. **Batches.** Targets over 250,000 characters in total are split into batches under that size, a skill folder or
    an agent file never split, in name order. Under it, one batch.
 4. **Size before spend.** No planner starts before the user has seen the size. One batch: state the total

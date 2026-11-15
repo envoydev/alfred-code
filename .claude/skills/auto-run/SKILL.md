@@ -12,13 +12,15 @@ nothing; a wrong ruling costs rework they can see and undo. So every ask that wo
 ## When to use
 
 - The user's words: 'auto mode', 'auto-run', 'run without asking', 'take the recommended options', 'continue without
-  me', or that they are away.
+  me', 'turn on auto run', 'enable auto run', or that they are away.
 - Also on as a standing default while the `kit status` line (or `node .claude/kit/settings.mjs`) says `auto_run` is on
   from the settings - the user's own
   `KIT_AUTO_RUN=on`, in a settings file that is not committed. Say that it is on from the settings in the first reply
   that acts on it.
 - It is on from that message for the rest of the session. A message the user types mid-run keeps it on and is
-  answered; a message starting with 'stop auto run' turns it off for the rest of the session.
+  answered; one that says to stop it or turn it off - 'stop auto run', 'turn off auto run', 'disable auto mode', any
+  words - turns it off for the rest of the session, a standing `KIT_AUTO_RUN=on` included. Turned on by the user's
+  words, it is on whatever the settings say.
 - This repo's own skill, kept in claude-kit and synced into each repo; the stack's typed mode for consuming projects
   is a different thing.
 
@@ -39,9 +41,11 @@ Two files, because one is a record and the other is this session's state:
 3. The status hook reads the session file with every request and reports `auto_run=on (this session)` or `off`, so
    the mode outlives a compaction with no read. Where no `kit status` line arrives, Read the session file before the
    next ask after a compaction; no file, or no `Auto-run:` line, means this session never switched the mode.
-4. 'stop auto run' at the start of a request is recorded by the status hook as `Auto-run: off - <date>`; where there
-   is no hook, append that line yourself. The file's last `Auto-run:` line outranks the settings: a standing default
-   the user stopped stays off for the session.
+4. A request that opens with words to switch the mode - 'stop auto run', 'turn off auto mode', 'enable auto run' - is
+   recorded by the status hook as `Auto-run: off - <date>` or `Auto-run: on - <date>`; said any other way, or where
+   there is no hook, append that line yourself. The file's last `Auto-run:` line outranks the settings, both ways: a
+   standing default the user stopped stays off for the session, and a mode they started runs where the settings say
+   off.
 5. Where the harness names no session scratchpad, the lines go under the run ledger's title instead, and the close
    says that the day's other sessions in the repo share them.
 

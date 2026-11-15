@@ -5,13 +5,14 @@
 // model plans, reviews, implements and searches - and gives Claude the same values with their sources, so neither a new
 // session nor a compacted one has to remember them. The values are the settings' KIT_* variables (kit-settings.mjs)
 // and this session's own switches, the last 'Auto-run:' and 'Scoring:' lines of kit-session.md in the session
-// scratchpad. A request that starts with 'stop auto run' or 'stop scoring' is recorded there by this hook.
+// scratchpad, which outrank the settings in both directions. A request that opens with words to switch one -
+// 'stop scoring', 'turn on scoring', 'enable auto run', 'turn auto run off' - is recorded there by this hook.
 //
 // It never blocks a request: whatever goes wrong, it exits 0 and says so on stderr.
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SESSION_FILE, STOP_PHRASES } from './constants.mjs';
+import { SESSION_FILE, SESSION_SWITCHES, SPLIT_VERBS, SWITCH, SWITCH_VERBS } from './constants.mjs';
 import { resolveKitSettings } from './kit-settings.mjs';
 
 function readStdin()
@@ -34,15 +35,34 @@ function readSessionFile(file)
     catch { return ''; }
 }
 
-function recordStopPhrase(file, request)
+// The switch a request opens with - the mode's line and the value asked for - or null. Three forms count: a verb
+// and the mode ('turn off scoring'), the mode between the verb's halves ('turn scoring off'), and the mode with
+// its value alone ('scoring off'), which must end there so that 'scoring on the last plan' is not one.
+function switchOf(request)
 {
-    const opening = request.trimStart().toLowerCase();
-    const stop = STOP_PHRASES.find(({ starts }) => starts.some((phrase) => opening.startsWith(phrase)));
-    if (!stop) return;
+    const opening = request.trimStart().toLowerCase().replace(/\s+/g, ' ').replace(/^please /, '');
+    for (const { line, names } of SESSION_SWITCHES)
+    {
+        const mode = `(?:the )?(?:${names.join('|')})`;
+        for (const value of [SWITCH.on, SWITCH.off])
+        {
+            const forms = [
+                `(?:${SWITCH_VERBS[value].join('|')}) ${mode}\\b`,
+                `(?:${SPLIT_VERBS.join('|')}) ${mode} ${value}\\b`,
+                `${mode} ${value} ?(?:[.,;:!]|$)`,
+            ];
+            if (forms.some((form) => new RegExp(`^${form}`).test(opening))) return { line, value };
+        }
+    }
+    return null;
+}
+
+function recordSwitch(file, { line, value })
+{
     const existing = readSessionFile(file);
     const today = new Date().toLocaleDateString('en-CA');
     mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, `${existing !== '' && !existing.endsWith('\n') ? '\n' : ''}${stop.line} - ${today}\n`);
+    appendFileSync(file, `${existing !== '' && !existing.endsWith('\n') ? '\n' : ''}${line}: ${value} - ${today}\n`);
 }
 
 // The session's own word on a switch: the last line of its kind, or null when the session never set it.
@@ -70,16 +90,17 @@ function buildOutput(hookInput, env, root)
     const sessionFile = typeof hookInput.scratchpad_dir === 'string' && hookInput.scratchpad_dir !== ''
         ? join(hookInput.scratchpad_dir, SESSION_FILE)
         : null;
-    if (sessionFile !== null && typeof hookInput.prompt === 'string') recordStopPhrase(sessionFile, hookInput.prompt);
+    const settings = resolveKitSettings(env, root);
+    const asked = typeof hookInput.prompt === 'string' ? switchOf(hookInput.prompt) : null;
+    if (sessionFile !== null && asked !== null) recordSwitch(sessionFile, asked);
     const sessionText = sessionFile === null ? '' : readSessionFile(sessionFile);
 
-    const settings = resolveKitSettings(env, root);
     const autoRun = withSession(settings.auto_run, sessionSwitch(sessionText, 'Auto-run'));
     const scoring = withSession(settings.scoring, sessionSwitch(sessionText, 'Scoring'));
 
     const userLine = [
         shown('kit: auto-run', autoRun),
-        shown('scoring', scoring, scoring.value === 'on' ? `pass ${settings.pass_score.value}` : ''),
+        shown('scoring', scoring, scoring.value === SWITCH.on ? `pass ${settings.pass_score.value}` : ''),
         `plan ${settings.plan_model.value}`,
         `review ${settings.review_model.value}`,
         `implement ${settings.implement_model.value}`,
