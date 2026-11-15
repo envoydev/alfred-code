@@ -71,11 +71,13 @@ Q-EVIDENCE  (always first, alone)
   where a bundle exists`. A project with bundles and no history folder can only answer the second;
   a project with history and no bundles can only answer the first or third - say so instead of
   offering a choice that cannot run.
-- **Q-SECTIONS** (only when something is being generated) - `authored` - invoke
-  `/capture-usage-report` so a model fills each report's judgment sections (slower, richer,
-  needs a session inside that project) - or `skeleton` - `analyze-usage.js --report-md` only,
-  judgment left unwritten because the audit re-derives it anyway (recommended for more than one
-  project, and the only route that works from outside the project).
+- **Q-SECTIONS** (only when something is being generated) - `authored` - invoke the per-project
+  report skill a `notes` line names so a model fills each report's judgment sections (slower, richer,
+  needs a session inside that project) - or `skeleton` - the analyzer's report-skeleton mode only
+  (a raw transcript copy when no analyzer is named), judgment left unwritten because the audit
+  re-derives it anyway (recommended for more than one project, and the only route that works from
+  outside the project). With no report skill named, `authored` is not offered and the question is
+  not asked: skeleton, stated in Q-SCOPE's text.
 - **Q-SCOPE** (collecting) - `every session found` / `only sessions not collected yet` (recommended
   when the projects in scope already have bundles) / `a date range or explicit session ids`
   (Other). State the session count the previous answers resolved. When the project list includes

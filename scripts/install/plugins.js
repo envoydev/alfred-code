@@ -435,7 +435,7 @@ function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, e
 // only `plugin update` puts a newer one there - a refreshed catalog alone leaves the cache where it
 // was, so the run would install the release it is replacing. The CORE alone, at every scope it is
 // installed at: since 2.10.1 it is the stack's one entry (lint 45), every other one it shipped is retired
-// and pruned by this same run, and any other plugin the catalog lists - preferred-tools and alfred-mods, each from its own
+// and pruned by this same run, and any other plugin the catalog lists - alfred-tools and alfred-mods, each from its own
 // repo - is the user's, updated on its own (the user's ruling of 2026-10-27). Each at its OWN scope, because
 // `plugin update --scope <other>` is a silent no-op. `listing` may be a function, read once.
 // Returns the marketplace key the run uses.
@@ -860,7 +860,7 @@ function parseMarketplaces(json)
     catch { return []; }
 }
 
-// The marketplace's OWN plugins under the stack key - alfred-mods, preferred-tools, any the owner lists there later. They
+// The marketplace's OWN plugins under the stack key - alfred-mods, alfred-tools, any the owner lists there later. They
 // are not the stack's: a row of one is never uninstalled with the stack nor read back as a stack entry. The stack owns
 // only the core, the hooks entry folded into it in 2.0.0 and the plugins a release retired (meta/retired-plugins.json and
 // the manifest's retired.plugins, which update prunes on their own route); every other name under the key is foreign.

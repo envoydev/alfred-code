@@ -8,7 +8,7 @@ paths:
 
 # Installer, plugin commands and delivery
 
-The one installer route, the plugin commands, the delivery surfaces and the snapshot / stamp maintenance gotchas. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+The one installer route, the plugin commands, the delivery surfaces and the snapshot / stamp maintenance gotchas. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
 
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
@@ -367,7 +367,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   core first so its cache serves the same run. Every run takes the LATEST: the seed (no `--source`)
   and both protocol snippets refresh the catalog and `plugin update` the installed CORE at each of
   its scopes BEFORE the cache is read - a refreshed catalog alone never moves the cache. Only the core:
-  every other entry the stack shipped is retired, and another plugin the catalog lists (preferred-tools,
+  every other entry the stack shipped is retired, and another plugin the catalog lists (alfred-tools,
   session-inspector) is the user's, never updated by the stack (the user's ruling of 2026-10-27). `--print-plan` changes no
   plugin.
 - **One download per RUN.** The plugin commands resolve the snapshot themselves and pass it with

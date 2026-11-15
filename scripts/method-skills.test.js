@@ -173,7 +173,8 @@ test('skill writing is this repo\'s own skill, ships in no install, and says wha
 
 test('the skill-authoring rule is this repo\'s own: it attaches on skill files and its first action is the skill', () => {
     const rule = read('.claude/rules/skill-authoring.md');
-    assert.match(rule, /^paths: \["\*\*\/SKILL\.md", "\*\*\/skills\/\*\*\/\*\.md"\]$/m, 'the two skill-file globs');
+    assert.match(rule, /^paths: \["\*\*\/SKILL\.md", "\*\*\/skills\/\*\*\/\*\.md", "\*\*\/skills\/\*\*\/\*\.md\.tmpl"\]$/m,
+        'the skill-file globs, a skill template included');
     assert.ok(squash(rule).includes('the FIRST action after this rule attaches is the `skill-authoring` Skill call, before the NEXT write'),
         'the convention-rule first-action form, naming the skill');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'skill-authoring.md')), 'no stack copy left');
@@ -193,7 +194,7 @@ test('the skill-authoring rule is this repo\'s own: it attaches on skill files a
     const { globToRe } = require('./analyze-usage.js');
     const attaches = (p) => globs.some((g) => globToRe(g).test(p));
     for (const p of ['stack/skills/csharp/SKILL.md', '.claude/skills/my-skill/SKILL.md', 'SKILL.md', '/work/app/skills/api/references/endpoints.md',
-        'stack/skills/devops/references/compose.md'])
+        'stack/skills/devops/references/compose.md', 'shared/skills/solve-task/SKILL.md.tmpl'])
         assert.ok(attaches(p), `attaches on ${p}`);
     for (const p of ['README.md', 'docs/skills.md', 'stack/skills/csharp/scripts/run.js', 'stack/rules/csharp-conventions.md', 'skill.md'])
         assert.ok(!attaches(p), `does not attach on ${p}`);
@@ -212,8 +213,8 @@ test('plugin-packaging is self-contained (it names no stack skill), and the repo
     const evals = squash(read('.claude/skills/plugin-packaging/references/evals.md'));
     assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
     assert.ok(!evals.includes('habits-skill-writing'), 'the eval reference names no stack skill either');
-    const md = squash(read('CLAUDE.md'));
-    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is this repo\'s own `skill-authoring` skill'), 'CLAUDE.md points at the repo skill');
+    const md = squash(read('AGENTS.md'));
+    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is this repo\'s own `skill-authoring` skill'), 'AGENTS.md points at the repo skill');
     assert.ok(!md.includes('habits-skill-writing'), 'and never at the retired habit');
     assert.ok(!md.includes('writing-skills is a reference'), 'and no longer at the optional plugin');
 });

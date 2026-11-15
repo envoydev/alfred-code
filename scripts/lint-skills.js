@@ -2667,7 +2667,7 @@ function main()
 
     // 44 + 45. Plugin placement is computed: the core is the only plugin, and the generated entries are current.
     // 46. The repo root carries no default component path the plugin would auto-discover (spike S9c).
-    // 47. The root plugin manifest passes `claude plugin validate`, warnings included but the root CLAUDE.md one.
+    // 47. The root plugin manifest passes `claude plugin validate`, warnings included.
     for (const finding of lintPluginPlacement()) flag(finding);
     for (const finding of lintRepoRootReserved()) flag(finding);
     // 48. The core's hooks block matches the manifest's own wiring table.
@@ -3541,11 +3541,11 @@ function lintMarketplaceEntries(liveIn, root)
 
 // 47. The plugin manifest has to pass the CLI's own check. The CLI is not present everywhere (a CI image, a fresh
 // clone), and a missing tool is reported as NOT RUN rather than laundered into a pass - the rule the stack applies to
-// every other probe. Not `--strict`: the repo's own CLAUDE.md sits at the plugin root (this repo is also a project the
-// stack is developed in), and the validator warns that a root CLAUDE.md is not loaded - true and harmless. Every OTHER
-// warning of the manifest's own section counts; the plugin-directory section below it (an icon, OS metadata files
-// on disk) does not change the result and is not read.
-const VALIDATE_ACCEPTED = [/^root: CLAUDE\.md at the plugin root is not loaded/];
+// every other probe. Every warning of the manifest's own section counts, the one on a root CLAUDE.md included: this
+// repo's own instruction file is AGENTS.md (2026-11-15), which the validator says nothing about, and a CLAUDE.md beside
+// it would stop Claude Code reading AGENTS.md. The plugin-directory section below it (an icon, OS metadata files on
+// disk) does not change the result and is not read.
+const VALIDATE_ACCEPTED = [];
 function lintMarketplaceSchema()
 {
     const out = [];

@@ -10,7 +10,7 @@ user-invocable: false
 
 The single organizing idea: the compiler is the cheapest test you have. Configure it to be strict, describe your data so it can check the data, and never quietly disable it.
 
-**The concrete tooling and the rule-by-rule style live in `references/typescript-style.md`** - the tsconfig (`@tsconfig/strictest`), the ESLint flat config (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`), Prettier, `.editorconfig`, and the naming / interface-vs-type / import / class-member rules those tools enforce. This SKILL.md owns the conceptual model below; where the two overlap, the reference is authoritative on the concrete rule. **Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are higher priority - follow the project where it diverges. The user's own preferences docs there rank higher still: where an entry and this skill disagree, ask the user which wins, the entry's side marked (Recommended).**
+**The concrete tooling and the rule-by-rule style live in `references/typescript-style.md`** - the tsconfig (`@tsconfig/strictest`), the ESLint flat config (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`), Prettier, `.editorconfig`, and the naming / interface-vs-type / import / class-member rules those tools enforce. This SKILL.md owns the conceptual model below; where the two overlap, the reference is authoritative on the concrete rule. **Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and code-style docs are higher priority - follow the project where it diverges.**
 
 ## When to use
 
@@ -33,15 +33,7 @@ The single organizing idea: the compiler is the cheapest test you have. Configur
 
 Keep these in one shared base `tsconfig` and have each project `extends` it. A per-project config that redefines the flags drifts; one that inherits them cannot.
 
-Where the house config-protection guard runs, an edit to a tsconfig that already exists passes when every strictness key it changes moves to its strict value - make it with the file tools, since a shell command naming a strictness key is held whatever it does - and one that removes or loosens a strictness key is held until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, write the lines the denial prints into the guard's receipt `<data root>/state/approvals/CONFIG-EDIT-ALLOW` and retry the same edit; a new tsconfig takes the full set from the start.
-
-```ask
-The config-protection guard holds this edit: <file> - <the change>, <N> new errors.
-- 'Allow this edit (Recommended)' - the guard's receipt names this file and the same edit is retried
-- 'Keep the config as it is' - nothing changes in the file
-```
-
-Under auto-run a held loosening is never allowed: keep the config as it is and report it - 'Allow' is for a tightening the guard still holds or a key moving into a shared base (`extends`, `Directory.Build.props`).
+A new tsconfig takes the full set from the start. In one that already exists, a red check is fixed in the code, never by removing or loosening a strictness key.
 
 ## Don't lie to the compiler
 
@@ -65,6 +57,7 @@ A precise type is documentation the compiler enforces. Reach for the type system
 - **String-literal unions** over `enum` for any closed set that crosses a runtime boundary - JSON, storage, a wire message. A union is just strings at runtime, so it round-trips cleanly; an `enum` is a runtime object with its own quirks. Keep `const enum` only for values that stay inside one bundle and never cross a package edge.
 - **`interface` vs `type`**: `interface` for object shapes (the typescript-eslint consistent-type-definitions default); `type` for unions, intersections, tuples, and anything mapped or conditional. Be consistent within a file rather than mixing both for the same job.
 - **Model absence on purpose.** A lone optional (`x?: T`) beats `T | null | undefined` ambiguity. Pick `undefined` or `null` and mean one of them throughout a codebase - `undefined` is the TS-idiomatic default. Keep correlated nullable fields all-or-nothing: a `{ lat: number; lng: number } | null`, or a discriminated state, never two independent optionals that can drift into an impossible half-set. Build objects complete through a factory rather than assembling them via nullable intermediates.
+- **A closed set of named values is an `as const` object with its union derived from it** - `export const STATUS = { ok: 'ok', failed: 'FAIL' } as const;` and `export type Status = (typeof STATUS)[keyof typeof STATUS];` - never a TS `enum`: an enum is not erasable, so `erasableSyntaxOnly` refuses it and a file Node runs by type stripping cannot load it. The object goes in the feature's `constants` file and the type in its `types` file; what is and is not a magic value is the `javascript` skill's 'Named values'.
 - **`satisfies` for config objects and lookup tables** - it validates against the type while keeping the narrowest inferred literals, where an annotation widens and `as const` alone checks nothing.
 - **`readonly` by default.** `readonly` properties, `readonly T[]` / `ReadonlyArray<T>` for collections, `as const` for literal config and tuples. Mutation is the exception you opt into, not the default you forget to prevent.
 - **Brand primitives that share a representation but not a meaning** - a `UserId` and a `PostId` are both `string`, and mixing them is a real bug. `type UserId = string & { readonly __brand: 'UserId' }`, constructed only through a single validating guard, never a bare `as` at call sites. It is compile-time only - zero runtime cost - and it makes the type system reject a `PostId` where a `UserId` is required.
@@ -90,7 +83,7 @@ You don't lose the type checker by writing `.js`. The same language server check
 
 - ESLint with typescript-eslint and its type-aware rules, plus Prettier. Both run pre-commit and in CI. Prettier owns formatting - don't hand-format and don't add stylistic ESLint rules that fight it; let the lint surface real problems, not whitespace. The concrete config to copy - the flat `eslint.config.mjs`, the `@tsconfig/strictest` base, the `.prettierrc` and `.editorconfig` - is in `references/typescript-style.md`.
 - Type-check in CI as its own step (`tsc --noEmit`), separate from bundling. A bundler can transpile past a type error; an explicit `tsc` pass cannot, so a green build genuinely means a type-clean build.
-- Public API surfaces carry TSDoc (JSDoc tags in a `.js` file) - `@param`, `@returns`, `@throws` for contract exceptions - which feeds editor tooling for TS and JS consumers. Whether, how long and in what language is the house code-comments skill's, and the project's own convention wins.
+- Public API surfaces carry TSDoc (JSDoc tags in a `.js` file) - `@param`, `@returns`, `@throws` for contract exceptions - which feeds editor tooling for TS and JS consumers. Whether, how long and in what language is the `code-comments` skill's - load it before writing one - and the project's own convention wins.
 - Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - is `references/typescript-style.md`'s ground; follow it there rather than from recall.
 
 ## Prove it

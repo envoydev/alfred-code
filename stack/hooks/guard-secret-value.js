@@ -1071,7 +1071,7 @@ if (process.argv[2] === '--with-sensitive') {
     process.stderr.write(`# with-sensitive: ${keys.length} value(s) in the environment (${sources.map(([rel, ks]) => `${shown(chain.files[rel])}: ${ks.join(', ')}`).join('; ')}), each shown as <KEY> in this output\n`);
   }
   const { spawn } = require('child_process');
-  const child = spawn(line, { shell: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'] });
+  const child = spawn(line, { shell: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'], windowsHide: true });
   const pipe = (from, to) => {
     const { StringDecoder } = require('string_decoder');
     const decoder = new StringDecoder('utf8');

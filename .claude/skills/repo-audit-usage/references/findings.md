@@ -5,7 +5,7 @@ Read before the first finding is written - every audit file, the summary and Pha
 Every finding, everywhere, uses one shape - the clustering depends on it:
 
 ```
-- [SEVERITY] [category] <one-line defect> | evidence: <session id + locator + measured number> | home: <exact stack file> | status: OPEN / FIXED-SINCE <ref> / PARTLY FIXED <ref> / NOT-STACK | fix: <the smallest mechanism that removes it>
+- [SEVERITY] [category] <one-line defect> | evidence: <session id + locator + measured number> | home: <exact repo file> | status: OPEN / FIXED-SINCE <ref> / PARTLY FIXED <ref> / NOT-STACK | fix: <the smallest mechanism that removes it>
 ```
 
 Severity: `BLOCKER` (a wrong result shipped, or a gate failed to catch one), `MATERIAL` (a broken
@@ -25,11 +25,11 @@ contract with real consequence, or measured avoidable cost), `MINOR`. Categories
   a fix that closes three of four routes. The stamp SAYS which half landed and names the residual in
   its own words. Without this status the two failure modes are a false FIXED and a stale OPEN, and a
   campaign that has neither word for it produces both.
-- `NOT-STACK` covers a defect no stack file owns: the audited project's own code, the harness, and
+- `NOT-STACK` covers a defect no file of this repo owns: the audited project's own code, the harness, and
   the audit's OWN output. That last class is large and predictable - a defect in a bundle's
   `report-usage.md`, a `SUMMARY.md`, or the report-generation prompt is a local artifact, so close
-  it `NOT-STACK` and route the durable half to the stack skill that owns that work
-  (`capture-usage-report`), naming the rule that landed there.
+  it `NOT-STACK` and route the durable half to the repo's skill that owns that work (the
+  per-project report skill a `notes` line names), naming the rule that landed there.
 - `OPEN` is a transient state, never a verdict. A finding is OPEN only between the audit that filed
   it and the routing answer that dispositions it - see Phase C's close-out.
 

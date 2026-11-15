@@ -2,10 +2,10 @@
 
 Read at Phase 1b, before any row drives a score or an edit. Re-read each row below against the live page
 (through WebFetch or the documentation server); verdict per row CURRENT | DRIFTED | UNVERIFIABLE, and a
-DRIFTED row is corrected in this file in the same run - and in `scripts/session-surface.js` when the script
-encodes it (its comments name the page each rule came from). The plugin mechanics the packaging grade
-reads - manifest fields, path-field semantics, versioning, marketplace entries, validate, details, eval -
-are `/repo-audit-plugins`' `references/currency.md`: read those rows there, never copy them here.
+DRIFTED row is corrected in this file in the same run - and in the session-surface tool a `notes` line names
+when that tool encodes it (its comments should name the page each rule came from). The plugin mechanics the
+packaging grade reads - manifest fields, path-field semantics, versioning, marketplace entries, validate,
+details, eval - are `/repo-audit-plugins`' `references/currency.md`: read those rows there, never copy them here.
 
 **OFFICIAL, read 2026-10-16** - session loading (`code.claude.com/docs/en/memory`): CLAUDE.md,
 `.claude/CLAUDE.md` and `CLAUDE.local.md` in the working directory and every directory above it load at launch,
@@ -37,8 +37,9 @@ PreModelSwitch and PostModelSwitch and to 10 on MessageDisplay.
 `skillListingMaxDescChars`; `code.claude.com/docs/en/skills`, 'Skill descriptions are cut short'): the per-skill
 cap on `description` plus `when_to_use` in the listing, a positive integer of characters, default `1536`, scope
 'Any file'; raising it keeps long descriptions at more context per turn, lowering it fits more skills under
-`skillListingBudgetFraction` (default `0.01` of the window). `scripts/session-surface.js` reads it from the
-fixture's settings (`LISTING_MAX_DESC` the fallback), so the map takes a changed value as it stands.
+`skillListingBudgetFraction` (default `0.01` of the window). A map reads it from the fixture's settings, so a
+changed value is taken as it stands; a surface tool that hard-codes a fallback (a `notes` line names it) is checked
+against this row.
 The **Project instructions** setting (`code.claude.com/docs/en/memory`, 'Choose which instruction files load';
 `code.claude.com/docs/en/settings-reference`, `pluginConfigs`): which instruction files load, set in `/config`
 or as `pluginConfigs["cc-plugin-agents-md@builtin"].options.instructionFiles` (`agents-md@builtin` before
@@ -48,21 +49,20 @@ project and local files - `claude-md-or-agents-md` (the default: `AGENTS.md` onl
 `CLAUDE.md` files first, its `AGENTS.md` after, a file already loaded skipped), `claude-md`, and `managed-only`
 (the managed `CLAUDE.md` and auto memory at launch; project, local and user `CLAUDE.md`, `.claude/rules/` and
 every `AGENTS.md` left out, path rules still on demand); absent from `/config` before v2.1.277 or with the
-built-in plugin disabled. The map models the default only (`session-surface.js` `AGENTS_FILES`): a fixture
-account that sets another value has its memory rows reported as off-model, never scored.
+built-in plugin disabled. The map models the default only: a fixture account that sets another value has its
+memory rows reported as off-model, never scored.
 
-**MEASURED in this repo** - the skill listing budget: `skillListingBudgetFraction` of the window in TOKENS,
-counted in characters at four to a token (CLAUDE.md: '39 skills, 19901 chars > 8000 budget' at a 200K window
-and the `0.01` default, Claude Code 2.1.284), over it the least-used descriptions dropped whole - re-read the
-fraction on the skills page each run and pass it as `--listing-fraction`; a seat denied as `Agent(<plugin>:<seat>)`
-leaves the listing and the bill (spike S3, `docs/plugin-migration-evidence.md`; re-measured 2026-10-16 on 2.1.301 in
-an aspnet install of 2.5.0 - the Agent tool listed 21 seats, none of the 23 denied - while `/context`'s 'Custom agents'
-row still counted all 44 definitions, so read the listing, never that row, for the seat cost); a bare MCP tool name in
-`permissions.deny` removes the tool from context (`code.claude.com/docs/en/permissions`, re-read 2026-10-14,
-`.claude/rules/repo-installer.md`); a plugin MCP server ranks below local, project and user registrations and is
-matched by endpoint, so a manual registration of the same command or url replaces it (measured 2026-09-26 on
-2.1.282, `/repo-audit-plugins` currency); MCP tool schemas deferred behind tool search, their names only in the
-listing.
+**MEASURED on plugin fixtures** - the skill listing budget: `skillListingBudgetFraction` of the window in TOKENS,
+counted in characters at four to a token (measured at a 200K window and the `0.01` default on Claude Code 2.1.284),
+over it the least-used descriptions dropped whole - re-read the fraction on the skills page each run and pass it to
+the map; an agent denied as `Agent(<plugin>:<agent>)` leaves the listing and the bill (re-measured 2026-10-16 on 2.1.301:
+the Agent tool listed only the allowed agents while `/context`'s 'Custom agents' row still counted every definition,
+so read the listing, never that row, for the agent cost); a bare MCP tool name in `permissions.deny` removes the tool
+from context (`code.claude.com/docs/en/permissions`, re-read 2026-10-14); a plugin MCP server ranks below local,
+project and user registrations and is matched by endpoint, so a manual registration of the same command or url
+replaces it (measured 2026-09-26 on 2.1.282, `/repo-audit-plugins` currency); MCP tool schemas deferred behind tool
+search, their names only in the listing. The repo's own evidence for these rows, where it keeps any, is a `notes`
+line.
 
 **NOT MEASURED by the map** - a server's runtime instructions (its `initialize` reply) and the deferred tool names;
 the system prompt and the harness's own tool descriptions; anything a live session alone shows. Each is a

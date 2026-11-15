@@ -8,7 +8,7 @@ paths:
 
 # Memory, docs root and data root
 
-The stores and what each holds, where the docs root and the data root live, and the durable-versus-ephemeral split. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+The stores and what each holds, where the docs root and the data root live, and the durable-versus-ephemeral split. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
 
 - **No memory server and no memory level** (2.10.1, the user's ruling of 2026-10-24: the stack depends on no MCP
   server). Claude Code's own memory stays ON - the stack switches it off only for a project on custom memory (`ALFRED_CODE_MEMORY=custom`, ledgered), in the file that holds the choice - `settings.local.json` when its env carries the key, else the run's own file - and a scope move keeps the two together (final review I1: a personal choice wrote the switch-off into the committed `settings.json`). A personal choice never takes the team's switch-off out of `settings.json` while that file's own env still says custom (fix-pass review I1: one developer's local key stripped it, and teammates' runs wrote it back). The first update or uninstall past

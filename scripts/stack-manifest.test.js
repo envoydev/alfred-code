@@ -119,7 +119,7 @@ test('stack-manifest: the twins folder is gone, and no script or test names it',
     assert.ok(!fs.existsSync(path.join(ROOT, 'scripts', 'os')), 'the twins folder still exists - the frozen twins were supposed to be deleted');
 
     const SCAN_DIRS = ['scripts', 'stack', 'setup-plugin', 'meta'];
-    // The repo root is never walked (only its named directories are), so a root file - CLAUDE.md's
+    // The repo root is never walked (only its named directories are), so a root file - the instruction file's
     // own installer-layout prose named the deleted twins unmarked and the sweep missed it - is
     // checked explicitly by name instead.
     const SCAN_FILES = [...require('./claude-docs.js').claudeDocFiles(), 'README.md', 'docs/install-footprint.md'];

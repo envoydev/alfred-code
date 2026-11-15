@@ -21,6 +21,11 @@ Thumbs.db
 # and the repo-audit family, maintenance tools for this repo, never part of the shipped catalog) and its own rules
 .claude/*
 !.claude/kit/
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/plan-grader.md
+!.claude/agents/audit-planner.md
+!.claude/agents/audit-editor.md
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/plugin-packaging/
@@ -30,6 +35,11 @@ Thumbs.db
 !.claude/skills/refining-plans/
 !.claude/skills/javascript/
 !.claude/skills/markdown-style/
+!.claude/skills/solve-task/
+!.claude/skills/ts-js-testing/
+!.claude/skills/npm/
+!.claude/skills/code-comments/
+!.claude/skills/project-structure/
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/execution.md
@@ -44,8 +54,13 @@ Thumbs.db
 !.claude/rules/refining-plans.md
 !.claude/rules/superpowers-location.md
 !.claude/rules/auto-run.md
+!.claude/rules/commits.md
+!.claude/rules/javascript.md
+!.claude/rules/typescript.md
+!.claude/rules/project-structure.md
 !.claude/skills/repo-audit-agents/
-!.claude/skills/repo-audit-claude-md/
+!.claude/skills/repo-audit-agent-md/
+!.claude/skills/repo-audit-flow/
 !.claude/skills/repo-audit-hooks/
 !.claude/skills/repo-audit-plugins/
 !.claude/skills/repo-audit-rules/

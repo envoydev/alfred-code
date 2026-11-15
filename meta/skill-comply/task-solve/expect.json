@@ -28,7 +28,7 @@
       "id": "resume-first",
       "session": { "said": "\\bSize:\\**\\s*\\**standard\\b" },
       "from": "stack/skills/task-solve/SKILL.md",
-      "quote": "On invocation, resume before starting:",
+      "quote": "On invocation, resume before starting** - both before step 1, in this order:",
       "graders": [
         {
           "type": "tool_order",

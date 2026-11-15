@@ -84,15 +84,17 @@ function cmdArg(arg)
 // command line - it ends the command - so an argument carrying one is refused, never run.
 function commandPlan(bin, argv, opts, { platform = process.platform, resolve = resolveOnce } = {})
 {
-    if (platform !== 'win32') return { cmd: bin, args: argv, opts };
+    // windowsHide: a console window flashes on Windows without it
+    const hidden = { ...opts, windowsHide: true };
+    if (platform !== 'win32') return { cmd: bin, args: argv, opts: hidden };
     const env = (opts && opts.env) || process.env;
     const full = resolve(bin, env);
     if (!full) return { why: `${bin}: not found on PATH as a .exe, .com, .cmd or .bat` };
-    if (!/\.(cmd|bat)$/i.test(full)) return { cmd: full, args: argv, opts };
+    if (!/\.(cmd|bat)$/i.test(full)) return { cmd: full, args: argv, opts: hidden };
     if (argv.some((a) => /[\r\n]/.test(String(a)))) return { why: `${bin}: an argument holds a line break, which cmd.exe cannot pass` };
     const comspec = env.ComSpec || env.COMSPEC || 'cmd.exe';
     const line = [full.replace(CMD_META, '^$1'), ...argv.map(cmdArg)].join(' ');
-    return { cmd: comspec, args: ['/d', '/s', '/c', `"${line}"`], opts: { ...opts, windowsVerbatimArguments: true } };
+    return { cmd: comspec, args: ['/d', '/s', '/c', `"${line}"`], opts: { ...hidden, windowsVerbatimArguments: true } };
 }
 
 // THE ONE SPAWN behind every external command the scripts run (R105) - `node` itself excepted, which
@@ -110,7 +112,7 @@ function spawnCommand(bin, argv = [], opts = {}, { platform, resolve, spawn = sp
 function spawnCommandAsync(bin, argv = [], opts = {}, { platform, resolve, spawn = spawnAsync } = {})
 {
     const plan = commandPlan(bin, argv, opts, { platform, resolve });
-    return plan.why ? spawn(bin, argv, opts) : spawn(plan.cmd, plan.args, plan.opts);
+    return plan.why ? spawn(bin, argv, { ...opts, windowsHide: true }) : spawn(plan.cmd, plan.args, plan.opts);
 }
 
 // execFileSync's contract over the same route: stdout back, a throw carrying `status`, `stdout` and
@@ -132,7 +134,7 @@ function execCommand(bin, argv = [], opts = {}, seams = {})
 function locate(cmd, { platform = process.platform, resolve = resolveOnce, env = process.env } = {})
 {
     if (platform === 'win32') return resolve(cmd, env) || '';
-    const r = spawnSync('/bin/sh', ['-c', `command -v '${String(cmd).replace(/'/g, "'\\''")}'`], { encoding: 'utf8', env });
+    const r = spawnSync('/bin/sh', ['-c', `command -v '${String(cmd).replace(/'/g, "'\\''")}'`], { encoding: 'utf8', env, windowsHide: true });
     return r.status === 0 ? String(r.stdout || '').trim() : '';
 }
 const which = (cmd, seams = {}) => Boolean(locate(cmd, seams));
@@ -224,7 +226,7 @@ function gitRoot(cwd, home)
 // the memory importer - both of which ship in the snapshot rather than beside this file.
 function runNode(script, argv, { cwd, env, timeout } = {})
 {
-    const r = spawnSync(process.execPath, [script, ...argv], { cwd, env, encoding: 'utf8', ...(timeout ? { timeout } : {}) });
+    const r = spawnSync(process.execPath, [script, ...argv], { cwd, env, encoding: 'utf8', ...(timeout ? { timeout } : {}), windowsHide: true });
     return { ok: r.status === 0, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 

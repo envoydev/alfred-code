@@ -1,0 +1,254 @@
+{
+  "name": "alfred-code",
+  "agents_md": "AGENTS.md",
+  "check_batch": "run the tests that cover the change and `npm run lint`",
+  "check_once": "the full `npm test`",
+  "not_for": "Not for a consuming project, which runs the stack's `task-solve`; not for a release, which has its own procedure.",
+  "settled": "A design already settled by a run order or the user's rulings skips the spec and goes to the plan.",
+  "checks": [
+    "   - per batch: `npm run lint` and the tests that cover the change;",
+    "   - a temp-project matrix from this working tree with AGENTS.md's required edge cases - fresh install, update over",
+    "     an older install, re-run, the user's own config kept, missing or garbage input, every scope, every boundary -",
+    "     reading the written files, never the exit code alone;",
+    "   - the full `npm test` once, in the background, its output to a log, its tail read."
+  ],
+  "voice": "single dashes; lint check 32",
+  "commit": "never `.gitignore` or `docs/habits-scorer-flow.html`",
+  "not_here": [
+    "- The Cursor mirror (paused since 2026-09-23).",
+    "- The stack's own `task-solve` and its seats, stamps and stops."
+  ],
+  "structure_paths": "[\"stack/hooks/**/*.js\", \"scripts/**/*.js\", \"setup-plugin/hooks/**/*.js\"]",
+  "structure_map": [
+    "- Plain CommonJS JavaScript, so there is no `types` file; a feature's named values go in its `constants.js`.",
+    "- `stack/hooks/` is flat by contract: the installer copies a named list of hook files into a project's `.claude/hooks/`, so a hook there is a file, not a folder. In a hook file `main` is the entry and the effects (stdin, stdout, the file system, git), and a decision is an exported pure function. That folder's own rule is `.claude/rules/repo-hooks.md`.",
+    "- `scripts/` holds the repo's own tools. A new one is an entry `scripts/<name>.js` that only wires, and a folder `scripts/<name>/` with `constants.js`, logic files and `effects.js`.",
+    "- The outside world: `fs`, `child_process`, `process`, stdin and stdout, the clock, git.",
+    "- Tests: `scripts/<name>.test.js` beside the entry (`npm test` runs `scripts/**/*.test.js`).",
+    "- Everything written before 2026-11-15 is flat; it follows the shape only as it is changed, and is never split to match."
+  ],
+  "audit": {
+    "skills": {
+      "roots": [
+        "stack/skills"
+      ],
+      "checks": [
+        "npm run lint"
+      ],
+      "notes": [
+        "The shipped skills live in stack/skills; this repo's own .claude/skills (the repo-audit family, plugin-authoring and the other synced authoring skills) is outside the shipped catalog, is audited only when the user names it, and npm run lint does not hold it.",
+        "The multi-home registry is meta/shared-rules.json at the repo root: one entry per multi-home rule, the canonical owner plus every restatement site pinned by a marker phrase; npm run lint fails when a copy drifts, and any pass that adds, moves or rewords multi-home text updates it in the same pass.",
+        "The install catalogs are meta/recommendations.json (seeds skills per stack profile) and meta/stack-graph.json (pulls; npm run graph rewrites it); a skill unreachable from any seed is optional, and a named load directive of an optional skill is a coupling defect.",
+        "The optional-cite checks in scripts/lint-skills.js (lintOptionalCites, run by npm run lint) flag a named load directive of a skill an install can lack; they must be green.",
+        "Lint check 15c caps each skill description plus when_to_use at 160 chars (since 2.1.2), and check 15 caps any description at 1,000.",
+        "Lint check 33 prints the always-on budget every run: skill descriptions, pathless rules and agent descriptions summed under 80,000 chars - quote it under Dimension 3.",
+        "Skills trigger mainly through the convention rules in stack/rules, which tell the model to call the skill (the rule-forced trigger path).",
+        "Offline step grader: where meta/skill-comply/<skill>/expect.json exists, node scripts/skill-comply.js grade scores a transcript step by step offline; its replay --live is a billed nested session the user must approve first, and compare applies the A/B ship rule over two replay outputs.",
+        "Every stack skill is installed as a project copy (since 2.1.0), so the skillOverrides visibility override reaches it for the with/without evaluation.",
+        "No plugin carries a stack skill (since 2.1.0), so claude plugin eval cannot see them directly: npm run eval-bundle -- <out> builds one plugin holding the core and the whole library; meta/evals/library/ holds one case per stack profile graded arm: both; the run is billed.",
+        "The session analyzer is the capture-usage-report skill (stack/skills/capture-usage-report): its SKILLS table and scorecard give per-skill activation counts per session - record the pre-edit numbers beside an edit.",
+        "The catalog names skills as noun phrases (dotnet-testing), not gerunds; keep new names consistent.",
+        "Measured history of this catalog: before the 2.1.2 cap angular-testing and ts-js-testing shared 35 trigger terms (Jaccard 0.44) and the architecture and coverage loops 0.35; 21 descriptions carried a 'Triggers on' clause before 2.1.2 and none did on 2026-09-29; before the cap 61 of 79 descriptions had no 'use' or 'when' in their first 250 chars and descriptions averaged ~190 tokens (60k chars over 79 skills).",
+        "Measured on 2026-09-29: 89 skills, none using allowed-tools or disallowed-tools; descriptions 13,586 chars total (~153 chars, ~40 tokens each); 24 bodies over 12k chars and 2 over 20k; the reference layer held 193 files (an earlier 146-file layer had 4 reachable only through a sibling); no skill directory held a human-centric file (README, CHANGELOG)."
+      ]
+    },
+    "agents": {
+      "roots": [
+        "stack/agents"
+      ],
+      "checks": [
+        "npm run lint",
+        "npm test -- scripts/seat-dispatch-spelling.test.js"
+      ],
+      "notes": [
+        "The skill catalog is stack/skills and the rule catalog stack/rules; agents cite rules by deployed path (.claude/rules/...) while existence is checked against stack/rules; the CLAUDE.md template agents are judged against is stack/AGENTS.template.md; the repo's root CLAUDE.md is its own working file and is out of scope.",
+        "Seat delivery (since 2.1.0): all seats (44-45) ride the core plugin, and each seat a project's selection did not pick is denied per project as Agent(alfred-code:<seat>); the full copy route copies the picked seats into .claude/agents instead.",
+        "A seat and its frontmatter preloads seed together; skills: preloads are BARE names that resolve to the project's library copies, and a seat whose preloaded skills were not copied is never picked; an always-on (cross-cutting) seat can count on nothing stack-specific.",
+        "Preload spelling: lint check 50 fails a skills: preload spelled alfred-code:<skill> instead of bare; npm run scope-preloads (node scripts/scope-agent-preloads.js --write) rewrites every preload to the spelling its placement needs.",
+        "Dispatch spelling: a plugin seat answers only to alfred-code:<seat> (a bare name returns 'Agent type not found'); every body that dispatches a seat keeps that roster spelling, pinned by scripts/seat-dispatch-spelling.test.js.",
+        "MCP tool spelling in tools: grants is mcp__plugin_<server>_<server>__ (plugin and server share the name); lint check 54 fails a bare mcp__<server>__ spelling.",
+        "Install decisions: what a project needs is proven by meta/evidence.json against the project's own manifests or seeded per stack in meta/recommendations.json, with meta/stack-graph.json pulls; the optional-cite checks in npm run lint cover the skill half and must be green, MCP cites are audited by hand.",
+        "The suggests: frontmatter is removed and must not return: it offered dotnet-aspire to a project with no Aspire and angular-security to a WinForms one; a described cite gets no install edge.",
+        "The multi-home registry is meta/shared-rules.json (owner plus marker-pinned sites; npm run lint fails on a drifted copy); a registry-synced rule keeps its copies inline without naming the sibling artifacts.",
+        "A renamed or retired seat gets its retired.agents and renamed.agents rows in meta/stack-manifest.json (the one home of a changed shipped name).",
+        "Dispatch is explicit-only (the capabilities rule and the dispatch guard stack/hooks/guard-unapproved-dispatch.js, a PreToolUse guard on Task|Agent), so a 'Use PROACTIVELY' cue in a seat description is a defect.",
+        "Lint check 15b caps an agent description at 300 chars: the 'Use when...' sentence and its 'Do NOT use' clause, with the rest of the scope in the agent's ## Scope body section.",
+        "An install unit is the cross-cutting seats plus one stack's vertical; measured 2026-09-29 after the 300-char cap, a single-stack install's seeded seats are 12-14 at ~3.4k-4.0k chars (~1k tokens), all 44 sum 12,750 chars (~3.2k tokens, re-measured 2026-10-20) - also what a repo the stack never set up lists, since no deny is written there (the 2.1.0 known ceiling); before the cap 16 seats carried ~13.8k chars and 43 seats 38k.",
+        "Measured preload cost: 26k-70k chars per designer / implementer / verifier seat.",
+        "This stack's verifier seats route over-build to a punch list and never block on it.",
+        "The session analyzer is the capture-usage-report skill: its SUBAGENTS table and dispatch-overhead row are the observable for a seat edit - record preload share, output per dispatch and status words returned before the edit."
+      ]
+    },
+    "rules": {
+      "roots": [
+        "stack/rules"
+      ],
+      "checks": [
+        "npm run lint"
+      ],
+      "notes": [
+        "Rule sources live in stack/rules/ and hook sources in stack/hooks/ (the audit.hooks roots); audit the sources but reason about loading, paths globs and cross-file references in the deployed layout.",
+        "The installer is node scripts/install/alfred-code.js (one installer, every OS); it deploys each rule as a library copy in the target project's .claude/rules/, its hash recorded in the install stamp, with drift and staleness reported by scripts/library-check.js.",
+        "Confirm the source-to-deployed mapping from meta/stack-manifest.json (the six lists the installer reads) and the installer's own scripts/install/ modules, never by assumption.",
+        "stack/rules/alfred-docs-root.md carries the __DOCS_ROOT__ placeholder the installer stamps on every run, so its deployed text is not the source's text.",
+        "The GENERATED rules alfred-awareness.md and project-code-style.md are written by the capture skill that owns each one, which fixes their shape; a finding there lands in that skill, never in a hand edit of the rule.",
+        "The CLAUDE.md template read for the conflict and duplication maps is stack/AGENTS.template.md; the repo-root AGENTS.md is this repo's own working file, read for context only and never scored or edited.",
+        "The compaction instructions (what the summary keeps verbatim) are owned by the always-on navigation baseline rule stack/rules/alfred-navigation.md; any other always-on file restating them is a duplicate.",
+        "Lint check 33 (scripts/always-on-surface.js, run by npm run lint) caps the shipped always-on surface at 80,000 chars: the pathless alfred-*.md rules as injected, every agent description with its (Tools: ...) suffix, every model-invocable skill description plus when_to_use, and the generated capabilities rule's fixed text; /alfred-code:status reports each install's floor.",
+        "An always-on rule may name only what every install gets; the symbol-navigation server the baseline locks is the one MCP server every project is guaranteed.",
+        "What each rule's install unit guarantees is read from meta/recommendations.json (seeds) and meta/stack-graph.json (pulls, regenerated by npm run graph); lint checks 25 and 26 in npm run lint are the optional-cite checks covering the skill half and must be green, while MCP cites are audited by hand.",
+        "The multi-home registry is meta/shared-rules.json: one entry per multi-home rule naming the canonical owner and every restatement site, each pinned by a marker phrase; lint check 24 fails when a copy's marker drifts, and any pass that adds, moves or rewords multi-home text updates the registry in the same pass.",
+        "Measured build-directory reads cost ~8.6k tokens across 115 sessions, so a permissions.deny Read() entry for build and vendored trees is recorded as available, not owed.",
+        "Previous always-on measurement to compare against: the seven always-on rules measured 170 non-empty lines, 25,082 chars (~6.3k tokens) and 92 bullets on 2026-09-29, before the project CLAUDE.md and the descriptions are added; the earlier six-rule set counted ~220 directive sentences with 48 zero-exception lines.",
+        "The rules' 'measured:' clauses are the consequence clause of the imperative-consequence-mechanism shape: keep the one that carries the reason and cut a second number that restates it.",
+        "The adherence observables are the usage analyzer's scorecard rows (scripts/analyze-usage.js) and the hook-blocks ledger; record their pre-edit numbers beside each edit."
+      ]
+    },
+    "hooks": {
+      "roots": [
+        "stack/hooks",
+        "setup-plugin/hooks"
+      ],
+      "checks": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "Hook wiring is the hooks list in meta/stack-manifest.json: a row's matcher is a PreToolUse matcher, or @Event / @Event:matcher for any other event.",
+        "scripts/build-marketplace.js (mergeHooks) folds the manifest's hooks rows into the core alfred-code entry's inline hooks block in meta/plugin-entries.json and then the root plugin manifest, after the core's own inline entries (guard-layer-table.js and library-stamp.js in setup-plugin/hooks/, which are house hooks too); npm run plugin-manifest regenerates it, and lint checks 48 and 49 hold the core hooks block to the manifest's wiring table.",
+        "Hook timeouts live in the HOOK_TIMEOUTS table in scripts/install/settings.js, read by both the core-entry generator and the copy-route writer: 10 seconds by default (every hook measured under 30 ms), 60 on the Stop entries of check-turn-build.js and history-session.js, and the shell-guards.js dispatcher gets the sum of its guards' 10 s; the comment above HOOK_TIMEOUTS carries the measured spawn time.",
+        "scripts/install/settings.js also wires the hooks into a project's settings.json on the copy route (ALFRED_CODE_HOOKS_VIA_PLUGIN=false); on the default plugin route a deployed settings.json carries no stack hook entry, only ALFRED_CODE_HOOKS_OFF naming the hooks the walk did not pick, so any stack hook entry there is a leftover.",
+        "The hook retirement list is retired.hooks in meta/stack-manifest.json; update prunes the retired set from a deployed settings.json, the HTML and README hook counts must agree with the manifest, and the env-gated instrument hook (instrument-tool-usage.js) is wired off by default.",
+        "Child hooks to audit come from every plugin in the plugins list of meta/stack-manifest.json.",
+        "Hooks are read against the root layers stack/rules, stack/skills and stack/agents.",
+        "The guard-block ledger is <data root>/statistics/hook-blocks/<session>.jsonl under each audited project's generated-docs root, one row per block (timestamp, hook, event, tool, reason); node scripts/analyze-usage.js <corpus> --hook-blocks <dir> reads the per-hook block rate with its denominator.",
+        "The ten `Bash|PowerShell|Monitor` PreToolUse guards listed at the top of shell-guards.js are wired as ONE shell-guards.js hook that runs each guard in-process, and the seven file-tool guards in file-guards.js the same way; each guard keeps its own gates and ledger row, and a throwing guard fails open alone.",
+        "Every hook is wired in exec form: node with ${CLAUDE_PLUGIN_ROOT}/<file> as its first argument, with no shell and no quoting.",
+        "Shared hook code has one home each in stack/hooks: hook-prelude.js holds the gates (the csv opt-out, the hook_profile userConfig, the stand-down beside a still-wired copied twin, a repo never set up, a Cursor host), fresh-session.js the fresh-session arithmetic, shell-writes.js the shell-write parse, hidden-chars.js the hidden-character class; a hook requires them from its own directory and never inlines them.",
+        "A regex several hooks still carry inline (the Git Bash mount path) is pinned as a shared rule with marker-pinned copies in meta/shared-rules.json.",
+        "A user-facing gate ends in ONE AskUserQuestion whose answer is honoured through a session-own, expiring receipt under <data root>/state/.",
+        "The Cursor twin repo ships a hook layer of its own: a hook protocol change here is written to a task card for that repo.",
+        "The stack installs to Windows, so a guard's tests replay its failure shape on the PowerShell route too.",
+        "Measured cold p50 latency (audit 2026-10-14): a bare node start 23.8 ms, a single hook 26-52 ms, the shell-guards.js dispatcher 58.7-209.9 ms - re-measure per machine."
+      ]
+    },
+    "agent-md": {
+      "roots": [
+        "stack/AGENTS.template.md"
+      ],
+      "checks": [
+        "npm run lint"
+      ],
+      "notes": [
+        "stack/AGENTS.template.md is seeded as `.claude/AGENTS.md` by node scripts/install/alfred-code.js (a root AGENTS.md on --instructions-at root), and only into a project that has no AGENTS.md or CLAUDE.md.",
+        "Rule links in the template use the deployed paths (.claude/rules/...), while their existence is checked against the source catalog at stack/rules; confirm the mapping from meta/stack-manifest.json and the installer's scripts/install/ modules.",
+        "Filling or improving one project's CLAUDE.md (create, or improve with every change shown first) belongs to the fill skill stack/skills/habits-adjust-agents-md/; an audit finding about how files get filled lands in that skill, not in the template.",
+        "The filled-file checker is node scripts/agents-md-check.js --file <path> (read-only, no model call): it checks the named paths, each command's program on PATH or in the project, leftover placeholders, TODOs and template text; --list names the files it would check and marks an untouched seed; its rows are heuristic, so read each one before acting on it.",
+        "The repo-root AGENTS.md is this repo's own working file: read it for context, never score or edit it.",
+        "Lint check 33 (scripts/always-on-surface.js, run by npm run lint) caps the shipped always-on baseline at 80,000 chars: the pathless rules as injected, every skill and agent description, the seats' tools lists and the generated capabilities rule's fixed text; /alfred-code:status reports each install's floor.",
+        "Since 2.10.1 alfred-code leaves auto memory as it is (its memory server and alfred-memory.md are retired, and the first update past them lifts the switch-off an earlier release wrote), so in an installed project auto memory is the corrections-and-preferences store.",
+        "The compaction-instructions line is carried by the always-on navigation baseline rule alfred-navigation.md, so a project CLAUDE.md that restates it is a duplicate.",
+        "The always-on baseline every install carries is the alfred-*.md rules; a template pointer may name those, and anything beyond them is described rather than named.",
+        "The template keeps no rules table since 2026-10-21 (the user's ruling: every rule file in .claude/rules/ loads itself, so a list only repeats them each session); Dimension 2's governing-rules item is scored on the template's 'List no rules here' line, and a template that lists rules deducts.",
+        "What every install guarantees is read from meta/recommendations.json (seeds) and meta/stack-graph.json (pulls); lint checks 25 and 26 in npm run lint are the optional-cite checks and must be green, while MCP cites are audited by hand.",
+        "Template outline history to compare against: measured 2026-11-03 at 1 live line (its H1, 18 chars) with the outline in comment blocks; 2026-09-29 it was 22 live lines, 3,165 chars; the outline carries the forbid-list (item 7) and the domain-terms map (item 1) and its architecture item rules out the folder tour, where an earlier 19-line version had neither item and asked for 'folder organization'.",
+        "The template's 'Load by artifact' table (item 13) is its implementation of the hub-and-spoke form scored under Dimension 1's nested-files item.",
+        "The adherence observables are the analyzer scorecard rows (scripts/analyze-usage.js: compaction re-reads, long answers, green claims, checked commits) and the hook-blocks ledger; record their pre-edit numbers beside each edit."
+      ]
+    },
+    "plugins": {
+      "roots": [
+        "meta/stack-manifest.json"
+      ],
+      "checks": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "The install list is the plugins list in meta/stack-manifest.json, read by the Node seed scripts/install/alfred-code.js, the one installer route (the shell twins are deleted); the *-lsp pair is suggested on evidence and claude-hud is optional.",
+        "The stack's own plugin manifest lists no MCP server since 2.10.1.",
+        "The envoydev marketplace lives in envoydev/plugins-marketplaces since 2026-11-14 and also lists alfred-mods and alfred-tools, which the stack never installs or updates (the user's ruling of 2026-10-27): their packaging is /repo-audit-system's, and each is scored here only where the audited registry shows it installed.",
+        "The guided-install catalogs are meta/recommendations.json (the always seeds, per-stack plugins seeds, opt-in in general), meta/plugin-settings.json (one row per plugin with its verified version), meta/stack-graph.json (regenerated by npm run graph) and meta/retired-plugins.json.",
+        "The plugin retirement path is the manifest's retired.plugins plus a meta/retired-plugins.json row (retiredIn, addBack) that update uninstalls by its full spec.",
+        "The install list is restated in the HTML plugins table and the README count, and npm run lint holds the manifest to both.",
+        "Usage is measured by node scripts/analyze-usage.js <CORPUS> - its INVENTORY vs USE block scores each installed plugin per session and per corpus with a how column; pass --plugins <registry> when the corpus came from another machine.",
+        "The install-side cost floor is the stack's own /alfred-code:status line.",
+        "The always-on house rules are the alfred-*.md set; the capabilities rule makes agent dispatch explicit-only, so a child agent's proactive cues are a finding, and side-effect skills fall under the house side-effect gate.",
+        "Plugins are a Claude-only surface: the Cursor twin repo ships none, so the two-repo mirror discipline does not apply to the PLUGINS block.",
+        "The LSP pair ships no plugin.json (declared wholly in its marketplace entry), so the 2026-11-03 rule that entry mcpServers/lspServers/userConfig/channels do not apply beside a plugin.json leaves it untouched.",
+        "The stack's own plugin splits commands from skills on purpose, for display, and that split stands despite the docs preferring skills.",
+        "For a plugin replaced by a house hook, verify through the <data root>/statistics/hook-blocks/ ledger row of the replacement hook.",
+        "Child plugins are read against the root layers stack/rules, stack/skills, stack/agents and stack/hooks."
+      ]
+    },
+    "system": {
+      "roots": [
+        "."
+      ],
+      "checks": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "Agents are called seats in this repo; the audit's 'agent' means a seat.",
+        "PROFILES are listed by `node scripts/profile-fixture.js --help`: every `stacks` key of `meta/recommendations.json` plus `bare`; a key with no markers fails its test, and each profile's marker files are the script's `MARKERS`.",
+        "The fixture tool is `node scripts/profile-fixture.js <profile> <WORKDIR>`: it exports the tree once, registers the export as the stack's marketplace on an isolated account dir (through a one-entry stand-in catalog it writes into the export), installs the always seed plus the profile's selection as setup would accept, and prints the map command.",
+        "The fixture clean step is `node scripts/profile-fixture.js --clean <WORKDIR>`, which removes only what the fixture script writes and prints `removed:` and `left:`.",
+        "The session-surface tool is `HOME=<home> node scripts/session-surface.js <project> --config-dir <account> --run-hooks --listing-fraction <f> --window <WINDOW> --json`; its JSON prints no machine path, and exit 1 means a hook wrote outside the project (a S4 finding with the path).",
+        "`scripts/session-surface.js` leaves `session-surface-*` folders in the OS temp dir; the cleanup proves none remain with `find <tmp> -maxdepth 1 -name 'session-surface-*'`.",
+        "`scripts/session-surface.js` encodes currency rows and its comments name the page each came from: a DRIFTED row is corrected there too; it reads `skillListingMaxDescChars` from the fixture's settings with `LISTING_MAX_DESC` as the fallback, and models only the default Project instructions value (`AGENTS_FILES`).",
+        "The session-surface map's owner split for session-start chars is house / generated / plugin.",
+        "RESULTS default to `<docs-path>/audits/<YYYY-MM-DD>/system/`, where the docs root is always `<data root>/docs` (`.alfred/docs` by default); machine-local, never committed.",
+        "OWN_PLUGIN_ROOT is the core `alfred-code` entry, generated into `./meta/plugin-entries.json` by `scripts/build-marketplace.js` and written to the root `.claude-plugin/plugin.json` by `npm run plugin-manifest`; `./setup-plugin` holds its commands, its router skill, its own hooks, its eval cases and the `plugin.json` whose `version` the release tags.",
+        "No MCP entry ships since 2.10.1: `stack/mcp/shipped-mcps.json` is the record, so a server row in the core manifest is a finding.",
+        "The marketplace catalog lives in envoydev/plugins-marketplaces since 2026-11-14; this repo ships no marketplace.json and lint check 49 fails one at the root.",
+        "The `claude plugin eval` suite for the own plugin is `setup-plugin/evals/`; run it with and without where a fix touched a command or the router skill.",
+        "The install proof for every shipped file a fix changed is the temp-project matrix in the repo `AGENTS.md`: fresh, update over the last release, re-run, the user's own config kept, malformed input, every scope touched.",
+        "The awareness checklist's navigation order is: a symbol through the `LSP` tool, then a scoped grep, never a whole-file read; a vendor's page through `WebFetch` (no MCP server ships since 2.10.1).",
+        "The house do-nots a first turn can break are: commit only on the user's word, no whole-file read, no secret read by value; a missing whole-file-read do-not costs as much in S5 as the commit and secret ones.",
+        "A fresh install has no awareness docs, awareness rule or architecture rule until `/alfred-code:init` writes them through the capture skills; read what each will state from `stack/skills/capture-awareness/references/agents.md`, `project.md` and `related-projects.md`, the rule's copy target in its `SKILL.md`, and the other `.claude/rules/<name>.md` targets the map lists as `generated`.",
+        "The stack seeds an AGENTS.md; its directives are swept against skills, seats and hook injections in the conflict map.",
+        "The corpus analyzer is `node scripts/analyze-usage.js <CORPUS>`.",
+        "The hook-block ledger is `<data root>/statistics/hook-blocks/*.jsonl` (the docs root's `hook-blocks/` before 2.8.0).",
+        "Lint check 33 holds the repo's catalog; the system audit measures what one install holds instead.",
+        "The listing-budget measurement: the repo AGENTS.md records '39 skills, 19901 chars > 8000 budget' at a 200K window and the `0.01` default on Claude Code 2.1.284.",
+        "The denied-seat evidence is spike S3 in `docs/plugin-migration-evidence.md`, re-measured 2026-10-16 on 2.1.301 in an aspnet install of 2.5.0: the Agent tool listed 21 seats with none of the 23 denied, while `/context`'s 'Custom agents' row still counted all 44 definitions.",
+        "The bare-MCP-tool-name deny behaviour is also recorded in `.claude/rules/repo-installer.md`.",
+        "Renames: no `renames` key (it strands an install - `docs/plugin-cli-evidence.md` S11, S16; lint check 49 fails on one); the old id stays LISTED as a retired alias carrying its successor (an unlisted entry still enabled silently stops loading, S25) until evidence shows no install resolves through it.",
+        "The own plugin's display-driven split is a measured choice: commands that list namespaced-only and a router skill that lists bare; never convert either to gain a component-fit point.",
+        "The root declares its children in one place the lint reads, and the component frontmatter is proven by the repo's lint (`npm run lint`)."
+      ]
+    },
+    "usage": {
+      "roots": [
+        "docs/*investigation*/"
+      ],
+      "checks": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "The collection root is globbed as `docs/*investigation*/` (gitignored by that pattern); the default name is `docs/session-investigation/`, but the real collection sits in `docs/sessions-investigation/`.",
+        "The per-project report skill is the stack's `capture-usage-report` (`/capture-usage-report`), run in a fresh session inside the project; it fills the authored judgment sections and owns the report-generation prompt, so a NOT-STACK finding about a bundle's report routes its durable half there.",
+        "The analyzer is `node scripts/analyze-usage.js`: it dedupes usage by message id and finds a bundle's sibling `subagents/` itself; it writes with `--out <file>` (never a `>` redirect, which the permission classifier denies); `--json` gives `analyzer.json`, plain gives `analyzer-full.txt`, `--report-md` gives the skeleton `report-usage.md`.",
+        "The analyzer's rollup leaves out the live session (`CLAUDE_CODE_SESSION_ID`); `--exclude-session <id>` drops another; `--docs-root <root>` names a non-default docs path; it reads the ledgers beside a bundle copy itself.",
+        "The collector is `node scripts/collect-session.js <transcript> --out <folder>` (`--data-root <folder>` names an older install's data root); it writes the transcript, `subagents/`, `collected.json` (the receipt), `context.json`, `context/`, both ledgers beside the copy and under `data/`, the session's state, its docs and hook temp files.",
+        "Bundle file names: `session.jsonl` or `<session-id>.jsonl`; `tool-usage-<sid>.jsonl` (tool ledger); `hook-blocks-<sid>.jsonl` (guard blocks); `collected.json` (receipt, printed in reports as `## Evidence coverage`); `context.json` and `context/` (roots, variables, plugins, the instrument switch, the install stamp, workspace record and session-inspector status); `data/` (the data-root mirror); `docs/`, `tmp/`; `analyzer.json` / `analysis.json` / `analyzer-full.txt`; `report-usage.md`.",
+        "Each collected project directory also carries `statistics/tools-usage/<session-id>.jsonl` and `statistics/hook-blocks/<session-id>.jsonl`, the authority when a bundle's own copy is missing.",
+        "Route 1 copies `SUMMARY.md`, `_rollup.txt` (as `rollup.txt`) and every session folder out of `<project>/<data root>/statistics/usage-report/`, where the data root is `.alfred`; an install not updated to 2.8.0 keeps `usage-report/` (or `alfred-code-usage-report/` before 2.1.7) under its docs root: a leftover `ALFRED_CODE_DOCS_PATH` wins, else `<data root>/docs` (`.claude/docs` before 2.0.0).",
+        "An older bundle with no `collected.json` gets its two ledgers from the data root's `statistics/` (`tools-usage/<sid>.jsonl`, `hook-blocks/<sid>.jsonl`; the docs root before 2.8.0).",
+        "The collection root being git-ignored is what lets the collector's gate copy the text stores.",
+        "The flow-skill families judged under load are `/task-*`, `/loop-*`, `/capture-*` and `/issue-*`.",
+        "The analyzer's EFFICIENCY block is carried in `--json` as `main.efficiency` plus `dispatchOverhead`; each row is opened per `stack/skills/capture-usage-report/references/diagnosis-discipline.md` before it is costed.",
+        "Path-rule attachment is read by the analyzer's `Inventory vs use` section from two records: the harness's `nested_memory` attach row and `guard-read-whole-file.js`'s shell-route notice.",
+        "The inventory is the analyzer's `Inventory vs use` section (`inventory` in `--json`); a row sourced `catalog` means the project's installed set was not reachable - re-run with `--inventory <that project's .claude>` before filing a non-use finding; one recursive run over the collection root gives `installed in K of M sessions, used in N` per name.",
+        "Report integrity: `node scripts/analyze-usage.js --check-report <report-usage.md>` prints every judgment number that cites no machine row of that same report.",
+        "Conformance: the skeleton's `## Conformance - expected vs observed (machine-written)` section grades each claim in `meta/conformance.json` and every `meta/skill-comply/` step over the session.",
+        "The generated docs a session should read for orientation are `<docs-path>/awareness/ARCHITECTURE-AWARENESS.md` and its `references/`, `quality/ARCHITECTURE-ASSESSMENT.md`, `preferences/PROJECT-CODE-PREFERENCES.md`, and the test-coverage capture.",
+        "The stack ships a correction-streak hook; the effectiveness verdict says whether its streak threshold would have met the session's corrections.",
+        "Synthesis honours the repo's invariants: platform-neutral skill bodies and the shared-rules registry for multi-home text.",
+        "An applied fix cites the session evidence (bundle id and measured number) in its commit, as the prove-don't-assert rule demands."
+      ]
+    }
+  }
+}

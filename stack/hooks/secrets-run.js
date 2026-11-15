@@ -53,15 +53,16 @@ function cmdArg(arg)
 }
 function commandPlan(bin, argv, opts, { platform = process.platform, resolve = resolveWin } = {})
 {
-    if (platform !== 'win32') return { cmd: bin, args: argv, opts };
+    const hidden = { ...opts, windowsHide: true };
+    if (platform !== 'win32') return { cmd: bin, args: argv, opts: hidden };
     const env = (opts && opts.env) || process.env;
     const full = resolve(bin, env);
     if (!full) return { why: `${bin}: not found on PATH as a .exe, .com, .cmd or .bat` };
-    if (!/\.(cmd|bat)$/i.test(full)) return { cmd: full, args: argv, opts };
+    if (!/\.(cmd|bat)$/i.test(full)) return { cmd: full, args: argv, opts: hidden };
     if (argv.some((a) => /[\r\n]/.test(String(a)))) return { why: `${bin}: an argument holds a line break, which cmd.exe cannot pass` };
     const comspec = env.ComSpec || env.COMSPEC || 'cmd.exe';
     const line = [full.replace(CMD_META, '^$1'), ...argv.map(cmdArg)].join(' ');
-    return { cmd: comspec, args: ['/d', '/s', '/c', `"${line}"`], opts: { ...opts, windowsVerbatimArguments: true } };
+    return { cmd: comspec, args: ['/d', '/s', '/c', `"${line}"`], opts: { ...hidden, windowsVerbatimArguments: true } };
 }
 
 // The shortest value masked on stderr, as --with-sensitive's: PORT=80 would mask every 80 and say nothing a guess would not.
