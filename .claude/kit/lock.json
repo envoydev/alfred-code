@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@e9105ab",
+  "kit": "claude-kit@c3d4182",
   "files": {
     ".claude/agents/audit-editor.md": "77ab76d437eea35264a89acc6b8494c387a922f7cc45712710c09de6781d32dc",
     ".claude/agents/audit-planner.md": "1a14d13c40294a240cefe429e92eb305212e8337a8566117bc99194a0c867279",
@@ -7,12 +7,12 @@
     ".claude/rules/auto-run.md": "15d46236080d899a090bf3bb6306784334ada0c8d6dcea501cd96c52c4b4f546",
     ".claude/rules/commits.md": "c8da61a6def2fa013c60e95b94d2367a55046e8beee2ca6dd82117a7a017017c",
     ".claude/rules/execution.md": "e8c0e26ccb6fd9ac838f3195ae393873a8284a641a4153e4ee8f6b95f74864f1",
-    ".claude/rules/javascript.md": "f1dc0d90e7e350114fa6c18eb23e3c185408c7d36ab1aae632864f78cb693a6e",
+    ".claude/rules/javascript.md": "51b2cc55f12e10207429c618f41842d657eb4e9433eb8600cd7a1fb7fb8cd2b0",
     ".claude/rules/project-structure.md": "69aab8b915e2fbe1a606405f51b621db02ee3d3e45dde47c7eb6d190942e9841",
     ".claude/rules/refining-plans.md": "17805fe6364c76a02e582ea545c60ab198d7d80aa952c37f3840d9fac26cd9b5",
     ".claude/rules/skill-authoring.md": "8becdf7851bb7beac89d16444481764198de73e7a26dd34f90f5ccc4b91f5484",
     ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
-    ".claude/rules/typescript.md": "0aa0df7089d2a5aa5120c5a6638f8e1683b93127ff603151bd5fdfa0f67c258f",
+    ".claude/rules/typescript.md": "067dd7cdd3bf2bb2e04155650d4832e33110d094c09e61fd21b916c51885d9c0",
     ".claude/skills/auto-run/SKILL.md": "f5084958edd26362809899c60554d6d06ad1437bb39b96e91a828a141aadd19a",
     ".claude/skills/code-comments/SKILL.md": "c88cd1efe4f16f4b35a27fcd0cd82d5c5c4838445ae6e929ccdb1ccb68c78c37",
     ".claude/skills/javascript/SKILL.md": "ca5551da87a9fc345d27b2da9551328f20604b155718de5633ca464c2888bd96",
