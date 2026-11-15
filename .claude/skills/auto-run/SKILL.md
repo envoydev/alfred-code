@@ -21,18 +21,26 @@ nothing; a wrong ruling costs rework they can see and undo. So every ask that wo
 - This repo's own skill, kept in claude-kit and synced into each repo; the stack's typed mode for consuming projects
   is a different thing.
 
-## The ledger
+## The ledger and the session file
 
-ONE run ledger holds the mode for the whole run, however many plans it spans: the ledger file the user's run already
-names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root.
+Two files, because one is a record and the other is this session's state:
 
-1. The first action writes `Auto-run: on - '<the user's words>'` into the run ledger, directly under its title - for
-   the standing default, `Auto-run: on - KIT_AUTO_RUN in the settings`.
-2. Rulings made while a plan executes go to that plan's `docs/superpowers/sdd/<plan basename>/progress.md` too.
-3. After a compaction, Read the run ledger's `Auto-run:` line before the next ask: it is how the mode outlives the
-   summary.
-4. 'stop auto run' appends `Auto-run: off - <date>`. The ledger's last `Auto-run:` line outranks the settings: a
-   standing default the user stopped stays off for the session.
+- **The run ledger** records what the run decided, however many plans it spans: the ledger file the user's run already
+  names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root. Every session in the repo that day
+  may write to it, so it never says whether THIS session is in auto-run.
+- **The session file** holds this session's switches: `kit-session.md` in the session scratchpad the harness names.
+  No other session shares that folder.
+
+1. The first action appends `Auto-run: on - '<the user's words>'` to the session file - for the standing default,
+   `Auto-run: on - KIT_AUTO_RUN in the settings`.
+2. Rulings go to the run ledger; those made while a plan executes go to that plan's
+   `docs/superpowers/sdd/<plan basename>/progress.md` too.
+3. After a compaction, Read the session file before the next ask: its last `Auto-run:` line is how the mode outlives
+   the summary. No file, or no such line, means this session never switched the mode.
+4. 'stop auto run' appends `Auto-run: off - <date>` to the session file. Its last `Auto-run:` line outranks the
+   settings: a standing default the user stopped stays off for the session.
+5. Where the harness names no session scratchpad, the lines go under the run ledger's title instead, and the close
+   says that the day's other sessions in the repo share them.
 
 ## The rule
 
