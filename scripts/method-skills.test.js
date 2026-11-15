@@ -173,7 +173,8 @@ test('skill writing is this repo\'s own skill, ships in no install, and says wha
 
 test('the skill-authoring rule is this repo\'s own: it attaches on skill files and its first action is the skill', () => {
     const rule = read('.claude/rules/skill-authoring.md');
-    assert.match(rule, /^paths: \["\*\*\/SKILL\.md", "\*\*\/skills\/\*\*\/\*\.md"\]$/m, 'the two skill-file globs');
+    assert.match(rule, /^paths: \["\*\*\/SKILL\.md", "\*\*\/skills\/\*\*\/\*\.md", "\*\*\/skills\/\*\*\/\*\.md\.tmpl"\]$/m,
+        'the skill-file globs, a skill template included');
     assert.ok(squash(rule).includes('the FIRST action after this rule attaches is the `skill-authoring` Skill call, before the NEXT write'),
         'the convention-rule first-action form, naming the skill');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'rules', 'skill-authoring.md')), 'no stack copy left');
@@ -193,7 +194,7 @@ test('the skill-authoring rule is this repo\'s own: it attaches on skill files a
     const { globToRe } = require('./analyze-usage.js');
     const attaches = (p) => globs.some((g) => globToRe(g).test(p));
     for (const p of ['stack/skills/csharp/SKILL.md', '.claude/skills/my-skill/SKILL.md', 'SKILL.md', '/work/app/skills/api/references/endpoints.md',
-        'stack/skills/devops/references/compose.md'])
+        'stack/skills/devops/references/compose.md', 'shared/skills/solve-task/SKILL.md.tmpl'])
         assert.ok(attaches(p), `attaches on ${p}`);
     for (const p of ['README.md', 'docs/skills.md', 'stack/skills/csharp/scripts/run.js', 'stack/rules/csharp-conventions.md', 'skill.md'])
         assert.ok(!attaches(p), `does not attach on ${p}`);
