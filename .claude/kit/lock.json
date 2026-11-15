@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@00f56d9",
+  "kit": "claude-kit@d1f98e6",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
     ".claude/rules/execution.md": "66bfd60e5d39f6bcc6a5deba22fb4467186c29a3ce984b3900c861897667edfe",
@@ -10,7 +10,7 @@
     ".claude/rules/typescript.md": "0aa0df7089d2a5aa5120c5a6638f8e1683b93127ff603151bd5fdfa0f67c258f",
     ".claude/skills/auto-run/SKILL.md": "37b3188602a7d18157d36c918e48cdd8a021b1fe9e290c82a758230e75bd7129",
     ".claude/skills/code-comments/SKILL.md": "c88cd1efe4f16f4b35a27fcd0cd82d5c5c4838445ae6e929ccdb1ccb68c78c37",
-    ".claude/skills/javascript/SKILL.md": "ca56a832fa9e9f890822673f4c117ce9dda01f3b3dead728b33a3d505e0cf2a6",
+    ".claude/skills/javascript/SKILL.md": "6cb36b8cd34a834de1bf16afe6e183af19b3e3085fe435999ea4d252113787dc",
     ".claude/skills/javascript/references/async-patterns.md": "dfd68fb9e95e44442a901769aa1ed7b93368362497bd3be0d3b1580063c64614",
     ".claude/skills/javascript/references/modern-runtime.md": "ae9ce07e0094be0dd4dab2d985355feb3c43e672bfb5090969b3fa5c826145b0",
     ".claude/skills/javascript/references/performance.md": "0ebf33361a2bb58d29086c7113883c4c7dc589ce17fac58c2607a3e7dbfd32f3",
