@@ -39,6 +39,7 @@ Thumbs.db
 !.claude/skills/ts-js-testing/
 !.claude/skills/npm/
 !.claude/skills/code-comments/
+!.claude/skills/project-structure/
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/execution.md
@@ -56,6 +57,7 @@ Thumbs.db
 !.claude/rules/commits.md
 !.claude/rules/javascript.md
 !.claude/rules/typescript.md
+!.claude/rules/project-structure.md
 !.claude/skills/repo-audit-agents/
 !.claude/skills/repo-audit-agent-md/
 !.claude/skills/repo-audit-flow/

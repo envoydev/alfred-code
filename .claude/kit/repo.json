@@ -18,6 +18,15 @@
     "- The Cursor mirror (paused since 2026-09-23).",
     "- The stack's own `task-solve` and its seats, stamps and stops."
   ],
+  "structure_paths": "[\"stack/hooks/**/*.js\", \"scripts/**/*.js\", \"setup-plugin/hooks/**/*.js\"]",
+  "structure_map": [
+    "- Plain CommonJS JavaScript, so there is no `types` file; a feature's named values go in its `constants.js`.",
+    "- `stack/hooks/` is flat by contract: the installer copies a named list of hook files into a project's `.claude/hooks/`, so a hook there is a file, not a folder. In a hook file `main` is the entry and the effects (stdin, stdout, the file system, git), and a decision is an exported pure function. That folder's own rule is `.claude/rules/repo-hooks.md`.",
+    "- `scripts/` holds the repo's own tools. A new one is an entry `scripts/<name>.js` that only wires, and a folder `scripts/<name>/` with `constants.js`, logic files and `effects.js`.",
+    "- The outside world: `fs`, `child_process`, `process`, stdin and stdout, the clock, git.",
+    "- Tests: `scripts/<name>.test.js` beside the entry (`npm test` runs `scripts/**/*.test.js`).",
+    "- Everything written before 2026-11-15 is flat; it follows the shape only as it is changed, and is never split to match."
+  ],
   "audit": {
     "skills": {
       "roots": [
