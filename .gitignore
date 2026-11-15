@@ -21,6 +21,9 @@ Thumbs.db
 # and the repo-audit family, maintenance tools for this repo, never part of the shipped catalog) and its own rules
 .claude/*
 !.claude/kit/
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/plan-grader.md
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/plugin-packaging/
@@ -52,7 +55,7 @@ Thumbs.db
 !.claude/rules/javascript.md
 !.claude/rules/typescript.md
 !.claude/skills/repo-audit-agents/
-!.claude/skills/repo-audit-claude-md/
+!.claude/skills/repo-audit-agent-md/
 !.claude/skills/repo-audit-hooks/
 !.claude/skills/repo-audit-plugins/
 !.claude/skills/repo-audit-rules/

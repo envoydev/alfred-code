@@ -27,7 +27,7 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 
 - The user types `/repo-audit-system` to audit the repo's plugin as a whole.
 - Not for one part's own quality - that part's audit (`/repo-audit-skills`, `-hooks`, `-rules`, `-agents`,
-  `-claude-md`) - nor for the third-party plugins themselves (`/repo-audit-plugins`) or a consuming
+  `-agent-md`) - nor for the third-party plugins themselves (`/repo-audit-plugins`) or a consuming
   project's session log (`/repo-audit-usage`). A defect found inside one part is handed to its audit.
 
 ## Parameters

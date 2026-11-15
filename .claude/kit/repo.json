@@ -123,7 +123,7 @@
         "Measured cold p50 latency (audit 2026-10-14): a bare node start 23.8 ms, a single hook 26-52 ms, the shell-guards.js dispatcher 58.7-209.9 ms - re-measure per machine."
       ]
     },
-    "claude-md": {
+    "agent-md": {
       "roots": [
         "stack/AGENTS.template.md"
       ],

@@ -11,7 +11,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const walk = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })
     .flatMap((e) => e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.md') ? [path.join(dir, e.name)] : []);
 
-// rules T1-1: repo-audit-claude-md ran `scripts/claude-md-check.js`, removed when the seed became AGENTS.md
+// rules T1-1: repo-audit-agent-md (repo-audit-claude-md then) ran `scripts/claude-md-check.js`, removed when the seed became AGENTS.md
 // Since claude-kit made the audit skills generic (2026-11-14), what they know about this repo is its audit map in
 // .claude/kit/repo.json: the scripts it names are checked there too.
 const auditMap = () => JSON.parse(read('.claude/kit/repo.json')).audit;
@@ -25,8 +25,8 @@ test('rules T1-1: every repo script a repo skill or the audit map runs exists', 
     }
 });
 
-test('rules T1-1: the claude-md audit map names the AGENTS.md seed and the always-on cap lint holds', () => {
-    const t = auditMap()['claude-md'].notes.join('\n');
+test('rules T1-1: the agent-md audit map names the AGENTS.md seed and the always-on cap lint holds', () => {
+    const t = auditMap()['agent-md'].notes.join('\n');
     assert.doesNotMatch(t, /seeded as `\.claude\/CLAUDE\.md`/);
     assert.match(t, /seeded as `\.claude\/AGENTS\.md`/);
     const cap = read('scripts/lint-skills.js').match(/const ALWAYS_ON_MAX = (\d+);/)[1];

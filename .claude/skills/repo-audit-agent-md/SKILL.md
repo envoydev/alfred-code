@@ -1,6 +1,6 @@
 ---
-name: repo-audit-claude-md
-description: Use when auditing and fixing the CLAUDE.md or AGENTS.md template this repo ships toward grade A - facts, hub, rule links, tokens. Not for rule files.
+name: repo-audit-agent-md
+description: Use when auditing and fixing the AGENTS.md or CLAUDE.md template this repo ships toward grade A - facts, hub, rule links, tokens. Not for rule files.
 disable-model-invocation: true
 ---
 
@@ -30,14 +30,14 @@ this file.
 
 ## When to use
 
-- The user types `/repo-audit-claude-md` to audit the template `audit.claude-md.roots` names, or a
+- The user types `/repo-audit-agent-md` to audit the template `audit.agent-md.roots` names, or a
   CLAUDE.md they name.
 - Not for the rule files (`/repo-audit-rules`), and not for filling or improving one project's
   CLAUDE.md - that is the repo's fill skill, the one the `notes` name where it ships one.
 
 ## Parameters
 
-- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `audit.claude-md.roots`, the template the repo deploys into target projects). The repo's own working CLAUDE.md (repo.json `claude_md`, else the root `./CLAUDE.md`) may be read for context but must never be scored or edited by this audit.
+- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `audit.agent-md.roots`, the template the repo deploys into target projects). The repo's own working CLAUDE.md (repo.json `claude_md`, else the root `./CLAUDE.md`) may be read for context but must never be scored or edited by this audit.
 - `RULES_ROOT`: folders containing rule files (default: `audit.rules.roots`; no entry means the repo ships no rules and the catalog is empty). Required, because the hub dimension is scored against the real rules catalog and you may only link rules that exist.
 - `SKILLS_ROOT`: folders containing skills (default: `audit.skills.roots`; no entry is an empty catalog). Required, for detecting procedures that belong in skills and validating skill pointers.
 - `AGENTS_ROOT`: folders containing subagents (default: `audit.agents.roots`; no entry is an empty catalog). Used to detect content an agent already owns.
@@ -56,8 +56,8 @@ below. When a stop or finding genuinely needs the user's answer - a proposed spl
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.
 
-1. **Targets.** Read `.claude/kit/repo.json` -> `audit.claude-md`. No entry: report 'this repo ships
-   no claude-md - nothing to audit' and stop. `roots` are what this run audits (a root the user names
+1. **Targets.** Read `.claude/kit/repo.json` -> `audit.agent-md`. No entry: report 'this repo ships
+   no agent-md - nothing to audit' and stop. `roots` are what this run audits (a root the user names
    overrides them); run every `checks` command where this skill calls for the repo's mechanical
    checks, and quote its result; follow every `notes` line wherever this skill touches a
    repo-specific mechanism (the installer and its seed condition, a fill skill and its filled-file
