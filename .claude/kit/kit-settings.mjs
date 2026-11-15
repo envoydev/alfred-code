@@ -11,21 +11,20 @@
 //   KIT_PLAN_MODEL        the model that writes plans: the audit planner, a spec or plan written by a dispatched agent
 //   KIT_REVIEW_MODEL      the model that reviews: the refining-plans reviewer, the review of a finished change
 //   KIT_IMPLEMENT_MODEL   the model that implements: the audit editor, a plan's build
+//   KIT_SEARCH_MODEL      the model that finds things in the code for the other three (haiku without it)
 //   KIT_SCORING=off       grading is off until the variable changes
 //   KIT_AUTO_RUN=on       auto-run is on from a session's first ask
 //
 // A model is one of sonnet, opus, haiku, fable - what a dispatch accepts. Without a variable it is the model the
-// role's agent file names. KIT_SCORING and KIT_AUTO_RUN switch a safeguard off, so they count only from a file that
-// is not committed: one found in .claude/settings.json is ignored and named.
+// role's agent file names; the search role has no agent file, so its default is fixed. KIT_SCORING and KIT_AUTO_RUN
+// switch a safeguard off, so they count only from a file that is not committed: one found in .claude/settings.json
+// is ignored and named.
 // Claude Code applies a new or changed value to a session that is already open, but a deleted variable stays set
 // there until it restarts: to switch one back at once, set its other value (KIT_AUTO_RUN=off) instead of deleting it.
 // A value that cannot be used falls back to its default, and its origin says why.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-const MODELS = ['sonnet', 'opus', 'haiku', 'fable'];
-const DEFAULT_PASS_SCORE = 90;
-const COMMITTED_SETTINGS = '.claude/settings.json';
+import { COMMITTED_SETTINGS, DEFAULT_PASS_SCORE, DEFAULT_SEARCH_MODEL, MODELS, VARIABLE } from './constants.mjs';
 
 function readVariable(env, variable)
 {
@@ -47,11 +46,11 @@ function agentModel(root, agent)
 
 function passScore(env)
 {
-    const value = readVariable(env, 'KIT_PASS_SCORE');
+    const value = readVariable(env, VARIABLE.passScore);
     if (value === null) return { value: String(DEFAULT_PASS_SCORE), origin: 'default' };
     const score = /^\d+$/.test(value) ? Number(value) : 0;
-    if (score >= 1 && score <= 100) return { value: String(score), origin: 'KIT_PASS_SCORE' };
-    return { value: String(DEFAULT_PASS_SCORE), origin: `default - KIT_PASS_SCORE='${value}' is not a whole number from 1 to 100` };
+    if (score >= 1 && score <= 100) return { value: String(score), origin: VARIABLE.passScore };
+    return { value: String(DEFAULT_PASS_SCORE), origin: `default - ${VARIABLE.passScore}='${value}' is not a whole number from 1 to 100` };
 }
 
 function roleModel(env, root, variable, agent)
@@ -64,6 +63,14 @@ function roleModel(env, root, variable, agent)
     if (value === null) return fallback;
     if (MODELS.includes(value)) return { value, origin: variable };
     return { value: fallback.value, origin: `${fallback.origin} - ${variable}='${value}' is not one of ${MODELS.join(', ')}` };
+}
+
+function searchModel(env)
+{
+    const value = readVariable(env, VARIABLE.searchModel);
+    if (value === null) return { value: DEFAULT_SEARCH_MODEL, origin: 'default' };
+    if (MODELS.includes(value)) return { value, origin: VARIABLE.searchModel };
+    return { value: DEFAULT_SEARCH_MODEL, origin: `default - ${VARIABLE.searchModel}='${value}' is not one of ${MODELS.join(', ')}` };
 }
 
 // A switch that turns a safeguard off: `flipped` is the one value that changes it, and only an uncommitted file may.
@@ -83,10 +90,11 @@ export function resolveKitSettings(env, root)
     const committedNames = committedEnvNames(root);
     return {
         pass_score: passScore(env),
-        plan_model: roleModel(env, root, 'KIT_PLAN_MODEL', 'audit-planner'),
-        review_model: roleModel(env, root, 'KIT_REVIEW_MODEL', 'plan-grader'),
-        implement_model: roleModel(env, root, 'KIT_IMPLEMENT_MODEL', 'audit-editor'),
-        scoring: safeguard(env, 'KIT_SCORING', 'on', 'off', committedNames),
-        auto_run: safeguard(env, 'KIT_AUTO_RUN', 'off', 'on', committedNames),
+        plan_model: roleModel(env, root, VARIABLE.planModel, 'audit-planner'),
+        review_model: roleModel(env, root, VARIABLE.reviewModel, 'plan-grader'),
+        implement_model: roleModel(env, root, VARIABLE.implementModel, 'audit-editor'),
+        search_model: searchModel(env),
+        scoring: safeguard(env, VARIABLE.scoring, 'on', 'off', committedNames),
+        auto_run: safeguard(env, VARIABLE.autoRun, 'off', 'on', committedNames),
     };
 }

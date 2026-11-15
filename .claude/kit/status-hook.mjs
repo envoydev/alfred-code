@@ -2,7 +2,7 @@
 // Copied into each repo as .claude/kit/status-hook.mjs by claude-kit's sync - edit it in claude-kit, never here.
 //
 // A UserPromptSubmit hook: with every request it shows the user one line - is auto-run on, is scoring on, which
-// model plans, reviews and implements - and gives Claude the same values with their sources, so neither a new
+// model plans, reviews, implements and searches - and gives Claude the same values with their sources, so neither a new
 // session nor a compacted one has to remember them. The values are the settings' KIT_* variables (kit-settings.mjs)
 // and this session's own switches, the last 'Auto-run:' and 'Scoring:' lines of kit-session.md in the session
 // scratchpad. A request that starts with 'stop auto run' or 'stop scoring' is recorded there by this hook.
@@ -11,13 +11,8 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SESSION_FILE, STOP_PHRASES } from './constants.mjs';
 import { resolveKitSettings } from './kit-settings.mjs';
-
-const SESSION_FILE = 'kit-session.md';
-const STOP_PHRASES = [
-    { starts: ['stop auto run', 'stop auto-run'], line: 'Auto-run: off' },
-    { starts: ['stop scoring'], line: 'Scoring: off' },
-];
 
 function readStdin()
 {
@@ -88,9 +83,10 @@ function buildOutput(hookInput, env, root)
         `plan ${settings.plan_model.value}`,
         `review ${settings.review_model.value}`,
         `implement ${settings.implement_model.value}`,
+        `search ${settings.search_model.value}`,
     ].join(' | ');
 
-    const values = { auto_run: autoRun, scoring, pass_score: settings.pass_score, plan_model: settings.plan_model, review_model: settings.review_model, implement_model: settings.implement_model };
+    const values = { auto_run: autoRun, scoring, pass_score: settings.pass_score, plan_model: settings.plan_model, review_model: settings.review_model, implement_model: settings.implement_model, search_model: settings.search_model };
     const context = [
         'kit status (.claude/kit/status-hook.mjs):',
         ...Object.entries(values).map(([name, { value, origin }]) => `${name}=${value} (${origin});`),

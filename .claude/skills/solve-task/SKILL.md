@@ -26,17 +26,27 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
   and waiver as a graded spec's (step 3).
 - A design already settled by a run order or the user's rulings skips the spec and goes to the plan.
 
-## The three models
+## The four models
 
 The `kit status` line the status hook adds to each request (or `node .claude/kit/settings.mjs`) names them:
-`plan_model` writes the plan, `review_model` grades and reviews, `implement_model` builds.
+`plan_model` writes the plan, `review_model` grades and reviews, `implement_model` builds, `search_model` finds
+things in the code for the other three.
 
+- State them under the size line: `Models: session <this session's model> - plan <m>, review <m>, implement <m>,
+  search <m>`. When this session's model is not the plan model, add that the spec and every decision made here are
+  this session's model's work, not the plan model's, and that `/model` before the spec changes that - then go on.
 - They are what the settings select, not what this session runs on: a session cannot change its own model. A step
-  whose model is this session's own runs here; any other is dispatched to an agent with that `model`.
+  whose model is this session's own runs here; any other is dispatched to an agent with that `model` - or, where no
+  dispatch is available, runs here and the close says so.
 - A dispatched agent cannot see this conversation. Its brief carries the files it works from - the approved spec,
   the plan, this repo's `AGENTS.md` - and names what it returns; its result is read before the next step.
 - The spec is always written here, whatever the plan model: brainstorming is a conversation with the user, and an
   agent cannot hold one.
+- A wide search - where a thing is defined, what calls it, how a pattern is used across the code - goes to a
+  read-only search agent (`Explore` where the harness has one) with `model:` the search model, asked for paths with
+  line numbers and one line on each, never a judgment on the design. Read the lines it points at before deciding
+  anything on them: the search model finds, the step's own model decides. A lookup whose target is known - a named
+  file, one grep - is done here, and so is every search where no dispatch is available.
 
 ## The steps
 
@@ -67,7 +77,8 @@ The `kit status` line the status hook adds to each request (or `node .claude/kit
 
 `execution.md`'s close - the mode and why, what changed, each tier's command with its result, what was not verified
 and why - then one line per step with the model it actually ran on (`here - <this session's model>`, or the
-dispatched model), then 'Rulings I made' and 'Deferred minors' from the ledger, and `auto-run`'s close when it is on.
+dispatched model) and one for the searches, then 'Rulings I made' and 'Deferred minors' from the ledger, and
+`auto-run`'s close when it is on.
 
 ## Not here
 

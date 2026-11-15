@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@2c8e37d",
+  "kit": "claude-kit@c86273a",
   "files": {
     ".claude/agents/audit-editor.md": "77ab76d437eea35264a89acc6b8494c387a922f7cc45712710c09de6781d32dc",
     ".claude/agents/audit-planner.md": "1a14d13c40294a240cefe429e92eb305212e8337a8566117bc99194a0c867279",
@@ -87,7 +87,7 @@
     ".claude/skills/repo-audit-usage/references/questions.md": "0d9f0724ce1d7c4c5bcbd6c0adda8087b0f87ccab20eccc86d154191f553d6af",
     ".claude/skills/repo-audit-usage/references/synthesis.md": "4a4fd297b23691a4a10bc196613a15e2281357c62420db267a457199ac09eef5",
     ".claude/skills/skill-authoring/SKILL.md": "6f9d50a754490ec266d12c61a63c14b1c92cdbc3ab0822c43207e407c20877e2",
-    ".claude/skills/solve-task/SKILL.md": "df490d6f99ced6282cdacff9dedbb0c7fec0829d8a1a8c062d2e7660bdfd04a7",
+    ".claude/skills/solve-task/SKILL.md": "8eedd83531849c3135e62b692cc0799850b3b5aa472e50e4dd46f007f807fe6b",
     ".claude/skills/ts-js-testing/SKILL.md": "a1906af997ea55ed2157c550e197bb9a5a4c16526d680c120931f8ad30505259",
     ".claude/skills/ts-js-testing/references/suite-audit.md": "b85d638fdf3bb8de3328bb945c9149be1aa0c42d496606b9fd847db241910d77",
     ".claude/skills/typescript/SKILL.md": "5ae80de5daf34d1064d83f3e2b2f456a0aab31a1e0d369e4feea09eb088564f9",
