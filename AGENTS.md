@@ -64,6 +64,8 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 - **CI's commands run here first** (the user's ruling, 2026-11-15). Before a push, run `npm run lint` and
   `npm test` here and push only when both pass; then watch the remote lint and test runs to their end - they are
   what proves Linux and Windows. This is the session's own step: the pre-push hook stays off.
+- **Commits carry no trace of the agent** - no co-author trailer, session link or 'Generated with' line. The rule is
+  `.claude/rules/commits.md`, shared by every repo claude-kit serves.
 - **Public repo.** No private project names or absolute local paths in tracked files.
 - **The 1.x name is gone, never reused.** Every install moved onto `alfred-code` (the user's ruling of
   2026-10-07), so no reader of the old spellings is left - not the env prefix, the stamp, the marketplace

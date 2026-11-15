@@ -1,7 +1,8 @@
 {
-  "kit": "claude-kit@5699441",
+  "kit": "claude-kit@b9174af",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
+    ".claude/rules/commits.md": "2951fa6c1d5664e9f4e425201d4ea956fa2be66a7c35a3b3eb2d584e74378538",
     ".claude/rules/execution.md": "e5244e54b2202e161d1e95c321efc7ffee0b5f61a4a811ec8069c42e1418b42b",
     ".claude/rules/javascript.md": "b7af285f1998647976ae2a1b5962cae67cbbb7a8589cd80a93ad5bd2a8086cdc",
     ".claude/rules/refining-plans.md": "2d8fa69083d52597efff02b3d565ccfbaf051152331b281198eac50cbcf7f453",
