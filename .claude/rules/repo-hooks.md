@@ -361,6 +361,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `shell-writes.js`, spells the same two inline; the rm, force-push and commit guards keep an inline twin for a missing
   prelude, and a sweep in `hook-prelude.test.js` fails a git spawn that does neither. Known ceiling: a repository-local
   `filter.*.clean` still runs inside a status refresh (the secret guard's probe alone checks for one).
+  NO WINDOW PER CHILD (the user's report of 2026-11-15: console windows opening and closing on Windows): a child started
+  without `windowsHide: true` opens a console window there when its parent has none, so `gitSafe` always sets it,
+  `commandPlan` sets it on every plan (`scripts/install/runtime.js`, and its two copies held equal by tests -
+  `secrets-run.js` and the capture-preferences `mcp-client.js`), each inline spawn spells it, and a second sweep in
+  `scripts/hook-prelude.test.js` fails a process start under `stack/hooks/`, `setup-plugin/` or `scripts/install/` that
+  does none of these. libuv sets `CREATE_NO_WINDOW` only when no stdio is inherited (`src/win/process.c`, read
+  2026-11-15), so an attached installer run keeps its console. Limit: the hook processes themselves are started by Claude
+  Code, and whether IT hides them is not this repo's to set; the effect on a Windows screen was not seen when this landed.
   STATE HYGIENE (audit 2026-10-08 S9): a hook that writes per-session state sweeps its own prefix's files untouched for 7
   days, inside 50ms, at most once a day per dir and prefix (`hook-prelude.js` `sweepStale`, the docs-session sweep's pattern; a
   `.alfred-sweep-<prefix>` stamp gates it, since listing a 52,840-entry temp dir twice cost 78ms of every Stop) - the stop

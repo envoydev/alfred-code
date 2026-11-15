@@ -1733,7 +1733,8 @@ function tempRoots()
 const GIT_SAFE_CONFIG = Object.freeze(['-c', 'core.fsmonitor=false']);
 function gitSafe(argv, opts = {})
 {
-    return ['git', [...GIT_SAFE_CONFIG, ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }];
+    // windowsHide: a console window flashes on Windows without it
+    return ['git', [...GIT_SAFE_CONFIG, ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true }];
 }
 
 // AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past its

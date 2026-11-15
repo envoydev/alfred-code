@@ -437,7 +437,7 @@ if (projectDir && gitTop && gitTop === topOf(projectDir)) root = projectDir;
 else if (gitTop) root = gitTop;
 // git's own stderr stays out of the hook's: the @{u} probes print `fatal: no upstream` on every
 // first push, and the harness shows the model the hook's stderr as the denial reason.
-const git = (args) => execSync(`git -c core.fsmonitor=false ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trim();
+const git = (args) => execSync(`git -c core.fsmonitor=false ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true }).toString().trim();
 // The files this act would commit. The stack's own docs root is excluded: the receipt is written
 // INTO it moments before the act, so counting it inflated both the trivial-diff bar and the spec
 // check - a conformant `spec: 3 files` read as covering 3 of 4 because the fourth was the receipt.

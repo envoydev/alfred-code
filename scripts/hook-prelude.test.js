@@ -918,6 +918,112 @@ test('H2: every git spawn in a hook file turns the repository\'s fsmonitor off',
     assert.deepStrictEqual([cmd, argv, opts.cwd, opts.env.A, opts.env.GIT_OPTIONAL_LOCKS], ['git', ['-c', 'core.fsmonitor=false', 'status'], '/x', '1', '0']);
 });
 
+// A child process started with no `windowsHide: true` opens a console window that flashes on Windows. Every process a hook, the
+// setup plugin or an installer script starts passes it: in its own options, from hook-prelude.js gitSafe (which sets it), or
+// - for the injected seams - through runtime.js commandPlan. Only the node:child_process functions count, as each file imports them.
+test('windowsHide: every process start in a hook, setup-plugin or installer file hides the Windows console window', () =>
+{
+    const ROOT = path.join(__dirname, '..');
+    const STARTERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
+    const IMPORT = '(?:node:)?child_process';
+    const files = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }))
+        {
+            const rel = `${dir}/${e.name}`;
+            if (e.isDirectory()) { if (e.name !== 'node_modules') walk(rel); }
+            else if (e.name.endsWith('.js') && !e.name.endsWith('.test.js')) files.push(rel);
+        }
+    };
+    for (const dir of ['stack/hooks', 'setup-plugin', 'scripts/install']) walk(dir);
+    // The index just past the parenthesis closing the one at `open`, strings, template text and comments skipped; -1 when none.
+    const callEnd = (src, open) =>
+    {
+        const stack = [')'];
+        let i = open + 1;
+        while (i < src.length && stack.length)
+        {
+            const c = src[i];
+            const top = stack[stack.length - 1];
+            if (top === '`')
+            {
+                if (c === '\\') i += 1;
+                else if (c === '`') stack.pop();
+                else if (c === '$' && src[i + 1] === '{') { stack.push('}'); i += 1; }
+            }
+            else if (top === "'" || top === '"')
+            {
+                if (c === '\\') i += 1;
+                else if (c === top) stack.pop();
+            }
+            else if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i < 0) return -1; }
+            else if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2); if (i < 0) return -1; i += 1; }
+            else if (c === '/' && /[(,=:[!&|?{};]\s*$/.test(src.slice(Math.max(0, i - 20), i)))
+            {
+                // a regular expression literal: its quotes and brackets are not code
+                let inClass = false;
+                for (i += 1; i < src.length && (inClass || src[i] !== '/'); i += 1)
+                {
+                    if (src[i] === '\\') i += 1;
+                    else if (src[i] === '[') inClass = true;
+                    else if (src[i] === ']') inClass = false;
+                }
+            }
+            else if (c === "'" || c === '"' || c === '`') stack.push(c);
+            else if (c === '(') stack.push(')');
+            else if (c === '{') stack.push('}');
+            else if (c === '[') stack.push(']');
+            else if (c === top) stack.pop();
+            i += 1;
+        }
+        return stack.length ? -1 : i;
+    };
+    const starts = [];
+    const offending = [];
+    for (const rel of files)
+    {
+        const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+        const names = [];
+        for (const m of src.matchAll(new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*require\\(\\s*'${IMPORT}'\\s*\\)`, 'g')))
+            for (const part of m[1].split(','))
+            {
+                const [imported, local = imported] = part.split(':').map((w) => w.trim());
+                if (STARTERS.includes(imported)) names.push(`(?<![.\\w$])${local}`);
+            }
+        for (const m of src.matchAll(new RegExp(`const\\s+(\\w+)\\s*=\\s*require\\(\\s*'${IMPORT}'\\s*\\)`, 'g'))) names.push(`\\b${m[1]}\\.(?:${STARTERS.join('|')})`);
+        names.push(`require\\(\\s*'${IMPORT}'\\s*\\)\\.(?:${STARTERS.join('|')})`);
+        const callRe = new RegExp(`(?:${names.join('|')})\\s*\\(`, 'g');
+        for (const m of src.matchAll(callRe))
+        {
+            const line = src.slice(0, m.index).split('\n').length;
+            const lineText = src.split('\n')[line - 1].trim();
+            if (lineText.startsWith('//') || lineText.startsWith('*')) continue;
+            const open = m.index + m[0].length - 1;
+            const end = callEnd(src, open);
+            const where = `${rel}:${line}`;
+            starts.push(where);
+            if (end < 0) { offending.push(`${where} (call not closed)`); continue; }
+            const call = src.slice(open, end);
+            const before = src.split('\n').slice(Math.max(0, line - 5), line).join('\n');
+            const viaGitSafe = /^\(\s*\.\.\.(?:require\([^)]*\)\.)?gitSafe\(/.test(call) || (/^\(\s*\.\.\.\w+\s*\)$/.test(call) && /gitSafe\(/.test(before) && /windowsHide/.test(before));
+            // a plan from commandPlan, which sets it (secrets-run.js's copy is held equal to runtime.js's by secrets-run.test.js)
+            const viaPlan = /^\(\s*plan\.cmd,\s*plan\.args,\s*plan\.opts\s*\)$/.test(call);
+            if (!/\bwindowsHide\b/.test(call) && !viaGitSafe && !viaPlan) offending.push(where);
+        }
+    }
+    assert.ok(files.length > 60 && starts.length > 30, `the sweep found ${files.length} files and ${starts.length} process starts`);
+    assert.deepStrictEqual(offending, [], 'a process start without windowsHide: true (file:line) - a console window flashes on Windows');
+});
+
+test('gitSafe always hides the Windows console window, whatever the caller passes', () =>
+{
+    const { gitSafe } = require(PRELUDE);
+    assert.strictEqual(gitSafe(['status'])[2].windowsHide, true);
+    assert.strictEqual(gitSafe(['status'], { cwd: '/x' })[2].windowsHide, true);
+    assert.strictEqual(gitSafe(['status'], { windowsHide: false })[2].windowsHide, true);
+});
+
 test('H2 replay: a foreign repository\'s fsmonitor program never runs from the read, rm or commit guard', { skip: process.platform === 'win32' && 'sh fsmonitor fixture' }, () =>
 {
     const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'h2-repo-')));

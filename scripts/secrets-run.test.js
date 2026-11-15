@@ -150,7 +150,7 @@ test('on win32 the command line is runtime.js commandPlan\'s', () =>
             assert.deepStrictEqual(run.commandPlan(bin, argv, opts, seams), runtime.commandPlan(bin, argv, opts, seams), `${bin} ${JSON.stringify(argv)}`);
         }
     assert.ok(run.commandPlan('shim', ['a\nb'], {}, { platform: 'win32', resolve: () => 'C:\\bin\\shim.cmd' }).why, 'a line break is refused');
-    assert.deepStrictEqual(run.commandPlan('node', ['x'], {}, { platform: 'darwin' }), { cmd: 'node', args: ['x'], opts: {} });
+    assert.deepStrictEqual(run.commandPlan('node', ['x'], {}, { platform: 'darwin' }), { cmd: 'node', args: ['x'], opts: { windowsHide: true } });
     for (const [cmd, pathEnv] of [['tool', 'C:\\a;C:\\b'], ['C:\\b\\tool.cmd', '']])
     {
         const isFile = (p) => p === 'C:\\b\\tool.cmd';

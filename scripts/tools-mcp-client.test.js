@@ -161,7 +161,7 @@ test('commandPlan matches install/runtime.js on win32', () =>
     const resolve = (bin) => ({ npx: 'C:\\n\\npx.cmd', uvx: 'C:\\u\\uvx.exe', node: 'C:\\n\\node.exe' })[bin] || '';
     for (const [bin, argv] of [['npx', ['-y', 'a b&c', '%PATH%']], ['uvx', ['--from', 'x', 'y']], ['node', ['s.js']], ['missing', []], ['npx', ['two\nlines']]])
         assert.deepStrictEqual(commandPlan(bin, argv, { env: {} }, { platform: 'win32', resolve }), rt.commandPlan(bin, argv, { env: {} }, { platform: 'win32', resolve }));
-    assert.deepStrictEqual(commandPlan('npx', ['-y'], {}, { platform: 'darwin' }), { cmd: 'npx', args: ['-y'], opts: {} });
+    assert.deepStrictEqual(commandPlan('npx', ['-y'], {}, { platform: 'darwin' }), { cmd: 'npx', args: ['-y'], opts: { windowsHide: true } });
 });
 
 // A URL's userinfo or query can hold a credential, and fetch puts the URL in its error message: a failed listing names

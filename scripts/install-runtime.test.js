@@ -12,7 +12,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { which, cliRunner, capture, resolveWin, resolveOnce, cmdArg, spawnCommandAsync, execCommand, locate, unrunnable } = require('./install/runtime.js');
+const { which, cliRunner, capture, resolveWin, resolveOnce, cmdArg, commandPlan, spawnCommandAsync, execCommand, locate, unrunnable } = require('./install/runtime.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const NPM_SHIM = 'C:\\Users\\u\\AppData\\Roaming\\npm\\claude.cmd';
@@ -228,6 +228,20 @@ test('install-runtime: execCommand routes like the runners, returns stdout, and 
         (e) => e.status === 2 && e.stdout === 'o' && e.stderr === 'e');
     assert.strictEqual(bad.calls[0].cmd, 'C:\\bin\\git.exe');
     assert.throws(() => execCommand(BIN, ['x'], {}, { platform: 'win32', resolve: () => '', spawn: bad.spawn }), /not found on PATH/);
+});
+
+// A console window flashes on Windows for a child started without it, so every plan - and the plain-spawn fallback - carries it.
+test('install-runtime: every plan hides the Windows console window - off Windows, for a .exe and for a .cmd', () =>
+{
+    assert.strictEqual(commandPlan(BIN, ['x'], { cwd: '/p' }, { platform: 'linux' }).opts.windowsHide, true);
+    assert.strictEqual(commandPlan(BIN, ['x'], undefined, { platform: 'darwin' }).opts.windowsHide, true);
+    assert.strictEqual(commandPlan(BIN, ['x'], { windowsHide: false }, { platform: 'linux' }).opts.windowsHide, true);
+    assert.strictEqual(commandPlan(BIN, ['x'], { env: {} }, { platform: 'win32', resolve: () => 'C:\\uv\\uvx.exe' }).opts.windowsHide, true);
+    assert.strictEqual(commandPlan(BIN, ['x'], { env: {} }, { platform: 'win32', resolve: () => 'C:\\npm\\npx.cmd' }).opts.windowsHide, true);
+    const { calls, spawn } = recorder({ on: () => {} });
+    spawnCommandAsync(BIN, ['x'], { cwd: 'C:\\p' }, { platform: 'win32', resolve: () => '', spawn });
+    assert.strictEqual(calls[0].opts.windowsHide, true, 'the unresolved-name fallback');
+    execCommand(BIN, ['x'], { stdio: 'pipe' }, { platform: 'linux', spawn: recorder().spawn });
 });
 
 test('install-runtime: spawnCommandAsync runs a .cmd through cmd.exe and a .exe directly, and leaves an unresolved name to the plain spawn', () =>
