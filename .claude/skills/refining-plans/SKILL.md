@@ -1,6 +1,6 @@
 ---
 name: refining-plans
-description: "Use when a spec or plan is drafted for the user's approval, or on 'grade this plan' / 'scoring for plans' - a fresh reviewer grades it to 90+."
+description: "Use when a spec or plan is drafted for the user's approval, or on 'grade this plan' / 'scoring for plans' - a fresh reviewer grades it to the pass score."
 ---
 
 # Refining plans - an independent grade before the handoff
@@ -14,7 +14,18 @@ The user's bar for anything they approve before work starts is 9 or 10 out of 10
 - Also when the user asks for it in their words - 'grade this plan', 'scoring for plans', 'score the spec'.
 - Not for code diffs (the review skills own those), and not for an inline plan of five to ten lines.
 - Off for the rest of the session once a user message starts with 'stop scoring' - the always-grade rule included. A handoff after that says `ungraded - scoring stopped` in place of a score path.
+- Off as a standing default while the user's settings carry `KIT_SCORING=off` (the Settings step below prints `scoring: off`): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same.
 - Cost, measured 2026-10-24 on a 250-300-line design: 160k-280k tokens and 9-13 minutes per round on Opus; that run took five rounds (60, 86, 86, 91, 95).
+
+## Settings
+
+Before round 0, run `node .claude/kit/settings.mjs` once. It prints what the user's Claude Code settings carry (the `KIT_*` variables of an `env` block), each value with its source:
+
+- `scoring: off` - stop here unless the user asked for this grade in their words.
+- `pass_score` - the score this run grades to, 'the pass score' below: `KIT_PASS_SCORE`, else 90. Where the script cannot run, 90.
+- `grader_model` - the reviewer's model: `KIT_GRADER_MODEL`, else the `plan-grader` agent's own. Where the line says `none` or the script cannot run, `opus`.
+- The user's words in this session outrank the settings - 'grade it to 95', 'grade with fable' - for this run only.
+- Write the pass score and the grader model, each with its source, to `refining/<slug>/run.md`. After a compaction, Read that file before the next round: it is how the run's values outlive the summary.
 
 ## Inputs
 
@@ -28,16 +39,16 @@ Write them to a folder `refining/<slug>/` in the session scratchpad:
 
 Round 0 grades the draft; rounds 1-3 each revise, then grade again.
 
-1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model: opus`, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
+1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model:` the grader model, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
 2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder, and a copy of the draft it graded as `draft-<n>` (the draft's own extension) beside it.
 3. Verify each finding against what it cites before acting on it. A finding that is factually wrong is rejected with the evidence, never 'fixed' to please the grader.
-4. Decide, in this order. 90 is the target, not a strict bar: whether another round is worth it depends on what it can still reach.
+4. Decide, in this order. The pass score is the target, not a strict bar: whether another round is worth it depends on what it can still reach.
    - ROLL BACK first - when this total is lower than an earlier round's, copy the highest-scoring round's `draft-<k>` back over the draft and take its `round-<k>.md` as this round's scorecard: every rule below, the stall test and the next revision work from the best version, never the lower one. A tie keeps the newer draft. Why: a revision can trade a fixed finding for two new ones, and the user's bar is the best the loop reached, not the last it wrote (the user, 2026-10-27).
-   - PASS - 90 or more and no BLOCKER or MATERIAL open: finish.
-   - PASS WITH FIXES - 90 or more, no BLOCKER, a MATERIAL open: fix each MATERIAL the evidence confirms and finish WITHOUT another grade; the handoff lists them as fixed after the last grade. A round to confirm a fix already checked against the finding's own evidence costs 160k-280k tokens and mostly measures grader noise. Aim for 100 only when every unmet check closes with information in hand and the stakes are high (stored data, a public contract, security, a release).
+   - PASS - the pass score or more and no BLOCKER or MATERIAL open: finish.
+   - PASS WITH FIXES - the pass score or more, no BLOCKER, a MATERIAL open: fix each MATERIAL the evidence confirms and finish WITHOUT another grade; the handoff lists them as fixed after the last grade. A round to confirm a fix already checked against the finding's own evidence costs 160k-280k tokens and mostly measures grader noise. Aim for 100 only when every unmet check closes with information in hand and the stakes are high (stored data, a public contract, security, a release).
    - Measure the CEILING - the most the next round can reach in the current circumstances: the uncapped total plus the points (weight / 4) of each unmet check you can close with what is in hand - the reviewer's `[closable]` / `[needs: ...]` tag is its claim, the sum is yours (the repository, the docs, the user's answers so far). A check that needs a decision only the user can make, information nobody has, or a section this kind of artifact does not carry adds nothing, and an open BLOCKER whose fix needs such a decision keeps the cap of 60. Print it on the round's line.
-   - CONTINUE - a round remains, the ceiling is 90 or more, at least 5 points are closable, and this is round 0 or the total rose by 5 or more over the round before: revise (step 5) and go back to step 1.
-   - Otherwise - the ceiling under 90, under 5 points closable, a stall (round 1 or later, the total rose by under 5), or round 3 graded - fix the open BLOCKERs and MATERIALs the evidence confirms, then the ask below, and act on the answer. (2026-10-24: a round after a stall at 86 went on to 91 and 95, so a stall under 90 is the user's call, not a stop.)
+   - CONTINUE - a round remains, the ceiling is the pass score or more, at least 5 points are closable, and this is round 0 or the total rose by 5 or more over the round before: revise (step 5) and go back to step 1.
+   - Otherwise - the ceiling under the pass score, under 5 points closable, a stall (round 1 or later, the total rose by under 5), or round 3 graded - fix the open BLOCKERs and MATERIALs the evidence confirms, then the ask below, and act on the answer. (2026-10-24: a round after a stall at 86 went on to 91 and 95, so a stall under the pass score is the user's call, not a stop.)
 5. Revise: every BLOCKER, then every MATERIAL; a MINOR only when trivial. Each finding gets one disposition - fixed (what changed), rejected (the evidence), needs-human (the decision). Never delete substance to dodge a check, never add a hollow section to satisfy one, never edit the rubric or the reviewer prompt mid-run. A finding whose fix adds a guard, rule or feature the TASK does not name becomes one `## Optional` line, `Recommended - <reason>` or `Not worth it - <reason>`, whatever grade it came with, unless the request cannot be met safely without it - the rubric's C4.2 holds the grader to the same line.
 
 ```ask
@@ -47,14 +58,14 @@ The draft scored <S>/100 after round <n> (<why it stopped>); the next round can 
 - 'Answer <the decision> first' - only when a decision of yours is what caps the ceiling
 ```
 
-Recommend 'Fix all, one more round' when the ceiling is 90 or more; under 90, 'Answer <the decision> first' when your decision lifts it, else 'Hand it over as is'. The recommended option is always listed first.
+Recommend 'Fix all, one more round' when the ceiling is the pass score or more; under it, 'Answer <the decision> first' when your decision lifts it, else 'Hand it over as is'. The recommended option is always listed first.
 
 Under auto-run the ask is not put: the Recommended option is taken. Auto-run is on when the user's words in this session said to take the recommended options or to run without asking ('auto-run', 'auto mode'), or the `auto-run` skill is loaded - and no user message since started with 'stop auto run'. A decision only the user can make - an `Answer <the decision> first` recommendation, a MATERIAL tagged `[needs: ...]` - takes that decision's own recommended answer the same way; then the loop goes on: fix and finish on a pass, else one more grade. Write `Ruling: <the ask> - <the option taken> - <cost if wrong>` to the run's ledger when one is named (a plan's `progress.md`, a task ledger under `docs/superpowers/`), else to `refining/<slug>/rulings.md`.
 
 ## In the chat
 
 - One line per round, never the scorecard table: `Round <n> - <S>/100 (<delta>) - ceiling <c> - <b> BLOCKER, <m> MATERIAL - <decision>`; a rolled-back round's decision starts `ROLLED BACK to round <k>`.
-- The handoff names the draft's path, the score path (`60 -> 86 -> 91 -> 95`; a drop shows where it went back: `60 -> 86 -> 82 (back to round 1) -> 91`), `independent` or `SELF`, and every finding fixed after the last grade (not re-graded). A status line goes into the file only now, after the loop.
+- The handoff names the draft's path, the score path (`60 -> 86 -> 91 -> 95`; a drop shows where it went back: `60 -> 86 -> 82 (back to round 1) -> 91`), `independent` or `SELF`, the pass score and the grader model where either is not the default, and every finding fixed after the last grade (not re-graded). A status line goes into the file only now, after the loop.
 
 ## Fallback
 

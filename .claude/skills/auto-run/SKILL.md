@@ -13,6 +13,9 @@ nothing; a wrong ruling costs rework they can see and undo. So every ask that wo
 
 - The user's words: 'auto mode', 'auto-run', 'run without asking', 'take the recommended options', 'continue without
   me', or that they are away.
+- Also on as a standing default while `node .claude/kit/settings.mjs` prints `auto_run: on` - the user's own
+  `KIT_AUTO_RUN=on`, in a settings file that is not committed. Say that it is on from the settings in the first reply
+  that acts on it.
 - It is on from that message for the rest of the session. A message the user types mid-run keeps it on and is
   answered; a message starting with 'stop auto run' turns it off for the rest of the session.
 - This repo's own skill, kept in claude-kit and synced into each repo; the stack's typed mode for consuming projects
@@ -23,11 +26,13 @@ nothing; a wrong ruling costs rework they can see and undo. So every ask that wo
 ONE run ledger holds the mode for the whole run, however many plans it spans: the ledger file the user's run already
 names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root.
 
-1. The first action writes `Auto-run: on - '<the user's words>'` into the run ledger, directly under its title.
+1. The first action writes `Auto-run: on - '<the user's words>'` into the run ledger, directly under its title - for
+   the standing default, `Auto-run: on - KIT_AUTO_RUN in the settings`.
 2. Rulings made while a plan executes go to that plan's `docs/superpowers/sdd/<plan basename>/progress.md` too.
 3. After a compaction, Read the run ledger's `Auto-run:` line before the next ask: it is how the mode outlives the
    summary.
-4. 'stop auto run' appends `Auto-run: off - <date>`.
+4. 'stop auto run' appends `Auto-run: off - <date>`. The ledger's last `Auto-run:` line outranks the settings: a
+   standing default the user stopped stays off for the session.
 
 ## The rule
 
@@ -59,13 +64,14 @@ names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root.
   has no grade, is approved as written.
 - A graded implementation plan does NOT stop - the trigger words alone carry this, no waiver is needed (the user's
   ruling, 2026-11-10: 'when I enabled it you must approve plans by your own, not wait for me'). Once the
-  refining-plans loop passes it - 90 or more, no BLOCKER open - the run approves it: the ledger gets
+  refining-plans loop passes it - the pass score or more (90 unless the user's settings or words name another), no
+  BLOCKER open - the run approves it: the ledger gets
   `Ruling: approval of <path> - approved by the run at <score path> - <cost if wrong>`, the file's status line says
   'approved by the run under auto-run', and the build starts in the same turn with the execution method its handoff
   recommends. A skill's own 'ask the user to review' step for the plan, its handoff included, is that approval and
-  is not put. A turn that ends on 'please review the plan' for a plan at 90 or more is this rule skipped (2026-11-04:
+  is not put. A turn that ends on 'please review the plan' for a plan at the pass score or more is this rule skipped (2026-11-04:
   two such stops in one run).
-- A spec or plan whose grade loop ended under 90, on its best round, waits for the user's approval with its score
+- A spec or plan whose grade loop ended under the pass score, on its best round, waits for the user's approval with its score
   path and open findings (the user, 2026-11-10), and the run goes on with work that does not depend on it.
 - A stop names the one decision it needs.
 
