@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@0e9cac7",
+  "kit": "claude-kit@00f56d9",
   "files": {
     ".claude/rules/auto-run.md": "3971073cd3a90b024c685da863ab96f7efbfa53fe4b22817bc5c77cd020dfd1c",
     ".claude/rules/execution.md": "66bfd60e5d39f6bcc6a5deba22fb4467186c29a3ce984b3900c861897667edfe",
@@ -9,7 +9,8 @@
     ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
     ".claude/rules/typescript.md": "0aa0df7089d2a5aa5120c5a6638f8e1683b93127ff603151bd5fdfa0f67c258f",
     ".claude/skills/auto-run/SKILL.md": "37b3188602a7d18157d36c918e48cdd8a021b1fe9e290c82a758230e75bd7129",
-    ".claude/skills/javascript/SKILL.md": "b151346a02d31b17a2f1d7e63acc2b6c58b2c9262be3e163a92b5c27ab5bb84f",
+    ".claude/skills/code-comments/SKILL.md": "c88cd1efe4f16f4b35a27fcd0cd82d5c5c4838445ae6e929ccdb1ccb68c78c37",
+    ".claude/skills/javascript/SKILL.md": "ca56a832fa9e9f890822673f4c117ce9dda01f3b3dead728b33a3d505e0cf2a6",
     ".claude/skills/javascript/references/async-patterns.md": "dfd68fb9e95e44442a901769aa1ed7b93368362497bd3be0d3b1580063c64614",
     ".claude/skills/javascript/references/modern-runtime.md": "ae9ce07e0094be0dd4dab2d985355feb3c43e672bfb5090969b3fa5c826145b0",
     ".claude/skills/javascript/references/performance.md": "0ebf33361a2bb58d29086c7113883c4c7dc589ce17fac58c2607a3e7dbfd32f3",
@@ -81,7 +82,7 @@
     ".claude/skills/solve-task/SKILL.md": "22314fa58ba989c29b9cfd3357b0a1537f7b56c5b3d6fc2726138bdeab9756f2",
     ".claude/skills/ts-js-testing/SKILL.md": "a1906af997ea55ed2157c550e197bb9a5a4c16526d680c120931f8ad30505259",
     ".claude/skills/ts-js-testing/references/suite-audit.md": "b85d638fdf3bb8de3328bb945c9149be1aa0c42d496606b9fd847db241910d77",
-    ".claude/skills/typescript/SKILL.md": "b6b1b72a63314740b28035bba4147743e84ab3dc99f3c16d6d946871a1195a93",
+    ".claude/skills/typescript/SKILL.md": "09e82a1a30715a1e69ae9163f1ed4f8e4fa2adfb0bcbde768eeede9675cf57f8",
     ".claude/skills/typescript/references/typescript-style.md": "ad18a592ac853ec5f1bde4e17fa22c01f433b4cf7c38d30d061d02edb3e58ad7"
   }
 }

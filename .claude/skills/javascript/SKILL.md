@@ -46,6 +46,8 @@ Covers ES modules only, named exports and boundary barrels, async/await discipli
 
 - camelCase for values and functions, PascalCase for classes and constructors, UPPER_CASE for true constants; boolean predicates read as questions (`isReady`, `hasItems`). No abbreviations past the universally understood ones (`id`, `url`, `http`).
 - A function does one thing. Prefer pure functions and early returns to deep nesting; a flat function with guard clauses is easier to read and to test than a pyramid.
+- A file holds at most 350 lines of code, TypeScript and tests included - blank lines and comments are not counted, generated files and plain data tables are exempt. One that would pass the limit is split by responsibility before the new code goes in. A file already past it is not split unasked: new code goes into a module beside it, and the report names the file and its count.
+- Comments are none by default: load `code-comments` before writing a doc comment or an inline one.
 - `const` / `let`, never `var`. `===` / `!==`, never `==`. No implicit globals.
 
 ## Tooling
