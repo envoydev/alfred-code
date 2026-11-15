@@ -6,7 +6,7 @@ Applies to any task of more than a few steps across more than one file or subtas
 
 - One agent, in order, is the default: multi-agent work costs several times a single session, and most tasks have fewer independent parts than they first seem to.
 - Batch independent reads, searches and commands into one turn; a call that needs another's result waits.
-- Subagents only when ALL hold: two or more subtasks are independent, each is sizeable (about ten tool calls, or a wide read that would flood this context), the contracts they share already exist in code, and each can be verified alone. Never for a handful of calls, never to re-check your own work.
+- Subagents only when ALL hold: two or more subtasks are independent, each is sizeable (about ten tool calls, or a wide read that would flood this context), the contracts they share already exist in code, and each can be verified alone. Never for a handful of calls, never to re-check your own work. A seat a skill prescribes - the plan grader, an audit's planner and editor, a step whose model is not this session's - is that skill's call and outside this limit.
 - Seats that edit files in one directory each get their own worktree. A fan-out goes in three steps: shared contracts first and one build to prove them; a complete brief per seat (objective, files it owns and must not touch, the contract, the checks it must pass, the report shape) because it cannot see this conversation; then integrate one track at a time. A seat's 'tests pass' stays unverified until the integrated run confirms it.
 
 ## Plan

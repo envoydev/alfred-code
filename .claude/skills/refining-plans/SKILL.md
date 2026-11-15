@@ -14,18 +14,18 @@ The user's bar for anything they approve before work starts is 9 or 10 out of 10
 - Also when the user asks for it in their words - 'grade this plan', 'scoring for plans', 'score the spec'.
 - Not for code diffs (the review skills own those), and not for an inline plan of five to ten lines.
 - Off for the rest of the session once a user message starts with 'stop scoring' - the always-grade rule included. A handoff after that says `ungraded - scoring stopped` in place of a score path.
-- Off as a standing default while the user's settings carry `KIT_SCORING=off` (the Settings step below prints `scoring: off`): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same.
+- Off as a standing default while the user's settings carry `KIT_SCORING=off` (the Settings step below finds `scoring` off): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same.
 - Cost, measured 2026-10-24 on a 250-300-line design: 160k-280k tokens and 9-13 minutes per round on Opus; that run took five rounds (60, 86, 86, 91, 95).
 
 ## Settings
 
-Before round 0, run `node .claude/kit/settings.mjs` once. It prints what the user's Claude Code settings carry (the `KIT_*` variables of an `env` block), each value with its source:
+Before round 0, take the values from the `kit status` line the status hook added to the request; where none arrived, run `node .claude/kit/settings.mjs` once. Both give what the user's Claude Code settings carry (the `KIT_*` variables of an `env` block), each value with its source:
 
-- `scoring: off` - stop here unless the user asked for this grade in their words.
-- `pass_score` - the score this run grades to, 'the pass score' below: `KIT_PASS_SCORE`, else 90. Where the script cannot run, 90.
-- `grader_model` - the reviewer's model: `KIT_GRADER_MODEL`, else the `plan-grader` agent's own. Where the line says `none` or the script cannot run, `opus`.
+- `scoring` off - stop here unless the user asked for this grade in their words.
+- `pass_score` - the score this run grades to, 'the pass score' below: `KIT_PASS_SCORE`, else 90. Where neither source is there, 90.
+- `review_model` - the reviewer's model: `KIT_REVIEW_MODEL`, else the `plan-grader` agent's own. Where it says `none` or neither source is there, `opus`.
 - The user's words in this session outrank the settings - 'grade it to 95', 'grade with fable' - for this run only.
-- Write the pass score and the grader model, each with its source, to `refining/<slug>/run.md`. After a compaction, Read that file before the next round: it is how the run's values outlive the summary.
+- Write the pass score and the review model, each with its source, to `refining/<slug>/run.md`. After a compaction, Read that file before the next round: it is how the run's values outlive the summary.
 
 ## Inputs
 
@@ -39,7 +39,7 @@ Write them to a folder `refining/<slug>/` in the session scratchpad:
 
 Round 0 grades the draft; rounds 1-3 each revise, then grade again.
 
-1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model:` the grader model, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
+1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model:` the review model, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
 2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder, and a copy of the draft it graded as `draft-<n>` (the draft's own extension) beside it.
 3. Verify each finding against what it cites before acting on it. A finding that is factually wrong is rejected with the evidence, never 'fixed' to please the grader.
 4. Decide, in this order. The pass score is the target, not a strict bar: whether another round is worth it depends on what it can still reach.
@@ -65,7 +65,7 @@ Under auto-run the ask is not put: the Recommended option is taken. Auto-run is 
 ## In the chat
 
 - One line per round, never the scorecard table: `Round <n> - <S>/100 (<delta>) - ceiling <c> - <b> BLOCKER, <m> MATERIAL - <decision>`; a rolled-back round's decision starts `ROLLED BACK to round <k>`.
-- The handoff names the draft's path, the score path (`60 -> 86 -> 91 -> 95`; a drop shows where it went back: `60 -> 86 -> 82 (back to round 1) -> 91`), `independent` or `SELF`, the pass score and the grader model where either is not the default, and every finding fixed after the last grade (not re-graded). A status line goes into the file only now, after the loop.
+- The handoff names the draft's path, the score path (`60 -> 86 -> 91 -> 95`; a drop shows where it went back: `60 -> 86 -> 82 (back to round 1) -> 91`), `independent` or `SELF`, the pass score and the review model where either is not the default, and every finding fixed after the last grade (not re-graded). A status line goes into the file only now, after the loop.
 
 ## Fallback
 

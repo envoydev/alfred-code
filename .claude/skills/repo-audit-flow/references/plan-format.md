@@ -8,6 +8,8 @@ who has never seen the audit could apply it with a text editor and nothing else.
 ````markdown
 # Audit plan - <kind> - <date>
 
+Baseline: <git revision the targets were read at> - <date and time>
+
 ## Summary
 
 | Item | Baseline | Edits | Expected |
@@ -44,10 +46,29 @@ New:
 
 - <finding id> - <why it is left: a guard forbids it, it is the user's call, it belongs to another audit>
 
+## Effects
+
+- <what loads, attaches or costs differently once the edits land, and which repos take the change at the next sync>
+
+## Depends on
+
+- <what the checks need to run, and each fact the plan assumes without having verified it, with how to verify it>
+
 ## Checks
 
-- <each command the editor runs after the last edit>
+- <each command the editor runs after the last edit, with the output that means it passed>
 ````
+
+## Rules for the sections around the edits
+
+- `Baseline` is `git rev-parse --short HEAD` when the targets were read, with `dirty` added when one had uncommitted
+  changes. The flow compares the targets against it before the grade and before the edit.
+- `Effects` is what a session notices: a rule or skill that now loads or attaches where it did not, the always-on
+  size before and after, a trigger that moved. `None beyond the edited files` is a valid answer when it is true.
+- `Depends on` names what must hold for the plan to apply: a sibling checkout or a tool version a check needs, a
+  claim about outside documentation that was not read. An assumption nobody can verify is an open question instead.
+- A check's expected output names only what the edits change - never a count of unrelated lines, which is stale
+  before the editor runs.
 
 ## Rules for every edit
 

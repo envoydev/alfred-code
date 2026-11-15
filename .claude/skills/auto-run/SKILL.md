@@ -13,7 +13,8 @@ nothing; a wrong ruling costs rework they can see and undo. So every ask that wo
 
 - The user's words: 'auto mode', 'auto-run', 'run without asking', 'take the recommended options', 'continue without
   me', or that they are away.
-- Also on as a standing default while `node .claude/kit/settings.mjs` prints `auto_run: on` - the user's own
+- Also on as a standing default while the `kit status` line (or `node .claude/kit/settings.mjs`) says `auto_run` is on
+  from the settings - the user's own
   `KIT_AUTO_RUN=on`, in a settings file that is not committed. Say that it is on from the settings in the first reply
   that acts on it.
 - It is on from that message for the rest of the session. A message the user types mid-run keeps it on and is
@@ -28,17 +29,19 @@ Two files, because one is a record and the other is this session's state:
 - **The run ledger** records what the run decided, however many plans it spans: the ledger file the user's run already
   names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root. Every session in the repo that day
   may write to it, so it never says whether THIS session is in auto-run.
-- **The session file** holds this session's switches: `kit-session.md` in the session scratchpad the harness names.
-  No other session shares that folder.
+- **The session file** holds this session's switches: `kit-session.md` in the session scratchpad the harness names
+  (the `kit status` line gives its path). No other session shares that folder.
 
 1. The first action appends `Auto-run: on - '<the user's words>'` to the session file - for the standing default,
    `Auto-run: on - KIT_AUTO_RUN in the settings`.
 2. Rulings go to the run ledger; those made while a plan executes go to that plan's
    `docs/superpowers/sdd/<plan basename>/progress.md` too.
-3. After a compaction, Read the session file before the next ask: its last `Auto-run:` line is how the mode outlives
-   the summary. No file, or no such line, means this session never switched the mode.
-4. 'stop auto run' appends `Auto-run: off - <date>` to the session file. Its last `Auto-run:` line outranks the
-   settings: a standing default the user stopped stays off for the session.
+3. The status hook reads the session file with every request and reports `auto_run=on (this session)` or `off`, so
+   the mode outlives a compaction with no read. Where no `kit status` line arrives, Read the session file before the
+   next ask after a compaction; no file, or no `Auto-run:` line, means this session never switched the mode.
+4. 'stop auto run' at the start of a request is recorded by the status hook as `Auto-run: off - <date>`; where there
+   is no hook, append that line yourself. The file's last `Auto-run:` line outranks the settings: a standing default
+   the user stopped stays off for the session.
 5. Where the harness names no session scratchpad, the lines go under the run ledger's title instead, and the close
    says that the day's other sessions in the repo share them.
 
