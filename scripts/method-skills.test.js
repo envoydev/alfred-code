@@ -212,8 +212,8 @@ test('plugin-packaging is self-contained (it names no stack skill), and the repo
     const evals = squash(read('.claude/skills/plugin-packaging/references/evals.md'));
     assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
     assert.ok(!evals.includes('habits-skill-writing'), 'the eval reference names no stack skill either');
-    const md = squash(read('CLAUDE.md'));
-    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is this repo\'s own `skill-authoring` skill'), 'CLAUDE.md points at the repo skill');
+    const md = squash(read('AGENTS.md'));
+    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is this repo\'s own `skill-authoring` skill'), 'AGENTS.md points at the repo skill');
     assert.ok(!md.includes('habits-skill-writing'), 'and never at the retired habit');
     assert.ok(!md.includes('writing-skills is a reference'), 'and no longer at the optional plugin');
 });

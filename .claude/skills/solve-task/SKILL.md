@@ -6,7 +6,7 @@ description: "Use when solving a task in this repo end to end - '/solve-task', '
 # Solve task - this repo's own flow
 
 One change to alfred-code, from the request to a local commit, through the superpowers skills and this repo's
-invariants (`CLAUDE.md`). Each step that names a skill loads it with the Skill tool.
+invariants (`AGENTS.md`). Each step that names a skill loads it with the Skill tool.
 
 ## When to use
 
@@ -39,7 +39,7 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
    superpowers:test-driven-development throughout. The ledger is `docs/superpowers/sdd/<plan basename>/progress.md`.
 6. Checks, in the tiers of `execution.md`:
    - per batch: `npm run lint` and the tests that cover the change;
-   - a temp-project matrix from this working tree with CLAUDE.md's required edge cases - fresh install, update over
+   - a temp-project matrix from this working tree with AGENTS.md's required edge cases - fresh install, update over
      an older install, re-run, the user's own config kept, missing or garbage input, every scope, every boundary -
      reading the written files, never the exit code alone;
    - the full `npm test` once, in the background, its output to a log, its tail read.

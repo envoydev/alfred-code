@@ -1,4 +1,4 @@
-# CLAUDE.md - Alfred Code repo
+# AGENTS.md - Alfred Code repo
 
 ## What this repo is
 
@@ -18,6 +18,23 @@ and checking, small pushed slices instead of broad reads. Judge every design by 
 it make Sonnet more correct, cheaper or more reliable? A feature that only pays off on Opus, or needs
 the model to infer what a script could state, works against the goal. Prove it like any behavioral
 change (see the invariants below).
+
+**This repo's own instruction file is `AGENTS.md`, at the root** (the user's ruling, 2026-11-15). Never add a
+`CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` beside it: Claude Code reads `AGENTS.md` only while none of
+the three exists and says nothing when one switches it off (<https://code.claude.com/docs/en/memory>), and
+`claude plugin validate` warns on a root `CLAUDE.md`. `npm run kit:check` and lint check 47 fail when one appears.
+
+## Commands
+
+```bash
+npm install                            # first in a fresh clone
+npm run lint                           # scripts/lint-skills.js - manifest, parity, house voice, the always-on budget
+npm test                               # scripts/run-tests.js - the whole suite, minutes; run it in the background
+node --test scripts/<name>.test.js     # one test file
+npm run kit:check                      # the files claude-kit manages are unedited, and no CLAUDE.md hides this file
+npm run gate                           # lint and test on the committed tree: macOS, Linux (Docker), Windows (a VM)
+npm run plugin-manifest                # regenerate the root .claude-plugin/plugin.json after a version bump
+```
 
 ## Layout - one home per concern
 
@@ -44,6 +61,9 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   the committed tree, on macOS, Linux (Docker) and Windows (a Parallels VM) in parallel - run it by hand before
   a push that changes Windows path or process handling. The pre-push hook is off (the user's ruling of
   2026-11-03: GitHub CI runs all three OSes on every push); `node scripts/gate.js --install-hook` turns it back on.
+- **CI's commands run here first** (the user's ruling, 2026-11-15). Before a push, run `npm run lint` and
+  `npm test` here and push only when both pass; then watch the remote lint and test runs to their end - they are
+  what proves Linux and Windows. This is the session's own step: the pre-push hook stays off.
 - **Public repo.** No private project names or absolute local paths in tracked files.
 - **The 1.x name is gone, never reused.** Every install moved onto `alfred-code` (the user's ruling of
   2026-10-07), so no reader of the old spellings is left - not the env prefix, the stamp, the marketplace
@@ -138,7 +158,7 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 - Authoring a skill in `stack/skills/`: the method is this repo's own `skill-authoring` skill (`.claude/skills/`,
   beside `plugin-packaging`; this repo's `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`). It
   left the stack on 2026-10-22 - it serves authoring the stack, so no install carries it. Both skills, with
-  `auto-run`, `refining-plans`, `javascript`, `typescript`, `markdown-style` and their rules, come from
+  the rest of the shared set and their rules, come from
   [claude-kit](https://github.com/envoydev/claude-kit) (`.claude/kit/lock.json` lists them): change them there and
   sync, never here - `npm run kit:check` fails on a local edit. On top of it here - the
   parity lint, HTML + count sync, house voice. A stop's question is written as an ASK TEMPLATE - a

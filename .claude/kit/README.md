@@ -8,5 +8,5 @@ run its sync, which rewrites them in every repo.
 - `repo.json` here is this repo's own: the values the kit's templates (`solve-task`, `execution.md`) are filled
   with - its name, its checks, its commit rule. Edit it here, then run claude-kit's sync to rewrite those files.
   Its `audit` map tells the `repo-audit-*` skills what this repo ships and how to check it; they read it at run time.
-- Everything else under `.claude/` is this repo's own: its `CLAUDE.md`, the `repo-*` rules and skills,
-  `plugin-handling.md`.
+- Everything else is this repo's own: its `AGENTS.md` at the root, and under `.claude/` the `repo-*` rules and skills
+  and `plugin-handling.md`.

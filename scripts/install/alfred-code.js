@@ -66,7 +66,7 @@ Named flags (any order, each optional): ${FLAG_LIST}
 
 What each flag does is documented where it is set: the guided /alfred-code:init, :update,
 :configure and :validate commands (setup-plugin/commands/) name every flag they pass inline, and
-the repo's CLAUDE.md covers the install surface end to end.`;
+the repo's AGENTS.md covers the install surface end to end.`;
 
 const { CORE_DEP_PLUGINS } = plugins;
 // D1: the frozen twins are gone; the setting that chose them refuses.

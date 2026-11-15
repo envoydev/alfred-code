@@ -8,7 +8,7 @@ paths:
 
 # Installer, plugin commands and delivery
 
-The one installer route, the plugin commands, the delivery surfaces and the snapshot / stamp maintenance gotchas. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+The one installer route, the plugin commands, the delivery surfaces and the snapshot / stamp maintenance gotchas. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
 
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,

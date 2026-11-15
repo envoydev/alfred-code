@@ -9,7 +9,7 @@ paths:
 
 # Catalog items - skills, agents, rules, the AGENTS template
 
-How the skills, the 45 agents, the shipped rules and the per-project AGENTS template are delivered and held to each other. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+How the skills, the 45 agents, the shipped rules and the per-project AGENTS template are delivered and held to each other. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
   file types. `habits-plan-writing` is the one home of the plan folder's shape and of the flat section kept until

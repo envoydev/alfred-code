@@ -1,5 +1,5 @@
 'use strict';
-// The repo's own instructions are split: a lean CLAUDE.md hub plus path-scoped rules (.claude/rules/repo-*.md)
+// The repo's own instructions are split: a lean AGENTS.md hub (CLAUDE.md until 2026-11-15) plus path-scoped rules (.claude/rules/repo-*.md)
 // that hold the mechanism notes. A test that pins a sentence of those notes reads them through here, so the
 // sentence may live in any of the files. Order is fixed: the hub first, then the rules by name.
 const fs = require('node:fs');
@@ -12,7 +12,7 @@ function claudeDocFiles(root = ROOT) {
   const rules = fs.existsSync(rulesDir)
     ? fs.readdirSync(rulesDir).filter((f) => /^repo-.*\.md$/.test(f)).sort().map((f) => path.join('.claude', 'rules', f))
     : [];
-  return ['CLAUDE.md', ...rules];
+  return ['AGENTS.md', ...rules];
 }
 
 function readClaudeDocs(root = ROOT) {

@@ -10,7 +10,7 @@ paths:
 
 # Plugin handling
 
-Adding, changing, renaming or removing anything the plugin ships. `CLAUDE.md` holds the why; this is the order of work.
+Adding, changing, renaming or removing anything the plugin ships. `AGENTS.md` holds the why; this is the order of work.
 
 ## One home per item
 
@@ -26,7 +26,7 @@ Adding, changing, renaming or removing anything the plugin ships. `CLAUDE.md` ho
 - The catalog is not here: the `envoydev` marketplace lives in envoydev/plugins-marketplaces and lists the core from this repo. A catalog change (a description, a category, a new plugin) is a commit there.
 - `meta/skill-headings.json` comes from `npm run skill-headings`: run it after a skill's `name` or `description` changes (lint 64), so update still knows the copies made under the old heading.
 - Run them after any item is added, renamed or removed, then `npm run lint`. A stale generated file fails lint; fixing the output by hand is overwritten by the next run.
-- The repo root is a plugin source. Never add `skills/`, `commands/`, `agents/`, `hooks/hooks.json`, `bin/` or another reserved root name (`CLAUDE.md` lists them); declare hooks and servers inline in the entry.
+- The repo root is a plugin source. Never add `skills/`, `commands/`, `agents/`, `hooks/hooks.json`, `bin/` or another reserved root name (`AGENTS.md` lists them); declare hooks and servers inline in the entry.
 
 ## One version
 

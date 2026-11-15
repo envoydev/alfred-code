@@ -9,7 +9,7 @@ paths:
 
 # Hooks
 
-The eighteen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `CLAUDE.md` so it loads only when you edit these files.
+The eighteen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
 
 - `stack/hooks/` - eighteen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
