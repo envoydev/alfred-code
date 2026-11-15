@@ -19,6 +19,8 @@
 // A model is one of sonnet, opus, haiku, fable - what a dispatch accepts. Without a variable it is the model the
 // agent's own file names. KIT_SCORING and KIT_AUTO_RUN switch a safeguard off, so they count only from a file that
 // is not committed: one found in .claude/settings.json is ignored and named.
+// Claude Code applies a new or changed value to a session that is already open, but a deleted variable stays set
+// there until it restarts: to switch one back at once, set its other value (KIT_AUTO_RUN=off) instead of deleting it.
 // Always exits 0: a value that cannot be used falls back to its default, and the line says why.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -76,8 +78,8 @@ function safeguard(variable, standing, flipped, committedNames)
     if (committedNames.includes(variable))
         return `${standing} (default - ${variable} in ${COMMITTED_SETTINGS} is ignored: set it in .claude/settings.local.json)`;
     if (value === null) return `${standing} (default)`;
-    if (value === flipped) return `${flipped} (${variable})`;
-    return `${standing} (default - ${variable}='${value}' is not '${flipped}')`;
+    if (value === flipped || value === standing) return `${value} (${variable})`;
+    return `${standing} (default - ${variable}='${value}' is neither 'on' nor 'off')`;
 }
 
 const committedNames = committedEnvNames();

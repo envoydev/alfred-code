@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@f4e83a1",
+  "kit": "claude-kit@01ab804",
   "files": {
     ".claude/agents/audit-editor.md": "77ab76d437eea35264a89acc6b8494c387a922f7cc45712710c09de6781d32dc",
     ".claude/agents/audit-planner.md": "1a14d13c40294a240cefe429e92eb305212e8337a8566117bc99194a0c867279",
