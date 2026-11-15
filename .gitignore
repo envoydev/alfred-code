@@ -24,6 +24,8 @@ Thumbs.db
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/plan-grader.md
+!.claude/agents/audit-planner.md
+!.claude/agents/audit-editor.md
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/plugin-packaging/
@@ -56,6 +58,7 @@ Thumbs.db
 !.claude/rules/typescript.md
 !.claude/skills/repo-audit-agents/
 !.claude/skills/repo-audit-agent-md/
+!.claude/skills/repo-audit-flow/
 !.claude/skills/repo-audit-hooks/
 !.claude/skills/repo-audit-plugins/
 !.claude/skills/repo-audit-rules/

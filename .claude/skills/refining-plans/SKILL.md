@@ -20,7 +20,7 @@ The user's bar for anything they approve before work starts is 9 or 10 out of 10
 
 Write them to a folder `refining/<slug>/` in the session scratchpad:
 
-1. `task.md` - the user's request and hard constraints verbatim (typos kept), their answers to the design questions, and the repo constraints the draft must honour (from `CLAUDE.md` and the rules). No author reasoning, no alternatives weighed, no self-assessment.
+1. `task.md` - the user's request and hard constraints verbatim (typos kept), their answers to the design questions, and the repo constraints the draft must honour (from `AGENTS.md` and the rules). No author reasoning, no alternatives weighed, no self-assessment.
 2. The artifact is the file the request asked for - the spec file, the plan file - never a stand-in: a chat summary or an inline outline is never graded in its place, and a missing file is written first (2026-10-25: 3 of 18 scored stack runs graded an inline plan instead of the plan file asked for, and lost all 3). For an implementation plan, the spec it implements is part of the artifact (the reviewer prompt's last line says how to pass it).
 3. Nothing the reviewer reads carries a score, a grade history or a review note - a status line such as 'graded 60, 86, 91' tells it this is a revision. Copy such a file into the folder without that line and pass the copy.
 

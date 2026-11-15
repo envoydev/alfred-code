@@ -29,6 +29,10 @@ not ask for confirmation between phases. Stop only on the stop conditions at the
 genuinely needs the user mid-run goes through AskUserQuestion with concrete options and a marked
 recommendation, never a prose question in a report.
 
+**Load the `repo-audit-flow` skill once step 0 is answered.** Step 0 and Phase A stay in this session. Phases B and
+B2 are its planner seat's: it audits the bundles and writes each fix as an edit in the plan. Phase C's routing question
+is the flow's ask, and what it picks is applied by the editor seat and verified by the planner.
+
 ### Targets - before step 0
 
 1. Read `.claude/kit/repo.json` -> `audit.usage`. No entry: report "this repo ships no usage collection -

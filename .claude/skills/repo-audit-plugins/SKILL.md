@@ -47,11 +47,14 @@ the shipped catalog. The product's own plugin - its packaging and how its parts 
 - `HANDOFFS`: the third-party rows of a `/repo-audit-system` conflict map, when one ran (optional; the Phase 0 fit map, step 6, takes them as input).
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per unit (default: `4`).
-- `WRITE`: `true` edits REPO files in place, `false` produces the report only (default: `true`). Machine state is never in scope of `WRITE`.
+- `WRITE`: `true` takes the run to the flow's ask and applies the REPO edits it picks, `false` stops after the report and the plan (default: `true`). Machine state is never in scope of `WRITE`.
 
 ## How the run goes
 
-You operate autonomously. Do not ask for confirmation between phases. Stop only on the stop conditions
+**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
+stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
 below. Any change to a MACHINE (uninstall, disable, prune, a cache wipe, a registration removed) is the
 user's to make: collect those as proposals for one AskUserQuestion at the end, never run them inside the
 audit.

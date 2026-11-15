@@ -49,11 +49,14 @@ docs contradict. It is this repo's own maintenance tool, not part of the shipped
 - `CORPUS`: a sessions collection root for the block-rate and latency measurements (optional; empty scores evidence from the ledger and the tests alone).
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per hook (default: `4`).
-- `WRITE`: `true` edits files in place, `false` produces the report only (default: `true`).
+- `WRITE`: `true` takes the run to the flow's ask and applies what it picks, `false` stops after the report and the plan (default: `true`).
 
 ## How the run goes
 
-You operate autonomously. Do not ask for confirmation between phases. Stop only on the stop conditions
+**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
+stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
 below. Never loosen a gate to reach a grade, and never move a hook behaviour that is inside its
 observation week.
 

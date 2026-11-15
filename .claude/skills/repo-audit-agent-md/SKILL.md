@@ -43,7 +43,7 @@ this file.
 - `AGENTS_ROOT`: folders containing subagents (default: `audit.agents.roots`; no entry is an empty catalog). Used to detect content an agent already owns.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per file (default: `4`).
-- `WRITE`: `true` edits files in place, `false` produces the report only (default: `true`).
+- `WRITE`: `true` takes the run to the flow's ask and applies what it picks, `false` stops after the report and the plan (default: `true`).
 
 Scope boundary: when this audit runs alongside `repo-audit-rules`, it still reads all rule files to build the linkage, conflict, and duplication maps, but edits only CLAUDE.md files; rule-file edits belong to that audit. When run alone, misplaced content may be moved into new rule files, and any rule file this audit creates must meet the bar of `repo-audit-rules`.
 
@@ -51,7 +51,10 @@ Template mode: when the audited file is a template that installers copy into tar
 
 ## How the run goes
 
-You operate autonomously. Do not ask for confirmation between phases. Stop only on the stop conditions
+**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
+stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
 below. When a stop or finding genuinely needs the user's answer - a proposed split, a conflict with no
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.

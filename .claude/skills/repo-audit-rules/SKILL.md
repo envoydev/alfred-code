@@ -41,7 +41,7 @@ keeps - comes from the repo's own `.claude/kit/repo.json`, never from this file.
 - `AGENTS_ROOT`: folders containing subagents (default: `audit.agents.roots`; no entry is an empty catalog). Used to detect rules that restate what an agent already owns.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per file (default: `4`).
-- `WRITE`: `true` edits files in place, `false` produces the report only (default: `true`).
+- `WRITE`: `true` takes the run to the flow's ask and applies what it picks, `false` stops after the report and the plan (default: `true`).
 
 Source vs deployed layout: a repo that ships rules usually keeps their source in its own tree and installs them into target projects, where each rule lands in `.claude/rules/` and loads by the mechanics in `references/principles.md`. Audit the source files under the roots, but reason about loading, `paths` globs, and cross-file references in terms of the deployed layout, and confirm the source-to-deployed mapping from the install manifest and installer modules the `notes` name instead of assuming it. The enforcement-layer inventory in discovery reads hooks from their source at `audit.hooks.roots` plus the settings files. A deployed rule whose shape is not the source's text - a placeholder the installer stamps, a rule a generator or capture skill writes - is named in the `notes`; a finding there lands in the owner the note names, never in a hand edit of the rule.
 
@@ -49,7 +49,10 @@ Scope boundary: when this audit runs alongside `repo-audit-agent-md`, it still r
 
 ## How the run goes
 
-You operate autonomously. Do not ask for confirmation between phases. Stop only on the stop conditions
+**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
+stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
 below. When a stop or finding genuinely needs the user's answer - a proposed split, a conflict with no
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.
