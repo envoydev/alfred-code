@@ -7,6 +7,5 @@ edit lands (a path-scoped rule attaches ON the touch, so it can never precede it
 loaded, or say it was already in context - the receipt is what makes the load happen. A compaction ends the
 already-in-context skip. Conventions are the source of truth, not recall.
 
-It is the base-language layer; the `typescript` skill (strictness and typing, checked JS included) stacks on top of
-it. Writing or changing a `*.test.js` / `*.spec.js` (or `.mjs`) loads `ts-js-testing` in the same action, before the
+Writing or changing a `*.test.js` / `*.spec.js` (or `.mjs`) loads `ts-js-testing` in the same action, before the
 first test edit lands. Skip one-line tweaks.

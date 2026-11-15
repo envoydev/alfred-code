@@ -6,12 +6,12 @@ Applies to any task of more than a few steps across more than one file or subtas
 
 - One agent, in order, is the default: multi-agent work costs several times a single session, and most tasks have fewer independent parts than they first seem to.
 - Batch independent reads, searches and commands into one turn; a call that needs another's result waits.
-- Subagents only when ALL hold: two or more subtasks are independent, each is sizeable (about ten tool calls, or a wide read that would flood this context), the contracts they share already exist in code, and each can be verified alone. Never for a handful of calls, never to re-check your own work. A seat a skill prescribes - the plan grader, an audit's planner and editor, a step whose model is not this session's - is that skill's call and outside this limit.
+- Subagents only when all hold: two or more subtasks are independent, each is sizeable (about ten tool calls, or a wide read that would flood this context), the contracts they share already exist in code, and each can be verified alone. Never for a handful of calls, never to re-check your own work. A seat a skill prescribes - the plan grader, an audit's planner and editor, a step whose model is not this session's - is that skill's call and outside this limit.
 - Seats that edit files in one directory each get their own worktree. A fan-out goes in three steps: shared contracts first and one build to prove them; a complete brief per seat (objective, files it owns and must not touch, the contract, the checks it must pass, the report shape) because it cannot see this conversation; then integrate one track at a time. A seat's 'tests pass' stays unverified until the integrated run confirms it.
 
 ## Plan
 
-Five to ten lines in the reply or the todo list, never a plan file unless asked: subtasks with their files, what depends on what (one consumes the other's output, or both touch the same file, manifest or shared contract), the mode and why, and what is checked when. Then proceed; stop and ask only for a plan needing more than about five seats, a scope far past the request, or a missing secret or service with no local stand-in.
+Five to ten lines in the reply or the todo list, never a plan file unless the user asked for one or started a flow that writes one: subtasks with their files, what depends on what (one consumes the other's output, or both touch the same file, manifest or shared contract), the mode and why, and what is checked when. Then proceed; stop for the user only on a plan needing more than about five seats, a scope far past the request, or a missing secret or service with no local stand-in, and ask through the AskUserQuestion tool with concrete options and one marked recommended - the option an auto-run takes; where the tool is absent (a subagent seat, a headless run), give the same options in plain text with the recommended one marked, and stop.
 
 ## Checks, in tiers
 
