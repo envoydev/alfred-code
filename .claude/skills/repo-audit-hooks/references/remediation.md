@@ -35,6 +35,6 @@ Then, for each hook still below A / 9, a bounded loop:
 - Timeouts stay. No entry loses its timeout to 'let the check finish'; a check that needs minutes is not a hook on the hot path.
 - The root wins by default, never silently. A house rule is amended to fit a hook or a child hook only with a measurement and a recorded reason; a hook is never kept by weakening the rule it contradicts.
 - A fit finding quotes both sides. 'Overlaps with the house' without the two lines is noise, not a deduction.
-- A child hook is read, not trusted by its marketplace tier. A curated plugin's hook is opened line by line like a house hook; the tier is a D4 input for the plugin audit, not a pass here.
+- A child hook is read, not trusted by its marketplace tier. A curated plugin's hook is opened line by line like a house hook; the tier is a supply-chain input for the plugin audit, not a pass here.
 - The twin repo is mirrored deliberately. Where the notes name a twin repo for another host that ships a hook layer of its own, a protocol change here is written to a task card for that repo, never assumed.
 - Honest scoring. A hook that cannot reach A without breaking a guard is reported at its real grade with the blocker.

@@ -20,11 +20,10 @@ raised and report honestly what cannot.
 The audit assumes nothing about which units exist: discover them from the repo's own install lists,
 catalogs and the audited machine's install registry, read what each one actually contains, and measure
 what each one actually did. It was distilled from the September 2026 plugin best-practice reports and
-re-grounded in the official Claude Code docs on 2026-09-12 and re-checked on 2026-09-26; the docs win
-wherever the two disagree, and `references/currency.md` says which claims are official, which are
-community-reported and which the docs contradict. It is this repo's own maintenance tool, not part of
-the shipped catalog. The product's own plugin - its packaging and how its parts work together - is
-`/repo-audit-system`'s.
+re-grounded in the official Claude Code docs; the docs win wherever the two disagree, and
+`references/currency.md` says which claims are official, which are community-reported and which the docs
+contradict, each with the date it was last read.
+It is this repo's own maintenance tool, not part of the shipped catalog.
 
 ## When to use
 
@@ -109,6 +108,7 @@ Produce a single report with:
 3. Security read, one line per consumed unit and dependency: hook events and command strings read, MCP endpoints and launch commands, credential handling, `bin/`, monitors, pin form - BLOCKER flagged.
 4. Fit map: one row per child component with a relation to the root - `cited` / `duplicates` / `contradicts` / `collides` / `overrides` - the house artifact and line it meets, the resolution (home chosen, negative trigger added, child dropped, rule amended with its measurement, route repaired) or why it stands; a row handed over by `/repo-audit-system` says so.
 5. The Phase 1b currency table with this run's verdicts.
-6. The machine-state proposals (the AskUserQuestion list) and, when `WRITE` is true, the files edited, moved or created plus the snapshot location.
+5b. The `audit.plugins.checks` commands, each with its result line, after every repo edit.
+6. The machine-state proposals (the AskUserQuestion list), the exact command printed for each one picked, and, when `WRITE` is true, the files edited, moved or created plus the snapshot location.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

@@ -1,6 +1,6 @@
 # TypeScript code style and conventions
 
-The authoritative TypeScript/JavaScript *tooling and style* reference: the concrete tsconfig, ESLint, Prettier, and .editorconfig setup plus the rule-by-rule conventions they enforce. `SKILL.md` owns the conceptual model (why the compiler is a test, discriminated unions, branding, the two failure channels); this document owns the concrete tool config and the enforcement rules - where they overlap, this reference wins. Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `<docs-path>/preferences/PROJECT-CODE-PREFERENCES.md` are HIGHER priority: where a project diverges from these general conventions, follow the project.
+The authoritative TypeScript/JavaScript *tooling and style* reference: the concrete tsconfig, ESLint, Prettier, and .editorconfig setup plus the rule-by-rule conventions they enforce. `SKILL.md` owns the conceptual model (why the compiler is a test, discriminated unions, branding); this document owns the concrete tool config and the enforcement rules - where they overlap, this reference wins. Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its code-style docs are HIGHER priority: where a project diverges from these general conventions, follow the project.
 
 ## Contents
 
@@ -58,7 +58,7 @@ export default defineConfig({
 Stability note: typescript-eslint's Shared Configs docs state that 'with the exception of all, strict, and strict-type-checked, all configurations are considered stable', and that strict 'is not considered stable under Semantic Versioning (semver). Its enabled rules and/or their options may change outside of major version updates.' `stylistic` and `recommended` are stable. `projectService` is the stable typed-linting API (promoted in v8); confirm the current major via the documentation tools at setup time and pin your version regardless.
 
 ## tsconfig.json compiler options
-Start from `strict: true`, which turns on the whole strict family: noImplicitAny, strictNullChecks, strictFunctionTypes, strictBindCallApply, strictPropertyInitialization, noImplicitThis, useUnknownInCatchVariables, alwaysStrict.
+Start from `strict: true`, which turns on the whole strict family - noImplicitAny, strictNullChecks, useUnknownInCatchVariables and the rest. The family grows with releases: read its current members in the tsconfig reference under `strict`, not from a list here.
 
 For maximum safety, the community-maintained `@tsconfig/strictest` base is the reference (npm `@tsconfig/strictest`, MIT, maintained under the tsconfig/bases project). Its exact `compilerOptions`:
 ```json
@@ -81,15 +81,15 @@ For maximum safety, the community-maintained `@tsconfig/strictest` base is the r
   }
 }
 ```
-`@tsconfig/strictest` is strictness-only; it deliberately does not set `target`/`module`/`lib`. Compose it with the `@tsconfig/node<N>` base matching the pinned Node (`node24` for new work). Note `forceConsistentCasingInFileNames` is TypeScript's default since 5.0, so it is not listed; `noImplicitAny` is on implicitly via `strict`.
+`@tsconfig/strictest` is strictness-only; it deliberately does not set `target`/`module`/`lib`. Compose it with the `@tsconfig/node<N>` base matching the pinned Node (the active LTS line for new work). Note `forceConsistentCasingInFileNames` is TypeScript's default since 5.0, so it is not listed; `noImplicitAny` is on implicitly via `strict`.
 
 The two highest-friction, highest-value flags: `noUncheckedIndexedAccess` (array/record access returns `T | undefined`) and `exactOptionalPropertyTypes` (an optional `foo?: T` cannot be set to `undefined` unless the type says so). Enable both on new projects; adopt incrementally on existing ones.
 
 ## Naming conventions
 - Variables, functions, parameters, methods, properties: `camelCase`.
 - Classes, interfaces, type aliases, enums, type parameters, decorators: `PascalCase`.
-- Module-level true constants: `UPPER_CASE` acceptable; `camelCase` also fine - be consistent.
-- Enum members: `UPPER_CASE` or `PascalCase` - pick one.
+- Module-level true constants: `UPPER_CASE`.
+- Enum members, where older code still has an `enum` (new code takes the `as const` object the skill gives): the case that file already uses.
 - Booleans: prefix with `is`, `has`, `should`, `can` (`isActive`, `hasChildren`).
 - Generics: `PascalCase`, single uppercase letter (`T`, `K`, `V`, `U`) or descriptive `TKey`/`TValue` in complex signatures.
 - Do NOT prefix interfaces with `I` (`IUser`). This is a legacy .NET-era habit the modern TS community has abandoned; the TS handbook and Google TS style guide both discourage it. Flag it as legacy if you see it.
@@ -152,7 +152,7 @@ The rules are `SKILL.md`'s (Model absence on purpose; no non-null assertion with
 - Use `readonly` for injected/constructor-set fields that do not change.
 - Member ordering: enforce with the `@typescript-eslint/member-ordering` rule - static fields, instance fields, constructor, then methods; public before protected before private within each group.
 - Use the `override` keyword (`noImplicitOverride` enforces it).
-- Prefer parameter properties (`constructor(private readonly svc: Svc)`) for concise constructor DI - unless the framework layer prescribes its own injection function, which wins.
+- Prefer parameter properties (`constructor(private readonly svc: Svc)`) for concise constructor DI - unless the framework layer prescribes its own injection function, which wins, or the file is erasable-only (`erasableSyntaxOnly`, or run by Node's type stripping), which refuses them: declare the field and assign it in the constructor.
 
 ## Imports / exports
 - Prefer named exports over default exports (better refactoring, consistent names, better tree-shaking).

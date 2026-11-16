@@ -13,7 +13,7 @@ Use for consuming and publishing packages: package.json / package-lock.json / .n
 
 Covers lockfile and npm ci discipline, the supply-chain baseline (npm 12 `allowScripts` approvals or npm 11 ignore-scripts, min-release-age, allow-git, OIDC publishing), honest npm-audit gating, peer-conflict resolution, and ESM-first publishing.
 
-Not for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground.
+Not for language-level TypeScript style (`typescript`) or a framework's own conventions, and not for authoring CI pipelines beyond npm's own steps.
 
 ## Non-negotiables (any repo that has a package.json)
 

@@ -36,9 +36,8 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 - `PROFILES`: the install profiles to install (default: the profiles a `notes` line names, with the tool that lists
   them; with none named, one `default` install of the plugin as it ships).
 - `WORKDIR`: where the fixtures go (default: a `system-audit` folder in the session scratchpad; never inside a real project). Everything in it is test data, deleted at the run's end.
-- `RESULTS`: where the run's results stay (default: the audit-results folder a `notes` line names; with none, a
-  `system-audit-results/<YYYY-MM-DD>/` folder in the session scratchpad, named in the report as machine-local and
-  short-lived; never committed).
+- `RESULTS`: where the run's results stay (default: the audit-results folder a `notes` line names; with none, the
+  flow's run folder, which is git-ignored and machine-local; never committed).
 - `CORPUS`: a sessions collection root (optional; without it S2, S3 and S5 score their static side only and each says so).
 - `WINDOW`: the context window, in tokens, the skill listing budget is judged at (default: `200000`).
 - `OWN_PLUGIN_ROOT`: the plugin the repo ships (default: the root a `notes` line names; with none, the repo root
@@ -55,8 +54,18 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 picked before the planner verifies. Autonomous through the report; one ask before any edit; nothing on a machine
 outside the fixtures.
 
-1. **Targets.** Read `.claude/kit/repo.json` -> `audit.system`. No entry: report "this repo ships no plugin
-   system - nothing to audit" and stop. `roots` are what this run audits (a root the user names overrides
+The planner seat installs nothing and writes only in the flow's run folder, so every step that installs, runs a
+hook on a probe or writes under `WORKDIR` belongs to the session that runs the flow: the fixtures and their maps
+before the planner starts (steps 2 and 3 of `references/discovery.md`), the re-install, the re-map, the install
+proof and the packaging commands before the planner verifies (Phase 3 steps 2 to 4), and 'Results and cleanup'.
+That session runs the tools and keeps their output under `RESULTS`, and scores nothing; where no tool makes the
+map, it measures - the characters, each hook's stdout on the probe - and the planner writes the rows and flags from
+those numbers. The planner fixes the checklist before it opens a map, reads the maps under `RESULTS`, and writes
+`checklist.md`, a hand map and its reports in the run folder; where `RESULTS` is another folder, that session
+copies them there, the baseline and final reports as `report.md`.
+
+1. **Targets.** Read `.claude/kit/repo.json` -> `audit.system`. No entry: report 'this repo ships no plugin
+   system - nothing to audit' and stop. `roots` are what this run audits (a root the user names overrides
    them) and seed `OWN_PLUGIN_ROOT`; run every `checks` command wherever this skill calls for the repo's
    mechanical checks, and quote its result; follow every `notes` line wherever this skill touches a
    repo-specific mechanism - the fixture and session-surface tools, the profile list, the usage analyzer and
@@ -82,7 +91,7 @@ outside the fixtures.
 
 1. Snapshot every file before its edit into `RESULTS/snapshot/`; every `checks` command plus the tests that cover each edit, green before the next.
 2. Re-install every profile a fix touches from the edited tree and re-map it the way Phase 0 did; diff the map against the baseline: each fix's claimed row, flag or total moves the way it said, and nothing else moves.
-3. The repo's own install proof (its `CLAUDE.md` or a `notes` line names it) for every shipped file the fixes changed - for an installer: fresh, update over the last release, re-run, the user's own config kept, malformed input, every scope touched.
+3. The repo's own install proof (its root instruction file or a `notes` line names it) for every shipped file the fixes changed - for an installer: fresh, update over the last release, re-run, the user's own config kept, malformed input, every scope touched.
 4. Packaging: `claude plugin validate --strict` on the plugin and the marketplace root, `claude --plugin-dir <root> plugin details <name>` read with its caveats, and the `claude plugin eval` with / without delta (the eval suite a `notes` line names) where a fix touched a command or a router skill.
 5. A claim that rests on the corpus (a false-block rate, a re-read count, an unused surface) is PENDING until sessions recorded after the change say it moved; report it so, never as proven by the edit.
 6. Re-score from scratch and record the final grades with the same evidence-cited scoring.
@@ -127,5 +136,5 @@ One report in the conversation, dense, no preamble, no restating this skill:
 5. Packaging block: A1-A5 with cited deductions; the validate, details and eval lines quoted.
 6. Handoff rows: target audit, the part, the defect, the evidence.
 7. The Phase 1b currency table with this run's verdicts.
-8. The ask; after an apply, the before / after surface diff per profile, the files changed and the snapshot location.
+8. The ask; after an apply, the before / after surface diff per profile, the files changed, each `checks` command with its result line, and the snapshot location.
 9. The results line: the `RESULTS` path, and the cleanup - what was removed, what was left, the leftover checks.

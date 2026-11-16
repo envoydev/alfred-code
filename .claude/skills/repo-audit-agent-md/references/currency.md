@@ -10,7 +10,7 @@ an unresolved DRIFTED finding blocks the artifact from A.
 1. **Inventory** while scoring Phase 1: collect every externally-verifiable claim - a named
    package or library, a version floor, an API call inside a code example, a config or CLI
    syntax block, a deprecation or 'X does not support Y' statement, a best-practice claim
-   attributed to a library's documentation. A documented harness behaviour the mechanism facts above rely on - how `.claude/rules/` files load, that CLAUDE.md can carry compaction instructions, what `disable-model-invocation` blocks, the effort and model defaults - is an external claim too: check it against the official Claude Code docs pages (best practices, memory, costs) each run, since those pages move between releases.
+   attributed to a library's documentation. A documented harness behaviour the mechanism facts in `principles.md` rely on - how `.claude/rules/` files load, when an `AGENTS.md` is read in place of a CLAUDE.md, that CLAUDE.md can carry compaction instructions, what `disable-model-invocation` blocks, the effort and model defaults - is an external claim too: check it against the official Claude Code docs pages (best practices, memory, costs) each run, since those pages move between releases.
 2. **Prioritize** what a release can invalidate: version-named claims, code examples that call
    library APIs, deprecation/support statements. House judgment (strategy, conventions,
    tradeoffs, forbidden patterns) has no external truth to check - skip it.

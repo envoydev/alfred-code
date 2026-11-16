@@ -21,14 +21,14 @@ Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#m
   "license": "MIT",
   "keywords": ["review", "ci"],
   "commands": ["./commands/review.md"],
-  "agents": "./agents/",
+  "agents": ["./agents/reviewer.md"],
   "skills": "./extra-skills/",
   "hooks": "./hooks/hooks.json",
   "mcpServers": "./.mcp.json",
   "lspServers": "./.lsp.json",
   "outputStyles": "./output-styles/",
   "userConfig": {
-    "apiToken": { "description": "Tracker API token", "sensitive": true }
+    "apiToken": { "type": "string", "title": "API token", "description": "Tracker API token", "sensitive": true }
   }
 }
 ```
@@ -38,8 +38,8 @@ Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#m
 | `name` | REQUIRED. Kebab-case; the namespace of every command / skill / agent (`/<name>:<cmd>`). Unique within its marketplace. |
 | `version` | Semver. Authoritative over a version in the marketplace entry, silently. When present, an update ships only on a bump. |
 | `author` | An OBJECT with `name` (plus `email`, `url`). A bare string fails strict validation. |
-| Component paths | Relative to the plugin root, starting `./`; a string or an array; a file or a directory. `commands`, `agents`, `outputStyles`, `workflows` REPLACE the default folder; `skills` ADDS to `./skills/` (except in an entry sourced from the marketplace root, where the listed folders are the whole set); `hooks`, `mcpServers`, `lspServers` merge by their own rules. `../` is rejected - a copied plugin cannot reach above its root (a symlink inside the root is the workaround). |
-| `userConfig` | Named values the user is asked for on install; `sensitive: true` stores in secure storage and reaches hooks / servers as an environment variable. |
+| Component paths | Relative to the plugin root, starting `./`; a string or an array; a file or a directory - except `agents`, which takes `.md` files only, and `skills`, which takes directories only. `commands`, `agents`, `outputStyles`, `workflows` REPLACE the default folder; `skills` ADDS to `./skills/` (except in an entry sourced from the marketplace root, where the listed folders are the whole set); `hooks`, `mcpServers`, `lspServers` merge by their own rules. `../` is rejected - a copied plugin cannot reach above its root (a symlink inside the root is the workaround). |
+| `userConfig` | Named values the user is asked for when the plugin is enabled. Each option is a strict object that needs `type`, `title` and `description`; an unknown key inside one stops the plugin loading. `sensitive: true` stores in secure storage and reaches hooks / servers as an environment variable. |
 | `experimental.evals` | The eval suite directory when `evals/` is taken (see `evals.md`). |
 
 ## Layout
@@ -84,11 +84,15 @@ Never set `version` in both plugin.json and the marketplace entry - plugin.json 
 
 An ENTRY may carry any field of the plugin manifest schema alongside the marketplace-specific ones,
 so it can declare `lspServers`, `mcpServers`, `hooks`, `commands`, `agents` or `skills` itself. That
-is how a published plugin can hold nothing but a LICENSE and a README - the entry IS the plugin.
-`strict` (default `true`) decides who owns the definition: leave it true and the package's own
-`plugin.json` is authoritative; set it `false` and the ENTRY becomes the entire definition, at which
-point a package that also declares components is a load-failing conflict. So a component-carrying
-entry ships either an empty package or `strict: false`, never both halves declaring.
+is how a published plugin can hold nothing but a LICENSE and a README - with no `plugin.json` in the
+package the entry IS the manifest, whatever `strict` says. Where the package has its own
+`plugin.json`, that file is the manifest and `strict` (default `true`) decides what the entry's
+`commands`, `agents`, `skills`, `hooks`, `outputStyles` and `themes` do: left `true`, they are appended
+to it (the entry's `hooks` matchers replace the manifest's per event); set `false`, an entry that
+declares any of them is a load-failing conflict (`conflicting manifests`). An entry's `mcpServers`,
+`lspServers`, `userConfig` and `channels` apply only where the package has no `plugin.json`. Read
+2026-11-16 from the Strict mode table of the marketplace reference - re-read it before relying on a
+combination.
 
 ## Loading and precedence
 

@@ -1,6 +1,6 @@
 ---
 name: repo-audit-rules
-description: Use when auditing and fixing the rule files this repo ships toward grade A - mechanism, always-on cost, conflicts, duplication. Not for CLAUDE.md.
+description: Use when auditing and fixing the rule files this repo ships toward grade A - mechanism, always-on cost, conflicts, duplication. Not for AGENTS.md or CLAUDE.md.
 disable-model-invocation: true
 ---
 
@@ -10,10 +10,6 @@ You are an instruction-layer quality engineer. Take a Claude Code repository's a
 layer - CLAUDE.md files and `.claude/rules/*.md` - and raise it to excellent, ship-ready quality: audit
 every rule file under the given roots, score each against an objective rubric, then rewrite each in
 place until it reaches grade A (numeric 9) without changing intended behavior.
-
-This audit belongs to a family, alongside `repo-audit-skills`, `repo-audit-agents` and
-`repo-audit-agent-md`, and shares their philosophy: objective scoring with cited evidence, a gated A
-that cannot be reached by averaging, hard anti-gaming guards, bounded loops, and honest reporting.
 
 One thing makes rules fundamentally different from skills and agents, and it drives this entire
 rubric: rules have no trigger. They are loaded into context at the start of every session and paid for
@@ -30,13 +26,13 @@ keeps - comes from the repo's own `.claude/kit/repo.json`, never from this file.
 ## When to use
 
 - The user types `/repo-audit-rules` to audit the rule files `audit.rules.roots` names, or a root they name.
-- Not for the CLAUDE.md template or a filled CLAUDE.md (`/repo-audit-agent-md`), and not for hooks
-  (`/repo-audit-hooks`).
+- Not for the AGENTS.md or CLAUDE.md template or a filled copy of one (`/repo-audit-agent-md`), and not
+  for hooks (`/repo-audit-hooks`).
 
 ## Parameters
 
 - `RULES_ROOT`: folders containing rule files (default: `audit.rules.roots`). All `.md` files are discovered recursively, including subdirectories and symlinks.
-- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `audit.agent-md.roots`, the CLAUDE.md or AGENTS.md template the repo deploys into target projects; no entry means the repo ships none). The repo's own working CLAUDE.md (repo.json `claude_md`, else the root `./CLAUDE.md`) may be read for context but is out of scope for scoring and editing.
+- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `audit.agent-md.roots`, the CLAUDE.md or AGENTS.md template the repo deploys into target projects; no entry means the repo ships none). The repo's own working instruction file (repo.json `agents_md`, else the root `./AGENTS.md` or `./CLAUDE.md`) may be read for context but is out of scope for scoring and editing.
 - `SKILLS_ROOT`: folders containing skills (default: `audit.skills.roots`; no entry is an empty catalog). Required, because the main remediation for a bloated rule set is moving content into skills, and you may only point at skills that exist.
 - `AGENTS_ROOT`: folders containing subagents (default: `audit.agents.roots`; no entry is an empty catalog). Used to detect rules that restate what an agent already owns.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
@@ -45,7 +41,7 @@ keeps - comes from the repo's own `.claude/kit/repo.json`, never from this file.
 
 Source vs deployed layout: a repo that ships rules usually keeps their source in its own tree and installs them into target projects, where each rule lands in `.claude/rules/` and loads by the mechanics in `references/principles.md`. Audit the source files under the roots, but reason about loading, `paths` globs, and cross-file references in terms of the deployed layout, and confirm the source-to-deployed mapping from the install manifest and installer modules the `notes` name instead of assuming it. The enforcement-layer inventory in discovery reads hooks from their source at `audit.hooks.roots` plus the settings files. A deployed rule whose shape is not the source's text - a placeholder the installer stamps, a rule a generator or capture skill writes - is named in the `notes`; a finding there lands in the owner the note names, never in a hand edit of the rule.
 
-Scope boundary: when this audit runs alongside `repo-audit-agent-md`, it still reads the CLAUDE.md template to build the conflict and duplication maps (both maps are meaningless without it), but edits only rule files; template edits belong to that audit. When run alone, this audit owns both.
+Scope boundary: this audit reads and scores the AGENTS.md or CLAUDE.md template - the conflict and duplication maps are meaningless without it - but edits only rule files. An edit the template needs is never made here: it is recorded in the conflict or duplication map as a handoff to `/repo-audit-agent-md`.
 
 ## How the run goes
 
@@ -114,5 +110,6 @@ Produce a single report with:
 6. Per file, a short block: baseline score by dimension with the top 2-3 cited deductions, what changed, final score by dimension, any blocker, and every named cite of an optional skill or MCP server converted to a description (line, before, after).
 7. Deletions: every line or block deleted, and which justification applies (no behavior change, duplicated, replaced by a named mechanism).
 8. If `WRITE` is true, the list of files edited, moved, created, or deleted, including new skills and hooks, and the snapshot location for rollback.
+9. The `checks`: each command with its result line, before and after the edits.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

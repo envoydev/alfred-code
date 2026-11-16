@@ -30,13 +30,18 @@ genuinely needs the user mid-run goes through AskUserQuestion with concrete opti
 recommendation, never a prose question in a report.
 
 **Load the `repo-audit-flow` skill once step 0 is answered.** Step 0 and Phase A stay in this session. Phases B and
-B2 are its planner seat's: it audits the bundles and writes each fix as an edit in the plan. Phase C's routing question
-is the flow's ask, and what it picks is applied by the editor seat and verified by the planner.
+B2 are its planner seat's: it audits the bundles, writes the audit files and `SUMMARY.md`, and writes each fix as an
+edit in the plan. For this audit the flow's run folder is `AUDIT_DIR` (`<root>/AUDIT/`), not the flow's default: the
+planner writes nowhere else, and the flow's own files sit beside the audit files, inside the ignored root. The size
+the flow states before the planner starts is the bundle count in scope, and the bundles are one batch for one
+planner - the flow's split by characters is for files read whole, and no transcript is. Phase C's routing question
+is the flow's ask, and what it picks is applied by the editor seat and verified by the planner, which also closes
+Phase C - the dispositions and the two sweeps.
 
 ### Targets - before step 0
 
-1. Read `.claude/kit/repo.json` -> `audit.usage`. No entry: report "this repo ships no usage collection -
-   nothing to audit" and stop. `roots` are the collection roots this run reads and writes (a root the user
+1. Read `.claude/kit/repo.json` -> `audit.usage`. No entry: report 'this repo ships no usage collection -
+   nothing to audit' and stop. `roots` are the collection roots this run reads and writes (a root the user
    names overrides them); run every `checks` command where this skill calls for the repo's mechanical checks
    (Phase C), and quote its result; follow every `notes` line wherever this skill touches a repo-specific
    mechanism - the session collector, the usage analyzer and its flags, the per-project report skill, where
@@ -84,8 +89,9 @@ instead of guessing. The chain - which answer opens which question, and each que
   usage by message id and counts a bundle's sibling `subagents/` too - check that the analyzer does,
   and do both in a hand count.
 - **Privacy wall.** Bundles carry private project names, absolute paths, file contents and
-  possibly secrets. Everything quoting them stays inside the audit dir; anything reaching a tracked
-  repo file is genericized to 'a consuming project'. Re-run both gitignore checks after copying.
+  possibly secrets. Everything quoting them stays inside `AUDIT_DIR` - `<root>/AUDIT/`, under the
+  ignored collection root; anything reaching a tracked repo file is genericized to 'a consuming
+  project'. Re-run both gitignore checks after copying.
 - **Copy, never move.** The audited project owns its data; this run is a reader.
 
 ### Phases
@@ -95,8 +101,8 @@ instead of guessing. The chain - which answer opens which question, and each que
    On 'collect only', report the collection and stop.
 2. **Phase B - audit**: follow `references/audit.md` bundle by bundle, oldest first, writing each
    bundle's audit file before starting the next - it is the resume point. Every finding takes the one
-   shape and one of the statuses in `references/findings.md`. Only the main session classifies a
-   finding and writes the audit files.
+   shape and one of the statuses in `references/findings.md`. Only the planner seat classifies a
+   finding and writes the audit files - a status is read out of the live tree, which that seat holds.
 3. **Phase B2 - synthesis**: follow `references/synthesis.md` once the last bundle has its audit file -
    the clusters, `SUMMARY.md` and its four mandatory tables.
 4. **Phase C - verdict and routing**, below.
@@ -104,8 +110,10 @@ instead of guessing. The chain - which answer opens which question, and each que
 ## Phase C - verdict and routing
 
 Present the summary, then ask the ONE question step 0 deliberately left open, now that the
-findings exist: apply BLOCKER + MATERIAL (recommended) / apply all OPEN / report only, change
-nothing.
+findings exist. It is the flow's ask, put with these options in place of the flow's own: apply
+BLOCKER + MATERIAL (recommended) / apply all OPEN / report only, change nothing. The editor seat
+applies the edits of the findings the answer covers; on 'report only' no editor runs, and the planner
+is still sent its verify step, to disposition the ledger.
 
 Applying means landing each fix in its home in this repo under the repo's rules: source of truth here,
 never a consuming project's copy; wording genericized; every `checks` command and the tests covering

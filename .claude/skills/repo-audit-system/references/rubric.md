@@ -26,7 +26,7 @@ Cost is judged against measured use: an expensive surface the sessions use fully
 
 **S3 - Hooks (15 pts, floor 9).** The hooks as a set, per profile.
 
-- Cost: per event, the summed latency of its hooks on the probe and the timeout exposure (an untimed hook runs on the 600-second default); the combined injection per turn and per dispatch; the hooks bound to events that fire without a prompt.
+- Cost: per event, the summed latency of its hooks on the probe and the timeout exposure (an untimed hook runs on its type-and-event default, a currency row - 600 seconds for a `command` hook on most events); the combined injection per turn and per dispatch; the hooks bound to events that fire without a prompt.
 - Value against harm, from the ledger: each block split into prevented harm, a false block (the next call overrode it or a person did), a retry unchanged, or a legitimate flow step denied. A deny-then-retry loop in the corpus is harm.
 - A defect inside one hook's contract (its exit codes, its matcher, its message) is a handoff to `/repo-audit-hooks`.
 
@@ -36,7 +36,7 @@ Cost is judged against measured use: an expensive surface the sessions use fully
 
 ## Packaging grade - the repo's own plugin
 
-Today's own-plugin rubric, moved here from the plugin audit unchanged: the same five dimensions, 100 points, the same bands and floors.
+Five dimensions, 100 points, the band table below; a dimension below its floor caps the packaging grade at B whatever the total.
 
 **A1 - Manifest and layout (15 pts, floor 10).** `name` kebab-case; `author` an object; component paths relative, starting `./`, no `../`; the path fields understood (`commands`, `agents`, `outputStyles`, `workflows` and the `experimental.*` paths REPLACE their default folder, `skills` ADDS, `hooks` / `mcpServers` / `lspServers` MERGE with the default file, which loads first - an enumerated `commands` list means a new file in `commands/` loads nowhere until listed); only `plugin.json` inside `.claude-plugin/`; no `CLAUDE.md` at the root (not loaded); `version` in ONE place (plugin.json wins over the marketplace entry, and validate warns on the pair; where the source holds no plugin.json the entry IS the manifest and its `version` is the one home).
 

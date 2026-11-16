@@ -17,7 +17,7 @@ Then, for each unit still below A / 9, a bounded loop:
 4. Re-score from scratch. Do not carry the previous score forward.
 5. Repeat until A / 9, `MAX_ITERATIONS`, or a pass with no material gain.
 
-Machine-state changes are collected, not run: uninstalling a dropped plugin from the audited machines, disabling one at a scope, `claude plugin prune` for dependencies nothing needs any more (a replaced cached version goes by the 14-day sweep), removing a leftover registry entry or MCP registration. They go into ONE AskUserQuestion at the end, one option per action with the recommended one marked.
+Machine-state changes are collected, not run: uninstalling a dropped plugin from the audited machines, disabling one at a scope, `claude plugin prune` for dependencies nothing needs any more (a replaced cached version goes by the 14-day sweep), removing a leftover registry entry or MCP registration. They go into ONE AskUserQuestion at the end, one option per action with the recommended one marked. The session runs none of them: for each action the answer picks, the report prints the exact command for the user to run.
 
 ## Anti-gaming guards (hard invariants)
 

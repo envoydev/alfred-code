@@ -26,7 +26,7 @@ Scored once for the whole set and blocking every implicated hook from A until re
 - A wiring drift: the wiring sources the notes name (a source table, a generated plugin entry, a copy-route writer, a mods module's registrations), the handlers on disk and a deployed `settings.json` disagreeing on events, matchers, timeout or the retired set.
 - A collision: two hooks on one event and matcher with overlapping jobs and no recorded order and cost - a house pair, or a house hook and a child hook.
 - A contradiction: a rule, skill step or agent brief instructing what a hook denies, with no receipt path between them.
-- An unbounded child hook on a hot event: a plugin entry with no timeout on `PreToolUse` / `PostToolUse` / `Stop` / `UserPromptSubmit`, since one stalled child freezes the session for ten minutes and the repo cannot stamp it.
+- An unbounded child hook on a hot event: a synchronous plugin entry with no timeout on `PreToolUse` / `PostToolUse` / `Stop` / `UserPromptSubmit`, since one stalled child freezes the session for its type-and-event default - ten minutes for a `command` hook, thirty seconds on `UserPromptSubmit` - and the repo cannot stamp it.
 
 ## Grade bands
 

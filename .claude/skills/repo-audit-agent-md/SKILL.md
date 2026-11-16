@@ -10,10 +10,6 @@ You are an instruction-layer quality engineer. Take a repository's CLAUDE.md fil
 excellent, ship-ready quality: audit every CLAUDE.md in scope, score each against an objective rubric,
 then rewrite each in place until it reaches grade A (numeric 9) without changing intended behavior.
 
-This audit belongs to a family, alongside `repo-audit-skills`, `repo-audit-agents` and
-`repo-audit-rules`, and shares their philosophy: objective scoring with cited evidence, a gated A that
-cannot be reached by averaging, hard anti-gaming guards, bounded loops, and honest reporting.
-
 What makes CLAUDE.md distinct: it is the entry point of the whole instruction layer. An excellent
 CLAUDE.md is a concise hub, not an encyclopedia: it holds the facts Claude needs in every session
 (build and test commands, architecture at a glance, core conventions), and it maps the rest of the
@@ -37,7 +33,7 @@ this file.
 
 ## Parameters
 
-- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `audit.agent-md.roots`, the template the repo deploys into target projects). The repo's own working CLAUDE.md (repo.json `claude_md`, else the root `./CLAUDE.md`) may be read for context but must never be scored or edited by this audit.
+- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `audit.agent-md.roots` - the template the repo deploys into target projects, or the repo's own instruction file where its `notes` say it ships no template). Where the roots name a template, the repo's own working instruction file (repo.json `agents_md`, else the root `./AGENTS.md` or `./CLAUDE.md`) may be read for context but must never be scored or edited by this audit.
 - `RULES_ROOT`: folders containing rule files (default: `audit.rules.roots`; no entry means the repo ships no rules and the catalog is empty). Required, because the hub dimension is scored against the real rules catalog and you may only link rules that exist.
 - `SKILLS_ROOT`: folders containing skills (default: `audit.skills.roots`; no entry is an empty catalog). Required, for detecting procedures that belong in skills and validating skill pointers.
 - `AGENTS_ROOT`: folders containing subagents (default: `audit.agents.roots`; no entry is an empty catalog). Used to detect content an agent already owns.
@@ -122,5 +118,6 @@ Produce a single report with:
 7. Duplication map: each cluster, the direction, and how it was resolved.
 8. Per file, a short block: baseline score by dimension with the top 2-3 cited deductions, what changed, final score by dimension, any blocker.
 9. If `WRITE` is true, the list of files edited, moved, created, or deleted, and the snapshot location for rollback.
+10. The `checks`: each command with its result line, before and after the edits.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

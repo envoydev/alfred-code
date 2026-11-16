@@ -5,7 +5,7 @@ Read before the first finding is written - every audit file, the summary and Pha
 Every finding, everywhere, uses one shape - the clustering depends on it:
 
 ```
-- [SEVERITY] [category] <one-line defect> | evidence: <session id + locator + measured number> | home: <exact repo file> | status: OPEN / FIXED-SINCE <ref> / PARTLY FIXED <ref> / NOT-STACK | fix: <the smallest mechanism that removes it>
+- [SEVERITY] [category] <one-line defect> | evidence: <session id + locator + measured number> | home: <exact repo file> | status: OPEN / FIXED-SINCE <ref> / PARTLY FIXED <ref> / NOT-STACK / WONTFIX <reason> | fix: <the smallest mechanism that removes it>
 ```
 
 Severity: `BLOCKER` (a wrong result shipped, or a gate failed to catch one), `MATERIAL` (a broken
@@ -13,7 +13,7 @@ contract with real consequence, or measured avoidable cost), `MINOR`. Categories
 `protocol-violation`, `wrong-behavior`, `token-waste`, `missing-mechanism`, `report-integrity`,
 `docs-and-gates`, `user-friction`.
 
-**The four statuses, and what each one costs to claim:**
+**The statuses, and what each one costs to claim:**
 
 - `FIXED-SINCE <ref>` is a claim about the LIVE tree and is verified there before it is written -
   open the named file at HEAD (or in the working tree, saying which) and read the clause that
@@ -30,6 +30,8 @@ contract with real consequence, or measured avoidable cost), `MINOR`. Categories
   `report-usage.md`, a `SUMMARY.md`, or the report-generation prompt is a local artifact, so close
   it `NOT-STACK` and route the durable half to the repo's skill that owns that work (the
   per-project report skill a `notes` line names), naming the rule that landed there.
+- `WONTFIX <reason>` is a fix that is possible and deliberately not taken. The stamp names the cost or
+  risk that decided it - a decision the ledger records, never a softer word for OPEN (Phase C).
 - `OPEN` is a transient state, never a verdict. A finding is OPEN only between the audit that filed
   it and the routing answer that dispositions it - see Phase C's close-out.
 

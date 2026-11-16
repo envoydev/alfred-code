@@ -2,10 +2,14 @@
 
 Read at Phase 1b, before any row drives a score or an edit. Re-read each row below against the live page
 (through WebFetch or the documentation server); verdict per row CURRENT | DRIFTED | UNVERIFIABLE, and a
-DRIFTED row is corrected in this file in the same run - and in the session-surface tool a `notes` line names
-when that tool encodes it (its comments should name the page each rule came from). The plugin mechanics the
-packaging grade reads - manifest fields, path-field semantics, versioning, marketplace entries, validate,
-details, eval - are `/repo-audit-plugins`' `references/currency.md`: read those rows there, never copy them here.
+DRIFTED row is corrected in the same run at this file's source in claude-kit (`shared/skills/`) - an edit where
+the run is in that repo, a handoff line in the report otherwise - and never in a synced `.claude/` copy, which
+the next sync overwrites; it is corrected too in the session-surface tool a `notes` line names when that tool
+encodes it (its comments should name the page each rule came from). The plugin mechanics the packaging grade
+reads - manifest fields, path-field semantics, versioning, marketplace entries, validate, details, eval - are
+the facts A1-A5 state in `rubric.md`, not rows here: re-read each against its live page
+(`plugins/manifest-reference`, `plugins/marketplace-reference`, `plugins/loading`, `plugins/cli-reference`,
+`plugin-evals`) and give it a verdict row in the report's currency table.
 
 **OFFICIAL, read 2026-10-16** - session loading (`code.claude.com/docs/en/memory`): CLAUDE.md,
 `.claude/CLAUDE.md` and `CLAUDE.local.md` in the working directory and every directory above it load at launch,
@@ -60,7 +64,7 @@ the Agent tool listed only the allowed agents while `/context`'s 'Custom agents'
 so read the listing, never that row, for the agent cost); a bare MCP tool name in `permissions.deny` removes the tool
 from context (`code.claude.com/docs/en/permissions`, re-read 2026-10-14); a plugin MCP server ranks below local,
 project and user registrations and is matched by endpoint, so a manual registration of the same command or url
-replaces it (measured 2026-09-26 on 2.1.282, `/repo-audit-plugins` currency); MCP tool schemas deferred behind tool
+replaces it (measured 2026-09-26 on 2.1.282); MCP tool schemas deferred behind tool
 search, their names only in the listing. The repo's own evidence for these rows, where it keeps any, is a `notes`
 line.
 

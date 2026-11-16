@@ -11,9 +11,7 @@ ship-ready quality: audit every agent under `AGENTS_ROOT`, score each one agains
 then rewrite each agent in place until it reaches grade A (numeric 9) without changing what the agent
 does.
 
-This is a sibling of `repo-audit-skills` and shares its philosophy: objective scoring with cited
-evidence, a gated A that cannot be reached by averaging, hard anti-gaming guards, bounded loops, and
-honest reporting. Two things matter more here than for skills. First, an excellent agent is written as
+Two things matter more here than for skills. First, an excellent agent is written as
 an overqualified domain expert: its system prompt establishes deep expertise in its role, the
 standards it holds output to, and the failure modes an expert would check for, so the agent performs
 above the bar of the tasks routed to it. Second, agents duplicate text badly, from each other, from
@@ -108,5 +106,6 @@ Produce a single report with:
 5. Extracted-skill recommendations: procedures repeated across agents with no skill owner that should become skills, whether or not you extracted them this run.
 6. Install-unit description budget: per install unit (what one install carries, per the repo's `notes`; with none, the whole shipped set), the resident description total in chars and tokens against the 15,000-token warning, the always-installed share where installs differ, and any seat whose description overlaps a sibling's routing cases (file, the two descriptions' shared cue).
 7. If `WRITE` is true, the list of files edited, moved, or created, including any new skills or shared references, and the snapshot location for rollback.
+8. The `checks`: each command with its result line, before and after the edits.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

@@ -14,40 +14,37 @@ nothing; a wrong ruling costs rework they can see and undo. So every ask that wo
 - The user's words: 'auto mode', 'auto-run', 'run without asking', 'take the recommended options', 'continue without
   me', 'turn on auto run', 'enable auto run', or that they are away.
 - Also on as a standing default while the `kit status` line (or `node .claude/kit/settings.mjs`) says `auto_run` is on
-  from the settings - the user's own
-  `KIT_AUTO_RUN=on`, in a settings file that is not committed. Say that it is on from the settings in the first reply
-  that acts on it.
-- It is on from that message for the rest of the session. A message the user types mid-run keeps it on and is
-  answered; one that says to stop it or turn it off - 'stop auto run', 'turn off auto run', 'disable auto mode', any
-  words - turns it off for the rest of the session, a standing `KIT_AUTO_RUN=on` included. Turned on by the user's
-  words, it is on whatever the settings say.
+  from the settings. Say that it is on from the settings in the first reply that acts on it.
+- It is on from that message until the user turns it off, in this session and every later one. A message the user
+  types mid-run keeps it on and is answered; one that says to stop it or turn it off - 'stop auto run', 'turn off
+  auto run', 'disable auto mode', any words - turns it off the same way, a standing `KIT_AUTO_RUN=on` included. Turned
+  on by the user's words, it is on whatever a `KIT_AUTO_RUN` variable says.
 - This repo's own skill, kept in claude-kit and synced into each repo; the stack's typed mode for consuming projects
   is a different thing.
 
-## The ledger and the session file
+## The ledger and the saved switch
 
-Two files, because one is a record and the other is this session's state:
+Two places, because one is a record and the other is the switch:
 
 - **The run ledger** records what the run decided, however many plans it spans: the ledger file the user's run already
   names, else `docs/superpowers/<YYYY-MM-DD>-auto-run.md` under the project root. Every session in the repo that day
   may write to it, so it never says whether THIS session is in auto-run.
-- **The session file** holds this session's switches: `kit-session.md` in the session scratchpad the harness names
-  (the `kit status` line gives its path). No other session shares that folder.
+- **The switch** is `auto_run` in the kit's settings file, `.claude/kit/settings.json`. What the user says about the
+  mode is saved there and holds in every session until it is changed.
 
-1. The first action appends `Auto-run: on - '<the user's words>'` to the session file - for the standing default,
-   `Auto-run: on - KIT_AUTO_RUN in the settings`.
+1. The first action saves the switch where the request's `kit status` line does not already say
+   `saved: auto_run=on`: run `node .claude/kit/settings.mjs set auto_run on` and say what it printed. Where the mode
+   was already on from the settings, nothing is saved.
 2. Rulings go to the run ledger; those made while a plan executes go to that plan's
    `docs/superpowers/sdd/<plan basename>/progress.md` too.
-3. The status hook reads the session file with every request and reports `auto_run=on (this session)` or `off`, so
-   the mode outlives a compaction with no read. Where no `kit status` line arrives, Read the session file before the
-   next ask after a compaction; no file, or no `Auto-run:` line, means this session never switched the mode.
-4. A request that opens with words to switch the mode - 'stop auto run', 'turn off auto mode', 'enable auto run' - is
-   recorded by the status hook as `Auto-run: off - <date>` or `Auto-run: on - <date>`; said any other way, or where
-   there is no hook, append that line yourself. The file's last `Auto-run:` line outranks the settings, both ways: a
-   standing default the user stopped stays off for the session, and a mode they started runs where the settings say
-   off.
-5. Where the harness names no session scratchpad, the lines go under the run ledger's title instead, and the close
-   says that the day's other sessions in the repo share them.
+3. The status hook reads the settings with every request and reports `auto_run=on` or `off` with its source, so
+   the mode outlives a compaction with no read. Where no `kit status` line arrives, run
+   `node .claude/kit/settings.mjs` before the next ask after a compaction.
+4. When a request switches the mode - 'stop auto run', 'turn off auto mode', 'enable auto run' - read its `kit status`
+   line: `saved: auto_run=off in .claude/kit/settings.json` (or `on`) means the status hook saved it. Where the line
+   carries no `saved: auto_run=` - it says `not saved`, says nothing of it, or did not arrive - run
+   `node .claude/kit/settings.mjs set auto_run off` (or `on`) yourself. The saved value outranks a `KIT_AUTO_RUN`
+   variable, both ways.
 
 ## The rule
 

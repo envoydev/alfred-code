@@ -61,8 +61,8 @@ New:
 
 ## Rules for the sections around the edits
 
-- `Baseline` is `git rev-parse --short HEAD` when the targets were read, with `dirty` added when one had uncommitted
-  changes. The flow compares the targets against it before the grade and before the edit.
+- `Baseline` is `git rev-parse --short HEAD` when the targets were read. The flow starts only on targets with no
+  uncommitted change, and compares them against it before the grade and before the edit.
 - `Effects` is what a session notices: a rule or skill that now loads or attaches where it did not, the always-on
   size before and after, a trigger that moved. `None beyond the edited files` is a valid answer when it is true.
 - `Depends on` names what must hold for the plan to apply: a sibling checkout or a tool version a check needs, a

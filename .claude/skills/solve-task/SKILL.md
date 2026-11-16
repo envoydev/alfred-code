@@ -75,9 +75,8 @@ things in the code for the other three.
 
 ## The close
 
-`execution.md`'s close - the mode and why, what changed, each tier's command with its result, what was not verified
-and why - then one line per step with the model it actually ran on (`here - <this session's model>`, or the
-dispatched model) and one for the searches, then 'Rulings I made' and 'Deferred minors' from the ledger, and
+`execution.md`'s close, then one line per step with the model it actually ran on (`here - <this session's model>`,
+or the dispatched model) and one for the searches, then 'Rulings I made' and 'Deferred minors' from the ledger, and
 `auto-run`'s close when it is on.
 
 ## Not here

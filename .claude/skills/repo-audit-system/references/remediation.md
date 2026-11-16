@@ -25,15 +25,9 @@ template or the generated rule that owns it.
 
 ## The ask
 
-One AskUserQuestion, as an ask template: the question on its first line, then one `- '<label>' - <why>` per
-option, the recommended one first and marked:
-
-```ask
-Apply the system audit's fixes? <n> rows, <m> handoffs (listed above).
-- 'Apply the recommended set (Recommended)' - every row marked recommended in the fix list, verified per Phase 3
-- 'Pick' - one call of up to four multi-select questions, the rows grouped by dimension
-- 'Report only' - nothing moves; the report and the handoffs stand
-```
+The ask is the flow's, put by the coordinating session before any edit lands: 'Apply all' applies every row the
+fix list marks recommended, 'Pick' offers the rows grouped by dimension, and 'Report only' moves nothing - the
+report and the handoffs stand.
 
 Apply only what the answer picked, in the fix list's order, each with its snapshot and Phase 3 checks
 before the next. A handoff is never applied here, whatever the answer.

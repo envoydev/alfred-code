@@ -20,7 +20,7 @@ This is the dimension unique to CLAUDE.md: the file must function as the map of 
 - Governing rules are mapped. The file names each unconditional rule file that defines process and behavior, by backticked path with a one-line framing of what it governs (for example: process and review workflow are defined in `.claude/rules/workflow.md`). A reader, and Claude, can find every governing document from this one file. Unmapped unconditional rules and dangling links both deduct. In template mode, where the `notes` record a ruling that the template lists no rules (every file in `.claude/rules/` loads itself, so a list only repeats them each session), the item is scored on the template's line saying so instead - a template that lists rules then deducts. (9)
 - Linked, never imported. Rule references are plain backticked mentions; no `@import` of any auto-loaded rules file exists anywhere in the file or its import chain. (5)
 - Logically structured. Sections follow a predictable order a reader would guess: what the project is, how to build and test it, core conventions, governing rules, where procedures live (skills), scoped guidance (path rules). Headers and bullets group related content; no grab-bag sections. The order practitioners converge on - overview, stack with versions, non-obvious commands, architecture rules with their why, conventions used and forbidden, testing, git workflow, gotchas, domain terms - is a reference, not a requirement: the official line is 'there is no required format', so order is judged by whether a reader can predict where a fact lives. (9)
-- Skills, agents, and docs are routed correctly: procedures point to skills - by name where every install the file ships into guarantees them, by what they cover otherwise - `AGENTS.md` is imported rather than restated where it exists, and README-level detail is referenced rather than copied. (7)
+- Skills, agents, and docs are routed correctly: procedures point to skills - by name where every install the file ships into guarantees them, by what they cover otherwise - an `AGENTS.md` beside a CLAUDE.md is imported rather than restated, and README-level detail is referenced rather than copied. (7)
 
 Floor for A: >= 26/30.
 
@@ -39,7 +39,7 @@ Scored against the duplication map. A file loses points for content it duplicate
 
 - No rule content is restated. Where a rule file governs a topic, CLAUDE.md carries the link and at most a one-line framing, never a second copy that will drift. (7)
 - No procedure is restated that a skill or agent owns; the file points to it - by name where guaranteed, by what it covers otherwise. (5)
-- No repo documentation is restated: `AGENTS.md` is imported, README and style guides are referenced. (4)
+- No repo documentation is restated: an `AGENTS.md` beside a CLAUDE.md is imported, README and style guides are referenced. (4)
 - Single source of truth across tiers: the same instruction does not appear in both user and project files, or in both a nested and a root file. Each fact lives at exactly one tier, the one whose audience owns it. (4)
 
 Floor for A: >= 17/20.

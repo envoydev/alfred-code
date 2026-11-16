@@ -25,9 +25,10 @@ the wiring the repo declares (a plugin's hook entries, an installer that writes 
 `settings.json`, or a mods hooks module's registrations), read every handler end to end, replay each one
 on its own input, and read the week's block ledger, where the repo keeps one, before judging whether a
 gate earns its keep. It was distilled from the September 2026 hook playbooks and re-grounded in the
-official Claude Code hooks reference and guide on 2026-09-12; the docs win wherever the two disagree,
-and `references/currency.md` says which claims are official, which are community-reported and which the
-docs contradict. It is this repo's own maintenance tool, not part of the shipped catalog.
+official Claude Code hooks reference and guide; the docs win wherever the two disagree, and
+`references/currency.md` says which claims are official, which are community-reported and which the
+docs contradict, each with the date it was last read.
+It is this repo's own maintenance tool, not part of the shipped catalog.
 
 ## When to use
 
@@ -76,7 +77,7 @@ observation week.
    its set-level defects, citing evidence for every point, and map the total through its grade bands
    and floors. Produce the baseline report (the output contract below) before any editing.
 5. **Phase 1b - currency.** Re-read each fact row in `references/currency.md` against the live
-   reference before scoring with it; a DRIFTED row is corrected in that file in the same run.
+   reference before scoring with it; a DRIFTED row is corrected in the same run, where that file says.
 6. **Phase 2 - remediation.** Follow `references/remediation.md`: set-level defects first, then the
    bounded per-hook loop. Its anti-gaming guards override the A target.
 7. **Phase 3 - verification**, below.
@@ -115,6 +116,7 @@ Produce a single report with:
 4c. Collision table: every shared event and matcher, house or child, with the jobs, the order and the combined cost.
 5. Wiring parity: every wiring source the notes name (the source table, the generated entry, the copy-route writer, a mods module's registrations against its feature folders), the deployed files, the retired set - agreeing or not, with the line.
 6. The Phase 1b currency table with this run's verdicts.
+6b. The `audit.hooks.checks` commands, each with its result line, before and after the edits.
 7. If `WRITE` is true, the files edited, moved or created, the task card written for the twin repo where one was needed, and the snapshot location for rollback.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

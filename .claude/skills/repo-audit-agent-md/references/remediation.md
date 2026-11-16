@@ -10,7 +10,7 @@ Correct every stale or wrong fact against the verified repository state. For eac
 
 ## Step 2 - Relocate misplaced content
 
-For each block the mechanism map classified as misplaced: move procedures to skills, path-specific guidance to path-scoped rules, deterministic steps to hooks, hard blocks to permissions entries, and individual preference to local or user tier - under the same do-not-delete-before-the-replacement-exists condition as `repo-audit-rules`. Anything you create must meet the bar of its own family audit (skills `repo-audit-skills`, rules `repo-audit-rules`), or do not create it and leave the content in place with a recommendation instead. Respect the scope boundary: when running alongside `repo-audit-rules`, emit rule-file changes as recommendations for it rather than editing rule files yourself.
+For each block the mechanism map classified as misplaced: move procedures to skills, path-specific guidance to path-scoped rules, deterministic steps to hooks, hard blocks to permissions entries, and individual preference to local or user tier - under the same do-not-delete-before-the-replacement-exists condition as `repo-audit-rules`. Anything you create is written to the bar its own family audit grades A - a skill by the `skill-authoring` skill's method - or it is not created and the content stays in place with a recommendation instead; the report tells the user to run `/repo-audit-skills` or `/repo-audit-rules` on it, since both are manual-only and this run cannot. Respect the scope boundary: when running alongside `repo-audit-rules`, emit rule-file changes as recommendations for it rather than editing rule files yourself.
 
 ## Step 3 - Build the hub
 

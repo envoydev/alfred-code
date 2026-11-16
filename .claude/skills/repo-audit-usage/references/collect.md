@@ -48,7 +48,7 @@ already stores its history, and this route reads it from here.
    The analyzer reads the ledgers beside the copy itself where it can; pass it a non-default docs path where a
    note says it takes one. A ledger the receipt names `absent` is reported per session with that row's reason.
 4. Write `<DEST>/<project>/rollup.txt`, and `SUMMARY.md` when the project contributed more than one
-   session, so the audit's Phase 0 has its orientation file.
+   session, so the audit's Phase B0 has its orientation file.
 
 Report the collection before going on: projects collected and by which route, projects skipped for missing history,
 sessions per project, total size, both gitignore checks. On the `collect only` answer, stop here

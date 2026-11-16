@@ -7,7 +7,7 @@ Read after the last bundle has its audit file.
 2. Reconcile against the already-known list - recurred (the shipped fix did not hold: escalate),
    stayed fixed (validation), or new.
 3. For each OPEN cluster, decide the smallest structural fix and its exact home, honouring the
-   repo's invariants (its `CLAUDE.md` and the `notes` lines): one home per piece, mechanisms over
+   repo's invariants (its root instruction file and the `notes` lines): one home per piece, mechanisms over
    prose, and any registry the repo keeps for text that must live in several homes. Hunt the root fix that collapses a cluster before
    patching per finding - one severity flip dissolved a four-session bypass cluster.
 4. Write `<AUDIT_DIR>/SUMMARY.md`: the rollup table (one row per session), the ranked cluster table

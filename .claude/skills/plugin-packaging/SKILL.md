@@ -1,6 +1,6 @@
 ---
 name: plugin-packaging
-description: Use when editing plugin.json or marketplace.json, or versioning, validating or publishing a plugin. Not for mod hooks code: the built-in plugin-authoring.
+description: "Use when editing plugin.json or marketplace.json, or versioning, validating or publishing a plugin. Not for mod hooks code: the built-in plugin-authoring."
 ---
 
 # Plugin packaging
@@ -9,10 +9,10 @@ A plugin is a directory Claude Code loads as one unit: a manifest under `.claude
 component folders beside it. Everything below is checked against the Claude Code plugins docs on
 2026-09-12 (the plugins guide, the plugins reference, the marketplaces page, the plugin evals
 page). A claim marked `community` comes from field reports, not the docs - re-verify it through
-The documentation server before relying on it. Anything version-coupled here (a minimum CLI version, a flag) is
+the documentation server before relying on it. Anything version-coupled here (a minimum CLI version, a flag) is
 re-checked the same way at the moment of use: the docs are the authority, this file is the map.
 
-## When this skill applies
+## When to use
 
 - A `.claude-plugin/plugin.json` or `marketplace.json` is being created or edited.
 - A command, skill, agent, hook, MCP server or LSP server is being added to a plugin.
@@ -22,8 +22,8 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 Not for a mod's hooks module - its events, the mods API, render sites and the `claude plugin test` kit: Claude Code's
 built-in `plugin-authoring` skill holds those for the running build, which is why this skill is named
 `plugin-packaging` (a project skill named like a bundled one replaces it). Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
-and not for a single skill's body - that is the skills docs (code.claude.com/docs/en/skills), the same inside or
-outside a plugin.
+and not for a single skill's body - that is `skill-authoring`, with the skills docs (code.claude.com/docs/en/skills)
+as its authority, the same inside or outside a plugin.
 
 ## The manifest - `.claude-plugin/plugin.json`
 
@@ -32,8 +32,9 @@ namespace of every command, skill and agent the plugin ships (`/<plugin>:<comman
 optional: `version` (semver), `description`, `author` (an OBJECT with `name`, plus optional `email`
 and `url`), `homepage`, `repository`, `license`, `keywords`, and the component path fields
 (`commands`, `agents`, `skills`, `hooks`, `mcpServers`, `lspServers`, `outputStyles`,
-`workflows`, `userConfig`). Full schema, path semantics and the marketplace shape:
-`references/manifest-and-marketplace.md`.
+`workflows`, `userConfig`). That list is not the whole schema - the plugin manifest reference
+(code.claude.com/docs/en/plugins-reference) holds every field, read at use. The fields with a trap, the path
+semantics and the marketplace shape: `references/manifest-and-marketplace.md`.
 
 Four rules the schema does not shout about:
 
@@ -111,12 +112,14 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
   so a multi-turn walk gains nothing from it. Commands and skills are both listed as slash entries;
   the difference that matters is DISPLAY: a plugin command lists namespaced-only, a plugin skill
   named exactly like the plugin lists bare (`/<plugin>`) - choose by what the user should see.
-- **Skills** (`skills/<name>/SKILL.md`): read the skills docs (code.claude.com/docs/en/skills) before the first write.
+- **Skills** (`skills/<name>/SKILL.md`): load `skill-authoring` before the first write; the skills docs
+  (code.claude.com/docs/en/skills) are its authority.
 - **Agents** (`agents/<name>.md`): a `tools:` allowlist of tools that exist (a whole MCP server is one
   `mcp__<server>` entry, listed as written; `disallowedTools` is never listed), a model / effort pin
   with the measurement that justifies it, and no `hooks` / `mcpServers` / `permissionMode`.
-- **Hooks** (`hooks/hooks.json`): a `command` hook without `timeout` gets Claude Code's 600s
-  default - one stalled child freezes the session for ten minutes, so every entry carries a short
+- **Hooks** (`hooks/hooks.json`): a `command` hook without `timeout` gets Claude Code's default for
+  its event - 600s on most, 30s on `UserPromptSubmit` - and one stalled child freezes the session
+  for that long, so every entry carries a short
   timeout (the house value is 10s; a hook runs in ~25ms, almost all of it the runtime spawn).
   Paths go through `${CLAUDE_PLUGIN_ROOT}`. A hook is a deterministic gate at a discrete event;
   advice belongs in a skill. A `UserPromptSubmit` denial erases the user's prompt, so that event

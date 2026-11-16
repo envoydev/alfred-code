@@ -65,8 +65,8 @@ with an arbitrary sleep is a bug in the spec.
 
 ## The mock-masking trap
 
-Module mocks bypass real wiring, so a broken entry point ships with a green suite - the same
-failure class as Angular's TestBed masking. Keep one smoke spec that imports the REAL public
+Module mocks bypass real wiring, so a broken entry point ships with a green suite.
+Keep one smoke spec that imports the REAL public
 entry (the package barrel or the composition root), builds the object graph unmocked, and
 exercises one end-to-end call - a broken export map, circular import, or mis-wired factory then
 fails a spec, not the consumer:
@@ -83,7 +83,7 @@ test('the real wiring boots and answers', async () => {
 
 ## Coverage
 
-- The % bar is the user's, or the repo's own (its CLAUDE.md or the test config's threshold) -
+- The % bar is the user's, or the repo's own (its instruction file or the test config's threshold) -
   this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the catalog below is that list for plain TS/JS.
