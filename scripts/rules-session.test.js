@@ -547,11 +547,26 @@ test('start: the six shipped rules arrive in three parts', () =>
     for (const r of six) assert.strictEqual(count(got.join('\n'), `${heading(r)}\n`), 1, r.name);
 });
 
-test('start: resume and fork send nothing; clear and compact send', () =>
+test('start: resume and fork send like startup', () =>
 {
     const p = project({ a: 'M-A' });
-    for (const s of ['resume', 'fork']) assert.strictEqual(part(p, 1, START(s)), '', s);
-    for (const s of ['clear', 'compact', 'startup']) assert.ok(part(p, 1, START(s)).includes('M-A'), s);
+    for (const s of ['resume', 'fork', 'clear', 'compact', 'startup']) assert.ok(part(p, 1, START(s)).includes('M-A'), s);
+});
+
+test('start: a resume of a project with no store sends nothing', () =>
+{
+    const { api } = W();
+    for (const k of [1, 2, 3, 4, 5]) assert.strictEqual(part(api, k, START('resume')), '', `part ${k}`);
+});
+
+test('start: the probe row of a resume push names its source', () =>
+{
+    const p = project({ a: 'M-A' });
+    part(p, 1, START('resume'));
+    const file = path.join(LAYOUT.statsPath(p, ['hook-blocks'], {}), `${SID}.jsonl`);
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.strictEqual(rows.length, 1);
+    assert.deepStrictEqual([rows[0].kind, rows[0].source], ['rules-push', 'resume']);
 });
 
 test('start: nothing is sent to Explore and Plan', () =>
@@ -621,8 +636,12 @@ test('path rule: again after a compaction and after a clear', () =>
         part(p, 1, START(s));
         assert.ok(touch(p, path.join(p, 'a.ts')).includes('M-TS'), `after ${s}`);
     }
-    part(p, 1, START('resume'));
-    assert.strictEqual(touch(p, path.join(p, 'a.ts')), '');
+    for (const s of ['resume', 'fork'])
+    {
+        assert.strictEqual(touch(p, path.join(p, 'a.ts')), '', `recorded before ${s}`);
+        part(p, 1, START(s));
+        assert.ok(touch(p, path.join(p, 'a.ts')).includes('M-TS'), `after ${s}`);
+    }
 });
 
 test('path rule: each actor has its own record', () =>
@@ -1026,14 +1045,13 @@ test('member: a touch outside the workspace, under an unjoined project and under
     assert.deepStrictEqual(memberMarkers(w.root), []);
 });
 
-test('member: a compact and a clear start delete the markers and the block is sent again; a resume keeps them', () =>
+test('member: a compact, a clear, a resume and a fork start delete the markers and the block is sent again', () =>
 {
     const w = M();
     const send = (n) => touch(w.root, path.join(w.api, `${n}.txt`));
     assert.ok(send(1).includes('Project api, part 1'));
-    part(w.root, 1, START('resume'));
     assert.strictEqual(send(2), '');
-    for (const source of ['compact', 'clear'])
+    for (const source of ['compact', 'clear', 'resume', 'fork'])
     {
         part(w.root, 1, START(source));
         assert.deepStrictEqual(memberMarkers(w.root), [], source);

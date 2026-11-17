@@ -369,12 +369,11 @@ function main(argv = process.argv, env = process.env)
         if (record && push.now.length) writeRecord(record, [...sent, ...push.now]);
         return void say([...texts, push.now.length && push.text].filter(Boolean).join('\n\n'));
     }
-    if (['resume', 'fork'].includes(input.source)) return;
     const out = parts(rules.always, { natives: rules.natives });
     const stale = (f) => f === path.basename(record) || f.startsWith(`rules-${session}-${actor}-m-`);   // the record and its member markers
-    if (part === 1 && record && ['compact', 'clear'].includes(input.source))
+    if (part === 1 && record && ['compact', 'clear', 'resume', 'fork'].includes(input.source))
         try { for (const f of fs.readdirSync(path.dirname(record)).filter(stale)) fs.unlinkSync(path.join(path.dirname(record), f)); } catch { /* none yet */ }
-    if (part === 1) ledger({ kind: 'rules-push', chars: out.parts.join('').length, parts: out.parts.length, unsent: out.unsent.length });
+    if (part === 1) ledger({ kind: 'rules-push', chars: out.parts.join('').length, parts: out.parts.length, unsent: out.unsent.length, source: input.source });
     say(out.parts[part - 1]);
 }
 
