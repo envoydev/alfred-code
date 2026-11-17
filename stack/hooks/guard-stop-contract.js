@@ -2725,8 +2725,8 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
       + `print its close and delete ${autoMarker} - that ends this run; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
-      + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if only the\n'
-      + 'user can decide the next step (an ask with no Recommended option, a push), put that ask now.');
+      + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if the next\n'
+      + 'step needs the user - an ask with no Recommended option, or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
     process.exit(2);
   }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and

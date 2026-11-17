@@ -1800,3 +1800,42 @@ test('auto-run off ends a live run even when the mode file cannot be saved: the 
         assert.strictEqual(rawMode(p), before, 'no byte of the file changed');
     }
 });
+
+// ---------------------------------------------------------------------------------------------
+// the series rule: one ask covers a listed series of outward acts
+// ---------------------------------------------------------------------------------------------
+const SERIES = 'When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the first, listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed. The user\'s pick is the approval a plan or project rule asks for each listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN ask outranks the pick: then ask per act, as before.';
+const folded = (text) => text.replace(/\s+/g, ' ');
+const readRepo = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+
+test('auto-run contract: one ask covers a listed series of outward acts', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoOn(p, 'sr1', t);
+    const said = context(expand(p, 'sr1', '/loop-code-quality src/', t));
+    assert.ok(said.includes(SERIES), 'clause (1) carries the series sentence');
+    assert.ok(said.includes('never push, merge, deploy or send anything out, unless the user\'s own pick in this run approved that exact act (the series rule in (1))'), 'clause (3) names the pick');
+});
+
+test('auto-continue hold names an unapproved outward act and puts its ask once', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'sr2');
+    openRun(p, 'sr2');
+    const held = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'sr2', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(held.status, 2);
+    assert.ok(folded(held.stderr).includes('an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.'), held.stderr);
+});
+
+test('mode-auto-run skill and the mode command carry the series rule', () =>
+{
+    const skill = folded(readRepo('stack', 'skills', 'mode-auto-run', 'SKILL.md'));
+    assert.ok(skill.includes(SERIES), 'the skill carries the series sentence');
+    assert.ok(skill.includes('Never push, merge, deploy, publish, open a PR or pay unless the user\'s own pick in this run approved that exact act - each other one goes under `Left for you:`'));
+    const command = folded(readRepo('setup-plugin', 'commands', 'mode', 'auto-run.md'));
+    assert.ok(command.includes('nothing goes outward unless the user\'s own pick approved that act'));
+    assert.ok(command.includes(SERIES), 'the command carries the series sentence');
+});
