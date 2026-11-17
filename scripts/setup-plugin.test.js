@@ -1925,3 +1925,12 @@ test('configure\'s and status\'s area asks offer the whole walk as their Recomme
     // R068's review: the re-ask needs an end - a second answer naming no area takes the Recommended row.
     for (const name of ['configure', 'status']) assert.match(cmdBody(name).replace(/\s+/g, ' '), /a second answer naming no area takes the Recommended row/, `${name}: the re-ask ends`);
 });
+
+// An absent .claude/agents after an update read as a loss on the plugin route: the installer's `seats:` line says where
+// the agents come from, the walk's one grep catches it and the close reports it.
+test('update reads the installer\'s seats: line in its one grep and reports it as the SEATS item', () => {
+    const grep = /grep -aE '([^']*)' "\$TMP\/install\.log"/.exec(refBody('update-walk'));
+    assert.ok(grep, 'the post-install grep');
+    assert.ok(grep[1].split('|').includes('seats:'), 'the grep\'s alternation names seats:');
+    assert.match(flat(refBody('update-close')), /- \*\*SEATS\*\* - the grep's `seats:` line verbatim: where the agents come from on this route, so an absent `\.claude\/agents` reads as the plugin route, not a loss\./);
+});

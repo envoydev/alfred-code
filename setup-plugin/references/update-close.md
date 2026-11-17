@@ -74,6 +74,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
 - **COMPARE** - the signal step 2 named, one line: `no-stamp` or `compare-unreachable` (refreshed without a baseline),
   or on `TRUNCATED`: 'the compare was capped at 300 files - run /alfred-code:configure to reconcile what it may have
   missed', with configure on the suggestion card. No signal: no line.
+- **SEATS** - the grep's `seats:` line verbatim: where the agents come from on this route, so an absent
+  `.claude/agents` reads as the plugin route, not a loss.
 - **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope writes
   (`settings.local.json env: <old> renamed to <new>`, `<key> removed (retired ...)`,
   `<key> seeded (<value>)`, `<key> <old> -> '<new>'`). Report those lines; when there are none, say 'env: nothing

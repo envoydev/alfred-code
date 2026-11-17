@@ -33,6 +33,7 @@ const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../deri
 const { placement, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
+const { seatsLine } = require('./seats-line.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const skillHeadings = require('./skill-headings.js');
@@ -2203,6 +2204,11 @@ function installHooksAndRules(ctx)
         variablesFile: ctx.variablesFile, childEnv: ctx.childEnv,
         log: ctx.log, note: ctx.note,
     });
+    if (!written.refused)
+        ctx.log(seatsLine({
+            viaPlugin: ctx.routes.skills, coreSeats: placement().plugins[CORE].agents.length,
+            switchedOff: agentDeny.length, copied: ctx.lists.agents.length,
+        }));
     ctx.managedSettings = written.managed || null;
     ctx.variablesMoved = (written.variablesMoved || []).length;
     // C8: Claude Code keeps settings.local.json out of commits only when IT creates the file
