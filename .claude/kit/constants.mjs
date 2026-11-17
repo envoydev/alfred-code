@@ -8,22 +8,26 @@ export const MODELS = Object.freeze(['sonnet', 'opus', 'haiku', 'fable']);
 export const VARIABLE = Object.freeze({
     passScore: 'KIT_PASS_SCORE',
     planModel: 'KIT_PLAN_MODEL',
+    auditModel: 'KIT_AUDIT_MODEL',
     reviewModel: 'KIT_REVIEW_MODEL',
     implementModel: 'KIT_IMPLEMENT_MODEL',
     searchModel: 'KIT_SEARCH_MODEL',
     scoring: 'KIT_SCORING',
     autoRun: 'KIT_AUTO_RUN',
+    autoApprove: 'KIT_AUTO_APPROVE',
 });
 
 // The names the resolved settings go by, and the names the kit's own settings file may hold.
 export const SETTING = Object.freeze({
     passScore: 'pass_score',
     planModel: 'plan_model',
+    auditModel: 'audit_model',
     reviewModel: 'review_model',
     implementModel: 'implement_model',
     searchModel: 'search_model',
     scoring: 'scoring',
     autoRun: 'auto_run',
+    autoApprove: 'auto_approve',
 });
 
 export const DEFAULT_PASS_SCORE = 90;
@@ -33,11 +37,13 @@ export const COMMITTED_SETTINGS = '.claude/settings.json';
 
 export const SWITCH = Object.freeze({ on: 'on', off: 'off' });
 
-// The two modes a request can switch, whatever the variables say. `setting` is the mode's name among the settings,
-// `names` are what a request may call it.
+// The three modes a request can switch, whatever the variables say. `setting` is the mode's name among the settings,
+// `names` are what a request may call it. Auto-approve has no 'plan approval' among its names: 'disable plan approval'
+// reads both ways, so the session saves that one, not the hook.
 export const SWITCH_MODES = Object.freeze([
     Object.freeze({ setting: SETTING.autoRun, names: Object.freeze(['auto run', 'auto-run', 'autorun', 'auto mode']) }),
     Object.freeze({ setting: SETTING.scoring, names: Object.freeze(['scoring']) }),
+    Object.freeze({ setting: SETTING.autoApprove, names: Object.freeze(['auto approve', 'auto-approve', 'autoapprove', 'auto approval', 'auto-approval']) }),
 ]);
 // What a request may start with and still count, as a pattern source, and the article its names may carry:
 // 'Please, turn off the scoring'.
@@ -53,11 +59,12 @@ export const SWITCH_VERBS = Object.freeze({
 });
 // The verbs whose 'on' or 'off' may follow the mode's name: 'turn scoring off'.
 export const SPLIT_VERBS = Object.freeze(['turn', 'switch']);
-// The four roles whose model a request can name, in the order the user's line shows them. `setting` is the role's name
+// The five roles whose model a request can name, in the order the user's line shows them. `setting` is the role's name
 // among the settings, `label` its word on the user's line, `names` what a request may call it before 'model', and `verbs`
 // what a request may open with: 'audit with fable'.
 export const MODEL_ROLES = Object.freeze([
-    Object.freeze({ setting: SETTING.planModel, label: 'plan', names: Object.freeze(['plan', 'planning', 'planner']), verbs: Object.freeze(['plan', 'audit']) }),
+    Object.freeze({ setting: SETTING.planModel, label: 'plan', names: Object.freeze(['plan', 'planning', 'planner']), verbs: Object.freeze(['plan']) }),
+    Object.freeze({ setting: SETTING.auditModel, label: 'audit', names: Object.freeze(['audit', 'auditor']), verbs: Object.freeze(['audit']) }),
     Object.freeze({ setting: SETTING.reviewModel, label: 'review', names: Object.freeze(['review', 'reviewer', 'scoring', 'grading', 'grader']), verbs: Object.freeze(['review', 'grade', 'score']) }),
     Object.freeze({ setting: SETTING.implementModel, label: 'implement', names: Object.freeze(['implement', 'implementation', 'implementer', 'editor']), verbs: Object.freeze(['implement', 'build', 'edit']) }),
     Object.freeze({ setting: SETTING.searchModel, label: 'search', names: Object.freeze(['search']), verbs: Object.freeze(['search']) }),
@@ -89,8 +96,8 @@ export const VALUE_END = `(?:${BOUNDARY}| (?:${VALUE_TAILS.join('|')})(?:${BOUND
 // The kit's own settings folder and the file there, committed with the repo. It holds every setting, the switches too.
 export const KIT_FOLDER = '.claude/kit';
 export const KIT_SETTINGS_FILE = `${KIT_FOLDER}/settings.json`;
-export const MODEL_SETTINGS = Object.freeze([SETTING.planModel, SETTING.reviewModel, SETTING.implementModel, SETTING.searchModel]);
-export const SWITCH_SETTINGS = Object.freeze([SETTING.scoring, SETTING.autoRun]);
+export const MODEL_SETTINGS = Object.freeze([SETTING.planModel, SETTING.auditModel, SETTING.reviewModel, SETTING.implementModel, SETTING.searchModel]);
+export const SWITCH_SETTINGS = Object.freeze([SETTING.scoring, SETTING.autoRun, SETTING.autoApprove]);
 export const KIT_FILE_SETTINGS = Object.freeze([...MODEL_SETTINGS, SETTING.passScore, ...SWITCH_SETTINGS]);
 export const MIN_PASS_SCORE = 1;
 export const MAX_PASS_SCORE = 100;
@@ -110,6 +117,11 @@ export const TEMP_SUFFIX = '.tmp';
 export const HOOK_ERROR_PREFIX = 'claude-kit status hook:';
 export const SAVED_PREFIX = 'saved:';
 export const NOT_SAVED_PREFIX = 'not saved -';
+// The most characters of one value or one source the status hook prints, and what it puts where it cut one: a kit file,
+// a variable or an agent file can hold a value of any length, and Claude Code replaces a string of more than 10,000
+// characters that a hook returns with a pointer to a file.
+export const MAX_SHOWN_LENGTH = 400;
+export const CUT_MARK = '...';
 
 // check.mjs: the registry of text kept on purpose in more than one file (only the kit itself has it), the separator
 // between a sibling repo and a path in it ('alfred-code:AGENTS.md'), and the words a failure to read the registry opens with.

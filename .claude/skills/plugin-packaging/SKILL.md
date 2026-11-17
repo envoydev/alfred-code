@@ -29,8 +29,9 @@ as its authority, the same inside or outside a plugin.
 
 `name` is the only required field. Kebab-case, unique within the marketplace, and it becomes the
 namespace of every command, skill and agent the plugin ships (`/<plugin>:<command>`). The rest is
-optional: `version` (semver), `description`, `author` (an OBJECT with `name`, plus optional `email`
-and `url`), `homepage`, `repository`, `license`, `keywords`, and the component path fields
+optional: `version` (a string the schema does not check - keep it semver), `description`, `author`
+(an OBJECT with `name`, plus optional `email` and `url`), `homepage`, `repository`, `license`,
+`keywords`, and the component path fields
 (`commands`, `agents`, `skills`, `hooks`, `mcpServers`, `lspServers`, `outputStyles`,
 `workflows`, `userConfig`). That list is not the whole schema - the plugin manifest reference
 (code.claude.com/docs/en/plugins-reference) holds every field, read at use. The fields with a trap, the path
@@ -98,8 +99,9 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
 - `bin/` under the plugin root is added to the Bash PATH for the session; it is not allowed for
   plugins distributed through a claude.ai organization.
 - Node dependencies install automatically only with a `package.json` plus a supported lockfile
-  (`package-lock.json`; `yarn.lock` / `pnpm-lock.yaml` are skipped), always with
-  `--ignore-scripts`. A plugin that needs a post-install script has no supported way to run it.
+  (`package-lock.json`, `npm-shrinkwrap.json` or `bun.lock`; `yarn.lock`, `pnpm-lock.yaml` and
+  `bun.lockb` are skipped), always with `--ignore-scripts`. A plugin that needs a post-install
+  script has no supported way to run it.
 - Bump the version on every user-visible change, in the ONE place that owns it. A release tag
   named `v<version>` from that field keeps the tag, the manifest and the marketplace listing equal
   by construction, and a lint that reads both files catches the drift a human edit introduces.
@@ -122,8 +124,8 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
   for that long, so every entry carries a short
   timeout (the house value is 10s; a hook runs in ~25ms, almost all of it the runtime spawn).
   Paths go through `${CLAUDE_PLUGIN_ROOT}`. A hook is a deterministic gate at a discrete event;
-  advice belongs in a skill. A `UserPromptSubmit` denial erases the user's prompt, so that event
-  injects and never denies.
+  advice belongs in a skill. A `UserPromptSubmit` denial keeps the user's prompt from reaching
+  Claude, so that event injects and never denies.
 - **MCP servers** (`.mcp.json` at the plugin root, or `mcpServers` in the manifest): a registered
   server re-injects its tool schemas into every session, so ship one only where the plugin's whole
   purpose needs it, and prefer a runtime the user already has. Credentials come from `userConfig`

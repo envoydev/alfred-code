@@ -13,7 +13,7 @@ One row per standing defect the audit owns, most severe first: a S4 BLOCKER, the
   procedure is a skill, cross-cutting guidance one always-on rule, per-file-type guidance a path rule,
   project facts AGENTS.md or a generated rule; the other side loses its copy and keeps a pointer at most;
 - the files the fix edits, and the profiles whose map it moves (and which row, flag or total);
-- or `handoff: <audit>` for a defect inside one part, and `handoff: /repo-audit-plugins` for a
+- or `handoff: <audit>` for a defect inside one part, and `handoff: /repo-audit-tools` for a
   third-party side - with the evidence, never a fix here.
 
 Typical fixes: a rule sentence restated by a hook injection - drop the copy from the injection, keep the

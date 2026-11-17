@@ -1,4 +1,4 @@
-# Plugin audit - operating principles
+# Tools audit - operating principles
 
 Read before Phase 0: these define what counts as a defect in every later phase.
 

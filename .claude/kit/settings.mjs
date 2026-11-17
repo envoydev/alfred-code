@@ -7,8 +7,8 @@
 //   node .claude/kit/settings.mjs set <name> <value>    save one in .claude/kit/settings.json, where it holds until changed
 //   node .claude/kit/settings.mjs unset <name>          remove it from that file and print what it falls back to
 //
-// The names are plan_model, review_model, implement_model, search_model (a model), pass_score (1 to 100), and scoring
-// and auto_run (on or off). kit-settings.mjs, beside this file, says in what order a value is taken and does the work.
+// The names are plan_model, audit_model, review_model, implement_model, search_model (a model), pass_score (1 to 100), and scoring,
+// auto_run and auto_approve (on or off). kit-settings.mjs, beside this file, says in what order a value is taken and does the work.
 // Exits 0, or 1 with the reason on stderr when a set or unset fails, the arguments are not one of these, or a set or
 // unset is run from a checkout (bin/settings.mjs) instead of a repo's .claude/kit.
 import { dirname, join } from 'node:path';

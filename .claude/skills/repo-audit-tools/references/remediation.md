@@ -1,10 +1,10 @@
-# Plugin audit - Phase 2 remediation
+# Tools audit - Phase 2 remediation
 
 Read before the first edit. The anti-gaming guards at the end override the grade target.
 
 Set-level defects first. A D3 BLOCKER: drop the unit from the install list (with every restatement, seed and graph edge) or replace it with a house hook doing the same deterministic job - and say which in the report. A duplicate home: choose by the house rule (a deterministic gate at a discrete event is a hook; procedure is a skill; the plugin's copy wins only when the packaging buys something the house copy cannot, such as an LSP wiring or a vendor-maintained MCP server), then remove the other home. A `contradicts` row: the house rule wins - drop or disable the child's conflicting component (a plugin is enabled or disabled whole, so a partial fit usually means the child leaves); amend the house rule only when the child's guidance is measurably better, with the measurement and the reason in the report. A `collides` row: a negative trigger in the house skill's description for the child's phrasing, or the child dropped; two hooks on one event stay only when their jobs differ and the order is recorded. A broken `cited` route: fix the citer (describe the coverage instead of the stale name) or pin the child version that still ships it.
 
-Then, for each unit still below A / 9, a bounded loop:
+Then, for each unit still below A / 9, a bounded loop. A unit already at A / 9 gets no loop edit: each deduction it keeps is scored, cited in the report and listed as not planned, with the reason 'at the target - the loop runs only below it'. The loop:
 
 1. Snapshot the files the edit will touch.
 2. Rank the deductions by points lost. Fix the largest first.

@@ -47,10 +47,10 @@ Template mode: when the audited file is a template that installers copy into tar
 
 ## How the run goes
 
-**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+**Load the `repo-audit-plugin` skill before step 1 and run this audit through its flow.** Its planner seat does Phases 0
 to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
-coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
-stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the stops
+the flow adds are its own asks, one of them before any edit lands. Stop otherwise only on the stop conditions
 below. When a stop or finding genuinely needs the user's answer - a proposed split, a conflict with no
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.
@@ -119,5 +119,6 @@ Produce a single report with:
 8. Per file, a short block: baseline score by dimension with the top 2-3 cited deductions, what changed, final score by dimension, any blocker.
 9. If `WRITE` is true, the list of files edited, moved, created, or deleted, and the snapshot location for rollback.
 10. The `checks`: each command with its result line, before and after the edits.
+11. The Phase 1b currency table with this run's verdicts.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

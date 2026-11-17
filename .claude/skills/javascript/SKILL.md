@@ -8,13 +8,13 @@ user-invocable: false
 
 For any runtime or package API surface not pinned down here, reach for the documentation tools rather than memory - never by grepping `node_modules` bundles.
 
-These are the language rules for every piece of JS-family code, independent of where it runs. The TypeScript type-layer skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and code-style docs are higher priority - follow the project where it diverges.**
+These are the language rules for every piece of JS-family code, independent of where it runs. The `typescript` skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and code-style docs are higher priority - follow the project where it diverges.**
 
 ## When to use
 
 Framework-agnostic - the base layer for all JS-family code. Load before writing or editing any .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension.
 
-Covers ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape. The type layer (TypeScript, and checked JS via JSDoc) stacks on this baseline in the type-conventions skill where the project has one; frameworks add their own layer above that.
+Covers ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape.
 
 ## Modules and imports
 
@@ -57,5 +57,5 @@ Covers ES modules only, named exports and boundary barrels, async/await discipli
 
 - Tests: load `ts-js-testing` before writing or changing one - it picks the runner (whichever the workspace already runs) and the shape of the test.
 - Performance work - Core Web Vitals in the browser, the never-block-the-event-loop discipline in Node, and the profiling toolbox - is `references/performance.md`; measure before optimizing.
-- Lint and format per the project's own config; in a TypeScript project the TypeScript type-layer skill's style reference owns the concrete setup.
+- Lint and format per the project's own config; in a TypeScript project the `typescript` skill's style reference owns the concrete setup.
 - Before any done word: run the project's lint and its test command over what you changed and close with `lint: <command> -> <result line>` and `tests: <command> -> <result line>`. A JS change that was never executed is a change nobody has run - the language gives you no compiler to catch it.

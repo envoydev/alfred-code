@@ -27,7 +27,7 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 
 - The user types `/repo-audit-system` to audit the repo's plugin as a whole.
 - Not for one part's own quality - that part's audit (`/repo-audit-skills`, `-hooks`, `-rules`, `-agents`,
-  `-agent-md`) - nor for the third-party plugins themselves (`/repo-audit-plugins`) or a consuming
+  `-agent-md`) - nor for the third-party plugins themselves (`/repo-audit-tools`) or a consuming
   project's session log (`/repo-audit-usage`). A defect found inside one part is handed to its audit.
 
 ## Parameters
@@ -49,7 +49,7 @@ It is this repo's own maintenance tool, not part of the shipped catalog.
 
 ## How the run goes
 
-**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0 to
+**Load the `repo-audit-plugin` skill before step 1 and run this audit through its flow.** Its planner seat does Phases 0 to
 1b and writes the fix list as a plan, Phase 2's one ask is the flow's ask, and its editor seat applies what the answer
 picked before the planner verifies. Autonomous through the report; one ask before any edit; nothing on a machine
 outside the fixtures.
@@ -79,8 +79,8 @@ copies them there, the baseline and final reports as `report.md`.
    guard-route map and the awareness checklist.
 4. **Phase 1 - scoring.** S1-S5 per profile and the packaging grade (`references/rubric.md`), every
    point citing its line or row. Produce the baseline report (the output contract) before any proposal.
-5. **Phase 1b - currency.** Re-read each fact row of `references/currency.md` against the live pages
-   before scoring with it; correct a DRIFTED row in the same run.
+5. **Phase 1b - currency.** Done inside Phase 1, not after it: re-read each fact row of
+   `references/currency.md` against the live pages before scoring with it; correct a DRIFTED row in the same run.
 6. **Phase 2 - one ask** (`references/remediation.md`): the fix list, most severe first, each row with
    both sides, the chosen home and the files, or a handoff. Stop for the answer.
 7. **Phase 3 - apply and verify**, below, for what the answer picked.

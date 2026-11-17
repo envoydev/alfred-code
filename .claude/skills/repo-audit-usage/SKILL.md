@@ -29,7 +29,7 @@ not ask for confirmation between phases. Stop only on the stop conditions at the
 genuinely needs the user mid-run goes through AskUserQuestion with concrete options and a marked
 recommendation, never a prose question in a report.
 
-**Load the `repo-audit-flow` skill once step 0 is answered.** Step 0 and Phase A stay in this session. Phases B and
+**Load the `repo-audit-plugin` skill once step 0 is answered and run this audit through its flow.** Step 0 and Phase A stay in this session. Phases B and
 B2 are its planner seat's: it audits the bundles, writes the audit files and `SUMMARY.md`, and writes each fix as an
 edit in the plan. For this audit the flow's run folder is `AUDIT_DIR` (`<root>/AUDIT/`), not the flow's default: the
 planner writes nowhere else, and the flow's own files sit beside the audit files, inside the ignored root. The size

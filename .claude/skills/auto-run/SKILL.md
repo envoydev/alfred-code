@@ -68,23 +68,20 @@ Two places, because one is a record and the other is the switch:
   the act under `Left for you`. Only the user's own pick of its unsafe option opens it; a reply that merely implies it
   does not (2026-11-04: a discard guard refused a receipt written on such a reply).
 - A plan so broken that every path forward is a guess.
-- A design - a spec, graded or not, or a bounded in-chat design - waits for the user's yes (the user, 2026-11-10,
-  keeping design approval theirs), unless the user's own words in this session hand it to you: 'approve the specs
-  and plans yourself', 'even specs approval must be done by you', 'specs included' (B2, ruled 2026-11-04). A request
-  that only names a spec as its work ('implement specs/x.md without stopping') does not, and neither do the trigger
-  words above. With that waiver a spec is approved on the bar a plan meets below, and a bounded in-chat design, which
-  has no grade, is approved as written.
-- A graded implementation plan does NOT stop - the trigger words alone carry this, no waiver is needed (the user's
-  ruling, 2026-11-10: 'when I enabled it you must approve plans by your own, not wait for me'). Once the
-  refining-plans loop passes it - the pass score or more (90 unless the user's settings or words name another), no
-  BLOCKER open - the run approves it: the ledger gets
-  `Ruling: approval of <path> - approved by the run at <score path> - <cost if wrong>`, the file's status line says
-  'approved by the run under auto-run', and the build starts in the same turn with the execution method its handoff
-  recommends. A skill's own 'ask the user to review' step for the plan, its handoff included, is that approval and
-  is not put. A turn that ends on 'please review the plan' for a plan at the pass score or more is this rule skipped (2026-11-04:
-  two such stops in one run).
-- A spec or plan whose grade loop ended under the pass score, on its best round, waits for the user's approval with its score
-  path and open findings (the user, 2026-11-10), and the run goes on with work that does not depend on it.
+- Approval of a spec, a design or a plan is not this mode's to give or to withhold: the `auto_approve` setting
+  decides it, as the `plan-approval` rule says (the user, 2026-11-16, replacing the rulings of 2026-11-04 and
+  2026-11-10 that tied approval to auto-run and to a waiver said in the session). The trigger words above switch
+  auto-run alone.
+  - `auto_approve=on`: the run approves the draft and says so in the rule's line,
+    `Approved by the run (auto-approve on): <path> - <score path>`, written to the file's status line and to the run
+    ledger as well, and the next step starts in the same turn - for a plan, the build, with the execution method its
+    handoff recommends. A skill's own 'ask the user to review' step, its handoff included, is that approval and is
+    not put: a turn that ends on 'please review the plan' is this rule skipped (2026-11-04: two such stops in one
+    run).
+  - `auto_approve=off`: the draft waits for the user, who is notified, and the run goes on with work that does not
+    depend on it.
+  - A spec or plan whose grade loop ended under the pass score, on its best round, waits under either value with its
+    score path and open findings (the user, 2026-11-10).
 - A stop names the one decision it needs.
 
 ## Scope

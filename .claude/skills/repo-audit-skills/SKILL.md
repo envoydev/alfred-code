@@ -19,22 +19,22 @@ assume a particular set. It is this repo's own maintenance tool, not part of the
 
 - The user types `/repo-audit-skills` to audit the repo's shipped skills (the `audit.skills` roots in
   `.claude/kit/repo.json`), or a root they name.
-- Not for the subagents (`/repo-audit-agents`) or the rule files (`/repo-audit-rules`), and not for
-  writing one skill - that method is the `skill-authoring` skill.
+- Not for the subagents (`/repo-audit-agents`), the rule files (`/repo-audit-rules`) or flat command files
+  (`/repo-audit-commands`), and not for writing one skill - that method is the `skill-authoring` skill.
 
 ## Parameters
 
-- `SKILLS_ROOT`: the folders containing skills (default: the `audit.skills` roots from step 1). Each skill is a directory with a `SKILL.md` at its root, optionally with `references/`, `scripts/`, `assets/`; a flat command file (`commands/<name>.md`) is a single-file skill - the harness serves both forms as the same slash entry. This repo's own `.claude/skills/` (this audit family and the other authoring skills synced in beside it) is outside the shipped catalog: audit it only when the user names it, and remember the repo's checks may not hold it.
+- `SKILLS_ROOT`: the folders containing skills (default: the `audit.skills` roots from step 1). Each skill is a directory with a `SKILL.md` at its root, optionally with `references/`, `scripts/`, `assets/`. A flat command file (`commands/<name>.md`) is served as the same kind of slash entry but is the commands audit's (`/repo-audit-commands`), never scored here. This repo's own `.claude/skills/` (this audit family and the other authoring skills synced in beside it) is outside the shipped catalog: audit it only when the user names it, and remember the repo's checks may not hold it.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per skill (default: `4`).
 - `WRITE`: `true` takes the run to the flow's ask and applies what it picks, `false` stops after the report and the plan (default: `true`).
 
 ## How the run goes
 
-**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+**Load the `repo-audit-plugin` skill before step 1 and run this audit through its flow.** Its planner seat does Phases 0
 to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
-coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
-stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the stops
+the flow adds are its own asks, one of them before any edit lands. Stop otherwise only on the stop conditions
 below. When a stop or finding genuinely needs the user's answer - a proposed split, a conflict with no
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.
@@ -65,7 +65,7 @@ with concrete options and a marked recommendation, never a prose question buried
 
 After the loop, for each edited skill:
 
-1. Re-read the full edited `SKILL.md` and any moved reference files end to end. Confirm the frontmatter is still valid and `name` and directory (or file name, for a command file) are unchanged.
+1. Re-read the full edited `SKILL.md` and any moved reference files end to end. Confirm the frontmatter is still valid and `name` and directory are unchanged.
 2. Confirm the behavior-preservation prompts still produce matching outputs.
 3. Confirm no guarded rule was dropped. Diff against the snapshot to check.
 4. For any multi-home content, confirm every copy is self-contained, its entry in the repo's multi-home registry (the file its `notes` name) pins each site by marker, and no skill loads a file outside its own folder.
@@ -96,5 +96,6 @@ Produce a single report with:
 4. Invocation and conflict map: every cycle found and how it was broken, every contradiction and its resolution (or why it is unresolved and the skills are blocked), any genericity flags with cited lines, and every named cite of an optional skill or MCP server converted to a description (file, line, before, after).
 5. If `WRITE` is true, the list of files edited, moved, or created, including any multi-home registry entries added or updated, and the snapshot location for rollback.
 6. The repo's `checks` - each command with its result line, before and after the edits - and, per edited skill, the fresh-session check of Phase 3 step 7: run, or owed with its three prompts.
+7. The Phase 1b currency table with this run's verdicts.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

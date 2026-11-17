@@ -36,7 +36,7 @@ Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#m
 | Field | Notes |
 |---|---|
 | `name` | REQUIRED. Kebab-case; the namespace of every command / skill / agent (`/<name>:<cmd>`). Unique within its marketplace. |
-| `version` | Semver. Authoritative over a version in the marketplace entry, silently. When present, an update ships only on a bump. |
+| `version` | A string the schema does not check against semver - keep it semver. Authoritative over a version in the marketplace entry, silently. When present, an update ships only on a bump. |
 | `author` | An OBJECT with `name` (plus `email`, `url`). A bare string fails strict validation. |
 | Component paths | Relative to the plugin root, starting `./`; a string or an array; a file or a directory - except `agents`, which takes `.md` files only, and `skills`, which takes directories only. `commands`, `agents`, `outputStyles`, `workflows` REPLACE the default folder; `skills` ADDS to `./skills/` (except in an entry sourced from the marketplace root, where the listed folders are the whole set); `hooks`, `mcpServers`, `lspServers` merge by their own rules. `../` is rejected - a copied plugin cannot reach above its root (a symlink inside the root is the workaround). |
 | `userConfig` | Named values the user is asked for when the plugin is enabled. Each option is a strict object that needs `type`, `title` and `description`; an unknown key inside one stops the plugin loading. `sensitive: true` stores in secure storage and reaches hooks / servers as an environment variable. |
@@ -57,8 +57,9 @@ my-plugin/
 └── README.md                      # install line, what the user must install themselves, the cost
 ```
 
-A `CLAUDE.md` at the plugin root is NOT loaded. A `package.json` with `package-lock.json` gets its
-dependencies installed with `--ignore-scripts`; `yarn.lock` and `pnpm-lock.yaml` are skipped.
+A `CLAUDE.md` at the plugin root is NOT loaded. A `package.json` with `package-lock.json`,
+`npm-shrinkwrap.json` or `bun.lock` gets its dependencies installed with `--ignore-scripts`;
+`yarn.lock`, `pnpm-lock.yaml` and `bun.lockb` are skipped.
 
 ## marketplace.json
 

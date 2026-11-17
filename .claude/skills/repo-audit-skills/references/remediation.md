@@ -9,7 +9,7 @@ Work set-level defects first, before the per-skill loops. Break every invocation
 - Align the copies (or replace them with the delegation) and confirm each affected skill still reads and behaves the same.
 - Re-score every skill in the cluster on Dimension 4 (and any dimension the edit touched).
 
-Then, for each skill still scoring below A / 9, run this bounded loop:
+Then, for each skill still scoring below A / 9, run this bounded loop. A skill already at A / 9 gets no loop edit: each deduction it keeps is scored, cited in the report and listed as not planned, with the reason 'at the target - the loop runs only below it'. Two files of one skill that contradict each other - a step or a report field one requires and the other leaves out or denies - are not held to that where both load in one run: they count with the contradictions above and are fixed at any grade. The loop:
 
 1. Snapshot the skill directory before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.

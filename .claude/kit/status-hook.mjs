@@ -1,19 +1,31 @@
 #!/usr/bin/env node
 // Copied into each repo as .claude/kit/status-hook.mjs by claude-kit's sync - edit it in claude-kit, never here.
 //
-// A UserPromptSubmit hook: with every request it shows the user one line - is auto-run on, is scoring on, which
-// model plans, reviews, implements and searches - and gives Claude the same values with their sources, so neither a new
+// A UserPromptSubmit hook: with every request it shows the user one line - is auto-run on, is scoring on, does the run
+// approve its own plans, which model plans, audits, reviews, implements and searches - and gives Claude the same values with their sources, so neither a new
 // session nor a compacted one has to remember them. The values are the kit's file .claude/kit/settings.json, then the
 // KIT_* variables, then the defaults (kit-settings.mjs).
 //
+// Its cost is one Node start for each request: 32 ms at the median where Node alone takes 22 (40 runs, Node 24, an
+// Apple-silicon laptop, 2026-11-17), far inside the timeout its entry in .claude/settings.json sets.
+//
 // A request that opens with words to switch a mode - 'stop scoring', 'turn on scoring', 'enable auto run', 'turn auto
-// run off' - or to name a role's model - 'plan model fable', 'set the review model to sonnet', 'audit with fable' - is
+// run off', 'auto approve on' - or to name a role's model - 'plan model fable', 'set the review model to sonnet', 'audit with fable' - is
 // saved to that file by this hook, and the same request already shows it. What the user says in chat is saved until the
 // user changes it (the user's ruling, 2026-11-16). Only the first line of a request is read, and the words must make up
 // the whole of it - or all of it but a tail like 'for good' or 'please' and what follows punctuation - so a sentence that
 // merely starts that way, or a question, saves nothing. Claude's values then end with what was saved, or why it was not.
 //
+// The event also fires on requests nobody typed - a scheduled task, a background agent's report, a message from another
+// session - and nothing in its input tells them from a typed one (the hooks reference, read 2026-11-17). The hook reads
+// every request the same way, so one of those is saved too when its first line is only a switch or a model choice.
+//
 // It never blocks a request: whatever goes wrong, it exits 0 and says so on stderr.
+//
+// It reads the kit's file, the committed .claude/settings.json and the three agent files of the repo it sits in, writes
+// only that kit file and opens no connection. A hook a repo commits runs in a `claude -p` or SDK session with no trust
+// dialog: before scripting over a clone you did not write, read this file as you would an install script, or start the
+// run with --bare.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,8 +49,8 @@ async function loadSiblings()
 
 const siblings = await loadSiblings();
 const {
-    ARTICLE, HOOK_ERROR_PREFIX, KIT_SETTINGS_FILE, MODEL_CONNECTORS, MODEL_LEADING_VERBS, MODEL_ROLES, MODEL_WORD_PATTERN, MODELS, NEWLINE,
-    NOT_SAVED_PREFIX, POLITE_PREFIX, QUESTION_MARK, ROLE_JOINERS, SAVED_PREFIX, SETTING, SETTINGS_REFUSED, SPLIT_VERBS, SWITCH, SWITCH_MODES,
+    ARTICLE, CUT_MARK, HOOK_ERROR_PREFIX, KIT_SETTINGS_FILE, MAX_SHOWN_LENGTH, MODEL_CONNECTORS, MODEL_LEADING_VERBS, MODEL_ROLES, MODEL_WORD_PATTERN,
+    MODELS, NEWLINE, NOT_SAVED_PREFIX, POLITE_PREFIX, QUESTION_MARK, ROLE_JOINERS, SAVED_PREFIX, SETTING, SETTINGS_REFUSED, SPLIT_VERBS, SWITCH, SWITCH_MODES,
     SWITCH_VERBS, VALUE_END, VERB_CONNECTOR, isKitFolder, resolveKitSettings, setKitSettings,
 } = siblings ?? {};
 
@@ -131,20 +143,29 @@ function choicesOf(request)
     return switchAsked === null ? modelChoicesOf(opening) : [switchAsked];
 }
 
+// A value or a source as the hook prints it, cut where it would run on: Claude Code replaces a string of more than
+// 10,000 characters that a hook returns with a pointer to a file, and the note of what was saved would go with it.
+function cutToShow(text)
+{
+    return text.length > MAX_SHOWN_LENGTH ? `${text.slice(0, MAX_SHOWN_LENGTH)}${CUT_MARK}` : text;
+}
+
 function buildOutput(hookInput, env, root, folder)
 {
     const request = typeof hookInput.prompt === 'string' ? hookInput.prompt : '';
     const savedNote = saveChoices(root, folder, choicesOf(request));
-    const settings = resolveKitSettings(env, root);
+    const settings = Object.fromEntries(Object.entries(resolveKitSettings(env, root))
+        .map(([name, { value, origin }]) => [name, { value: cutToShow(value), origin: cutToShow(origin) }]));
 
     const scoring = settings[SETTING.scoring].value;
     const userLine = [
         `kit: auto-run ${settings[SETTING.autoRun].value}`,
         `scoring ${scoring}${scoring === SWITCH.on ? ` (pass ${settings[SETTING.passScore].value})` : ''}`,
+        `auto-approve ${settings[SETTING.autoApprove].value}`,
         ...MODEL_ROLES.map(({ label, setting }) => `${label} ${settings[setting].value}`),
     ].join(' | ');
 
-    const names = [SETTING.autoRun, SETTING.scoring, SETTING.passScore, ...MODEL_ROLES.map(({ setting }) => setting)];
+    const names = [SETTING.autoRun, SETTING.scoring, SETTING.passScore, SETTING.autoApprove, ...MODEL_ROLES.map(({ setting }) => setting)];
     const context = [
         'kit status (.claude/kit/status-hook.mjs):',
         ...names.map((name) => `${name}=${settings[name].value} (${settings[name].origin});`),

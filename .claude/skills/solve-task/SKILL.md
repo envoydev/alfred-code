@@ -21,9 +21,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
   made (`.claude/rules/execution.md`), its covering check runs, done. Anything that adds or changes behaviour - a new
   flag, option, output or branch - is at least bounded, however short the request.
 - spike, bounded, architectural - load superpowers:brainstorming next and take its path for this size: a spike has its question
-  and probe approved first, then ends in an answer and keeps nothing; a bounded change gets an in-chat design whose approval is a stop, then the build; an
-  architectural change takes every step below. Under `auto-run` a bounded design's approval follows the same rule
-  and waiver as a graded spec's (step 3).
+  and probe approved first, then ends in an answer and keeps nothing; a bounded change gets an in-chat design,
+  approved as step 3 says, then the build; an architectural change takes every step below.
 - A design already settled by a run order or the user's rulings skips the spec and goes to the plan.
 
 ## The four models
@@ -52,8 +51,9 @@ things in the code for the other three.
 
 1. Spec - superpowers:brainstorming writes `docs/superpowers/specs/<date>-<topic>-design.md`.
 2. Grade - `refining-plans` to the pass score, its own loop.
-3. Approval - the user approves the graded spec. Under `auto-run` it stays a stop; only the waiver `auto-run`
-   defines skips it, and then the score path is reported in place of the ask.
+3. Approval - the `auto_approve` setting decides who approves the graded spec, as the `plan-approval` rule says:
+   off, the user approves it and is notified that the run waits, under `auto-run` too; on, the run approves it and
+   the score path is reported in place of the ask.
 4. Plan - superpowers:writing-plans writes `docs/superpowers/plans/<date>-<topic>.md` from the approved spec, on the
    plan model; grade it to the pass score; approval as in step 3.
 5. Build - on the implement model. superpowers:executing-plans when this session runs on it (one context,
@@ -71,7 +71,10 @@ things in the code for the other three.
 7. Review - one fresh review of the whole branch on the review model, one fix pass (each fix RED then GREEN), minors deferred to
    the ledger.
 8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec,
-   never `.gitignore` or `docs/habits-scorer-flow.html`. No version bump, push or merge without the user's word.
+   never `.gitignore` or `docs/habits-scorer-flow.html`. A run the session loaded by itself - no `/solve-task`, no ask for this flow in the user's words - has
+   no word for a commit: before its first one, in whichever step it falls, it asks once (AskUserQuestion: 'Commit
+   locally (Recommended)' / 'Leave the change uncommitted') and holds the answer - on 'Leave', every commit step is
+   skipped and the close lists the files left uncommitted. No version bump, push or merge without the user's word.
 
 ## The close
 

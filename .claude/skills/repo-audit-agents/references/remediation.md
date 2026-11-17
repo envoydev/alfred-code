@@ -13,7 +13,7 @@ Work system-level defects first, before the per-agent loops. Break every invocat
 - Replace the copies with a short pointer to that home (named where guaranteed, described otherwise). Confirm each affected agent still reads and behaves the same.
 - Re-score every agent in the cluster on Dimension 4 and any dimension the edit touched.
 
-Then, for each agent still scoring below A / 9, run this bounded loop:
+Then, for each agent still scoring below A / 9, run this bounded loop. An agent already at A / 9 gets no loop edit: each deduction it keeps is scored, cited in the report and listed as not planned, with the reason 'at the target - the loop runs only below it'. Two files that contradict each other where both load in one run are not held to that, whether they are two items or two files of one: they are a cross-layer contradiction of the system-level work above and are fixed at any grade. The loop:
 
 1. Snapshot the agent file before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.

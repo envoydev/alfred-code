@@ -58,4 +58,6 @@ Five dimensions, 100 points, the band table below; a dimension below its floor c
 | 50-64 | D | 3-4 |
 | < 50 | F | 1-2 |
 
+Where a band gives two numerics, the upper half of its totals takes the higher: 85-89 is 8 and 80-84 is 7, 72-79 is 6 and 65-71 is 5, 57-64 is 4 and 50-56 is 3, 25-49 is 2 and under 25 is 1. A report prints the numeric beside the letter, and a mean is taken over the numerics.
+
 A profile reaches A / 9 only when its total is 90 or more and every dimension clears its floor. A standing `contradicts` or `blocks` row blocks BOTH parts it joins from A in every profile it appears in, and a S4 BLOCKER blocks every profile.

@@ -2,10 +2,13 @@
 
 Read at Phase 1b, before any row drives a score or an edit. Re-read each row below against the live page
 (through WebFetch or the documentation server); verdict per row CURRENT | DRIFTED | UNVERIFIABLE, and a
-DRIFTED row is corrected in the same run at this file's source in claude-kit (`shared/skills/`) - an edit where
-the run is in that repo, a handoff line in the report otherwise - and never in a synced `.claude/` copy, which
-the next sync overwrites; it is corrected too in the session-surface tool a `notes` line names when that tool
-encodes it (its comments should name the page each rule came from). The plugin mechanics the packaging grade
+DRIFTED row is corrected in the same run at this file's source in claude-kit (`shared/skills/`) and never in a
+synced `.claude/` copy, which the next sync overwrites - where the run is in that repo, the planner writes the
+corrected paragraph out whole under the report's currency table, headed 'Currency hand-off', and the flow's
+self-review lands it in its own plan (`retro-plan.md`), never this audit's plan, whose targets this file is not
+among; anywhere else the same paragraph is the hand-off to the kit; it is corrected too in the session-surface
+tool a `notes` line names when that tool encodes it (its comments should name the page each rule came
+from). The plugin mechanics the packaging grade
 reads - manifest fields, path-field semantics, versioning, marketplace entries, validate, details, eval - are
 the facts A1-A5 state in `rubric.md`, not rows here: re-read each against its live page
 (`plugins/manifest-reference`, `plugins/marketplace-reference`, `plugins/loading`, `plugins/cli-reference`,

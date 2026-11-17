@@ -1,4 +1,4 @@
-# Plugin audit - Phase 0 discovery
+# Tools audit - Phase 0 discovery
 
 Read at Phase 0. Build every map below before scoring; edit nothing.
 

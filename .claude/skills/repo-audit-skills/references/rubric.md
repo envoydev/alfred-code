@@ -57,6 +57,8 @@ Floor for A: >= 17/20.
 | 50-64 | D | 3-4 |
 | < 50 | F | 1-2 |
 
+Where a band gives two numerics, the upper half of its totals takes the higher: 85-89 is 8 and 80-84 is 7, 72-79 is 6 and 65-71 is 5, 57-64 is 4 and 50-56 is 3, 25-49 is 2 and under 25 is 1. A report prints the numeric beside the letter, and a mean is taken over the numerics.
+
 A skill reaches A / 9 only when the total is >= 90 and every dimension clears its floor. This is deliberate: it blocks the common failure of acing some dimensions and averaging away a weak one. A skill with a strong body but a vague description is not an A skill, because the description decides whether the body is ever loaded. A skill that reads perfectly but copy-pastes half its body from a sibling skill is not an A skill either, because the duplication is a maintenance defect the reader of one skill cannot see.
 
 A skill implicated in an unresolved invocation cycle or contradiction is blocked from A until the loop or conflict is resolved, whatever its own total - both are set-level defects that make behavior unbounded or nondeterministic.
