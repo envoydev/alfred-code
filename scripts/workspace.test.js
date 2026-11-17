@@ -1032,19 +1032,29 @@ test('R062: the hooks\' chain reads a child named with a double space as a membe
     assert.ok(samePath(members[0], at('ws')), `${members[0]} is the root`);
 });
 
+test('relName: the folder\'s name beside the rel, the rel bare for none, null or the filesystem root', () =>
+{
+    assert.strictEqual(ws.relName('/a/ws/api', '..'), '.. (ws)');
+    assert.strictEqual(ws.relName('/a/b c/api', '..'), '.. (b c)');
+    assert.strictEqual(ws.relName('/a/ws/apps/api', '../..'), '../.. (ws)');
+    assert.strictEqual(ws.relName('/x', 'none'), 'none');
+    assert.strictEqual(ws.relName('/x', null), '');
+    assert.strictEqual(ws.relName('/', '..'), '..');
+});
+
 test('roleOf: child of .., root of 2 children, a root with no child, standalone, and standalone not asked', () =>
 {
     const at = roleTree({
         ws: { stamp: true, record: { children: ['api', 'web'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } }, 'ws/web': { stamp: true, git: true, record: { parent: '..' } },
         solo: { stamp: true, git: true, record: { role: 'root', above: 'none' } }, alone: { stamp: true, git: true, record: { role: 'standalone', above: 'none' } }, fresh: { stamp: true, git: true },
     });
-    assert.deepStrictEqual(ws.roleOf(at('ws/api'), { env: ON }), { kind: 'child', rel: '..', children: 0, asked: true });
+    assert.deepStrictEqual(ws.roleOf(at('ws/api'), { env: ON }), { kind: 'child', rel: '..', name: 'ws', children: 0, asked: true });
     assert.deepStrictEqual(ws.roleOf(at('ws'), { env: ON }), { kind: 'root', children: 2, asked: false });
     assert.deepStrictEqual(ws.roleOf(at('solo'), { env: ON }), { kind: 'root', children: 0, asked: true });
     assert.deepStrictEqual(ws.roleOf(at('alone'), { env: ON }), { kind: 'standalone', asked: true });
     assert.deepStrictEqual(ws.roleOf(at('fresh'), { env: ON }), { kind: 'standalone', asked: false });
     assert.strictEqual(ws.roleText(ws.roleOf(at('ws'), { env: ON })), 'root of 2 children');
-    assert.strictEqual(ws.roleText(ws.roleOf(at('ws/api'), { env: ON })), 'child of ..');
+    assert.strictEqual(ws.roleText(ws.roleOf(at('ws/api'), { env: ON })), 'child of .. (ws)');
     assert.strictEqual(ws.roleText(ws.roleOf(at('fresh'), { env: ON })), 'standalone (no role recorded)');
     assert.strictEqual(ws.roleText(ws.roleOf(at('alone'), { env: ON })), 'standalone');
 });
@@ -1052,7 +1062,7 @@ test('roleOf: child of .., root of 2 children, a root with no child, standalone,
 test('AC2: init\'s options - Child first under a root, Root first in a plain folder, Standalone first in a git checkout, the why line and Standalone first inside the parent\'s repo', () =>
 {
     const at = roleTree({ ws: { stamp: true }, 'ws/api': { git: true }, plain: {}, repo: { git: true }, top: { stamp: true, git: true }, 'top/sub': {} });
-    assert.deepStrictEqual(asked(at('ws/api'), 'init'), { case: 'init-child', rel: '..', options: ['Child of .. (Recommended)', 'Standalone', 'Root'] });
+    assert.deepStrictEqual(asked(at('ws/api'), 'init'), { case: 'init-child', rel: '..', options: ['Child of .. (ws) (Recommended)', 'Standalone', 'Root'] });
     assert.deepStrictEqual(asked(at('plain'), 'init'), { case: 'init-none', rel: null, options: ['Root (Recommended)', 'Standalone'] });
     assert.deepStrictEqual(asked(at('repo'), 'init'), { case: 'init-none', rel: null, options: ['Standalone (Recommended)', 'Root'] });
     const why = ws.roleAsk(at('top/sub'), { env: ON, when: 'init' });
@@ -1069,13 +1079,13 @@ test('AC4: a stamped folder above a standalone asks once, Keep quiets it; a dele
         'ws/mid': { stamp: true }, 'ws/mid/deep': { stamp: true, git: true, record: { parent: '../..', above: '../..' } },
         gone: {}, 'gone/kid': { stamp: true, git: true, record: { parent: '..' } },
     });
-    assert.deepStrictEqual(asked(at('ws/alone'), 'update'), { case: 'above', rel: '..', options: ['Join .. (Recommended)', 'Keep standalone'] });
+    assert.deepStrictEqual(asked(at('ws/alone'), 'update'), { case: 'above', rel: '..', options: ['Join .. (ws) (Recommended)', 'Keep standalone'] });
     assert.ok(ws.writeWorkspace(at('ws/alone'), (m) => ws.setAbove(m, '..'), { env: ON }).wrote);
     assert.strictEqual(asked(at('ws/alone'), 'update'), null, 'Keep wrote above .., so the same tree is never asked again');
-    assert.deepStrictEqual(asked(at('ws/fresh'), 'update'), { case: 'never', rel: '..', options: ['Join .. (Recommended)', 'Stay standalone'] });
-    assert.deepStrictEqual(asked(at('ws/lost'), 'update'), { case: 'rejoin', rel: '..', options: ['Rejoin .. (Recommended)', 'Become standalone'] });
+    assert.deepStrictEqual(asked(at('ws/fresh'), 'update'), { case: 'never', rel: '..', options: ['Join .. (ws) (Recommended)', 'Stay standalone'] });
+    assert.deepStrictEqual(asked(at('ws/lost'), 'update'), { case: 'rejoin', rel: '..', options: ['Rejoin .. (ws) (Recommended)', 'Become standalone'] });
     assert.deepStrictEqual(asked(at('gone/kid'), 'update'), { case: 'parent-gone', rel: '..', options: ['Become standalone (Recommended)'] });
-    assert.deepStrictEqual(asked(at('ws/mid/deep'), 'update'), { case: 'between', rel: '..', options: ['Stay child of ../.. (Recommended)', 'Join ..'] });
+    assert.deepStrictEqual(asked(at('ws/mid/deep'), 'update'), { case: 'between', rel: '..', options: ['Stay child of ../.. (ws) (Recommended)', 'Join .. (mid)'] });
     assert.strictEqual(asked(at('ws/fresh'), 'update', { ...ON, ALFRED_CODE_WORKSPACE: '0' }), null);
     const a = ws.roleAsk(at('ws/lost'), { env: ON, when: 'update' });
     assert.deepStrictEqual(a.answers, ['rejoin', 'leave:standalone'], 'each option carries the --answer it runs');
@@ -1087,8 +1097,8 @@ test('AC5 asks: configure lists Keep first for a standalone, a root and a child'
         ws: { stamp: true, record: { children: ['kid'] } }, 'ws/kid': { stamp: true, git: true, record: { parent: '..' } },
         'ws/alone': { stamp: true, git: true, record: { role: 'standalone', above: '..' } }, 'ws/boss': { stamp: true, git: true, record: { role: 'root', above: '..' } },
     });
-    assert.deepStrictEqual(asked(at('ws/alone'), 'configure').options, ['Keep (Recommended)', 'Join ..', 'Become a root']);
-    assert.deepStrictEqual(asked(at('ws/boss'), 'configure').options, ['Keep (Recommended)', 'Join ..', 'Become standalone']);
+    assert.deepStrictEqual(asked(at('ws/alone'), 'configure').options, ['Keep (Recommended)', 'Join .. (ws)', 'Become a root']);
+    assert.deepStrictEqual(asked(at('ws/boss'), 'configure').options, ['Keep (Recommended)', 'Join .. (ws)', 'Become standalone']);
     assert.deepStrictEqual(asked(at('ws/kid'), 'configure').options, ['Keep (Recommended)', 'Leave and become standalone', 'Leave and become a root']);
     assert.deepStrictEqual(asked(at('ws'), 'configure').options, ['Keep (Recommended)', 'Become standalone'], 'nothing above to join');
 });

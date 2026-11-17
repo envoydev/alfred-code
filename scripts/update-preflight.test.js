@@ -1075,7 +1075,7 @@ test('a child whose child line was deleted by hand gets workspace: role-ask rejo
     const p = nestedPreflight({ parentRecord: {}, childRecord: { parent: '..' } });
     assert.match(p.full(), /^workspace: role-ask rejoin \.\.$/m);
     const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', 'rejoin'], { encoding: 'utf8', env: p.env });
-    assert.match(joined, /^role: child of \.\.$/m);
+    assert.ok(joined.split('\n').includes(`role: child of .. (${path.basename(p.parent)})`), joined);
     assert.deepStrictEqual(readWorkspaceRecord(p.parent).record.children, ['project']);
     assert.doesNotMatch(p.full(), /^workspace:/m);
 });

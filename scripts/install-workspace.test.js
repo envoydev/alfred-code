@@ -395,9 +395,9 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
         const pick = (work) =>
         {
             const ask = wsLib.roleAsk(at(work, 'api'), { env: acct(work), when });
-            const i = when === 'update' ? 0 : ask.options.indexOf('Join ..');
+            const i = when === 'update' ? 0 : ask.options.findIndex((label) => label.startsWith('Join ..'));
             assert.ok(i >= 0, JSON.stringify(ask));
-            if (when === 'update') assert.deepStrictEqual([ask.case, ask.options[0]], ['never', 'Join .. (Recommended)']);
+            if (when === 'update') assert.deepStrictEqual([ask.case, ask.options[0]], ['never', 'Join .. (ws) (Recommended)']);
             return ['--answer', ask.answers[i]];
         };
         const r = scenario([

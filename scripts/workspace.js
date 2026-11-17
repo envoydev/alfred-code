@@ -63,8 +63,12 @@ function parentVerb(out)
 {
     const v = ws.joinVerdict(rootArg(), { env, exec });
     if (!v.parent) out('parent: none');
-    else if (v.ok) out(`parent: ${v.parent.rel}\tchild=yes`);
-    else out(`parent: ${v.parent.rel}\tchild=no\twhy=${v.why}`);
+    else
+    {
+        const name = ws.nameOfRel(rootArg(), v.parent.rel);
+        const tail = name ? `\tname=${name}` : '';
+        out(v.ok ? `parent: ${v.parent.rel}\tchild=yes${tail}` : `parent: ${v.parent.rel}\tchild=no\twhy=${v.why}${tail}`);
+    }
 }
 
 // A library result's lines, its failure as the exit code with the `!!` line last.
@@ -147,6 +151,8 @@ function status(out)
     for (const n of linked.notes) out(n);
     const parent = linked.members[0];
     out(`workspace: parent ${parent ? parent.rel : 'none'}`);
+    const parentName = parent && ws.nameOfRel(root, parent.rel);
+    if (parentName) out(`workspace: parent-folder ${parentName}`);
     // R067: the excludes are written for every stamped folder above, joined or not - validate's load check keys on this.
     out(`installed-above: ${ws.workspaceOn({ env, projectRoot: root }) ? ws.stampedAncestors(root, { env }).length : 0}`);
     const stampFile = stamp.stampFiles({ projectRoot: root }).read;
