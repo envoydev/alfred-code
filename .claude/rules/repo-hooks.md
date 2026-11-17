@@ -2013,12 +2013,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     reaches only the members whose stamps pick it. A file that is a link or over 64 KB is skipped. Pathless rules go out
     at session and seat start, packed first fit into at most five parts of 9,500 characters (the harness caps one hook's
     context at 10,000), a rule too long for one part cut at line ends, past part 5 named on an unsent line; `resume` and
-    `fork` send nothing, `Explore` and `Plan` seats nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
+    `fork` send like a startup, a root's main-session start opens part 1 with the members index (`memberIndex`: a line for each child its record lists, ignored ones out, naming the child's instruction file and its rule-file count - at most 12 lines and 1,500 characters, then `- and <k> more`; counted in part 1's room like the natives line, and a seat start has none), `Explore` and `Plan` seats get nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
     the first time a touched file matches one of its globs (`**/`, a trailing `/**`, `*`; a glob with `? [ { !` matches
     nothing and check 73 fails a shipped one), the file's path read from the rule's project, else from its own checkout;
     once per session and actor, recorded in `<data root>/state/sessions/rules-<session>-<actor>.json` (temp file and
-    rename; `compact` and `clear` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
-    (`mode: probe`, chars, parts, unsent) to the session's `hook-blocks` ledger. A JOINED MEMBER (workspace stage 5): the
+    rename; `compact`, `clear`, `resume` and `fork` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
+    (`mode: probe`, chars, parts, unsent, source, members - the index's line count) to the session's `hook-blocks` ledger. A JOINED MEMBER (workspace stage 5): the
     first touch of a file under a member outside the start's chain (`layout.memberOf`; a grandchild brings its parent
     first) sends that member's block - `Project <T>, part <k>`, a head naming its AGENTS.md (else CLAUDE.md), its
     `.claude/rules` files, docs root, preferences and the start's always-on rules it leaves out, then its own always-on
@@ -2026,8 +2026,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     part is claimed by the exclusive marker `rules-<session>-<actor>-m-<sha256(rel) 12>-<k>` beside the record (first line
     `/ <T> <chars> <session> <actor>`, an optional `/ not sent:` line, then the item names), so parallel calls send it
     once; a marker found empty is another call mid-claim and prints nothing, an unwritable folder sends the part
-    unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`
-    and `clear` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
+    unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`,
+    `clear`, `resume` and `fork` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
     record as `<holder key>/<name>`, and the blocks and path rules of one call share one 9,500-character room (a rule
     that does not fit waits for the next touch). One `member-push` row per part (member, part, chars, unsent, tool). A
     Cursor payload gets the same text in `additional_context`; `session-surface.js` lists the members the newest session

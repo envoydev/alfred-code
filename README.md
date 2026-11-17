@@ -230,7 +230,7 @@ A folder of several projects can share one install's skills, rules, hooks and se
 - Before a project joins, its first session can ask 'allow external imports?' for the root's awareness rule. 'No' is safe: after the join that rule is excluded there.
 - A joined project keeps only its own values in `.alfred/.variables`; the rest it reads from the root. A skill or seat it picks is kept once, in the root's `.alfred/stack/`.
 - A session may write anywhere in the workspace without asking; past it, the main session asks and a subagent is refused.
-- A session started at the root gets a project's own rules and docs the first time it touches a file there.
+- A session started at the root gets a project's own rules and docs the first time it touches a file there, and its start names each project's instructions and rule files.
 - To keep a project below the root out of the workspace, mark it ignored in `/alfred-code:configure` (the workspace role): it keeps what it had and stands alone.
 - At the root, `/alfred-code:status` and the usage audit cover every joined project, one table each; in a project below they cover that project alone.
 - A project's record, `.alfred/workspace.json`, holds these keys:

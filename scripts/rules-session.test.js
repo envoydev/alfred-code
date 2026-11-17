@@ -569,6 +569,161 @@ test('start: the probe row of a resume push names its source', () =>
     assert.deepStrictEqual([rows[0].kind, rows[0].source], ['rules-push', 'resume']);
 });
 
+// Task 6: a root's main-session start opens part 1 with the members index.
+const MEMBERS_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions and each rule file not in your context; a touch inside it sends its block.';
+const MEMBERS_API = '- api: instructions api/AGENTS.md; rules 1 file under api/.claude/rules';
+const MEMBERS_WEB = '- web: instructions none; rules none';
+const MEMBERS_MORE = (k) => `- and ${k} more (the workspace record lists them)`;
+// A stamped root `ws` holding one store rule and the given children (a folder each, unless `as` says otherwise).
+function members(children, { ignored, as = {}, rules = { a: 'M-A' } } = {})
+{
+    const top = tree({ 'ws/.git/HEAD': 'x' });
+    const root = path.join(top, 'ws');
+    stamp(root);
+    for (const [name, text] of Object.entries(rules)) store(root, name, text);
+    for (const c of children)
+    {
+        if (as[c] === 'file') put(path.join(root, c), 'x');
+        else if (as[c] !== 'missing') fs.mkdirSync(path.join(root, c), { recursive: true });
+    }
+    ws(root, { parent: 'root', children, ...(ignored ? { ignoredChildren: ignored } : {}) });
+    return root;
+}
+const manyChildren = (n, size = 3) => Array.from({ length: n }, (_, i) => `c${String(i + 1).padStart(size, '0')}`);
+const apiAndWeb = () =>
+{
+    const root = members(['api', 'web']);
+    put(path.join(root, 'api', 'AGENTS.md'), 'x');
+    put(path.join(root, 'api', '.claude', 'rules', 'r.md'), 'x');
+    return root;
+};
+const indexLines = (text) => text.split('\n').filter((l) => l.startsWith('- '));
+
+test('members: part 1 of a root opens with the index, after the natives line and before the first rule', () =>
+{
+    const root = apiAndWeb();
+    native(root, 'n');
+    const text = part(root, 1);
+    const block = [MEMBERS_HEAD, MEMBERS_API, MEMBERS_WEB].join('\n');
+    assert.ok(text.includes(block), text);
+    assert.ok(text.indexOf('loaded natively: n') < text.indexOf(block) && text.indexOf(block) < text.indexOf('\n## '), text);
+    for (const k of [2, 3, 4, 5]) assert.ok(!part(root, k).includes('Workspace members'), `part ${k}`);
+});
+
+test('members: a root with no child gets no index', () =>
+{
+    const root = members([]);
+    assert.ok(!part(root, 1).includes('Workspace members'));
+    assert.strictEqual(loader().memberIndex(root, ENV), '');
+});
+
+test('members: twelve children are twelve lines, thirteen are twelve and a count of the rest', () =>
+{
+    const twelve = members(manyChildren(12));
+    const got12 = loader().memberIndex(twelve, ENV);
+    assert.strictEqual(indexLines(got12).length, 12);
+    assert.ok(!got12.includes(' more '), got12);
+    const thirteen = members(manyChildren(13));
+    const got13 = loader().memberIndex(thirteen, ENV).split('\n');
+    assert.strictEqual(got13.length, 1 + 12 + 1);
+    assert.strictEqual(got13[got13.length - 1], MEMBERS_MORE(1));
+});
+
+test('members: the index stops at 1500 characters and counts what it leaves out', () =>
+{
+    const root = members(manyChildren(12, 100));
+    const got = loader().memberIndex(root, ENV);
+    const lines = got.split('\n');
+    assert.ok(got.length <= 1500, String(got.length));
+    const left = 12 - (lines.length - 2);
+    assert.ok(left > 0 && lines.length - 2 < 12, got);
+    assert.strictEqual(lines[lines.length - 1], MEMBERS_MORE(left));
+});
+
+test('members: a child that is a file or is missing is left out', () =>
+{
+    const root = members(['api', 'gone', 'plain'], { as: { gone: 'missing', plain: 'file' } });
+    const got = loader().memberIndex(root, ENV);
+    assert.deepStrictEqual(indexLines(got), ['- api: instructions none; rules none']);
+    assert.ok(part(root, 1).includes('- api:'));
+});
+
+test('members: a child the record ignores is left out', () =>
+{
+    const root = members(['api', 'web'], { ignored: ['web'] });
+    assert.deepStrictEqual(indexLines(loader().memberIndex(root, ENV)), ['- api: instructions none; rules none']);
+});
+
+test('members: the instruction file is the first of the four spellings, and rules count by file', () =>
+{
+    const root = members(['a', 'b', 'c', 'd', 'e']);
+    put(path.join(root, 'a', 'AGENTS.md'), 'x');
+    put(path.join(root, 'a', 'CLAUDE.md'), 'x');
+    put(path.join(root, 'b', 'CLAUDE.md'), 'x');
+    put(path.join(root, 'c', '.claude', 'AGENTS.md'), 'x');
+    put(path.join(root, 'd', '.claude', 'CLAUDE.md'), 'x');
+    for (const n of ['x', 'y']) put(path.join(root, 'e', '.claude', 'rules', `${n}.md`), 'x');
+    put(path.join(root, 'e', '.claude', 'rules', 'skip.txt'), 'x');
+    assert.deepStrictEqual(indexLines(loader().memberIndex(root, ENV)), [
+        '- a: instructions a/AGENTS.md; rules none',
+        '- b: instructions b/CLAUDE.md; rules none',
+        '- c: instructions c/.claude/AGENTS.md; rules none',
+        '- d: instructions d/.claude/CLAUDE.md; rules none',
+        '- e: instructions none; rules 2 files under e/.claude/rules']);
+});
+
+test('members: a garbage record gives no index and no throw', () =>
+{
+    const root = members(['api']);
+    put(path.join(root, '.alfred', 'workspace.json'), '{ not json');
+    assert.strictEqual(loader().memberIndex(root, ENV), '');
+    assert.ok(!part(root, 1).includes('Workspace members'));
+});
+
+test('members: the shipped rules and a thirteen-child index leave nothing unsent', () =>
+{
+    const root = members(manyChildren(13));
+    const index = loader().memberIndex(root, ENV);
+    const { parts: out, unsent } = loader().parts(shippedPathless(), { index });
+    assert.deepStrictEqual(unsent, []);
+    assert.ok(out[0].includes(index), 'the index is whole in part 1');
+    for (const p of out) assert.ok(p.length <= 9500, String(p.length));
+});
+
+test('members: an overflowing rule set keeps the index whole in part 1 and names what it cuts', () =>
+{
+    const index = loader().memberIndex(members(manyChildren(13)), ENV);
+    const size = (n) => ROOM([rule(n, 1)]);
+    const rs = [1, 2, 3, 4, 5, 6].map((k) => rule(`r${k}`, size(`r${k}`)));
+    const { parts: out, unsent } = loader().parts(rs, { index });
+    assert.strictEqual(out.length, 5);
+    assert.ok(out[0].includes(index));
+    assert.ok(unsent.length > 0);
+    assert.ok(out[4].includes(`Not sent - past part 5: ${unsent.join(', ')}`), out[4].slice(-200));
+    for (const p of out) assert.ok(p.length <= 9500, String(p.length));
+});
+
+test('members: parts with an empty index equal parts without one', () =>
+{
+    const rs = [rule('b', 5000), rule('a', 5000), rule('c', 3000)];
+    assert.deepStrictEqual(loader().parts(rs, { natives: ['n'], index: '' }), loader().parts(rs, { natives: ['n'] }));
+});
+
+test('members: a seat started at the root gets no index', () =>
+{
+    const root = apiAndWeb();
+    for (const k of [1, 2, 3, 4, 5]) assert.ok(!part(root, k, SEAT()).includes('Workspace members'), `part ${k}`);
+});
+
+test('members: the probe row of a root start counts its member lines', () =>
+{
+    const root = apiAndWeb();
+    part(root, 1);
+    const file = path.join(LAYOUT.statsPath(root, ['hook-blocks'], {}), `${SID}.jsonl`);
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual([rows[0].kind, rows[0].members], ['rules-push', 2]);
+});
+
 test('start: nothing is sent to Explore and Plan', () =>
 {
     const p = project({ a: 'M-A' });

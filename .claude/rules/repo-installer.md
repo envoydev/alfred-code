@@ -306,6 +306,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   launch `0` freezes it whatever the files say, else the project's own value decides (settings.local.json, its
   `.variables`, the settings `env`, so a file `0` beats a launch `1`), else the launch value, and only a `0` turns it
   off; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
+- **A root's start names its members (`rules-session.js memberIndex`).** The main-session start at a workspace root opens
+  rules part 1 with a short index - one line a child the root's record lists (ignored ones out), naming the child's
+  instruction file and its `.claude/rules` count - so a session reads each child's instructions before it plans there;
+  the block of a child still goes out on the first touch inside it. A resume or fork sends like a startup. `repo-hooks.md`
+  holds the caps.
 - **A project the workspace ignores (W3, 3.11.0; `install-workspace.test.js`, `workspace-cli.test.js`).** A root's
   `ignoredChildren` (`workspace.json`) marks a path below it: `workspace-file.js covered` is the one predicate, the
   walkers (`subtree`, `refreshBelow`, the rescan) cut at a covered folder, and `ignoredBy` answers from the TWO holders -

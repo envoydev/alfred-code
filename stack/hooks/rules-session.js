@@ -19,6 +19,13 @@ const RULE_PARTS = 5;
 const LOCKED_RULES = Object.freeze(['alfred-docs-root', 'alfred-interaction', 'alfred-navigation', 'alfred-preferences',
     'alfred-quality-gates', 'alfred-security', 'markdown-docs']);
 const NO_RULES_SEAT = /^(Explore|Plan)$/;   // the built-in types load no project rule (stage 0, P8)
+// The members index a root's start opens part 1 with: a line a child, at most MEMBER_LINES of them and MEMBER_CHARS in all.
+const MEMBER_LINES = 12;
+const MEMBER_CHARS = 1500;
+const MEMBER_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions and each rule file not in your context; a touch inside it sends its block.';
+const MEMBER_MORE = (left) => `- and ${left} more (the workspace record lists them)`;
+const INSTRUCTION_FILES = Object.freeze([['AGENTS.md'], ['CLAUDE.md'], ['.claude', 'AGENTS.md'], ['.claude', 'CLAUDE.md']]);
+const RULE_FILES = ['.claude', 'rules'];
 
 // What the model is sent of a rule: Claude Code drops the frontmatter and block-level HTML comments, a fenced one
 // kept (code.claude.com/docs/en/memory). Lint check 33 counts the always-on surface with this same function.
@@ -115,11 +122,12 @@ function cut(r, lead)
 }
 
 // The always-on rules in 1 to RULE_PARTS parts: a cut rule's chunks alone, the rest first fit, largest first, ties by
-// name. Past part 5 a rule is unsent, and so is part 5's last block while the unsent line has no room beside it.
-function parts(always, { natives = [] } = {})
+// name. Part 1 opens with the natives line and the members `index`, both counted in its room. Past part 5 a rule is
+// unsent, and so is part 5's last block while the unsent line has no room beside it.
+function parts(always, { natives = [], index = '' } = {})
 {
     const nativeLine = natives.length ? `loaded natively: ${natives.join(', ')}` : '';
-    const lead = nativeLine ? nativeLine.length + 2 : 0;
+    const lead = [nativeLine, index].reduce((room, text) => room + (text ? text.length + 2 : 0), 0);
     const packed = [];
     const open = (own) => packed[packed.push({ blocks: [], own, used: BASE + (packed.length ? 0 : lead) }) - 1];
     const add = (p, b) => { p.blocks.push(b); p.used += b.text.length + 2; };
@@ -144,7 +152,7 @@ function parts(always, { natives = [] } = {})
         unsent.add(b.rel);
     }
     const n = kept.length;
-    const out = kept.map((p, i) => [opening(i + 1, n), i === 0 && nativeLine, ...p.blocks.map((b) => b.text),
+    const out = kept.map((p, i) => [opening(i + 1, n), i === 0 && nativeLine, i === 0 && index, ...p.blocks.map((b) => b.text),
         i === n - 1 && unsent.size && unsentLine(), closing(i + 1, n)].filter(Boolean).join('\n\n'));
     return { parts: out, unsent: [...unsent].sort() };
 }
@@ -154,6 +162,32 @@ const STAMP = ['.claude', 'alfred-code.stamp'];
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 const mdFiles = (dir) => { try { return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort(); } catch { return []; } };
 const posix = (from, to) => path.relative(from, to).split(path.sep).join('/');
+
+// The members index of a workspace root: one line a child folder its record lists (the ignored ones out), naming the
+// instruction file and the count of rule files under it; '' when there is no such child. Never throws.
+function memberIndex(project, env = process.env)
+{
+    try
+    {
+        const layout = require(path.join(__dirname, 'layout.js'));
+        const file = require(path.join(__dirname, 'workspace-file.js'));
+        const read = file.readRecord(path.join(project, layout.dataRootOf(project, { env })));
+        const view = file.viewOf(read.state === 'ok' ? read.record : file.emptyRecord());
+        const lines = view.children.filter((c) => isDir(path.join(project, c))).map((c) =>
+        {
+            const instructions = INSTRUCTION_FILES.map((f) => [c, ...f].join('/')).find((rel) => fs.existsSync(path.join(project, rel)));
+            const rules = mdFiles(path.join(project, c, ...RULE_FILES)).length;
+            const count = rules === 1 ? '1 file' : `${rules} files`;
+            return `- ${c}: instructions ${instructions || 'none'}; rules ${rules ? `${count} under ${[c, ...RULE_FILES].join('/')}` : 'none'}`;
+        });
+        if (!lines.length) return '';
+        const text = (shown) => [MEMBER_HEAD, ...lines.slice(0, shown), ...(shown < lines.length ? [MEMBER_MORE(lines.length - shown)] : [])].join('\n');
+        let shown = Math.min(lines.length, MEMBER_LINES);
+        while (shown > 0 && text(shown).length > MEMBER_CHARS) shown -= 1;
+        return text(shown);
+    }
+    catch { return ''; }
+}
 
 // The first checkout holding `.alfred`; with no install record in them, the nearest stamped folder above; else null.
 function projectOf(start, prelude)
@@ -369,15 +403,17 @@ function main(argv = process.argv, env = process.env)
         if (record && push.now.length) writeRecord(record, [...sent, ...push.now]);
         return void say([...texts, push.now.length && push.text].filter(Boolean).join('\n\n'));
     }
-    const out = parts(rules.always, { natives: rules.natives });
+    const index = kind === 'SessionStart' ? memberIndex(rules.project, env) : '';
+    const out = parts(rules.always, { natives: rules.natives, index });
     const stale = (f) => f === path.basename(record) || f.startsWith(`rules-${session}-${actor}-m-`);   // the record and its member markers
     if (part === 1 && record && ['compact', 'clear', 'resume', 'fork'].includes(input.source))
         try { for (const f of fs.readdirSync(path.dirname(record)).filter(stale)) fs.unlinkSync(path.join(path.dirname(record), f)); } catch { /* none yet */ }
-    if (part === 1) ledger({ kind: 'rules-push', chars: out.parts.join('').length, parts: out.parts.length, unsent: out.unsent.length, source: input.source });
+    if (part === 1) ledger({ kind: 'rules-push', chars: out.parts.join('').length, parts: out.parts.length, unsent: out.unsent.length, source: input.source,
+        members: index ? index.split('\n').length - 1 : 0 });
     say(out.parts[part - 1]);
 }
 
-module.exports = { PART_ROOM, RULE_PARTS, LOCKED_RULES, NO_RULES_SEAT, render, pathsOf, pathGlob, parts, rulesFor, memberBlock, memberPart, main };
+module.exports = { PART_ROOM, RULE_PARTS, LOCKED_RULES, NO_RULES_SEAT, render, pathsOf, pathGlob, parts, memberIndex, rulesFor, memberBlock, memberPart, main };
 if (require.main === module)
 {
     const prelude = loadPrelude();
