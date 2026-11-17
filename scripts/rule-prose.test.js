@@ -562,3 +562,9 @@ test('canary: the text names both block lines the loader prints', () =>
         assert.ok(text.includes(phrase), `the canary names '${phrase}'`);
     }
 });
+
+test('quality gates: a line keeps its layout unless the task or the formatter changes it', () =>
+{
+    const bullet = '- Leave a line\'s layout as it is - its wrapping, indentation, quotes and trailing commas - unless the task changes that line or the project\'s formatter rewrote it: a hand re-wrap of an untouched line is noise in the diff.';
+    assert.ok(rule('alfred-quality-gates').includes(bullet));
+});
