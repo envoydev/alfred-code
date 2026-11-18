@@ -530,7 +530,7 @@ function ensureExcluded(bases, deps) {
 // file no status write names, a refused base (outside the project, a linked folder), a line of the user's own, nor
 // another project's pair still in use in a shared git dir. A stack pair whose status folder exists in NONE of the
 // repository's work trees goes too (E-batch SYS-03: a base the list had dropped kept its pair): it excludes nothing, and
-// the next write re-adds it (`excludeOne`). Only a non-root pair is swept - the root-form pair goes through the list alone -
+// no write adds one back (the status file lives in the data root). Only a non-root pair is swept - the root-form pair goes through the list alone -
 // and with no worktree listing (git failed or timed out) nothing is swept, today's reading.
 // THE SWEEP (status-file-root design, Part 3): with `options` - `except` (a base left whole) or `rootMinAgeMs` (a file
 // at the root, or in a listed linked worktree's own top, younger than that stays: a new-version session owns it) - the
