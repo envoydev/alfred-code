@@ -33,7 +33,7 @@ const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../deri
 const { placement, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
-const { seatsLine, countSwitchedOff } = require('./seats-line.js');
+const { seatsLine, countSwitchedOff, countSeatFiles } = require('./seats-line.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const skillHeadings = require('./skill-headings.js');
@@ -2212,9 +2212,11 @@ function installHooksAndRules(ctx)
         const denyRows = ((settings.readBackSettings(ctx.claudeDir, 'local').permissions || {}).deny) || [];
         const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
             .filter((file) => fs.existsSync(path.join(ctx.agentsDir, file)));
+        const seatNames = fs.readdirSync(path.join(ctx.source.dir, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+        const { picked, earlier } = countSeatFiles({ agentsDir: ctx.agentsDir, seatNames, pickedFiles: copiedSeats });
         ctx.log(seatsLine({
             viaPlugin: ctx.routes.skills, coreSeats: coreSeats.length,
-            switchedOff: countSwitchedOff(denyRows, coreSeats), copied: copiedSeats.length,
+            switchedOff: countSwitchedOff(denyRows, coreSeats), picked, earlier,
         }));
     }
     ctx.managedSettings = written.managed || null;

@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { placement, CORE } = require('./plugin-placement.js');
+const { seatsLine, countSeatFiles } = require('./install/seats-line.js');
 
 const ONE_SEAT = 'skill csharp\nrule markdown-docs\nagent evidence-gatherer\n';
 const SEATS_LINE = /^==> seats: .*$/m;
@@ -31,7 +32,7 @@ test('install-seats-line: the copy route says how many seats were copied into .c
     const { out } = seedRun('install', ONE_SEAT, {
         args: ['--scope', 'project'], env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' },
     });
-    assert.ok(out.includes('==> seats: 1 copied into .claude/agents\n'), out);
+    assert.ok(out.includes('==> seats: copy route - 1 picked in .claude/agents\n'), out);
     assert.doesNotMatch(out, /on from the alfred-code plugin/);
 });
 
@@ -103,7 +104,29 @@ test('install-seats-line: the copy route counts the seats that are in .claude/ag
         args: ['--scope', 'project'], env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' },
         inspect: (repo) => { present = fs.readdirSync(path.join(repo, '.claude', 'agents')).filter((f) => f.endsWith('.md')).length; return null; },
     });
-    const said = Number(/^==> seats: (\d+) copied into \.claude\/agents$/m.exec(out)[1]);
-    assert.strictEqual(said, present, out);
+    const m = /^==> seats: copy route - (\d+) picked in \.claude\/agents(?:; (\d+) earlier)?/m.exec(out);
+    assert.strictEqual(Number(m[1]) + Number(m[2] || 0), present, out);
     assert.ok(present >= 2, 'both picks are there');
+});
+
+test('install-seats-line: the copy route names earlier copies', () =>
+{
+    assert.strictEqual(seatsLine({ viaPlugin: false, picked: 3, earlier: 45 }),
+        'seats: copy route - 3 picked in .claude/agents; 45 earlier copies not picked stay there - the stack no longer updates them; delete a file to drop its seat');
+});
+
+test('install-seats-line: no earlier copies, one clause', () =>
+{
+    assert.strictEqual(seatsLine({ viaPlugin: false, picked: 3, earlier: 0 }), 'seats: copy route - 3 picked in .claude/agents');
+});
+
+test('install-seats-line: countSeatFiles counts seats on disk once', POSIX_ONLY, () =>
+{
+    const dir = fs.mkdtempSync(path.join(TMP, 'agents-'));
+    for (const n of ['a', 'b', 'c', 'mine']) fs.writeFileSync(path.join(dir, `${n}.md`), n);
+    fs.symlinkSync(path.join(dir, 'a.md'), path.join(dir, 'd.md'));
+    assert.deepStrictEqual(countSeatFiles({ agentsDir: dir, seatNames: ['a', 'b', 'c', 'd'], pickedFiles: ['a.md'] }), { picked: 1, earlier: 2 });
+    // readdir order never decides: the picked link claims the real file whichever name comes first
+    assert.deepStrictEqual(countSeatFiles({ agentsDir: dir, seatNames: ['a', 'b', 'c', 'd'], pickedFiles: ['d.md'] }), { picked: 1, earlier: 2 });
+    assert.deepStrictEqual(countSeatFiles({ agentsDir: path.join(dir, 'none'), seatNames: ['a'], pickedFiles: ['a.md'] }), { picked: 0, earlier: 0 });
 });
