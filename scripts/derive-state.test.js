@@ -836,7 +836,8 @@ test('writable (2.1.0): the seat off-state is written whenever the core loads th
     const both = { hooks: true, agents: true };
     assert.deepStrictEqual(writable(state, { routes: ALL_ROUTES, answered: both }).agentDeny, state.agents.deny);
     const mixed = writable(state, { routes: { skills: false, hooks: true, mcps: true }, answered: both });
-    assert.deepStrictEqual([mixed.agentDeny, mixed.agentAllow], [state.agents.deny, state.agents.allow], 'the core lists every seat on this route too - the unpicked ones are denied');
+    const everySeat = require('./plugin-placement.js').placement().plugins['alfred-code'].agents.map((a) => `Agent(alfred-code:${a})`);
+    assert.deepStrictEqual([mixed.agentDeny, mixed.agentAllow], [everySeat, []], 'the core lists every seat on this route too - every one is denied, so a copied seat lists once');
     assert.deepStrictEqual(writable(state, { routes: {}, answered: both }).agentDeny, [], 'no core on the full copy route - absence is off');
     assert.ok(!Object.hasOwn(mixed, 'undroppable'));
 });

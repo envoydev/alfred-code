@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
-const { readLedger } = require('./install/stamp.js');
+const { readLedger, readLibrary } = require('./install/stamp.js');
+const { placement, CORE } = require('./plugin-placement.js');
 
 const KEY = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
 const SELECTION = 'skill csharp\nagent evidence-gatherer\n';
@@ -138,4 +139,79 @@ test('install-seats-route: --seats-route copy beside a settings.json that sets t
     });
     assert.ok(out.includes(`!! seats route: settings.json sets ${KEY}=true for everyone - change it there`), out);
     assert.deepEqual(result, { value: undefined, ledgered: false });
+});
+
+// The switch itself: no detection code, only the deny and the records each run writes on its own route's line.
+const LISTING = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']
+    .map((name) => ({ id: `${name}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+const CORE_SEATS = placement().plugins[CORE].agents;
+const SEAT = 'aspnet-implementer';
+const SWITCH_SKILL = 'csharp';
+const PICKED = `skill markdown-style\nskill ${SWITCH_SKILL}\nagent ${SEAT}\n`;
+const EDIT = '\nhand-edited line\n';
+const PROJECT = ['--scope', 'project'];
+const ROUTE = { copy: [...PROJECT, '--seats-route', 'copy'], plugin: [...PROJECT, '--seats-route', 'plugin'], plain: PROJECT };
+const seatPath = (repo) => claudeFile(repo, path.join('agents', `${SEAT}.md`));
+const skillPath = (repo) => claudeFile(repo, path.join('skills', SWITCH_SKILL, 'SKILL.md'));
+const stampPath = (repo) => claudeFile(repo, 'alfred-code.stamp');
+const seatRecord = (repo) => readLedger(stampPath(repo)).files[`agents/${SEAT}.md`] || readLibrary(stampPath(repo)).agents[SEAT] || null;
+const seatDeny = (repo) => ((readJson(claudeFile(repo, LOCAL_FILE)).permissions || {}).deny || []).filter((d) => d.startsWith('Agent(')).sort();
+const spelled = (seats) => seats.map((a) => `Agent(${CORE}:${a})`).sort();
+const switchRun = (actions, selection, args, each, extra = {}) => seedRun(actions, selection, { plugins: LISTING, env: NO_ROUTE_ENV, args, each, ...extra });
+
+test('the switch to copy and back keeps an edited core seat', POSIX_ONLY, () =>
+{
+    let recorded;
+    let edited;
+    const seen = [];
+    switchRun(['install', 'update', 'update', 'update', 'update'], PICKED,
+        [ROUTE.plugin, ROUTE.copy, ROUTE.plugin, ROUTE.plain, ROUTE.plain], (repo, i) =>
+        {
+            if (i === 1) { recorded = seatRecord(repo); fs.appendFileSync(seatPath(repo), EDIT); edited = fs.readFileSync(seatPath(repo), 'utf8'); }
+            if (i > 1) seen.push({ text: fs.existsSync(seatPath(repo)) && fs.readFileSync(seatPath(repo), 'utf8'), record: seatRecord(repo) });
+        });
+    assert.ok(recorded, 'the copy route recorded the seat');
+    assert.equal(seen.length, 3);
+    for (const [i, run] of seen.entries()) assert.deepEqual(run, { text: edited, record: recorded }, `after run ${i + 3}`);
+});
+
+test('an edited core seat unpicked on the plugin route survives a switch to copy and back', POSIX_ONLY, () =>
+{
+    let recorded;
+    let edited;
+    const seen = [];
+    switchRun(['install', 'update', 'update', 'update'], PICKED, [ROUTE.copy, ROUTE.plugin, ROUTE.copy, ROUTE.plugin], (repo, i) =>
+    {
+        if (i === 0)
+        {
+            recorded = seatRecord(repo);
+            fs.appendFileSync(seatPath(repo), EDIT);
+            edited = fs.readFileSync(seatPath(repo), 'utf8');
+            fs.writeFileSync(path.join(repo, '..', 'sel.txt'), `skill markdown-style\nskill ${SWITCH_SKILL}\n`);
+        }
+        else seen.push({ text: fs.existsSync(seatPath(repo)) && fs.readFileSync(seatPath(repo), 'utf8'), record: seatRecord(repo) });
+    });
+    assert.ok(recorded, 'the copy route recorded the seat');
+    for (const [i, run] of seen.entries()) assert.deepEqual(run, { text: edited, record: recorded }, `after run ${i + 2}`);
+});
+
+test('the switch writes the deny rows for every core seat, and the switch back writes the unpicked seats\' rows again', POSIX_ONLY, () =>
+{
+    const { steps } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin], seatDeny);
+    const [plugin, copy, back] = steps;
+    assert.deepEqual(plugin, spelled(CORE_SEATS.filter((a) => a !== SEAT)), 'the plugin route denies the unpicked seats');
+    assert.deepEqual(copy, spelled(CORE_SEATS), 'the copy route denies every core seat, the copied one included');
+    assert.deepEqual(back, plugin, 'back: the picked seat is allowed again and the unpicked rows are there');
+});
+
+test('to copy and back with an edited picked library skill: the switch back refreshes it with the overwrite line', POSIX_ONLY, () =>
+{
+    let fresh;
+    const { outs, result } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin], (repo, i) =>
+    {
+        if (i === 0) fresh = fs.readFileSync(skillPath(repo), 'utf8');
+        if (i === 1) fs.appendFileSync(skillPath(repo), EDIT);
+    }, { inspect: (repo) => fs.readFileSync(skillPath(repo), 'utf8') });
+    assert.ok(outs[2].includes(`  overwriting a hand-edited copy: skill ${SWITCH_SKILL}`), outs[2]);
+    assert.equal(result, fresh, 'the switch back refreshes the skill to the stack text');
 });
