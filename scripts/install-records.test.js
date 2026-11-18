@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { hashItem } = require('./install/library.js');
-const { recordView, recordOf, editedSince } = require('./install/records.js');
+const { recordView, recordOf, editedSince, carriedRows } = require('./install/records.js');
 
 const HASH_LIBRARY = 'a'.repeat(64);
 const HASH_LEDGER = 'b'.repeat(64);
@@ -88,5 +88,36 @@ test('editedSince: false at the record\'s hash, true at another, false with no r
     assert.equal(editedSince(view, 'agent', 'bar', file), true, 'changed since the record');
     assert.equal(editedSince(view, 'agent', 'unrecorded', file), false, 'no record is never edited');
     assert.equal(editedSince(view, 'agent', 'bar', path.join(dir, 'gone.md')), false, 'a missing file is not edited');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('editedSince: a file that stats but cannot be read is not edited, and never throws', { skip: (process.platform === 'win32' || process.getuid?.() === 0) && 'needs a file mode that denies the reader' }, () =>
+{
+    const dir = scratch();
+    const file = path.join(dir, 'bar.md');
+    fs.writeFileSync(file, 'one\n');
+    const view = recordView(stampWith(dir, ['version: 1.0.0', 'library-skills: ', `library-agents: bar=${HASH_LIBRARY}`, 'library-rules: ']), null);
+    fs.chmodSync(file, 0o000);
+    try { assert.equal(editedSince(view, 'agent', 'bar', file), false); }
+    finally { fs.chmodSync(file, 0o600); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('carriedRows: carries an edited recorded copy the run did not rewrite, from either record line', () =>
+{
+    const dir = scratch();
+    const skills = path.join(dir, 'skills');
+    const agents = path.join(dir, 'agents');
+    fs.mkdirSync(path.join(skills, 'edited'), { recursive: true });
+    fs.mkdirSync(path.join(skills, 'same'), { recursive: true });
+    fs.mkdirSync(agents);
+    fs.writeFileSync(path.join(skills, 'edited', 'SKILL.md'), 'changed\n');
+    fs.writeFileSync(path.join(skills, 'same', 'SKILL.md'), 'same\n');
+    fs.writeFileSync(path.join(agents, 'seat.md'), 'changed\n');
+    fs.writeFileSync(path.join(agents, 'rewritten.md'), 'changed\n');
+    const stamp = stampWith(dir, ['version: 1.0.0', 'library-skills: ', `library-agents: seat=${HASH_LIBRARY}`, 'library-rules: ']);
+    const ledger = { files: { 'skills/edited': HASH_LEDGER, 'skills/same': hashItem(path.join(skills, 'same')), 'agents/rewritten.md': HASH_LEDGER, 'agents/gone.md': HASH_LEDGER } };
+    const view = recordView(stamp, ledger);
+    const out = carriedRows(view, { skill: skills, agent: agents }, new Set(['agents/rewritten.md']));
+    assert.deepEqual(out, { 'skills/edited': HASH_LEDGER, 'agents/seat.md': HASH_LIBRARY });
     fs.rmSync(dir, { recursive: true, force: true });
 });

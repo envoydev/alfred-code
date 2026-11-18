@@ -36,6 +36,7 @@ const pinsLayer = require('./pins.js');
 const { seatsLine, countSwitchedOff, countSeatFiles } = require('./seats-line.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
+const { recordView, editedSince, carriedRows } = require('./records.js');
 const skillHeadings = require('./skill-headings.js');
 const ruleOpenings = require('./rule-openings.js');
 const { shippedText } = require('./retired-rules.js');
@@ -1405,6 +1406,8 @@ function withoutForeign(picked, foreign)
 
 function installSkillsAndAgents(ctx)
 {
+    // What the stack recorded for each copy, read before this run rewrites any: the overwrite lines and the carry rule ask it.
+    ctx.records = recordView(ctx.stampFile, ctx.ledger);
     const closure = plugins.resolveStackPlugins({
         routes: ctx.routes,
         runSelection: () => runSelectionPlugins(ctx),
@@ -1558,13 +1561,16 @@ function copyKinds(ctx, closure)
         const src = path.join(ctx.source.dir, 'stack', 'skills', name);
         if (!fs.existsSync(src)) { ctx.note(`skill '${name}' not found in the stack source`); continue; }
         if (foreignSkill(ctx, name)) { ctx.log(foreignLine(name)); ctx.foreignSkills.add(name); continue; }
+        logOverwrite(ctx, 'skill', name, path.join(ctx.skillsDir, name));
         if (copy.syncTree({ src, dest: path.join(ctx.skillsDir, name), render: copyRender(ctx, 'skill') })) ctx.log(`skill [${ctx.args.scope}]: ${name}`);
         else ctx.log(`  skill current: ${name}`);
     }
 
+    const seatFiles = [...new Set([...ctx.lists.agents, ...ctx.held.agents.map((n) => `${n}.md`)])].filter((f) => !away.agents.has(f.replace(/\.md$/, '')));
+    for (const f of seatFiles) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), path.join(agentsDir, f));
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
-        destDir: agentsDir, files: [...new Set([...ctx.lists.agents, ...ctx.held.agents.map((n) => `${n}.md`)])].filter((f) => !away.agents.has(f.replace(/\.md$/, ''))), render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
+        destDir: agentsDir, files: seatFiles, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
     });
     // A member-only item the last run held and no member picks now goes, unless edited since its ledger row.
     const was = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
@@ -1575,6 +1581,12 @@ function copyKinds(ctx, closure)
         const rows = (ctx.ledger && ctx.ledger.files) || {};
         pruneCopies(ctx, dir, gone, cat, 'no member below picks it now', { keep: (f) => (rows[`${cat}s/${f}`] && library.hashItem(path.join(dir, f)) !== rows[`${cat}s/${f}`] ? 'edited since the stack wrote it, so it is yours' : false) });
     }
+}
+
+// The copy route refreshes a picked copy whatever the project did to it; a copy the record says was edited is named first.
+function logOverwrite(ctx, kind, name, file)
+{
+    if (editedSince(ctx.records, kind, name, file)) ctx.log(`  overwriting a hand-edited copy: ${kind} ${name}`);
 }
 
 // C17 / B seam: what a copy-route copy holds - the shipped text, with a seat's `alfred-code:<skill>` preloads bare on the
@@ -2346,6 +2358,8 @@ function managedFiles(ctx)
         for (const n of ctx.held ? ctx.held.skills : []) put(`skills/${n}`, path.join(ctx.skillsDir, n));
         for (const n of ctx.held ? ctx.held.agents : []) put(`agents/${n}.md`, path.join(ctx.agentsDir, `${n}.md`));
     }
+    // The carry invariant, copy route: a recorded skill or seat the project edited and this run did not rewrite keeps its record.
+    if (!ctx.routes.skills) Object.assign(out, carriedRows(ctx.records, { skill: ctx.skillsDir, agent: ctx.agentsDir }, new Set(Object.keys(out))));
     // An AGENTS.md this run seeded (or moved from its 2.1.6 CLAUDE.md name) is the template's until init fills it in - from then on it is the project's.
     if (ctx.stackAgentsMd) put('AGENTS.md', ledgerPath(ctx, 'AGENTS.md'));
     // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
