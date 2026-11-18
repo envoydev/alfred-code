@@ -127,17 +127,15 @@ test('entryFor reads the record', () =>
 
 // --- session-status.js (plan task 3) -----------------------------------------------------------------------------
 const { spawnSync } = require('node:child_process');
-const { scrubbed, strayRoots } = require('./hook-test-env');
+const { scrubbed, strayRoots, statusAccount } = require('./hook-test-env');
 const STATUS = path.join(HOOKS, 'session-status.js');
 const S = () => require(STATUS);
 // removeStatus checks the process's age against the exclude deadline; pinned, so a slow runner never reads 'late' (the Windows VM gate)
 const removeStatus = (root, deps, options) => S().removeStatus(root, { uptime: () => 0, ...deps }, options);
-const ACCOUNT = path.join(TMP, 'account');
+const ACCOUNT = statusAccount();   // settings.json enabling alfred-mods: the one thing that opens the status gate
 const HOME = path.join(TMP, 'home');
-fs.mkdirSync(ACCOUNT, { recursive: true });
 fs.mkdirSync(HOME, { recursive: true });
-process.env.CLAUDE_CONFIG_DIR = ACCOUNT;   // the account settings fresh-session reads: a throwaway, never the runner's
-process.env.ALFRED_CODE_SESSION_STATUS = 'on';   // the in-process writers below: the gate cases pass their own env and leave it unset
+process.env.CLAUDE_CONFIG_DIR = ACCOUNT;   // the in-process writers' gate and the account settings fresh-session reads: a throwaway, never the runner's
 const statusOf = (base, id) => path.join(base, '.alfred', 'state', 'sessions', 'status', `${id}.json`);
 const legacyStatusOf = (base, id) => path.join(base, '.claude', 'session-inspector', 'status', `${id}.json`);
 const readStatus = (base, id) => JSON.parse(fs.readFileSync(statusOf(base, id), 'utf8'));
@@ -156,7 +154,7 @@ function inChild(env, code)
     const base = scrubbed(process.env);
     for (const k of ['ANTHROPIC_MODEL', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) delete base[k];
     const script = `const S = require(${JSON.stringify(STATUS)}); const F = require(${JSON.stringify(path.join(HOOKS, 'fresh-session.js'))}); const out = (() => { ${code} })(); process.stdout.write(JSON.stringify(out));`;
-    const r = spawnSync(process.execPath, ['-e', script], { env: { ...base, HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, ALFRED_CODE_SESSION_STATUS: 'on', ...env }, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, ['-e', script], { env: { ...base, HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, ...env }, encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);
     return JSON.parse(r.stdout);
 }
@@ -465,7 +463,7 @@ test('R134: the legacy folder list as a link to a FIFO, or a large file, reads a
             const n = S.pruneStatus(${JSON.stringify(root)}, 's1', Date.now(), {});
             process.stdout.write(JSON.stringify({ r, n }));`;
         const t0 = Date.now();
-        const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 5000, env: { ...scrubbed(process.env), HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } });
+        const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 5000, env: { ...scrubbed(process.env), HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root } });
         assert.ok(!r.error, `${why}: ${r.error}`);
         assert.strictEqual(r.status, 0, `${why}: ${r.stderr}`);
         assert.ok(Date.now() - t0 < 3000, `${why}: ${Date.now() - t0} ms`);
@@ -574,7 +572,7 @@ test('baseOf is the project root: a subfolder cwd never makes a base (the root d
 test('T9 ids and payloads', () =>
 {
     const root = project();
-    const env = { ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_CONFIG_DIR: ACCOUNT };
     const write = (p) => S().writeStatus({ cwd: root, hook_event_name: 'Stop', ...p }, { entry: null }, { when: 'always', deps: { env } });
     assert.strictEqual(write({ session_id: 'a'.repeat(128) }), 'written');
     assert.strictEqual(write({ session_id: 'a'.repeat(129) }), 'skipped');
@@ -583,7 +581,7 @@ test('T9 ids and payloads', () =>
     assert.strictEqual(write({ session_id: 's1', agent_id: 'x' }), 'skipped', 'a seat writes nothing');
     assert.strictEqual(S().writeStatus({ session_id: 's1', hook_event_name: 'Stop' }, {}, { when: 'always', deps: { env } }), 'skipped', 'no cwd, no project dir');
     const elsewhere = project();
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: elsewhere }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'written', 'a cwd outside the project writes at the root');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: elsewhere }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT } } }), 'written', 'a cwd outside the project writes at the root');
     assert.ok(fs.existsSync(statusOf(root, 's1')), 'the root holds the file');
     assert.ok(!fs.existsSync(path.join(elsewhere, '.claude')), 'no folder made outside the project');
 });
@@ -595,7 +593,7 @@ test('the legacy sweep leaves a listed base whose .claude links out of the proje
     fs.mkdirSync(sub);
     const outside = project();
     link(outside, path.join(sub, '.claude'));
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: sub }, {}, { when: 'always', deps: { env } }), 'written', 'the write goes to the root\'s data root');
     assert.ok(!fs.existsSync(path.join(outside, 'session-inspector')), 'nothing written through the link');
     const old = path.join(outside, 'session-inspector', 'status', 'aaaaaaaa.json');
@@ -621,7 +619,7 @@ test('a control character in the base\'s path writes no exclude line', { skip: p
     const before = fs.readFileSync(exclude, 'utf8');
     assert.deepStrictEqual(S().ensureExcluded([odd], { env: {} }), ['skipped']);
     assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'no line, so no `*` pattern');
-    const env = { CLAUDE_PROJECT_DIR: odd, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: odd, CLAUDE_CONFIG_DIR: ACCOUNT };
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: odd }, {}, { when: 'always', deps: { env } }), 'skipped', 'and no file the exclude cannot cover');
     assert.ok(!fs.existsSync(path.join(odd, '.claude')));
 });
@@ -630,7 +628,7 @@ test('a vanished project root writes nothing', () =>
 {
     const root = project();
     const gone = path.join(root, 'gone');
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: gone }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: gone, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: gone }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: gone, CLAUDE_CONFIG_DIR: ACCOUNT } } }), 'skipped');
     assert.ok(!fs.existsSync(gone));
 });
 
@@ -673,19 +671,19 @@ test('T11 probe rows and cost', (t) =>
 {
     const root = project();
     const rows = () => fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 's1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' }, { entry: null }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'written');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' }, { entry: null }, { when: 'always', deps: { env: { CLAUDE_CONFIG_DIR: ACCOUNT } } }), 'written');
     const [ok] = rows();
     assert.deepStrictEqual([ok.mode, ok.kind, ok.result, ok.event, ok.hook, typeof ok.ms], ['probe', 'status-write', 'ok', 'SessionStart', 'session-status.js', 'number']);
     const bad = project();
     fs.mkdirSync(path.join(bad, '.alfred', 'state', 'sessions'), { recursive: true });
     fs.writeFileSync(path.join(bad, '.alfred', 'state', 'sessions', 'status'), 'a file');
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: bad, hook_event_name: 'Stop' }, { entry: null }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: bad, hook_event_name: 'Stop' }, { entry: null }, { when: 'always', deps: { env: { CLAUDE_CONFIG_DIR: ACCOUNT } } }), 'skipped');
     const failed = fs.readFileSync(path.join(bad, '.alfred', 'statistics', 'hook-blocks', 's1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.strictEqual(failed[0].result, 'failed');
     assert.deepStrictEqual(fs.readdirSync(path.join(bad, '.alfred', 'state', 'sessions')), ['status'], 'no tmp left');
     const ticks = [0, 250];
     const clock = () => (ticks.length ? ticks.shift() : 250);
-    S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'Stop' }, { entry: null, autoRun: true }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' }, clock } });
+    S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'Stop' }, { entry: null, autoRun: true }, { when: 'always', deps: { env: { CLAUDE_CONFIG_DIR: ACCOUNT }, clock } });
     assert.strictEqual(rows().pop().result, 'slow');
     // the worst case: 200 records, a 1MB plan, a 9MB transcript whose only model row is its first line
     const worst = project();
@@ -734,7 +732,7 @@ test('one spawn per common dir, none past the deadline', () =>
         fs.writeFileSync(exclude, before);
         const r = spawnSync(process.execPath, [path.join(HOOKS, 'history-session.js')], {
             input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's1', source: 'startup', cwd: root }), encoding: 'utf8',
-            env: { ...gitEnv, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT, ALFRED_CODE_SESSION_STATUS: 'on' }, cwd: root,
+            env: { ...gitEnv, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT }, cwd: root,
         });
         assert.strictEqual(r.status, 0, r.stderr);
         assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'the hook adds no line: the file is in the data root');
@@ -758,7 +756,7 @@ test('removeStatus takes back the status files and the exclude lines this projec
     const sub = path.join(root, 'sub');
     const other = path.join(top, 'other');
     for (const d of [sub, other]) fs.mkdirSync(d, { recursive: true });
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     const exclude = path.join(top, '.git', 'info', 'exclude');
     // the line the user typed for root is there before any session: nothing is added for root, so it stays theirs
     fs.writeFileSync(exclude, '# git ls-files --others --exclude-from=.git/info/exclude\n*.log\n/app/.claude/session-inspector/status/\n');
@@ -820,7 +818,7 @@ test('fixed root: removeStatus reads the list under the dataRoot it is handed', 
     execFileSync('git', ['init', '-q'], { cwd: root, env: gitEnv, stdio: 'pipe' });
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub, { recursive: true });
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     legacyStray(root, root, 's1');
     legacyStray(root, sub, 's1');
     const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
@@ -958,7 +956,7 @@ test('plan: set through the fields, carried by every later write, null once the 
     const file = JSON.parse(FILE);
     const dir = planDir(root);
     const now = () => JSON.parse(fs.readFileSync(file, 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     const start = (fields) => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, ${JSON.stringify(fields)}, { when: 'always' });`);
     const stop = () => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed' });`);
     start({ plan: dir });
@@ -985,7 +983,7 @@ test('onPlan: sets the key, compares first, carries the modes, and says nothing 
     const { root, P, FILE } = sonnetSession();
     const file = JSON.parse(FILE);
     const now = () => JSON.parse(fs.readFileSync(file, 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     const dir = planDir(root);
     const call = (folder, extra = '') => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse'${extra} }, ${JSON.stringify(folder)}, () => true);`);
     inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, { autoRun: true, scorer: { on: true, level: 90, rounds: 3 } }, { when: 'always' });`);
@@ -1006,7 +1004,7 @@ test('onPlan: a second plan\'s call moves the key; a plan outside the root nulls
 {
     const { root, P, FILE } = sonnetSession();
     const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
     call(planDir(root));
     call(planDir(root, 'next'));
@@ -1022,7 +1020,7 @@ test('onPlan: a mistyped --plan (no such folder) leaves the session\'s plan as i
 {
     const { root, P, FILE } = sonnetSession();
     const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
     assert.strictEqual(call(planDir(root)), 'written');
     for (const typo of [`${PLANS}/cvs`, path.join(root, PLANS, 'cvs'), `${PLANS}/csv/nope`]) {
@@ -1037,7 +1035,7 @@ test('the Stop fallback: with no plan in the file, the history record\'s folder 
 {
     const { root, P, FILE } = sonnetSession();
     const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT };
     planDir(root);
     fs.writeFileSync(path.join(root, PLANS, 'csv', 'csv.md'), '# Feature - plan\n');
     const stop = (entry) => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, { entry: ${JSON.stringify(entry)} }, { when: 'changed' });`);
@@ -1071,8 +1069,8 @@ test('a plan call landing between a prompt\'s two reads is kept', () =>
 });
 
 // --- the reader gate (status-file-root design, Part 2) -----------------------------------------------------------
-// readerOn: the file is written only while alfred-mods or session-inspector is enabled in the merged enabledPlugins, or
-// ALFRED_CODE_SESSION_STATUS says on. Every case here leaves the variable unset except the two that name it.
+// readerOn: the file is written only while alfred-mods or session-inspector is enabled in the merged enabledPlugins;
+// nothing overrides it.
 const LAYOUT = require(path.join(HOOKS, 'layout.js'));
 let gateSeq = 0;
 const enabled = (key = 'alfred-mods@market', value = true) => ({ enabledPlugins: { [key]: value } });
@@ -1171,15 +1169,28 @@ test('readerOn: a file that is garbage, or whose enabledPlugins is no plain obje
     assert.strictEqual(none.on(), false, 'garbage everywhere');
 });
 
-test('readerOn: no files is off; the variable on opens it with no files, off closes it over an enabled mod', () =>
+test('readerOn: no files is off, a mod set false is off, and session-inspector enabled is on', () =>
 {
     const g = gateSetup();
     assert.strictEqual(g.on(), false, 'no files');
-    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'on' }), true, 'on with no files');
-    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: '' }), false, 'an empty value is unset');
+    g.user(enabled('alfred-mods@market', false));
+    assert.strictEqual(g.on(), false, 'a mod set false');
+    g.user(enabled('session-inspector@x', true));
+    assert.strictEqual(g.on(), true, 'session-inspector@x: true');
+    g.user(enabled('alfred-mods@market', true));
+    assert.strictEqual(g.on(), true, 'alfred-mods enabled');
+});
+
+test('readerOn: ALFRED_CODE_SESSION_STATUS is no override - on with no mod enabled writes nothing, off over an enabled mod does not close it', () =>
+{
+    const g = gateSetup();
+    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'on' }), false, 'on with no mod enabled');
+    const env = { CLAUDE_PROJECT_DIR: g.root, CLAUDE_CONFIG_DIR: g.account, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const payload = { session_id: 'var-gone', cwd: g.root, hook_event_name: 'Stop' };
+    assert.strictEqual(S().writeStatus(payload, { entry: null }, { when: 'always', deps: { env, layout: g.layout } }), 'skipped', 'no write');
+    assert.ok(!fs.existsSync(statusOf(g.root, 'var-gone')), 'no status file');
     g.user(enabled());
-    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'off' }), false, 'off over an enabled mod');
-    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: '' }), true, 'unset follows the settings');
+    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'off' }), true, 'off does not close an enabled mod');
 });
 
 test('readerOn: the account is CLAUDE_CONFIG_DIR, never HOME, and a throw reads as off', () =>
@@ -1229,7 +1240,7 @@ test('readerOn: the median of 50 calls on a project holding all four files', (t)
 });
 
 // the gate's wiring, in a child like the field cases: a hook's own entry points, the real process env
-const GATE_ENV = (g) => ({ CLAUDE_PROJECT_DIR: g.root, CLAUDE_CONFIG_DIR: g.account, ALFRED_CODE_SESSION_STATUS: '' });
+const GATE_ENV = (g) => ({ CLAUDE_PROJECT_DIR: g.root, CLAUDE_CONFIG_DIR: g.account });
 const GATE_PATCH = (g) => `require(${JSON.stringify(path.join(HOOKS, 'layout.js'))}).managedSettingsFile = () => ${JSON.stringify(g.managed)};`;
 const gateRows = (root, id) =>
 {
@@ -1321,9 +1332,12 @@ function sweepProject()
     fs.writeFileSync(list, JSON.stringify([root, a, ab].map(posixOf)));
     return { root, a, ab, files, handoff, notes, exclude, list, git, held: () => JSON.parse(fs.readFileSync(list, 'utf8')) };
 }
-const sweepEnv = (root, word) => ({ CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT, ALFRED_CODE_SESSION_STATUS: word });
-const startAt = (f, word, extra = {}) => S().onSessionStart({ session_id: 'sweeper', cwd: f.root, hook_event_name: 'SessionStart', source: 'startup' }, null,
-    { env: sweepEnv(f.root, word), uptime: () => 0, ...extra });
+// `gate` 'on' hands the hook the account that enables alfred-mods, 'off' one that holds no settings at all
+const BARE_ACCOUNT = path.join(TMP, 'account-bare');
+fs.mkdirSync(BARE_ACCOUNT, { recursive: true });
+const sweepEnv = (root, gate) => ({ CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: gate === 'on' ? ACCOUNT : BARE_ACCOUNT });
+const startAt = (f, gate, extra = {}) => S().onSessionStart({ session_id: 'sweeper', cwd: f.root, hook_event_name: 'SessionStart', source: 'startup' }, null,
+    { env: sweepEnv(f.root, gate), uptime: () => 0, ...extra });
 const sweepRows = (root) => gateRows(root, 'sweeper').filter((r) => r.kind === 'status-sweep');
 
 test('the sweep, reader on: the subfolders lose their files and pairs at any age, the root keeps its own', () =>
@@ -1640,7 +1654,7 @@ test('the status file is written under the data root', () =>
 {
     const root = project();
     const spy = execSpy();
-    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root };
     assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: { env, exec: spy.exec } }), 'written');
     assert.ok(fs.existsSync(newStatusOf(root, 's1')), 'the file is in the data root');
     assert.strictEqual(JSON.parse(fs.readFileSync(newStatusOf(root, 's1'), 'utf8')).session, 's1');
@@ -1657,7 +1671,7 @@ test('an absolute ALFRED_CODE_DATA_PATH is the data root', () =>
     const root = project();
     const data = path.join(TMP, `data-${seq++}`);
     fs.mkdirSync(data, { recursive: true });
-    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DATA_PATH: data };
+    const env = { CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DATA_PATH: data };
     assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: { env } }), 'written');
     assert.ok(fs.existsSync(path.join(data, 'state', 'sessions', 'status', 's1.json')));
     assert.ok(!fs.existsSync(path.join(root, '.alfred', 'state', 'sessions', 'status')), 'nothing under the project\'s own .alfred');
@@ -1666,7 +1680,7 @@ test('an absolute ALFRED_CODE_DATA_PATH is the data root', () =>
 
 test('a linked status folder refuses the write and the prune; a link inside the root is followed', () =>
 {
-    const env = (root) => ({ ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root });
+    const env = (root) => ({ CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root });
     DATA_PARTS.forEach((segment, index) =>
     {
         const root = project();
@@ -1819,8 +1833,8 @@ test('a start reads the reader gate once', () =>
 {
     const root = project();
     let reads = 0;
-    const prelude = { ...PRELUDE, envOf: (env, suffix) => { if (suffix === 'SESSION_STATUS') reads++; return PRELUDE.envOf(env, suffix); } };
-    S().onSessionStart(startPayload(root), null, { env: sweepEnv(root, 'on'), uptime: () => 0, prelude });
+    const layout = { ...LAYOUT, managedSettingsFile: () => { reads++; return LAYOUT.managedSettingsFile(); } };   // settingsLayers asks for it once per read
+    S().onSessionStart(startPayload(root), null, { env: sweepEnv(root, 'on'), uptime: () => 0, layout });
     assert.strictEqual(reads, 1);
     assert.ok(fs.existsSync(newStatusOf(root, 's1')));
 });
@@ -1832,7 +1846,7 @@ test('a start with CLAUDE_PROJECT_DIR at the main checkout and the cwd in its li
     fs.mkdirSync(path.join(main, '.git', 'worktrees', 'wt'), { recursive: true });
     const tree = project();
     fs.writeFileSync(path.join(tree, '.git'), `gitdir: ${path.join(main, '.git', 'worktrees', 'wt')}\n`);
-    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: main };
+    const env = { CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: main };
     S().onSessionStart(startPayload(tree, 'wt1'), null, { env, exec: execSpy().exec, uptime: () => 0 });
     assert.ok(fs.existsSync(newStatusOf(main, 'wt1')), 'the file is in the main checkout\'s data root');
     assert.ok(!fs.existsSync(newStatusOf(tree, 'wt1')), 'none in the linked worktree');
@@ -1842,7 +1856,7 @@ test('a start whose cwd vanished but whose root is live writes at the root', () 
 {
     const root = project();
     const gone = path.join(root, 'gone');
-    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root };
     S().onSessionStart(startPayload(gone, 'gone1'), null, { env, exec: execSpy().exec, uptime: () => 0 });
     assert.ok(fs.existsSync(newStatusOf(root, 'gone1')), 'the file is at the live root');
     assert.ok(!fs.existsSync(gone), 'the vanished cwd is not recreated');
@@ -1871,7 +1885,7 @@ test('a non-.json drop-in is skipped', () =>
     assert.strictEqual(g.on(), true, 'a .json drop-in opens it');
 });
 
-test('readerOn: with neither the variable nor a plugin key set the answer is false, whatever the machine\'s managed file holds', () =>
+test('readerOn: with no plugin key set the answer is false, whatever the machine\'s managed file holds', () =>
 {
     const g = gateSetup();
     const real = fs.existsSync(LAYOUT.managedSettingsFile());

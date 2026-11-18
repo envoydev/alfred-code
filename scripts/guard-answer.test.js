@@ -2,6 +2,7 @@
 // names, the typed-answer note after an ask, and the Stop silence the 2026-10-20 ruling left (it never blocks).
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+const { statusAccount } = require('./hook-test-env');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
@@ -605,7 +606,7 @@ test('compaction: both context lines come back, no systemMessage', () => {
 // The session status file (2026-10-29, plan task 5): the prompt's own autoRun and scoring, written when one changes.
 const statusPath = (sid) => path.join(ROOT, '.alfred', 'state', 'sessions', 'status', `${sid}.json`);
 const statusRead = (sid) => JSON.parse(fs.readFileSync(statusPath(sid), 'utf8'));
-const typed = (sid, text, env = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORING_CFG, ALFRED_CODE_SESSION_STATUS: 'on', ...env });
+const typed = (sid, text, env = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORING_CFG, CLAUDE_CONFIG_DIR: statusAccount(), ...env });
 test('T4 autoRun at the prompt', () => {
     clearStamp();
     typed('st1', `${AUTO_CMD} on`);
@@ -658,15 +659,15 @@ test('T4 autoRun at the prompt', () => {
     } finally { fs.rmSync(statusDir, { force: true }); fs.renameSync(aside, statusDir); }
     assert.strictEqual(JSON.parse(quiet.stdout).hookSpecificOutput.additionalContext, JSON.parse(typed('st7', 'plain').stdout).hookSpecificOutput.additionalContext, 'the same context with the file on');
 });
-// The settings route (status-file-root design, Part 2): the variable unset, the mod enabled in the account's settings.json.
+// The settings route (status-file-root design, Part 2): the mod enabled in the account's settings.json.
 test('the gate: the mod enabled in the account settings writes the file, neither route writes none', () => {
     const enabledAccount = fs.mkdtempSync(path.join(TMP, 'gate-on-'));
     fs.writeFileSync(path.join(enabledAccount, 'settings.json'), JSON.stringify({ enabledPlugins: { 'alfred-mods@market': true } }));
-    typed('gt1', 'plain', { ALFRED_CODE_SESSION_STATUS: '', CLAUDE_CONFIG_DIR: enabledAccount });
+    typed('gt1', 'plain', { CLAUDE_CONFIG_DIR: enabledAccount });
     assert.strictEqual(statusRead('gt1').session, 'gt1', 'written through the settings route');
     const bareAccount = fs.mkdtempSync(path.join(TMP, 'gate-off-'));
-    typed('gt2', 'plain', { ALFRED_CODE_SESSION_STATUS: '', CLAUDE_CONFIG_DIR: bareAccount });
-    assert.ok(!fs.existsSync(statusPath('gt2')), 'neither the variable nor the mod: no file');
+    typed('gt2', 'plain', { CLAUDE_CONFIG_DIR: bareAccount });
+    assert.ok(!fs.existsSync(statusPath('gt2')), 'no mod: no file');
 });
 test('T5 scoring at the prompt', () => {
     clearOverride();

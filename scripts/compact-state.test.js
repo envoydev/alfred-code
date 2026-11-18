@@ -5,6 +5,7 @@
 // injection points at it.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+const { statusAccount } = require('./hook-test-env');
 require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
@@ -17,7 +18,9 @@ const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-fresh-session-s
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-state-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
-const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')), ALFRED_CODE_SESSION_STATUS: 'on' };
+// The in-process window cases read, and one writes, the account's settings.json, so they get an account of their own.
+const WINDOW_ACCOUNT = fs.mkdtempSync(path.join(TMP, 'acct-'));
+const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: statusAccount() };   // the account enabling alfred-mods: the status gate is open
 for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_DOCS_ASK',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_AUTO_COMPACT'])
     delete BASE_ENV[k];
@@ -277,7 +280,7 @@ test('compact-state: an automatic compaction records its context, and the trigge
     try
     {
         process.env.CLAUDE_PROJECT_DIR = p.root;
-        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
         delete process.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_1M;
         delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
         delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
@@ -309,10 +312,10 @@ test('compact-state: an automatic compaction records its context, and the trigge
         assert.strictEqual(fresh.knownWindow(), 1000000, "'auto' is no window");
         // audit HK03: the USER file's top-level key is 'Scope: Any file' with no model limit (settings-reference) - it
         // lowers an Opus 5.5 window like any other file's
-        set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), { autoCompactWindow: 500000 });
+        set(path.join(WINDOW_ACCOUNT, 'settings.json'), { autoCompactWindow: 500000 });
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.knownWindow(), 500000, "the USER file's top-level key reaches Opus 5.5");
-        set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), {});
+        set(path.join(WINDOW_ACCOUNT, 'settings.json'), {});
     }
     finally { process.env = saved; }
 });
@@ -337,7 +340,7 @@ test('compact-state: a configured auto-compact window the compactions show was n
     const saved = { ...process.env };
     try
     {
-        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
         delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
         delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
         const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'acw-')) };
@@ -1153,7 +1156,7 @@ test('compact-state: compact-points.json is read from state/sessions/, else from
     try
     {
         process.env.CLAUDE_PROJECT_DIR = p.root;
-        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
         for (const k of ['ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) delete process.env[k];
         point(p.flow, 300000);
         fresh.use({ transcript_path: tp, cwd: p.root });
@@ -1787,13 +1790,12 @@ test('the status gate: the mod enabled in the account settings writes the file, 
         const account = fs.mkdtempSync(path.join(TMP, 'gate-acct-'));
         if (settings) fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify(settings));
         const s = folderSetup({ approve: true });
-        s.env.ALFRED_CODE_SESSION_STATUS = '';
         s.env.CLAUDE_CONFIG_DIR = account;
         s.via(SHELL, 'Bash', { command: `${ENGINE} start --plan csv --task 1` });
         return s.statusFile();
     };
     assert.ok(fs.existsSync(call({ enabledPlugins: { 'alfred-mods@market': true } })), 'written through the settings route');
-    assert.ok(!fs.existsSync(call(null)), 'neither the variable nor the mod: no file');
+    assert.ok(!fs.existsSync(call(null)), 'no mod: no file');
 });
 
 test('PF1: the plan call sets the session plan - four spellings name one folder, complete and a seat set nothing', () =>

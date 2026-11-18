@@ -29,7 +29,6 @@ const STATUS_FOLDER_PARTS = Object.freeze(['state', 'sessions', 'status']);
 const READER_PLUGIN_RE = /^(alfred-mods|session-inspector)@/;
 const SETTINGS_FILE = 'settings.json';
 const MANAGED_DROPIN_DIR = 'managed-settings.d';
-const SWITCH = Object.freeze({ on: 'on', off: 'off' });
 // The sweep (Part 3): a status file at the root younger than this may belong to a live session - the first age no
 // session leaves one (an unchanged file only has its time moved once past 24 hours) - and the root's exclude line.
 const SWEEP_ROOT_MIN_AGE_MS = 25 * 3600 * 1000;
@@ -155,15 +154,12 @@ function settingsLayers(root, env, d) {
   try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().map((n) => path.join(dropDir, n)); } catch { /* none */ }
   return [path.join(account, SETTINGS_FILE), path.join(root, '.claude', SETTINGS_FILE), d.layout.modeFile(root), managed, ...drops];
 }
-// Whether the mod that reads the status file is on: the variable first, else the merged `enabledPlugins`. Any failure
+// Whether the mod that reads the status file is on: the merged `enabledPlugins` alone, nothing overrides it. Any failure
 // reads as off - a write that cannot be justified is not made.
 function readerOn(root, env, deps) {
   try {
     const d = depsOf(deps);
     const source = env && typeof env === 'object' ? env : d.env;
-    const word = String(envOf({ prelude: d.prelude, env: source }, 'SESSION_STATUS') || '').trim().toLowerCase();
-    if (word === SWITCH.on) return true;
-    if (word === SWITCH.off) return false;
     if (!root || !d.layout) return false;
     const merged = {};
     for (const file of settingsLayers(root, source, d)) Object.assign(merged, enabledPluginsOf(file));

@@ -135,21 +135,6 @@
       }
     },
     {
-      "key": "ALFRED_CODE_SESSION_STATUS",
-      "default": "",
-      "ask": false,
-      "seed": false,
-      "what": "session-status.js: the session status file alfred-mods reads. Empty follows the plugin settings (written only while alfred-mods or session-inspector is enabled); 'on' writes it whatever the settings say (a --plugin-dir or --settings session); 'off' never writes it. Not seeded: set it in .variables.",
-      "validate": {
-        "type": "enum",
-        "values": [
-          "",
-          "on",
-          "off"
-        ]
-      }
-    },
-    {
       "key": "ALFRED_CODE_CONTEXT_WINDOW_FOR_1M",
       "default": "400000",
       "renamed_from": "ALFRED_CODE_FRESH_SESSION_1M",
