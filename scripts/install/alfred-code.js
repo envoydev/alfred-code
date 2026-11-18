@@ -36,7 +36,7 @@ const pinsLayer = require('./pins.js');
 const { seatsLine, countSwitchedOff, countSeatFiles } = require('./seats-line.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
-const { recordView, editedSince, carriedRows } = require('./records.js');
+const { recordView, recordOf, editedSince, carriedRows } = require('./records.js');
 const skillHeadings = require('./skill-headings.js');
 const ruleOpenings = require('./rule-openings.js');
 const { shippedText } = require('./retired-rules.js');
@@ -679,6 +679,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             standDown: { prior: stampLayer.readStoodDown(stampFile), now: [], owed: null },
             // M3: the skills a same-named project folder kept from this run - never recorded as the stack's picks.
             foreignSkills: new Set(),
+            foreignSeats: new Set(),
             // The instruction file's name: this run's answer (--instructions-file), else the stamp's, else AGENTS.md.
             instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
             instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
@@ -709,6 +710,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // a kept pin as drift.
             rehashKind(ctx.library && ctx.library.agents, agentsDir);
         }
+        if (ctx.routes.skills) carryRecords(ctx);
 
         pruneDroppedCopies(ctx);
         const secretsAt = secretsRecord(ctx, secrets);
@@ -1284,6 +1286,7 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = 
             continue;
         }
         const kept = keep && keep(name);
+        if (kept && typeof kept === 'object') { ctx.log(kept.say); continue; }
         if (typeof kept === 'string') { ctx.log(`  !! ${label} kept: ${name} - ${why}, but ${kept}`); continue; }
         if (kept)
         {
@@ -1295,9 +1298,40 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = 
     }
 }
 
-// A retired name is pruned only where the stack's own record holds it - the stamp's library hash for a skill, seat or rule,
-// the ledger's row for a hook - and only while the copy still hashes to it: a bare name is as often the project's own, and
-// an edit since is the user's. A skill or seat the stamp does not record still goes when only the stack uses its name.
+// A skill or seat copy edited since the stack recorded it is the project's: a prune keeps it and says so. `keep` answers with
+// the line to log (pruneCopies logs it as is), or false.
+function keepEdited(ctx, kind, dir)
+{
+    return (file) => (editedSince(ctx.records, kind, file.replace(/\.md$/, ''), path.join(dir, file)) ? { say: keptEditedLine(kind, file) } : false);
+}
+
+// A seat file in `.claude/agents` named like a core seat that neither stamp line records, on a stamp that holds a ledger (a
+// stamp from before the ledger refreshes as it always did): the project's own seat. The plugin route's prune keeps it.
+function ownSeatKeep(ctx)
+{
+    return (file) =>
+    {
+        const name = file.replace(/\.md$/, '');
+        return ctx.records.ledgerHeld && recordOf(ctx.records, 'agent', name) === null ? { say: ownSeatLine.plugin(name) } : false;
+    };
+}
+
+// The copy route's twin: a picked seat whose file sits in `.claude/agents` with no record and text other than the render.
+function projectSeat(ctx, file)
+{
+    const name = file.replace(/\.md$/, '');
+    if (!ctx.records.ledgerHeld || recordOf(ctx.records, 'agent', name) !== null) return false;
+    const mine = readOrNull(path.join(ctx.agentsDir, file));
+    if (mine === null) return false;
+    const stack = readOrNull(path.join(ctx.source.dir, 'stack', 'agents', file));
+    const render = copyRender(ctx, 'agent');
+    return stack !== null && mine !== (render ? render(stack) : stack);
+}
+
+// A retired name is pruned only where the stack's own record holds it - a skill's or seat's record on either stamp line
+// (`recordOf`), the stamp's library hash for a rule, the ledger's row for a hook - and only while the copy still hashes to
+// it: a bare name is as often the project's own, and an edit since is the user's. A skill or seat the stamp does not
+// record still goes when only the stack uses its name.
 // Returns false to prune, else the reason it stays.
 function retiredKeep(ctx, kind, dir)
 {
@@ -1307,7 +1341,8 @@ function retiredKeep(ctx, kind, dir)
     const bare = (n) => n.replace(/\.md$/, '');
     return (name) =>
     {
-        const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`] : (lib[`${kind}s`] || {})[bare(name)];
+        const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`]
+            : ['skill', 'agent'].includes(kind) ? recordOf(ctx.records, kind, bare(name)) : (lib[`${kind}s`] || {})[bare(name)];
         if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
         const claimed = kind === 'skill' ? skillClaim(ctx)(name)
             : kind === 'agent' ? picked.agents.some((e) => e.split('@')[0] === bare(name)) || stackOwnName(names, 'agents', bare(name))
@@ -1348,6 +1383,11 @@ function skillTest({ skillsDir, stampFile, manifest, sourceDir })
 const skillTestOf = (ctx) => (ctx.skillTest ||= skillTest({ skillsDir: ctx.skillsDir, stampFile: ctx.stampFile, manifest: ctx.manifest, sourceDir: ctx.source.dir }));
 const skillClaim = (ctx) => skillTestOf(ctx).claims;
 const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
+const keptEditedLine = (kind, file) => `  ${kind} kept: ${file} - edited in the project since the stack copied it, so it is yours - delete it to drop it`;
+const ownSeatLine = {
+    plugin: (name) => `  !! agent kept: ${name}.md - a project seat of that name the stamp does not record, so it is yours; it lists beside the core's ${CORE}:${name} - rename or remove it`,
+    copy: (name) => `  !! agent kept: ${name}.md - a project seat of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours to take it`,
+};
 const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
 // The rule twin of the skill claim: a same-named rule file the stamp holds no hash for is the stack's when only the stack
 // uses the name (`alfred-` prefix) or it opens with a first line the stack has shipped under that name - the current one,
@@ -1398,6 +1438,22 @@ function readText(file)
     try { return fs.readFileSync(file, 'utf8'); }
     catch { return null; }
 }
+
+// The carry invariant, plugin route: a skill or seat the stamp (either line) records, still on disk at another hash and
+// not in what this run copied, keeps its recorded hash in the library lines - a kept core seat, a kept unpicked item, a
+// retired keep or a copy a switch moved - so no later run, on either route, finds an edited copy without its record.
+function carryRecords(ctx)
+{
+    if (!ctx.records) return;
+    ctx.library = ctx.library || { skills: {}, agents: {}, rules: {} };
+    for (const [kind, dir, fileOf] of [['skill', ctx.skillsDir, (n) => n], ['agent', ctx.agentsDir, (n) => `${n}.md`]])
+    {
+        const held = ctx.library[`${kind}s`];
+        for (const name of Object.keys(ctx.records[`${kind}s`]))
+            if (!Object.hasOwn(held, name) && editedSince(ctx.records, kind, name, path.join(dir, fileOf(name)))) held[name] = recordOf(ctx.records, kind, name);
+    }
+}
+
 function withoutForeign(picked, foreign)
 {
     if (!foreign || !foreign.size) return picked;
@@ -1444,11 +1500,14 @@ function pruneAway(ctx, away)
     const lib = stampLayer.readLibrary(ctx.stampFile) || {};
     const rows = (ctx.ledger && ctx.ledger.files) || {};
     const kinds = [['skills', ctx.skillsDir, (n) => n], ['agents', ctx.agentsDir, (n) => `${n}.md`], ['rules', ctx.rulesDir, (n) => `${n}.md`]];
+    const EDITED_HERE = 'edited here since the stack copied it, so it stays this project\'s own';
     for (const [kind, dir, file] of kinds.filter(([k]) => away[k]))
         pruneCopies(ctx, dir, [...away[kind]].map(file), kind.slice(0, -1), 'linked from above', { keep: (f) =>
         {
-            const was = (lib[kind] || {})[f.replace(/\.md$/, '')] || rows[`${kind}/${f}`];
-            return !was || (library.hashItem(path.join(dir, f)) !== was && 'edited here since the stack copied it, so it stays this project\'s own');
+            const name = f.replace(/\.md$/, '');
+            if (kind !== 'rules') return recordOf(ctx.records, kind.slice(0, -1), name) === null || (editedSince(ctx.records, kind.slice(0, -1), name, path.join(dir, f)) && EDITED_HERE);
+            const was = (lib[kind] || {})[name] || rows[`${kind}/${f}`];
+            return !was || (library.hashItem(path.join(dir, f)) !== was && EDITED_HERE);
         } });
 }
 
@@ -1506,16 +1565,12 @@ function copyKinds(ctx, closure)
         // no longer the stamp's): kept, said, and its recorded hash carried, so library-check reports it
         // as edited and no later run deletes it either.
         const core = placement().plugins[CORE];
-        const stamped = stampLayer.readLibrary(ctx.stampFile);
+        // The record of a copy is read from either stamp line, so a copy a copy-route run recorded counts as recorded here too.
+        const stamped = { ...stampLayer.readLibrary(ctx.stampFile), skills: ctx.records.skills, agents: ctx.records.agents };
         const unpicked = (names, picked) => names.filter((n) => !picked.includes(n));
         const skills = unpicked(ctx.manifest.skills.map((e) => e.split('|').pop()), closure.extraSkills);
         const agents = unpicked(ctx.manifest.agents.map((f) => f.replace(/\.md$/, '')), closure.extraAgents);
-        const edited = (n) =>
-        {
-            const was = stamped && stamped.agents && stamped.agents[n];
-            const now = was && library.hashItem(path.join(agentsDir, `${n}.md`));
-            return Boolean(now && now !== was);
-        };
+        const edited = (n) => editedSince(ctx.records, 'agent', n, path.join(agentsDir, `${n}.md`));
         // I4: a copy whose model / effort differ from the stack's is the user's tuning, whatever its hash says -
         // 2.0.0's --keep-pins re-hashed a copy after restoring its pins, so a tuned copy reads as unedited. No
         // setting overrides a plugin seat's own frontmatter (code.claude.com/docs/en/sub-agents, 'Choose a
@@ -1536,18 +1591,18 @@ function copyKinds(ctx, closure)
             const why = [edited(n) ? 'edited in the project since the stack copied it' : '', tuning(n) || ''].filter(Boolean).join(' - ');
             ctx.log(`  agent kept: ${n}.md - ${why}, so it is yours; dispatched as '${n}' (the project copy) - the capabilities rule names it that way, so a flow runs it and never ${CORE}:${n}, which still lists beside it; delete the copy to use the plugin's seat`);
         }
-        const foreign = (n) => foreignSkill(ctx, n);
-        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin', { keep: foreign });
-        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked', { keep: foreign });
-        pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n) && !keptSeats.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin');
-        pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked');
+        const keepSkill = (n) => foreignSkill(ctx, n) || keepEdited(ctx, 'skill', ctx.skillsDir)(n);
+        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin', { keep: keepSkill });
+        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked', { keep: keepSkill });
+        pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n) && !keptSeats.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin', { keep: ownSeatKeep(ctx) });
+        pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked', { keep: keepEdited(ctx, 'agent', agentsDir) });
         ctx.library = library.copyLibrary({
             sourceDir: ctx.source.dir, skillsDir: ctx.skillsDir, agentsDir,
             skills: closure.extraSkills.filter((n) => !away.skills.has(n)), agents: closure.extraAgents,
             stamped, claims: (kind, name) => kind !== 'skills' || skillClaim(ctx)(name), log: ctx.log, note: ctx.note,
         });
         for (const n of ctx.library.foreign) ctx.foreignSkills.add(n);
-        for (const n of keptSeats) ctx.library.agents[n] = stamped.agents[n];
+        for (const n of keptSeats) if (recordOf(ctx.records, 'agent', n)) ctx.library.agents[n] = recordOf(ctx.records, 'agent', n);
         pruneAway(ctx, away);
         return;
     }
@@ -1556,30 +1611,41 @@ function copyKinds(ctx, closure)
     // C17: each copy is written as the text it holds on this route (copyRender) and only when that
     // differs, so a re-run over unchanged skills and seats rewrites nothing.
     fs.mkdirSync(ctx.skillsDir, { recursive: true });
+    const copiedSkills = [];
     for (const name of skillNames)
     {
         const src = path.join(ctx.source.dir, 'stack', 'skills', name);
         if (!fs.existsSync(src)) { ctx.note(`skill '${name}' not found in the stack source`); continue; }
         if (foreignSkill(ctx, name)) { ctx.log(foreignLine(name)); ctx.foreignSkills.add(name); continue; }
+        copiedSkills.push(name);
         logOverwrite(ctx, 'skill', name, path.join(ctx.skillsDir, name));
         if (copy.syncTree({ src, dest: path.join(ctx.skillsDir, name), render: copyRender(ctx, 'skill') })) ctx.log(`skill [${ctx.args.scope}]: ${name}`);
         else ctx.log(`  skill current: ${name}`);
     }
 
-    const seatFiles = [...new Set([...ctx.lists.agents, ...ctx.held.agents.map((n) => `${n}.md`)])].filter((f) => !away.agents.has(f.replace(/\.md$/, '')));
+    const pickedSeats = [...new Set([...ctx.lists.agents, ...ctx.held.agents.map((n) => `${n}.md`)])].filter((f) => !away.agents.has(f.replace(/\.md$/, '')));
+    // A seat file the project wrote under a core seat's name is its own: kept, named, and never recorded.
+    const seatFiles = pickedSeats.filter((f) =>
+    {
+        if (!projectSeat(ctx, f)) return true;
+        ctx.log(ownSeatLine.copy(f.replace(/\.md$/, '')));
+        ctx.foreignSeats.add(f.replace(/\.md$/, ''));
+        return false;
+    });
     for (const f of seatFiles) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), path.join(agentsDir, f));
-    copy.installFromSource({
+    const seatRun = copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
         destDir: agentsDir, files: seatFiles, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
     });
+    // The ledger rows this run wrote itself: managedFiles carries the recorded hash of any other copy the project edited.
+    ctx.rewrittenRows = new Set([...copiedSkills.map((n) => `skills/${n}`), ...seatFiles.filter((f) => !seatRun.missing.includes(f)).map((f) => `agents/${f}`)]);
     // A member-only item the last run held and no member picks now goes, unless edited since its ledger row.
     const was = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
     for (const [cat, dir, file] of [['skill', ctx.skillsDir, (n) => n], ['agent', agentsDir, (n) => `${n}.md`]])
     {
         const gone = was.filter((l) => l.startsWith(`${cat} `) && !ctx.held.lines.includes(l)).map((l) => file(l.slice(cat.length + 1)))
             .filter((f) => !(cat === 'skill' ? skillNames : ctx.lists.agents).includes(f));
-        const rows = (ctx.ledger && ctx.ledger.files) || {};
-        pruneCopies(ctx, dir, gone, cat, 'no member below picks it now', { keep: (f) => (rows[`${cat}s/${f}`] && library.hashItem(path.join(dir, f)) !== rows[`${cat}s/${f}`] ? 'edited since the stack wrote it, so it is yours' : false) });
+        pruneCopies(ctx, dir, gone, cat, 'no member below picks it now', { keep: (f) => (editedSince(ctx.records, cat, f.replace(/\.md$/, ''), path.join(dir, f)) ? 'edited since the stack wrote it, so it is yours' : false) });
     }
 }
 
@@ -2354,12 +2420,12 @@ function managedFiles(ctx)
     if (!ctx.routes.skills)
     {
         for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) put(`skills/${n}`, path.join(ctx.skillsDir, n));
-        for (const a of ctx.lists.agents) put(`agents/${a}`, path.join(ctx.agentsDir, a));
+        for (const a of ctx.lists.agents) if (!ctx.foreignSeats.has(a.replace(/\.md$/, ''))) put(`agents/${a}`, path.join(ctx.agentsDir, a));
         for (const n of ctx.held ? ctx.held.skills : []) put(`skills/${n}`, path.join(ctx.skillsDir, n));
-        for (const n of ctx.held ? ctx.held.agents : []) put(`agents/${n}.md`, path.join(ctx.agentsDir, `${n}.md`));
+        for (const n of ctx.held ? ctx.held.agents : []) if (!ctx.foreignSeats.has(n)) put(`agents/${n}.md`, path.join(ctx.agentsDir, `${n}.md`));
     }
     // The carry invariant, copy route: a recorded skill or seat the project edited and this run did not rewrite keeps its record.
-    if (!ctx.routes.skills) Object.assign(out, carriedRows(ctx.records, { skill: ctx.skillsDir, agent: ctx.agentsDir }, new Set(Object.keys(out))));
+    if (!ctx.routes.skills) Object.assign(out, carriedRows(ctx.records, { skill: ctx.skillsDir, agent: ctx.agentsDir }, ctx.rewrittenRows || new Set(Object.keys(out))));
     // An AGENTS.md this run seeded (or moved from its 2.1.6 CLAUDE.md name) is the template's until init fills it in - from then on it is the project's.
     if (ctx.stackAgentsMd) put('AGENTS.md', ledgerPath(ctx, 'AGENTS.md'));
     // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
