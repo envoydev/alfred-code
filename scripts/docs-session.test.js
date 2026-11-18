@@ -1167,6 +1167,29 @@ test('state files older than seven days are swept, at the boundary and only ours
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('the untracked-record sweep stands down on a folder inside the project that a link takes outside', () => {
+  const { sweepRecords } = require('../stack/hooks/docs-session.js');
+  const root = scratch();
+  try {
+    const project = require('node:path').join(root, 'project');
+    const outside = require('node:path').join(root, 'outside');
+    fs.mkdirSync(require('node:path').join(project, '.alfred', 'state'), { recursive: true });
+    fs.mkdirSync(outside);
+    const old = plantOld(outside, 'untracked-session-old.txt', 30 * DAY);
+    const link = require('node:path').join(project, '.alfred', 'state', 'sessions');
+    fs.symlinkSync(outside, link, 'junction');
+    sweepRecords(link, Date.now(), { project });
+    assert.ok(fs.existsSync(old), 'a record outside the project is not removed through the link');
+    const inside = require('node:path').join(project, 'store');
+    fs.mkdirSync(inside);
+    const stale = plantOld(inside, 'untracked-session-old.txt', 30 * DAY);
+    const inLink = require('node:path').join(project, '.alfred', 'state', 'inner');
+    fs.symlinkSync(inside, inLink, 'junction');
+    sweepRecords(inLink, Date.now(), { project });
+    assert.ok(!fs.existsSync(stale), 'a link that stays inside the project is followed');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('the sweep runs by itself when a new state file appears, and never fails the hook', () => {
   // os.tmpdir() reads TMPDIR on posix and TEMP (then TMP) on Windows, so all three point at this scratch
   // directory: the hook's own state and its sweep both land here, and the machine's temp directory is left alone.

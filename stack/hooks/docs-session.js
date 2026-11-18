@@ -639,8 +639,10 @@ function recordUntracked(input, root) {
   const rel = toPosix(path.relative(root, file));
   return `${list.length} path${list.length === 1 ? ' was' : 's were'} untracked when this change started (at this HEAD) - not its change: a commit stages ${list.length === 1 ? 'it' : 'them'} only when the user names ${list.length === 1 ? 'it' : 'them'} (${rel}).`;
 }
-function sweepRecords(dir, now = Date.now()) {
+function sweepRecords(dir, now = Date.now(), { project = process.env.CLAUDE_PROJECT_DIR } = {}) {
   try {
+    // a state folder inside the project that a link takes outside it is never swept (hook-prelude.js sweepStale)
+    try { if (require('./hook-prelude.js').leavesProject(dir, project)) return; } catch { /* no prelude: swept as before */ }
     for (const f of fs.readdirSync(dir)) {
       if (!f.startsWith('untracked-at-start-') && !f.startsWith('untracked-session-')) continue;
       const full = path.join(dir, f);
@@ -1966,7 +1968,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
   try { main(); entryTail(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } }
   catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }

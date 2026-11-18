@@ -375,7 +375,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   contract at each Stop (`guard-stop-*`, the `alfred-stop-held-*` chain markers, and its log capped to the newest 256KB
   past 1MB, `capLog`), the fresh-session hook when it writes an offer (`guard-fresh-*`), the read guard when it logs a
   range (`guard-read-*`) and the commit guard when it writes its
-  trivial ledger (`<data root>/state/sessions/trivial-*`); a folder inside the project that resolves outside it (a link) is never stamped or swept.
+  trivial ledger (`<data root>/state/sessions/trivial-*`); a folder inside the project that resolves outside it (a link) is never stamped or swept - `sweepStale`, `sweepScoringFolders` and docs-session's untracked-record sweep all ask `hook-prelude.js leavesProject`.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<data root>/state/approvals/*-ALLOW` receipt (this session's own, under 8h).
   THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,

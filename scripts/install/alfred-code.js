@@ -2210,12 +2210,12 @@ function installHooksAndRules(ctx)
         // every earlier row in force. The copy route counts the seats that are in the agents folder.
         const coreSeats = placement().plugins[CORE].agents;
         const denyRows = ((settings.readBackSettings(ctx.claudeDir, 'local').permissions || {}).deny) || [];
-        const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
-            .filter((file) => fs.existsSync(path.join(ctx.agentsDir, file)));
         let picked = 0;
         let earlier = 0;
         if (!ctx.routes.skills)
         {
+            const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
+                .filter((file) => fs.existsSync(path.join(ctx.agentsDir, file)));
             const seatNames = fs.readdirSync(path.join(ctx.source.dir, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
             ({ picked, earlier } = countSeatFiles({ agentsDir: ctx.agentsDir, seatNames, pickedFiles: copiedSeats }));
         }
