@@ -556,6 +556,14 @@ function holdsStatusFile(dir) {
 const isFolder = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 // A list that is a link, a FIFO or any non-file is never replaced or removed by a sweep; an absent one may be written.
 const listReplaceable = (file) => { try { return fs.lstatSync(file).isFile(); } catch { return true; } };
+// Whether a work tree's own exclude file may hold the stack's pair: a file that is there without the marker comment, or a
+// `.git` folder with none, holds nothing to take. A `.git` that is a file (a linked work tree) is read by git, so it may.
+function excludeMayHoldPair(top) {
+  try {
+    if (!fs.statSync(path.join(top, '.git')).isDirectory()) return true;
+    try { return fs.readFileSync(path.join(top, '.git', 'info', 'exclude'), 'utf8').includes(EXCLUDE_COMMENT); } catch (e) { return !(e && e.code === 'ENOENT'); }
+  } catch { return true; }
+}
 function removeStatus(root, deps, options) {
   const d = depsOf(deps);
   const opt = options && typeof options === 'object' ? options : {};
@@ -632,8 +640,13 @@ function removeStatus(root, deps, options) {
     const late = new Set();
     let past = false;
     for (const { top, drop, keep, bases: members } of groups.values()) {
-      if (sweeping && !drop.size) continue;
-      if (past || uptime() > EXCLUDE_DEADLINE_MS) { past = true; for (const key of members) late.add(key); continue; }
+      if (!drop.size) continue;
+      if (past || uptime() > EXCLUDE_DEADLINE_MS) {
+        past = true;
+        // a group whose exclude file cannot hold a pair has nothing to be late for
+        if (excludeMayHoldPair(top)) for (const key of members) late.add(key);
+        continue;
+      }
       // a line a base still holding a file needs, and in a sweep with an except base the root form a linked worktree
       // shares with the main checkout, is never dropped
       const droppable = (line) => !keep.has(line) && !(exceptKey && line === ROOT_FORM_LINE);
@@ -650,7 +663,7 @@ function removeStatus(root, deps, options) {
       // every work tree of the repository, listed once; null when git could not answer
       let trees = null;
       try {
-        if (uptime() > EXCLUDE_DEADLINE_MS) throw new Error('past the deadline');
+        if (uptime() > EXCLUDE_DEADLINE_MS) { if (!sweeping) for (const key of members) late.add(key); throw new Error('past the deadline'); }
         const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'worktree', 'list', '--porcelain'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
         trees = String(exec(cmd, argv, opts)).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9).trim()).filter(Boolean);
       } catch { trees = null; }

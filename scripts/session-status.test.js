@@ -1548,6 +1548,28 @@ test('uninstall past the exclude deadline keeps the list and the pairs it could 
     assert.ok(!fs.existsSync(f.list), 'and takes the list');
 });
 
+test('uninstall with nothing to drop is never late: a fresh repository, no status folder, past the deadline, writes no list and counts no base', () =>
+{
+    const git = sweepGit();
+    const root = project();
+    git(root, 'init', '-q');
+    const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
+    const out = removeStatus(root, { env: { CLAUDE_PROJECT_DIR: root }, uptime: () => 9000 });
+    assert.strictEqual(out.late, undefined, 'no base counted late');
+    assert.ok(!fs.existsSync(list), 'no list written');
+});
+
+test('uninstall: a worktree list cut by the deadline marks its group late and keeps the list', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const f = sweepProject();
+    let calls = 0;
+    const out = removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => (++calls <= 1 ? 0 : 9000), exec: (...a) => execFileSync(...a) });
+    assert.ok(out.late > 0, `late: ${JSON.stringify(out)}`);
+    assert.ok(fs.existsSync(f.list), 'the list stays for the next run');
+    assert.deepStrictEqual(f.held().sort(), [f.root, f.a, f.ab].map(posixOf).sort(), 'every base stays on it');
+});
+
 test('the sweep: a listed linked worktree owns its young file (the root\'s 25 hour rule), and the root-form exclude line is never dropped while the root is except', () =>
 {
     const git = sweepGit();

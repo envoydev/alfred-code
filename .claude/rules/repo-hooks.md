@@ -1937,7 +1937,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     it) whose status folder exists in NONE of the repository's work trees goes too (E-batch SYS-03: a base the list had
     dropped kept its pair) - it excludes nothing, and the next write re-adds it; the work trees are listed once per common
     dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
-    list alone, and a lone anchored line is the user's. Past the 8s deadline (no git spawn after it, as in the sweep) uninstall keeps the list, cut to the bases not reached, and their pairs; `removeStatus` returns `late` and `removeSessionStatus` notes one `!!` line to run uninstall again (the stamp stays).
+    list alone, and a lone anchored line is the user's. The 8s deadline binds the hook's own sweep alone: the installer has no hook timeout, so `removeSessionStatus` passes `uptime: () => 0` and the clean-up is never cut short (a test seam can still inject an age). Past the deadline `removeStatus` spawns no git: it keeps the list, cut to the bases not reached, and their pairs, and returns `late` (a group whose exclude file cannot hold the pair, or has no drop set, is never counted; a `worktree list` the deadline cut marks its group late too) - a caller that notes it says to run again.
     `docs/install-footprint.md` lists both writes.
     THE PLAN KEY (PF1, 3.12; R28-R30): `onPlan`, called by the fresh-session hook at a plan call's PreToolUse, is a
     fourth `when` of `writeStatus`, `'plan'`: the candidate is checked first (`planField`) and compared with the

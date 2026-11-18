@@ -332,6 +332,41 @@ test('uninstall: past the exclude time limit the pairs and the list stay, and on
     assert.strictEqual(notes.length, 1, 'and says nothing more');
 });
 
+// final review, item 2: the installer has no hook timeout, so its own process age never cuts the clean-up short, and a
+// repository with no status folder and no pair has nothing to be late for.
+test('uninstall: the installer\'s own uptime is no deadline - a run past 8 s of process age still takes the pair and the list', POSIX_ONLY, () =>
+{
+    const status = require('../stack/hooks/session-status.js');
+    const repo = path.join(TMP, `age-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    const sub = path.join(repo, 'sub');
+    put(path.join(sub, '.claude', 'session-inspector', 'status', 's2.json'), '{}');
+    const exclude = path.join(repo, '.git', 'info', 'exclude');
+    fs.appendFileSync(exclude, `${status.EXCLUDE_COMMENT}\n/sub/.claude/session-inspector/status/\n`);
+    const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
+    put(list, JSON.stringify([sub.split(path.sep).join('/')]));
+    const notes = [];
+    const realUptime = process.uptime;
+    process.uptime = () => 9;
+    try { uninstall.removeSessionStatus({ projectRoot: repo, note: (m) => notes.push(m) }); }
+    finally { process.uptime = realUptime; }
+    assert.deepStrictEqual(notes, [], 'no time-limit note');
+    assert.ok(!fs.readFileSync(exclude, 'utf8').includes('/sub/'), 'the pair goes');
+    assert.ok(!fs.existsSync(list), 'the list goes');
+});
+
+test('uninstall: a fresh repository with no status folder and no pair is never late, whatever the clock says', POSIX_ONLY, () =>
+{
+    const repo = path.join(TMP, `fresh-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    const notes = [];
+    uninstall.removeSessionStatus({ projectRoot: repo, note: (m) => notes.push(m), deps: { uptime: () => 9000 } });
+    assert.deepStrictEqual(notes, [], 'no note');
+    assert.ok(!fs.existsSync(path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json')), 'no list written');
+});
+
 // E-batch SYS-03: a pair for a base the list has dropped, whose status folder is gone, goes with the uninstall; a pair whose
 // folder is still there (another project's, in use) stays whole.
 test('uninstall: a dropped base\'s exclude pair is swept, a pair in use stays', POSIX_ONLY, () =>

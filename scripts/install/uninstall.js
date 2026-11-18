@@ -218,7 +218,7 @@ function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () 
     let status;
     try { status = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'session-status.js')); }
     catch (e) { note(`session status: not removed - the module could not be loaded (${e.message})`); return; }
-    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, ...deps, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) });
+    const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, uptime: () => 0, ...deps, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) });
     const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
     if (got.files) log(`  session status: ${got.files} file${got.files === 1 ? '' : 's'} removed${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
     if (got.late) note(`session status: the exclude clean-up was cut short at the time limit (${got.late} folder${got.late === 1 ? '' : 's'} not reached) - run uninstall again to finish it`);
