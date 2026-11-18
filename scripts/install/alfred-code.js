@@ -33,7 +33,7 @@ const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../deri
 const { placement, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
-const { seatsLine } = require('./seats-line.js');
+const { seatsLine, countSwitchedOff } = require('./seats-line.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const skillHeadings = require('./skill-headings.js');
@@ -2205,10 +2205,18 @@ function installHooksAndRules(ctx)
         log: ctx.log, note: ctx.note,
     });
     if (!written.refused)
+    {
+        // What the files hold after this run, not this run's own set: an update with no selection writes no deny and leaves
+        // every earlier row in force. The copy route counts the seats that are in the agents folder.
+        const coreSeats = placement().plugins[CORE].agents;
+        const denyRows = ((settings.readBackSettings(ctx.claudeDir, 'local').permissions || {}).deny) || [];
+        const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
+            .filter((file) => fs.existsSync(path.join(ctx.agentsDir, file)));
         ctx.log(seatsLine({
-            viaPlugin: ctx.routes.skills, coreSeats: placement().plugins[CORE].agents.length,
-            switchedOff: agentDeny.length, copied: ctx.lists.agents.length,
+            viaPlugin: ctx.routes.skills, coreSeats: coreSeats.length,
+            switchedOff: countSwitchedOff(denyRows, coreSeats), copied: copiedSeats.length,
         }));
+    }
     ctx.managedSettings = written.managed || null;
     ctx.variablesMoved = (written.variablesMoved || []).length;
     // C8: Claude Code keeps settings.local.json out of commits only when IT creates the file
