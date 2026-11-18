@@ -333,6 +333,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes).
         const routes = plugins.committedRoutesAt({ env, claudeDir, scope: args.scope, log });
+        // --seats-route: the switch. A local settings file the stack cannot write refuses it, and the run goes on as if the flag
+        // were absent; otherwise the run's skills route is the flag's, and the settings pass writes the key.
+        const seatsRouteWhy = args.seatsRoute ? settings.localUnusable(path.join(claudeDir, 'settings.local.json')) : '';
+        if (seatsRouteWhy) { log(`!! seats route: .claude/settings.local.json is ${seatsRouteWhy} - not switched`); args.seatsRoute = ''; }
+        const routeKeyWrite = args.seatsRoute ? String(args.seatsRoute === 'plugin') : null;
+        if (args.seatsRoute) routes.skills = args.seatsRoute === 'plugin';
         // R78, mode v2 stage 2: an install moved off `local` scope keeps the stack's rows in settings.local.json; only a
         // variable seed the stack wrote there goes, or it would read as this machine's override. `seeds` is what THIS run
         // would seed (the catalog default, the docs-versioning rule's answer), every seed the stack SHIPPED included (N2).
@@ -661,7 +667,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const ctx = {
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, agentsDir, rulesDir, homes, child, configDir, mcpFile, home, stampFile,
-            hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
+            hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed, routeKeyWrite,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, docsReseed, ledger: priorLedger, legacyUnstamped,
             dataInfo,
             // The MCP plugin and server names the renames left behind (manifest `renamed.mcps`), and the ones this run prunes.
@@ -2233,7 +2239,7 @@ function installHooksAndRules(ctx)
         // R10: the last run's ledger, and the wirings the RELEASE writes (none on the plugin route) - a
         // hook this run did not select keeps its wiring, one the release dropped loses it.
         ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny },
-        file: localSettings, keepOwn: ctx.args.scope !== 'local', carried,
+        file: localSettings, keepOwn: ctx.args.scope !== 'local', carried, routeKey: ctx.routeKeyWrite,
         // The stack's stale wiring, 1.x keys and renamed skillOverrides keys in settings.json are taken out or re-keyed there.
         sharedFile: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,

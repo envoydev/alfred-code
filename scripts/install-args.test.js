@@ -419,6 +419,16 @@ test('install-args: --instructions-seed is uninstall\'s answer for the seed - ke
     fails(['update', '--instructions-seed', 'remove'], /--instructions-seed is uninstall's answer/);
 });
 
+test('install-args: --seats-route is plugin or copy, lower-cased, anything else refused', () =>
+{
+    assert.strictEqual(ok(['update']).seatsRoute, '', 'not given: the route stands');
+    assert.strictEqual(ok(['update', '--seats-route', 'copy']).seatsRoute, 'copy');
+    assert.strictEqual(ok(['update', '--seats-route=Plugin']).seatsRoute, 'plugin');
+    assert.ok(require('./install/args.js').FLAG_LIST.includes('--seats-route'));
+    fails(['update', '--seats-route', 'sideways'], /--seats-route must be 'plugin' or 'copy'/);
+    fails(['update', '--seats-route'], /--seats-route.*needs a value/);
+});
+
 test('install-args: --memory takes default, docs or custom, lower-cased', () =>
 {
     assert.strictEqual(ok(['install']).memory, '');
