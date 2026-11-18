@@ -1823,8 +1823,8 @@ test('configure\'s Role templates list Keep (Recommended) first', () =>
     for (const b of blocks) assert.match(b[1], /^- 'Keep \(Recommended\)' - /, b[0]);
     const labels = blocks.map((b) => b.slice(1).map((l) => /^- '([^']*)'/.exec(l)[1]));
     assert.deepStrictEqual(labels, [
-        ['Keep (Recommended)', 'Join <rel>', 'Become a root'],
-        ['Keep (Recommended)', 'Join <rel>', 'Become standalone'],
+        ['Keep (Recommended)', 'Join <rel> (<name>)', 'Become a root'],
+        ['Keep (Recommended)', 'Join <rel> (<name>)', 'Become standalone'],
         ['Keep (Recommended)', 'Leave and become standalone', 'Leave and become a root'],
     ], 'the labels are the ones workspace.js role prints');
     assert.match(body, /workspace\.js" role --root \. --answer/);

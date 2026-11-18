@@ -1,8 +1,8 @@
 # /alfred-code:init - the install phase in a child of an installed folder
 
-Read on the role ask's 'Child of `<rel>`' answer (`init-role.md`): a folder above this project holds an install it
+Read on the role ask's 'Child of `<rel> (<name>)`' answer (`init-role.md`): a folder above this project holds an install it
 joins. A child takes that install's set and values, adds its own picks, and can ignore any item it inherits. Every
-step of `init-install.md` runs as written, with the changes below; say once in the narration `<rel> holds an install -
+step of `init-install.md` runs as written, with the changes below; say once in the narration `<rel> (<name>) holds an install -
 this project installs as its child`.
 
 ## Screen A
@@ -11,7 +11,7 @@ this project installs as its child`.
   person's checkout, and its committed settings are the team's.
 
   ```ask
-  Where should the stack's plugins be enabled in this child of <rel>? The library copies, rules, settings and stamp live in this project's .claude/ at every scope.
+  Where should the stack's plugins be enabled in this child of <rel> (<name>)? The library copies, rules, settings and stamp live in this project's .claude/ at every scope.
   - 'local (Recommended)' - this checkout only; the plugins are enabled for you alone and the committed settings.json is left as it is
   - 'project' - the plugins are enabled in .claude/settings.json for everyone who clones this repo; the stack's settings stay in .claude/settings.local.json
   - 'user' - every project of this account
@@ -28,7 +28,7 @@ this project installs as its child`.
 
 `--print-plan` writes nothing there; the check fails a read-back that ran but reported failures, unreadable files or a
 blind listing. `parent-read: 0` -> go on as a child. Anything else -> paste its `!! inherited:` line when it printed one,
-say `the install at <rel> could not be read - installing standalone; /alfred-code:update offers the join later` and run
+say `the install at <rel> (<name>) could not be read - installing standalone; /alfred-code:update offers the join later` and run
 `init-install.md` as a standalone install, none of the rest of this file.
 
 ## The walk and screen B

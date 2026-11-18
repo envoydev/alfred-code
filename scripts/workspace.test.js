@@ -1067,7 +1067,7 @@ test('AC2: init\'s options - Child first under a root, Root first in a plain fol
     assert.deepStrictEqual(asked(at('repo'), 'init'), { case: 'init-none', rel: null, options: ['Standalone (Recommended)', 'Root'] });
     const why = ws.roleAsk(at('top/sub'), { env: ON, when: 'init' });
     assert.deepStrictEqual([why.case, why.rel, why.options], ['init-why', '..', ['Standalone (Recommended)', 'Root']]);
-    assert.match(why.why, /^\.\. is the same git repository/);
+    assert.match(why.why, /^\.\. \(top\) is the same git repository/);
     assert.strictEqual(ws.roleAsk(at('ws/api'), { env: { ...ON, ALFRED_CODE_WORKSPACE: '0' }, when: 'init' }), null, 'at 0 nothing is asked');
 });
 
@@ -1899,7 +1899,7 @@ test('roleAsk: an ignored project is offered no join', () =>
 {
     const at = wsTree({ 'ws/legacy': { git: true } });
     const init = ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'init', log: () => {} });
-    assert.deepStrictEqual([init.case, init.options, init.why], ['init-why', ['Standalone (Recommended)', 'Root'], ws.WHY.ignored('..')]);
+    assert.deepStrictEqual([init.case, init.options, init.why], ['init-why', ['Standalone (Recommended)', 'Root'], ws.WHY.ignored('.. (ws)')]);
     const conf = ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'configure', log: () => {} });
     assert.deepStrictEqual(conf.options, ['Keep (Recommended)', 'Become a root']);
     assert.strictEqual(ws.roleAsk(at('ws/legacy'), { env: env0, exec: ownTop([]), when: 'update', log: () => {} }), null, 'never answered');

@@ -160,6 +160,19 @@ test('parts: a rule longer than one part is cut at line ends across parts of its
     for (const c of chunks.slice(0, -1)) assert.strictEqual(c.length % 80, 79, 'each chunk but the last ends at a line end');
 });
 
+test('parts: cut applies the lead room to the first chunk only', () =>
+{
+    const r = rule('big', 20000);
+    const lead = 'y'.repeat(600);
+    const out = loader().parts([r], { index: lead }).parts;
+    assert.strictEqual(out.length, 3);
+    for (const p of out) assert.ok(p.length <= 9500, String(p.length));
+    assert.ok(out[0].length >= 9500 - 600 - 160 && out[0].length <= 9500, `part 1 holds the lead: ${out[0].length}`);
+    assert.ok(out[1].length > 9500 - 200, `part 2 is a full chunk, no lead taken from it: ${out[1].length}`);
+    const chunks = out.map((p) => p.split('\n\n').filter((b) => !b.startsWith('Project rules') && !b.startsWith('End of') && b !== lead).join('\n\n').replace(/^## big \([^)]*\)( - continued)?\n/, ''));
+    assert.strictEqual(chunks.join('\n'), r.text);
+});
+
 test('parts: five full parts and a sixth rule - two unsent', () =>
 {
     const rs = [1, 2, 3, 4, 5, 6].map((k) => rule(`r${k}`, ROOM([rule(`r${k}`, 1)])));
@@ -685,6 +698,44 @@ test('members: a garbage record gives no index and no throw', () =>
     put(path.join(root, '.alfred', 'workspace.json'), '{ not json');
     assert.strictEqual(loader().memberIndex(root, ENV), '');
     assert.ok(!part(root, 1).includes('Workspace members'));
+});
+
+test('members: a child with a DIRECTORY named like the instruction file lists no instruction file', () =>
+{
+    const root = members(['api', 'web']);
+    fs.mkdirSync(path.join(root, 'api', 'AGENTS.md'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'web', '.claude', 'CLAUDE.md'), { recursive: true });
+    assert.deepStrictEqual(indexLines(loader().memberIndex(root, ENV)), ['- api: instructions none; rules none', '- web: instructions none; rules none']);
+});
+
+test('members: a folder named x.md under .claude/rules is no rule', () =>
+{
+    const root = members(['api']);
+    put(path.join(root, 'api', '.claude', 'rules', 'real.md'), 'x');
+    fs.mkdirSync(path.join(root, 'api', '.claude', 'rules', 'x.md'), { recursive: true });
+    assert.deepStrictEqual(indexLines(loader().memberIndex(root, ENV)), ['- api: instructions none; rules 1 file under api/.claude/rules']);
+    const only = members(['api']);
+    fs.mkdirSync(path.join(only, 'api', '.claude', 'rules', 'x.md'), { recursive: true });
+    assert.deepStrictEqual(indexLines(loader().memberIndex(only, ENV)), ['- api: instructions none; rules none']);
+});
+
+test('members: a garbage child record is skipped, the other children still listed', () =>
+{
+    const root = members(['api', 'bad', 'web']);
+    put(path.join(root, 'bad', '.alfred', 'workspace.json'), '{ not json');
+    let got;
+    assert.doesNotThrow(() => { got = loader().memberIndex(root, ENV); });
+    assert.deepStrictEqual(indexLines(got), ['- api: instructions none; rules none', '- web: instructions none; rules none']);
+});
+
+test('members: the ledger counts children only at 13 children - no head and no "and k more" line', () =>
+{
+    const root = members(manyChildren(13));
+    part(root, 1);
+    const file = path.join(LAYOUT.statsPath(root, ['hook-blocks'], {}), `${SID}.jsonl`);
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].members, 12, 'twelve lines are shown, the thirteenth is the "and 1 more" line');
 });
 
 test('members: the shipped rules and a thirteen-child index leave nothing unsent', () =>

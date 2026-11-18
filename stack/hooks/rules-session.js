@@ -113,7 +113,7 @@ function cut(r, lead)
     for (let rest = r.text; rest;)
     {
         const head = headingOf(r, chunks.length > 0);
-        const room = PART_ROOM - BASE - lead - head.length - 3;
+        const room = PART_ROOM - BASE - (chunks.length ? 0 : lead) - head.length - 3;   // the lead (natives line, index) sits in part 1, with the first chunk
         const at = rest.length <= room ? rest.length : rest.lastIndexOf('\n', room);
         const end = at > 0 ? at : room;
         chunks.push({ rel: r.rel, text: `${head}\n${rest.slice(0, end)}` });
@@ -161,7 +161,8 @@ function parts(always, { natives = [], index = '' } = {})
 const RULES = ['.alfred', 'stack', 'rules'];
 const STAMP = ['.claude', 'alfred-code.stamp'];
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
-const mdFiles = (dir) => { try { return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort(); } catch { return []; } };
+const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+const mdFiles = (dir) => { try { return fs.readdirSync(dir).filter((f) => f.endsWith('.md') && isFile(path.join(dir, f))).sort(); } catch { return []; } };
 const posix = (from, to) => path.relative(from, to).split(path.sep).join('/');
 
 // The members index of a workspace root: one line a child folder its record lists (the ignored ones out, and one whose
@@ -179,7 +180,7 @@ function memberIndex(project, env = process.env)
         const pointsBack = (child) => { const first = layout.workspaceChain(path.join(project, child), { env }).members[0]; return !!first && layout.pathKey(first.root) === layout.pathKey(project); };
         const lines = view.children.filter((c) => isDir(path.join(project, c)) && pointsBack(c)).map((c) =>
         {
-            const instructions = INSTRUCTION_FILES.map((f) => [c, ...f].join('/')).find((rel) => fs.existsSync(path.join(project, rel)));
+            const instructions = INSTRUCTION_FILES.map((f) => [c, ...f].join('/')).find((rel) => isFile(path.join(project, rel)));
             const rules = mdFiles(path.join(project, c, ...RULE_FILES)).length;
             const count = rules === 1 ? '1 file' : `${rules} files`;
             return `- ${c}: instructions ${instructions || 'none'}; rules ${rules ? `${count} under ${[c, ...RULE_FILES].join('/')}` : 'none'}`;

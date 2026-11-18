@@ -316,26 +316,26 @@ Copy your <n> memory files to the new place?
 A memory answer other than the current mode rides step 11's ONE installer call as `--memory <default|docs|custom>` ('Copy them' adds `--memory-copy`) - a change on its own, so that call runs - and applies from the next session; its `autoMemoryDirectory`, `memory: copied` and `.gitattributes` lines are reported verbatim.
 
 **The workspace role** rides this area too. `node "$TMP/repo/scripts/workspace.js" role --root .` prints `role:
-<current>` and one `ask: <label><TAB><answer>` line per option; ask the template for the current role, its `Join <rel>`
+<current>` and one `ask: <label><TAB><answer>` line per option; ask the template for the current role, its `Join <rel> (<name>)`
 option only when an `ask:` line offers it. `role: workspace off` (`ALFRED_CODE_WORKSPACE=0`) prints no `ask:` line:
 show the role line, ask nothing.
 
 ```ask
 This project's workspace role is standalone - change it?
 - 'Keep (Recommended)' - nothing changes
-- 'Join <rel>' - a child of <rel>: it takes that install's set and values, and its own picks and values stay its own
+- 'Join <rel> (<name>)' - a child of <rel> (<name>): it takes that install's set and values, and its own picks and values stay its own
 - 'Become a root' - projects below can join this one as children
 ```
 
 ```ask
 This project's workspace role is root of <n> children - change it?
 - 'Keep (Recommended)' - nothing changes
-- 'Join <rel>' - it becomes a child of <rel> and stays the root of its own children
+- 'Join <rel> (<name>)' - it becomes a child of <rel> (<name>) and stays the root of its own children
 - 'Become standalone' - refused while a child line stands: each child leaves first (its own configure), or /alfred-code:uninstall here releases them
 ```
 
 ```ask
-This project's workspace role is child of <rel> - change it?
+This project's workspace role is child of <rel> (<name>) - change it?
 - 'Keep (Recommended)' - nothing changes
 - 'Leave and become standalone' - every value it reads from the workspace is written into its own .variables first, so nothing changes
 - 'Leave and become a root' - the same, and projects below can join it
