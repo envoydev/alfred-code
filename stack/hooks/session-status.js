@@ -29,6 +29,10 @@ const READER_PLUGIN_RE = /^(alfred-mods|session-inspector)@/;
 const SETTINGS_FILE = 'settings.json';
 const MANAGED_DROPIN_DIR = 'managed-settings.d';
 const SWITCH = Object.freeze({ on: 'on', off: 'off' });
+// The sweep (Part 3): a status file at the root younger than this may belong to a live session - the first age no
+// session leaves one (an unchanged file only has its time moved once past 24 hours) - and the root's exclude line.
+const SWEEP_ROOT_MIN_AGE_MS = 25 * 3600 * 1000;
+const ROOT_FORM_LINE = '/.claude/session-inspector/status/';
 
 // The engines, each loaded on first use: an unchanged prompt pays one small file read, never fresh-session's load.
 const ENGINE_FILES = { fresh: './fresh-session.js', prelude: './hook-prelude.js', history: './history.js', layout: './layout.js', planStatus: './plan-status.js' };
@@ -144,7 +148,7 @@ function statusFile(payload, deps) {
     const root = rootOf(p, d.env);
     if (!base || !root || !path.isAbsolute(base)) return null;
     if (!readerOn(root, d.env, d)) return null;
-    if (!fs.statSync(base).isDirectory()) return null;   // a vanished cwd: never rebuilt by mkdirSync
+    if (!fs.statSync(base).isDirectory()) return null;   // a vanished root: never rebuilt by mkdirSync
     if (refusedBase(base, root, d)) return null;
     return path.join(statusDir(base), `${id}.json`);
   } catch { return null; }
@@ -414,7 +418,7 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
   }
 }
 
-// The bases the exclude check covers: the cwd, then every listed base, each the project's and holding a status folder.
+// The bases the exclude check covers: the root (the base), then every listed base, each the project's and holding a status folder.
 function statusBases(root, cwd, deps) {
   const d = depsOf(deps);
   const out = [];
@@ -432,7 +436,7 @@ function statusBases(root, cwd, deps) {
   return out;
 }
 
-// At SessionStart: every status file over 7 days old under the cwd and the listed bases goes, this session's own kept;
+// At SessionStart: every status file over 7 days old under the root and the listed bases goes, this session's own kept;
 // a listed base that is not the project's, is a link or has lost its folder leaves the list.
 function pruneStatus(root, cwd, sessionId, now, deps) {
   const d = depsOf(deps);
@@ -539,47 +543,100 @@ function ensureExcluded(bases, deps) {
 // repository's work trees goes too (E-batch SYS-03: a base the list had dropped kept its pair): it excludes nothing, and
 // the next write re-adds it (`excludeOne`). Only a non-root pair is swept - the root-form pair goes through the list alone -
 // and with no worktree listing (git failed or timed out) nothing is swept, today's reading.
-// Returns { files, folders, lines }; fail-open like the rest.
-function removeStatus(root, deps) {
+// THE SWEEP (status-file-root design, Part 3): with `options` - `except` (a base left whole) or `rootMinAgeMs` (a file
+// at the root, or in a listed linked worktree's own top, younger than that stays: a new-version session owns it) - the
+// same care runs at SessionStart over the folders earlier versions left. A base still holding a status file, or one whose
+// exclude group the deadline did not reach, keeps its list entry and its pair; the list is rewritten to those and removed
+// only when none is left. Returns { files, folders, lines } (and `bases` kept, when sweeping); fail-open like the rest.
+function holdsStatusFile(dir) {
+  try {
+    return fs.readdirSync(dir).some((name) => { try { return PRUNE_NAME.test(name) && fs.lstatSync(path.join(dir, name)).isFile(); } catch { return false; } });
+  } catch { return false; }
+}
+const isFolder = (dir) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
+// A list that is a link, a FIFO or any non-file is never replaced or removed by a sweep; an absent one may be written.
+const listReplaceable = (file) => { try { return fs.lstatSync(file).isFile(); } catch { return true; } };
+function removeStatus(root, deps, options) {
   const d = depsOf(deps);
+  const opt = options && typeof options === 'object' ? options : {};
+  const sweeping = opt.except !== undefined || opt.rootMinAgeMs !== undefined;
   const out = { files: 0, folders: [], lines: 0 };
+  if (sweeping) out.bases = 0;
   try {
     if (typeof root !== 'string' || !root || !path.isAbsolute(root) || !d.layout) return out;
+    const L = d.layout;
+    const rootKey = L.dirKey(root);
+    const exceptKey = typeof opt.except === 'string' && opt.except ? L.dirKey(opt.except) : null;
+    const minAge = opt.rootMinAgeMs > 0 ? opt.rootMinAgeMs : 0;
+    const now = d.clock();
+    const rootTop = minAge ? L.gitTopOf(root) : '';
+    // the age a file in this base must reach before the sweep takes it: the root's and a linked worktree's own top (a
+    // new-version session started there owns it); any other subfolder is an older version's litter, swept at any age
+    const minAgeOf = (b) => {
+      if (!sweeping || !minAge) return 0;
+      const key = L.dirKey(b);
+      if (key === rootKey) return minAge;
+      const top = L.gitTopOf(b);
+      return top && L.dirKey(top) === key && !(rootTop && L.dirKey(rootTop) === key) ? minAge : 0;
+    };
     const bases = [];
     const seen = new Set();
-    for (const b of [root, ...readList(root, d)]) {
+    const listed = readList(root, d);
+    for (const b of [root, ...listed]) {
       if (typeof b !== 'string' || !path.isAbsolute(b)) continue;
-      const key = d.layout.dirKey(b);
+      const key = L.dirKey(b);
       if (seen.has(key)) continue;
       seen.add(key);
       if (!refusedBase(b, root, d)) bases.push(b);
     }
+    // what stays whole after the sweep: the except base while its folder exists, any base still holding a status file
+    const holding = new Set();
     for (const b of bases) {
       const dir = statusDir(b);
+      const key = L.dirKey(b);
+      if (exceptKey && key === exceptKey) { if (isFolder(dir)) holding.add(key); continue; }
+      const youngerThan = minAgeOf(b);
       let names = null;
       try { names = fs.readdirSync(dir); } catch { names = null; }
       for (const name of names || []) {
         if (!PRUNE_NAME.test(name)) continue;
-        try { if (fs.lstatSync(path.join(dir, name)).isFile()) { fs.unlinkSync(path.join(dir, name)); out.files++; } } catch { /* gone */ }
+        const file = path.join(dir, name);
+        try {
+          const st = fs.lstatSync(file);
+          if (!st.isFile() || (youngerThan && now - st.mtimeMs < youngerThan)) continue;
+          fs.unlinkSync(file);
+          out.files++;
+        } catch { /* gone */ }
       }
+      if (sweeping && holdsStatusFile(dir)) holding.add(key);
       // the folders this module made, innermost first, each only once empty; the root's .claude is the uninstall's
-      const tops = d.layout.dirKey(b) === d.layout.dirKey(root) ? [dir, path.dirname(dir)] : [dir, path.dirname(dir), path.join(b, '.claude')];
+      const tops = key === rootKey ? [dir, path.dirname(dir)] : [dir, path.dirname(dir), path.join(b, '.claude')];
       for (const at of tops) {
         try { if (fs.readdirSync(at).length) break; fs.rmdirSync(at); out.folders.push(at); } catch { break; }
       }
     }
+    const uptime = d.uptime || (() => process.uptime() * 1000);
     const exec = d.exec || execFileSync;
     const groups = new Map();
     for (const base of bases) {
-      const top = d.layout.gitTopOf(base);
+      const top = L.gitTopOf(base);
       if (!top) continue;
       const line = excludeLine(top, base);
       if (!line) continue;
-      const key = d.layout.dirKey(d.layout.worktreeMain(top) || top);
-      if (!groups.has(key)) groups.set(key, { top, lines: new Set() });
-      groups.get(key).lines.add(line);
+      const key = L.dirKey(L.worktreeMain(top) || top);
+      if (!groups.has(key)) groups.set(key, { top, drop: new Set(), keep: new Set(), bases: [] });
+      const group = groups.get(key);
+      group.bases.push(L.dirKey(base));
+      (holding.has(L.dirKey(base)) ? group.keep : group.drop).add(line);
     }
-    for (const { top, lines } of groups.values()) {
+    const late = new Set();
+    let past = false;
+    for (const { top, drop, keep, bases: members } of groups.values()) {
+      if (sweeping && !drop.size) continue;
+      if (past || uptime() > EXCLUDE_DEADLINE_MS) { past = true; for (const key of members) late.add(key); continue; }
+      // a line a base still holding a file needs, and in a sweep with an except base the root form a linked worktree
+      // shares with the main checkout, is never dropped
+      const droppable = (line) => !keep.has(line) && !(exceptKey && line === ROOT_FORM_LINE);
       let common = null;
       try {
         const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'rev-parse', '--git-common-dir'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -593,6 +650,7 @@ function removeStatus(root, deps) {
       // every work tree of the repository, listed once; null when git could not answer
       let trees = null;
       try {
+        if (uptime() > EXCLUDE_DEADLINE_MS) throw new Error('past the deadline');
         const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'worktree', 'list', '--porcelain'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
         trees = String(exec(cmd, argv, opts)).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9).trim()).filter(Boolean);
       } catch { trees = null; }
@@ -608,13 +666,22 @@ function removeStatus(root, deps) {
       const kept = [];
       let dropped = 0;
       for (let i = 0; i < rows.length; i++) {
-        if (bare(rows[i]) === EXCLUDE_COMMENT && i + 1 < rows.length && (lines.has(bare(rows[i + 1])) || unused(bare(rows[i + 1])))) { i++; dropped++; continue; }
+        if (bare(rows[i]) === EXCLUDE_COMMENT && i + 1 < rows.length && droppable(bare(rows[i + 1])) && (drop.has(bare(rows[i + 1])) || unused(bare(rows[i + 1])))) { i++; dropped++; continue; }
         kept.push(rows[i]);
       }
       if (!dropped) continue;
       try { fs.writeFileSync(file, kept.join('')); out.lines += dropped; } catch { /* left as it was */ }
     }
-    try { fs.rmSync(listFile(root, d), { force: true }); } catch { /* none */ }
+    const listPath = listFile(root, d);
+    if (!sweeping) { try { fs.rmSync(listPath, { force: true }); } catch { /* none */ } return out; }
+    const stay = bases.filter((b) => holding.has(L.dirKey(b)) || late.has(L.dirKey(b))).map(posix);
+    out.bases = stay.length;
+    if (listPath && listReplaceable(listPath)) {
+      try {
+        if (!stay.length) fs.rmSync(listPath, { force: true });
+        else if (!same(listed.map(posix), stay)) writeList(root, stay, d);
+      } catch { /* the next start sweeps again */ }
+    }
   } catch { /* what was done */ }
   return out;
 }
@@ -627,22 +694,39 @@ function modesLine(s) {
   return on.length ? `Modes ON: ${on.join(', ')}` : '';
 }
 
+// Whether the sweep has work: the list names a base other than the root, or the reader is off and the root holds a status
+// folder. A list of the root alone, with the reader on, costs one list read and no git spawn.
+function sweepDue(root, readerIsOn, d) {
+  try {
+    const rootKey = d.layout.dirKey(root);
+    if (readList(root, d).some((b) => path.isAbsolute(b) && d.layout.dirKey(b) !== rootKey)) return true;
+    return !readerIsOn && isFolder(statusDir(root));
+  } catch { return false; }
+}
+
 // The callers' one line each. The session start returns the modes line (startup, resume, clear - a compaction says none).
-function onSessionStart(payload, entry) {
+// `deps` is a test's seam: history-session.js hands none.
+function onSessionStart(payload, entry, deps) {
   let line = '';
   try {
     const p = objectOf(payload);
     if (!p || p.agent_id || !ID_RE.test(String(p.session_id || ''))) return '';
-    const d = depsOf();
+    const d = depsOf(deps);
+    const root = rootOf(p, d.env);
     // once per session: an install without the mod leaves one timed row at the start, never one per turn
     const gateFrom = process.hrtime.bigint();
-    if (!readerOn(rootOf(p, d.env), d.env, d)) probeRow(p, { kind: 'status-gate', result: 'off', ms: msSince(gateFrom) }, d);
+    const on = readerOn(root, d.env, d);
+    if (!on) probeRow(p, { kind: 'status-gate', result: 'off', ms: msSince(gateFrom) }, d);
     writeStatus(p, { entry }, { when: 'always', deps: d });
     if (['startup', 'resume', 'clear'].includes(p.source)) line = modesLine(readStatusFile(statusFile(p, d) || '', String(p.session_id))
       || buildStatus(p, { entry, handoffPrompt: null }, d));
-    const root = rootOf(p, d.env);
     const base = baseOf(p, d.env);
     if (!root || !base) return line;
+    if (path.isAbsolute(root) && sweepDue(root, on, d)) {
+      const sweepFrom = process.hrtime.bigint();
+      const swept = removeStatus(root, d, { except: on ? root : undefined, rootMinAgeMs: SWEEP_ROOT_MIN_AGE_MS });
+      if (swept.files || swept.lines) probeRow(p, { kind: 'status-sweep', files: swept.files, lines: swept.lines, bases: swept.bases, ms: msSince(sweepFrom) }, d);
+    }
     pruneStatus(root, base, String(p.session_id), Date.now(), d);
     for (const result of ensureExcluded(statusBases(root, base, d), d)) {
       if (result === 'failed' || result === 'late') probeRow(p, { kind: 'status-exclude', result }, d);

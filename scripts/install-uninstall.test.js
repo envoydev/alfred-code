@@ -281,19 +281,27 @@ test('uninstall: the session status files and the exclude line the stack added g
             const env = { CLAUDE_PROJECT_DIR: repo, ALFRED_CODE_SESSION_STATUS: 'on' };
             assert.strictEqual(status.writeStatus({ session_id: 's1', cwd: repo }, {}, { when: 'always', deps: { env } }), 'written');
             put(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
+            // a folder an older release listed: uninstall passes no options, so it is swept at any age, with the list
+            put(path.join(repo, 'sub', '.claude', 'session-inspector', 'status', 's2.json'), '{}');
+            const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
+            fs.writeFileSync(list, JSON.stringify([...JSON.parse(fs.readFileSync(list, 'utf8')), path.join(repo, 'sub').split(path.sep).join('/')]));
             return fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');
         },
         inspect: (repo) => ({
             status: fs.existsSync(path.join(repo, '.claude', 'session-inspector', 'status')),
+            stray: fs.existsSync(path.join(repo, 'sub', '.claude')),
+            list: fs.existsSync(path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json')),
             handoff: fs.existsSync(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md')),
             exclude: fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8'),
         }),
     });
     assert.strictEqual(result.status, false, outs[1]);
+    assert.strictEqual(result.stray, false, 'a listed folder is swept at any age');
+    assert.strictEqual(result.list, false, 'the list of folders goes');
     assert.strictEqual(result.handoff, true, 'session-inspector\'s own file stays');
     assert.ok(result.exclude.endsWith('*.mine\n'), `the user's own line stays: ${result.exclude}`);
     assert.doesNotMatch(result.exclude, /session-inspector/, 'the pair the stack added goes');
-    assert.match(outs[1], /session status: 1 file removed/);
+    assert.match(outs[1], /session status: 2 files removed/);
     assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
 });
 

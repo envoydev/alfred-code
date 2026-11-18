@@ -347,11 +347,14 @@ test('T7 the root decides the base', () => {
     const list = listOf(root);
     assert.ok(!list.includes(posixOf(path.join(root, 'gone'))), 'a gone folder leaves the list');
     assert.ok(!list.includes(posixOf(other)), 'an outside base leaves the list');
-    // a 33rd base drops the oldest
+    // listed subfolders are swept at any age: their files go whatever the age, and the list is the root alone (the 33rd-base
+    // cap is the writer's, in session-status.test.js)
     const many = Array.from({ length: 32 }, (_, i) => { const b = path.join(root, `m${i}`); putStatus(b, 'mmmmmmmm'); return posixOf(b); });
     fs.writeFileSync(path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json'), JSON.stringify(many));
     start(root, 'u3', extra);
-    assert.deepStrictEqual(listOf(root), [...many.slice(1), posixOf(root)]);
+    // the writer's cap pushed the oldest entry (m0) off the list before the sweep read it
+    assert.ok(many.slice(1).every((b) => !fs.existsSync(statusOf(b, 'mmmmmmmm'))), 'a young file in a listed subfolder is swept');
+    assert.deepStrictEqual(listOf(root), [posixOf(root)]);
     for (const cwd of [scratch, home]) {
       start(root, 'z1', extra, cwd);
       assert.ok(!fs.existsSync(path.join(cwd, '.claude')), `${cwd === home ? 'a fake home' : 'a scratch'} cwd writes nothing`);
