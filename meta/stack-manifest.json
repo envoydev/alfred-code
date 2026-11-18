@@ -1097,7 +1097,7 @@
       "file": "history-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off; writes this session's session-inspector status file (.claude/session-inspector/status/<id>.json under its cwd, schema 1), prunes those past 7 days, keeps the folder out of git through info/exclude; the status file's plan key names the plan folder the session works on - set by a plan-status.js call naming a plan, kept by later writes, null after its close (PF1)"
+      "note": "what the last sessions on this branch did and ruled, injected at start (ALFRED_CODE_HISTORY sessions, seeded 3, at most 10; 150 chars plus 150 each) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off; writes this session's status file (<data root>/state/sessions/status/<id>.json at the project root, schema 1; no exclude line), prunes those past 7 days and clears the old .claude/session-inspector/status/ files and exclude lines; the status file's plan key names the plan folder the session works on - set by a plan-status.js call naming a plan, kept by later writes, null after its close (PF1)"
     },
     {
       "file": "history-session.js",

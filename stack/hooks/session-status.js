@@ -553,6 +553,34 @@ function excludeMayHoldPair(top) {
     try { return fs.readFileSync(path.join(top, '.git', 'info', 'exclude'), 'utf8').includes(EXCLUDE_COMMENT); } catch (e) { return !(e && e.code === 'ENOENT'); }
   } catch { return true; }
 }
+// The uninstall's take of the data-root status files: each distinct folder of the kept data root (`d.dataRoot`) and of the
+// one the hook writes to, its status files and then the folder itself once empty. A folder behind a link that leaves the
+// project is left alone. The exclude lines are the legacy sweep's; no line covers these files.
+function removeStateStatus(root, d, out) {
+  const seen = new Set();
+  for (const where of [d, { ...d, dataRoot: undefined }]) {
+    let folder;
+    try {
+      folder = statusFolder(root, where);
+      const key = d.layout.dirKey(folder);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (linkedState(root, where)) continue;
+    } catch { continue; }
+    let names = [];
+    try { names = fs.readdirSync(folder); } catch { continue; }
+    for (const name of names) {
+      if (!PRUNE_NAME.test(name)) continue;
+      try {
+        const file = path.join(folder, name);
+        if (!fs.lstatSync(file).isFile()) continue;
+        fs.unlinkSync(file);
+        out.files++;
+      } catch { /* gone */ }
+    }
+    try { fs.rmdirSync(folder); out.folders.push(folder); } catch { /* not empty, or gone */ }
+  }
+}
 function removeStatus(root, deps, options) {
   const d = depsOf(deps);
   const opt = options && typeof options === 'object' ? options : {};
@@ -674,6 +702,7 @@ function removeStatus(root, deps, options) {
       if (!dropped) continue;
       try { fs.writeFileSync(file, kept.join('')); out.lines += dropped; } catch { /* left as it was */ }
     }
+    if (!sweeping) removeStateStatus(root, d, out);
     const listPath = listFile(root, d);
     // an uninstall that ran out of time keeps the list, cut to the bases not reached, so a run again finds their pairs
     if (late.size) out.late = late.size;

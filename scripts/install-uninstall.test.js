@@ -306,6 +306,56 @@ test('uninstall: the session status files and the exclude line the stack added g
     assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
 });
 
+// The status files live under the data root now (`<data root>/state/sessions/status`), and no exclude line covers them: an
+// uninstall takes the files and the emptied folder, under the kept data root and under the one the hook writes to.
+test('uninstall removes the data-root status files', POSIX_ONLY, () =>
+{
+    const folderOf = (repo, dataRoot) => path.join(repo, dataRoot, 'state', 'sessions', 'status');
+    const run = (repo, dataRoot) =>
+    {
+        const logs = [];
+        uninstall.removeSessionStatus({ projectRoot: repo, dataRoot, log: (m) => logs.push(m), note: () => {}, deps: { uptime: () => 0 } });
+        return logs.join('\n');
+    };
+
+    const repo = path.join(TMP, `data-root-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    const folder = folderOf(repo, '.alfred');
+    put(path.join(folder, 's1.json'), '{}');
+    put(path.join(folder, 's2.json'), '{}');
+    const handoff = path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md');
+    put(handoff, '# handoff\n');
+    const log = run(repo, '.alfred');
+    assert.ok(!fs.existsSync(folder), 'the emptied status folder goes');
+    assert.ok(fs.existsSync(path.join(repo, '.alfred', 'state', 'sessions')), 'the folders above it stay');
+    assert.ok(fs.existsSync(handoff), 'the mod\'s own file stays');
+    assert.match(log, /session status: 2 files removed, and the emptied \.alfred\/state\/sessions\/status/);
+
+    const kept = path.join(TMP, `data-root-kept-${seq++}`);
+    fs.mkdirSync(kept, { recursive: true });
+    const keptFolder = folderOf(kept, 'legacy-data');
+    const writtenFolder = folderOf(kept, '.alfred');
+    put(path.join(keptFolder, 'a.json'), '{}');
+    put(path.join(writtenFolder, 'b.json'), '{}');
+    put(path.join(writtenFolder, 'notes.txt'), 'the user\'s own file');
+    const keptLog = run(kept, 'legacy-data');
+    assert.ok(!fs.existsSync(keptFolder), 'the kept root\'s folder is emptied');
+    assert.ok(!fs.existsSync(path.join(writtenFolder, 'b.json')), 'the status file under the written root goes too');
+    assert.ok(fs.existsSync(path.join(writtenFolder, 'notes.txt')), 'a file the pattern does not name stays, and so does its folder');
+    assert.match(keptLog, /session status: 2 files removed/);
+});
+
+test('uninstall leaves status files behind a data-root link that leaves the project', POSIX_ONLY, () =>
+{
+    const repo = path.join(TMP, `data-root-link-${seq++}`);
+    const outside = path.join(TMP, `data-root-outside-${seq++}`);
+    put(path.join(outside, 'sessions', 'status', 's1.json'), '{}');
+    fs.mkdirSync(path.join(repo, '.alfred'), { recursive: true });
+    fs.symlinkSync(outside, path.join(repo, '.alfred', 'state'));
+    uninstall.removeSessionStatus({ projectRoot: repo, log: () => {}, note: () => {}, deps: { uptime: () => 0 } });
+    assert.ok(fs.existsSync(path.join(outside, 'sessions', 'status', 's1.json')), 'a file outside the project is never removed');
+});
+
 // A run past the exclude deadline (the installer's own uptime is easily past 8 s) leaves the pairs and the list that names
 // their bases, and says so: the stamp stays and uninstall can be run again.
 test('uninstall: past the exclude time limit the pairs and the list stay, and one line says to run it again', POSIX_ONLY, () =>

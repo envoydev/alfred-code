@@ -1144,3 +1144,12 @@ it speaks for - the review of the code always, `review-security` when the comman
 'names review-security' after a receipt was written means that review's report never reached the transcript and the
 receipt did not speak for it: print its report, or name it in the receipt - report the refusal as it reads. Nothing
 to do in an installed project; no file of it changes shape.
+
+## after 3.12.1 - the session status file moves into the data root
+
+The session status file moves from `.claude/session-inspector/status/<session id>.json` to
+`<data root>/state/sessions/status/<session id>.json` (`.alfred/state/sessions/status/` by default); the data root's own
+`.gitignore` keeps it out of git, so no exclude line is written for it. The old folder's files and the exclude lines the
+stack added for them go at the next session start (the root's own files once they are 25 h old, so a session of the old
+version keeps its file). alfred-mods must be updated first: it reads the new path, then the old ones. Nothing to do in
+an installed project beyond the update; report the clean-up if the installer's lines name it.

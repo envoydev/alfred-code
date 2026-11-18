@@ -209,10 +209,11 @@ function removeGeneratedRules({ claudeDir, projectRoot, sourceDir, docsPath, log
     try { if (!fs.readdirSync(rulesDir).length) fs.rmdirSync(rulesDir); } catch { /* none, or the user's files are there */ }
 }
 
-// The session status files session-status.js writes in every install (`.claude/session-inspector/status/<id>.json`, under
-// the project root and each folder its list names) and the exclude pair it adds to the common git dir's `info/exclude`
-// (audit 2026-11-03 SYS-03). That module owns both shapes, so it takes them back; only the status files, folders it
-// leaves empty and the pairs it added go - session-inspector's own files and the user's exclude lines stay.
+// The session status files session-status.js writes in every install: `<data root>/state/sessions/status/<id>.json` (the kept
+// data root and the one the hook writes to, no exclude line covers them) and, from an older release, `.claude/session-inspector/status/<id>.json`
+// under the project root and each folder its list names, with the exclude pair it added to the common git dir's
+// `info/exclude` (audit 2026-11-03 SYS-03). That module owns every shape, so it takes them back; only the status files,
+// folders it leaves empty and the pairs it added go - session-inspector's own files and the user's exclude lines stay.
 function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () => {}, deps = {} })
 {
     let status;
