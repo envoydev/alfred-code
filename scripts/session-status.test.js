@@ -11,7 +11,9 @@ const path = require('node:path');
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const history = require(path.join(HOOKS, 'history.js'));
 
-const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'session-status-')));
+// The native resolve: a GitHub Windows runner's temp folder sits under an 8.3 short name (`RUNNER~1`), which only the
+// native call expands - git writes a worktree's paths in the long form, and a stub dirKey with no resolve must match them.
+const TMP = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'session-status-')));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 let seq = 0;
 const project = () => { const root = path.join(TMP, `p-${seq++}`); fs.mkdirSync(root, { recursive: true }); return root; };
@@ -1191,7 +1193,9 @@ test('readerOn: the account is CLAUDE_CONFIG_DIR, never HOME, and a throw reads 
     assert.strictEqual(S().readerOn(g.root, { CLAUDE_CONFIG_DIR: g.account }, { layout: null }), false, 'no layout engine');
 });
 
-test('readerOn: a linked worktree start sees the main checkout\'s settings.local.json', () =>
+// The local file is the one Claude Code reads for the start folder (`layout.localSettingsFile`): the main checkout's on
+// macOS and Linux, the start folder's own on Windows (R171), so each platform is asserted on its own rule.
+test('readerOn: a linked worktree start sees the local file Claude Code reads there - the main checkout\'s, on Windows its own', () =>
 {
     const g = gateSetup();
     const main = project();
@@ -1201,8 +1205,16 @@ test('readerOn: a linked worktree start sees the main checkout\'s settings.local
     assert.strictEqual(g.on({}, tree), false, 'not enabled yet');
     fs.mkdirSync(path.join(main, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(main, '.claude', 'settings.local.json'), JSON.stringify(enabled()));
-    assert.strictEqual(g.on({}, tree), true, 'the main checkout\'s local file');
     fs.mkdirSync(path.join(tree, 'sub'));
+    if (process.platform === 'win32')
+    {
+        assert.strictEqual(g.on({}, tree), false, 'Windows: the main checkout\'s local file is not read');
+        fs.mkdirSync(path.join(tree, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(tree, '.claude', 'settings.local.json'), JSON.stringify(enabled()));
+        assert.strictEqual(g.on({}, tree), true, 'Windows: the worktree\'s own local file');
+        return;
+    }
+    assert.strictEqual(g.on({}, tree), true, 'the main checkout\'s local file');
     assert.strictEqual(g.on({}, path.join(tree, 'sub')), true, 'and from a subfolder of the worktree');
 });
 

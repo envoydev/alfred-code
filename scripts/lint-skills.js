@@ -3158,7 +3158,7 @@ const REALPATH_PINS = {
     'scripts/scan-evidence.test.js': 1,
     'scripts/secrets-run.test.js': 1,
     'scripts/session-scope.test.js': 1,
-    'scripts/session-status.test.js': 3,
+    'scripts/session-status.test.js': 2,
     'scripts/session-surface.test.js': 1,
     'scripts/shell-guards.test.js': 7,
     'scripts/shell-writes.test.js': 1,
