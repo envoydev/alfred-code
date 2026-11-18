@@ -3014,15 +3014,23 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // A money word counts outside a path segment ('/purchases/' in a URL) and not as the cost idiom 'too small to pay for
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+const AUTO_TARGET = String.raw`(?:tickets?|issues?|PRs?|pull requests?|MRs?|cards?|threads?|Confluence|Notion|wiki|Jira|Linear)`;
+const AUTO_TICKET_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
 const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
   String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
   // The series ask the auto-run contract asks for (one ask for N outward writes, its question naming 'outward acts') waits for
   // the user whatever verb its label uses: a pick made here would read as the user's approval of N writes (final review 2026-11-18).
-  String.raw`\boutward acts?\b`,
-  String.raw`\bcomment(?:s|ed|ing)?\b`,
-  String.raw`\b(?:update|create|edit|post)\b[^.;?\n]{0,40}\b(?:pages?|tickets?|issues?|comments?|posts?)\b`,
+  // 'no / not / without outward acts' is the opposite statement ('Commit locally - no outward acts') and runs on.
+  String.raw`(?<!\b(?:no|not|without)\s+)\boutward acts?\b`,
+  // A comment or a page, ticket or post write holds only with an outward TARGET: a comment on a ticket, a page update aimed at
+  // Confluence. The bare words ('Add a comment to the function', 'Update the docs pages', 'Comment out the test', the
+  // 'post-install' script) are local work and run on. A ticket key is rewritten to 'ticket' first (`outwardAsk`), because
+  // this pattern is case-insensitive and a key shape would read 'post-1' as one. Known false hold: 'Add a comment in the
+  // issue parser'.
+  String.raw`\bcomment(?:s|ed|ing)?\b(?![- ]out\b)[^.;?\n]{0,40}\b(?:on|to|in)\b[^.;?\n]{0,30}\b${AUTO_TARGET}\b|\bcomment\s+on\b`,
+  String.raw`\b(?:update|create|edit|post|add)\b[^.;?\n]{0,40}\b(?:${AUTO_TARGET}\b(?!\s+files?\b)|(?:pages?|comments?|posts?)\b(?!-)[^.;?\n]{0,30}\b(?:on|to|in)\b[^.;?\n]{0,20}\b${AUTO_TARGET}\b)`,
   // ... but not the fresh-session cost line ('this chat sends about 226k tokens with every message', '~254k tokens re-sent
   // per message'), so auto-mode can step past a fresh-session ask. Measured over the 2,656 real recommended questions to
   // 2026-10-16: this and the money-word narrowing below drop 91 of 955 hits, every one a cost line, the pay idiom or a URL
@@ -3053,6 +3061,8 @@ function autoBilled(question, pick) {
   const own = `${pick.label} ${pick.description || ''}`;
   return AUTO_BILL_RE.test(own) || AUTO_AMOUNT_RE.test(own) || AUTO_BILL_RE.test(question) || AUTO_FORWARD_AMOUNT_RE.test(question);
 }
+// The text a pick is judged on, its ticket keys (PROJ-12, case-sensitive) read as the word 'ticket'.
+function outwardAsk(text) { return AUTO_OUTWARD_RE.test(text.replace(AUTO_TICKET_KEY_RE, 'ticket')); }
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
@@ -3065,7 +3075,7 @@ function autoAnswers(questions) {
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) return null;
-    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
+    if (outwardAsk(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
     if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;

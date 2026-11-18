@@ -503,6 +503,32 @@ test('auto-mode asks: a series ask for outward writes waits for the user; the lo
         assert.ok(answered(ask(p, 'ser1', [q(question, [label, 'Not now'])])), `answered, a local act: ${question} ${label}`);
 });
 
+// 63b82c52 widened the hold to the bare word 'comment' and to a verb + page / ticket shape, and every local comment or docs ask
+// then waited for a user who was away. The hold needs an outward TARGET (a ticket, an issue, a PR, a card, a thread, Confluence,
+// Notion, a wiki, Jira, Linear, a ticket key); 'no outward acts' is the opposite statement.
+const LOCAL_ASKS = [['Next?', 'Add a comment to the function'], ['Next?', 'Rewrite the comments'], ['The JSDoc comment is wrong. Fix?', 'Fix it'],
+    ['code-comments review found 3 issues. Apply?', 'Apply'], ['Next?', 'Address the review comments'], ['Next?', 'Comment out the failing test'],
+    ['Next?', 'Update the commented-out block'], ['Next?', 'Lint flags the comment style'], ['Next?', 'Update the docs pages'],
+    ['Next?', 'Create the docs page for the hook'], ['Next?', 'Edit the page in docs/'], ['Next?', 'Update the HTML page'],
+    ['Next?', 'Update the man page'], ['Next?', 'Create the page component'], ['Next?', 'Update the page object tests'],
+    ['Next?', 'Edit the landing page markup'], ['Next?', 'Create the GitHub-pages workflow file'], ['Next?', 'Update the issue file in the ledger'],
+    ['Next?', 'Update the 3 pages of the spec'], ['Next?', 'Edit the post-install script'], ['Next?', 'Commit locally - no outward acts'],
+    ['Next?', 'Edit post-1 and post-2 in the changelog'], ['Next?', 'Commit locally, not outward acts'], ['Next?', 'Commit locally without outward acts']];
+const OUTWARD_ASKS = [['Next?', 'Comment on all 4 tickets'], ['Next?', 'Add the 5 comments to PROJ-1..PROJ-5 as listed'],
+    ['Next?', 'Update the 3 Confluence pages as listed'], ['Create the 3 Confluence pages as outward acts?', 'Create the 3 pages'],
+    ['Next?', 'Edit the 3 tickets as listed'], ['Next?', 'Publish the 5 cards as listed - outward acts'], ['Next?', 'Edit the 3 posts'],
+    ['Next?', 'Add a comment to the PR'], ['Next?', 'Comment on the thread'], ['Next?', 'Post a comment in Jira'], ['Next?', 'Update the Notion page'],
+    ['Next?', 'Create the Linear issue'], ['Next?', 'Add a comment to PROJ-12']];
+test('auto-mode asks: a local comment or docs ask runs on, and an ask aimed at an outward target waits', () =>
+{
+    const p = project();
+    autoStamp(p, 'loc1');
+    for (const [question, label] of LOCAL_ASKS)
+        assert.ok(answered(ask(p, 'loc1', [q(question, [`${label} (Recommended)`, 'Not now'])])), `answered, a local act: ${question} ${label}`);
+    for (const [question, label] of OUTWARD_ASKS)
+        assert.strictEqual(answered(ask(p, 'loc1', [q(question, [`${label} (Recommended)`, 'Not now'])])), null, `waits: ${question} ${label}`);
+});
+
 // 2026-10-16, the user's bug report: an auto-mode task-solve approval reached the user. 'too small to pay for seats' read
 // as an outward money act, so the ask waited; the shape check then sent it back for a fresh-session option (a new cycle in
 // a finished cycle's chat), and the re-sent ask waited on the same word.
