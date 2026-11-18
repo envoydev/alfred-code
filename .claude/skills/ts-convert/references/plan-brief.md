@@ -4,8 +4,9 @@ You are the planner seat of a TypeScript conversion. You decide what is converte
 batch is checked. A cheaper model then converts one batch at a time from your plan and decides nothing, so every
 decision has to be in the plan.
 
-The dispatch gives you: REPOSITORY, TARGETS, RUN FOLDER, MODE, and the repo's `keep_js`, `checks` and `notes` where
-it has them.
+The dispatch gives you: REPOSITORY, TARGETS, RUN FOLDER, MODE, the repo's `keep_js`, `checks` and `notes` where
+it has them, and the HELD files where any are - files an earlier run left to the user. A held file goes in no batch
+and is planned as `leave` is, with the reason 'held - at fault twice in <run folder>'.
 
 Contents: rules - the method - the inventory - the toolchain - the batches - `convert.md` - `progress.md` - modes
 `replan` and `fault` - your last message.
@@ -51,20 +52,22 @@ It has to hold for a repo of several megabytes, so each step is a command or a s
    string literal (`require(path.join(...))`, a variable), a `require` of a `.json` path, `require.resolve`,
    `require.cache`, `require.extensions`, `module.` used as a value, a top-level `await`. Keep the output as
    `constructs.tsv`.
-4. **The outside runtimes.** The shipped folders are the ones the repo's `notes` and instruction file name as
-   shipped. Search every tracked file under them for tokens that end in `.js`, `.mjs` or `.cjs` (`scripts/<path>.js`,
-   say), whatever precedes the token; each token that is a tracked path under the targets is a reason (a) file. A
-   token on a comment line of a code file (one that starts with `//`, `/*`, `*` or `#` after its indent) still
-   counts, never dropped: its `keep_js` reason reads 'named only in a comment in <file> - the user may prune'. A
-   token in prose that is not a command (a JSON description, say) counts too, and its reason says so, for the user
-   to prune. Then follow the graph - its imports and its built names (step 2) - from every (a) file and every
-   `keep_js` file to its end: each file reached is reason (b).
+4. **The outside runtimes**, kept as `outside.tsv`. The shipped folders are the ones the repo's `notes` and
+   instruction file name as shipped. Search every tracked file under them for tokens that end in `.js`, `.mjs` or `.cjs`
+   (`scripts/<path>.js`, say), whatever precedes the token; each token that is a tracked path under the targets is a
+   reason (a) file. A token on a comment line of a code file (one that starts with `//`, `/*`, `*` or `#` after its
+   indent) still counts, never dropped: its `keep_js` reason reads 'named only in a comment in <file> - the user may
+   prune'. The one exception is a test file the repo's test command runs: no outside runtime loads a test, so a comment
+   that names one is a reference to update, not a reason (a). A token in prose that is not a command (a JSON
+   description, say) counts too, and its reason says so, for the user to prune. Then follow the graph - its imports and
+   its built names (step 2) - from every (a) file and every `keep_js` file to its end: each file reached is reason (b).
 5. **The globs.** Search for every glob that selects code by extension: `package.json` scripts, the test runner's
    own pattern where the repo has a runner script, `structure_paths` in `.claude/kit/repo.json`, lint globs,
    `tsconfig` `include` and `exclude`, each command and Node pin in `.github/workflows/`, and the docs that run a
    command by path.
-6. **The baseline.** Run the repo's whole test suite once and record its command, the count of tests run and the
-   seconds it took. Run the typecheck where the repo has one, and record its result.
+6. **The baseline.** Where a file is `convert` or `check`, run the repo's whole test suite once and record its
+   command, the count of tests run and the seconds it took; where none is, skip it - nothing will be built. Run the
+   typecheck where the repo has one, and record its result.
 
 ## The inventory
 
@@ -124,7 +127,8 @@ Planned as batch 0, with the exact text of every edit.
 - **Every root in the file list.** Each root that holds a converted or a `check` file is in a config's `include`.
   Where the repo's config leaves a root out, add it - or, where that config's settings do not fit the code (a
   `bundler` resolution against a script Node runs), plan a `tsconfig.<root>.json` of its own and a typecheck
-  command that runs each config. Every `leave` path goes into each config's `exclude`.
+  command that runs each config. In a plan with a batch, every `leave` path goes into each config's `exclude`; a
+  plan whose files are all `leave` edits no config for them - a config that already lists them stays as it is.
 - **The repo's own words for the language.** Plan the edit of each `structure_map` line and instruction-file line
   that names the language, the module system or a file extension, in the repo that owns it; add a created
   `tsconfig.json` to `audit.code.scope_with`; write the `typecheck` command into `audit.code.checks`; and apply
@@ -158,7 +162,8 @@ Planned as batch 0, with the exact text of every edit.
 - A batch lists every reference to its files that sits outside it, with file, line, the text now and the text
   after: imports and `require` calls in files of later batches and in files that stay JavaScript, `package.json`
   scripts, settings hook commands, file lists, the `roots`, `scope_with` and `keep_js` paths in
-  `.claude/kit/repo.json`, docs that run the command.
+  `.claude/kit/repo.json`, docs that run the command, and every comment or doc line that names the file by path
+  (`git grep -n` for its old path), so no comment is left naming a file that is gone.
 
 ## `convert.md`
 

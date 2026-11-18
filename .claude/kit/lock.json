@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@8e42e29",
+  "kit": "claude-kit@54a9a4d",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "8629070010847ff937be91c739e1b8c006b6c81847176f758e8a715a8e15a933",
@@ -102,11 +102,11 @@
     ".claude/skills/repo-audit-usage/references/synthesis.md": "122f312aae2ec9c32433f453d3af2f4722985834bab32c515539485f2a2cabf3",
     ".claude/skills/skill-authoring/SKILL.md": "1eaf93e5d8c4a892160d3f439e7467fc857afa52a1f09421ea90b596e56521cd",
     ".claude/skills/solve-task/SKILL.md": "e9e7cd989c2333f97353db30d5328463bcbe6cabec080e297db0593b948d276b",
-    ".claude/skills/ts-convert/SKILL.md": "63f8f06028b666147a51038ee3112c2c8c2955025dc00382bf1f60bad37aeee3",
+    ".claude/skills/ts-convert/SKILL.md": "4bce9bdb83ace87b6e18dad00c84a2503e3aa30c1f205267cf7fba9001572f83",
     ".claude/skills/ts-convert/references/conversion-rules.md": "ab1c17ef4f134220a823976d14ad015634a57ada739b021d03b04134838285e8",
     ".claude/skills/ts-convert/references/converter-brief.md": "812ea09e2f2b373d3b48d8a229c9546e95c621fe835e8ed15d1da667b2d42ad7",
     ".claude/skills/ts-convert/references/currency.md": "881fd43efefd0cca300024196754bb90684dbcd0a35f6d97ae8bb0a0fb6510fd",
-    ".claude/skills/ts-convert/references/plan-brief.md": "93d562902b05565f516cee790b983d130e9ff6a95b70f6432eb0b694aa581ece",
+    ".claude/skills/ts-convert/references/plan-brief.md": "10739a15c44d55efa6b661b8175a99cf81a8871a07a0f72f7e4bf2e9a3050afb",
     ".claude/skills/ts-js-testing/SKILL.md": "31399a3d97eb7688de33837969b3b9550f0e7685437a879becd2bc2da35b8da7",
     ".claude/skills/ts-js-testing/references/suite-audit.md": "b85d638fdf3bb8de3328bb945c9149be1aa0c42d496606b9fd847db241910d77",
     ".claude/skills/typescript/SKILL.md": "fc3eb6b8566b98a8ce2471ed91210eb0eb97e5f3aa40002ad3cdd66f1e3250cb",
