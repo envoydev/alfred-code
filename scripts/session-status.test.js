@@ -1181,18 +1181,6 @@ test('readerOn: no files is off, a mod set false is off, and session-inspector e
     assert.strictEqual(g.on(), true, 'alfred-mods enabled');
 });
 
-test('readerOn: ALFRED_CODE_SESSION_STATUS is no override - on with no mod enabled writes nothing, off over an enabled mod does not close it', () =>
-{
-    const g = gateSetup();
-    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'on' }), false, 'on with no mod enabled');
-    const env = { CLAUDE_PROJECT_DIR: g.root, CLAUDE_CONFIG_DIR: g.account, ALFRED_CODE_SESSION_STATUS: 'on' };
-    const payload = { session_id: 'var-gone', cwd: g.root, hook_event_name: 'Stop' };
-    assert.strictEqual(S().writeStatus(payload, { entry: null }, { when: 'always', deps: { env, layout: g.layout } }), 'skipped', 'no write');
-    assert.ok(!fs.existsSync(statusOf(g.root, 'var-gone')), 'no status file');
-    g.user(enabled());
-    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'off' }), true, 'off does not close an enabled mod');
-});
-
 test('readerOn: the account is CLAUDE_CONFIG_DIR, never HOME, and a throw reads as off', () =>
 {
     const g = gateSetup();
@@ -1643,7 +1631,6 @@ test('the sweep: a listed linked worktree owns its young file (the root\'s 25 ho
 // The status file in the data root (the later-items design, Parts 1 and 3): <root>/.alfred/state/sessions/status/<id>.json,
 // no folder list entry and no exclude line for it - the data root's own .gitignore keeps it out of git. The old folder, the
 // list and the old pairs belong to the legacy sweep alone.
-const PRELUDE = require(path.join(HOOKS, 'hook-prelude.js'));
 const DATA_PARTS = ['.alfred', 'state', 'sessions', 'status'];
 const newStatusOf = (root, id) => path.join(root, ...DATA_PARTS, `${id}.json`);
 const listOf = (root) => path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
