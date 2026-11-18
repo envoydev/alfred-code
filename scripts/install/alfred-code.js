@@ -461,6 +461,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const child = top || (!wsPrep.on && links.inherited(projectRoot, recorded).length) ? { top, holders: wsPrep.members.map((m) => m.root),
             parentLines: wsPrep.parentLines || links.inherited(projectRoot, recorded).map(lineOfLink),
             linked: { skills: homes.skills.store, agents: homes.agents.store && !routes.skills, rules: true } } : null;
+        // What the stack recorded for each copy, read once before any run step rewrites one: the read-back, the drop and the copy step ask it.
+        // A ledger row for a skill the project wrote under a catalog name (an earlier build recorded one) is no record of the stack's.
+        const skillCheck = skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir });
+        const records = recordView(stampFile, priorLedger);
+        const catalog = new Set(manifest.skills.map((e) => e.split('|').pop()));
+        for (const name of Object.keys(records.skills)) if (catalog.has(name) && skillCheck.foreign(name)) delete records.skills[name];
         const userAdds = [...args.add];
         const userDrops = [...args.drop];
         // This run's own read-back could not see the stack's plugin rows (selection.readBack `blind`).
@@ -485,7 +491,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const readView = settings.readBackSettings(claudeDir, 'local');
             const back = selection.readBack({
                 claudeDir, skillsDir, agentsDir, linked: recorded.map(lineOfLink),
-                foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
+                foreignSkill: skillCheck.foreign,
+                keptUnpicked: unpickedKeep({ picked: lastPicked, records, skillsDir, agentsDir }),
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -696,6 +703,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // M3: the skills a same-named project folder kept from this run - never recorded as the stack's picks.
             foreignSkills: new Set(),
             foreignSeats: new Set(),
+            records, skillTest: skillCheck,
             // The instruction file's name: this run's answer (--instructions-file), else the stamp's, else AGENTS.md.
             instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
             instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
@@ -706,11 +714,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
             : null;
 
-        // What the stack recorded for each copy, read before any run step rewrites one: the drop below and the copy step ask it.
-        ctx.records = recordView(stampFile, priorLedger);
-        // A ledger row for a skill the project wrote under a catalog name (an earlier build recorded one) is no record of the stack's.
-        const catalog = new Set(manifest.skills.map((e) => e.split('|').pop()));
-        for (const name of Object.keys(ctx.records.skills)) if (catalog.has(name) && foreignSkill(ctx, name)) delete ctx.records.skills[name];
         copy.removeDropped({
             drop: args.dropApplied || [], log, keep: (category, name) => droppedKeep(ctx, category, name),
             dirs: { skill: skillsDir, agent: agentsDir, rule: rulesDir, hook: path.join(claudeDir, 'hooks') },
@@ -1307,7 +1310,7 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = 
             continue;
         }
         const kept = keep && keep(name);
-        if (kept && typeof kept === 'object') { ctx.log(kept.say); continue; }
+        if (kept && typeof kept === 'object') { if (!(ctx.keptSaid && ctx.keptSaid.has(kept.say))) ctx.log(kept.say); continue; }
         if (typeof kept === 'string') { ctx.log(`  !! ${label} kept: ${name} - ${why}, but ${kept}`); continue; }
         if (kept)
         {
@@ -1338,6 +1341,18 @@ function ownSeatKeep(ctx, route = 'plugin')
     };
 }
 
+// A copy a drop kept stays out of the read-back's picks: the stamp's picks line no longer names it and either its record shows an
+// edit since, or it is a seat no stamp line records (a project's own). A stamp with no picks line keeps the adoption of a disk copy.
+function unpickedKeep({ picked, records, skillsDir, agentsDir })
+{
+    return (kind, name) =>
+    {
+        if (!picked || (picked[`${kind}s`] || []).some((e) => splitPick(e).name === name)) return false;
+        const file = kind === 'skill' ? path.join(skillsDir, name) : path.join(agentsDir, `${name}.md`);
+        return editedSince(records, kind, name, file) || (kind === 'agent' && records.ledgerHeld && recordOf(records, 'agent', name) === null);
+    };
+}
+
 // A drop through configure's unpick removes only a copy the stack still owns: a skill the project wrote, or a skill or seat
 // edited since its record, or a seat file the stamp never recorded, is kept and named. Rules and hooks keep today's removal.
 // The plugin route's prunes below name an edited or own copy themselves, so there the drop keeps it without a second line.
@@ -1348,7 +1363,11 @@ function droppedKeep(ctx, category, name)
     const kept = category === 'skill' ? keepEdited(ctx, 'skill', ctx.skillsDir)(name)
         : category === 'agent' ? keepEdited(ctx, 'agent', ctx.agentsDir)(`${name}.md`) || ownSeatKeep(ctx, route)(`${name}.md`)
             : false;
-    return kept && route === 'plugin' ? { say: null } : kept;
+    if (!kept || route === 'copy') return kept;
+    // A seat's prune below always names it; a skill's may not (a member below still holds it), so the drop names it and the prune says nothing twice.
+    if (category === 'agent') return { say: null };
+    (ctx.keptSaid ||= new Set()).add(kept.say);
+    return kept;
 }
 
 // The copy route's twin: a picked seat whose file sits in `.claude/agents` with no record and text other than the render.

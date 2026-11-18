@@ -142,14 +142,15 @@ const listDir = (dir, test) =>
 // shipped (the catalog, a renamed item's old name, a retired one) is an item, so a project's own skill is
 // neither a pick nor install evidence; null reads every folder.
 // `foreignSkill(name)` (M3): a folder under a catalog skill name that is the project's own, never a pick.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), agentsDir = path.join(claudeDir, 'agents'), plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false })
+// `keptUnpicked(kind, name)`: a copy a drop kept (edited since its record, or a project's own seat) after the stamp's picks left it - never read back as a pick.
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), agentsDir = path.join(claudeDir, 'agents'), plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false, keptUnpicked = () => false })
 {
     const lines = [];
     const ours = (kind, name) => !known || known[kind].has(name);
     for (const name of listDir(skillsDir, (d) => d.isDirectory() || d.isSymbolicLink()))
-        if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name)) lines.push(`skill ${name}`);
+        if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name) && !keptUnpicked('skill', name)) lines.push(`skill ${name}`);
     for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md')))
-        if (ours('agents', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
+        if (ours('agents', f.replace(/\.md$/, '')) && !keptUnpicked('agent', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
     const ruleFile = (d) => d.isFile() && d.name.endsWith('.md');
     for (const f of new Set([path.join(path.dirname(claudeDir), '.alfred', 'stack'), claudeDir].flatMap((d) => listDir(path.join(d, 'rules'), ruleFile))))
     {
@@ -232,7 +233,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
 // carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
-function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
+function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, keptUnpicked = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
     stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
     scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
@@ -249,7 +250,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const offNow = (e) => (e && typeof e === 'object' && envOf(e, 'HOOKS_OFF') != null
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
     stampHooks = [...new Set((stampHooks || []).map(hookNow))];
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, agentsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill }), renaming);
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, agentsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill, keptUnpicked }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false } };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves

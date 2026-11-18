@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
-const { readLedger, readLibrary } = require('./install/stamp.js');
+const { readLedger, readLibrary, readPicked } = require('./install/stamp.js');
 const { hashItem } = require('./install/library.js');
 
 const SKILL = 'csharp';
@@ -81,7 +81,7 @@ for (const route of Object.keys(ROUTES))
     test(`drop-keep, ${route} route: an edited skill and seat copy dropped through configure are kept, named, and keep their record`, POSIX_ONLY, () =>
     {
         const { outs, steps, before } = dropRun(route, { edit: true });
-        assert.ok(outs[1].includes(keptSkillLine), outs[1]);
+        assert.equal(outs[1].split(keptSkillLine).length - 1, 1, `the skill is named once: ${outs[1]}`);
         assert.ok(outs[1].includes(keptSeatLine), outs[1]);
         assert.doesNotMatch(outs[1], /(skill|agent) removed \(dropped\)/);
         for (const [i, step] of steps.slice(1).entries())
@@ -116,3 +116,68 @@ for (const route of Object.keys(ROUTES))
         assert.doesNotMatch(out, /agent removed \(dropped\)/);
     });
 }
+
+// After a drop keeps an edited copy, a bare `update --installed-only` (every update and configure call) must not read the
+// copy back off the disk as a pick: the stamp tells the two apart - the record survives and the name left the picks lines.
+const DENY_ROW = `Agent(alfred-code:${SEAT})`;
+const pickedNames = (repo) => { const picked = readPicked(stampOf(repo)) || { skills: [], agents: [] }; return { skills: picked.skills.map((e) => e.split('@')[0]), agents: picked.agents.map((e) => e.split('@')[0]) }; };
+const denyRows = (repo) => { const file = path.join(repo, '.claude', 'settings.local.json'); return fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')).permissions || {}).deny || [] : []; };
+
+for (const route of Object.keys(ROUTES))
+{
+    test(`drop-keep, ${route} route: two bare update --installed-only runs after a drop keep the edited copies and re-pick nothing`, POSIX_ONLY, () =>
+    {
+        const { env, plugins } = ROUTES[route];
+        let edited;
+        const { outs, steps } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+            env, args: [SCOPE, DROP_BOTH, INSTALLED, INSTALLED], ...(plugins ? { plugins } : {}),
+            each: (repo, i) =>
+            {
+                if (i === 0)
+                {
+                    if (route === 'plugin') plantSeat(repo);
+                    append(skillFile(repo));
+                    append(seatFile(repo));
+                    edited = stateOf(repo);
+                    return null;
+                }
+                return { ...stateOf(repo), picked: pickedNames(repo), deny: denyRows(repo) };
+            },
+        });
+        for (const i of [1, 2, 3])
+        {
+            assert.equal(steps[i].skill, edited.skill, `run ${i + 1}: the skill copy is the edited text`);
+            assert.equal(steps[i].seat, edited.seat, `run ${i + 1}: the seat copy is the edited text`);
+            assert.ok(!steps[i].picked.skills.includes(SKILL) && !steps[i].picked.agents.includes(SEAT), `run ${i + 1}: neither name is picked again`);
+            assert.doesNotMatch(outs[i], /overwriting a hand-edited copy/, `run ${i + 1}`);
+            assert.doesNotMatch(outs[i], /agent allowed again/, `run ${i + 1}`);
+            if (route === 'plugin') assert.ok(steps[i].deny.includes(DENY_ROW), `run ${i + 1}: the unpick's deny row stays`);
+        }
+    });
+
+    test(`drop-keep, ${route} route: --add re-picks a kept copy with the overwrite line`, POSIX_ONLY, () =>
+    {
+        const { env, plugins } = ROUTES[route];
+        const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+            env, args: [SCOPE, DROP_BOTH, [...INSTALLED, '--add', `skill ${SKILL}`]], ...(plugins ? { plugins } : {}),
+            each: (repo, i) => { if (i === 0) append(skillFile(repo)); return i === 0 ? null : { ...stateOf(repo), picked: pickedNames(repo) }; },
+        });
+        assert.ok(outs[2].includes(`  overwriting a hand-edited copy: skill ${SKILL}`), outs[2]);
+        assert.ok(steps[2].picked.skills.includes(SKILL), 'picked again');
+    });
+}
+
+test('drop-keep: a stamp with no picks line still adopts a copy on disk as a pick', POSIX_ONLY, () =>
+{
+    const { steps } = seedRun(['install', 'update'], SELECTION, {
+        env: ROUTES.copy.env, args: [SCOPE, INSTALLED],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return pickedNames(repo);
+            const text = fs.readFileSync(stampOf(repo), 'utf8').replace(/^picked-(skills|agents):.*\n?/gm, '');
+            fs.writeFileSync(stampOf(repo), text);
+            return null;
+        },
+    });
+    assert.ok(steps[1].skills.includes(SKILL) && steps[1].agents.includes(SEAT), 'adopted from the disk');
+});
