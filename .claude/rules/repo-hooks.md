@@ -1906,12 +1906,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     old on seed `1` to `3` (`history-switch-is-a-count`).
     THE STATUS FILE (session-inspector, the user's contract of 2026-10-29; the sections cited are its spec's):
     `session-status.js`, a module with
-    no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<cwd>/.claude/session-inspector/status/<session
+    no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<root>/.claude/session-inspector/status/<session
     id>.json`, schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
     `scorer`, `autoCompact`, `handoffPrompt`, `plan`, a public contract that only ever gains fields. `plan` (PF1, 3.12) is
     `planField`: the plan folder the session works on, relative to the root with one trailing slash, carried by every write and
-    null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the live `cwd` (A1), written only
-    when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
+    null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the root (`CLAUDE_PROJECT_DIR`, else the start cwd) - the cwd base of 2026-10-29 replaced on 2026-11-18 after the user's report of a status folder in every working folder; a session started in a linked worktree has that worktree as its root (A8). THE GATE (status-file-root design, 2026-11-18): `readerOn` writes only while `alfred-mods@*` or `session-inspector@*` is enabled in the merged `enabledPlugins` (user `<CLAUDE_CONFIG_DIR or ~/.claude>/settings.json`, project `.claude/settings.json`, local `settings.local.json`, managed settings and their `managed-settings.d` drop-ins) or `ALFRED_CODE_SESSION_STATUS=on`; `off` never writes, and any read or parse error means off. The settings are re-read at every write moment (A6), so enabling the mod mid-session writes at the next Stop or prompt, and a disable stops the file's updates. The id matches
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
     `autoStampLive`, the stamp must name the session), `scoringState` and the newest open plan's `Resume:` text from
@@ -1926,12 +1925,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Stop, which recomputes the field from history, writes it back - a stated residual, no lock on every prompt (final
     review m6, WONTFIX). The
     gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The
-    SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the `cwd` and
-    each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts an anchored
-    `/<rel>/.claude/session-inspector/status/` line under `# alfred-code: session-inspector status files` into the common
-    dir's `info/exclude` - one `gitSafe` spawn per common dir, none past 8s of the process (section 6). Each write leaves a
-    `status-write` probe row (`ok`, `slow` past 200ms, `failed`), an exclude that failed or came late a `status-exclude` one.
-    Uninstall takes both back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
+    SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the root and
+    each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts one anchored
+    `/.claude/session-inspector/status/` line for the root under `# alfred-code: session-inspector status files` into the common
+    dir's `info/exclude` - one `gitSafe` spawn per common dir, none past 8s of the process (section 6). THE SWEEP (Part 3): at SessionStart `removeStatus` runs with `except` / `rootMinAgeMs` over the stray status files earlier versions left in subfolders - a subfolder's at any age, a linked worktree's top and the root's (when the reader is off) only once 25 h old (`SWEEP_ROOT_MIN_AGE_MS`, a new-version session owns a younger one) - with the existing care (never `HANDOFF.md`, `plans/`, `scores/` or a folder holding anything else), inside the 8s deadline; a base still holding a file or not reached keeps its list entry and pair. Each write leaves a
+    `status-write` probe row (`ok`, `slow` past 200ms, `failed`, with `gateMs`, the enabled read), an exclude that failed or came late a `status-exclude` one, a start with the reader off one `status-gate` row (once per session) and a sweep that removed anything one `status-sweep` row (`files`, `lines`, `bases`, `ms`).
+    Uninstall (unchanged in what it removes) takes both back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
     removeSessionStatus`): under the root and each listed base the files a status write names and the folders they leave
     empty, then each exclude pair it added for those bases - session-inspector's own files beside `status/`, a line of the
     user's own and another project's pair still in use stay. A stack pair (the comment with its anchored line right under
