@@ -88,17 +88,18 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
 1. **Settings and targets.** Take the request's `kit status` line, or run `node .claude/kit/settings.mjs`. Resolve
    the targets, and read `keep_js`, `checks` and `notes` from `audit.code` where the repo has the entry.
 2. **Anything to do.** List the JavaScript: `git ls-files -- <targets>`, the `.js`, `.mjs`, `.cjs` and `.jsx` files.
-   A file is settled when the newest finished `convert.md` on disk - under `docs/superpowers/audits/` or
-   `docs/superpowers/convert/`, every batch of its `progress.md` done, or none listed - lists it as `leave`, or when a
-   `keep_js` path matches it and its first five lines hold `// @ts-check`. A batch `FAILED: at fault twice` holds its
-   files and those of every batch waiting on it - the user's, neither settled nor to do - until its line is set back to
-   `pending`, or a `keep_js` path matches every file of that failed `convert` batch, which releases them all. Every file
-   settled or held: print `Nothing to convert: <n> JavaScript files - <k> left as they are, <m> checked`, a `Held for
-   you: <files> - batch <n> of <run folder>, at fault twice - add a keep_js entry for them, or set its line back to
-   pending to try again` line where any is held, `Finished: yes`, and return. Otherwise, unless `WRITE` is false, before
-   any seat starts `git status --porcelain -- <targets> <instruction file> .claude/kit/repo.json package.json <lockfile>
-   'tsconfig*.json'` must print nothing, or the run stops before the planner - it writes nothing, no run folder
-   included, and prints the paths to commit or stash.
+   A file is settled when the newest finished `convert.md` on disk - under
+   `docs/superpowers/audits/` or `docs/superpowers/convert/`, every batch of its `progress.md` done, held (below) or
+   none listed - lists it as `leave` with a reason that does not begin 'held -', or when a `keep_js` path matches it and
+   its first five lines hold `// @ts-check`. A batch `FAILED: at fault twice` holds its files and those of every batch
+   waiting on it - the user's, neither settled nor to do - until its line is set back to `pending`, or a `keep_js` path
+   matches every file of that failed `convert` batch, which releases them all. Every file settled or held: print
+   `Nothing to convert: <n> JavaScript files - <k> left as they are, <m> checked`, a `Held for you: <files> - batch <n>
+   of <run folder>, at fault twice - add a keep_js entry for them, or set its line back to pending to try again` line
+   where any is held, `Finished: yes`, and return. Otherwise, unless `WRITE` is false, before any seat starts `git
+   status --porcelain -- <targets> <instruction file> .claude/kit/repo.json package.json <lockfile> 'tsconfig*.json'`
+   must print nothing, or the run stops before the planner - it writes nothing, no run folder included, and prints the
+   paths to commit or stash.
 3. **The run folder, or a resume.** Where a run folder's `progress.md` has a batch a run can take ('Resume'
    below), this run resumes it. Otherwise take the folder the audit named, or make
    `docs/superpowers/convert/<date>/` (`-2`, `-3` where the date has one), and start `convert-run.md` there: the
@@ -114,7 +115,7 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
    answer to, as the user's to decide - a `check` file that could be converted, a `.jsx` file nothing builds, a path
    used outside the repo - goes to the user in one AskUserQuestion call, at most four questions, the recommended option
    first. An answer that differs from the recommended option goes back to the planner with SendMessage; the others are
-   written to `convert-run.md`.
+   written to `convert-run.md`. Answers that leave no batch and no toolchain edit close the run as step 4 does.
 6. **Grade and approval.** With `WRITE` false, stop here: print the plan's path and its summary, build nothing.
    Otherwise, where scoring is on, load `refining-plans` and grade `convert.md` to the pass score - the task is the
    user's request and this skill's classes and module format; a revision is the planner's. Then the plan is
@@ -195,13 +196,12 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
 
     `Finished: yes` only when no batch of `progress.md` is `pending` or `waiting on`; a `FAILED` batch counts as
     finished, and so does a batch waiting on one `FAILED: at fault twice`, which is the user's: the `Failed:` line
-    names it with how to release it - a `keep_js` entry for its files, or its line set back to `pending` to try
-    once more. A batch `FAILED`
-    at two runs running - its line was `FAILED` when this run began - is named on the `Failed:` line with how to
-    stop it: a `keep_js` entry for its files, with the reason. Owed, where they apply: `npm run sync` in
-    claude-kit, which refills the `project-structure` rule's `paths` after `structure_paths` changed - that rule
-    is a kit copy and is never edited in place - and after a `check` batch edits a file other repos copy
-    (`bin/*.mjs`); the CI legs of other operating systems, not verified here and owed before a push; each
+    names it with how to release it - a `keep_js` entry for its files, or its line set back to `pending` to try once
+    more. A batch `FAILED` at two runs running - its line was `FAILED` when this run began - is named on the
+    `Failed:` line with how to stop it: a `keep_js` entry for its files, with the reason. Owed, where they apply:
+    `npm run sync` in claude-kit, which refills the `project-structure` rule's `paths` after `structure_paths`
+    changed - that rule is a kit copy and is never edited in place - and after a `check` batch edits a file other
+    repos copy (`bin/*.mjs`); the CI legs of other operating systems, not verified here and owed before a push; each
     reason (c) file as a task for `solve-task`; and, with batches left, that `/repo-audit-code` or this skill again
     continues them.
 

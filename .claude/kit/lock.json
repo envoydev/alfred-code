@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@54a9a4d",
+  "kit": "claude-kit@e41c1ed",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "8629070010847ff937be91c739e1b8c006b6c81847176f758e8a715a8e15a933",
@@ -102,7 +102,7 @@
     ".claude/skills/repo-audit-usage/references/synthesis.md": "122f312aae2ec9c32433f453d3af2f4722985834bab32c515539485f2a2cabf3",
     ".claude/skills/skill-authoring/SKILL.md": "1eaf93e5d8c4a892160d3f439e7467fc857afa52a1f09421ea90b596e56521cd",
     ".claude/skills/solve-task/SKILL.md": "e9e7cd989c2333f97353db30d5328463bcbe6cabec080e297db0593b948d276b",
-    ".claude/skills/ts-convert/SKILL.md": "4bce9bdb83ace87b6e18dad00c84a2503e3aa30c1f205267cf7fba9001572f83",
+    ".claude/skills/ts-convert/SKILL.md": "776228d7264cb24301bd54dd673f2a13c8a40103f4e30b2b93f8f623a95cb2c9",
     ".claude/skills/ts-convert/references/conversion-rules.md": "ab1c17ef4f134220a823976d14ad015634a57ada739b021d03b04134838285e8",
     ".claude/skills/ts-convert/references/converter-brief.md": "812ea09e2f2b373d3b48d8a229c9546e95c621fe835e8ed15d1da667b2d42ad7",
     ".claude/skills/ts-convert/references/currency.md": "881fd43efefd0cca300024196754bb90684dbcd0a35f6d97ae8bb0a0fb6510fd",
