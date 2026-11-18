@@ -708,6 +708,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // What the stack recorded for each copy, read before any run step rewrites one: the drop below and the copy step ask it.
         ctx.records = recordView(stampFile, priorLedger);
+        // A ledger row for a skill the project wrote under a catalog name (an earlier build recorded one) is no record of the stack's.
+        const catalog = new Set(manifest.skills.map((e) => e.split('|').pop()));
+        for (const name of Object.keys(ctx.records.skills)) if (catalog.has(name) && foreignSkill(ctx, name)) delete ctx.records.skills[name];
         copy.removeDropped({
             drop: args.dropApplied || [], log, keep: (category, name) => droppedKeep(ctx, category, name),
             dirs: { skill: skillsDir, agent: agentsDir, rule: rulesDir, hook: path.join(claudeDir, 'hooks') },
@@ -2450,9 +2453,9 @@ function managedFiles(ctx)
     for (const f of hooks) put(`hooks/${f}`, path.join(ctx.claudeDir, 'hooks', f));
     if (!ctx.routes.skills)
     {
-        for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) put(`skills/${n}`, path.join(ctx.skillsDir, n));
+        for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) if (!ctx.foreignSkills.has(n)) put(`skills/${n}`, path.join(ctx.skillsDir, n));
         for (const a of ctx.lists.agents) if (!ctx.foreignSeats.has(a.replace(/\.md$/, ''))) put(`agents/${a}`, path.join(ctx.agentsDir, a));
-        for (const n of ctx.held ? ctx.held.skills : []) put(`skills/${n}`, path.join(ctx.skillsDir, n));
+        for (const n of ctx.held ? ctx.held.skills : []) if (!ctx.foreignSkills.has(n)) put(`skills/${n}`, path.join(ctx.skillsDir, n));
         for (const n of ctx.held ? ctx.held.agents : []) if (!ctx.foreignSeats.has(n)) put(`agents/${n}.md`, path.join(ctx.agentsDir, `${n}.md`));
     }
     // The carry invariant, copy route: a recorded skill or seat the project edited and this run did not rewrite keeps its record.
@@ -2467,7 +2470,7 @@ function managedFiles(ctx)
     // the settings rule (an unreadable file keeps its rows); hashing it threw and failed the whole run at its last step.
     for (const [rel, h] of Object.entries((ctx.ledger && ctx.ledger.files) || {}))
     {
-        if (out[rel]) continue;
+        if (out[rel] || (rel.startsWith('skills/') && ctx.foreignSkills.has(rel.slice('skills/'.length)))) continue;
         let now;
         try { now = library.hashItem(ledgerPath(ctx, rel)); }
         catch { out[rel] = h; continue; }
