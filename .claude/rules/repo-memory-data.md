@@ -130,6 +130,16 @@ The stores and what each holds, where the docs root and the data root live, and 
   line each (`args.js RETIRED_FLAGS`). THE SKEW WINDOW: until an older custom-root install runs
   `/alfred-code:update`, the new hooks read `.alfred` - defaults, no chain, the old folder's store known only by
   content - so a session left open across the update is restarted (the release note says so).
+- **A data root reached through a link is written through** (the run's ruling of 2026-11-18). When `.alfred` or a
+  folder under it is a link that leaves the project, the hooks still write their state there - the approval receipts,
+  the agent-cap registry, the scoring files, history, snapshots - and trim what the same call just wrote. Why: the
+  protective guards read their receipts from `<data root>/state/approvals/`, so refusing the link would leave a blocked
+  act with no way to approve it and switch the stateful hooks off silently; an absolute `ALFRED_CODE_DATA_PATH` is the
+  sanctioned way to put state elsewhere, and a hand-made link is the same intent. What a link may NOT do is let a
+  scheduled sweep list and delete outside the project: `sweepStale`, `sweepScoringFolders` and docs-session
+  `sweepRecords` stand down on a folder inside the project that resolves outside it (`hook-prelude.js leavesProject`).
+  The status file alone refuses the link (`session-status.js linkedState`): another program reads it, so a refusal
+  costs only the mod's view.
 - **The library skills and copy-route seats live in `<data root>/stack`** (workspace stage 3, 2026-11-12), beside the
   data: `.alfred/stack/skills/<name>/` and `.alfred/stack/agents/<name>.md`, each linked into `.claude` where git
   ignores that folder (`install/links.js`, `repo-installer.md`). The store is the stack's copies and the project's own
