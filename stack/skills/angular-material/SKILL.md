@@ -8,7 +8,7 @@ user-invocable: false
 
 This is the component-library layer: `@angular/material` (the Material 3 components) sitting on top of `@angular/cdk` (the unstyled behavior primitives). The framework itself - signals, change detection, standalone components, the testing setup - is the Angular conventions skill's and the language the TypeScript one's; load both alongside this where the install has them, and without them treat this file as Material-only and say so. The general CSS/styling layer that holds Material or not - `ViewEncapsulation`, `:host`, the `::ng-deep` ways out, the app's own design tokens, responsive strategy - is `angular-styling`; this skill owns only the Material-specific `mat.theme` and `--mat-sys-*` token work.
 
-Floor is `@angular/material` 17+ - standalone components are the default there. The single-mixin M3 theming API this skill teaches (`mat.theme`, the `--mat-sys-*` system tokens, the `mat.<component>-overrides` mixins) needs v19+; on v17-v18 read `references/versions.md` first. The post-v19 deltas that bite - the v20 `matButton` and raw-token renames, the v21 FocusTrap break, Angular Aria, Popover-based overlays - live in `references/versions.md`; check it when the workspace is past v19.
+Floor is `@angular/material` 17+ - standalone components are the default there. The single-mixin M3 theming API this skill teaches (`mat.theme`, the `--mat-sys-*` system tokens, the `mat.<component>-overrides` mixins) needs v19+; on v17-v18 read `references/versions.md` first. The post-v19 deltas that bite - the v20 `matButton` and raw-token renames, Angular Aria, the v21 Popover-based overlays, the v22 FocusTrap break - live in `references/versions.md`; check it when the workspace is past v19.
 
 ## When to use
 
@@ -84,7 +84,7 @@ The CDK packages the behaviors that are deceptively hard to get right - the edge
 - Floating UI: the `Overlay` service positions menus, tooltips, popovers, and custom dropdowns against a connected element, handling viewport flipping and scroll repositioning. This is also what Material's own menu and select build on.
 - Drag and drop: `cdkDrag` and `cdkDropList` give reorderable lists and cross-container transfers with the pointer and keyboard handling already done.
 - Clipboard: `cdkCopyToClipboard` copies a string on click without touching the Clipboard API directly.
-- Accessibility: `FocusTrap` (`cdkTrapFocus`) keeps keyboard focus inside a dialog or panel, and `LiveAnnouncer` pushes polite messages to screen readers for state changes the user cannot see. Use `FocusKeyManager` / `ListKeyManager` for arrow-key navigation inside a custom listbox or menu. Prefer the `cdkTrapFocus` directive over programmatic construction - v21 broke the programmatic constructors (see `references/versions.md`).
+- Accessibility: `FocusTrap` (`cdkTrapFocus`) keeps keyboard focus inside a dialog or panel, and `LiveAnnouncer` pushes polite messages to screen readers for state changes the user cannot see. Use `FocusKeyManager` / `ListKeyManager` for arrow-key navigation inside a custom listbox or menu. Prefer the `cdkTrapFocus` directive over programmatic construction - v22 broke the programmatic constructors (see `references/versions.md`).
 
 A hand-written overlay, virtual scroller, or focus trap is almost always missing a case the CDK already handles - that is the reason to default to the primitive.
 

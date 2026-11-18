@@ -71,29 +71,31 @@ The questions, in this order, never more than four in one call:
 
 The gaps DISCOVER left open go in ONE AskUserQuestion call, one question per gap (at most four). A question whose
 whole answer DISCOVER settled is not asked - its facts go straight into the doc. Each question states what the repo
-showed ('nothing' when it showed nothing), and the fuller answer arrives as typed text via Other:
+showed ('nothing' when it showed nothing), and the fuller answer arrives as typed text via Other, which the harness
+adds to every question - the question itself never names Other, since the ask hook denies one that tells the user to
+type there:
 
 ```ask
-How is the app started and reached for a manual check? The repo shows: <start commands, URLs, launch profiles - or nothing>. Type a correction or the missing part via Other.
+How is the app started and reached for a manual check? The repo shows: <start commands, URLs, launch profiles - or nothing>.
 - 'As the repo shows (Recommended)' - the Start and Reach lines are written from <files>, each cited
 - 'Unknown for now' - the missing part says unknown; the next capture asks again
 ```
 
 ```ask
-How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - via Other, type the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
+How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - only the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
 - 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.secrets`; the doc points at them
 - 'No login - the app is open' - the section says so
 - 'Unknown for now' - the section says unknown; the next capture asks again
 ```
 
 ```ask
-Which flows prove a change works, and which edge cases break? The repo shows: <e2e spec titles, README usage sections - or nothing>. Type flows (steps, then the expected result) and edge cases via Other.
+Which flows prove a change works, and which edge cases break? The repo shows: <e2e spec titles, README usage sections - or nothing>. A flow is its steps, then the expected result.
 - 'The flows the repo names (Recommended)' - each spec or README flow becomes a numbered flow, cited
 - 'Unknown for now' - both sections say unknown; the next capture asks again
 ```
 
 ```ask
-What must be up or known before a run, and where does debugging start? The repo shows: <services, env var names, seed commands, launch configs - or nothing>. Type anything a first run trips on via Other (a VPN, a busy port, a feature flag, where the logs go).
+What must be up or known before a run, and where does debugging start? The repo shows: <services, env var names, seed commands, launch configs - or nothing>. Anything a first run trips on counts (a VPN, a busy port, a feature flag, where the logs go).
 - 'As the repo shows (Recommended)' - both sections are written from <files>, each cited
 - 'Unknown for now' - the missing parts say unknown; the next capture asks again
 ```
@@ -103,7 +105,7 @@ first capture and on 'Refresh', even when DISCOVER settled every gap; it rides t
 questions or fewer, else it is the next call:
 
 ```ask
-Anything else the run book should hold that the questions above did not cover? A team habit, a known trap, a contact, a manual step - type it via Other, or pick below.
+Anything else the run book should hold that the questions above did not cover? A team habit, a known trap, a contact, a manual step.
 - 'Nothing to add (Recommended)' - Team notes keep what they hold; a later note in the arguments adds one
 - 'Add my own notes' - I ask for them next, in plain text; each lands in Team notes, dated
 - 'I will write it myself' - nothing is written; your own notes go in <docs-path>/awareness/USER-AWARENESS.md, which only you edit
@@ -112,13 +114,13 @@ Anything else the run book should hold that the questions above did not cover? A
 The project info and the resources, in call 2:
 
 ```ask
-What is this project, who uses it, and where does it run? The repo shows: <the README's opening, the manifests' names and stack, the deploy configs, the git remote - or nothing>. Type a correction or the missing part via Other.
+What is this project, who uses it, and where does it run? The repo shows: <the README's opening, the manifests' names and stack, the deploy configs, the git remote - or nothing>.
 - 'As the repo shows (Recommended)' - the project info is written from <files>, each cited
 - 'Unknown for now' - the missing sections say unknown; the next capture asks again
 ```
 
 ```ask
-Where are this project's tracker, wiki, error monitor and CI? The repo shows: <the git host, the CI config, README links, package.json bugs / repository - or nothing>. Type each missing one via Other as a name and a URL (Jira, Confluence, Sentry, ...) - never a token.
+Where are this project's tracker, wiki, error monitor and CI? The repo shows: <the git host, the CI config, README links, package.json bugs / repository - or nothing>. Each is a name and a URL (Jira, Confluence, Sentry, ...) - never a token.
 - 'As the repo shows (Recommended)' - the resources doc lists what <files> name, each cited
 - 'Unknown for now' - the missing sections say unknown; the next capture asks again
 ```

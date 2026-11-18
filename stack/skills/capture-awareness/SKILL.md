@@ -25,8 +25,9 @@ alone.
 
 `<docs-path>/awareness/` is one docs domain with one `watch.json`. Its `notOwned` entry keeps the docs engine from
 sectioning or writing `AGENTS-AWARENESS.md`, which only the script writes. Each doc's shape is fixed verbatim in its
-reference - no formatting skill loads for them (the docs root belongs to the skill that writes it). The rule imports
-these into every session and every subagent:
+reference - no formatting skill loads for them (the docs root belongs to the skill that writes it); the one load is
+the diagram skill the architecture part's doc-shapes reference names for the map's Mermaid. The rule imports these
+into every session and every subagent:
 
 | File | Holds | Written by | In git |
 |---|---|---|---|

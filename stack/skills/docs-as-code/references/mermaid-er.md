@@ -46,8 +46,15 @@ one-to-many identifying relationships, mirroring the real schema.
 
 ## Canonical example
 
+A customer places orders, each order holds order items, and each item points at one product.
+
 ```mermaid
+---
+title: Orders - customers, orders, items, products
+---
 erDiagram
+    accTitle: Orders - customers, orders, items, products
+    accDescr: A customer places zero or more orders; each order contains one or more order items, and each product appears in zero or more order items.
     CUSTOMER ||--o{ "ORDER" : places
     "ORDER" ||--|{ ORDER_ITEM : contains
     PRODUCT ||--o{ ORDER_ITEM : "appears in"

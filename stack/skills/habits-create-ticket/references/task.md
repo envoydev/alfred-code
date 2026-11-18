@@ -22,7 +22,7 @@ A technical task is work that is not a bug or a user-facing feature. Supports th
 Phrase as an action or goal.
 
 Examples:
-- `[OrderService] Refactor order processing pipeline to use strategy pattern`
+- `[OrderService] Refactor order processing so each order type changes on its own`
 - `[API] Investigate high p99 latency on GET /products endpoint`
 - `[DB] Migrate user data from MS SQL to PostgreSQL`
 - `[Auth] Upgrade IdentityServer from v6 to v7`
@@ -131,22 +131,19 @@ Adapt the structure based on task type. Use the relevant template below.
 **Output:**
 
 **Title:**
-`[PaymentService] Refactor monolithic PaymentService class into focused components`
+`[Payments] Untangle PaymentService so each part can be changed and tested alone`
 
 **Description:**
 ```
 ## Goal
 
-The current PaymentService class handles provider integration, validation, retry logic, and logging in a single class (~800 lines).
-This makes it difficult to test, extend, or change providers independently.
-Goal is to split responsibilities into focused, testable components without changing external behavior.
+Provider calls, validation, retries and logging all sit in one ~800-line `PaymentService` class today, so a change to one provider's retry behavior means editing and retesting the whole payment flow, and no part can be tested on its own. After this work customers see no difference, and a change to one provider, the retry rule or the validation is made and tested without touching the others.
 
 ## Scope
 
 **In scope:**
-- `PaymentService.cs` and direct dependencies
-- Extraction of: provider adapter(s), retry policy, validation logic
-- Unit test coverage for extracted components
+- Every payment flow that runs through `PaymentService` today, for every provider it calls
+- Unit test coverage for provider failures, retries and payment validation
 
 **Out of scope:**
 - Changing payment provider integrations
@@ -154,10 +151,9 @@ Goal is to split responsibilities into focused, testable components without chan
 
 ## Acceptance Criteria
 
-- [ ] No single class exceeds ~200 lines of meaningful logic
-- [ ] Each extracted component has its own unit tests
 - [ ] All existing integration tests pass without modification
-- [ ] No behavior change observable from the API layer
+- [ ] No behavior change observable from the API layer - the payment regression suite gives the same results before and after
+- [ ] Provider failures, retries and payment validation each have a unit test that fails when that behavior breaks
 
 ## Notes
 
@@ -176,8 +172,7 @@ Goal is to split responsibilities into focused, testable components without chan
 ```
 ## Goal
 
-Users are reporting slow product search. The root cause is unknown - needs profiling and analysis
-before any optimization work begins.
+Users are reporting slow product search. The root cause is unknown - needs profiling and analysis before any optimization work begins.
 
 ## Baseline / Target
 

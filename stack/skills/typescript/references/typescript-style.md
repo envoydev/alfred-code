@@ -81,7 +81,7 @@ For maximum safety, the community-maintained `@tsconfig/strictest` base is the r
   }
 }
 ```
-`@tsconfig/strictest` is strictness-only; it deliberately does not set `target`/`module`/`lib`. Compose it with the `@tsconfig/node<N>` base matching the pinned Node (`node24` for new work). Note `forceConsistentCasingInFileNames` is TypeScript's default since 5.0, so it is not listed; `noImplicitAny` is on implicitly via `strict`.
+`@tsconfig/strictest` is strictness-only; it deliberately does not set `target`/`module`/`lib`. Compose it with the `@tsconfig/node<N>` base matching the pinned Node - for new work, the newest line the Node.js release schedule (`https://github.com/nodejs/Release`) lists as Active LTS, read there at use, never from memory: a new line enters Active LTS every October. Note `forceConsistentCasingInFileNames` is TypeScript's default since 5.0, so it is not listed; `noImplicitAny` is on implicitly via `strict`.
 
 The two highest-friction, highest-value flags: `noUncheckedIndexedAccess` (array/record access returns `T | undefined`) and `exactOptionalPropertyTypes` (an optional `foo?: T` cannot be set to `undefined` unless the type says so). Enable both on new projects; adopt incrementally on existing ones.
 

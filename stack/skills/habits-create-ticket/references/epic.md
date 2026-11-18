@@ -77,9 +77,7 @@ Examples:
 ```
 ## Objective
 
-Users currently receive no proactive communication from the platform, leading to missed updates and low re-engagement.
-This epic covers building a multi-channel notification system (email, in-app, push) and giving users control over what they receive and how.
-Expected outcome: improved user retention and reduced support load from missed events.
+Users currently receive no proactive communication from the platform, leading to missed updates and low re-engagement. This epic covers building a multi-channel notification system (email, in-app, push) and giving users control over what they receive and how. Expected outcome: improved user retention and reduced support load from missed events.
 
 ## Scope
 

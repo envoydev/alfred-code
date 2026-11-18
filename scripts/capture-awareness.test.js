@@ -227,7 +227,10 @@ test('the asks: every template marks one recommended option first; each run-book
     assert.match(asks[6], /^\s*What is this project, who uses it, and where does it run\?/);
     assert.match(asks[7], /^\s*Where are this project's tracker, wiki, error monitor and CI\?/);
     const siblings = asksOf(related);
-    assert.match(siblings[0], /^\s*Does this project depend on sibling repos the capture should map\? Type local paths or git URLs via Other/);
+    assert.match(siblings[0], /^\s*Does this project depend on sibling repos the capture should map\? Each is a local path or a git URL/);
+    // The ask hook denies a question that tells the user to type into Other (stack/hooks/guard-stop-contract.js OTHER_RE,
+    // read over the question since usage audit U11), so no question of the capture names it (audit 2026-11-18 SET-01).
+    for (const ask of [...router, ...asks, ...siblings]) assert.doesNotMatch(ask.trim().split('\n')[0], /\bOther\b/, 'a question that names Other is denied at run time');
     assert.match(siblings[0], /- 'None - a standalone repo \(Recommended\)' - the doc records the answer with no entry/, 'an unattended run records a standalone repo, never invents siblings');
     assert.match(squash(related), /never options scraped from a filesystem scan/);
     // Spec 1.4: two calls - the gap call holds at most four, the second at most three, 'Anything else?' rides call 1

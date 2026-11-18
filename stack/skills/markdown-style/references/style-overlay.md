@@ -1,6 +1,6 @@
 # Markdown style overlay
 
-The 'what is good' layer. Distilled from Google's developer documentation Markdown style guide (https://google.github.io/styleguide/docguide/style.html, Apache 2.0). For the 'what is valid' layer, see `syntax-canon.md`.
+The 'what is good' layer. Distilled from Google's developer documentation Markdown style guide (https://google.github.io/styleguide/docguide/style.html, CC BY 3.0). For the 'what is valid' layer, see `syntax-canon.md`.
 
 Findings in this file are **should-fix**, not must-fix. The user can decline any finding without justification - these rules are opinionated. Where the project has a local convention that conflicts with a rule here, defer to the project.
 

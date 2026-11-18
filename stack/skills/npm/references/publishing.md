@@ -18,7 +18,7 @@ ESM-only (the 2026 default for new packages):
 }
 ```
 
-Dual CJS/ESM (only when old-LTS consumers force it; separate `.d.mts`/`.d.cts` since TS 5.0):
+Dual CJS/ESM (only when old-LTS consumers force it; separate `.d.mts`/`.d.cts` since TS 4.7):
 
 ```json
 {

@@ -48,9 +48,16 @@ auth handshakes, message/event choreography, retry and timeout logic. Not for st
 
 ## Canonical example - auth flow (the house stack)
 
+The SPA posts the credentials, the API checks the stored hash, and the reply is a JWT with a refresh token or a 401.
+
 ```mermaid
+---
+title: Login - credentials to JWT
+---
 sequenceDiagram
     autonumber
+    accTitle: Login - credentials to JWT
+    accDescr: The user enters credentials in the Angular SPA, the API verifies the stored password hash in PostgreSQL, and returns a JWT and a refresh token, or 401 when the credentials are invalid.
     actor U as User
     participant SPA as Angular SPA
     participant API as ASP.NET Core API

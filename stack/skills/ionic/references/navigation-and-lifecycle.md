@@ -20,12 +20,12 @@ The Ionic page-lifecycle hooks and the router-vs-NavController choice, for Angul
 | `ionViewWillLeave` | page is about to animate out |
 | `ionViewDidLeave` | page has finished animating out |
 
-These fire only on the component mapped directly to a route, never on its child components. Implement the optional interfaces from `@ionic/angular` for type-checking:
+These fire only on the component mapped directly to a route, never on its child components. Implement the optional interfaces for type-checking - they come from the same standalone entry point as the components, which the installed major decides (`versions.md`):
 
 ```typescript
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { ViewWillEnter, ViewDidEnter, ViewWillLeave } from '@ionic/angular';
-import { IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/angular/standalone';
+// Ionic 9's entry point; on Ionic 8 import the same names from '@ionic/angular/standalone'
+import { ViewWillEnter, ViewDidEnter, IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/angular';
 
 @Component({
   selector: 'app-dashboard',
@@ -121,4 +121,4 @@ The shell template is `<ion-tabs>` wrapping the tab bar; each button's `tab` mus
 </ion-tabs>
 ```
 
-Import `IonTabs`, `IonTabBar`, `IonTabButton`, `IonIcon`, `IonLabel` from `@ionic/angular/standalone` in the shell component. Two rules that keep the stacks independent: never navigate between tabs programmatically - the tab bar is the only switch - and to reach a view from more than one tab, present it as a modal rather than routing into another tab's stack.
+Import `IonTabs`, `IonTabBar`, `IonTabButton`, `IonIcon`, `IonLabel` in the shell component from the installed major's standalone entry point - `@ionic/angular` on Ionic 9, `@ionic/angular/standalone` on Ionic 8. Two rules that keep the stacks independent: never navigate between tabs programmatically - the tab bar is the only switch - and to reach a view from more than one tab, present it as a modal rather than routing into another tab's stack.
