@@ -1779,3 +1779,58 @@ test('a start reads the reader gate once', () =>
     assert.strictEqual(reads, 1);
     assert.ok(fs.existsSync(newStatusOf(root, 's1')));
 });
+
+// Pins from the later-items design (Part 5): the start's root and the managed drop-ins, guarded from here on.
+test('a start with CLAUDE_PROJECT_DIR at the main checkout and the cwd in its linked worktree writes under the main checkout\'s data root', () =>
+{
+    const main = project();
+    fs.mkdirSync(path.join(main, '.git', 'worktrees', 'wt'), { recursive: true });
+    const tree = project();
+    fs.writeFileSync(path.join(tree, '.git'), `gitdir: ${path.join(main, '.git', 'worktrees', 'wt')}\n`);
+    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: main };
+    S().onSessionStart(startPayload(tree, 'wt1'), null, { env, exec: execSpy().exec, uptime: () => 0 });
+    assert.ok(fs.existsSync(newStatusOf(main, 'wt1')), 'the file is in the main checkout\'s data root');
+    assert.ok(!fs.existsSync(newStatusOf(tree, 'wt1')), 'none in the linked worktree');
+});
+
+test('a start whose cwd vanished but whose root is live writes at the root', () =>
+{
+    const root = project();
+    const gone = path.join(root, 'gone');
+    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root };
+    S().onSessionStart(startPayload(gone, 'gone1'), null, { env, exec: execSpy().exec, uptime: () => 0 });
+    assert.ok(fs.existsSync(newStatusOf(root, 'gone1')), 'the file is at the live root');
+    assert.ok(!fs.existsSync(gone), 'the vanished cwd is not recreated');
+});
+
+test('two managed drop-ins merge in name order: the later one\'s enabledPlugins key wins', () =>
+{
+    const g = gateSetup();
+    g.dropIn('20-off.json', enabled('alfred-mods@market', false));
+    g.dropIn('10-on.json', enabled());
+    assert.strictEqual(g.on(), false, '20 is merged after 10 and turns it off');
+    const h = gateSetup();
+    h.dropIn('10-off.json', enabled('alfred-mods@market', false));
+    h.dropIn('20-on.json', enabled());
+    assert.strictEqual(h.on(), true, '20 is merged after 10 and turns it on');
+});
+
+test('a non-.json drop-in is skipped', () =>
+{
+    const g = gateSetup();
+    g.dropIn('10-mods.txt', enabled());
+    g.dropIn('20-mods.json.bak', enabled());
+    g.dropIn('30-mods', enabled());
+    assert.strictEqual(g.on(), false, 'no .json file, nothing enabled');
+    g.dropIn('40-mods.json', enabled());
+    assert.strictEqual(g.on(), true, 'a .json drop-in opens it');
+});
+
+test('readerOn: with neither the variable nor a plugin key set the answer is false, whatever the machine\'s managed file holds', () =>
+{
+    const g = gateSetup();
+    const real = fs.existsSync(LAYOUT.managedSettingsFile());
+    assert.strictEqual(S().readerOn(g.root, { CLAUDE_CONFIG_DIR: g.account }, { layout: { ...LAYOUT, managedSettingsFile: () => g.managed } }), false, `the stubbed managed path, a real one ${real ? 'exists' : 'is absent'} on this machine`);
+    g.managedFile({ enabledPlugins: { 'some-other-plugin@market': true } });
+    assert.strictEqual(g.on(), false, 'a managed file with another plugin only');
+});

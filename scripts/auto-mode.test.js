@@ -1888,3 +1888,17 @@ test('mode-auto-run skill and the mode command carry the series rule', () =>
     assert.ok(command.includes('nothing goes outward unless the user\'s own pick approved that act'));
     assert.ok(command.includes(SERIES), 'the command carries the series sentence');
 });
+
+// 'UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110' and 'X-1' are no ticket keys: the key shape needs two letters and no encoding
+// or standard name. `\bcomment\s+on\b` holds an ask with or without a key, so the key's effect shows through the target
+// word: 'Update PROJ-12 (Recommended)' is outward only because the key reads as 'ticket'.
+test('auto-mode asks: UTF-8, SHA-256, ISO-8601, RFC-9110 and X-1 are no ticket keys, ABC-12 and AB2-7 are', () =>
+{
+    const p = project();
+    autoStamp(p, 'key1');
+    for (const token of ['UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110', 'X-1'])
+        assert.ok(answered(ask(p, 'key1', [q('Next?', [`Update the ${token} handling in the parser (Recommended)`, 'Not now'])])), `answered, no key: ${token}`);
+    for (const key of ['ABC-12', 'AB2-7'])
+        assert.strictEqual(answered(ask(p, 'key1', [q('Next?', [`Update ${key} (Recommended)`, 'Not now'])])), null, `waits, a key: ${key}`);
+    assert.strictEqual(answered(ask(p, 'key1', [q('Next?', ['Comment on ABC-12 (Recommended)', 'Not now'])])), null, 'waits: Comment on ABC-12');
+});

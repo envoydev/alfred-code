@@ -3015,7 +3015,10 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
 const AUTO_TARGET = String.raw`(?:tickets?|issues?|PRs?|pull requests?|MRs?|cards?|threads?|Confluence|Notion|wiki|Jira|Linear)`;
-const AUTO_TICKET_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
+// A ticket key: two to ten capitals or digits led by a capital, a dash, digits (PROJ-12, AB2-7). Not one letter ('X-1'), not
+// glued to a word or a dotted name, and not an encoding or standard name ('UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110'), which
+// the rewrite to 'ticket' would turn into an outward target.
+const AUTO_TICKET_KEY_RE = /(?<![\w.])(?!(?:UTF|SHA|ISO|RFC)-)[A-Z][A-Z0-9]{1,9}-\d+\b/g;
 const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
