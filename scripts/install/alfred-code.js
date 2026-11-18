@@ -706,8 +706,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
             : null;
 
+        // What the stack recorded for each copy, read before any run step rewrites one: the drop below and the copy step ask it.
+        ctx.records = recordView(stampFile, priorLedger);
         copy.removeDropped({
-            drop: args.dropApplied || [], log, keep: (category, name) => category === 'skill' && foreignSkill(ctx, name),
+            drop: args.dropApplied || [], log, keep: (category, name) => droppedKeep(ctx, category, name),
             dirs: { skill: skillsDir, agent: agentsDir, rule: rulesDir, hook: path.join(claudeDir, 'hooks') },
             shipped: {
                 skill: manifest.catalogs.skills.map((e) => e.split('|').pop()),
@@ -1323,13 +1325,26 @@ function keepEdited(ctx, kind, dir)
 
 // A seat file in `.claude/agents` named like a core seat that neither stamp line records, on a stamp that holds a ledger (a
 // stamp from before the ledger refreshes as it always did): the project's own seat. The plugin route's prune keeps it.
-function ownSeatKeep(ctx)
+function ownSeatKeep(ctx, route = 'plugin')
 {
     return (file) =>
     {
         const name = file.replace(/\.md$/, '');
-        return ctx.records.ledgerHeld && recordOf(ctx.records, 'agent', name) === null ? { say: ownSeatLine.plugin(name) } : false;
+        return ctx.records.ledgerHeld && recordOf(ctx.records, 'agent', name) === null ? { say: ownSeatLine[route](name) } : false;
     };
+}
+
+// A drop through configure's unpick removes only a copy the stack still owns: a skill the project wrote, or a skill or seat
+// edited since its record, or a seat file the stamp never recorded, is kept and named. Rules and hooks keep today's removal.
+// The plugin route's prunes below name an edited or own copy themselves, so there the drop keeps it without a second line.
+function droppedKeep(ctx, category, name)
+{
+    if (category === 'skill' && foreignSkill(ctx, name)) return true;
+    const route = ctx.routes.skills ? 'plugin' : 'copy';
+    const kept = category === 'skill' ? keepEdited(ctx, 'skill', ctx.skillsDir)(name)
+        : category === 'agent' ? keepEdited(ctx, 'agent', ctx.agentsDir)(`${name}.md`) || ownSeatKeep(ctx, route)(`${name}.md`)
+            : false;
+    return kept && route === 'plugin' ? { say: null } : kept;
 }
 
 // The copy route's twin: a picked seat whose file sits in `.claude/agents` with no record and text other than the render.
@@ -1479,7 +1494,7 @@ function withoutForeign(picked, foreign)
 function installSkillsAndAgents(ctx)
 {
     // What the stack recorded for each copy, read before this run rewrites any: the overwrite lines and the carry rule ask it.
-    ctx.records = recordView(ctx.stampFile, ctx.ledger);
+    ctx.records ||= recordView(ctx.stampFile, ctx.ledger);
     const closure = plugins.resolveStackPlugins({
         routes: ctx.routes,
         runSelection: () => runSelectionPlugins(ctx),
