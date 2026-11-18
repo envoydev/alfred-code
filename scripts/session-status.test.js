@@ -544,6 +544,28 @@ test('T6 handoffPrompt', () =>
     }
 });
 
+// A subfolder base an older release left behind: a status file in it and its entry in the project's folder list.
+function legacyStray(root, sub, id)
+{
+    const file = statusOf(sub, id);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{}');
+    const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
+    let held = [];
+    try { held = JSON.parse(fs.readFileSync(list, 'utf8')); } catch { /* no list yet */ }
+    fs.mkdirSync(path.dirname(list), { recursive: true });
+    fs.writeFileSync(list, JSON.stringify([...held, sub.split(path.sep).join('/')]));
+    return file;
+}
+
+test('baseOf is the project root: a subfolder cwd never makes a base (the root decides)', () =>
+{
+    assert.strictEqual(S().baseOf({ cwd: '/r/sub' }, { CLAUDE_PROJECT_DIR: '/r' }), '/r');
+    assert.strictEqual(S().baseOf({ cwd: '/r/sub' }, {}), '/r/sub', 'no project dir: the cwd stands in');
+    assert.strictEqual(S().baseOf({}, { CLAUDE_PROJECT_DIR: '/r' }), '/r');
+    assert.strictEqual(S().baseOf(null, {}), null);
+});
+
 test('T9 ids and payloads', () =>
 {
     const root = project();
@@ -556,7 +578,8 @@ test('T9 ids and payloads', () =>
     assert.strictEqual(write({ session_id: 's1', agent_id: 'x' }), 'skipped', 'a seat writes nothing');
     assert.strictEqual(S().writeStatus({ session_id: 's1', hook_event_name: 'Stop' }, {}, { when: 'always', deps: { env } }), 'skipped', 'no cwd, no project dir');
     const elsewhere = project();
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: elsewhere }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped', 'a cwd outside the project');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: elsewhere }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'written', 'a cwd outside the project writes at the root');
+    assert.ok(fs.existsSync(statusOf(root, 's1')), 'the root holds the file');
     assert.ok(!fs.existsSync(path.join(elsewhere, '.claude')), 'no folder made outside the project');
 });
 
@@ -592,7 +615,7 @@ test('a .claude link below the project root is refused, write and prune (A8)', (
     const outside = project();
     link(outside, path.join(sub, '.claude'));
     const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: sub }, {}, { when: 'always', deps: { env } }), 'skipped');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: sub }, {}, { when: 'always', deps: { env } }), 'written', 'the write goes to the root');
     assert.ok(!fs.existsSync(path.join(outside, 'session-inspector')), 'nothing written through the link');
     const old = path.join(outside, 'session-inspector', 'status', 'aaaaaaaa.json');
     fs.mkdirSync(path.dirname(old), { recursive: true });
@@ -619,16 +642,16 @@ test('a control character in the base\'s path writes no exclude line', { skip: p
     const before = fs.readFileSync(exclude, 'utf8');
     assert.deepStrictEqual(S().ensureExcluded([odd], { env: {} }), ['skipped']);
     assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'no line, so no `*` pattern');
-    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
+    const env = { CLAUDE_PROJECT_DIR: odd, ALFRED_CODE_SESSION_STATUS: 'on' };
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: odd }, {}, { when: 'always', deps: { env } }), 'skipped', 'and no file the exclude cannot cover');
     assert.ok(!fs.existsSync(path.join(odd, '.claude')));
 });
 
-test('a vanished cwd writes nothing', () =>
+test('a vanished project root writes nothing', () =>
 {
     const root = project();
     const gone = path.join(root, 'gone');
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: gone }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: gone }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: gone, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
     assert.ok(!fs.existsSync(gone));
 });
 
@@ -762,9 +785,10 @@ test('removeStatus takes back the status files and the exclude lines this projec
     // uptime pinned: the exclude check has an 8 s deadline on the PROCESS's age, and on a slow runner this test starts past
     // it, so every check read 'late' (the Windows VM gate on 547ede2c)
     const fast = () => 0;
-    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: fast } }), 'written', base);
-    // a write outside SessionStart that made the folder added sub's pair itself
-    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {}, uptime: fast }), ['present', 'present', 'added']);
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root }, {}, { when: 'always', deps: { env, uptime: fast } }), 'written');
+    legacyStray(root, sub, 's1');
+    // the write added nothing (root's line is the user's own); the check adds the stray sub's pair and the other project's
+    assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {}, uptime: fast }), ['present', 'added', 'added']);
     // another project's pair is one in use: its status folder is there (E-batch SYS-03 sweeps a pair whose folder is gone)
     fs.mkdirSync(path.join(other, '.claude', 'session-inspector', 'status'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
@@ -816,7 +840,8 @@ test('fixed root: removeStatus reads the list under the dataRoot it is handed', 
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub, { recursive: true });
     const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
-    for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: () => 0 } }), 'written', base);
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root }, {}, { when: 'always', deps: { env, uptime: () => 0 } }), 'written');
+    legacyStray(root, sub, 's1');
     const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
     const moved = path.join(root, 'var', 'data', 'state', 'sessions', 'status-folders.json');
     fs.mkdirSync(path.dirname(moved), { recursive: true });

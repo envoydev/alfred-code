@@ -1,6 +1,6 @@
 'use strict';
 // session-status.js - the session status file (2026-10-29): what the stack does at a full context, published per main
-// session for session-inspector at <cwd>/.claude/session-inspector/status/<session id>.json, schema 1. A public
+// session for session-inspector at <project root>/.claude/session-inspector/status/<session id>.json, schema 1. A public
 // contract: a field is never renamed, dropped or retyped, only added. No stdin and no process of its own -
 // history-session.js calls it at SessionStart and Stop, guard-answer.js at UserPromptSubmit, each inside a try.
 // Fail-open: nothing here throws, and a failed write leaves no half-written file.
@@ -50,10 +50,10 @@ const envOf = (d, suffix) =>
   return value === '' ? undefined : value;
 };
 
-// The base is the live cwd (spec A1), else the project dir; the root is the project dir, else the cwd.
+// The base is the project root (status-file-root design, Part 1): a subfolder cwd never makes a folder of its own. The
+// root is the project dir, else the cwd.
 function baseOf(payload, env = process.env) {
-  const p = objectOf(payload) || {};
-  return (typeof p.cwd === 'string' && p.cwd) || env.CLAUDE_PROJECT_DIR || null;
+  return rootOf(payload, env);
 }
 function rootOf(payload, env = process.env) {
   const p = objectOf(payload) || {};

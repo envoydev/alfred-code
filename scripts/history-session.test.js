@@ -315,7 +315,7 @@ test('T7 a session writes, a new id writes anew, the prune keeps its edges', () 
   } finally { rmDir(root); rmDir(home); }
 });
 
-test('T7 the cwd decides the base', () => {
+test('T7 the root decides the base', () => {
   const root = project();
   const home = away();
   const wt = `${root}-wt`;
@@ -324,21 +324,24 @@ test('T7 the cwd decides the base', () => {
   try {
     const extra = { HOME: home };
     gitIn(root, 'worktree', 'add', '-q', '-b', 'side', wt);
-    start(root, 'w1', extra, wt);
-    assert.ok(fs.existsSync(statusOf(wt, 'w1')), 'a linked worktree writes under the worktree');
+    start(root, 'w1', { ...extra, CLAUDE_PROJECT_DIR: wt }, wt);
+    assert.ok(fs.existsSync(statusOf(wt, 'w1')), 'a session started in the linked worktree writes under the worktree');
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub);
     start(root, 'u1', extra, sub);
-    assert.ok(fs.existsSync(statusOf(sub, 'u1')), 'a subfolder writes under it');
-    assert.ok(listOf(root).includes(posixOf(sub)), 'and lists it');
-    ageFile(statusOf(sub, 'u1'), 8 * DAY);
+    assert.ok(fs.existsSync(statusOf(root, 'u1')), 'a subfolder start writes under the root');
+    assert.ok(!fs.existsSync(path.join(sub, '.claude')), 'and makes no .claude in the subfolder');
+    assert.deepStrictEqual(listOf(root), [posixOf(root)], 'the list holds the root alone');
+    // a stray the list names - left by an older release - is still pruned by the next start from the root
+    const stray = putStatus(sub, 'u0');
+    ageFile(stray, 8 * DAY);
     // a gone base and one outside the project join the list by hand
     const otherOld = putStatus(other, 'oooooooo');
     ageFile(otherOld, 8 * DAY);
     const otherExclude = excludeOf(other);
-    fs.writeFileSync(path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json'), JSON.stringify([...listOf(root), posixOf(path.join(root, 'gone')), posixOf(other)]));
+    fs.writeFileSync(path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json'), JSON.stringify([...listOf(root), posixOf(sub), posixOf(path.join(root, 'gone')), posixOf(other)]));
     start(root, 'u2', extra);
-    assert.ok(!fs.existsSync(statusOf(sub, 'u1')), 'the next start from the root prunes the listed subfolder');
+    assert.ok(!fs.existsSync(stray), 'the next start from the root prunes the listed subfolder');
     assert.ok(fs.existsSync(otherOld), 'nothing pruned outside the project');
     assert.strictEqual(excludeOf(other), otherExclude, 'nothing excluded outside the project');
     const list = listOf(root);
@@ -347,10 +350,8 @@ test('T7 the cwd decides the base', () => {
     // a 33rd base drops the oldest
     const many = Array.from({ length: 32 }, (_, i) => { const b = path.join(root, `m${i}`); putStatus(b, 'mmmmmmmm'); return posixOf(b); });
     fs.writeFileSync(path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json'), JSON.stringify(many));
-    const last = path.join(root, 'm32');
-    fs.mkdirSync(last);
-    start(root, 'u3', extra, last);
-    assert.deepStrictEqual(listOf(root), [...many.slice(1), posixOf(last)]);
+    start(root, 'u3', extra);
+    assert.deepStrictEqual(listOf(root), [...many.slice(1), posixOf(root)]);
     for (const cwd of [scratch, home]) {
       start(root, 'z1', extra, cwd);
       assert.ok(!fs.existsSync(path.join(cwd, '.claude')), `${cwd === home ? 'a fake home' : 'a scratch'} cwd writes nothing`);
@@ -445,14 +446,15 @@ test('T8 the exclude line', () => {
     const wt = `${main}-wt`;
     roots.push(wt);
     gitIn(main, 'worktree', 'add', '-q', '-b', 'side', wt);
-    start(main, 'w1', extra, wt);
+    start(main, 'w1', { ...extra, CLAUDE_PROJECT_DIR: wt }, wt);
     assert.ok(lines(excludeOf(main)).includes(STATUS_LINE), 'a linked worktree\'s line lands in the main checkout\'s exclude');
     gitIn(main, 'worktree', 'remove', '--force', wt);
 
     const subRoot = fresh();
     fs.mkdirSync(path.join(subRoot, 'sub'));
     start(subRoot, 'u1', extra, path.join(subRoot, 'sub'));
-    assert.ok(lines(excludeOf(subRoot)).includes('/sub/.claude/session-inspector/status/'));
+    assert.ok(lines(excludeOf(subRoot)).includes(STATUS_LINE), 'a subfolder start excludes the root\'s folder');
+    assert.ok(!lines(excludeOf(subRoot)).includes('/sub/.claude/session-inspector/status/'), 'and none for the subfolder');
 
     const crlf = fresh();
     fs.writeFileSync(path.join(crlf, '.git', 'info', 'exclude'), '# mine\r\n*.log\r\n');
@@ -478,7 +480,7 @@ test('T8 a glob character in the path is escaped', () => {
   try {
     const odd = path.join(root, 'a[1] b');
     fs.mkdirSync(odd);
-    start(root, 's1', { HOME: home }, odd);
+    start(root, 's1', { HOME: home, CLAUDE_PROJECT_DIR: odd }, odd);
     assert.ok(excludeOf(root).split('\n').includes('/a\\[1] b/.claude/session-inspector/status/'));
     const r = spawnSync('git', ['check-ignore', '-q', 'a[1] b/.claude/session-inspector/status/s1.json'], { cwd: root, env: env(root) });
     assert.strictEqual(r.status, 0, 'git check-ignore reads it as ignored');
