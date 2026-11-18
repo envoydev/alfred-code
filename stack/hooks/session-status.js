@@ -419,12 +419,12 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
 }
 
 // The bases the exclude check covers: the root (the base), then every listed base, each the project's and holding a status folder.
-function statusBases(root, cwd, deps) {
+function statusBases(root, base, deps) {
   const d = depsOf(deps);
   const out = [];
   const seen = new Set();
   try {
-    for (const b of [cwd, ...readList(root, d)]) {
+    for (const b of [base, ...readList(root, d)]) {
       if (typeof b !== 'string' || !path.isAbsolute(b)) continue;
       const key = d.layout ? d.layout.dirKey(b) : b;
       if (seen.has(key)) continue;
@@ -438,7 +438,7 @@ function statusBases(root, cwd, deps) {
 
 // At SessionStart: every status file over 7 days old under the root and the listed bases goes, this session's own kept;
 // a listed base that is not the project's, is a link or has lost its folder leaves the list.
-function pruneStatus(root, cwd, sessionId, now, deps) {
+function pruneStatus(root, base, sessionId, now, deps) {
   const d = depsOf(deps);
   let count = 0;
   try {
@@ -467,7 +467,7 @@ function pruneStatus(root, cwd, sessionId, now, deps) {
       passed.set(key, ok);
       return ok;
     };
-    visit(cwd);
+    visit(base);
     const raw = readListText(listFile(root, d));
     if (raw !== null) {
       const kept = readList(root, d).filter((b) => visit(b)).map(posix);
@@ -728,7 +728,7 @@ function onSessionStart(payload, entry, deps) {
     if (!p || p.agent_id || !ID_RE.test(String(p.session_id || ''))) return '';
     const d = depsOf(deps);
     const root = rootOf(p, d.env);
-    // once per session: an install without the mod leaves one timed row at the start, never one per turn
+    // once per SessionStart (a compact start included): an install without the mod leaves one timed row at the start, never one per turn
     const gateFrom = process.hrtime.bigint();
     const on = readerOn(root, d.env, d);
     if (!on) probeRow(p, { kind: 'status-gate', result: 'off', ms: msSince(gateFrom) }, d);

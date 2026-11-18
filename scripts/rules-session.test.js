@@ -575,7 +575,9 @@ const MEMBERS_API = '- api: instructions api/AGENTS.md; rules 1 file under api/.
 const MEMBERS_WEB = '- web: instructions none; rules none';
 const MEMBERS_MORE = (k) => `- and ${k} more (the workspace record lists them)`;
 // A stamped root `ws` holding one store rule and the given children (a folder each, unless `as` says otherwise).
-function members(children, { ignored, as = {}, rules = { a: 'M-A' } } = {})
+// A child folder holds its own record pointing back at the root (hop rule N1) unless `unlinked` names it, or `elsewhere`
+// gives it a parent that is not this root.
+function members(children, { ignored, as = {}, rules = { a: 'M-A' }, unlinked = [], elsewhere = [] } = {})
 {
     const top = tree({ 'ws/.git/HEAD': 'x' });
     const root = path.join(top, 'ws');
@@ -584,7 +586,12 @@ function members(children, { ignored, as = {}, rules = { a: 'M-A' } } = {})
     for (const c of children)
     {
         if (as[c] === 'file') put(path.join(root, c), 'x');
-        else if (as[c] !== 'missing') fs.mkdirSync(path.join(root, c), { recursive: true });
+        else if (as[c] !== 'missing')
+        {
+            fs.mkdirSync(path.join(root, c), { recursive: true });
+            if (elsewhere.includes(c)) ws(path.join(root, c), { parent: '../..' });
+            else if (!unlinked.includes(c)) ws(path.join(root, c), { parent: '..' });
+        }
     }
     ws(root, { parent: 'root', children, ...(ignored ? { ignoredChildren: ignored } : {}) });
     return root;
@@ -722,6 +729,32 @@ test('members: the probe row of a root start counts its member lines', () =>
     const file = path.join(LAYOUT.statsPath(root, ['hook-blocks'], {}), `${SID}.jsonl`);
     const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual([rows[0].kind, rows[0].members], ['rules-push', 2]);
+});
+
+test('members: the probe row counts the member lines it sent, never the line naming the rest', () =>
+{
+    const root = members(manyChildren(13));
+    part(root, 1);
+    const file = path.join(LAYOUT.statsPath(root, ['hook-blocks'], {}), `${SID}.jsonl`);
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.strictEqual(rows[0].members, 12, 'twelve member lines and the line naming the rest');
+});
+
+test('members: with ALFRED_CODE_WORKSPACE at 0 no index is sent, whether the launch env or the project\'s own variables say so', () =>
+{
+    const root = apiAndWeb();
+    assert.strictEqual(loader().memberIndex(root, { ...ENV, ALFRED_CODE_WORKSPACE: '0' }), '', 'the launch env');
+    assert.ok(loader().memberIndex(root, { ...ENV, ALFRED_CODE_WORKSPACE: '1' }).includes('- api:'), 'a 1 changes nothing');
+    assert.ok(!part(root, 1, START(), { ALFRED_CODE_WORKSPACE: '0' }).includes('Workspace members'), 'the hook run');
+    put(path.join(root, '.alfred', '.variables'), 'ALFRED_CODE_WORKSPACE=0\n');
+    assert.strictEqual(loader().memberIndex(root, ENV), '', 'the project\'s .variables');
+});
+
+test('members: a child whose own record does not point back at this root is not listed (hop rule N1)', () =>
+{
+    const root = members(['api', 'lost', 'other'], { unlinked: ['lost'], elsewhere: ['other'] });
+    assert.deepStrictEqual(indexLines(loader().memberIndex(root, ENV)), ['- api: instructions none; rules none']);
+    assert.ok(!part(root, 1).includes('- lost:') && !part(root, 1).includes('- other:'));
 });
 
 test('start: nothing is sent to Explore and Plan', () =>

@@ -307,7 +307,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `.variables`, the settings `env`, so a file `0` beats a launch `1`), else the launch value, and only a `0` turns it
   off; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
 - **A root's start names its members (`rules-session.js memberIndex`).** The main-session start at a workspace root opens
-  rules part 1 with a short index - one line a child the root's record lists (ignored ones out), naming the child's
+  rules part 1 with a short index - one line a child the root's record lists (ignored ones out, and one whose own record does not point back at the root, rule N1; none while the workspace switch is 0), naming the child's
   instruction file and its `.claude/rules` count - so a session reads each child's instructions before it plans there;
   the block of a child still goes out on the first touch inside it. A resume or fork sends like a startup. `repo-hooks.md`
   holds the caps.

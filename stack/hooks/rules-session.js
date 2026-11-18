@@ -24,6 +24,7 @@ const MEMBER_LINES = 12;
 const MEMBER_CHARS = 1500;
 const MEMBER_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions and each rule file not in your context; a touch inside it sends its block.';
 const MEMBER_MORE = (left) => `- and ${left} more (the workspace record lists them)`;
+const MEMBER_MORE_LINE = /^- and \d+ more \(/;
 const INSTRUCTION_FILES = Object.freeze([['AGENTS.md'], ['CLAUDE.md'], ['.claude', 'AGENTS.md'], ['.claude', 'CLAUDE.md']]);
 const RULE_FILES = ['.claude', 'rules'];
 
@@ -163,17 +164,20 @@ const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { retu
 const mdFiles = (dir) => { try { return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort(); } catch { return []; } };
 const posix = (from, to) => path.relative(from, to).split(path.sep).join('/');
 
-// The members index of a workspace root: one line a child folder its record lists (the ignored ones out), naming the
-// instruction file and the count of rule files under it; '' when there is no such child. Never throws.
+// The members index of a workspace root: one line a child folder its record lists (the ignored ones out, and one whose
+// own record does not point back at this root, hop rule N1), naming the instruction file and the count of rule files under
+// it; '' when there is no such child or the workspace switch is 0. Never throws.
 function memberIndex(project, env = process.env)
 {
     try
     {
         const layout = require(path.join(__dirname, 'layout.js'));
         const file = require(path.join(__dirname, 'workspace-file.js'));
+        if (!layout.workspaceOn({ env, projectRoot: project })) return '';
         const read = file.readRecord(path.join(project, layout.dataRootOf(project, { env })));
         const view = file.viewOf(read.state === 'ok' ? read.record : file.emptyRecord());
-        const lines = view.children.filter((c) => isDir(path.join(project, c))).map((c) =>
+        const pointsBack = (child) => { const first = layout.workspaceChain(path.join(project, child), { env }).members[0]; return !!first && layout.pathKey(first.root) === layout.pathKey(project); };
+        const lines = view.children.filter((c) => isDir(path.join(project, c)) && pointsBack(c)).map((c) =>
         {
             const instructions = INSTRUCTION_FILES.map((f) => [c, ...f].join('/')).find((rel) => fs.existsSync(path.join(project, rel)));
             const rules = mdFiles(path.join(project, c, ...RULE_FILES)).length;
@@ -409,7 +413,7 @@ function main(argv = process.argv, env = process.env)
     if (part === 1 && record && ['compact', 'clear', 'resume', 'fork'].includes(input.source))
         try { for (const f of fs.readdirSync(path.dirname(record)).filter(stale)) fs.unlinkSync(path.join(path.dirname(record), f)); } catch { /* none yet */ }
     if (part === 1) ledger({ kind: 'rules-push', chars: out.parts.join('').length, parts: out.parts.length, unsent: out.unsent.length, source: input.source,
-        members: index ? index.split('\n').length - 1 : 0 });
+        members: index ? index.split('\n').slice(1).filter((l) => !MEMBER_MORE_LINE.test(l)).length : 0 });
     say(out.parts[part - 1]);
 }
 
