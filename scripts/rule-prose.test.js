@@ -83,9 +83,10 @@ test('M67: the shell-no-attach rationale is a maintainer comment in the path rul
         assert.ok(!/through the shell|first shell write/.test(live), `${name}.md: the injected text still explains the shell route: ${live}`);
         assert.match(squash(rule(name)), /<!--[^>]*shell[^>]*guard-read-whole-file\.js[^>]*-->/, `${name}.md keeps the rationale as a comment`);
     }
-    // audit 2026-10-14 RU07: a plain one-file shell view attaches a path-scoped rule (code.claude.com/docs/en/memory); a shell write never does
+    // audit 2026-11-19 C-1: the loader sends a path rule on a file-tool touch only (rules-session.js, its PostToolUse row), so a shell view attaches none
     const nav = injected('alfred-navigation');
-    assert.ok(nav.includes('Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.'), 'the always-on copy reaches the shell run and stays');
+    assert.ok(nav.includes('The stack\'s path-scoped rules attach on a file-tool touch only (Read, Edit, Write) - a shell view or write attaches none, so the read guard names the governing rule on the first shell write.'), 'the always-on copy reaches the shell run and stays');
+    assert.ok(!nav.includes('Only a plain one-file view'), 'the native-attach claim the loader made stale');
     assert.ok(!nav.includes('do not attach on the shell route'), 'the drifted claim');
     for (const name of ['csharp-conventions', 'markdown-docs'])
         assert.ok(squash(rule(name)).includes('gets no attach on a shell write'), `${name}.md: the comment names the shell write`);

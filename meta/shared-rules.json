@@ -27,6 +27,19 @@
         }
       ]
     },
+    "repair-router-contract-change": {
+      "_note": "Audit 2026-11-19 (rules) DUP-2: the routers' BLOCKED_CONTRACT_CHANGE paragraph, the part of the protocol repair-router-delegation-protocol describes that no marker pinned - verbatim in both routers because either may be absent per project.",
+      "owner": {
+        "file": "stack/rules/dotnet-repair-agents.md",
+        "marker": "A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change - outside its bounded scope by design; a running `task-solve-cross` flow handles it per its contract protocol - otherwise name `/task-solve-cross` as the user's next step (the skill is manual-only; a model Skill call is blocked). Never edit the contract to go green."
+      },
+      "sites": [
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change - outside its bounded scope by design; a running `task-solve-cross` flow handles it per its contract protocol - otherwise name `/task-solve-cross` as the user's next step (the skill is manual-only; a model Skill call is blocked). Never edit the contract to go green."
+        }
+      ]
+    },
     "seat-gates-are-fast": {
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
