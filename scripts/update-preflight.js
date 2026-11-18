@@ -617,7 +617,13 @@ function main()
     // settings.local.json holds yields to settings.json below local scope. They sit in the project's
     // `.claude/`: the --settings file's own folder when one is named (a 1.x global install's is there).
     const routeDir = arg('--settings') ? path.dirname(path.resolve(arg('--settings'))) : accountDir ? path.resolve('.claude') : claudeDir;
-    const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
+    const pluginsLib = require('./install/plugins.js');
+    // The stamp's ledger says which local route value the stack wrote (plugins.js, the skills key's read-back step 3);
+    // it is read only where the stamp sits beside the folder the routes come from.
+    const routes = pluginsLib.committedRoutesAt({
+        env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project',
+        ledgerEnv: routeDir === claudeDir ? pluginsLib.ledgerEnvOf(stampFile) : null,
+    });
     console.log(`changed: skills=${c.skills} agents=${c.agents} rules=${c.rules} hooks=${c.hooks} template=${c.template ? 'yes' : 'no'}`);
     console.log(changedHere(lines, { claudeDir, stampFile, settings: layered || settings, routes }));
     console.log(`validate: ${spansMultipleReleases(lines.find(l => l.startsWith('version: '))) ? 'yes' : 'no'}`);

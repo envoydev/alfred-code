@@ -38,8 +38,8 @@ const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./se
 const { placement, formerCore, descriptionChars, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
-const { committedRoutesAt, corePluginOn } = require('./install/plugins.js');
-const { BRAND } = require('./install/brand.js');
+const { committedRoutesAt, ledgerEnvOf, corePluginOn } = require('./install/plugins.js');
+const { BRAND, stampFile: stampIn } = require('./install/brand.js');
 const { validItemName } = require('./install/stamp.js');
 
 const REPO = path.resolve(__dirname, '..');
@@ -515,7 +515,9 @@ function main(argv)
     // derivation before the install reports the copy routes as writing no off-state. N6: read the way the
     // installer reads them (C5) - a switch only settings.local.json holds yields to settings.json at
     // project and user scope - from the project `--root` names (the cwd by default) at `--scope`.
-    const routes = committedRoutesAt({ env: process.env, claudeDir: path.join(path.resolve(arg('--root') || '.'), '.claude'), scope: arg('--scope') || 'project' });
+    const routeDir = path.join(path.resolve(arg('--root') || '.'), '.claude');
+    const { hooks, skills } = committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: arg('--scope') || 'project', ledgerEnv: ledgerEnvOf(stampIn(routeDir).read) });
+    const routes = { hooks, skills };
     console.log(JSON.stringify({ ...state, routes, written: writable(state, { routes }) }, null, 2));
     return 0;
 }

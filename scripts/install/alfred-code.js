@@ -330,15 +330,19 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
         if (legacyUnstamped) log('no stamp: an unstamped legacy install - its picks are read from disk, an old name under its new one');
 
-        // C5: at project and user scope a route switch only settings.local.json holds is personal, and
-        // never decides what this run commits (plugins.js committedRoutes).
-        const routes = plugins.committedRoutesAt({ env, claudeDir, scope: args.scope, log });
         // --seats-route: the switch. A local settings file the stack cannot write refuses it, and the run goes on as if the flag
-        // were absent; otherwise the run's skills route is the flag's, and the settings pass writes the key.
+        // were absent - so the refusal comes before the read-back, which takes the flag only when it survived.
         const seatsRouteWhy = args.seatsRoute ? settings.localUnusable(path.join(claudeDir, 'settings.local.json')) : '';
         if (seatsRouteWhy) { log(`!! seats route: .claude/settings.local.json is ${seatsRouteWhy} - not switched`); args.seatsRoute = ''; }
-        const routeKeyWrite = args.seatsRoute ? String(args.seatsRoute === 'plugin') : null;
-        if (args.seatsRoute) routes.skills = args.seatsRoute === 'plugin';
+        // C5: at project and user scope a route switch only settings.local.json holds is personal, and
+        // never decides what this run commits (plugins.js committedRoutes). The skills key reads the flag, settings.json's
+        // value, the stack's own ledgered local value, then the env, in that order; the settings pass re-records the key's
+        // ledger row when the flag or the ledgered value decided.
+        const routes = plugins.committedRoutesAt({
+            env, claudeDir, scope: args.scope, flag: args.seatsRoute,
+            ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null, log,
+        });
+        const routeKeyWrite = routes.skillsFrom === 'flag' || routes.skillsFrom === 'ledgered' ? String(routes.skills) : null;
         // R78, mode v2 stage 2: an install moved off `local` scope keeps the stack's rows in settings.local.json; only a
         // variable seed the stack wrote there goes, or it would read as this machine's override. `seeds` is what THIS run
         // would seed (the catalog default, the docs-versioning rule's answer), every seed the stack SHIPPED included (N2).

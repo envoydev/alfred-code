@@ -30,6 +30,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { BRAND, alwaysOn, marketOf, marketKey } = require('./brand.js');
+const { valueHash, readLedger } = require('./stamp.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 // 2.2.0: no plugin is pinned to a scope any more - each OPTIONAL item (an LSP, claude-hud) goes where the
@@ -73,33 +74,80 @@ const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills);
 // says otherwise, settings.json decides (unset = the plugin route), with one line. A shell export the
 // local file does not hold is the invocation's own and stands; at local scope the local file is the
 // install's own settings, so the run's value stands there too.
-function committedRoutes({ env = {}, shared = {}, personal = {}, scope, log = () => {} })
+// The skills key reads in this order, the first that holds deciding (`skillsFrom` names it): (1) `--seats-route`,
+// but not against a settings.json that sets the key at project or user scope; (2) at project and user scope the
+// key settings.json holds, a shell export the local file does not hold excepted; (3) a local value `managed-env`
+// records at its hash - the stack's own switch, which a plain shell or a session's stale env must not undo;
+// (4) the run's env, with the C5 line for an unledgered local value. The hooks key keeps the reading above.
+const SKILLS_KEY = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
+const SKILLS_SUFFIX = 'SKILLS_VIA_PLUGIN';
+const SKILLS_FROM = Object.freeze({ flag: 'flag', shared: 'shared', ledgered: 'ledgered', env: 'env' });
+const onRoute = (value) => value !== 'false';
+
+function skillsRoute({ env, shared, personal, scope, ledgerEnv, flag, log })
 {
-    const routes = pluginRoutes(env);
-    if (scope === 'local') return routes;
-    for (const [route, suffix] of [['hooks', 'HOOKS_VIA_PLUGIN'], ['skills', 'SKILLS_VIA_PLUGIN']])
+    const committed = scope === 'local' ? undefined : envOf(shared || {}, SKILLS_SUFFIX);
+    if (flag && committed === undefined) return { skills: flag === 'plugin', skillsFrom: SKILLS_FROM.flag };
+    const run = envOf(env, SKILLS_SUFFIX);
+    const local = envOf(personal || {}, SKILLS_SUFFIX);
+    if (committed !== undefined)
     {
-        const run = envOf(env, suffix);
-        if (run === undefined || run === '' || run !== envOf(personal || {}, suffix)) continue;
-        const committed = envOf(shared || {}, suffix);
-        if (committed === run) continue;
-        routes[route] = committed !== 'false';
-        log(`routes: ALFRED_CODE_${suffix}=${run} comes from settings.local.json - personal, so this ${scope}-scope run follows settings.json (${committed === undefined || committed === '' ? 'unset' : committed}${routes[route] ? ' - the plugin route' : ' - the copy route'})`);
+        if (flag) log(`!! seats route: settings.json sets ${SKILLS_KEY}=${committed} for everyone - change it there`);
+        else if (run !== undefined && run !== local) return { skills: onRoute(run), skillsFrom: SKILLS_FROM.env };
+        else if (run !== undefined && run !== committed)
+        {
+            log(`routes: ${SKILLS_KEY}=${run} comes from settings.local.json - personal, so this ${scope}-scope run follows settings.json (${committed}${onRoute(committed) ? ' - the plugin route' : ' - the copy route'})`);
+        }
+        return { skills: onRoute(committed), skillsFrom: SKILLS_FROM.shared };
     }
-    return routes;
+    if (local !== undefined && ledgerEnv && ledgerEnv[SKILLS_KEY] === valueHash(local)) return { skills: onRoute(local), skillsFrom: SKILLS_FROM.ledgered };
+    if (scope !== 'local' && run !== undefined && run === local)
+    {
+        log(`routes: ${SKILLS_KEY}=${run} comes from settings.local.json - personal, so this ${scope}-scope run follows settings.json (unset - the plugin route)`);
+        return { skills: true, skillsFrom: SKILLS_FROM.env };
+    }
+    return { skills: onRoute(run), skillsFrom: SKILLS_FROM.env };
+}
+
+function committedRoutes({ env = {}, shared = {}, personal = {}, scope, ledgerEnv = null, flag = '', log = () => {} })
+{
+    const hooks = pluginRoutes(env).hooks;
+    const routes = { hooks };
+    if (scope !== 'local')
+    {
+        const run = envOf(env, 'HOOKS_VIA_PLUGIN');
+        if (run !== undefined && run === envOf(personal || {}, 'HOOKS_VIA_PLUGIN'))
+        {
+            const committed = envOf(shared || {}, 'HOOKS_VIA_PLUGIN');
+            if (committed !== run)
+            {
+                routes.hooks = onRoute(committed);
+                log(`routes: ALFRED_CODE_HOOKS_VIA_PLUGIN=${run} comes from settings.local.json - personal, so this ${scope}-scope run follows settings.json (${committed === undefined ? 'unset' : committed}${routes.hooks ? ' - the plugin route' : ' - the copy route'})`);
+            }
+        }
+    }
+    return { ...routes, ...skillsRoute({ env, shared, personal, scope, ledgerEnv, flag, log }) };
 }
 
 // The same routes read from a project's own `.claude/` - settings.json is the shared env, settings.local.json
 // the personal one (an unreadable file reads as empty). N6: the installer, setup's derivation
 // (derive-state.js) and update's new-item classification (update-preflight.js) all read them here.
-function committedRoutesAt({ env = {}, claudeDir, scope = 'project', log = () => {} })
+// `ledgerEnv` is the stamp's `managed-env` map for settings.local.json (`ledgerEnvOf`), `flag` the run's `--seats-route`.
+function committedRoutesAt({ env = {}, claudeDir, scope = 'project', ledgerEnv = null, flag = '', log = () => {} })
 {
     const envIn = (name) =>
     {
         try { const e = parseJson(fs.readFileSync(path.join(claudeDir, name), 'utf8')).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
         catch { return {}; }
     };
-    return committedRoutes({ env, shared: envIn('settings.json'), personal: envIn('settings.local.json'), scope, log });
+    return committedRoutes({ env, shared: envIn('settings.json'), personal: envIn('settings.local.json'), scope, ledgerEnv, flag, log });
+}
+
+// The stamp's `managed-env` rows for settings.local.json, null where the stamp or its ledger is absent.
+function ledgerEnvOf(stampFile)
+{
+    const ledger = stampFile ? readLedger(stampFile) : null;
+    return ledger && ledger.env ? ledger.env['settings.local.json'] || {} : null;
 }
 
 // `claude plugin list --json` -> one row per plugin NAME. A row carrying a projectPath belongs to
@@ -986,7 +1034,7 @@ module.exports = {
     pluginFloors, floorLines,
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, leftAt, effectiveOn, withEffective,
-    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, projectKey,
+    pluginRoutes, committedRoutes, committedRoutesAt, ledgerEnvOf, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, projectKey,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, dropStaleRetired, retirementDue, updatePlugins, extraMarketplaces,
     copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins, foreignEntry, foreignEntries,
