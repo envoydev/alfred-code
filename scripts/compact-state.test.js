@@ -17,7 +17,7 @@ const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-fresh-session-s
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-state-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
-const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')) };
+const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')), ALFRED_CODE_SESSION_STATUS: 'on' };
 for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_DOCS_ASK',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_AUTO_COMPACT'])
     delete BASE_ENV[k];

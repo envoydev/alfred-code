@@ -278,7 +278,7 @@ test('uninstall: the session status files and the exclude line the stack added g
         {
             if (i !== 0) return null;
             fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), '*.mine\n');
-            const env = { CLAUDE_PROJECT_DIR: repo };
+            const env = { CLAUDE_PROJECT_DIR: repo, ALFRED_CODE_SESSION_STATUS: 'on' };
             assert.strictEqual(status.writeStatus({ session_id: 's1', cwd: repo }, {}, { when: 'always', deps: { env } }), 'written');
             put(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
             return fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');

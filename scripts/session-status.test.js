@@ -152,7 +152,7 @@ function inChild(env, code)
     const base = scrubbed(process.env);
     for (const k of ['ANTHROPIC_MODEL', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) delete base[k];
     const script = `const S = require(${JSON.stringify(STATUS)}); const F = require(${JSON.stringify(path.join(HOOKS, 'fresh-session.js'))}); const out = (() => { ${code} })(); process.stdout.write(JSON.stringify(out));`;
-    const r = spawnSync(process.execPath, ['-e', script], { env: { ...base, HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, ...env }, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, ['-e', script], { env: { ...base, HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, ALFRED_CODE_SESSION_STATUS: 'on', ...env }, encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);
     return JSON.parse(r.stdout);
 }
@@ -461,7 +461,7 @@ test('R134: the folder list as a link to a FIFO, or a large file, reads as none 
             const n = S.pruneStatus(${JSON.stringify(root)}, ${JSON.stringify(root)}, 's1', Date.now(), {});
             process.stdout.write(JSON.stringify({ r, n, list: written }));`;
         const t0 = Date.now();
-        const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 5000, env: { ...scrubbed(process.env), HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root } });
+        const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 5000, env: { ...scrubbed(process.env), HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } });
         assert.ok(!r.error, `${why}: ${r.error}`);
         assert.strictEqual(r.status, 0, `${why}: ${r.stderr}`);
         assert.ok(Date.now() - t0 < 3000, `${why}: ${Date.now() - t0} ms`);
@@ -547,7 +547,7 @@ test('T6 handoffPrompt', () =>
 test('T9 ids and payloads', () =>
 {
     const root = project();
-    const env = {};
+    const env = { ALFRED_CODE_SESSION_STATUS: 'on' };
     const write = (p) => S().writeStatus({ cwd: root, hook_event_name: 'Stop', ...p }, { entry: null }, { when: 'always', deps: { env } });
     assert.strictEqual(write({ session_id: 'a'.repeat(128) }), 'written');
     assert.strictEqual(write({ session_id: 'a'.repeat(129) }), 'skipped');
@@ -556,7 +556,7 @@ test('T9 ids and payloads', () =>
     assert.strictEqual(write({ session_id: 's1', agent_id: 'x' }), 'skipped', 'a seat writes nothing');
     assert.strictEqual(S().writeStatus({ session_id: 's1', hook_event_name: 'Stop' }, {}, { when: 'always', deps: { env } }), 'skipped', 'no cwd, no project dir');
     const elsewhere = project();
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: elsewhere }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root } } }), 'skipped', 'a cwd outside the project');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: elsewhere }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped', 'a cwd outside the project');
     assert.ok(!fs.existsSync(path.join(elsewhere, '.claude')), 'no folder made outside the project');
 });
 
@@ -591,7 +591,7 @@ test('a .claude link below the project root is refused, write and prune (A8)', (
     fs.mkdirSync(sub);
     const outside = project();
     link(outside, path.join(sub, '.claude'));
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: sub }, {}, { when: 'always', deps: { env } }), 'skipped');
     assert.ok(!fs.existsSync(path.join(outside, 'session-inspector')), 'nothing written through the link');
     const old = path.join(outside, 'session-inspector', 'status', 'aaaaaaaa.json');
@@ -619,7 +619,7 @@ test('a control character in the base\'s path writes no exclude line', { skip: p
     const before = fs.readFileSync(exclude, 'utf8');
     assert.deepStrictEqual(S().ensureExcluded([odd], { env: {} }), ['skipped']);
     assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'no line, so no `*` pattern');
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: odd }, {}, { when: 'always', deps: { env } }), 'skipped', 'and no file the exclude cannot cover');
     assert.ok(!fs.existsSync(path.join(odd, '.claude')));
 });
@@ -628,7 +628,7 @@ test('a vanished cwd writes nothing', () =>
 {
     const root = project();
     const gone = path.join(root, 'gone');
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: gone }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root } } }), 'skipped');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: gone }, {}, { when: 'always', deps: { env: { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
     assert.ok(!fs.existsSync(gone));
 });
 
@@ -671,19 +671,19 @@ test('T11 probe rows and cost', (t) =>
 {
     const root = project();
     const rows = () => fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 's1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' }, { entry: null }, { when: 'always', deps: { env: {} } }), 'written');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' }, { entry: null }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'written');
     const [ok] = rows();
     assert.deepStrictEqual([ok.mode, ok.kind, ok.result, ok.event, ok.hook, typeof ok.ms], ['probe', 'status-write', 'ok', 'SessionStart', 'session-status.js', 'number']);
     const bad = project();
     fs.mkdirSync(path.join(bad, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(bad, '.claude', 'session-inspector'), 'a file');
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: bad, hook_event_name: 'Stop' }, { entry: null }, { when: 'always', deps: { env: {} } }), 'skipped');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: bad, hook_event_name: 'Stop' }, { entry: null }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
     const failed = fs.readFileSync(path.join(bad, '.alfred', 'statistics', 'hook-blocks', 's1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.strictEqual(failed[0].result, 'failed');
     assert.deepStrictEqual(fs.readdirSync(path.join(bad, '.claude')), ['session-inspector'], 'no tmp left');
     const ticks = [0, 250];
     const clock = () => (ticks.length ? ticks.shift() : 250);
-    S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'Stop' }, { entry: null, autoRun: true }, { when: 'always', deps: { env: {}, clock } });
+    S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'Stop' }, { entry: null, autoRun: true }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' }, clock } });
     assert.strictEqual(rows().pop().result, 'slow');
     // the worst case: 200 records, a 1MB plan, a 9MB transcript whose only model row is its first line
     const worst = project();
@@ -732,7 +732,7 @@ test('one spawn per common dir, none past the deadline', () =>
         fs.writeFileSync(exclude, before);
         const r = spawnSync(process.execPath, [path.join(HOOKS, 'history-session.js')], {
             input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's1', source: 'startup', cwd: root }), encoding: 'utf8',
-            env: { ...gitEnv, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT }, cwd: root,
+            env: { ...gitEnv, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT, ALFRED_CODE_SESSION_STATUS: 'on' }, cwd: root,
         });
         assert.strictEqual(r.status, 0, r.stderr);
         assert.ok(fs.readFileSync(exclude, 'utf8').split('\n').includes('/.claude/session-inspector/status/'), 'the hook adds the line');
@@ -755,7 +755,7 @@ test('removeStatus takes back the status files and the exclude lines this projec
     const sub = path.join(root, 'sub');
     const other = path.join(top, 'other');
     for (const d of [sub, other]) fs.mkdirSync(d, { recursive: true });
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     const exclude = path.join(top, '.git', 'info', 'exclude');
     // the line the user typed for root is there before any session: nothing is added for root, so it stays theirs
     fs.writeFileSync(exclude, '# git ls-files --others --exclude-from=.git/info/exclude\n*.log\n/app/.claude/session-inspector/status/\n');
@@ -815,7 +815,7 @@ test('fixed root: removeStatus reads the list under the dataRoot it is handed', 
     execFileSync('git', ['init', '-q'], { cwd: root, env: gitEnv, stdio: 'pipe' });
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub, { recursive: true });
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     for (const base of [root, sub]) assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: base }, {}, { when: 'always', deps: { env, uptime: () => 0 } }), 'written', base);
     const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
     const moved = path.join(root, 'var', 'data', 'state', 'sessions', 'status-folders.json');
@@ -952,7 +952,7 @@ test('plan: set through the fields, carried by every later write, null once the 
     const file = JSON.parse(FILE);
     const dir = planDir(root);
     const now = () => JSON.parse(fs.readFileSync(file, 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     const start = (fields) => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, ${JSON.stringify(fields)}, { when: 'always' });`);
     const stop = () => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, {}, { when: 'changed' });`);
     start({ plan: dir });
@@ -979,7 +979,7 @@ test('onPlan: sets the key, compares first, carries the modes, and says nothing 
     const { root, P, FILE } = sonnetSession();
     const file = JSON.parse(FILE);
     const now = () => JSON.parse(fs.readFileSync(file, 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     const dir = planDir(root);
     const call = (folder, extra = '') => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse'${extra} }, ${JSON.stringify(folder)}, () => true);`);
     inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'SessionStart' }, { autoRun: true, scorer: { on: true, level: 90, rounds: 3 } }, { when: 'always' });`);
@@ -1000,7 +1000,7 @@ test('onPlan: a second plan\'s call moves the key; a plan outside the root nulls
 {
     const { root, P, FILE } = sonnetSession();
     const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
     call(planDir(root));
     call(planDir(root, 'next'));
@@ -1016,7 +1016,7 @@ test('onPlan: a mistyped --plan (no such folder) leaves the session\'s plan as i
 {
     const { root, P, FILE } = sonnetSession();
     const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     const call = (folder) => inChild(env, `return S.onPlan({ ...${P}, hook_event_name: 'PreToolUse' }, ${JSON.stringify(folder)}, () => true);`);
     assert.strictEqual(call(planDir(root)), 'written');
     for (const typo of [`${PLANS}/cvs`, path.join(root, PLANS, 'cvs'), `${PLANS}/csv/nope`]) {
@@ -1031,7 +1031,7 @@ test('the Stop fallback: with no plan in the file, the history record\'s folder 
 {
     const { root, P, FILE } = sonnetSession();
     const now = () => JSON.parse(fs.readFileSync(JSON.parse(FILE), 'utf8'));
-    const env = { CLAUDE_PROJECT_DIR: root };
+    const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
     planDir(root);
     fs.writeFileSync(path.join(root, PLANS, 'csv', 'csv.md'), '# Feature - plan\n');
     const stop = (entry) => inChild(env, `return S.writeStatus({ ...${P}, hook_event_name: 'Stop' }, { entry: ${JSON.stringify(entry)} }, { when: 'changed' });`);

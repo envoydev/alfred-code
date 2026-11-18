@@ -26,7 +26,7 @@ test.after(() => rmDir(gitConfigDir));
 
 // A clean env: nothing the developer's own shell carries (a docs root, an off switch) leaks into a case.
 function env(root, extra = {}) {
-  return { PATH: process.env.PATH, HOME: root, CLAUDE_PROJECT_DIR: root, GIT_CONFIG_GLOBAL: EMPTY_GIT_CONFIG, GIT_CONFIG_NOSYSTEM: '1', ...extra };
+  return { PATH: process.env.PATH, HOME: root, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on', GIT_CONFIG_GLOBAL: EMPTY_GIT_CONFIG, GIT_CONFIG_NOSYSTEM: '1', ...extra };
 }
 function project() {
   const root = tmpDir('history-session-');
