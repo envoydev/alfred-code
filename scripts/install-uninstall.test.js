@@ -305,6 +305,33 @@ test('uninstall: the session status files and the exclude line the stack added g
     assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
 });
 
+// A run past the exclude deadline (the installer's own uptime is easily past 8 s) leaves the pairs and the list that names
+// their bases, and says so: the stamp stays and uninstall can be run again.
+test('uninstall: past the exclude time limit the pairs and the list stay, and one line says to run it again', POSIX_ONLY, () =>
+{
+    const status = require('../stack/hooks/session-status.js');
+    const repo = path.join(TMP, `late-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    const sub = path.join(repo, 'sub');
+    put(path.join(sub, '.claude', 'session-inspector', 'status', 's2.json'), '{}');
+    const exclude = path.join(repo, '.git', 'info', 'exclude');
+    fs.appendFileSync(exclude, `${status.EXCLUDE_COMMENT}\n/sub/.claude/session-inspector/status/\n`);
+    const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
+    put(list, JSON.stringify([sub.split(path.sep).join('/')]));
+    const logs = [];
+    const notes = [];
+    uninstall.removeSessionStatus({ projectRoot: repo, log: (m) => logs.push(m), note: (m) => notes.push(m), deps: { uptime: () => 9000 } });
+    assert.ok(fs.readFileSync(exclude, 'utf8').includes('/sub/.claude/session-inspector/status/'), 'the pair stays');
+    assert.ok(fs.existsSync(list), 'the list stays');
+    assert.strictEqual(notes.length, 1, notes.join('\n'));
+    assert.match(notes[0], /session status: the exclude clean-up was cut short at the time limit .*run uninstall again/);
+    uninstall.removeSessionStatus({ projectRoot: repo, log: (m) => logs.push(m), note: (m) => notes.push(m), deps: { uptime: () => 0 } });
+    assert.ok(!fs.readFileSync(exclude, 'utf8').includes('/sub/'), 'a run in time takes the pair');
+    assert.ok(!fs.existsSync(list));
+    assert.strictEqual(notes.length, 1, 'and says nothing more');
+});
+
 // E-batch SYS-03: a pair for a base the list has dropped, whose status folder is gone, goes with the uninstall; a pair whose
 // folder is still there (another project's, in use) stays whole.
 test('uninstall: a dropped base\'s exclude pair is swept, a pair in use stays', POSIX_ONLY, () =>

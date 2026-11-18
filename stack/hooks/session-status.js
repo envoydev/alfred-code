@@ -547,7 +547,7 @@ function ensureExcluded(bases, deps) {
 // at the root, or in a listed linked worktree's own top, younger than that stays: a new-version session owns it) - the
 // same care runs at SessionStart over the folders earlier versions left. A base still holding a status file, or one whose
 // exclude group the deadline did not reach, keeps its list entry and its pair; the list is rewritten to those and removed
-// only when none is left. Returns { files, folders, lines } (and `bases` kept, when sweeping); fail-open like the rest.
+// only when none is left. An uninstall past the deadline keeps the list the same way. Returns { files, folders, lines } (and `bases` kept, when sweeping, and `late`, the bases not reached, when any); fail-open like the rest.
 function holdsStatusFile(dir) {
   try {
     return fs.readdirSync(dir).some((name) => { try { return PRUNE_NAME.test(name) && fs.lstatSync(path.join(dir, name)).isFile(); } catch { return false; } });
@@ -673,9 +673,11 @@ function removeStatus(root, deps, options) {
       try { fs.writeFileSync(file, kept.join('')); out.lines += dropped; } catch { /* left as it was */ }
     }
     const listPath = listFile(root, d);
-    if (!sweeping) { try { fs.rmSync(listPath, { force: true }); } catch { /* none */ } return out; }
+    // an uninstall that ran out of time keeps the list, cut to the bases not reached, so a run again finds their pairs
+    if (late.size) out.late = late.size;
+    if (!sweeping && !late.size) { try { fs.rmSync(listPath, { force: true }); } catch { /* none */ } return out; }
     const stay = bases.filter((b) => holding.has(L.dirKey(b)) || late.has(L.dirKey(b))).map(posix);
-    out.bases = stay.length;
+    if (sweeping) out.bases = stay.length;
     if (listPath && listReplaceable(listPath)) {
       try {
         if (!stay.length) fs.rmSync(listPath, { force: true });

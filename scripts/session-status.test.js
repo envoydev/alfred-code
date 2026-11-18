@@ -1431,18 +1431,121 @@ test('the sweep: a list that is a symbolic link is neither read nor replaced', {
     assert.strictEqual(fs.readFileSync(target, 'utf8'), before, 'its target is untouched');
 });
 
-test('the sweep, Windows forms: bases are compared through layout.dirKey, so the root spelled in capitals is the root', () =>
+// A linked worktree of `top`, a commit behind it, its status folder holding one file of the given age.
+function sweepWorktree(top, git, ageMs)
+{
+    git(top, 'commit', '-q', '--allow-empty', '-m', 'start');
+    const wt = `${top}-wt`;
+    git(top, 'worktree', 'add', '-q', '-b', 'side', wt);
+    const file = statusOf(wt, 's-wt');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{}');
+    age(file, ageMs);
+    return { wt, file, drop: () => { try { git(top, 'worktree', 'remove', '--force', wt); } catch { /* gone */ } fs.rmSync(wt, { recursive: true, force: true }); } };
+}
+
+test('the sweep, Windows forms: bases are compared through layout.dirKey, so a spelling that maps to the root\'s key is the root', () =>
 {
     const f = sweepProject();
     const winKey = (p) => path.win32.normalize(String(p)).replace(/\//g, '\\').toLowerCase();
     const layout = { ...LAYOUT, dirKey: winKey };
-    const shout = f.root.toUpperCase();
-    fs.writeFileSync(f.list, JSON.stringify([shout, posixOf(f.a)]));
-    removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => 0, layout }, { except: shout, rootMinAgeMs: SWEEP_MS });
-    assert.ok(fs.existsSync(f.files.root), 'the root is not swept as a subfolder');
-    assert.ok(fs.readFileSync(f.exclude, 'utf8').includes(stackPair('')), 'and keeps its pair');
-    removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => 0, layout }, { rootMinAgeMs: SWEEP_MS });
-    assert.ok(fs.existsSync(f.files.root), 'a young root file stays when the list spells it in capitals');
+    const alias = f.root.toUpperCase();
+    assert.notStrictEqual(alias, f.root);
+    assert.strictEqual(winKey(alias), winKey(f.root));
+    const deps = { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => 0, layout };
+    const side = sweepWorktree(f.root, f.git, 26 * 3600 * 1000);
+    try
+    {
+        // only `except` can keep this file: it is far past 25 hours, and the alias is a different string from the root
+        age(f.files.root, 26 * 3600 * 1000);
+        fs.writeFileSync(f.list, JSON.stringify([alias, posixOf(side.wt)]));
+        removeStatus(f.root, deps, { except: alias, rootMinAgeMs: SWEEP_MS });
+        assert.ok(fs.existsSync(f.files.root), 'the except base is compared by key, so it is the root');
+        assert.ok(!fs.existsSync(side.file), 'a sibling worktree past 25 hours is still swept');
+        assert.ok(fs.readFileSync(f.exclude, 'utf8').includes(stackPair('')), 'the root keeps its pair');
+        // the alias listed beside a young root file is one base: the list holds it once, spelled as the root
+        age(f.files.root, 60000);
+        fs.writeFileSync(f.list, JSON.stringify([alias]));
+        removeStatus(f.root, deps, { rootMinAgeMs: SWEEP_MS });
+        assert.ok(fs.existsSync(f.files.root));
+        assert.deepStrictEqual(f.held(), [posixOf(f.root)], 'no second entry for the same folder');
+    }
+    finally { side.drop(); }
+});
+
+test('the sweep: no except, a young root file keeps its pair, while the subfolders\' pairs go', () =>
+{
+    const f = sweepProject();
+    removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root } }, { rootMinAgeMs: SWEEP_MS });
+    assert.ok(fs.existsSync(f.files.root), 'the young root file stays');
+    assert.ok(!fs.existsSync(f.files.a) && !fs.existsSync(f.files.ab));
+    assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), `/mine/\n${stackPair('')}`, 'the pair of a base still holding a file is never dropped');
+    assert.deepStrictEqual(f.held(), [posixOf(f.root)]);
+});
+
+test('the sweep: a young linked worktree file keeps the root-form line it shares with a root that holds none', () =>
+{
+    const git = sweepGit();
+    const top = project();
+    git(top, 'init', '-q', '-b', 'main');
+    const side = sweepWorktree(top, git, 60000);
+    try
+    {
+        const exclude = path.join(top, '.git', 'info', 'exclude');
+        fs.writeFileSync(exclude, `/mine/\n${stackPair('')}`);
+        const mine = statusOf(top, 's-main');
+        fs.mkdirSync(path.dirname(mine), { recursive: true });
+        fs.writeFileSync(mine, '{}');
+        age(mine, 26 * 3600 * 1000);
+        const list = path.join(top, '.alfred', 'state', 'sessions', 'status-folders.json');
+        fs.mkdirSync(path.dirname(list), { recursive: true });
+        fs.writeFileSync(list, JSON.stringify([top, side.wt].map(posixOf)));
+        removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } }, { rootMinAgeMs: SWEEP_MS });
+        assert.ok(!fs.existsSync(mine), 'the root\'s old file goes');
+        assert.ok(fs.existsSync(side.file), 'the worktree\'s young file stays');
+        assert.strictEqual(fs.readFileSync(exclude, 'utf8'), `/mine/\n${stackPair('')}`, 'the shared root-form line stays for it');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(list, 'utf8')), [posixOf(side.wt)]);
+    }
+    finally { side.drop(); }
+});
+
+test('the sweep: with an except folder that does not exist yet, the root-form line is still never dropped', () =>
+{
+    const git = sweepGit();
+    const top = project();
+    git(top, 'init', '-q', '-b', 'main');
+    const side = sweepWorktree(top, git, 26 * 3600 * 1000);
+    try
+    {
+        const exclude = path.join(top, '.git', 'info', 'exclude');
+        fs.writeFileSync(exclude, `/mine/\n${stackPair('')}`);
+        const list = path.join(top, '.alfred', 'state', 'sessions', 'status-folders.json');
+        fs.mkdirSync(path.dirname(list), { recursive: true });
+        fs.writeFileSync(list, JSON.stringify([posixOf(side.wt)]));
+        removeStatus(top, { env: { CLAUDE_PROJECT_DIR: top } }, { except: top, rootMinAgeMs: SWEEP_MS });
+        assert.ok(!fs.existsSync(side.file), 'the worktree\'s old file is swept');
+        assert.strictEqual(fs.readFileSync(exclude, 'utf8'), `/mine/\n${stackPair('')}`, 'the root-form line is the except root\'s whatever the worktree held');
+    }
+    finally { side.drop(); }
+});
+
+test('uninstall past the exclude deadline keeps the list and the pairs it could not reach, and says how many bases were not reached', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const f = sweepProject();
+    let spawns = 0;
+    const exec = (...a) => { spawns++; return execFileSync(...a); };
+    const late = removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => 9000, exec });
+    assert.strictEqual(spawns, 0, 'no git spawn past the deadline');
+    assert.ok(late.late > 0, 'the count of bases not reached is returned');
+    assert.strictEqual(late.files, 3, 'the files went all the same');
+    assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), `/mine/\n${stackPair('')}${stackPair('a')}${stackPair('a/b')}`, 'every pair stays for the next run');
+    assert.deepStrictEqual(f.held(), [f.root, f.a, f.ab].map(posixOf), 'the list that names their bases stays');
+    const again = removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => 0 });
+    assert.strictEqual(again.late, undefined, 'a run in time reaches them');
+    assert.strictEqual(again.lines, 3);
+    assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), '/mine/\n');
+    assert.ok(!fs.existsSync(f.list), 'and takes the list');
 });
 
 test('the sweep: a listed linked worktree owns its young file (the root\'s 25 hour rule), and the root-form exclude line is never dropped while the root is except', () =>
