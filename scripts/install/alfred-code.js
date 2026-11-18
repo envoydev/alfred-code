@@ -334,6 +334,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // were absent - so the refusal comes before the read-back, which takes the flag only when it survived.
         const seatsRouteWhy = args.seatsRoute ? settings.localUnusable(path.join(claudeDir, 'settings.local.json')) : '';
         if (seatsRouteWhy) { log(`!! seats route: .claude/settings.local.json is ${seatsRouteWhy} - not switched`); args.seatsRoute = ''; }
+        // A workspace's seats route is its top's and members' together: a member-held seat is left out of the top's deny and a store
+        // record follows the route, so switching one project would list a seat twice.
+        if (args.seatsRoute && workspace.inWorkspace({ projectRoot, stampFile, env, dataRoot: dataInfo.root }))
+        { log("!! seats route: a workspace's seats route is its top's and members' together - not switched here"); args.seatsRoute = ''; }
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes). The skills key reads the flag, settings.json's
         // value, the stack's own ledgered local value, then the env, in that order; the settings pass re-records the key's

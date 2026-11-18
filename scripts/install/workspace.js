@@ -169,6 +169,15 @@ function readWorkspace(projectRoot, opts = {})
     return { file: read.file, state: read.state, source: read.source, singular: read.singular, record: read.record, view: viewOf(read.record), problems: read.problems };
 }
 
+// Whether the project is the top or a linked member of a workspace: the stamp records links or member picks, or its record
+// names a parent or a child. A garbage or absent record names nothing.
+function inWorkspace({ projectRoot, stampFile, env, dataRoot })
+{
+    if (stampFile && (stamp.readLinks(stampFile).length || (stamp.readMemberPicks(stampFile) || []).length)) return true;
+    const { view } = readWorkspace(projectRoot, { env, dataRoot });
+    return Boolean(view.parent) || view.children.length > 0;
+}
+
 // The one line for a garbage record, `rel` the file's path from the folder the run reads from.
 const garbageLine = (rel) => `!! workspace: ${rel} is not valid JSON - fix it by hand; the workspace pass neither reads nor writes it until then`;
 // Named once per run, wherever it is met first.
@@ -2158,7 +2167,7 @@ module.exports = {
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
-    workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
+    workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
     nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,

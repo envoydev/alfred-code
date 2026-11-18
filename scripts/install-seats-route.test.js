@@ -3,11 +3,14 @@
 // settings.local.json at every scope, ledgers it in managed-env, and the key outlives later updates.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { readLedger, readLibrary } = require('./install/stamp.js');
 const { placement, CORE } = require('./plugin-placement.js');
+const rt = require('./install/runtime.js');
+const { putWorkspace } = require('./workspace-fixture.js');
 
 const KEY = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
 const SELECTION = 'skill csharp\nagent evidence-gatherer\n';
@@ -243,4 +246,62 @@ test('after the switch to copy the roster names every copied seat bare, and afte
     assert.deepEqual(steps[1], { roster: [SEAT, `${CORE}:${UNPICKED_SEAT}`], copied: true }, 'copy: the copied seat is bare, the unpicked one stays namespaced');
     assert.deepEqual(steps[2], { roster: namespaced, copied: false }, 'plugin again: every seat is namespaced');
     assert.deepEqual(steps[3], { roster: namespaced, copied: false }, 'a plain update changes nothing');
+});
+
+// A workspace: the top's deny leaves a member-held seat out and a store record follows the route, so a switch of one project
+// would list that seat twice - the flag is refused on the top and on a member, and nothing changes.
+const WORKSPACE_REFUSAL = "!! seats route: a workspace's seats route is its top's and members' together - not switched here";
+const MEMBER = 'api';
+const WORKSPACE_ENV = { ...NO_ROUTE_ENV, ALFRED_CODE_WORKSPACE: '1' };
+const TIME_LINE = /^installed(-ms)?: .*$/gm;
+const layOutWorkspace = (repo) =>
+{
+    const member = path.join(repo, MEMBER);
+    fs.mkdirSync(member);
+    rt.execCommand('git', ['init', '-q', member]);
+    putWorkspace(repo, { children: [MEMBER] });
+    putWorkspace(member, { parent: '..' });
+};
+// Every file under the top with its size and hash, `.git/` left out and the stamps' two run times blanked.
+function hashTree(dir)
+{
+    const rows = [];
+    const walk = (folder) =>
+    {
+        for (const entry of fs.readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)))
+        {
+            const file = path.join(folder, entry.name);
+            if (entry.name === '.git') continue;
+            if (entry.isDirectory()) { walk(file); continue; }
+            if (entry.isSymbolicLink()) { rows.push(`${path.relative(dir, file)} -> ${fs.readlinkSync(file)}`); continue; }
+            const body = entry.name === 'alfred-code.stamp' ? Buffer.from(fs.readFileSync(file, 'utf8').replace(TIME_LINE, '')) : fs.readFileSync(file);
+            rows.push(`${path.relative(dir, file)} ${body.length} ${crypto.createHash('sha256').update(body).digest('hex')}`);
+        }
+    };
+    walk(dir);
+    return rows.join('\n');
+}
+
+test('install-seats-route: --seats-route on a workspace top or member prints the refusal and changes no file', POSIX_ONLY, () =>
+{
+    const flagged = [...PROJECT, '--seats-route', 'copy'];
+    const { outs, steps } = seedRun(['install', 'install', 'update', 'update', 'update', 'update'], SELECTION, {
+        env: WORKSPACE_ENV, prepare: layOutWorkspace, each: (repo) => hashTree(repo),
+        cwds: ['repo', `repo/${MEMBER}`, 'repo', `repo/${MEMBER}`, 'repo', `repo/${MEMBER}`],
+        args: [PROJECT, PROJECT, PROJECT, PROJECT, flagged, flagged],
+    });
+    assert.ok(!outs.slice(0, 4).some((o) => o.includes(WORKSPACE_REFUSAL)), 'no refusal without the flag');
+    assert.ok(outs[4].includes(WORKSPACE_REFUSAL), `top: ${outs[4]}`);
+    assert.ok(outs[5].includes(WORKSPACE_REFUSAL), `member: ${outs[5]}`);
+    assert.equal(steps[4], steps[3], 'the flag on the top changed a file');
+    assert.equal(steps[5], steps[3], 'the flag on the member changed a file');
+});
+
+test('install-seats-route: a standalone project (no record, no links) takes --seats-route and is not refused', POSIX_ONLY, () =>
+{
+    const { out, result } = seedRun('install', SELECTION, {
+        env: WORKSPACE_ENV, args: [...PROJECT, '--seats-route', 'copy'], inspect: (repo) => seen(repo),
+    });
+    assert.ok(!out.includes(WORKSPACE_REFUSAL), out);
+    assert.deepEqual(result, { value: 'false', ledgered: true });
 });
