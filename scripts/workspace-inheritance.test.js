@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { cleanExport } = require('./clean-export.js');
 const { POSIX_ONLY, scrubStackEnv } = require('./seed-sandbox.js');
+const { realLong } = require('./test-paths.js');
 
 const REPO = path.resolve(__dirname, '..');
 const CORE = 'alfred-code@envoydev';
@@ -34,7 +35,7 @@ const TEST_TIMEOUT_MS = 900000;
 const RUN_TIMEOUT_MS = 600000;
 const HOME_DIRS = '.claude/\n.alfred/\n';
 
-const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ws-inherit-')));
+const work = realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'ws-inherit-')));
 const exportDir = path.join(work, 'export');
 const env = {};
 let installs;
@@ -138,7 +139,7 @@ const readOf = (rel, target, sessionId) => contextOf(hookOutput(rel, [], {
 }, sessionId));
 
 const denyOf = (rel) => ((readJson(path.join(at(rel), '.claude', 'settings.local.json')).permissions || {}).deny || []);
-const realUnderStore = (rel, name) => fs.realpathSync(path.join(at(rel), '.claude', 'skills', name)).startsWith(path.join(fs.realpathSync(at('.')), '.alfred', 'stack', 'skills'));
+const realUnderStore = (rel, name) => realLong(path.join(at(rel), '.claude', 'skills', name)).startsWith(path.join(realLong(at('.')), '.alfred', 'stack', 'skills'));
 
 test.before(() => { installs = buildWorkspace(); }, { timeout: TEST_TIMEOUT_MS });
 test.after(() => { fs.rmSync(work, { recursive: true, force: true }); });
