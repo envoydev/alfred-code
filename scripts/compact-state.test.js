@@ -1717,7 +1717,7 @@ function folderSetup(planOpts = {}, more = {})
     const via = (hook, tool, input, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp, ...extra }, env, hook);
     const edit = () => via(FILES, 'Edit', { file_path: path.join(p.root, 'src.js'), old_string: 'a', new_string: 'b' });
     const ledger = () => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
-    const statusFile = () => path.join(p.root, '.claude', 'session-inspector', 'status', `${p.sid}.json`);
+    const statusFile = () => path.join(p.root, '.alfred', 'state', 'sessions', 'status', `${p.sid}.json`);
     const resetStatus = () => fs.rmSync(statusFile(), { force: true });
     if (more.hold)
     {

@@ -603,7 +603,7 @@ test('compaction: both context lines come back, no systemMessage', () => {
 });
 
 // The session status file (2026-10-29, plan task 5): the prompt's own autoRun and scoring, written when one changes.
-const statusPath = (sid) => path.join(ROOT, '.claude', 'session-inspector', 'status', `${sid}.json`);
+const statusPath = (sid) => path.join(ROOT, '.alfred', 'state', 'sessions', 'status', `${sid}.json`);
 const statusRead = (sid) => JSON.parse(fs.readFileSync(statusPath(sid), 'utf8'));
 const typed = (sid, text, env = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: text, session_id: sid }, { ...SCORING_CFG, ALFRED_CODE_SESSION_STATUS: 'on', ...env });
 test('T4 autoRun at the prompt', () => {

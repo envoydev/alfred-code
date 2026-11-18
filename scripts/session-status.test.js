@@ -138,7 +138,8 @@ fs.mkdirSync(ACCOUNT, { recursive: true });
 fs.mkdirSync(HOME, { recursive: true });
 process.env.CLAUDE_CONFIG_DIR = ACCOUNT;   // the account settings fresh-session reads: a throwaway, never the runner's
 process.env.ALFRED_CODE_SESSION_STATUS = 'on';   // the in-process writers below: the gate cases pass their own env and leave it unset
-const statusOf = (base, id) => path.join(base, '.claude', 'session-inspector', 'status', `${id}.json`);
+const statusOf = (base, id) => path.join(base, '.alfred', 'state', 'sessions', 'status', `${id}.json`);
+const legacyStatusOf = (base, id) => path.join(base, '.claude', 'session-inspector', 'status', `${id}.json`);
 const readStatus = (base, id) => JSON.parse(fs.readFileSync(statusOf(base, id), 'utf8'));
 const transcript = (root, model, name = 't.jsonl') =>
 {
@@ -447,7 +448,7 @@ test('R136: a hand-edited "false" autoRun and a string scorer read false and nul
 });
 
 // R134 (burn-down 2026-11-04): the folder list was read with no regular-file test or size cap.
-test('R134: the folder list as a link to a FIFO, or a large file, reads as none - within a second', () =>
+test('R134: the legacy folder list as a link to a FIFO, or a large file, reads as none - within a second', () =>
 {
     const cases = [['a large file', (list) => fs.writeFileSync(list, JSON.stringify(Array.from({ length: 5000 }, (_, i) => `/x/${'y'.repeat(20)}${i}`)))]];
     if (process.platform !== 'win32') cases.push(['a link to a FIFO', (list) => { const fifo = path.join(path.dirname(list), 'pipe'); assert.strictEqual(spawnSync('mkfifo', [fifo]).status, 0); fs.symlinkSync(fifo, list); }]);
@@ -460,9 +461,9 @@ test('R134: the folder list as a link to a FIFO, or a large file, reads as none 
         const p = JSON.stringify({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' });
         const code = `const S = require(${JSON.stringify(STATUS)}); const fs = require('fs');
             const r = S.writeStatus(${p}, { autoRun: false, scorer: null, handoffPrompt: null }, {});
-            const written = JSON.parse(fs.readFileSync(${JSON.stringify(list)}, 'utf8'));
-            const n = S.pruneStatus(${JSON.stringify(root)}, ${JSON.stringify(root)}, 's1', Date.now(), {});
-            process.stdout.write(JSON.stringify({ r, n, list: written }));`;
+            S.onSessionStart(${p}, null, {});
+            const n = S.pruneStatus(${JSON.stringify(root)}, 's1', Date.now(), {});
+            process.stdout.write(JSON.stringify({ r, n }));`;
         const t0 = Date.now();
         const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 5000, env: { ...scrubbed(process.env), HOME, USERPROFILE: HOME, CLAUDE_CONFIG_DIR: ACCOUNT, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' } });
         assert.ok(!r.error, `${why}: ${r.error}`);
@@ -470,7 +471,8 @@ test('R134: the folder list as a link to a FIFO, or a large file, reads as none 
         assert.ok(Date.now() - t0 < 3000, `${why}: ${Date.now() - t0} ms`);
         const got = JSON.parse(r.stdout);
         assert.strictEqual(got.r, 'written', why);
-        assert.deepStrictEqual(got.list, [root.split(path.sep).join('/')], `${why}: the list holds this base alone`);
+        assert.strictEqual(fs.lstatSync(list).isSymbolicLink(), why !== 'a large file', `${why}: the list is left as it was`);
+        assert.ok(fs.existsSync(newStatusOf(root, 's1')), `${why}: the file is written in the data root`);
     }
 });
 
@@ -550,7 +552,7 @@ test('T6 handoffPrompt', () =>
 // A subfolder base an older release left behind: a status file in it and its entry in the project's folder list.
 function legacyStray(root, sub, id)
 {
-    const file = statusOf(sub, id);
+    const file = legacyStatusOf(sub, id);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '{}');
     const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
@@ -586,31 +588,7 @@ test('T9 ids and payloads', () =>
     assert.ok(!fs.existsSync(path.join(elsewhere, '.claude')), 'no folder made outside the project');
 });
 
-test('a symlinked status folder is refused', () =>
-{
-    for (const at of [['.claude', 'session-inspector', 'status'], ['.claude', 'session-inspector']])
-    {
-        const root = project();
-        const outside = project();
-        // where the prune would look through this link: the link IS the status folder, or holds it
-        const old = at.length === 3 ? path.join(outside, 'aaaaaaaa.json') : path.join(outside, 'status', 'aaaaaaaa.json');
-        fs.mkdirSync(path.dirname(old), { recursive: true });
-        fs.writeFileSync(old, '{}');
-        age(old, 8 * dayMs);
-        fs.mkdirSync(path.join(root, ...at.slice(0, -1)), { recursive: true });
-        link(outside, path.join(root, ...at));
-        S().onSessionStart({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' }, null);
-        assert.ok(!fs.existsSync(path.join(outside, 's1.json')) && !fs.existsSync(path.join(outside, 'status', 's1.json')), `${at.join('/')}: nothing written through the link`);
-        assert.ok(fs.existsSync(old), `${at.join('/')}: the old file stays`);
-    }
-    const root = project();
-    const real = project();
-    link(real, path.join(root, '.claude'));
-    S().onSessionStart({ session_id: 's1', cwd: root, hook_event_name: 'SessionStart' }, null);
-    assert.ok(fs.existsSync(path.join(real, 'session-inspector', 'status', 's1.json')), 'a linked .claude still writes');
-});
-
-test('a .claude link below the project root is refused, and prune (A8)', () =>
+test('the legacy sweep leaves a listed base whose .claude links out of the project alone (A8)', { skip: process.platform === 'win32' && 'a directory link needs a privilege' }, () =>
 {
     const root = project();
     const sub = path.join(root, 'sub');
@@ -618,18 +596,16 @@ test('a .claude link below the project root is refused, and prune (A8)', () =>
     const outside = project();
     link(outside, path.join(sub, '.claude'));
     const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: sub }, {}, { when: 'always', deps: { env } }), 'written', 'the write goes to the root');
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: sub }, {}, { when: 'always', deps: { env } }), 'written', 'the write goes to the root\'s data root');
     assert.ok(!fs.existsSync(path.join(outside, 'session-inspector')), 'nothing written through the link');
     const old = path.join(outside, 'session-inspector', 'status', 'aaaaaaaa.json');
     fs.mkdirSync(path.dirname(old), { recursive: true });
     fs.writeFileSync(old, '{}');
     age(old, 8 * dayMs);
-    const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
-    fs.mkdirSync(path.dirname(list), { recursive: true });
-    fs.writeFileSync(list, JSON.stringify([sub.split(path.sep).join('/')]));
-    assert.strictEqual(S().pruneStatus(root, sub, 's1', Date.now(), { env }), 0);
-    assert.ok(fs.existsSync(old), 'nothing pruned through the link');
-    assert.deepStrictEqual(S().statusBases(root, sub, { env }), [], 'and nothing excluded there');
+    fs.mkdirSync(path.dirname(listOf(root)), { recursive: true });
+    fs.writeFileSync(listOf(root), JSON.stringify([sub.split(path.sep).join('/')]));
+    assert.strictEqual(removeStatus(root, { env }, { rootMinAgeMs: SWEEP_MS }).files, 0);
+    assert.ok(fs.existsSync(old), 'nothing swept through the link');
 });
 
 test('a control character in the base\'s path writes no exclude line', { skip: process.platform === 'win32' && 'no newline in a Windows file name' }, () =>
@@ -658,7 +634,7 @@ test('a vanished project root writes nothing', () =>
     assert.ok(!fs.existsSync(gone));
 });
 
-test('garbage folder-list entries are dropped', () =>
+test('the legacy sweep ignores garbage folder-list entries and a base outside the project', () =>
 {
     const root = project();
     const sub = path.join(root, 'sub');
@@ -667,13 +643,13 @@ test('garbage folder-list entries are dropped', () =>
     fs.mkdirSync(path.dirname(list), { recursive: true });
     const posix = (p) => p.split(path.sep).join('/');
     fs.writeFileSync(list, JSON.stringify([42, 'rel/x', `${posix(root)}/../${path.basename(elsewhere)}`, posix(sub)]));
-    const a = statusOf(sub, 'bbbbbbbb');
-    const c = statusOf(elsewhere, 'cccccccc');
+    const a = legacyStatusOf(sub, 'bbbbbbbb');
+    const c = legacyStatusOf(elsewhere, 'cccccccc');
     for (const f of [a, c]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, '{}'); age(f, 8 * dayMs); }
-    assert.strictEqual(S().pruneStatus(root, root, 's1', Date.now(), { env: {} }), 1);
+    assert.strictEqual(removeStatus(root, { env: {} }, { rootMinAgeMs: SWEEP_MS }).files, 1);
     assert.ok(!fs.existsSync(a), 'the sub file is gone');
     assert.ok(fs.existsSync(c), 'the elsewhere file stays');
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(list, 'utf8')), [posix(sub)]);
+    assert.ok(!fs.existsSync(list), 'the emptied list is removed');
 });
 
 test('the prune\'s 7-day edge', () =>
@@ -689,7 +665,7 @@ test('the prune\'s 7-day edge', () =>
         fs.utimesSync(f, at / 1000, at / 1000);
         return f;
     });
-    assert.strictEqual(S().pruneStatus(root, root, 's1', now, { env: {} }), 1);
+    assert.strictEqual(S().pruneStatus(root, 's1', now, { env: {} }), 1);
     assert.deepStrictEqual(files.map((f) => fs.existsSync(f)), [true, true, false], 'one under kept, at kept, one over removed');
 });
 
@@ -701,12 +677,12 @@ test('T11 probe rows and cost', (t) =>
     const [ok] = rows();
     assert.deepStrictEqual([ok.mode, ok.kind, ok.result, ok.event, ok.hook, typeof ok.ms], ['probe', 'status-write', 'ok', 'SessionStart', 'session-status.js', 'number']);
     const bad = project();
-    fs.mkdirSync(path.join(bad, '.claude'), { recursive: true });
-    fs.writeFileSync(path.join(bad, '.claude', 'session-inspector'), 'a file');
+    fs.mkdirSync(path.join(bad, '.alfred', 'state', 'sessions'), { recursive: true });
+    fs.writeFileSync(path.join(bad, '.alfred', 'state', 'sessions', 'status'), 'a file');
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: bad, hook_event_name: 'Stop' }, { entry: null }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' } } }), 'skipped');
     const failed = fs.readFileSync(path.join(bad, '.alfred', 'statistics', 'hook-blocks', 's1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.strictEqual(failed[0].result, 'failed');
-    assert.deepStrictEqual(fs.readdirSync(path.join(bad, '.claude')), ['session-inspector'], 'no tmp left');
+    assert.deepStrictEqual(fs.readdirSync(path.join(bad, '.alfred', 'state', 'sessions')), ['status'], 'no tmp left');
     const ticks = [0, 250];
     const clock = () => (ticks.length ? ticks.shift() : 250);
     S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'Stop' }, { entry: null, autoRun: true }, { when: 'always', deps: { env: { ALFRED_CODE_SESSION_STATUS: 'on' }, clock } });
@@ -754,14 +730,15 @@ test('one spawn per common dir, none past the deadline', () =>
         assert.strictEqual(spawns, 1, 'one spawn for the main checkout and its two worktrees');
         const text = fs.readFileSync(exclude, 'utf8');
         assert.strictEqual(text.split('\n').filter((l) => l === '/.claude/session-inspector/status/').length, 1, 'the line lands once');
-        // a SessionStart through the hook, after a late check, adds the line
+        // a SessionStart through the hook writes no line
         fs.writeFileSync(exclude, before);
         const r = spawnSync(process.execPath, [path.join(HOOKS, 'history-session.js')], {
             input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's1', source: 'startup', cwd: root }), encoding: 'utf8',
             env: { ...gitEnv, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: ACCOUNT, ALFRED_CODE_SESSION_STATUS: 'on' }, cwd: root,
         });
         assert.strictEqual(r.status, 0, r.stderr);
-        assert.ok(fs.readFileSync(exclude, 'utf8').split('\n').includes('/.claude/session-inspector/status/'), 'the hook adds the line');
+        assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'the hook adds no line: the file is in the data root');
+        assert.ok(fs.existsSync(newStatusOf(root, 's1')), 'and writes the file there');
     }
     finally { for (const wt of wts) { try { g(root, 'worktree', 'remove', '--force', wt); } catch { /* gone */ } fs.rmSync(wt, { recursive: true, force: true }); } }
 });
@@ -788,9 +765,10 @@ test('removeStatus takes back the status files and the exclude lines this projec
     // uptime pinned: the exclude check has an 8 s deadline on the PROCESS's age, and on a slow runner this test starts past
     // it, so every check read 'late' (the Windows VM gate on 547ede2c)
     const fast = () => 0;
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root }, {}, { when: 'always', deps: { env, uptime: fast } }), 'written');
+    // an older release's files in the root and in a stray sub; nothing the hooks write now lands there
+    legacyStray(root, root, 's1');
     legacyStray(root, sub, 's1');
-    // the write added nothing (root's line is the user's own); the check adds the stray sub's pair and the other project's
+    // the check adds the stray sub's pair and the other project's (root's line is the user's own)
     assert.deepStrictEqual(S().ensureExcluded([root, sub, other], { env: {}, uptime: fast }), ['present', 'added', 'added']);
     // another project's pair is one in use: its status folder is there (E-batch SYS-03 sweeps a pair whose folder is gone)
     fs.mkdirSync(path.join(other, '.claude', 'session-inspector', 'status'), { recursive: true });
@@ -801,7 +779,7 @@ test('removeStatus takes back the status files and the exclude lines this projec
     const before = fs.readFileSync(exclude, 'utf8');
     const got = removeStatus(root, { env });
     assert.strictEqual(got.files, 3, 'two status files and a crashed write\'s tmp');
-    assert.ok(!fs.existsSync(statusOf(root, 's1')) && !fs.existsSync(statusOf(sub, 's1')));
+    assert.ok(!fs.existsSync(legacyStatusOf(root, 's1')) && !fs.existsSync(legacyStatusOf(sub, 's1')));
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'session-inspector', 'status', 'notes.txt'), 'utf8'), 'mine\n', 'a file no status write names stays');
     assert.ok(fs.existsSync(path.join(root, '.claude', 'session-inspector', 'HANDOFF.md')), 'session-inspector\'s own files stay');
     assert.ok(!fs.existsSync(path.join(sub, '.claude')), 'a base\'s emptied folders go, up to and with its .claude');
@@ -843,14 +821,14 @@ test('fixed root: removeStatus reads the list under the dataRoot it is handed', 
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub, { recursive: true });
     const env = { CLAUDE_PROJECT_DIR: root, ALFRED_CODE_SESSION_STATUS: 'on' };
-    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root }, {}, { when: 'always', deps: { env, uptime: () => 0 } }), 'written');
+    legacyStray(root, root, 's1');
     legacyStray(root, sub, 's1');
     const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
     const moved = path.join(root, 'var', 'data', 'state', 'sessions', 'status-folders.json');
     fs.mkdirSync(path.dirname(moved), { recursive: true });
     fs.renameSync(list, moved);
     assert.strictEqual(removeStatus(root, { env, dataRoot: 'var/data' }).files, 2);
-    assert.ok(!fs.existsSync(statusOf(sub, 's1')), 'the base the list names is swept');
+    assert.ok(!fs.existsSync(legacyStatusOf(sub, 's1')), 'the base the list names is swept');
     assert.ok(!fs.existsSync(moved), 'the list goes with them');
 });
 
@@ -1327,7 +1305,7 @@ function sweepProject()
     const files = {};
     for (const [name, base] of [['root', root], ['a', a], ['ab', ab]])
     {
-        files[name] = statusOf(base, `s-${name}`);
+        files[name] = legacyStatusOf(base, `s-${name}`);
         fs.mkdirSync(path.dirname(files[name]), { recursive: true });
         fs.writeFileSync(files[name], '{}');
         age(files[name], 60000);
@@ -1383,7 +1361,7 @@ test('the sweep, reader off: the root\'s file goes once 25 hours old and the lis
 test('the sweep: the root\'s age bound is 25 hours, kept below it, removed at it and above', () =>
 {
     const root = project();
-    const file = statusOf(root, 's-edge');
+    const file = legacyStatusOf(root, 's-edge');
     const now = Math.floor(Date.now() / 1000) * 1000;
     const hour = 3600 * 1000;
     for (const [ms, kept] of [[24 * hour + 59 * 60000, true], [25 * hour, false], [25 * hour + 60000, false]])
@@ -1437,7 +1415,7 @@ function sweepWorktree(top, git, ageMs)
     git(top, 'commit', '-q', '--allow-empty', '-m', 'start');
     const wt = `${top}-wt`;
     git(top, 'worktree', 'add', '-q', '-b', 'side', wt);
-    const file = statusOf(wt, 's-wt');
+    const file = legacyStatusOf(wt, 's-wt');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '{}');
     age(file, ageMs);
@@ -1493,7 +1471,7 @@ test('the sweep: a young linked worktree file keeps the root-form line it shares
     {
         const exclude = path.join(top, '.git', 'info', 'exclude');
         fs.writeFileSync(exclude, `/mine/\n${stackPair('')}`);
-        const mine = statusOf(top, 's-main');
+        const mine = legacyStatusOf(top, 's-main');
         fs.mkdirSync(path.dirname(mine), { recursive: true });
         fs.writeFileSync(mine, '{}');
         age(mine, 26 * 3600 * 1000);
@@ -1580,8 +1558,8 @@ test('the sweep: a listed linked worktree owns its young file (the root\'s 25 ho
     git(top, 'worktree', 'add', '-q', '-b', 'side', wt);
     try
     {
-        const mine = statusOf(top, 's-main');
-        const theirs = statusOf(wt, 's-wt');
+        const mine = legacyStatusOf(top, 's-main');
+        const theirs = legacyStatusOf(wt, 's-wt');
         for (const f of [mine, theirs]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, '{}'); age(f, 60000); }
         const exclude = path.join(top, '.git', 'info', 'exclude');
         fs.writeFileSync(exclude, `/mine/\n${stackPair('')}`);
@@ -1603,13 +1581,201 @@ test('the sweep: a listed linked worktree owns its young file (the root\'s 25 ho
     finally { try { git(top, 'worktree', 'remove', '--force', wt); } catch { /* gone */ } fs.rmSync(wt, { recursive: true, force: true }); }
 });
 
-test('a 33rd base drops the oldest from the list (the writer\'s cap)', () =>
+// The status file in the data root (the later-items design, Parts 1 and 3): <root>/.alfred/state/sessions/status/<id>.json,
+// no folder list entry and no exclude line for it - the data root's own .gitignore keeps it out of git. The old folder, the
+// list and the old pairs belong to the legacy sweep alone.
+const PRELUDE = require(path.join(HOOKS, 'hook-prelude.js'));
+const DATA_PARTS = ['.alfred', 'state', 'sessions', 'status'];
+const newStatusOf = (root, id) => path.join(root, ...DATA_PARTS, `${id}.json`);
+const listOf = (root) => path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
+const startPayload = (root, id = 's1', extra = {}) => ({ session_id: id, cwd: root, hook_event_name: 'SessionStart', source: 'startup', ...extra });
+const execSpy = () => { const calls = []; return { calls, exec: (...a) => { calls.push(a); return ''; } }; };
+
+test('the status file is written under the data root', () =>
 {
     const root = project();
-    const list = path.join(root, '.alfred', 'state', 'sessions', 'status-folders.json');
-    const many = Array.from({ length: 32 }, (_, i) => posixOf(path.join(root, `m${i}`)));
-    fs.mkdirSync(path.dirname(list), { recursive: true });
-    fs.writeFileSync(list, JSON.stringify(many));
-    assert.strictEqual(S().writeStatus({ session_id: 'cap', cwd: root }, {}, { when: 'always', deps: { env: sweepEnv(root, 'on') } }), 'written');
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(list, 'utf8')), [...many.slice(1), posixOf(root)]);
+    const spy = execSpy();
+    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root };
+    assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: { env, exec: spy.exec } }), 'written');
+    assert.ok(fs.existsSync(newStatusOf(root, 's1')), 'the file is in the data root');
+    assert.strictEqual(JSON.parse(fs.readFileSync(newStatusOf(root, 's1'), 'utf8')).session, 's1');
+    assert.ok(!fs.existsSync(path.join(root, '.claude', 'session-inspector')), 'no old folder');
+    assert.ok(!fs.existsSync(listOf(root)), 'no folder list');
+    S().onSessionStart(startPayload(root, 's2'), null, { env, exec: spy.exec, uptime: () => 0 });
+    assert.ok(fs.existsSync(newStatusOf(root, 's2')));
+    assert.ok(!fs.existsSync(listOf(root)) && !fs.existsSync(path.join(root, '.claude', 'session-inspector')), 'a start leaves none either');
+    assert.deepStrictEqual(spy.calls, [], 'no git call');
+});
+
+test('an absolute ALFRED_CODE_DATA_PATH is the data root', () =>
+{
+    const root = project();
+    const data = path.join(TMP, `data-${seq++}`);
+    fs.mkdirSync(data, { recursive: true });
+    const env = { ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DATA_PATH: data };
+    assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: { env } }), 'written');
+    assert.ok(fs.existsSync(path.join(data, 'state', 'sessions', 'status', 's1.json')));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'state', 'sessions', 'status')), 'nothing under the project\'s own .alfred');
+    assert.strictEqual(S().statusFolder(root, { env }), path.join(data, 'state', 'sessions', 'status'));
+});
+
+test('a linked status folder refuses the write and the prune; a link inside the root is followed', { skip: process.platform === 'win32' && 'a directory link needs a privilege' }, () =>
+{
+    const env = (root) => ({ ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root });
+    DATA_PARTS.forEach((segment, index) =>
+    {
+        const root = project();
+        const outside = project();
+        const rest = DATA_PARTS.slice(index + 1);
+        const target = path.join(outside, ...rest);
+        fs.mkdirSync(target, { recursive: true });
+        const stale = path.join(target, 'x.json');
+        fs.writeFileSync(stale, '{}');
+        age(stale, 10 * dayMs);
+        fs.mkdirSync(path.join(root, ...DATA_PARTS.slice(0, index)), { recursive: true });
+        link(outside, path.join(root, ...DATA_PARTS.slice(0, index + 1)));
+        const given = { env: env(root) };
+        assert.strictEqual(S().linkedState(root, given), true, `${segment}: judged linked`);
+        assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: given }), 'skipped', `${segment}: no write`);
+        assert.ok(!fs.existsSync(path.join(target, 's1.json')), `${segment}: nothing written through the link`);
+        const refused = gateRows(root, 's1').filter((r) => r.kind === 'status-write');
+        assert.deepStrictEqual(refused.map((r) => r.result), ['refused'], `${segment}: one refused row`);
+        assert.strictEqual(S().pruneStatus(root, 's1', Date.now(), given), 0, `${segment}: nothing pruned`);
+        assert.ok(fs.existsSync(stale), `${segment}: the old file at the link's target stays`);
+    });
+    for (const [index, segment] of DATA_PARTS.entries())
+    {
+        const root = project();
+        const inside = path.join(root, 'inside');
+        const rest = DATA_PARTS.slice(index + 1);
+        fs.mkdirSync(path.join(inside, ...rest), { recursive: true });
+        fs.mkdirSync(path.join(root, ...DATA_PARTS.slice(0, index)), { recursive: true });
+        link(inside, path.join(root, ...DATA_PARTS.slice(0, index + 1)));
+        assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: { env: env(root) } }), 'written', `${segment}: a link inside the root is followed`);
+        assert.ok(fs.existsSync(path.join(inside, ...rest, 's1.json')), `${segment}: the file is at the link's target`);
+    }
+});
+
+test('the 7-day prune runs in the new folder alone', () =>
+{
+    const root = project();
+    const sub = path.join(root, 'sub');
+    const folder = path.dirname(newStatusOf(root, 'x'));
+    fs.mkdirSync(folder, { recursive: true });
+    const eight = newStatusOf(root, 'aaaaaaaa');
+    const six = newStatusOf(root, 'bbbbbbbb');
+    const legacy = legacyStatusOf(sub, 'cccccccc');
+    const legacyRoot = legacyStatusOf(root, 'dddddddd');
+    for (const [file, days] of [[eight, 8], [six, 6], [legacy, 8], [legacyRoot, 8]])
+    {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, '{}');
+        age(file, days * dayMs);
+    }
+    fs.writeFileSync(listOf(root), JSON.stringify([posixOf(sub)]));
+    const before = fs.readFileSync(listOf(root));
+    assert.strictEqual(S().pruneStatus(root, 's1', Date.now(), { env: {} }), 1);
+    assert.deepStrictEqual([eight, six, legacy, legacyRoot].map((f) => fs.existsSync(f)), [false, true, true, true], 'only the new folder\'s 8-day file goes');
+    assert.ok(fs.readFileSync(listOf(root)).equals(before), 'the list is byte-identical');
+});
+
+// The legacy sweep with the reader on: nothing writes in the old folders any more, so the sweep runs at every start.
+test('the legacy sweep runs with the reader on', () =>
+{
+    const git = sweepGit();
+    const root = project();
+    git(root, 'init', '-q');
+    const now = Math.floor(Date.now() / 1000) * 1000;
+    const a = path.join(root, 'a');
+    const ab = path.join(a, 'b');
+    fs.mkdirSync(ab, { recursive: true });
+    const put = (base, id, ageMs) =>
+    {
+        const file = legacyStatusOf(base, id);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, '{}');
+        fs.utimesSync(file, (now - ageMs) / 1000, (now - ageMs) / 1000);
+        return file;
+    };
+    const rootFiles = { younger: put(root, 's-younger', SWEEP_MS - 60000), older: put(root, 's-older', SWEEP_MS + 60000), exact: put(root, 's-exact', SWEEP_MS) };
+    const subFiles = [put(a, 's-a', 60000), put(ab, 's-ab', 60000)];
+    const exclude = path.join(root, '.git', 'info', 'exclude');
+    fs.writeFileSync(exclude, `/mine/\n${stackPair('')}${stackPair('a')}${stackPair('a/b')}`);
+    fs.mkdirSync(path.dirname(listOf(root)), { recursive: true });
+    fs.writeFileSync(listOf(root), JSON.stringify([root, a, ab].map(posixOf)));
+    S().onSessionStart(startPayload(root, 'sweeper'), null, { env: sweepEnv(root, 'on'), clock: () => now, uptime: () => 0 });
+    assert.ok(subFiles.every((f) => !fs.existsSync(f)), 'the subfolder files are gone');
+    assert.ok(!fs.existsSync(path.join(ab, '.claude')), 'the emptied subfolders go');
+    assert.ok(!fs.existsSync(rootFiles.older), 'the root file at 25 h plus 60 s is gone');
+    assert.ok(fs.existsSync(rootFiles.younger), 'the root file at 25 h minus 60 s stays');
+    assert.ok(!fs.existsSync(rootFiles.exact), 'the root file at exactly 25 h is gone: a file stays only while now - mtime < 25 h');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(listOf(root), 'utf8')), [posixOf(root)], 'the root stays listed while it holds a file');
+    assert.strictEqual(fs.readFileSync(exclude, 'utf8'), `/mine/\n${stackPair('')}`, 'the emptied folders\' pairs are dropped, the root\'s stays');
+    assert.ok(fs.existsSync(newStatusOf(root, 'sweeper')), 'and the new file is written');
+});
+
+test('the start writes no exclude pair', () =>
+{
+    const git = sweepGit();
+    const root = project();
+    git(root, 'init', '-q');
+    const exclude = path.join(root, '.git', 'info', 'exclude');
+    const before = fs.readFileSync(exclude);
+    assert.ok(!before.includes(S().EXCLUDE_COMMENT), 'the fixture holds no stack pair');
+    const spy = execSpy();
+    const deps = { env: sweepEnv(root, 'on'), uptime: () => 0, exec: spy.exec };
+    S().onSessionStart(startPayload(root), null, deps);
+    assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: root, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null }, { when: 'modes', deps }), 'written');
+    assert.ok(fs.existsSync(newStatusOf(root, 's1')));
+    const after = fs.readFileSync(exclude);
+    assert.ok(after.equals(before), 'the exclude file is byte-identical');
+    assert.strictEqual(after.toString('utf8').split('\n').filter((l) => l === S().EXCLUDE_COMMENT).length, 0);
+    assert.deepStrictEqual(spy.calls, [], 'no git call');
+});
+
+test('a start past the deadline keeps every base and its pair; a start in time removes them', () =>
+{
+    const f = sweepProject();
+    const before = fs.readFileSync(f.exclude, 'utf8');
+    startAt(f, 'on', { uptime: () => 9000 });
+    assert.deepStrictEqual(f.held(), [f.root, f.a, f.ab].map(posixOf), 'every listed base stays');
+    assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), before, 'every pair stays and none is written');
+    startAt(f, 'on', { uptime: () => 0 });
+    assert.deepStrictEqual(f.held(), [posixOf(f.root)], 'a start in time removes the subfolder bases');
+    assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), `/mine/\n${stackPair('')}`);
+});
+
+test('a garbage, empty or absent list starts without a throw and writes the new file', () =>
+{
+    for (const [why, text] of [['garbage', '{ not json'], ['empty', ''], ['an empty array', '[]'], ['absent', null]])
+    {
+        const root = project();
+        if (text !== null) { fs.mkdirSync(path.dirname(listOf(root)), { recursive: true }); fs.writeFileSync(listOf(root), text); }
+        assert.doesNotThrow(() => S().onSessionStart(startPayload(root), null, { env: sweepEnv(root, 'on'), uptime: () => 0 }), why);
+        assert.ok(fs.existsSync(newStatusOf(root, 's1')), `${why}: the file is written`);
+        if (text === null) assert.ok(!fs.existsSync(listOf(root)), `${why}: no list is made`);
+        else assert.strictEqual(fs.readFileSync(listOf(root), 'utf8'), text, `${why}: the list's bytes are unchanged`);
+    }
+});
+
+test('the failed status-write row carries gateMs', () =>
+{
+    const root = project();
+    const folder = path.dirname(newStatusOf(root, 'x'));
+    fs.mkdirSync(path.dirname(folder), { recursive: true });
+    fs.writeFileSync(folder, 'a file where the folder should be');
+    assert.strictEqual(S().writeStatus(startPayload(root), { entry: null }, { when: 'always', deps: { env: sweepEnv(root, 'on') } }), 'skipped');
+    const [row] = gateRows(root, 's1').filter((r) => r.kind === 'status-write');
+    assert.strictEqual(row.result, 'failed');
+    assert.strictEqual(typeof row.gateMs, 'number');
+});
+
+test('a start reads the reader gate once', () =>
+{
+    const root = project();
+    let reads = 0;
+    const prelude = { ...PRELUDE, envOf: (env, suffix) => { if (suffix === 'SESSION_STATUS') reads++; return PRELUDE.envOf(env, suffix); } };
+    S().onSessionStart(startPayload(root), null, { env: sweepEnv(root, 'on'), uptime: () => 0, prelude });
+    assert.strictEqual(reads, 1);
+    assert.ok(fs.existsSync(newStatusOf(root, 's1')));
 });

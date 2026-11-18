@@ -1,6 +1,7 @@
 'use strict';
 // session-status.js - the session status file (2026-10-29): what the stack does at a full context, published per main
-// session for session-inspector at <project root>/.claude/session-inspector/status/<session id>.json, schema 1. A public
+// session for session-inspector at <project root>/.alfred/state/sessions/status/<session id>.json, schema 1 (the data
+// root's own .gitignore keeps it out of git; before 3.12.x it was <root>/.claude/session-inspector/status/). A public
 // contract: a field is never renamed, dropped or retyped, only added. No stdin and no process of its own -
 // history-session.js calls it at SessionStart and Stop, guard-answer.js at UserPromptSubmit, each inside a try.
 // Fail-open: nothing here throws, and a failed write leaves no half-written file.
@@ -15,7 +16,6 @@ const FIELDS = Object.freeze(['schema', 'session', 'fullContext', 'updatedAt', '
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const PRUNE_MS = 7 * 86400000;
 const SLOW_MS = 200;
-const MAX_BASES = 32;
 const PROMPT_MAX = 1000;
 const EXCLUDE_COMMENT = '# alfred-code: session-inspector status files';
 // history-session's SessionStart timeout is 10s, and a timed-out hook's output - the history start block with it - is
@@ -24,6 +24,7 @@ const EXCLUDE_DEADLINE_MS = 8000;
 const DAY_MS = 86400000;
 const PRUNE_NAME = /^[A-Za-z0-9_-]{1,128}\.json(?:\.\d+\.tmp)?$/;
 const STATUS_PARTS = ['.claude', 'session-inspector', 'status'];
+const STATUS_FOLDER_PARTS = Object.freeze(['state', 'sessions', 'status']);
 // The reader gate (status-file-root design, Part 2): the mod that reads the file, under either name, in any marketplace.
 const READER_PLUGIN_RE = /^(alfred-mods|session-inspector)@/;
 const SETTINGS_FILE = 'settings.json';
@@ -99,7 +100,41 @@ function linkedStatus(base, root, deps) {
 // A control character in a path would break the exclude line apart, and a file the exclude cannot cover is never written.
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const refusedBase = (base, root, deps) => CONTROL_RE.test(base) || !ownBase(base, root, deps) || linkedStatus(base, root, deps);
-const statusDir = (base) => path.join(base, ...STATUS_PARTS);
+const legacyStatusDir = (base) => path.join(base, ...STATUS_PARTS);
+
+// The status folder: <data root>/state/sessions/status. `d.dataRoot` is the uninstall's override.
+function statusFolder(root, deps) {
+  const d = depsOf(deps);
+  return path.resolve(root, d.dataRoot || d.layout.dataRoot(d.env), ...STATUS_FOLDER_PARTS);
+}
+const isAbsoluteData = (raw) => path.isAbsolute(raw) || /^[A-Za-z]:[\\/]/.test(raw);
+// A data-root segment that is a symbolic link or junction pointing outside its anchor is refused: a cloned repo could
+// point it anywhere, and the prune would delete there. A relative data root is judged from `.alfred` down, anchored at
+// the project root; an absolute one (a harness's, the user's) from `state` down, anchored at itself. A link that stays
+// inside its anchor is followed, and one that cannot be resolved counts as outside.
+function linkedState(root, deps) {
+  try {
+    const d = depsOf(deps);
+    const L = d.layout;
+    const raw = String(d.dataRoot || L.dataRoot(d.env));
+    const absolute = isAbsoluteData(raw);
+    const anchor = absolute ? path.resolve(raw) : root;
+    const anchorKey = L.dirKey(anchor);
+    const inside = (real) => { const key = L.dirKey(real); return key === anchorKey || key.startsWith(anchorKey.endsWith(path.sep) ? anchorKey : `${anchorKey}${path.sep}`); };
+    let at = anchor;
+    const segments = absolute ? STATUS_FOLDER_PARTS : [...raw.split('/').filter(Boolean), ...STATUS_FOLDER_PARTS];
+    for (const segment of segments) {
+      at = path.join(at, segment);
+      let linked = false;
+      try { linked = fs.lstatSync(at).isSymbolicLink(); } catch { continue; }   // absent: nothing to follow
+      if (!linked) continue;
+      let real = null;
+      try { real = fs.realpathSync(at); } catch { return true; }
+      if (!inside(real)) return true;
+    }
+    return false;
+  } catch { return true; }
+}
 
 // The `enabledPlugins` object of one settings file, or null: a file that is missing, unreadable, not JSON or holding no
 // plain object there adds nothing.
@@ -137,22 +172,26 @@ function readerOn(root, env, deps) {
 }
 const msSince = (from) => Math.round(Number(process.hrtime.bigint() - from) / 1e4) / 100;
 
-function statusFile(payload, deps) {
+// The file a write goes to, and whether a linked data-root segment refused it. `readerIsOn`, when a boolean, is the
+// caller's one read of the reader gate.
+function statusTarget(payload, deps, readerIsOn) {
+  const none = { file: null, refused: false };
   try {
     const d = depsOf(deps);
     const p = objectOf(payload);
-    if (!p || p.agent_id) return null;
+    if (!p || p.agent_id) return none;
     const id = String(p.session_id || '');
-    if (!ID_RE.test(id)) return null;
-    const base = baseOf(p, d.env);
+    if (!ID_RE.test(id)) return none;
     const root = rootOf(p, d.env);
-    if (!base || !root || !path.isAbsolute(base)) return null;
-    if (!readerOn(root, d.env, d)) return null;
-    if (!fs.statSync(base).isDirectory()) return null;   // a vanished root: never rebuilt by mkdirSync
-    if (refusedBase(base, root, d)) return null;
-    return path.join(statusDir(base), `${id}.json`);
-  } catch { return null; }
+    if (!root || !path.isAbsolute(root) || !d.layout) return none;
+    if (!(typeof readerIsOn === 'boolean' ? readerIsOn : readerOn(root, d.env, d))) return none;
+    if (!fs.statSync(root).isDirectory()) return none;   // a vanished root: never rebuilt by mkdirSync
+    if (CONTROL_RE.test(root)) return none;
+    if (linkedState(root, d)) return { file: null, refused: true };
+    return { file: path.join(statusFolder(root, d), `${id}.json`), refused: false };
+  } catch { return none; }
 }
+const statusFile = (payload, deps, readerIsOn) => statusTarget(payload, deps, readerIsOn).file;
 
 const compactOn = (p, d) => (d.prelude && d.prelude.compactCause ? Boolean(d.prelude.compactCause(p, d.env)) : null);
 // The prompt writes an auto-compact-only change at once; a window's own change waits for the Stop.
@@ -264,7 +303,7 @@ function probeRow(payload, row, d) {
   } catch { /* never throws */ }
 }
 
-// The folder list: every base a session of this project wrote a status file under, absolute with `/`, at most 32.
+// The legacy folder list: the bases an older release wrote a status file under, absolute with `/`; nothing appends to it now, and the sweep (removeStatus) is its only editor.
 // `dataRoot` is the uninstall's alone: the folder an older install's data still sits in. A hook never hands one.
 const listFile = (root, d) => (d.dataRoot ? path.join(root, ...String(d.dataRoot).split('/'), 'state', 'sessions', 'status-folders.json')
   : d.layout ? d.layout.statePath(root, 'sessions', 'status-folders.json', d.env) : null);
@@ -293,17 +332,6 @@ function writeList(root, list, d) {
     fs.renameSync(tmp, file);
   } catch (err) { try { fs.unlinkSync(tmp); } catch { /* none */ } throw err; }
 }
-function appendBase(root, base, d) {
-  try {
-    const list = readList(root, d);
-    const entry = posix(base);
-    if (list.includes(entry)) return;
-    list.push(entry);
-    while (list.length > MAX_BASES) list.shift();
-    writeList(root, list, d);
-  } catch { /* the next session start lists it */ }
-}
-
 const readStatusFile = (file, id) => {
   try {
     const s = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -321,16 +349,21 @@ const sameButTime = (a, b) => FIELDS.every((k) => k === 'updatedAt' || same(a[k]
 // 'changed' (Stop) writes when any field but updatedAt differs, carrying the prompt's autoRun and scorer from the file;
 // 'plan' (a plan call at PreToolUse, PF1 R28) compares the checked folder with the file's first and carries the rest.
 // `gate` (the prompt's stand-down) runs only once a write is due - after the compare, never on an unchanged prompt (R137).
-function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
+function writeStatus(payload, fields, { when = 'always', deps, gate, on } = {}) {
   const d = depsOf(deps);
   let file = null;
   let tmp = null;
   let t0 = 0;
+  let gateMs = 0;
   try {
     const gateFrom = process.hrtime.bigint();
-    file = statusFile(payload, d);
-    const gateMs = msSince(gateFrom);
-    if (!file) return 'skipped';
+    const target = statusTarget(payload, d, on);
+    file = target.file;
+    gateMs = msSince(gateFrom);
+    if (!file) {
+      if (target.refused) probeRow(payload, { kind: 'status-write', result: 'refused', ms: 0, gateMs }, d);
+      return 'skipped';
+    }
     const p = objectOf(payload);
     const id = String(p.session_id);
     t0 = d.clock();
@@ -396,10 +429,7 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
       if (again && autoRunOf(again) !== next.autoRun) next = buildStatus(p, { ...f, autoRun: autoRunOf(again), scorer: scoringOf(again), handoffPrompt: again.handoffPrompt }, d);
       else if (again) { next.scorer = scoringOf(again); next.handoffPrompt = again.handoffPrompt; }
     }
-    const dir = path.dirname(file);
-    const dirExisted = fs.existsSync(dir);
-    const fileExisted = fs.existsSync(file);
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     tmp = `${file}.${process.pid}.tmp`;
     try { fs.unlinkSync(tmp); } catch { /* none there */ }
     fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, { flag: 'wx' });
@@ -407,73 +437,32 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     tmp = null;
     const ms = Math.max(0, d.clock() - t0);
     probeRow(p, { kind: 'status-write', result: ms > SLOW_MS ? 'slow' : 'ok', ms, gateMs }, d);
-    const base = path.dirname(path.dirname(path.dirname(dir)));
-    if (!fileExisted && root) appendBase(root, base, d);
-    if (!dirExisted && p.hook_event_name !== 'SessionStart') ensureExcluded([base], d);
     return 'written';
   } catch {
     if (tmp) { try { fs.unlinkSync(tmp); } catch { /* none */ } }
-    if (file) probeRow(payload, { kind: 'status-write', result: 'failed', ms: Math.max(0, (() => { try { return d.clock() - t0; } catch { return 0; } })()) }, d);
+    if (file) probeRow(payload, { kind: 'status-write', result: 'failed', ms: Math.max(0, (() => { try { return d.clock() - t0; } catch { return 0; } })()), gateMs }, d);
     return 'skipped';
   }
 }
 
-// The bases the exclude check covers: the root (the base), then every listed base, each the project's and holding a status folder.
-function statusBases(root, base, deps) {
-  const d = depsOf(deps);
-  const out = [];
-  const seen = new Set();
-  try {
-    for (const b of [base, ...readList(root, d)]) {
-      if (typeof b !== 'string' || !path.isAbsolute(b)) continue;
-      const key = d.layout ? d.layout.dirKey(b) : b;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (refusedBase(b, root, d)) continue;
-      try { if (fs.statSync(statusDir(b)).isDirectory()) out.push(b); } catch { /* no folder */ }
-    }
-  } catch { /* what was found */ }
-  return out;
-}
-
-// At SessionStart: every status file over 7 days old under the root and the listed bases goes, this session's own kept;
-// a listed base that is not the project's, is a link or has lost its folder leaves the list.
-function pruneStatus(root, base, sessionId, now, deps) {
+// At SessionStart: every status file over 7 days old in the status folder goes, this session's own kept; a linked
+// folder is skipped. The legacy folders and the list are the sweep's alone (removeStatus).
+function pruneStatus(root, sessionId, now, deps) {
   const d = depsOf(deps);
   let count = 0;
   try {
+    if (typeof root !== 'string' || !path.isAbsolute(root) || !d.layout || linkedState(root, d)) return 0;
     const own = `${sessionId}.json`;
-    const passed = new Map();
-    const visit = (b) => {
-      if (typeof b !== 'string' || !path.isAbsolute(b)) return false;
-      const key = d.layout ? d.layout.dirKey(b) : b;
-      if (passed.has(key)) return passed.get(key);
-      let ok = false;
-      if (!refusedBase(b, root, d)) {
-        let names = null;
-        try { names = fs.readdirSync(statusDir(b)); } catch { names = null; }
-        if (names) {
-          ok = true;
-          for (const name of names) {
-            if (!PRUNE_NAME.test(name) || name === own) continue;
-            const file = path.join(statusDir(b), name);
-            try {
-              const st = fs.lstatSync(file);
-              if (st.isFile() && now - st.mtimeMs > PRUNE_MS) { fs.unlinkSync(file); count++; }
-            } catch { /* gone, or not ours to remove */ }
-          }
-        }
-      }
-      passed.set(key, ok);
-      return ok;
-    };
-    visit(base);
-    const raw = readListText(listFile(root, d));
-    if (raw !== null) {
-      const kept = readList(root, d).filter((b) => visit(b)).map(posix);
-      let before = null;
-      try { before = JSON.parse(raw); } catch { before = null; }
-      if (!same(before, kept)) writeList(root, kept, d);
+    const folder = statusFolder(root, d);
+    let names = [];
+    try { names = fs.readdirSync(folder); } catch { return 0; }
+    for (const name of names) {
+      if (!PRUNE_NAME.test(name) || name === own) continue;
+      const file = path.join(folder, name);
+      try {
+        const st = fs.lstatSync(file);
+        if (st.isFile() && now - st.mtimeMs > PRUNE_MS) { fs.unlinkSync(file); count++; }
+      } catch { /* gone, or not ours to remove */ }
     }
   } catch { /* what was pruned */ }
   return count;
@@ -600,7 +589,7 @@ function removeStatus(root, deps, options) {
     // what stays whole after the sweep: the except base while its folder exists, any base still holding a status file
     const holding = new Set();
     for (const b of bases) {
-      const dir = statusDir(b);
+      const dir = legacyStatusDir(b);
       const key = L.dirKey(b);
       if (exceptKey && key === exceptKey) { if (isFolder(dir)) holding.add(key); continue; }
       const youngerThan = minAgeOf(b);
@@ -709,13 +698,11 @@ function modesLine(s) {
   return on.length ? `Modes ON: ${on.join(', ')}` : '';
 }
 
-// Whether the sweep has work: the list names a base other than the root, or the reader is off and the root holds a status
-// folder. A list of the root alone, with the reader on, costs one list read and no git spawn.
-function sweepDue(root, readerIsOn, d) {
+// Whether the sweep has work: the list names an absolute base, or the root holds the legacy status folder. Nothing writes
+// in either any more, so the reader's state no longer matters. An empty or absent list and no folder cost one list read.
+function sweepDue(root, d) {
   try {
-    const rootKey = d.layout.dirKey(root);
-    if (readList(root, d).some((b) => path.isAbsolute(b) && d.layout.dirKey(b) !== rootKey)) return true;
-    return !readerIsOn && isFolder(statusDir(root));
+    return readList(root, d).some((b) => path.isAbsolute(b)) || isFolder(legacyStatusDir(root));
   } catch { return false; }
 }
 
@@ -732,20 +719,16 @@ function onSessionStart(payload, entry, deps) {
     const gateFrom = process.hrtime.bigint();
     const on = readerOn(root, d.env, d);
     if (!on) probeRow(p, { kind: 'status-gate', result: 'off', ms: msSince(gateFrom) }, d);
-    writeStatus(p, { entry }, { when: 'always', deps: d });
-    if (['startup', 'resume', 'clear'].includes(p.source)) line = modesLine(readStatusFile(statusFile(p, d) || '', String(p.session_id))
+    writeStatus(p, { entry }, { when: 'always', deps: d, on });
+    if (['startup', 'resume', 'clear'].includes(p.source)) line = modesLine(readStatusFile(statusFile(p, d, on) || '', String(p.session_id))
       || buildStatus(p, { entry, handoffPrompt: null }, d));
-    const base = baseOf(p, d.env);
-    if (!root || !base) return line;
-    if (path.isAbsolute(root) && sweepDue(root, on, d)) {
+    if (!root) return line;
+    if (path.isAbsolute(root) && sweepDue(root, d)) {
       const sweepFrom = process.hrtime.bigint();
-      const swept = removeStatus(root, d, { except: on ? root : undefined, rootMinAgeMs: SWEEP_ROOT_MIN_AGE_MS });
+      const swept = removeStatus(root, d, { rootMinAgeMs: SWEEP_ROOT_MIN_AGE_MS });
       if (swept.files || swept.lines) probeRow(p, { kind: 'status-sweep', files: swept.files, lines: swept.lines, bases: swept.bases, ms: msSince(sweepFrom) }, d);
     }
-    pruneStatus(root, base, String(p.session_id), Date.now(), d);
-    for (const result of ensureExcluded(statusBases(root, base, d), d)) {
-      if (result === 'failed' || result === 'late') probeRow(p, { kind: 'status-exclude', result }, d);
-    }
+    pruneStatus(root, String(p.session_id), Date.now(), d);
   } catch { /* fail-open */ }
   return line;
 }
@@ -768,7 +751,7 @@ function onPrompt(payload, modes, gate) {
 }
 
 module.exports = {
-  FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
-  baseOf, rootOf, ownBase, readerOn, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusBases, pruneStatus,
+  FIELDS, ID_RE, PRUNE_MS, SLOW_MS, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
+  baseOf, rootOf, ownBase, readerOn, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusFolder, linkedState, pruneStatus,
   ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, onPlan, modesLine,
 };

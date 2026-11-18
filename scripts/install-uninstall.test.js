@@ -278,13 +278,14 @@ test('uninstall: the session status files and the exclude line the stack added g
         {
             if (i !== 0) return null;
             fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), '*.mine\n');
-            const env = { CLAUDE_PROJECT_DIR: repo, ALFRED_CODE_SESSION_STATUS: 'on' };
-            assert.strictEqual(status.writeStatus({ session_id: 's1', cwd: repo }, {}, { when: 'always', deps: { env } }), 'written');
+            // what an older release wrote: the root's status file, its exclude pair and the list of bases
+            put(path.join(repo, '.claude', 'session-inspector', 'status', 's1.json'), '{}');
+            fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), `${status.EXCLUDE_COMMENT}\n/.claude/session-inspector/status/\n`);
             put(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
             // a folder an older release listed: uninstall passes no options, so it is swept at any age, with the list
             put(path.join(repo, 'sub', '.claude', 'session-inspector', 'status', 's2.json'), '{}');
             const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
-            fs.writeFileSync(list, JSON.stringify([...JSON.parse(fs.readFileSync(list, 'utf8')), path.join(repo, 'sub').split(path.sep).join('/')]));
+            put(list, JSON.stringify([repo, path.join(repo, 'sub')].map((b) => b.split(path.sep).join('/'))));
             return fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');
         },
         inspect: (repo) => ({
