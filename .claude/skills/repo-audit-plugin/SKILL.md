@@ -6,7 +6,7 @@ argument-hint: "[kind, kind ... | exclude kind, kind ...] [commit] [parallel] [f
 
 # Plugin audit - one flow for every audit: a strong model plans, a cheaper one edits
 
-One flow for the nine audits (`repo-audit-<kind>`), run for one kind or for several in one run. The reading, the
+One flow for the ten audits (`repo-audit-<kind>`), run for one kind or for several in one run. The reading, the
 scoring and every decision about what to change happen on the planner's model; the edits happen on the editor's,
 from a plan that leaves it nothing to decide. Each audit keeps its own method, rubric and run folder.
 
@@ -80,7 +80,7 @@ all' is taken and ledgered; off, the ask is put and the user is notified that th
    where the kind already has one of this date: a folder an earlier record points to is never written over.
 
    Then the scope, where the repository holds `.claude/kit/audit-scope.mjs` and the kind is scoped: `skills`,
-   `commands`, `agents` and `rules` always, `hooks` only where its `audit` entry carries a `scope_with` list -
+   `commands`, `agents`, `rules` and `code` always, `hooks` only where its `audit` entry carries a `scope_with` list -
    the paths every item's grade rests on besides its own files. Run
    `node .claude/kit/audit-scope.mjs scope <kind> [--full] [--max-age <days>] [--with <path>]... <root>...` with
    the entry's `roots` and one
@@ -222,7 +222,9 @@ all' is taken and ledgered; off, the ask is put and the user is notified that th
 11. **Report.** Print the audit skill's output contract from `final.md`, then the scorecard - the quality before
     the edits against the quality after them, from the audit's own grades, the
     baseline as `baseline.md` gives it - corrected by the `set` seat where a batch missed a finding - and each
-    carried item counted at its carried grade on both sides:
+    carried item counted at its carried grade on both sides. Items the audit skill names as not scored - 'no
+    code' for `code` - are left out of `<n>`, of 'At grade A' and of the mean, and their number goes on the
+    scorecard's last line:
 
     ```text
     Scorecard: <kind> - <n> items
@@ -231,6 +233,7 @@ all' is taken and ledgered; off, the ask is put and the user is notified that th
     Lowest item: <name> <grade> -> <name> <grade>
     Plan grade:  <score path, or 'ungraded - <why>'>
     Carried:     <c> of <n> items, graded <oldest date> to <newest date> - only where step 1 scoped the kind
+    Not scored:  <k> items - <the audit skill's name for them> - only where the audit skill names such items
     ```
 
     Then `final.md`'s 'Still open' list, one line each: with `auto_approve` on no ask showed the

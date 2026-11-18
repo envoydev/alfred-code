@@ -249,6 +249,189 @@
         "Synthesis honours the repo's invariants: platform-neutral skill bodies and the shared-rules registry for multi-home text.",
         "An applied fix cites the session evidence (bundle id and measured number) in its commit, as the prove-don't-assert rule demands."
       ]
+    },
+    "code": {
+      "roots": [
+        "stack/hooks",
+        "scripts",
+        "setup-plugin/hooks",
+        "stack/mcp",
+        "meta/probes",
+        "stack/skills/capture-awareness/scripts",
+        "stack/skills/capture-preferences/scripts",
+        "stack/skills/capture-quality/scripts",
+        "stack/skills/capture-usage-report/scripts",
+        "stack/skills/dev-log-convert/scripts",
+        "stack/skills/habits-commit-checkpoint/scripts",
+        "stack/skills/mode-output-scoring/scripts",
+        "stack/skills/task-solve-cross/scripts",
+        "stack/skills/task-solve/scripts"
+      ],
+      "checks": [
+        "npm test"
+      ],
+      "notes": [
+        "Plain CommonJS with no type field, engines >=22.12. stack/hooks/ and setup-plugin/hooks/ are copied into users' projects and run there with node; scripts/install is the installer users run; the scripts a shipped command or skill names by path run on a user's Node too. Those files and everything they require stay JavaScript under // @ts-check (keep_js), and none of them may require a path that does not end in .js, .cjs, .mjs or .json.",
+        "A converted file here is .mts: the package stays CommonJS, so a conversion is a migration to ES modules. A maintainer's Node is 22.18 or newer for it, while engines stays >=22.12 for users.",
+        "npm test is node scripts/run-tests.js, which selects scripts/**/*.test.js and takes a target only when it matches \\.[cm]?js$ or holds a * - a converted test is run with node --test <path> until that pattern is edited.",
+        "scripts/fixtures is test data in several languages, Angular .ts files and three .js files (forge-corpus.js, forge-subcommands.js, retired-rules.js) among them: all class leave - a test reads each as data - so never scored, never in keep_js, and kept out of every tsconfig.",
+        "Each stack/skills/<skill>/scripts folder is a root of its own, shipped with its skill; its package.json says type commonjs.",
+        "npm run lint lints the skills, not the code: it is no check of this kind.",
+        "stack/hooks and setup-plugin/hooks are also the hooks audit's roots: that audit owns each hook's event, matcher, exit contract, timeout, safety and fit, this one the rest. The hooks folder's own rule is .claude/rules/repo-hooks.md.",
+        "Not roots, on purpose: examples/angular-project (a sample project of another stack, shown to users as it is), docs/workspace-layering-matrix (probe scripts kept as the evidence of a recorded study) and .claude/kit (the kit's locked copies, audited in claude-kit).",
+        "CI (.github/workflows/ci.yml) runs npm test in shards on Ubuntu, macOS and Windows; a run here proves this system's leg only.",
+        "The repo is public: no private project names or absolute local paths in a tracked file."
+      ],
+      "keep_js": [
+        {
+          "path": "stack/hooks/**",
+          "reason": "outside runtime - the installer copies each hook into a user's project, where the user's Node runs it"
+        },
+        {
+          "path": "setup-plugin/hooks/**",
+          "reason": "outside runtime - the plugin runs these hooks on the user's Node"
+        },
+        {
+          "path": "scripts/install/**",
+          "reason": "outside runtime - the installer a user runs"
+        },
+        {
+          "path": "stack/skills/*/scripts/**",
+          "reason": "outside runtime - shipped with its skill and run in the user's project"
+        },
+        {
+          "path": "stack/mcp/**",
+          "reason": "outside runtime - shipped with the stack's MCP record and its retire path"
+        },
+        {
+          "path": "scripts/agents-md-check.js",
+          "reason": "outside runtime - setup-plugin/commands/validate.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/analyze-usage.js",
+          "reason": "outside runtime - setup-plugin/commands/status.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/audit-install.js",
+          "reason": "outside runtime - setup-plugin/commands/validate.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/build-eval-bundle.js",
+          "reason": "outside runtime - setup-plugin/evals/README.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/collect-session.js",
+          "reason": "outside runtime - stack/skills/capture-usage-report/references/run-mechanics.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/derive-state.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/git-hygiene.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/init-plan.js",
+          "reason": "outside runtime - setup-plugin/commands/init.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/library-check.js",
+          "reason": "outside runtime - setup-plugin/commands/status.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/plugin-settings.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/refresh-mcp-pins.js",
+          "reason": "outside runtime - named in prose in stack/mcp/shipped-mcps.json, not a command - the user may prune"
+        },
+        {
+          "path": "scripts/scan-evidence.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/selection-plugins.js",
+          "reason": "outside runtime - setup-plugin/commands/status.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/session-surface.js",
+          "reason": "outside runtime - setup-plugin/commands/status.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/stack-select.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/stamp-compare.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/stamp-docs-root.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/update-preflight.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/variables.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/workspace.js",
+          "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
+        },
+        {
+          "path": "scripts/always-on-surface.js",
+          "reason": "closure - scripts/session-surface.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/build-marketplace.js",
+          "reason": "closure - scripts/build-eval-bundle.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/collect-privacy.js",
+          "reason": "closure - scripts/collect-session.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/collect-stores.js",
+          "reason": "closure - scripts/collect-session.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/conformance.js",
+          "reason": "closure - scripts/analyze-usage.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/credential-shapes.js",
+          "reason": "closure - scripts/audit-install.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/find-duplicate-rules.js",
+          "reason": "closure - scripts/session-surface.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/hook-test-env.js",
+          "reason": "closure - scripts/session-surface.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/plugin-placement.js",
+          "reason": "closure - scripts/install/alfred-code.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/seat-tools.js",
+          "reason": "closure - scripts/refresh-mcp-pins.js requires it (that script is named in prose only, the user may prune), and a user's Node loads it"
+        },
+        {
+          "path": "scripts/skill-comply.js",
+          "reason": "closure - scripts/analyze-usage.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/usage-scope.js",
+          "reason": "closure - scripts/analyze-usage.js requires it, and a user's Node loads that"
+        }
+      ]
     }
   }
 }

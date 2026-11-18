@@ -7,8 +7,9 @@ one kind at a time unless the request says `parallel` - and what happens between
 
 ## The kinds, in two waves
 
-- **Wave 1 - the parts:** `skills`, `commands`, `agents`, `rules`, `agent-md`, `tools`, `hooks`. `hooks` goes
-  last: it reads the most for the least.
+- **Wave 1 - the parts:** `skills`, `commands`, `agents`, `rules`, `agent-md`, `tools`, `hooks`, `code`. `hooks`
+  goes after the instruction kinds: it reads the most for the least. `code` goes last of all: its conversion
+  renames and rewrites files the other kinds read ('`code`, after the others' below).
 - **Wave 2 - the whole:** `system`, `usage`. They judge everything wave 1 may have changed, so they start only
   after wave 1's edits are applied.
 
@@ -23,13 +24,34 @@ the approved plans are then applied and verified one kind at a time. **`parallel
 by side' in chat, is the other mode: steps 5, 6 and 9 run across a wave's kinds at once, four planner seats at a
 time.
 
+**`code`, after the others.** The conversion and `code`'s planners start only once every other wave 1 kind's plan
+is applied, committed under the run's `commit` word and recorded - a kind whose plan is left waiting or `NOT RUN`
+does not hold them back, since it edits nothing - so no other kind's planner reads a file the
+conversion edits and no plan of theirs goes stale:
+
+- `auto_approve` on, one kind at a time: the run order already holds it - `code`'s turn comes after the kinds
+  before it are done end to end.
+- `auto_approve` off: the other wave 1 kinds are planned, graded and handed over together; `code` is a second
+  part of the run, as step 1 allows for kinds added later, started after those approved plans are applied and
+  recorded. Its conversion plan and its audit plan each get their own hand-over.
+- `parallel`: the other wave 1 kinds run side by side; the conversion starts after the last of them is applied
+  and recorded, and `code`'s planners after the conversion.
+
+At `code`'s turn its audit skill's own step comes first: the conversion, run by the `ts-convert` skill. The
+conversion's size ask, with 'One batch first', is put then all the same - the run's ask of step 4 never replaces
+it. The run's `commit` word covers the conversion's batches; without it, the conversion's own commit ask is put
+there too. A conversion that ends before its last batch ends the kind for this run: its queue line reads
+`converting <done>/<N> batches - audit waits`, and no `code` planner starts. Where the run commits nothing and an
+earlier kind edited a path under `code`'s roots, `code` is `NOT RUN - targets edited by <kind>, uncommitted`, as
+step 8 says: the conversion starts only on a clean tree.
+
 ## The run
 
 1. **Kinds.** Read the words typed after the command - `SKILL.md` gives them under 'When to use' - or what the
    request says in chat. Kinds are separated by commas, colons or spaces, with or without the `repo-audit-` prefix.
    - None named: every kind.
    - After `exclude` (or 'except', 'without', 'but not'): every kind but the ones that follow it -
-     `exclude tools, usage, system` runs the six others.
+     `exclude tools, usage, system` runs the seven others.
    - Otherwise: the kinds named, and only those.
 
    The word `commit` is no kind: it is step 8's word for committing each kind's edits. Neither is `parallel`, the
@@ -42,7 +64,8 @@ time.
    The word `commit` carries from the request that started the run, and step 13's one self-review runs after the
    last kind of the last part.
 2. **The queue file.** Write `docs/superpowers/audits/<date>-all/queue.md`: one line per kind with its wave, its
-   status - `pending`, `planning`, `graded <score>`, `waiting for approval`, `applying`, `verifying`,
+   status - `pending`, `planning`, `converting <done>/<N> batches - audit waits`, `graded <score>`,
+   `waiting for approval`, `applying`, `verifying`,
    `done <baseline> -> <final>`, `done - all <n> items carried`, `no targets`, `NOT RUN - <why>` - its run folder,
    its seats' ids and its
    commit - and under those lines one `Next:` line for the run, with the step it is at and the one after it. Update
@@ -53,7 +76,9 @@ time.
    their word for each audit in it. Its line that loads this skill is already done. This session coordinates only:
    it reads no audited file and scores nothing.
 4. **Size and models, once for the run.** Do the flow's steps 1 to 3 for each kind, its scope included, then state
-   `Size:` with one entry per kind (items audited and carried, files, characters, batches) and the total planner
+   `Size:` with one entry per kind (items audited and carried, files, characters, batches - and for `code` the
+   JavaScript files and characters under its roots that no `keep_js` path matches, as the conversion's estimate,
+   since its plan does not exist yet) and the total planner
    seats, `Models:` as the flow gives them, and under them each kind's `age:` line, its line that its audit skill
    changed and its `audit-scope:` line, where its scope printed one.
    With more than one kind to run, ask once before the first planner starts:
@@ -74,7 +99,7 @@ time.
    `done - all <n> items carried`. A kind whose targets hold an earlier kind's uncommitted edits is
    `NOT RUN - targets edited by <kind>, uncommitted` before any seat starts. Then dispatch its planners (the
    flow's step 5), two seats at a time, and put its open questions (step 6) when they return. With `parallel`:
-   dispatch the planners of every wave 1 kind in one message, at most four planner seats running at a time
+   dispatch the planners of every wave 1 kind but `code` in one message, at most four planner seats running at a time
    across all kinds and batches, a seat that frees taking the next waiting batch; each kind's open questions are
    gathered and put together, at most four per ask. Either cap is for planning, where a seat reads its targets:
    the verify messages of step 9 go to every seat of a kind in one turn.
@@ -124,9 +149,11 @@ time.
     Overall: at A <before> -> <after> of <n>; mean <before> -> <after>
     ```
 
+    Items a kind's scorecard lists as not scored are in neither `<n>` nor a mean.
+
     Then the path of each kind's `final.md` for its full report and owed checks, one line per seat with the model it
-    ran on, and under `Left for you` every kind not run with its reason, every plan still waiting and every commit
-    not made.
+    ran on, and under `Left for you` every kind not run with its reason, every plan still waiting, a conversion's
+    remaining batches with the command that continues them, and every commit not made.
 13. **Self-review, once for the run** (the flow's step 12), and only where this repo is the audit skills' home:
     anywhere else the run ends at step 12. The planners wrote their retro files with their last verify; send the
     `retro` message, in one turn, only to a planner that has none. Add this run's own findings - a kind that was
@@ -145,5 +172,7 @@ time.
 - Two editors running at the same time, or a plan applied on top of another kind's uncommitted edits to the same
   targets.
 - A commit made without the user's word for it, or a push.
+- `code`'s conversion or its planners started while another wave 1 kind's plan was unapplied, uncommitted or
+  unrecorded, or the run's size ask taken as the conversion's own.
 - No `queue.md`, no overall scorecard, no `retro.md` in the audit skills' home, or a close that leaves out a kind
   the request named.

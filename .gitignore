@@ -69,6 +69,8 @@ Thumbs.db
 !.claude/skills/repo-audit-system/
 !.claude/skills/repo-audit-tools/
 !.claude/skills/repo-audit-usage/
+!.claude/skills/repo-audit-code/
+!.claude/skills/ts-convert/
 # this repo's own data root when a worktree carries no settings (hook receipts, docs state)
 /.alfred/
 REPORT.md
