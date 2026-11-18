@@ -1463,16 +1463,30 @@ function markStopHeld(hook, input, env)
 // The pass runs at most once a DAY per (dir, prefix) across processes: a stamp beside the state records the last one,
 // so a hook call pays one stat, not a listing of the temp dir. Measured 2026-10-09: the two listings a Stop made of a
 // 52,840-entry macOS temp dir were 78ms of a 136ms hook (47ms with the stamp), and the budget never bounded the listing.
+// A folder inside the project that resolves outside it (a `sessions` link to another tree) is never stamped or swept:
+// `project` (default CLAUDE_PROJECT_DIR) is compared by path, then by real path, and a throw reads as 'do not sweep'.
 const STALE_MS = 7 * 24 * 3600 * 1000;
 const STALE_BUDGET_MS = 50;
 const SWEEP_EVERY_MS = 24 * 3600 * 1000;
 const sweptStale = new Set();
 const sweepStamp = (dir, prefix) => path.join(dir, `.alfred-sweep-${String(prefix).replace(/[^\w-]/g, '_')}`);
-function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS, everyMs = SWEEP_EVERY_MS } = {})
+const underPath = (child, parent) => child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`);
+const realKey = (p) => (layout && layout.dirKey ? layout.dirKey(p) : path.resolve(fs.realpathSync(p)));
+function leavesProject(dir, project)
+{
+    try
+    {
+        if (!project || !underPath(path.resolve(dir), path.resolve(project))) return false;
+        return !underPath(realKey(dir), realKey(project));
+    }
+    catch { return true; }
+}
+function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS, everyMs = SWEEP_EVERY_MS, project = process.env.CLAUDE_PROJECT_DIR } = {})
 {
     const key = `${dir}\u0000${prefix}`;
     if (!dir || !prefix || sweptStale.has(key)) return 0;
     sweptStale.add(key);
+    if (leavesProject(dir, project)) return 0;
     const stamp = sweepStamp(dir, prefix);
     try { if (now - fs.statSync(stamp).mtimeMs < everyMs) return 0; } catch { /* no stamp yet - this call sweeps */ }
     // Claimed before the pass, so parallel hooks do not all list the dir; a dir that takes no stamp holds none of our state.

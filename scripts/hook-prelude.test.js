@@ -803,6 +803,80 @@ test('sweepStale removes only its prefix\'s files past 7 days, once per dir and 
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// A state folder inside the project that a link takes outside it was stamped and swept through the link (an end-to-end run:
+// agent-cap.js and guard-answer.js wrote `.alfred-sweep-*` into the folder a `sessions` link pointed at).
+test('sweepStale stands down on a folder inside the project that a link takes outside', () =>
+{
+    const fresh = () => { delete require.cache[require.resolve(PRELUDE)]; return require(PRELUDE); };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-link-out-'));
+    try
+    {
+        const project = path.join(root, 'project');
+        const outside = path.join(root, 'outside');
+        fs.mkdirSync(path.join(project, '.alfred', 'state'), { recursive: true });
+        fs.mkdirSync(outside);
+        const { STALE_MS } = fresh();
+        const now = Date.now();
+        const old = path.join(outside, 'AGENT-CAP-old');
+        fs.writeFileSync(old, 'x');
+        const t = new Date(now - STALE_MS * 2);
+        fs.utimesSync(old, t, t);
+        const link = path.join(project, '.alfred', 'state', 'sessions');
+        fs.symlinkSync(outside, link, 'junction');
+        assert.strictEqual(fresh().sweepStale(link, 'AGENT-CAP-', { now, project }), 0);
+        assert.deepStrictEqual(fs.readdirSync(outside).filter((name) => name.startsWith('.alfred-sweep-')), [], 'no stamp is written outside the project');
+        assert.ok(fs.existsSync(old), 'and nothing outside the project is removed');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); fresh(); }
+});
+
+test('sweepStale follows a link that stays inside the project', () =>
+{
+    const fresh = () => { delete require.cache[require.resolve(PRELUDE)]; return require(PRELUDE); };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-link-in-'));
+    try
+    {
+        const project = path.join(root, 'project');
+        const target = path.join(project, 'store');
+        fs.mkdirSync(path.join(project, '.alfred', 'state'), { recursive: true });
+        fs.mkdirSync(target);
+        const { STALE_MS, sweepStamp } = fresh();
+        const now = Date.now();
+        const old = path.join(target, 'AGENT-CAP-old');
+        fs.writeFileSync(old, 'x');
+        const t = new Date(now - STALE_MS * 2);
+        fs.utimesSync(old, t, t);
+        const link = path.join(project, '.alfred', 'state', 'sessions');
+        fs.symlinkSync(target, link, 'junction');
+        assert.strictEqual(fresh().sweepStale(link, 'AGENT-CAP-', { now, project }), 1);
+        assert.ok(!fs.existsSync(old), 'the old file in the target is removed');
+        assert.ok(fs.existsSync(sweepStamp(target, 'AGENT-CAP-')), 'and the stamp is written in the target');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); fresh(); }
+});
+
+test('sweepStale outside the project path is unchanged', () =>
+{
+    const fresh = () => { delete require.cache[require.resolve(PRELUDE)]; return require(PRELUDE); };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-outside-path-'));
+    try
+    {
+        const project = path.join(root, 'project');
+        const elsewhere = path.join(root, 'project-state');
+        fs.mkdirSync(project);
+        fs.mkdirSync(elsewhere);
+        const { STALE_MS } = fresh();
+        const now = Date.now();
+        const old = path.join(elsewhere, 'AGENT-CAP-old');
+        fs.writeFileSync(old, 'x');
+        const t = new Date(now - STALE_MS * 2);
+        fs.utimesSync(old, t, t);
+        assert.strictEqual(fresh().sweepStale(elsewhere, 'AGENT-CAP-', { now, project }), 1, 'a sibling whose name only starts like the project is not inside it');
+        assert.ok(!fs.existsSync(old));
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); fresh(); }
+});
+
 // 2026-10-10: Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() dropped what the pipe had not taken -
 // 8,192 bytes reached the reader on Node 22.16, 65,536 on 22.23 - so the secret guard's rewrite of a 100 KB command
 // arrived unparseable and the call ran unredacted. The prelude makes both streams blocking as it loads.
