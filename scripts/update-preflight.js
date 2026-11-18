@@ -622,7 +622,7 @@ function main()
     // it is read only where the stamp sits beside the folder the routes come from.
     const routes = pluginsLib.committedRoutesAt({
         env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project',
-        ledgerEnv: routeDir === claudeDir ? pluginsLib.ledgerEnvOf(stampFile) : null,
+        ledgerEnv: path.resolve(routeDir) === path.resolve(claudeDir) ? pluginsLib.ledgerEnvOf(stampFile) : null,
     });
     console.log(`changed: skills=${c.skills} agents=${c.agents} rules=${c.rules} hooks=${c.hooks} template=${c.template ? 'yes' : 'no'}`);
     console.log(changedHere(lines, { claudeDir, stampFile, settings: layered || settings, routes }));

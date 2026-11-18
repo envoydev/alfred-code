@@ -628,7 +628,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         {
             for (const line of selection.renderPlan(lists)) plain(line);
             plain(`plan answered: hooks=${answered.hooks ? 'yes' : 'no'} agents=${answered.agents ? 'yes' : 'no'}`);
-            const seatsSwitch = plugins.seatsSwitch({ inWorkspace, sharedKey: plugins.sharedSkillsKeyAt({ claudeDir, scope: args.scope }) });
+            const seatsSwitch = plugins.seatsSwitch({ inWorkspace, sharedKey: plugins.sharedSkillsKeyAt({ claudeDir, scope: args.scope }), localUnusable: settings.localUnusable(path.join(claudeDir, 'settings.local.json')) });
             plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'} skills-from=${routes.skillsFrom} seats-switch=${seatsSwitch}`);
             if (args.planOut)
             {
@@ -1327,13 +1327,14 @@ function keepEdited(ctx, kind, dir)
 }
 
 // A seat file in `.claude/agents` named like a core seat that neither stamp line records, on a stamp that holds a ledger (a
-// stamp from before the ledger refreshes as it always did): the project's own seat. The plugin route's prune keeps it.
+// stamp from before the ledger refreshes as it always did) whose text is not the stack's render: the project's own seat. The
+// plugin route's prune keeps it; one that is the stack's text is the stack's and goes as any carried copy.
 function ownSeatKeep(ctx, route = 'plugin')
 {
     return (file) =>
     {
         const name = file.replace(/\.md$/, '');
-        return ctx.records.ledgerHeld && recordOf(ctx.records, 'agent', name) === null ? { say: ownSeatLine[route](name) } : false;
+        return projectSeat(ctx, file) ? { say: ownSeatLine[route](name) } : false;
     };
 }
 
@@ -1666,7 +1667,7 @@ function copyKinds(ctx, closure)
         ctx.foreignSeats.add(f.replace(/\.md$/, ''));
         return false;
     });
-    for (const f of seatFiles) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), path.join(agentsDir, f));
+    for (const f of seatFiles.filter((name) => fs.existsSync(path.join(ctx.source.dir, 'stack', 'agents', name)))) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), path.join(agentsDir, f));
     const seatRun = copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
         destDir: agentsDir, files: seatFiles, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,

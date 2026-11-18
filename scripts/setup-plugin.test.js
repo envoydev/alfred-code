@@ -1959,7 +1959,8 @@ test('configure: the agents-route ask is a template per current route, each mark
 test('configure: the route is read from the plan routes line, the ask is skipped on seats-switch, and the flag rides step 11 on a change only', () =>
 {
     const configure = flat(cmdBody('configure'));
-    assert.match(configure, /`plan routes: skills=<plugin\|copy> hooks=<plugin\|copy> skills-from=<flag\|shared\|ledgered\|env> seats-switch=<open\|shared\|workspace>`/);
+    assert.match(configure, /`plan routes: skills=<plugin\|copy> hooks=<plugin\|copy> skills-from=<flag\|shared\|ledgered\|env> seats-switch=<open\|shared\|local\|workspace>`/);
+    assert.match(configure, /`local` - `agents: your \.claude\/settings\.local\.json cannot be written - not switched here`/);
     assert.match(configure, /`seats-switch=` other than `open` puts no ask and says why in one line/);
     assert.match(configure, /never from a settings file by hand/);
     assert.match(configure, /`--seats-route copy` \('Files in \.claude\/agents'\) or `--seats-route plugin` \('Back to the plugin'\)/);

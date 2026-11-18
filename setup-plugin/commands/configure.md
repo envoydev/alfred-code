@@ -119,7 +119,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
-  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy> hooks=<plugin|copy> skills-from=<flag|shared|ledgered|env> seats-switch=<open|shared|workspace>`
+  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy> hooks=<plugin|copy> skills-from=<flag|shared|ledgered|env> seats-switch=<open|shared|local|workspace>`
   names the routes (`skills=` is where the agents come from now; `seats-switch=` is step 8's agents-route ask); `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
@@ -315,7 +315,7 @@ Copy your <n> memory files to the new place?
 
 A memory answer other than the current mode rides step 11's ONE installer call as `--memory <default|docs|custom>` ('Copy them' adds `--memory-copy`) - a change on its own, so that call runs - and applies from the next session; its `autoMemoryDirectory`, `memory: copied` and `.gitattributes` lines are reported verbatim.
 
-**Where the agents come from** rides this area too. The current route is `skills=` of step 1's `plan routes:` line in `$TMP/plan.out` - never from a settings file by hand. `seats-switch=` other than `open` puts no ask and says why in one line: `shared` - `agents: settings.json decides where they come from - change it there`; `workspace` - `agents: a workspace's top and members share one route - not switched here`. On `open`, ask the template for the current route in the same call as the memory and navigation asks (an unattended run takes its Recommended option, so it keeps the route and writes nothing):
+**Where the agents come from** rides this area too. The current route is `skills=` of step 1's `plan routes:` line in `$TMP/plan.out` - never from a settings file by hand. `seats-switch=` other than `open` puts no ask and says why in one line: `shared` - `agents: settings.json decides where they come from - change it there`; `local` - `agents: your .claude/settings.local.json cannot be written - not switched here`; `workspace` - `agents: a workspace's top and members share one route - not switched here`. On `open`, ask the template for the current route in the same call as the memory and navigation asks (an unattended run takes its Recommended option, so it keeps the route and writes nothing):
 
 ```ask
 Where your agents come from? (now: the plugin)

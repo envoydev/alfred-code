@@ -1,6 +1,7 @@
 'use strict';
 // Task 10 of the agents route switch: `--print-plan` ends its routes line with where the skills route was read from and
-// whether configure may offer the switch - open, shared (settings.json holds the key) or workspace.
+// whether configure may offer the switch - open, shared (settings.json holds the key), local (settings.local.json cannot be
+// written) or workspace.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -50,6 +51,24 @@ test('install-plan-routes: a settings.json that holds the key at project scope c
         env: NO_ROUTE_ENV, args: [PROJECT, [...PROJECT, ...PLAN]], each: (repo, i) => { if (i === 0) writeShared(repo, 'false'); return null; },
     });
     assert.equal(routesOf(outs[1]), 'plan routes: skills=copy hooks=plugin skills-from=shared seats-switch=shared');
+});
+
+test('install-plan-routes: a settings.local.json the stack cannot write closes the switch (local)', POSIX_ONLY, () =>
+{
+    const { outs } = seedRun(['install', 'update'], SELECTION, {
+        env: NO_ROUTE_ENV, args: [PROJECT, [...PROJECT, ...PLAN]],
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{ not json'); return null; },
+    });
+    assert.match(routesOf(outs[1]), /seats-switch=local$/);
+});
+
+test('install-plan-routes: a shared key outranks an unusable local file', POSIX_ONLY, () =>
+{
+    const { outs } = seedRun(['install', 'update'], SELECTION, {
+        env: NO_ROUTE_ENV, args: [PROJECT, [...PROJECT, ...PLAN]],
+        each: (repo, i) => { if (i === 0) { writeShared(repo, 'false'); fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{ not json'); } return null; },
+    });
+    assert.match(routesOf(outs[1]), /seats-switch=shared$/);
 });
 
 test('install-plan-routes: local scope has no shared file, so the same key leaves the switch open', POSIX_ONLY, () =>

@@ -93,8 +93,8 @@ function skillsRoute({ env, shared, personal, scope, ledgerEnv, flag, log })
     if (committed !== undefined)
     {
         if (flag) log(`!! seats route: settings.json sets ${SKILLS_KEY}=${committed} for everyone - change it there`);
-        else if (run !== undefined && run !== local) return { skills: onRoute(run), skillsFrom: SKILLS_FROM.env };
-        else if (run !== undefined && run !== committed)
+        if (run !== undefined && run !== local) return { skills: onRoute(run), skillsFrom: SKILLS_FROM.env };
+        if (run !== undefined && run !== committed)
         {
             log(`routes: ${SKILLS_KEY}=${run} comes from settings.local.json - personal, so this ${scope}-scope run follows settings.json (${committed}${onRoute(committed) ? ' - the plugin route' : ' - the copy route'})`);
         }
@@ -152,13 +152,14 @@ function sharedSkillsKeyAt({ claudeDir, scope })
 }
 
 // What `--print-plan` tells configure about the seats-route ask: put it (`open`), skip it because settings.json decides
-// (`shared`), or skip it because a workspace's top and members share one route (`workspace`). A workspace comes first,
-// the same order the flag's refusals take.
-const SEATS_SWITCH = Object.freeze({ open: 'open', shared: 'shared', workspace: 'workspace' });
-function seatsSwitch({ inWorkspace, sharedKey })
+// (`shared`), because settings.local.json cannot be written (`local` - the key's home), or because a workspace's top and
+// members share one route (`workspace`). A workspace comes first, the same order the flag's refusals take.
+const SEATS_SWITCH = Object.freeze({ open: 'open', shared: 'shared', local: 'local', workspace: 'workspace' });
+function seatsSwitch({ inWorkspace, sharedKey, localUnusable = '' })
 {
     if (inWorkspace) return SEATS_SWITCH.workspace;
-    return sharedKey ? SEATS_SWITCH.shared : SEATS_SWITCH.open;
+    if (sharedKey) return SEATS_SWITCH.shared;
+    return localUnusable ? SEATS_SWITCH.local : SEATS_SWITCH.open;
 }
 
 // The stamp's `managed-env` rows for settings.local.json, null where the stamp or its ledger is absent.
