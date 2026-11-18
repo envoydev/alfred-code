@@ -172,7 +172,7 @@ line names: a POINTER for the user to type, never a call.
 4. **BUILD** - per the approved mode:
    - *session*: run `task-implement` - it starts, ticks and resumes each task through the script.
    - *agents*: fan the task cards out to the matching `<stack>-implementer` seats, each dispatched
-     exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), by the
+     exactly as the roster spells it (`alfred-code:<seat>` on the plugin route), by the
      step mechanics' dispatch rules - the approval stamp first, the contract version and the card's
      docs anchors in every brief, no isolation, no `model:` override.
    Both modes build to the step mechanics' bar and build-time stop list. State what blocks

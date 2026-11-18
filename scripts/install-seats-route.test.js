@@ -215,3 +215,32 @@ test('to copy and back with an edited picked library skill: the switch back refr
     assert.ok(outs[2].includes(`  overwriting a hand-edited copy: skill ${SWITCH_SKILL}`), outs[2]);
     assert.equal(result, fresh, 'the switch back refreshes the skill to the stack text');
 });
+
+const ROSTER_FILE = path.join('.alfred', 'docs', 'awareness', 'AGENTS-AWARENESS.md');
+const UNPICKED_SEAT = 'evidence-gatherer';
+const ROSTER_HEAD = '# This project\'s capabilities\n\n## Orchestration skills\n\n## Subagent seats\n';
+const rosterPath = (repo) => path.join(repo, ROSTER_FILE);
+const layOutRoster = (repo, seats) =>
+{
+    fs.mkdirSync(path.dirname(rosterPath(repo)), { recursive: true });
+    fs.writeFileSync(rosterPath(repo), `${ROSTER_HEAD}${seats.join(', ')}\n\n## MCP routing\n`);
+};
+const rosterSeats = (repo) =>
+{
+    const lines = fs.readFileSync(rosterPath(repo), 'utf8').split('\n');
+    return lines[lines.indexOf('## Subagent seats') + 1].split(', ');
+};
+
+test('after the switch to copy the roster names every copied seat bare, and after the switch back namespaced', POSIX_ONLY, () =>
+{
+    const { steps } = switchRun(['install', 'update', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin, ROUTE.plain],
+        (repo, i) =>
+        {
+            if (i === 0) layOutRoster(repo, [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`]);
+            return i === 0 ? null : { roster: rosterSeats(repo), copied: fs.existsSync(seatPath(repo)) };
+        });
+    const namespaced = [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`];
+    assert.deepEqual(steps[1], { roster: [SEAT, `${CORE}:${UNPICKED_SEAT}`], copied: true }, 'copy: the copied seat is bare, the unpicked one stays namespaced');
+    assert.deepEqual(steps[2], { roster: namespaced, copied: false }, 'plugin again: every seat is namespaced');
+    assert.deepEqual(steps[3], { roster: namespaced, copied: false }, 'a plain update changes nothing');
+});
