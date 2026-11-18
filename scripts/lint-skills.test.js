@@ -1767,3 +1767,41 @@ test('a comment line citing a spec, plan or sdd file under docs/superpowers is f
     assert.match(found[0], /git-ignored.*\(check 72\)$/);
     assert.deepStrictEqual(lintSuperpowersCites(require('./lint-skills.js').repoTextFiles()), [], 'the tree holds none');
 });
+
+// Check 47 read every `❯` line above the 'Plugin directory checks' header as a finding, and Claude Code 2.1.327
+// prints a 'Provides:' block of the plugin's components with the same marker - 119 false findings. The fixture is the
+// real output (the repo path replaced by <repo>).
+function check47Fixture() {
+    const { validateFindings } = require('./lint-skills.js');
+    const lines = fs.readFileSync(path.join(__dirname, 'fixtures', 'plugin-validate-2.1.327.txt'), 'utf8').split('\n');
+    const dirAt = lines.findIndex((l) => /^Plugin directory checks/.test(l));
+    const last = lines.map((l, i) => (/^\s*\u276f/.test(l) && i < dirAt ? i : -1)).filter((i) => i >= 0).pop();
+    const insert = (at, add) => lines.slice(0, at).concat(add, lines.slice(at)).join('\n');
+    return { validateFindings, text: lines.join('\n'), dirAt, last, insert };
+}
+
+test('lint-skills.js check 47: the Provides listing is no warning', () => {
+    const { validateFindings, text } = check47Fixture();
+    assert.deepStrictEqual(validateFindings(text), []);
+});
+
+test('lint-skills.js check 47: a finding under any other header still counts', () => {
+    const { validateFindings, dirAt, insert } = check47Fixture();
+    const found = validateFindings(insert(dirAt, ['\u26a0 Found 1 warning:', '  \u276f name: bad', '']));
+    assert.strictEqual(found.length, 1);
+    assert.match(found[0], /name: bad$/);
+});
+
+test('lint-skills.js check 47: a line outside the listing still counts', () => {
+    const { validateFindings, insert } = check47Fixture();
+    const found = validateFindings(insert(1, ['  \u276f stray: x']));
+    assert.strictEqual(found.length, 1);
+    assert.match(found[0], /stray: x$/);
+});
+
+test('lint-skills.js check 47: a header line ends the skip', () => {
+    const { validateFindings, last, insert } = check47Fixture();
+    const found = validateFindings(insert(last + 1, ['\u26a0 Found 1 warning:', '  \u276f late: y']));
+    assert.strictEqual(found.length, 1);
+    assert.match(found[0], /late: y$/);
+});
