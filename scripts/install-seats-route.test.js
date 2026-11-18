@@ -21,6 +21,7 @@ const claudeFile = (repo, name) => path.join(repo, '.claude', name);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const localEnv = (repo) => readJson(claudeFile(repo, LOCAL_FILE)).env || {};
 const ledgerKeys = (repo) => Object.keys((readLedger(claudeFile(repo, 'alfred-code.stamp')).env || {})[LOCAL_FILE] || {});
+const localEnvOf = (repo) => (fs.existsSync(claudeFile(repo, LOCAL_FILE)) ? localEnv(repo) : {});
 const seen = (repo) => ({ value: localEnv(repo)[KEY], ledgered: ledgerKeys(repo).includes(KEY) });
 
 const EACH_SCOPE_FILE = 'settings.json';
@@ -183,7 +184,7 @@ test('an edited core seat unpicked on the plugin route survives a switch to copy
     let recorded;
     let edited;
     const seen = [];
-    switchRun(['install', 'update', 'update', 'update'], PICKED, [ROUTE.copy, ROUTE.plugin, ROUTE.copy, ROUTE.plugin], (repo, i) =>
+    const { outs } = switchRun(['install', 'update', 'update', 'update'], PICKED, [ROUTE.copy, ROUTE.plugin, ROUTE.copy, ROUTE.plugin], (repo, i) =>
     {
         if (i === 0)
         {
@@ -196,6 +197,7 @@ test('an edited core seat unpicked on the plugin route survives a switch to copy
     });
     assert.ok(recorded, 'the copy route recorded the seat');
     for (const [i, run] of seen.entries()) assert.deepEqual(run, { text: edited, record: recorded }, `after run ${i + 2}`);
+    assert.match(outs[1], new RegExp(`agent kept: ${SEAT}\\.md - edited in the project since the stack copied it`), 'the unpick on the plugin route names the kept seat');
 });
 
 test('the switch writes the deny rows for every core seat, and the switch back writes the unpicked seats\' rows again', POSIX_ONLY, () =>
@@ -304,4 +306,26 @@ test('install-seats-route: a standalone project (no record, no links) takes --se
     });
     assert.ok(!out.includes(WORKSPACE_REFUSAL), out);
     assert.deepEqual(result, { value: 'false', ledgered: true });
+});
+
+test('install-seats-route: a first install of a joined child with --seats-route is refused like a later run', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'install'], SELECTION, {
+        env: WORKSPACE_ENV, prepare: layOutWorkspace, cwds: ['repo', `repo/${MEMBER}`],
+        args: [PROJECT, [...PROJECT, '--seats-route', 'copy']],
+        each: (repo, i) => (i === 1 ? localEnvOf(path.join(repo, MEMBER)) : null),
+    });
+    assert.ok(outs[1].includes(WORKSPACE_REFUSAL), outs[1]);
+    assert.equal(steps[1][KEY], undefined, 'no route key written');
+});
+
+test('the switch back leaves the ledger\'s managed-deny as the plugin run wrote it, and a hand-written seat deny row survives the round trip', POSIX_ONLY, () =>
+{
+    const HAND_ROW = `Agent(${CORE}:${UNPICKED_SEAT})`;
+    const denyOf = (repo) => readLedger(stampPath(repo)).deny;
+    const { steps } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin],
+        (repo, i) => ({ ledger: [...denyOf(repo)].sort(), file: seatDeny(repo).includes(HAND_ROW) }),
+        { prepare: (repo) => { fs.mkdirSync(claudeFile(repo, ''), { recursive: true }); fs.writeFileSync(claudeFile(repo, LOCAL_FILE), JSON.stringify({ permissions: { deny: [HAND_ROW] } })); } });
+    assert.deepEqual(steps[2].ledger, steps[0].ledger, 'the same managed-deny entries after the round trip');
+    for (const [i, step] of steps.entries()) assert.ok(step.file, `the hand-written row is still in the file after run ${i + 1}`);
 });

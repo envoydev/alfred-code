@@ -171,10 +171,10 @@ function readWorkspace(projectRoot, opts = {})
 
 // Whether the project is the top or a linked member of a workspace: the stamp records links into a chain (a link into the
 // project's own store is a local-scope install's, no workspace) or member picks, or its record names a parent or a child. A garbage or absent record names nothing.
-function inWorkspace({ projectRoot, stampFile, env, dataRoot })
+function inWorkspace({ projectRoot, stampFile, dataRoot })
 {
     if (stampFile && (require('./links.js').inherited(projectRoot, stamp.readLinks(stampFile)).length || (stamp.readMemberPicks(stampFile) || []).length)) return true;
-    const { view } = readWorkspace(projectRoot, { env, dataRoot });
+    const { view } = readWorkspace(projectRoot, { dataRoot });
     return Boolean(view.parent) || view.children.length > 0;
 }
 

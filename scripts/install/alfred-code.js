@@ -336,7 +336,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (seatsRouteWhy) { log(`!! seats route: .claude/settings.local.json is ${seatsRouteWhy} - not switched`); args.seatsRoute = ''; }
         // A workspace's seats route is its top's and members' together: a member-held seat is left out of the top's deny and a store
         // record follows the route, so switching one project would list a seat twice.
-        const inWorkspace = Boolean(args.seatsRoute || args.printPlan) && workspace.inWorkspace({ projectRoot, stampFile, env, dataRoot: dataInfo.root });
+        const inWorkspace = Boolean(args.seatsRoute || args.printPlan) && workspace.inWorkspace({ projectRoot, stampFile, dataRoot: dataInfo.root });
         if (args.seatsRoute && inWorkspace)
         { log("!! seats route: a workspace's seats route is its top's and members' together - not switched here"); args.seatsRoute = ''; }
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and

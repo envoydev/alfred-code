@@ -288,7 +288,7 @@ write time rather than trusting a preview a few turns stale, and report its prin
 for that same row is a deliberate decision like any other row's and goes through `variables.js set` as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
-**Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with both questions, each carrying its current line:
+**Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with the questions this step puts (three with the agents ask below), each carrying its current line:
 
 ```ask
 Memory for this project? (now: <the modes memory: line>)
