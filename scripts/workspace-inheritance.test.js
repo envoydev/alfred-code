@@ -75,10 +75,17 @@ const selectionFile = (text) =>
 const installer = () => path.join(exportDir, 'scripts', 'install', 'alfred-code.js');
 const workspaceCli = () => path.join(exportDir, 'scripts', 'workspace.js');
 
+function git(cwd, ...argv)
+{
+    const done = spawnSync('git', argv, { cwd, env, encoding: 'utf8' });
+    assert.strictEqual(done.status, 0, `git ${argv.join(' ')} in ${cwd}: ${done.stdout}${done.stderr}`);
+    return done.stdout;
+}
+
 function makeGitProject(rel, { ignoreHomes = true } = {})
 {
     fs.mkdirSync(at(rel), { recursive: true });
-    spawnSync('git', ['init', '-q', at(rel)]);
+    git(work, 'init', '-q', at(rel));
     if (ignoreHomes) put(path.join(at(rel), '.gitignore'), HOME_DIRS);
 }
 
@@ -106,8 +113,8 @@ function buildWorkspace()
     put(path.join(at('api'), '.claude', 'skills', 'my-notes', 'SKILL.md'), '---\nname: my-notes\ndescription: Use when noting.\n---\n\nMY-NOTES\n');
     put(path.join(at('api'), '.claude', 'settings.local.json'), `${JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }] } }, null, 2)}\n`);
     put(path.join(at('tracked'), '.claude', 'skills', 'own', 'SKILL.md'), '---\nname: own\ndescription: Use when owning.\n---\n\nOWN\n');
-    spawnSync('git', ['-C', at('tracked'), ...GIT_IDENTITY, 'add', '-f', '.claude/skills'], { encoding: 'utf8' });
-    spawnSync('git', ['-C', at('tracked'), ...GIT_IDENTITY, 'commit', '-q', '-m', 'track the skills'], { encoding: 'utf8' });
+    git(at('tracked'), ...GIT_IDENTITY, 'add', '-f', '.claude/skills');
+    git(at('tracked'), ...GIT_IDENTITY, 'commit', '-q', '-m', 'track the skills');
     put(path.join(at('.'), '.alfred', '.variables'), `${VARIABLE_KEY}=7\n`);
     const root = run(at('.'), [installer(), 'install', '--source', exportDir, '--selection', selectionFile(ROOT_SELECTION)]);
     const rootRole = run(at('.'), [workspaceCli(), 'role', '--root', '.', '--answer', 'root']);
@@ -121,7 +128,9 @@ function buildWorkspace()
 function hookOutput(rel, argv, payload, sessionId)
 {
     const input = JSON.stringify({ session_id: sessionId, cwd: at(rel), transcript_path: path.join(work, 'none.jsonl'), ...payload });
-    return run(at(rel), [path.join(exportDir, 'stack', 'hooks', ...HOOK_START), ...argv], { CLAUDE_PROJECT_DIR: at(rel), CLAUDE_PLUGIN_ROOT: exportDir }, input).stdout;
+    const done = run(at(rel), [path.join(exportDir, 'stack', 'hooks', ...HOOK_START), ...argv], { CLAUDE_PROJECT_DIR: at(rel), CLAUDE_PLUGIN_ROOT: exportDir }, input);
+    assert.strictEqual(done.code, 0, `the hook crashed or refused in ${rel}: ${done.out.slice(-800)}`);
+    return done.stdout;
 }
 
 function contextOf(stdout)
@@ -134,17 +143,18 @@ function startContext(rel, source, part, sessionId = `s-${crypto.randomBytes(3).
     return contextOf(hookOutput(rel, ['--part', String(part)], { hook_event_name: 'SessionStart', source }, sessionId));
 }
 
-const readOf = (rel, target, sessionId) => contextOf(hookOutput(rel, [], {
+const readOutput = (rel, target, sessionId) => hookOutput(rel, [], {
     hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: path.join(at(target), 'AGENTS.md') }, tool_response: {},
-}, sessionId));
+}, sessionId);
+const readOf = (rel, target, sessionId) => contextOf(readOutput(rel, target, sessionId));
 
 const denyOf = (rel) => ((readJson(path.join(at(rel), '.claude', 'settings.local.json')).permissions || {}).deny || []);
 const realUnderStore = (rel, name) => realLong(path.join(at(rel), '.claude', 'skills', name)).startsWith(path.join(realLong(at('.')), '.alfred', 'stack', 'skills'));
 
-test.before(() => { installs = buildWorkspace(); }, { timeout: TEST_TIMEOUT_MS });
+test.before(() => { if (POSIX_ONLY.skip) return; installs = buildWorkspace(); }, { timeout: TEST_TIMEOUT_MS });
 test.after(() => { fs.rmSync(work, { recursive: true, force: true }); });
 
-test('the tree installs: a root and its three children each finish with code 0', POSIX_ONLY, { timeout: TEST_TIMEOUT_MS }, () =>
+test('the tree installs: a root and its three children each finish with code 0', { ...POSIX_ONLY, timeout: TEST_TIMEOUT_MS }, () =>
 {
     for (const [name, result] of Object.entries(installs)) assert.strictEqual(result.code, 0, `${name}: ${result.out.slice(-1500)}`);
 });
@@ -223,7 +233,9 @@ test('root: the start opens with the member index naming api/AGENTS.md; a Read o
     const first = startContext('.', 'startup', 1, sessionId);
     assert.match(first, MEMBER_INDEX_OPENING, `part 1 opens with the index: ${first.slice(0, 300)}`);
     assert.match(first, /api\/AGENTS\.md/);
-    const once = readOf('.', 'api', sessionId);
+    const onceOutput = readOutput('.', 'api', sessionId);
+    assert.notStrictEqual(onceOutput.trim(), '', 'the first Read answered with output');
+    const once = contextOf(onceOutput);
     assert.match(once, /Project api, part 1/, 'the first Read sends the block');
     assert.strictEqual(readOf('.', 'api', sessionId), '', 'a second Read sends nothing new');
 });
