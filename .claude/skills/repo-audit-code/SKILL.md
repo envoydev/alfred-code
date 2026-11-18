@@ -69,9 +69,10 @@ code does, loosen a type or weaken a test to reach a grade.
    - `CONVERT` on: load the `ts-convert` skill and run it on `CODE_ROOT`, giving it this run folder, `WRITE`, and
      the `commit` word where the command carried it. It returns at once where nothing is left to convert, and
      otherwise runs to its own end - its size line, plan, grade, approval, batches and commits are its own.
-   - The audit starts only on a finished conversion - `ts-convert` reports every `convert` file converted or
-     `FAILED` - or under `no-convert`, or with `WRITE` false. After a conversion that stopped earlier ('One batch
-     first', a bounded resume, 'Stop before converting', 'Cancel'), end the run on the conversion's report and say
+   - The audit starts only on a finished conversion - `ts-convert` reports `Finished: yes`: no batch `pending` or
+     `waiting on`, a `FAILED` one counting as finished - or under `no-convert`, or with `WRITE` false. After a
+     conversion that stopped earlier ('One batch first', a bounded resume, 'Stop before converting', 'Cancel'), end
+     the run on the conversion's report and say
      that `/repo-audit-code` again continues it: an audit of a half-converted tree reads every unconverted item
      again at every run.
    - `no-convert`: no conversion; the size line says so.

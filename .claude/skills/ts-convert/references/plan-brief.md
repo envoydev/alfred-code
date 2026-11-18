@@ -35,20 +35,30 @@ It has to hold for a repo of several megabytes, so each step is a command or a s
 1. **The files.** `git ls-files -- <targets>`, and the size of each code file (`wc -c`). Keep the list as
    `files.tsv` in the RUN FOLDER.
 2. **The graph.** A script, `scripts/graph.mjs`, reads every code file's `require('...')`, `import ... from
-   '...'`, `export ... from '...'` and `import('...')` specifiers, resolves each relative one to a tracked file
-   (as written, then with `.js`, `.cjs`, `.mjs`, `.ts`, `.mts`, then `/index.js`), and writes `graph.json`: each
-   file with the files it imports, the files that import it, and every cycle with its members.
+   '...'`, `export ... from '...'` and `import('...')` specifiers - over the whole file text, not line by line, so
+   an import list that spans lines is read - resolves each relative one to a tracked file (as written, then with
+   `.js`, `.cjs`, `.mjs`, `.ts`, `.mts`, then `/index.js`), and writes `graph.json`: each file with the files it
+   imports, the files that import it, and every cycle with its members. A built name is an edge too: every string
+   literal ending `.js`, `.mjs` or `.cjs` that a file loads, runs or reads by - a `path.join(...)` or
+   `path.resolve(...)` segment list, a command string, a path read as text - that resolves to a tracked file under
+   the targets. Resolve a segment list such as `path.join(<root var>, 'scripts', 'x.js')` against the repo root and
+   against the file's own folder. A literal only compared or printed - a table key, a message - is a reference to
+   update, not an edge. A built name in an (a), (b) or `keep_js` file that cannot be resolved, where its last
+   segment is the name of a tracked file under the targets, is an open question, recommended 'keep as checked JS'.
 3. **The constructs.** One search per construct of `conversion-rules.md`'s table, each printing file and line:
    `__dirname`, `__filename`, `require.main`, `module.exports =`, `exports.<name> =`, a `require(` that is not at
-   the start of a statement at column 0, a `require` of a `.json` path, `require.resolve`, `require.cache`,
-   `require.extensions`, `module.` used as a value, a top-level `await`. Keep the output as `constructs.tsv`.
+   the start of a statement at column 0 (one inside a `try` among them), a `require(` whose argument is not a
+   string literal (`require(path.join(...))`, a variable), a `require` of a `.json` path, `require.resolve`,
+   `require.cache`, `require.extensions`, `module.` used as a value, a top-level `await`. Keep the output as
+   `constructs.tsv`.
 4. **The outside runtimes.** The shipped folders are the ones the repo's `notes` and instruction file name as
-   shipped. Search every tracked file under them for tokens of the form `scripts/<path>.js`, `.mjs` or `.cjs`,
-   whatever precedes the token; each token that is a tracked path is a reason (a) file - except a token on a
-   comment line of a code file (one that starts with `//`, `/*`, `*` or `#` after its indent), which runs nothing.
-   A token in prose that is not a command (a JSON description, say) still counts, and its `keep_js` reason says
-   so, for the user to prune. Then follow the graph from
-   every (a) file and every `keep_js` file to its end: each file reached is reason (b).
+   shipped. Search every tracked file under them for tokens that end in `.js`, `.mjs` or `.cjs` (`scripts/<path>.js`,
+   say), whatever precedes the token; each token that is a tracked path under the targets is a reason (a) file. A
+   token on a comment line of a code file (one that starts with `//`, `/*`, `*` or `#` after its indent) still
+   counts, never dropped: its `keep_js` reason reads 'named only in a comment in <file> - the user may prune'. A
+   token in prose that is not a command (a JSON description, say) counts too, and its reason says so, for the user
+   to prune. Then follow the graph - its imports and its built names (step 2) - from every (a) file and every
+   `keep_js` file to its end: each file reached is reason (b).
 5. **The globs.** Search for every glob that selects code by extension: `package.json` scripts, the test runner's
    own pattern where the repo has a runner script, `structure_paths` in `.claude/kit/repo.json`, lint globs,
    `tsconfig` `include` and `exclude`, each command and Node pin in `.github/workflows/`, and the docs that run a
@@ -134,7 +144,10 @@ Planned as batch 0, with the exact text of every edit.
   of another class, or outside the plan, is a unit of its own.
 - Order the `convert` units so that each comes after every unit it imports; units with no order between them go
   by path. Pack them in that order into batches of at most 60,000 characters of source. A unit larger than that
-  is a batch alone, whatever its size.
+  is a batch alone, up to 200,000 characters; above that it is an open question, recommended 'leave it for a run
+  of its own', and no batch.
+- Each batch names the batches it needs: the ones whose imports it uses, whose globs it relies on, or whose
+  'References to update' edit one of its files. A batch that fails holds back only those that need it.
 - The `check` units follow, packed the same way, in batches of their own after the last `convert` batch.
 - **Which tests a batch runs:** the batch's own test files and the test files of every file that imports a batch
   file, from the graph, by path. With Node's runner the command is `node --test <paths>` directly - a runner
@@ -184,7 +197,7 @@ Typecheck: `<command>`
 ### Batch <n> - <convert | check> - <characters> characters
 
 - Files: `<old path>` -> `<new path>`, one per line; a `check` file keeps its path
-- Imports from batches: <numbers, or 'none'>
+- Needs: <the batches whose imports, globs or reference edits this one rests on, or 'none'>
 - Constructs: `<file>:<line>` - <the construct, by its name in conversion-rules.md> -> <the form to write>
 - References to update: `<file>:<line>` - `<text now>` -> `<text after>`
 - Globs edited here: `<file>` - `<glob now>` -> `<glob after>`, or 'none'
@@ -222,7 +235,9 @@ Typecheck: `<command>`
 
 ## `progress.md`
 
-Write it with the plan: one line per batch, each `pending`. The coordinating session keeps it from then on.
+Write it with the plan: one line per batch, each `pending`. A plan with no batch and no toolchain edit writes no
+`pending` line - only the header and `Baseline suite: none - nothing to convert`. The coordinating session keeps
+it from then on.
 
 ```text
 # Conversion progress - <repo> - plan revision <Baseline>
@@ -241,8 +256,10 @@ Entries not covered: none yet
   the remaining batches into `convert.md` under a new `Baseline` line beside the old one. It is graded again.
 - `fault` - the whole suite went red, or ran fewer tests, after a batch. You are given the failing tests and the
   batch commits since the last green whole-suite run. Check each of those commits out into a scratch worktree
-  under the RUN FOLDER, run the failing tests there by path, and name the first commit at which they fail. Plan
-  that batch again; the coordinator reverts it.
+  under the RUN FOLDER, run the failing tests there by path, and name the first commit at which they fail and every
+  committed batch whose `Needs:` line reaches it. Plan that batch again; the coordinator reverts it and those,
+  newest first, and a batch named at fault a second time is not built again but marked `FAILED: at fault twice`
+  for the user.
 
 ## Your last message
 

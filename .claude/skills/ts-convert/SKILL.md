@@ -47,12 +47,13 @@ Every `.js`, `.mjs`, `.cjs` and `.jsx` file under the targets takes one class - 
 2. **`check`** - listed in `keep_js`, or holding one of three reasons, each written into its `keep_js` entry:
    - **(a) outside runtime** - a runtime outside the repo loads it, with no byte-for-byte rule: it is copied into
      users' projects, run by users (an installer, or a script a shipped command runs), or copied into another repo
-     by name. Found by a scan, never by memory: every token of the form `scripts/<path>.js`, `.mjs` or `.cjs`,
-     whatever precedes it, in every shipped file - the folders the repo's `notes` and instruction file name as
-     shipped - names an (a) file when that path is a tracked file. A token on a comment line of a code file (one
-     that starts with `//`, `/*`, `*` or `#`) names nothing: a comment that cites a maintainer script runs nothing.
-   - **(b) closure** - it is in the `require` and `import` closure of an (a) file, followed to its end: the outside
-     runtime loads those too.
+     by name. Found by a scan, never by memory: every token that ends in `.js`, `.mjs` or `.cjs` and is a tracked
+     path under the targets (`scripts/<path>.js`, say), whatever precedes it, in every shipped file - the folders
+     the repo's `notes` and instruction file name as shipped - names an (a) file. A token on a comment line of a code
+     file still names one, its `keep_js` reason 'named only in a comment in <file> - the user may prune'.
+   - **(b) closure** - it is in the closure of an (a) file, followed to its end: what it requires or imports, and
+     a path it loads, runs or reads by name (a `path.join(...)` segment list, a command string, a path read as
+     text) - a path it only compares or prints is a reference to update. The outside runtime loads those too.
    - **(c) construct** - it holds a CommonJS construct with no ES module form that keeps its behaviour
      (`references/conversion-rules.md` says which). Its closure does not follow: it runs on the repo's own runtime,
      so it may require a converted file.
@@ -60,7 +61,8 @@ Every `.js`, `.mjs`, `.cjs` and `.jsx` file under the targets takes one class - 
    A `check` file stays JavaScript and gains `// @ts-check` and JSDoc types in the batch that types it, and the
    plan adds any such file missing from `keep_js` to the entry, with its reason. An (a) or (b) file never requires
    or imports a relative or absolute path - one starting `.` or `/` - that does not end in `.js`, `.cjs`, `.mjs`
-   or `.json`; a built-in or a package name passes. Converting a `check` file is an open question, recommended
+   or `.json`, and no string literal in it names a `.ts`, `.mts` or `.cts` path; a built-in or a package name
+   passes. Converting a `check` file is an open question, recommended
    'keep as checked JS'; the user's answer to convert moves it to `convert`, and its runtime change - a Node
    floor, a renamed file a deployed setting names - into the plan.
 3. **`convert`** - everything else: loaded only by the repo's own runtime, or by a tool that reads TypeScript.
@@ -88,14 +90,20 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
    `docs/superpowers/convert/`, every batch of its `progress.md` done - lists it as `leave`, or when a `keep_js`
    path matches it and its first five lines hold `// @ts-check`. Every file settled: print
    `Nothing to convert: <n> JavaScript files - <k> left as they are, <m> checked`, `Finished: yes`, and return.
+   Otherwise, unless `WRITE` is false, before any seat starts `git status --porcelain -- <targets>
+   <instruction file> .claude/kit/repo.json package.json <lockfile> 'tsconfig*.json'` must print nothing, or the
+   run stops before the planner, naming the paths to commit or stash.
 3. **The run folder, or a resume.** Where a run folder's `progress.md` has batches not done, this run resumes it
    ('Resume' below). Otherwise take the folder the audit named, or make
    `docs/superpowers/convert/<date>/` (`-2`, `-3` where the date has one), and start `convert-run.md` there: the
-   targets, the way in, `WRITE`, the commit word, each seat's model with its source, the pass score and whether
-   the plan is graded, and one `Next:` line rewritten at every step.
+   targets, the way in, `WRITE` - true unless the audit passes false - the commit word, each seat's model with its
+   source, the pass score and whether the plan is graded, and one `Next:` line rewritten at every step.
 4. **Plan.** Dispatch the planner with: `references/plan-brief.md` by path, the repository root, the targets, the
    run folder, the `keep_js`, `checks` and `notes` of the entry, and mode `plan`. It writes `convert.md` and
-   `progress.md` and returns the size numbers and the open questions. Write its id into `convert-run.md`.
+   `progress.md` and returns the size numbers and the open questions. Write its id into `convert-run.md`. A plan
+   with no batch and no toolchain edit - every file `leave` or already `check` - has no `pending` line: skip steps
+   5 to 9 and close on `Nothing to convert: <n> JavaScript files - <k> left as they are, <m> checked`,
+   `Finished: yes`.
 5. **Open questions.** What the planner returned as the user's to decide - a `check` file that could be
    converted, a `.jsx` file nothing builds, a path used outside the repo - goes to the user in one AskUserQuestion
    call, at most four questions, the recommended option first. An answer that differs from the recommended option
@@ -104,6 +112,8 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
    Otherwise, where scoring is on, load `refining-plans` and grade `convert.md` to the pass score - the task is the
    user's request and this skill's classes and module format; a revision is the planner's. Then the plan is
    approved as the `plan-approval` rule says: by the run with `auto_approve` on, else by the user, who is notified.
+   The approval line goes into `convert-run.md` - `Approved: convert.md <Baseline> - <by whom> - <score path>` -
+   and a resume skips the plan and the grade only where that line is there.
 7. **Size before spend.** No converter starts before the user has seen:
    `Size: convert - <files> files, <characters> characters, <batches> batches`,
    `Whole suite: <tests> tests, <seconds> s a run, <runs> runs planned` and
@@ -143,15 +153,22 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
    - **Each batch, in order, one seat at a time.** Dispatch a converter with the brief, the batch's section of
      `convert.md`, the conversion rules and the paths that name the batch's files. On `GREEN`: run the typecheck
      command and the batch's test command yourself, compare the counts with the seat's, then commit by pathspec -
+     `git add` the new and edited paths (an old path `git mv` moved is already staged, and `git add` of it fails),
+     then `git commit -- <the pathspec of the batch's Commit: line>` - as
      `refactor(<scope>): <batch> is TypeScript`, or `refactor(<scope>): <batch> is type-checked JavaScript` for a
-     `check` batch - with no trace of the agent, and mark the batch `done <commit>` in `progress.md`.
+     `check` batch, with no trace of the agent - and mark the batch `done <commit>` in `progress.md`.
    - **A `FAILED` batch.** The seat restores it. Confirm that `git status --porcelain` over the batch's old and
      new paths prints nothing - where it does not, run the restore of 'Rollback' yourself - then mark it
-     `FAILED: <the first error line>` and every batch that imports it `waiting on <n>`. The others go on.
+     `FAILED: <the first error line>` and every batch whose `Needs:` line names it, directly or through another
+     such batch, `waiting on <n>`. The others go on.
    - **The whole suite** runs after the commit of every batch that edits a glob and after the last batch. Fewer
      tests run than the baseline, or a red run, does not restore the batch that ran it: it goes to the planner in
      mode `fault`, which runs the failing tests at each batch commit since the last green whole-suite run and names
-     the batch at fault; that batch is reverted with `git revert` and planned again.
+     the batch at fault. Revert that batch and every committed batch that needs it, newest first, one `git revert`
+     each; a revert that does not apply is aborted (`git revert --abort`) and the run stops, naming it. The named
+     batch is planned again and marked `pending (at fault once)`, every batch reverted with it `pending`. A batch
+     named at fault while its line says so is `FAILED: at fault twice` and left for the user, and the batches that
+     need it wait.
    - **The `check` class** is typed in batches of its own, after the `convert` batches, by the same seats and
      checks.
 10. **Close.** Print the summary, then what is owed, then one line per seat with the model it ran on and the run
@@ -168,27 +185,36 @@ the approval of the plan follows the `plan-approval` rule whatever auto-run says
     Finished:   yes | no - <batches> batches remain
     ```
 
-    `Finished: yes` means every `convert` file is converted or its batch is `FAILED`. Owed, where they apply:
-    `npm run sync` in claude-kit, which refills the `project-structure` rule's `paths` after `structure_paths`
-    changed - that rule is a kit copy and is never edited in place; the CI legs of other operating systems, not
-    verified here and owed before a push; each reason (c) file as a task for `solve-task`; and, with batches left,
-    that `/repo-audit-code` or this skill again continues them.
+    `Finished: yes` only when no batch of `progress.md` is `pending` or `waiting on`; a `FAILED` batch counts as
+    finished, and so does a batch waiting on one `FAILED: at fault twice`, which is the user's. A batch `FAILED`
+    at two runs running - its line was `FAILED` when this run began - is named on the `Failed:` line with how to
+    stop it: a `keep_js` entry for its files, with the reason. Owed, where they apply: `npm run sync` in
+    claude-kit, which refills the `project-structure` rule's `paths` after `structure_paths` changed - that rule
+    is a kit copy and is never edited in place - and after a `check` batch edits a file other repos copy
+    (`bin/*.mjs`); the CI legs of other operating systems, not verified here and owed before a push; each
+    reason (c) file as a task for `solve-task`; and, with batches left, that `/repo-audit-code` or this skill again
+    continues them.
 
 ## Resume
 
 A later run - `/repo-audit-code` again, or this skill alone - finds the newest run folder under
-`docs/superpowers/audits/` or `docs/superpowers/convert/` whose `progress.md` has a batch that is not `done`, and
-writes the resumed run's `convert-run.md` and `progress.md` there - a fresh audit run folder holds the audit's files
-only. A `FAILED` batch is not done: a resume tries it again. It checks two things without reading code:
+`docs/superpowers/audits/` or `docs/superpowers/convert/` whose `progress.md` has a batch a run can take - not
+`done`, and neither `FAILED: at fault twice` nor waiting on one - and writes the resumed run's `convert-run.md`
+and `progress.md` there - a fresh audit run folder holds the audit's files only. A `FAILED` batch is not done: a
+resume tries it again - except one `FAILED: at fault twice`, which is the user's. It checks two things
+without reading code:
 
-- `git diff --name-only <base> -- <the files of every batch not done>` prints nothing. The base is the commit of
-  the newest batch marked done in `progress.md`, else the toolchain commit, else the plan's Baseline revision -
-  never the Baseline once a batch is done, since a done batch edits the imports in files of later batches and those
-  edits are the plan's own.
+- `git diff --name-only <base> -- <the files of every batch not done>` prints nothing. The base is the newer of the
+  newest done batch's commit in `progress.md` and the revision of the newest `Baseline` line of `convert.md` (a
+  replan writes one); with neither, the toolchain commit; else the first Baseline revision - never an older
+  Baseline once a batch is done, since a done batch edits the imports in files of later batches and those edits
+  are the plan's own.
 - Every JavaScript file `git ls-files -- <targets>` lists is in the plan's inventory.
 
-Both hold: the approved `convert.md` continues from its first batch not done, with no new plan and no new grade.
-Either fails: the planner, in mode `replan`, plans the rest again, and that plan is graded and approved again.
+Both hold and `convert-run.md` holds an `Approved:` line for the newest `Baseline` of `convert.md`: `convert.md`
+continues from its first batch not done, with no new plan and no new grade. Both hold with no such line: the run
+re-enters at step 5 - open questions, grade, approval - with the plan as it is. Either fails: the planner, in mode
+`replan`, plans the rest again, and that plan is graded and approved again.
 
 The resume prints the size line for the batches left and puts the same ask, with one change: once a batch of this
 plan is green, 'One batch first' has done its work. The options are then 'All <N> remaining batches', 'The next 20
@@ -220,6 +246,8 @@ then the new paths git does not track are removed (`git clean -f -- <those paths
 - Two converters at once, or a batch started on a tree whose last batch is neither committed nor restored.
 - A batch committed on the seat's word alone, with the typecheck and its tests not run here.
 - A type loosened, a test skipped or `engines` changed to make a batch pass.
-- A `check` file for reason (a) or (b) that requires a path not ending in `.js`, `.cjs`, `.mjs` or `.json`.
-- A resume that planned or graded again with the files of every batch not done unchanged.
+- A `check` file for reason (a) or (b) that requires a path not ending in `.js`, `.cjs`, `.mjs` or `.json`, or
+  builds a path to a `.ts`, `.mts` or `.cts` file.
+- A resume that planned or graded again with the files of every batch not done unchanged and the `Approved:` line
+  there, or that built batches of a plan with no `Approved:` line.
 - This session read a code file, or a push.

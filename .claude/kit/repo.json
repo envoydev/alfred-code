@@ -332,6 +332,14 @@
           "reason": "outside runtime - setup-plugin/commands/configure.md names it, so a user's Node runs it"
         },
         {
+          "path": "scripts/hook-inprocess.js",
+          "reason": "outside runtime - named only in a comment in stack/hooks/guard-stop-contract.js - the user may prune"
+        },
+        {
+          "path": "scripts/hud-statusline.js",
+          "reason": "outside runtime - scripts/init-plan.js requires it (line 43) and builds the command that runs it (line 93), and setup-plugin/commands/init.md runs init-plan.js on a user's Node"
+        },
+        {
           "path": "scripts/init-plan.js",
           "reason": "outside runtime - setup-plugin/commands/init.md names it, so a user's Node runs it"
         },
@@ -392,6 +400,10 @@
           "reason": "closure - scripts/build-eval-bundle.js requires it, and a user's Node loads that"
         },
         {
+          "path": "scripts/clean-export.js",
+          "reason": "closure - scripts/skill-comply.js builds the command that runs it (line 769), and a user's Node loads that"
+        },
+        {
           "path": "scripts/collect-privacy.js",
           "reason": "closure - scripts/collect-session.js requires it, and a user's Node loads that"
         },
@@ -416,8 +428,20 @@
           "reason": "closure - scripts/session-surface.js requires it, and a user's Node loads that"
         },
         {
+          "path": "scripts/lint-mcp-tools.js",
+          "reason": "closure - scripts/lint-skills.js requires it, and that file stays JavaScript for scripts/session-surface.js"
+        },
+        {
+          "path": "scripts/lint-skills.js",
+          "reason": "closure - scripts/session-surface.js reads it as text for its ALWAYS_ON_MAX line (line 679), and a user's Node runs that"
+        },
+        {
           "path": "scripts/plugin-placement.js",
           "reason": "closure - scripts/install/alfred-code.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/scope-agent-preloads.js",
+          "reason": "closure - scripts/lint-skills.js requires it, and that file stays JavaScript for scripts/session-surface.js"
         },
         {
           "path": "scripts/seat-tools.js",
@@ -426,6 +450,14 @@
         {
           "path": "scripts/skill-comply.js",
           "reason": "closure - scripts/analyze-usage.js requires it, and a user's Node loads that"
+        },
+        {
+          "path": "scripts/stack-graph.js",
+          "reason": "closure - scripts/lint-skills.js requires it, and that file stays JavaScript for scripts/session-surface.js"
+        },
+        {
+          "path": "scripts/tool-adapters.js",
+          "reason": "closure - scripts/lint-skills.js requires it, and that file stays JavaScript for scripts/session-surface.js; also named only in a comment in stack/hooks/forge.js"
         },
         {
           "path": "scripts/usage-scope.js",

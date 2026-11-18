@@ -26,8 +26,9 @@ time.
 
 **`code`, after the others.** The conversion and `code`'s planners start only once every other wave 1 kind's plan
 is applied, committed under the run's `commit` word and recorded - a kind whose plan is left waiting or `NOT RUN`
-does not hold them back, since it edits nothing - so no other kind's planner reads a file the
-conversion edits and no plan of theirs goes stale:
+does not hold them back, since it edits nothing; a waiting plan whose targets the conversion edits goes stale,
+and its freshness check (the flow's step 7) sends it back to its planner on approval - so no other kind's planner
+reads a file the conversion edits mid-way and no applied plan goes stale:
 
 - `auto_approve` on, one kind at a time: the run order already holds it - `code`'s turn comes after the kinds
   before it are done end to end.
@@ -42,8 +43,9 @@ conversion's size ask, with 'One batch first', is put then all the same - the ru
 it. The run's `commit` word covers the conversion's batches; without it, the conversion's own commit ask is put
 there too. A conversion that ends before its last batch ends the kind for this run: its queue line reads
 `converting <done>/<N> batches - audit waits`, and no `code` planner starts. Where the run commits nothing and an
-earlier kind edited a path under `code`'s roots, `code` is `NOT RUN - targets edited by <kind>, uncommitted`, as
-step 8 says: the conversion starts only on a clean tree.
+earlier kind edited a path the conversion checks - `git status --porcelain -- <code's roots> <instruction file>
+.claude/kit/repo.json package.json <lockfile> 'tsconfig*.json'` prints a line - `code` is
+`NOT RUN - targets edited by <kind>, uncommitted`, as step 8 says: the conversion starts only on a clean tree.
 
 ## The run
 

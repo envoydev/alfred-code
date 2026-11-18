@@ -36,9 +36,12 @@ The dispatch gives you: REPOSITORY, RUN FOLDER, BATCH (a number) and the path of
      of the batch between them;
    - the plan's `Typecheck command` passes;
    - the `Tests` command, with the new names, passes and runs the count of step 1;
-   - each `check` file for reason (a) or (b) you edited still requires only JavaScript and JSON:
-     `grep -nE "(require\(|from |import\()[[:space:]]*['\"](\.{1,2}/|/)[^'\"]*['\"]" <file> | grep -vE "\.(js|cjs|mjs|json)['\"]"`
-     prints nothing.
+   - each `check` file for reason (a) or (b) you edited still requires only JavaScript and JSON, and builds no
+     path to TypeScript - each of these prints nothing:
+     `grep -noE "(require\(|from |import\()[[:space:]]*['\"](\.{1,2}/|/)[^'\"]*['\"]" <file> | grep -vE "\.(js|cjs|mjs|json)['\"]$"`
+     (the specifier alone, so another path on its line hides nothing) and
+     `grep -noE "[\"'\`][^\"'\`]*\.(ts|mts|cts)([^[:alnum:]_\"'\`][^\"'\`]*)?[\"'\`]" <file>` (no string literal -
+     a segment list, a command - names a `.ts`, `.mts` or `.cts` path).
 
 ## A `check` batch
 

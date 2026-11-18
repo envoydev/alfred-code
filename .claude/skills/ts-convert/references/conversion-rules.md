@@ -21,7 +21,7 @@ does. Each rule that rests on a runtime or compiler fact names its row in `curre
 - A relative specifier names the file as it is on disk once this batch is done, with its extension
   (row 'import extensions'): `./x.ts` or `./x.mts` for a converted file, `./x.js` for one that stays. A folder
   import is written out to its file (`./x/index.js`). In a package whose `tsconfig` resolves as `bundler` and whose map says
-  an import names its file with no extension, the map wins.
+  an import names its file with no extension, the `structure_map` wins.
 - A built-in or a package specifier is kept as written.
 - Every importer of a converted file is edited in the same batch to its new name - TypeScript and JavaScript
   importers alike, tests included. The batch's section of `convert.md` lists them with their lines.
@@ -40,10 +40,11 @@ does. Each rule that rests on a runtime or compiler fact names its row in `curre
 | `module.exports = { a, b }` and `exports.a = ...` | named exports: `export function a`, `export const b` | each caller's test; a CommonJS caller's `const { a } = require('./x.mts')` reads the same names |
 | `module.exports = <one value>` | `export default <value>`; each CommonJS caller's `require('./x.js')` becomes `require('./x.mts').default`, each ES caller imports the default | the caller's test reads the export's shape |
 | `__dirname`, `__filename` | `import.meta.dirname`, `import.meta.filename` (row 'import.meta.dirname') | the file's own test |
-| `require.main === module` | where the row 'import.meta.main' allows it for this package, `import.meta.main`; anywhere else `process.argv[1] !== undefined && realpathSync(process.argv[1]) === import.meta.filename`, with `realpathSync` from `node:fs` | the entry's own test. An entry with no test is converted all the same and reported as 'entry not covered' |
+| `require.main === module` | where the row 'import.meta.main' allows it for this package, `import.meta.main`; anywhere else `process.argv[1] !== undefined && existsSync(process.argv[1]) && realpathSync(process.argv[1]) === import.meta.filename`, with both from `node:fs` - `existsSync` first, since `realpathSync` throws where the process's own entry was named without its extension and this module is only imported | the entry's own test. An entry with no test is converted all the same and reported as 'entry not covered' |
 | `require('./data.json')` at the top level | `import data from './data.json' with { type: 'json' }` (row 'JSON import') | the typecheck and the file's test |
 | `require('./data.json')` inside a function | a read at that point: `JSON.parse(readFileSync(new URL('./data.json', import.meta.url), 'utf8'))` | the file's test |
 | a `require` inside a function or a branch | `await import()` where the function is already async, or every caller can wait - the plan says which; otherwise the file is reason (c) | the batch's tests |
+| `require(path.join(__dirname, ...))`, or any `require(` whose argument is not a string literal | a constant path: a static `import` of the file it resolves to, with that file's name after this batch; a computed one: `createRequire(import.meta.url)` from `node:module`, its path built with `import.meta.dirname` in place of `__dirname`. A target the conversion renames is a line of the batch's 'References to update' | the typecheck and the file's test |
 | `require.resolve('<specifier>')` | `createRequire(import.meta.url).resolve('<specifier>')`, with `createRequire` from `node:module` | the file's test |
 | a test that replaces an export of a module (`lib.read = stub`) | an ES module's exports cannot be replaced. Where only the subject's test changes, the subject takes the dependency as an argument with the real one as its default; otherwise the subject is reason (c), with a `solve-task` hand-off | the test, passing with the dependency passed in |
 | `require.cache`, `require.extensions`, `module` used as a value (`module.id`, `module.paths`), an export added or changed after load | none that keeps the behaviour: reason (c) | - |
@@ -74,7 +75,8 @@ the batch: report it, do not invent a form.
 - Types are JSDoc: `@param`, `@returns`, `@type`, `@typedef`. No code changes, apart from a narrowing check the
   types need that cannot alter what the code does for any input it already accepted.
 - A `check` file for reason (a) or (b) keeps every relative `require` and `import` on a path ending in `.js`,
-  `.cjs`, `.mjs` or `.json`.
+  `.cjs`, `.mjs` or `.json`, and every path it builds - a segment list, a command string - off `.ts`, `.mts` and
+  `.cts`.
 - An error JSDoc cannot remove without changing the code gets `// @ts-expect-error - <the reason, and the change
   that would remove it>` on the line above, and is listed in the report as a finding for the audit.
 
