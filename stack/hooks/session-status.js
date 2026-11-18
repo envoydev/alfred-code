@@ -5,6 +5,7 @@
 // history-session.js calls it at SessionStart and Stop, guard-answer.js at UserPromptSubmit, each inside a try.
 // Fail-open: nothing here throws, and a failed write leaves no half-written file.
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -23,6 +24,11 @@ const EXCLUDE_DEADLINE_MS = 8000;
 const DAY_MS = 86400000;
 const PRUNE_NAME = /^[A-Za-z0-9_-]{1,128}\.json(?:\.\d+\.tmp)?$/;
 const STATUS_PARTS = ['.claude', 'session-inspector', 'status'];
+// The reader gate (status-file-root design, Part 2): the mod that reads the file, under either name, in any marketplace.
+const READER_PLUGIN_RE = /^(alfred-mods|session-inspector)@/;
+const SETTINGS_FILE = 'settings.json';
+const MANAGED_DROPIN_DIR = 'managed-settings.d';
+const SWITCH = Object.freeze({ on: 'on', off: 'off' });
 
 // The engines, each loaded on first use: an unchanged prompt pays one small file read, never fresh-session's load.
 const ENGINE_FILES = { fresh: './fresh-session.js', prelude: './hook-prelude.js', history: './history.js', layout: './layout.js', planStatus: './plan-status.js' };
@@ -91,6 +97,42 @@ const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const refusedBase = (base, root, deps) => CONTROL_RE.test(base) || !ownBase(base, root, deps) || linkedStatus(base, root, deps);
 const statusDir = (base) => path.join(base, ...STATUS_PARTS);
 
+// The `enabledPlugins` object of one settings file, or null: a file that is missing, unreadable, not JSON or holding no
+// plain object there adds nothing.
+function enabledPluginsOf(file) {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const plugins = data && typeof data === 'object' ? data.enabledPlugins : null;
+    return plugins && typeof plugins === 'object' && !Array.isArray(plugins) ? plugins : null;
+  } catch { return null; }
+}
+// The settings files that can enable a plugin, lowest layer first: the user's, the project's, the local file Claude Code
+// reads for the root, the managed file and its drop-ins in name order.
+function settingsLayers(root, env, d) {
+  const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const managed = d.layout.managedSettingsFile();
+  const dropDir = path.join(path.dirname(managed), MANAGED_DROPIN_DIR);
+  let drops = [];
+  try { drops = fs.readdirSync(dropDir).filter((n) => n.endsWith('.json') && !n.startsWith('.')).sort().map((n) => path.join(dropDir, n)); } catch { /* none */ }
+  return [path.join(account, SETTINGS_FILE), path.join(root, '.claude', SETTINGS_FILE), d.layout.modeFile(root), managed, ...drops];
+}
+// Whether the mod that reads the status file is on: the variable first, else the merged `enabledPlugins`. Any failure
+// reads as off - a write that cannot be justified is not made.
+function readerOn(root, env, deps) {
+  try {
+    const d = depsOf(deps);
+    const source = env && typeof env === 'object' ? env : d.env;
+    const word = String(envOf({ prelude: d.prelude, env: source }, 'SESSION_STATUS') || '').trim().toLowerCase();
+    if (word === SWITCH.on) return true;
+    if (word === SWITCH.off) return false;
+    if (!root || !d.layout) return false;
+    const merged = {};
+    for (const file of settingsLayers(root, source, d)) Object.assign(merged, enabledPluginsOf(file));
+    return Object.keys(merged).some((key) => READER_PLUGIN_RE.test(key) && merged[key] === true);
+  } catch { return false; }
+}
+const msSince = (from) => Math.round(Number(process.hrtime.bigint() - from) / 1e4) / 100;
+
 function statusFile(payload, deps) {
   try {
     const d = depsOf(deps);
@@ -101,6 +143,7 @@ function statusFile(payload, deps) {
     const base = baseOf(p, d.env);
     const root = rootOf(p, d.env);
     if (!base || !root || !path.isAbsolute(base)) return null;
+    if (!readerOn(root, d.env, d)) return null;
     if (!fs.statSync(base).isDirectory()) return null;   // a vanished cwd: never rebuilt by mkdirSync
     if (refusedBase(base, root, d)) return null;
     return path.join(statusDir(base), `${id}.json`);
@@ -280,7 +323,9 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
   let tmp = null;
   let t0 = 0;
   try {
+    const gateFrom = process.hrtime.bigint();
     file = statusFile(payload, d);
+    const gateMs = msSince(gateFrom);
     if (!file) return 'skipped';
     const p = objectOf(payload);
     const id = String(p.session_id);
@@ -357,7 +402,7 @@ function writeStatus(payload, fields, { when = 'always', deps, gate } = {}) {
     fs.renameSync(tmp, file);
     tmp = null;
     const ms = Math.max(0, d.clock() - t0);
-    probeRow(p, { kind: 'status-write', result: ms > SLOW_MS ? 'slow' : 'ok', ms }, d);
+    probeRow(p, { kind: 'status-write', result: ms > SLOW_MS ? 'slow' : 'ok', ms, gateMs }, d);
     const base = path.dirname(path.dirname(path.dirname(dir)));
     if (!fileExisted && root) appendBase(root, base, d);
     if (!dirExisted && p.hook_event_name !== 'SessionStart') ensureExcluded([base], d);
@@ -589,6 +634,9 @@ function onSessionStart(payload, entry) {
     const p = objectOf(payload);
     if (!p || p.agent_id || !ID_RE.test(String(p.session_id || ''))) return '';
     const d = depsOf();
+    // once per session: an install without the mod leaves one timed row at the start, never one per turn
+    const gateFrom = process.hrtime.bigint();
+    if (!readerOn(rootOf(p, d.env), d.env, d)) probeRow(p, { kind: 'status-gate', result: 'off', ms: msSince(gateFrom) }, d);
     writeStatus(p, { entry }, { when: 'always', deps: d });
     if (['startup', 'resume', 'clear'].includes(p.source)) line = modesLine(readStatusFile(statusFile(p, d) || '', String(p.session_id))
       || buildStatus(p, { entry, handoffPrompt: null }, d));
@@ -622,6 +670,6 @@ function onPrompt(payload, modes, gate) {
 
 module.exports = {
   FIELDS, ID_RE, PRUNE_MS, SLOW_MS, MAX_BASES, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
-  baseOf, rootOf, ownBase, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusBases, pruneStatus,
+  baseOf, rootOf, ownBase, readerOn, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusBases, pruneStatus,
   ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, onPlan, modesLine,
 };

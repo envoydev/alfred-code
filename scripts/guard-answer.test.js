@@ -658,6 +658,16 @@ test('T4 autoRun at the prompt', () => {
     } finally { fs.rmSync(statusDir, { force: true }); fs.renameSync(aside, statusDir); }
     assert.strictEqual(JSON.parse(quiet.stdout).hookSpecificOutput.additionalContext, JSON.parse(typed('st7', 'plain').stdout).hookSpecificOutput.additionalContext, 'the same context with the file on');
 });
+// The settings route (status-file-root design, Part 2): the variable unset, the mod enabled in the account's settings.json.
+test('the gate: the mod enabled in the account settings writes the file, neither route writes none', () => {
+    const enabledAccount = fs.mkdtempSync(path.join(TMP, 'gate-on-'));
+    fs.writeFileSync(path.join(enabledAccount, 'settings.json'), JSON.stringify({ enabledPlugins: { 'alfred-mods@market': true } }));
+    typed('gt1', 'plain', { ALFRED_CODE_SESSION_STATUS: '', CLAUDE_CONFIG_DIR: enabledAccount });
+    assert.strictEqual(statusRead('gt1').session, 'gt1', 'written through the settings route');
+    const bareAccount = fs.mkdtempSync(path.join(TMP, 'gate-off-'));
+    typed('gt2', 'plain', { ALFRED_CODE_SESSION_STATUS: '', CLAUDE_CONFIG_DIR: bareAccount });
+    assert.ok(!fs.existsSync(statusPath('gt2')), 'neither the variable nor the mod: no file');
+});
 test('T5 scoring at the prompt', () => {
     clearOverride();
     typed('sc1', `${SCORING} on`);

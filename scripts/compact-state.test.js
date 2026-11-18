@@ -1780,6 +1780,22 @@ test('PF1 tick: a done that did not land leaves no hold (R27); unreadable status
     assert.doesNotMatch(g.ledger(), /tick-offer/);
 });
 
+test('the status gate: the mod enabled in the account settings writes the file, neither route writes none', () =>
+{
+    const call = (settings) =>
+    {
+        const account = fs.mkdtempSync(path.join(TMP, 'gate-acct-'));
+        if (settings) fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify(settings));
+        const s = folderSetup({ approve: true });
+        s.env.ALFRED_CODE_SESSION_STATUS = '';
+        s.env.CLAUDE_CONFIG_DIR = account;
+        s.via(SHELL, 'Bash', { command: `${ENGINE} start --plan csv --task 1` });
+        return s.statusFile();
+    };
+    assert.ok(fs.existsSync(call({ enabledPlugins: { 'alfred-mods@market': true } })), 'written through the settings route');
+    assert.ok(!fs.existsSync(call(null)), 'neither the variable nor the mod: no file');
+});
+
 test('PF1: the plan call sets the session plan - four spellings name one folder, complete and a seat set nothing', () =>
 {
     const s = folderSetup({ approve: true });

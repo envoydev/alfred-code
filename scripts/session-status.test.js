@@ -135,6 +135,7 @@ const HOME = path.join(TMP, 'home');
 fs.mkdirSync(ACCOUNT, { recursive: true });
 fs.mkdirSync(HOME, { recursive: true });
 process.env.CLAUDE_CONFIG_DIR = ACCOUNT;   // the account settings fresh-session reads: a throwaway, never the runner's
+process.env.ALFRED_CODE_SESSION_STATUS = 'on';   // the in-process writers below: the gate cases pass their own env and leave it unset
 const statusOf = (base, id) => path.join(base, '.claude', 'session-inspector', 'status', `${id}.json`);
 const readStatus = (base, id) => JSON.parse(fs.readFileSync(statusOf(base, id), 'utf8'));
 const transcript = (root, model, name = 't.jsonl') =>
@@ -1087,4 +1088,215 @@ test('a plan call landing between a prompt\'s two reads is kept', () =>
         const r = S.writeStatus({ ...${P}, hook_event_name: 'UserPromptSubmit' }, { autoRun: true, scorer: null }, { when: 'modes', deps: { fresh } });
         return { r, s: JSON.parse(fs.readFileSync(${FILE}, 'utf8')) };`);
     assert.deepStrictEqual([got.r, got.s.autoRun, got.s.plan], ['written', true, `${PLANS}/csv/`]);
+});
+
+// --- the reader gate (status-file-root design, Part 2) -----------------------------------------------------------
+// readerOn: the file is written only while alfred-mods or session-inspector is enabled in the merged enabledPlugins, or
+// ALFRED_CODE_SESSION_STATUS says on. Every case here leaves the variable unset except the two that name it.
+const LAYOUT = require(path.join(HOOKS, 'layout.js'));
+let gateSeq = 0;
+const enabled = (key = 'alfred-mods@market', value = true) => ({ enabledPlugins: { [key]: value } });
+function gateSetup()
+{
+    const n = gateSeq++;
+    const root = project();
+    const account = path.join(TMP, `gate-account-${n}`);
+    const managed = path.join(TMP, `gate-managed-${n}`, 'managed-settings.json');
+    const put = (file, data) =>
+    {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, typeof data === 'string' ? data : JSON.stringify(data));
+    };
+    fs.mkdirSync(account, { recursive: true });
+    const layout = { ...LAYOUT, managedSettingsFile: () => managed };
+    return {
+        root, account, managed, layout,
+        user: (data) => put(path.join(account, 'settings.json'), data),
+        project: (data) => put(path.join(root, '.claude', 'settings.json'), data),
+        local: (data) => put(path.join(root, '.claude', 'settings.local.json'), data),
+        managedFile: (data) => put(managed, data),
+        dropIn: (name, data) => put(path.join(path.dirname(managed), 'managed-settings.d', name), data),
+        on: (env = {}, at = root) => S().readerOn(at, { CLAUDE_CONFIG_DIR: account, ...env }, { layout }),
+    };
+}
+
+test('readerOn: each layer alone opens the gate', () =>
+{
+    for (const layer of ['user', 'project', 'local', 'managedFile'])
+    {
+        const g = gateSetup();
+        assert.strictEqual(g.on(), false, `${layer}: nothing yet`);
+        g[layer](enabled());
+        assert.strictEqual(g.on(), true, layer);
+    }
+});
+
+test('readerOn: a drop-in opens it, and a dot file does not', () =>
+{
+    const g = gateSetup();
+    g.dropIn('.hidden.json', enabled());
+    assert.strictEqual(g.on(), false, 'a dot file adds nothing');
+    g.dropIn('10-mods.json', enabled());
+    assert.strictEqual(g.on(), true);
+});
+
+test('readerOn: a later layer wins per key - local false over user true, managed true over local false', () =>
+{
+    const g = gateSetup();
+    g.user(enabled());
+    g.local(enabled('alfred-mods@market', false));
+    assert.strictEqual(g.on(), false, 'local false over user true');
+    g.managedFile(enabled());
+    assert.strictEqual(g.on(), true, 'managed true over local false');
+    g.dropIn('90-off.json', enabled('alfred-mods@market', false));
+    assert.strictEqual(g.on(), false, 'a drop-in is merged after the managed file');
+});
+
+test('readerOn: the two plugin names match under any marketplace, nothing else does', () =>
+{
+    for (const key of ['session-inspector@x', 'alfred-mods@any-market', 'alfred-mods@'])
+    {
+        const g = gateSetup();
+        g.user(enabled(key));
+        assert.strictEqual(g.on(), true, key);
+    }
+    for (const key of ['other@x', 'alfred-mods', 'my-alfred-mods@x', 'alfred-mods-extra@x'])
+    {
+        const g = gateSetup();
+        g.user(enabled(key));
+        assert.strictEqual(g.on(), false, key);
+    }
+    const g = gateSetup();
+    g.user({ enabledPlugins: { 'alfred-mods@market': 'true' } });
+    assert.strictEqual(g.on(), false, 'only the boolean true counts');
+});
+
+test('readerOn: a file that is garbage, or whose enabledPlugins is no plain object, adds nothing', () =>
+{
+    const g = gateSetup();
+    g.user('{ not json');
+    g.project(enabled());
+    assert.strictEqual(g.on(), true, 'garbage in the user file, the mod in the project');
+    const h = gateSetup();
+    h.user(enabled());
+    h.project({ enabledPlugins: [] });
+    assert.strictEqual(h.on(), true, 'an array in the project does not mask the user layer');
+    h.local({ enabledPlugins: 'alfred-mods@market' });
+    h.managedFile('[1]');
+    assert.strictEqual(h.on(), true, 'a string, a top-level array');
+    const none = gateSetup();
+    none.user('{ not json');
+    none.project('');
+    none.local('null');
+    assert.strictEqual(none.on(), false, 'garbage everywhere');
+});
+
+test('readerOn: no files is off; the variable on opens it with no files, off closes it over an enabled mod', () =>
+{
+    const g = gateSetup();
+    assert.strictEqual(g.on(), false, 'no files');
+    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'on' }), true, 'on with no files');
+    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: '' }), false, 'an empty value is unset');
+    g.user(enabled());
+    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: 'off' }), false, 'off over an enabled mod');
+    assert.strictEqual(g.on({ ALFRED_CODE_SESSION_STATUS: '' }), true, 'unset follows the settings');
+});
+
+test('readerOn: the account is CLAUDE_CONFIG_DIR, never HOME, and a throw reads as off', () =>
+{
+    const g = gateSetup();
+    g.user(enabled());
+    assert.strictEqual(S().readerOn(g.root, { CLAUDE_CONFIG_DIR: path.join(TMP, 'another-account') }, { layout: g.layout }), false, 'another account holds no mod');
+    assert.strictEqual(S().readerOn(g.root, { CLAUDE_CONFIG_DIR: g.account }, { layout: { ...g.layout, modeFile: () => { throw new Error('boom'); } } }), false, 'a throw');
+    assert.strictEqual(S().readerOn(null, { CLAUDE_CONFIG_DIR: g.account }, { layout: g.layout }), false, 'no root');
+    assert.strictEqual(S().readerOn(g.root, { CLAUDE_CONFIG_DIR: g.account }, { layout: null }), false, 'no layout engine');
+});
+
+test('readerOn: a linked worktree start sees the main checkout\'s settings.local.json', () =>
+{
+    const g = gateSetup();
+    const main = project();
+    fs.mkdirSync(path.join(main, '.git', 'worktrees', 'wt'), { recursive: true });
+    const tree = project();
+    fs.writeFileSync(path.join(tree, '.git'), `gitdir: ${path.join(main, '.git', 'worktrees', 'wt')}\n`);
+    assert.strictEqual(g.on({}, tree), false, 'not enabled yet');
+    fs.mkdirSync(path.join(main, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(main, '.claude', 'settings.local.json'), JSON.stringify(enabled()));
+    assert.strictEqual(g.on({}, tree), true, 'the main checkout\'s local file');
+    fs.mkdirSync(path.join(tree, 'sub'));
+    assert.strictEqual(g.on({}, path.join(tree, 'sub')), true, 'and from a subfolder of the worktree');
+});
+
+test('readerOn: the median of 50 calls on a project holding all four files', (t) =>
+{
+    const g = gateSetup();
+    g.user({ enabledPlugins: { 'other@x': true } });
+    g.project({ enabledPlugins: { 'other@y': true } });
+    g.local({ enabledPlugins: { 'other@z': true } });
+    g.managedFile(enabled());
+    assert.strictEqual(g.on(), true, 'warm');
+    const spent = [];
+    for (let i = 0; i < 50; i++)
+    {
+        const from = process.hrtime.bigint();
+        g.on();
+        spent.push(Number(process.hrtime.bigint() - from) / 1e6);
+    }
+    spent.sort((a, b) => a - b);
+    const median = spent[25];
+    t.diagnostic(`readerOn median over 50 calls: ${median.toFixed(3)} ms (max ${spent[49].toFixed(3)} ms)`);
+    assert.ok(median < 25, `${median} ms`);
+});
+
+// the gate's wiring, in a child like the field cases: a hook's own entry points, the real process env
+const GATE_ENV = (g) => ({ CLAUDE_PROJECT_DIR: g.root, CLAUDE_CONFIG_DIR: g.account, ALFRED_CODE_SESSION_STATUS: '' });
+const GATE_PATCH = (g) => `require(${JSON.stringify(path.join(HOOKS, 'layout.js'))}).managedSettingsFile = () => ${JSON.stringify(g.managed)};`;
+const gateRows = (root, id) =>
+{
+    try { return fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', `${id}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); }
+    catch { return []; }
+};
+
+test('the gate off: a start makes no status folder and leaves one status-gate row; a Stop and a prompt leave none', () =>
+{
+    const g = gateSetup();
+    const payload = (event) => JSON.stringify({ session_id: 'gate-off', cwd: g.root, hook_event_name: event, source: 'startup' });
+    inChild(GATE_ENV(g), `${GATE_PATCH(g)}
+        S.onSessionStart(${payload('SessionStart')}, null);
+        S.onStop(${payload('Stop')}, null);
+        S.onPrompt(${payload('UserPromptSubmit')}, { autoRun: false, scoring: null });
+        S.onPlan(${payload('PreToolUse')}, 'plans/x/');
+        return null;`);
+    assert.ok(!fs.existsSync(path.join(g.root, '.claude', 'session-inspector')), 'no folder');
+    const rows = gateRows(g.root, 'gate-off');
+    assert.strictEqual(rows.filter((r) => r.kind === 'status-gate').length, 1, 'one row per session');
+    const [row] = rows;
+    assert.deepStrictEqual([row.mode, row.kind, row.result, row.event, row.hook, typeof row.ms], ['probe', 'status-gate', 'off', 'SessionStart', 'session-status.js', 'number']);
+    assert.strictEqual(rows.length, 1, 'nothing else was written');
+});
+
+test('the gate on: the file is written, the status-write row carries a numeric gateMs and no status-gate row is left', () =>
+{
+    const g = gateSetup();
+    g.user(enabled());
+    const start = JSON.stringify({ session_id: 'gate-on', cwd: g.root, hook_event_name: 'SessionStart', source: 'startup' });
+    inChild(GATE_ENV(g), `${GATE_PATCH(g)} S.onSessionStart(${start}, null); return null;`);
+    assert.strictEqual(readStatus(g.root, 'gate-on').session, 'gate-on');
+    const rows = gateRows(g.root, 'gate-on');
+    const write = rows.find((r) => r.kind === 'status-write');
+    assert.strictEqual(write.result, 'ok');
+    assert.strictEqual(typeof write.gateMs, 'number');
+    assert.ok(write.gateMs >= 0);
+    assert.ok(!rows.some((r) => r.kind === 'status-gate'));
+});
+
+test('the gate re-reads at each write moment: enabling the mod mid-session writes the file at the next Stop (A6)', () =>
+{
+    const g = gateSetup();
+    const payload = (event) => JSON.stringify({ session_id: 'gate-mid', cwd: g.root, hook_event_name: event, source: 'startup' });
+    inChild(GATE_ENV(g), `${GATE_PATCH(g)} S.onSessionStart(${payload('SessionStart')}, null); return null;`);
+    assert.ok(!fs.existsSync(statusOf(g.root, 'gate-mid')));
+    g.user(enabled());
+    inChild(GATE_ENV(g), `${GATE_PATCH(g)} return S.onStop(${payload('Stop')}, null);`);
+    assert.strictEqual(readStatus(g.root, 'gate-mid').session, 'gate-mid');
 });
