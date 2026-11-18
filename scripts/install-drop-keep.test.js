@@ -181,3 +181,97 @@ test('drop-keep: a stamp with no picks line still adopts a copy on disk as a pic
     });
     assert.ok(steps[1].skills.includes(SKILL) && steps[1].agents.includes(SEAT), 'adopted from the disk');
 });
+
+// A copy under a name a release renamed: the stamp's picks line holds the OLD name, which the read-back maps to the new one.
+const RENAMES = {
+    skill: { old: 'create-ticket', now: 'habits-create-ticket', oldPath: (repo, name) => path.join(repo, '.claude', 'skills', name), file: (repo, name) => path.join(repo, '.claude', 'skills', name, 'SKILL.md'), pickLine: 'picked-skills', pick: (name) => `skill ${name}\n` }, // legacy: the old name is the point of the case
+    agent: { old: 'ci-failure-diagnoser', now: 'issue-diagnoser-ci', oldPath: (repo, name) => path.join(repo, '.claude', 'agents', `${name}.md`), file: (repo, name) => path.join(repo, '.claude', 'agents', `${name}.md`), pickLine: 'picked-agents', pick: (name) => `agent ${name}\n` }, // legacy: the old name is the point of the case
+};
+const setStampLine = (repo, key, value) =>
+{
+    const text = fs.readFileSync(stampOf(repo), 'utf8').replace(/\n*$/, '\n');
+    const line = `${key}: ${value}`;
+    fs.writeFileSync(stampOf(repo), new RegExp(`^${key}:.*$`, 'm').test(text) ? text.replace(new RegExp(`^${key}:.*$`, 'm'), line) : `${text}${line}\n`);
+};
+
+for (const kind of Object.keys(RENAMES))
+{
+    for (const route of Object.keys(ROUTES))
+    {
+        test(`drop-keep, ${route} route: an edited old-name ${kind} copy with an old-name pick still adopts the new name and keeps the old copy`, POSIX_ONLY, () =>
+        {
+            const r = RENAMES[kind];
+            const { env, plugins } = ROUTES[route];
+            let edited;
+            const { outs, steps } = seedRun(['install', 'update'], r.pick(r.now), {
+                env, args: [SCOPE, INSTALLED], ...(plugins ? { plugins } : {}),
+                each: (repo, i) =>
+                {
+                    if (i === 0)
+                    {
+                        const fresh = r.oldPath(repo, r.now);
+                        if (!fs.existsSync(fresh)) { fs.mkdirSync(path.dirname(fresh), { recursive: true }); fs.copyFileSync(path.join(SOURCE_AGENTS, `${r.now}.md`), fresh); }
+                        fs.cpSync(fresh, r.oldPath(repo, r.old), { recursive: true });
+                        fs.rmSync(fresh, { recursive: true, force: true });
+                        const hash = hashItem(r.oldPath(repo, r.old));
+                        fs.appendFileSync(r.file(repo, r.old), EDIT);
+                        edited = fs.readFileSync(r.file(repo, r.old), 'utf8');
+                        setStampLine(repo, r.pickLine, r.old);
+                        const lib = kind === 'skill' ? 'library-skills' : 'library-agents';
+                        const row = kind === 'skill' ? `skills/${r.old}` : `agents/${r.old}.md`;
+                        if (route === 'plugin') setStampLine(repo, lib, `${r.old}=${hash}`);
+                        else setStampLine(repo, 'managed-files', `${row}=${hash}`);
+                        return null;
+                    }
+                    return { old: fs.readFileSync(r.file(repo, r.old), 'utf8'), now: fs.existsSync(r.file(repo, r.now)), picked: pickedNames(repo) };
+                },
+            });
+            assert.equal(steps[1].old, edited, 'the old copy keeps its edit');
+            assert.ok(steps[1].picked[`${kind}s`].includes(r.now), 'the new name is picked');
+            if (route === 'copy' || kind === 'skill') assert.ok(steps[1].now, 'the new copy is written');
+            assert.match(outs[1], new RegExp(`${kind} kept: ${r.old}(\\.md)? - retired upstream, but edited since the stack wrote it`));
+        });
+    }
+}
+
+// A seat file no stamp line records: the project's own unless its text is the stack's render; a stamp with no picks line adopts either.
+const CORE_SEAT_OWN = '---\nname: evidence-gatherer\ndescription: mine\n---\nmy own seat\n';
+for (const route of Object.keys(ROUTES))
+{
+    test(`drop-keep, ${route} route: a bare update does not adopt a project's own core-named seat as a pick, but does adopt one at the stack's text`, POSIX_ONLY, () =>
+    {
+        const { env, plugins } = ROUTES[route];
+        const lay = (text) => (repo) =>
+        {
+            fs.mkdirSync(path.dirname(seatFile(repo)), { recursive: true });
+            if (text) fs.writeFileSync(seatFile(repo), text); else fs.copyFileSync(path.join(SOURCE_AGENTS, `${SEAT}.md`), seatFile(repo));
+        };
+        for (const [text, picked] of [[CORE_SEAT_OWN, false], [null, true]])
+        {
+            const { steps } = seedRun(['install', 'update'], `skill ${SKILL}\n`, {
+                env, args: [SCOPE, INSTALLED], ...(plugins ? { plugins } : {}),
+                each: (repo, i) => (i === 0 ? lay(text)(repo) : { picked: pickedNames(repo), deny: denyRows(repo) }),
+            });
+            assert.equal(steps[1].picked.agents.includes(SEAT), picked, text ? 'own seat stays unpicked' : 'the stack\'s text adopts');
+            if (text && route === 'plugin') assert.ok(steps[1].deny.includes(DENY_ROW), 'the deny stays');
+        }
+    });
+}
+
+test('drop-keep: a stamp with no picks line adopts an edited copy and an own seat as today', POSIX_ONLY, () =>
+{
+    const { steps } = seedRun(['install', 'update'], `skill ${SKILL}\n`, {
+        env: ROUTES.copy.env, args: [SCOPE, INSTALLED],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return { picked: pickedNames(repo), skill: fs.readFileSync(skillFile(repo), 'utf8') };
+            append(skillFile(repo));
+            fs.mkdirSync(path.dirname(seatFile(repo)), { recursive: true });
+            fs.writeFileSync(seatFile(repo), CORE_SEAT_OWN);
+            fs.writeFileSync(stampOf(repo), fs.readFileSync(stampOf(repo), 'utf8').replace(/^picked-(skills|agents):.*\n?/gm, ''));
+            return null;
+        },
+    });
+    assert.ok(steps[1].picked.skills.includes(SKILL), 'the edited copy is adopted');
+    assert.ok(steps[1].picked.agents.includes(SEAT), 'the own seat is adopted');
+});

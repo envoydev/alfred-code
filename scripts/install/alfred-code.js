@@ -492,7 +492,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const back = selection.readBack({
                 claudeDir, skillsDir, agentsDir, linked: recorded.map(lineOfLink),
                 foreignSkill: skillCheck.foreign,
-                keptUnpicked: unpickedKeep({ picked: lastPicked, records, skillsDir, agentsDir }),
+                keptUnpicked: unpickedKeep({ picked: lastPicked, records, skillsDir, agentsDir, renamed: manifest.renamed, seat: { records, agentsDir, sourceDir: resolved.dir, render: copyRender({ routes }, 'agent') } }),
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -1341,15 +1341,18 @@ function ownSeatKeep(ctx, route = 'plugin')
     };
 }
 
-// A copy a drop kept stays out of the read-back's picks: the stamp's picks line no longer names it and either its record shows an
-// edit since, or it is a seat no stamp line records (a project's own). A stamp with no picks line keeps the adoption of a disk copy.
-function unpickedKeep({ picked, records, skillsDir, agentsDir })
+// A copy a drop kept stays out of the read-back's picks: the stamp's picks line no longer names it (nor the name a release
+// renamed it to) and either its record shows an edit since, or it is a seat file the project owns (`ownSeatFile`). A stamp
+// with no picks line keeps the adoption of a disk copy.
+function unpickedKeep({ picked, records, skillsDir, agentsDir, renamed, seat })
 {
     return (kind, name) =>
     {
-        if (!picked || (picked[`${kind}s`] || []).some((e) => splitPick(e).name === name)) return false;
-        const file = kind === 'skill' ? path.join(skillsDir, name) : path.join(agentsDir, `${name}.md`);
-        return editedSince(records, kind, name, file) || (kind === 'agent' && records.ledgerHeld && recordOf(records, 'agent', name) === null);
+        if (!picked) return false;
+        const named = new Set([name, selection.renamedTo({ renamed, kind, name })]);
+        if ((picked[`${kind}s`] || []).some((e) => named.has(splitPick(e).name))) return false;
+        if (kind === 'skill') return editedSince(records, kind, name, path.join(skillsDir, name));
+        return editedSince(records, kind, name, path.join(agentsDir, `${name}.md`)) || ownSeatFile(seat, `${name}.md`);
     };
 }
 
@@ -1373,12 +1376,17 @@ function droppedKeep(ctx, category, name)
 // The copy route's twin: a picked seat whose file sits in `.claude/agents` with no record and text other than the render.
 function projectSeat(ctx, file)
 {
+    return ownSeatFile({ records: ctx.records, agentsDir: ctx.agentsDir, sourceDir: ctx.source.dir, render: copyRender(ctx, 'agent') }, file);
+}
+
+// The project's own seat file: no record on either stamp line (on a stamp that holds a ledger) and text other than the stack's render.
+function ownSeatFile({ records, agentsDir, sourceDir, render }, file)
+{
     const name = file.replace(/\.md$/, '');
-    if (!ctx.records.ledgerHeld || recordOf(ctx.records, 'agent', name) !== null) return false;
-    const mine = readOrNull(path.join(ctx.agentsDir, file));
+    if (!records.ledgerHeld || recordOf(records, 'agent', name) !== null) return false;
+    const mine = readOrNull(path.join(agentsDir, file));
     if (mine === null) return false;
-    const stack = readOrNull(path.join(ctx.source.dir, 'stack', 'agents', file));
-    const render = copyRender(ctx, 'agent');
+    const stack = readOrNull(path.join(sourceDir, 'stack', 'agents', file));
     return stack !== null && mine !== (render ? render(stack) : stack);
 }
 
