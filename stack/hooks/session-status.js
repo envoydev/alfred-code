@@ -1,7 +1,7 @@
 'use strict';
 // session-status.js - the session status file (2026-10-29): what the stack does at a full context, published per main
 // session for session-inspector at <project root>/.alfred/state/sessions/status/<session id>.json, schema 1 (the data
-// root's own .gitignore keeps it out of git; before 3.12.x it was <root>/.claude/session-inspector/status/). A public
+// root's own .gitignore keeps it out of git; through 3.12.1 it was <root>/.claude/session-inspector/status/). A public
 // contract: a field is never renamed, dropped or retyped, only added. No stdin and no process of its own -
 // history-session.js calls it at SessionStart and Stop, guard-answer.js at UserPromptSubmit, each inside a try.
 // Fail-open: nothing here throws, and a failed write leaves no half-written file.
@@ -664,9 +664,6 @@ function removeStatus(root, deps, options) {
         if (excludeMayHoldPair(top)) for (const key of members) late.add(key);
         continue;
       }
-      // a line a base still holding a file needs, and in a sweep with an except base the root form a linked worktree
-      // shares with the main checkout, is never dropped
-      const droppable = (line) => !keep.has(line) && !(exceptKey && line === ROOT_FORM_LINE);
       let common = null;
       try {
         const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'rev-parse', '--git-common-dir'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -684,6 +681,12 @@ function removeStatus(root, deps, options) {
         const [cmd, argv, opts] = d.prelude.gitSafe(['-C', top, 'worktree', 'list', '--porcelain'], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
         trees = String(exec(cmd, argv, opts)).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9).trim()).filter(Boolean);
       } catch { trees = null; }
+      // the root form is one line of the common exclude, shared by the main checkout and every linked worktree: a sweep keeps
+      // it while any work tree git lists still holds a legacy status file (an older release's session there writes it), and
+      // when the list could not be read
+      const rootFormNeeded = sweeping && (!trees || trees.some((tree) => holdsStatusFile(legacyStatusDir(tree))));
+      // a line a base still holding a file needs, an except base's root form and a root form a work tree still needs are never dropped
+      const droppable = (line) => !keep.has(line) && !(line === ROOT_FORM_LINE && (exceptKey || rootFormNeeded));
       const unused = (line) => {
         const m = /^\/(.+)\/\.claude\/session-inspector\/status\/$/.exec(line);
         if (!m || !trees || !trees.length) return false;

@@ -183,7 +183,7 @@ The score rule: the plan's score is the `total` of the round `released` names. W
 
 ## Session status file
 
-`<project root>/<data root>/state/sessions/status/<session id>.json` (`.alfred/...` by default; before 3.12.1 `.claude/session-inspector/status/`, no exclude line is written for the new file), written by the hooks - the project root being the folder the session started in, and only while alfred-mods (or session-inspector) is enabled or `ALFRED_CODE_SESSION_STATUS=on`. Its `plan` key is the plan
+`<project root>/<data root>/state/sessions/status/<session id>.json` (`.alfred/...` by default; through 3.12.1 `.claude/session-inspector/status/`, no exclude line is written for the new file), written by the hooks - the project root being the folder the session started in, and only while alfred-mods (or session-inspector) is enabled or `ALFRED_CODE_SESSION_STATUS=on`. Its `plan` key is the plan
 folder relative to the project root, forward slashes, one trailing slash, or `null` when the session has no plan. `plan` is set when the session runs a `plan-status.js` call that names a plan (`resume` or a writing verb other than
 `complete`), kept by every later write, and `null` again at the first write after the plan is completed or its folder
 is gone. A plan outside the project root is `null`, never a `../` path. `updatedAt` here is a full ISO 8601 time.

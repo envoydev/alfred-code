@@ -511,7 +511,7 @@ const STORES = [
     ...SESSION_PREFIXES.map(([prefix, cls]) => prefixRow('sessions', prefix, cls)),
     unlistedRow('sessions', SESSION_PREFIXES.map(([p]) => p), ['scoring']),
     {
-        // session-status.js writes <data root>/state/sessions/status/<sid>.json for session-inspector; before 3.12.x it
+        // session-status.js writes <data root>/state/sessions/status/<sid>.json for session-inspector; through 3.12.1 it
         // wrote <cwd>/.claude/session-inspector/status/<sid>.json, still read for a session an older release left.
         id: 'session-inspector', cls: 'meta', match: 'name',
         find: (ctx) =>

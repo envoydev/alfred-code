@@ -3554,7 +3554,7 @@ function validateFindings(text)
     const out = [];
     const own = String(text).split(/\n\s*Plugin directory checks/)[0];
     let listing = false;
-    for (const line of own.split('\n'))
+    for (const line of own.split(/\r?\n/))
     {
         if (/^\s*Provides:\s*$/.test(line)) { listing = true; continue; }
         const m = /^\s*\u276f\s+(.*)$/.exec(line);

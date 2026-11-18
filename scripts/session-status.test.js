@@ -588,7 +588,7 @@ test('T9 ids and payloads', () =>
     assert.ok(!fs.existsSync(path.join(elsewhere, '.claude')), 'no folder made outside the project');
 });
 
-test('the legacy sweep leaves a listed base whose .claude links out of the project alone (A8)', { skip: process.platform === 'win32' && 'a directory link needs a privilege' }, () =>
+test('the legacy sweep leaves a listed base whose .claude links out of the project alone (A8)', () =>
 {
     const root = project();
     const sub = path.join(root, 'sub');
@@ -1507,6 +1507,51 @@ test('the sweep: with an except folder that does not exist yet, the root-form li
     finally { side.drop(); }
 });
 
+// The main checkout holds an old legacy file and no list; an unlisted linked worktree holds one of the given age; the
+// stack's root-form pair sits in the shared exclude beside a line of the user's.
+function unlistedWorktreeSweep(worktreeFileAgeMs)
+{
+    const git = sweepGit();
+    const top = project();
+    git(top, 'init', '-q', '-b', 'main');
+    const side = sweepWorktree(top, git, worktreeFileAgeMs);
+    const exclude = path.join(top, '.git', 'info', 'exclude');
+    fs.writeFileSync(exclude, `/mine/\n${stackPair('')}`);
+    const mine = legacyStatusOf(top, 's-main');
+    const leaveOldFile = () => { fs.mkdirSync(path.dirname(mine), { recursive: true }); fs.writeFileSync(mine, '{}'); age(mine, 26 * 3600 * 1000); };
+    leaveOldFile();
+    return { top, side, exclude, mine, leaveOldFile, start: () => startAt({ root: top }, 'on') };
+}
+
+test('the sweep keeps the root-form pair while an unlisted linked worktree holds a young legacy file', () =>
+{
+    const f = unlistedWorktreeSweep(60000);
+    try
+    {
+        f.start();
+        assert.ok(!fs.existsSync(f.mine), 'the main checkout\'s old file goes');
+        assert.ok(fs.existsSync(f.side.file), 'the worktree\'s young file stays');
+        assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), `/mine/\n${stackPair('')}`, 'the shared root-form pair stays for it');
+    }
+    finally { f.side.drop(); }
+});
+
+test('the next sweep drops the root-form pair once no worktree holds a legacy file', () =>
+{
+    const f = unlistedWorktreeSweep(60000);
+    try
+    {
+        f.start();
+        assert.ok(fs.readFileSync(f.exclude, 'utf8').includes(stackPair('')), 'kept while the worktree holds its file');
+        fs.rmSync(f.side.file);
+        f.leaveOldFile();
+        f.start();
+        assert.ok(!fs.existsSync(f.mine));
+        assert.strictEqual(fs.readFileSync(f.exclude, 'utf8'), '/mine/\n', 'the pair is gone, the user\'s line stays');
+    }
+    finally { f.side.drop(); }
+});
+
 test('uninstall past the exclude deadline keeps the list and the pairs it could not reach, and says how many bases were not reached', () =>
 {
     const { execFileSync } = require('node:child_process');
@@ -1619,7 +1664,7 @@ test('an absolute ALFRED_CODE_DATA_PATH is the data root', () =>
     assert.strictEqual(S().statusFolder(root, { env }), path.join(data, 'state', 'sessions', 'status'));
 });
 
-test('a linked status folder refuses the write and the prune; a link inside the root is followed', { skip: process.platform === 'win32' && 'a directory link needs a privilege' }, () =>
+test('a linked status folder refuses the write and the prune; a link inside the root is followed', () =>
 {
     const env = (root) => ({ ALFRED_CODE_SESSION_STATUS: 'on', CLAUDE_PROJECT_DIR: root });
     DATA_PARTS.forEach((segment, index) =>

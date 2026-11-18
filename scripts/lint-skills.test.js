@@ -1770,7 +1770,7 @@ test('a comment line citing a spec, plan or sdd file under docs/superpowers is f
 
 // Check 47 read every `❯` line above the 'Plugin directory checks' header as a finding, and Claude Code 2.1.327
 // prints a 'Provides:' block of the plugin's components with the same marker - 119 false findings. The fixture is the
-// real output (the repo path replaced by <repo>).
+// real 2.1.327 output with the repo path as <repo> and the directory-checks block trimmed to its first row.
 function check47Fixture() {
     const { validateFindings } = require('./lint-skills.js');
     const lines = fs.readFileSync(path.join(__dirname, 'fixtures', 'plugin-validate-2.1.327.txt'), 'utf8').split('\n');
@@ -1795,6 +1795,16 @@ test('lint-skills.js check 47: a finding under any other header still counts', (
 test('lint-skills.js check 47: a line outside the listing still counts', () => {
     const { validateFindings, insert } = check47Fixture();
     const found = validateFindings(insert(1, ['  \u276f stray: x']));
+    assert.strictEqual(found.length, 1);
+    assert.match(found[0], /stray: x$/);
+});
+
+test('lint-skills.js check 47: CRLF output (Windows) reads the same: no finding in the fixture, a stray row still counts', () => {
+    const { validateFindings, text } = check47Fixture();
+    const crlf = text.split('\n').join('\r\n');
+    assert.deepStrictEqual(validateFindings(crlf), []);
+    const lines = crlf.split('\r\n');
+    const found = validateFindings(lines.slice(0, 1).concat('  \u276f stray: x', lines.slice(1)).join('\r\n'));
     assert.strictEqual(found.length, 1);
     assert.match(found[0], /stray: x$/);
 });
