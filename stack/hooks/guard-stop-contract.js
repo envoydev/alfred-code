@@ -3018,6 +3018,11 @@ const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
   String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
+  // The series ask the auto-run contract asks for (one ask for N outward writes, its question naming 'outward acts') waits for
+  // the user whatever verb its label uses: a pick made here would read as the user's approval of N writes (final review 2026-11-18).
+  String.raw`\boutward acts?\b`,
+  String.raw`\bcomment(?:s|ed|ing)?\b`,
+  String.raw`\b(?:update|create|edit|post)\b[^.;?\n]{0,40}\b(?:pages?|tickets?|issues?|comments?|posts?)\b`,
   // ... but not the fresh-session cost line ('this chat sends about 226k tokens with every message', '~254k tokens re-sent
   // per message'), so auto-mode can step past a fresh-session ask. Measured over the 2,656 real recommended questions to
   // 2026-10-16: this and the money-word narrowing below drop 91 of 955 hits, every one a cost line, the pay idiom or a URL

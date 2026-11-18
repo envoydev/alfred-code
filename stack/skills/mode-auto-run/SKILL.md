@@ -59,7 +59,7 @@ Each `Left for you:` command runs unattended when typed: auto-run stays on in th
 - `mode-auto-run` commits nothing itself; the solve flow's commit checkpoint does.
 - Never push, merge, deploy, publish, open a PR or pay unless the user's own pick in this run approved that exact act - each other one goes under `Left for you:`.
 - When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the
-  first, listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its
+  first, its question naming them 'outward acts' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its
   recommended option the whole series as listed. The user's pick is the approval a plan or project rule asks for each
   listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read
   back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN

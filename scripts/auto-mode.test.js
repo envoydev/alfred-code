@@ -480,6 +480,29 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
 });
 
+// final review, item 1: the series ask the run puts for N outward writes names its acts as 'outward acts', and the hook holds
+// it for the user whatever verb the label uses - a pick the hook made would be read as the user's approval of N writes.
+test('auto-mode asks: a series ask for outward writes waits for the user; the local recommended asks stay answered', () =>
+{
+    const p = project();
+    autoStamp(p, 'ser1');
+    for (const [question, label] of [['4 ticket comments are outward acts. Go ahead?', 'Comment on all 4 tickets (Recommended)'],
+        ['The run holds 5 outward acts. Which?', 'Add the 5 comments to PROJ-1..PROJ-5 as listed (Recommended)'],
+        ['The run holds 3 outward acts. Which?', 'Update the 3 Confluence pages as listed (Recommended)'],
+        ['The run holds 3 outward acts. Which?', 'Create the 3 pages (Recommended)'],
+        ['Three writes, one kind. Go?', 'Edit the 3 tickets as listed (Recommended)'],
+        ['Seven outward acts to list. Go?', 'Run the series as listed (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'ser1', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
+    const rowsBefore = rows(p, 'ser1').filter((x) => x.kind === 'auto-ask-waits').length;
+    assert.ok(rowsBefore >= 6, 'each wait is logged');
+    for (const [question, label] of [['Fix the issue now?', 'Fix it (Recommended)'], ['Drop the unused import?', 'Drop it (Recommended)'],
+        ['Dead code found.', 'Remove the dead code (Recommended)'], ['Commit the fix?', 'Commit now (Recommended)'],
+        ['Variable unused. Rename it?', 'Rename $value to $count (Recommended)'],
+        ['Plan ready: 4 steps in 2 files, too small to pay for seats. Approve it?', 'Approve - build in this session (Recommended)'],
+        ['This chat sends about 226k tokens with every message. Go on?', 'Run in this session (Recommended)']])
+        assert.ok(answered(ask(p, 'ser1', [q(question, [label, 'Not now'])])), `answered, a local act: ${question} ${label}`);
+});
+
 // 2026-10-16, the user's bug report: an auto-mode task-solve approval reached the user. 'too small to pay for seats' read
 // as an outward money act, so the ask waited; the shape check then sent it back for a fresh-session option (a new cycle in
 // a finished cycle's chat), and the re-sent ask waited on the same word.
@@ -1804,7 +1827,7 @@ test('auto-run off ends a live run even when the mode file cannot be saved: the 
 // ---------------------------------------------------------------------------------------------
 // the series rule: one ask covers a listed series of outward acts
 // ---------------------------------------------------------------------------------------------
-const SERIES = 'When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the first, listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed. The user\'s pick is the approval a plan or project rule asks for each listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN ask outranks the pick: then ask per act, as before.';
+const SERIES = 'When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the first, its question naming them \'outward acts\' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed. The user\'s pick is the approval a plan or project rule asks for each listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN ask outranks the pick: then ask per act, as before.';
 const folded = (text) => text.replace(/\s+/g, ' ');
 const readRepo = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
 
