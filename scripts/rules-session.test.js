@@ -728,7 +728,7 @@ test('members: a garbage child record is skipped, the other children still liste
     assert.deepStrictEqual(indexLines(got), ['- api: instructions none; rules none', '- web: instructions none; rules none']);
 });
 
-test('members: the ledger counts children only at 13 children - no head and no "and k more" line', () =>
+test('members: the ledger counts children only - 12 of 13 shown, the 13th in the and-1-more line', () =>
 {
     const root = members(manyChildren(13));
     part(root, 1);

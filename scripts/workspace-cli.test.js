@@ -966,7 +966,7 @@ process.on('exit', () => fs.writeFileSync(${JSON.stringify(count)}, String(n)));
     assert.strictEqual(fs.readFileSync(count, 'utf8'), '1');
 });
 
-test('a TAB or newline in a folder name becomes a space in the tab-separated output', () =>
+test('a TAB or newline in a folder name becomes a space in the tab-separated output', { skip: process.platform === 'win32' && 'NTFS rejects control characters in a name' }, () =>
 {
     const child = childOf('w\ts\nx');
     const out = cli('parent', '--root', child).out;
