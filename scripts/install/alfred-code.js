@@ -336,7 +336,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (seatsRouteWhy) { log(`!! seats route: .claude/settings.local.json is ${seatsRouteWhy} - not switched`); args.seatsRoute = ''; }
         // A workspace's seats route is its top's and members' together: a member-held seat is left out of the top's deny and a store
         // record follows the route, so switching one project would list a seat twice.
-        if (args.seatsRoute && workspace.inWorkspace({ projectRoot, stampFile, env, dataRoot: dataInfo.root }))
+        const inWorkspace = Boolean(args.seatsRoute || args.printPlan) && workspace.inWorkspace({ projectRoot, stampFile, env, dataRoot: dataInfo.root });
+        if (args.seatsRoute && inWorkspace)
         { log("!! seats route: a workspace's seats route is its top's and members' together - not switched here"); args.seatsRoute = ''; }
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes). The skills key reads the flag, settings.json's
@@ -627,7 +628,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         {
             for (const line of selection.renderPlan(lists)) plain(line);
             plain(`plan answered: hooks=${answered.hooks ? 'yes' : 'no'} agents=${answered.agents ? 'yes' : 'no'}`);
-            plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'}`);
+            const seatsSwitch = plugins.seatsSwitch({ inWorkspace, sharedKey: plugins.sharedSkillsKeyAt({ claudeDir, scope: args.scope }) });
+            plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'} skills-from=${routes.skillsFrom} seats-switch=${seatsSwitch}`);
             if (args.planOut)
             {
                 if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env: cliEnv }), projectRoot) : [];

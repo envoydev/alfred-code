@@ -1934,3 +1934,46 @@ test('update reads the installer\'s seats: line in its one grep and reports it a
     assert.ok(grep[1].split('|').includes('seats:'), 'the grep\'s alternation names seats:');
     assert.match(flat(refBody('update-close')), /- \*\*SEATS\*\* - the grep's `seats:` line verbatim: where the agents come from on this route, so an absent `\.claude\/agents` reads as the plugin route, not a loss\./);
 });
+
+// Task 10 of the agents route switch: configure's Environment area puts one ask, `Where your agents come from`, whose first
+// option is the install's CURRENT route; the route is read from step 1's `plan routes:` line, and `--seats-route` rides
+// step 11's installer call only when the answer changes it.
+test('configure: the agents-route ask is a template per current route, each marking its own route first', () =>
+{
+    const configure = cmdBody('configure');
+    assert.strictEqual(firstOption(configure, 'Where your agents come from'), 'Keep them in the plugin (Recommended)', 'the plugin-route variant');
+    assert.ok(configure.includes("- 'Keep them as files in .claude/agents (Recommended)' - "), 'the copy-route variant');
+    const variants = askBlocks(configure).filter((b) => b[0].startsWith('Where your agents come from'));
+    assert.strictEqual(variants.length, 2, 'one template per route');
+    for (const b of variants)
+    {
+        const opts = b.filter((l) => /^- '/.test(l));
+        assert.strictEqual(opts.length, 2, 'the current route and the other one');
+        assert.match(opts[0], /\(Recommended\)'/);
+        assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
+    }
+    assert.ok(variants[0].some((l) => l.startsWith("- 'Files in .claude/agents' - ")), 'plugin variant: the other route');
+    assert.ok(variants[1].some((l) => l.startsWith("- 'Back to the plugin' - ")), 'copy variant: the other route');
+});
+
+test('configure: the route is read from the plan routes line, the ask is skipped on seats-switch, and the flag rides step 11 on a change only', () =>
+{
+    const configure = flat(cmdBody('configure'));
+    assert.match(configure, /`plan routes: skills=<plugin\|copy> hooks=<plugin\|copy> skills-from=<flag\|shared\|ledgered\|env> seats-switch=<open\|shared\|workspace>`/);
+    assert.match(configure, /`seats-switch=` other than `open` puts no ask and says why in one line/);
+    assert.match(configure, /never from a settings file by hand/);
+    assert.match(configure, /`--seats-route copy` \('Files in \.claude\/agents'\) or `--seats-route plugin` \('Back to the plugin'\)/);
+    assert.match(configure, /\[--seats-route plugin\|copy\]/, 'step 11\'s installer call carries the flag');
+    assert.match(configure, /plugin-settings or seats route change was chosen/, 'a route change is a change that runs the installer');
+});
+
+test('update-history: an after 3.12.1 section names the switch, the kept copies and the bare seat names', () =>
+{
+    const history = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'update-history.md'), 'utf8');
+    const at = history.indexOf('## after 3.12.1 - the agents route can be switched from configure');
+    assert.ok(at >= 0, 'the section');
+    const next = history.indexOf('\n## ', at + 4);
+    const section = flat(history.slice(at, next < 0 ? undefined : next));
+    for (const part of ['overwriting a hand-edited copy', '--seats-route', '/alfred-code:configure', 'is kept on either route', 'A project\'s own seat file', 'bare names'])
+        assert.ok(section.includes(part), part);
+});

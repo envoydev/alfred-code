@@ -133,14 +133,32 @@ function committedRoutes({ env = {}, shared = {}, personal = {}, scope, ledgerEn
 // the personal one (an unreadable file reads as empty). N6: the installer, setup's derivation
 // (derive-state.js) and update's new-item classification (update-preflight.js) all read them here.
 // `ledgerEnv` is the stamp's `managed-env` map for settings.local.json (`ledgerEnvOf`), `flag` the run's `--seats-route`.
+function envBlockOf(claudeDir, name)
+{
+    try { const e = parseJson(fs.readFileSync(path.join(claudeDir, name), 'utf8')).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
+    catch { return {}; }
+}
+
 function committedRoutesAt({ env = {}, claudeDir, scope = 'project', ledgerEnv = null, flag = '', log = () => {} })
 {
-    const envIn = (name) =>
-    {
-        try { const e = parseJson(fs.readFileSync(path.join(claudeDir, name), 'utf8')).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
-        catch { return {}; }
-    };
-    return committedRoutes({ env, shared: envIn('settings.json'), personal: envIn('settings.local.json'), scope, ledgerEnv, flag, log });
+    return committedRoutes({ env, shared: envBlockOf(claudeDir, 'settings.json'), personal: envBlockOf(claudeDir, 'settings.local.json'), scope, ledgerEnv, flag, log });
+}
+
+// Whether the shared settings.json holds the skills route key - the team's committed choice, which closes the switch.
+// Local scope has no shared file.
+function sharedSkillsKeyAt({ claudeDir, scope })
+{
+    return scope !== 'local' && envOf(envBlockOf(claudeDir, 'settings.json'), SKILLS_SUFFIX) !== undefined;
+}
+
+// What `--print-plan` tells configure about the seats-route ask: put it (`open`), skip it because settings.json decides
+// (`shared`), or skip it because a workspace's top and members share one route (`workspace`). A workspace comes first,
+// the same order the flag's refusals take.
+const SEATS_SWITCH = Object.freeze({ open: 'open', shared: 'shared', workspace: 'workspace' });
+function seatsSwitch({ inWorkspace, sharedKey })
+{
+    if (inWorkspace) return SEATS_SWITCH.workspace;
+    return sharedKey ? SEATS_SWITCH.shared : SEATS_SWITCH.open;
 }
 
 // The stamp's `managed-env` rows for settings.local.json, null where the stamp or its ledger is absent.
@@ -1034,7 +1052,7 @@ module.exports = {
     pluginFloors, floorLines,
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, leftAt, effectiveOn, withEffective,
-    pluginRoutes, committedRoutes, committedRoutesAt, ledgerEnvOf, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, projectKey,
+    pluginRoutes, committedRoutes, committedRoutesAt, sharedSkillsKeyAt, seatsSwitch, ledgerEnvOf, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, projectKey,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, dropStaleRetired, retirementDue, updatePlugins, extraMarketplaces,
     copyRouteStandDown, restoreStoodDown, standDownScope, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins, foreignEntry, foreignEntries,

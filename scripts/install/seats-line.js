@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { stackSeat } = require('../derive-state.js');
 
+const BACK_TO_PLUGIN = ' - /alfred-code:configure (Environment) moves them back into the plugin';
+
 // The one log line that says where the agents come from on this route (the plugin carries them, or
 // they were copied), so an absent .claude/agents after an update reads as the route, not as a loss. On the copy route the
 // seat files of an earlier, wider pick stay on disk, so the line counts the picked ones and names the rest.
@@ -12,9 +14,10 @@ function seatsLine({ viaPlugin, coreSeats, switchedOff, picked, earlier })
     if (!viaPlugin)
     {
         const head = `seats: copy route - ${picked} picked in .claude/agents`;
-        return earlier > 0
+        const line = earlier > 0
             ? `${head}; ${earlier} earlier copies not picked stay there - the stack no longer updates them; delete a file to drop its seat`
             : head;
+        return `${line}${BACK_TO_PLUGIN}`;
     }
     return `seats: ${coreSeats - switchedOff} on from the alfred-code plugin, ${switchedOff} switched off in permissions.deny`
         + ' - no .claude/agents on this route (/alfred-code:status lists them)';

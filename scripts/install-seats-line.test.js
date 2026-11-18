@@ -14,6 +14,7 @@ const { seatsLine, countSeatFiles } = require('./install/seats-line.js');
 
 const ONE_SEAT = 'skill csharp\nrule markdown-docs\nagent evidence-gatherer\n';
 const SEATS_LINE = /^==> seats: .*$/m;
+const BACK_TO_PLUGIN = ' - /alfred-code:configure (Environment) moves them back into the plugin';
 const CORE_SEATS = placement().plugins[CORE].agents.length;
 
 test('install-seats-line: the plugin route names the seats on, the seats switched off, and where the agents are', POSIX_ONLY, () =>
@@ -32,7 +33,7 @@ test('install-seats-line: the copy route says how many seats were copied into .c
     const { out } = seedRun('install', ONE_SEAT, {
         args: ['--scope', 'project'], env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' },
     });
-    assert.ok(out.includes('==> seats: copy route - 1 picked in .claude/agents\n'), out);
+    assert.ok(out.includes(`==> seats: copy route - 1 picked in .claude/agents${BACK_TO_PLUGIN}\n`), out);
     assert.doesNotMatch(out, /on from the alfred-code plugin/);
 });
 
@@ -112,12 +113,12 @@ test('install-seats-line: the copy route counts the seats that are in .claude/ag
 test('install-seats-line: the copy route names earlier copies', () =>
 {
     assert.strictEqual(seatsLine({ viaPlugin: false, picked: 3, earlier: 45 }),
-        'seats: copy route - 3 picked in .claude/agents; 45 earlier copies not picked stay there - the stack no longer updates them; delete a file to drop its seat');
+        `seats: copy route - 3 picked in .claude/agents; 45 earlier copies not picked stay there - the stack no longer updates them; delete a file to drop its seat${BACK_TO_PLUGIN}`);
 });
 
 test('install-seats-line: no earlier copies, one clause', () =>
 {
-    assert.strictEqual(seatsLine({ viaPlugin: false, picked: 3, earlier: 0 }), 'seats: copy route - 3 picked in .claude/agents');
+    assert.strictEqual(seatsLine({ viaPlugin: false, picked: 3, earlier: 0 }), `seats: copy route - 3 picked in .claude/agents${BACK_TO_PLUGIN}`);
 });
 
 test('install-seats-line: countSeatFiles counts seats on disk once', POSIX_ONLY, () =>

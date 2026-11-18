@@ -8,10 +8,10 @@ Written at every scope:
 
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
 - **`.claude/hooks/`** - only the five engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`, `plan-status.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
-- **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin.
+- **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin. On the copy route (`/alfred-code:configure` asks which, or `--seats-route copy`) each picked seat is a file here; an edited copy is overwritten on the next update with a line saying so, and a seat file of your own named like a core seat is kept and named.
 - **`.claude/settings.local.json`** - the stack's settings, at every scope (3.11.0). Where git ignores the file (the stack warns when it does not), none of it reaches a teammate: their own first `/alfred-code:update` writes it on their machine.
   - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick, and the secret-file rows.
-  - the `env` block - the stack's own keys.
+  - the `env` block - the stack's own keys, and `ALFRED_CODE_SKILLS_VIA_PLUGIN` (`false` for the copy route, `true` for the plugin) once the agents route was switched; a switch never removes it, and every core seat's `Agent(alfred-code:<seat>)` is denied on the copy route.
   - the `attribution` keys - commit, PR and session-link attribution off, each only where the project set none.
   - custom memory's `autoMemoryEnabled: false` when the `ALFRED_CODE_MEMORY=custom` choice is made.
 - **`.claude/settings.json`** - nothing the stack writes itself. At project scope `claude plugin install` enables the plugins here. An older install's rows move to `settings.local.json` on the first update; a row you changed since it was written stays here, named in the update's report.

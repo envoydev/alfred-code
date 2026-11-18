@@ -89,7 +89,7 @@ test('install-seats-route: --seats-route copy over a garbage settings.local.json
 });
 
 const SEATS_LINE = /^==> seats: .*$/m;
-const COPY_SEATS = '==> seats: copy route - 1 picked in .claude/agents';
+const COPY_SEATS = '==> seats: copy route - 1 picked in .claude/agents - /alfred-code:configure (Environment) moves them back into the plugin';
 
 test('install-seats-route: after --seats-route copy, three plain updates stay on the copy route', POSIX_ONLY, () =>
 {
