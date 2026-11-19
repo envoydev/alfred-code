@@ -1891,8 +1891,10 @@ if (isShellTool(payload.tool_name)) {
       return args.some(secretWord);
     };
     let leak = null;
-    for (const pipeline of raw.split(/&&|\|\||[;\n]|&(?!&)/)) {
-      const segs = pipeline.split('|').map((s) => s.trim().split(/\s+/).filter(Boolean));
+    // a script typed for another shell (`bash -c '...'`, `eval '...'`) is unwrapped and read by its own words
+    const unwrapped = raw.replace(/(?:^|[\s;&|(])(?:sudo\s+)?(?:(?:ba|z|da|k)?sh|pwsh|powershell)(?:\.exe)?(?:\s+-[a-zA-Z]+)*?\s+-(?:[a-zA-Z]*c|command)\s+|(?:^|[\s;&|(])eval\s+/g, ';');
+    for (const pipeline of unwrapped.split(/&&|\|\||[;\n]|&(?!&)/)) {
+      const segs = pipeline.split('|').map((s) => s.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^['"]+|['"]+$/g, '')));
       if (!segs.some((w) => w.slice(1).some(secretWord))) continue;
       const verbs = segs.map((w) => String(w[0] || '').toLowerCase());
       if (verbs.some((v) => ['base64', 'xxd', 'od', 'hexdump', 'rev', 'fold', 'diff', 'cmp', 'sdiff'].includes(v)))

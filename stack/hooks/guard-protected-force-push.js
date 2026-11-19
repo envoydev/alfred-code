@@ -76,8 +76,10 @@ function askUnread(command, judge)
     process.exit(0);
 }
 // One command's words per segment, read off the raw text: a split on && || ; & | and newlines, quotes dropped from a
-// word. Only the words of one segment are judged together, so `rm -rf dist && cd ..` is no recursive delete of `..`.
-const segmentsOf = (c) => String(c).split(/&&|\|\||[;&|\n]/).map((s) => s.trim().split(/\s+/).filter(Boolean)
+// word. Only the words of one segment are judged together, so `rm -rf dist && cd ..` is no recursive delete of `..`. A
+// script typed for another shell (`bash -c '...'`, `eval '...'`) is unwrapped first and judged by its own words.
+const CARRIER = /(?:^|[\s;&|(])(?:sudo\s+)?(?:(?:ba|z|da|k)?sh|pwsh|powershell)(?:\.exe)?(?:\s+-[a-zA-Z]+)*?\s+-(?:[a-zA-Z]*c|command)\s+|(?:^|[\s;&|(])eval\s+/g;
+const segmentsOf = (c) => String(c).replace(CARRIER, ';').split(/&&|\|\||[;&|\n]/).map((s) => s.trim().split(/\s+/).filter(Boolean)
     .map((w) => w.replace(/^['"]+|['"]+$/g, ''))).filter((w) => w.length);
 // The verb after `git` (or `sudo git`), past git's own options; -C and -c take a value.
 const gitVerb = (w) =>

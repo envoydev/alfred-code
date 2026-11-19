@@ -294,7 +294,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   recommendation: a recursive delete of the root, home, current or parent dir; a discard of uncommitted work or a stash;
   a force push or delete of `main`, `master` or `develop`, or a force push naming no branch; a forge merge or release
   (not once its publish half is switched off); a secret file encoded, compared, sent, piped on, or printed where no
-  masker runs. Every other command runs unasked, and the dispatcher joins two asks' reasons into one prompt. A block
+  masker runs. A script typed for another shell (`bash -c '...'`, `eval '...'`) is judged by its own words; a script
+  piped into a shell cannot be read, so it asks with 'approve only if you trust where it comes from'. Every other
+  command runs unasked, and the dispatcher joins two asks' reasons into one prompt. A block
   stalled an auto-run and the repair, which runs through the shell.
   Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
   dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
