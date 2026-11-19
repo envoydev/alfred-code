@@ -73,10 +73,57 @@ if (require.main === module) {
 const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\/g, '/'); return /^(?:\/|[A-Za-z]:\/)/.test(raw) ? raw.replace(/\/+$/, '') || '.alfred' : '.alfred'; };
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs`;
 
-// The reader every git guard shares (heredoc bodies are data there, carried scripts are shell). A copy that runs before
-// it lands fails open like every gate here (the parity test's copy set), rather than judging with a second, weaker reader.
-let shellWrites;
-try { shellWrites = require('./shell-writes.js'); } catch { process.exit(0); }
+// The reader every git guard shares (heredoc bodies are data there, carried scripts are shell); never a second, weaker
+// reader here - without it the command is asked about below (askUnread).
+let shellWrites = null;
+try { shellWrites = require('./shell-writes.js'); } catch { /* askUnread, once the command is read */ }
+// A missing shell-writes.js (only on a broken install): this guard has no reader, so it reads the raw text alone. A
+// command that can break something it cannot undo goes to the user's permission prompt with that harm named and an
+// honest recommendation; every other command runs as before. Never a block, and never a prompt for a command that is
+// safe: the guard is there to help the task along, not to stall it (the user's ruling, 2026-11-19, on the hooks
+// audit's Q6 - a block stalled an auto-run and the repair, which runs through the shell).
+function askUnread(command, judge)
+{
+    const harm = judge(command);
+    if (!harm) process.exit(0);
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+        permissionDecisionReason: `${harm.why}. ${harm.advice} (shell-writes.js is missing beside ${require('path').basename(__filename)}, so this guard read the text only; /alfred-code:update repairs the install.)` } }));
+    process.exit(0);
+}
+// One command's words per segment, read off the raw text: a split on && || ; & | and newlines, quotes dropped from a
+// word. Only the words of one segment are judged together, so `rm -rf dist && cd ..` is no recursive delete of `..`.
+const segmentsOf = (c) => String(c).split(/&&|\|\||[;&|\n]/).map((s) => s.trim().split(/\s+/).filter(Boolean)
+    .map((w) => w.replace(/^['"]+|['"]+$/g, ''))).filter((w) => w.length);
+// The verb after `git` (or `sudo git`), past git's own options; -C and -c take a value.
+const gitVerb = (w) =>
+{
+    let i = w[0] === 'sudo' ? 1 : 0;
+    if (!/^git(?:\.exe)?$/.test(w[i] || '')) return null;
+    for (i++; i < w.length && w[i].startsWith('-'); i += /^-[Cc]$/.test(w[i]) ? 2 : 1);
+    return i < w.length ? { verb: w[i], rest: w.slice(i + 1) } : null;
+};
+const RM_TARGETS = new Set(['/', '/*', '~', '~/', '~/*', '$HOME', '${HOME}', '$HOME/', '${HOME}/', '$HOME/*', '${HOME}/*',
+    '.', './', './*', '..', '../', '../*', '*', '$PWD', '${PWD}', '$PWD/', '$PWD/*', '${PWD}/*']);
+const RM_HARM = (c) =>
+{
+    for (const w of segmentsOf(c))
+    {
+        const at = w[0] === 'sudo' ? 1 : 0;
+        const args = w.slice(at + 1);
+        if (/^(?:rm|rmdir|del|rd|erase|remove-item|ri)$/i.test(w[at] || '')
+            && args.some((a) => /^-[a-zA-Z]*[rR][a-zA-Z]*$/.test(a) || /^(?:--recursive|-recurse|\/s)$/i.test(a))
+            && args.some((a) => RM_TARGETS.has(a) || /^[A-Za-z]:\\?$/.test(a)))
+            return { why: 'This recursively deletes the root, the home dir, the current or parent dir or everything in it, which cannot be undone', advice: 'Recommended: deny.' };
+        const g = gitVerb(w);
+        if (g && ((g.verb === 'clean' && g.rest.some((a) => /^-[a-zA-Z]*f/.test(a) || a === '--force'))
+            || (g.verb === 'reset' && g.rest.includes('--hard'))
+            || (g.verb === 'checkout' && (g.rest.includes('--') || g.rest.includes('.')))
+            || (g.verb === 'restore' && !(g.rest.some((a) => a === '--staged' || a === '-S') && !g.rest.some((a) => a === '--worktree' || a === '-W')))
+            || (g.verb === 'stash' && ['drop', 'clear'].includes(g.rest[0]))))
+            return { why: 'This drops uncommitted changes or a stash for good', advice: 'Recommended: approve if git status and git stash list show nothing you want to keep, else deny.' };
+    }
+    return null;
+};
 // 2.8.0: an ALLOW receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one is still read for the
 // 2.x line, and is the only path when layout.js is not beside this file.
 let layout = null;
@@ -870,6 +917,7 @@ function main()
     })();
 
     const rawCommand = String(payload?.tool_input?.command ?? '');
+    if (!shellWrites) askUnread(rawCommand, RM_HARM);
 
     // A marketplace removed with no --scope goes from EVERY settings scope, and the CLI uninstalls every plugin
     // installed from it, in every project on the machine (`claude plugin marketplace remove --help`: 'Omit to remove

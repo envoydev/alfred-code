@@ -286,7 +286,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   carries it too (audit 2026-10-30 HK-21, the plan's ruling: a crashed `file-guards.js` let a Read of a credential file
   through), so a broken install blocks every Read, Edit, Write and Grep as well; the secret guard's own
   filesystem-server row carries it too (hooks audit 2026-11-19 B6-S3), and every other hook keeps the default
-  `continue`. Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
+  `continue`.
+  A MISSING HELPER never blocks (the user's ruling, 2026-11-19, on the hooks audit's Q6): without `shell-writes.js` the
+  rm, force-push and commit guards and the secret guard's shell route read the raw words one segment at a time
+  (`askUnread`, one copy per guard, held identical by `guard-seam.test.js`), and only a command that can break something
+  it cannot undo goes to the user's prompt (`permissionDecision: 'ask'`) with the harm named and an honest
+  recommendation: a recursive delete of the root, home, current or parent dir; a discard of uncommitted work or a stash;
+  a force push or delete of `main`, `master` or `develop`, or a force push naming no branch; a forge merge or release
+  (not once its publish half is switched off); a secret file encoded, compared, sent, piped on, or printed where no
+  masker runs. Every other command runs unasked, and the dispatcher joins two asks' reasons into one prompt. A block
+  stalled an auto-run and the repair, which runs through the shell.
+  Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
   dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
   rollback is dropping the dispatcher's `BLOCK_ON_FAILURE` row - an update then takes the key off the copy route's entry -
   or `claude plugin disable` on the plugin route. An older Claude Code drops the key: its hook entry is a non-strict

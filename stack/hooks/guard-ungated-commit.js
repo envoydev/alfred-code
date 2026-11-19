@@ -111,11 +111,50 @@ if (cursorOff) process.exit(0);
 // call as a COMMAND WORD - past assignments, keywords and wrappers - and walks the call's options word by word. The regex
 // family this guard kept here matched the options instead, and a run of them backtracked: `git` + 36 x ' -c' +
 // '; git push' took 67s. A `git` in another command's arguments (`echo git push`) is no call (R3-m7), and a heredoc
-// body or a quoted span is data, never a call. The guard ships beside the module; a copy that runs before it lands
-// judges nothing.
+// body or a quoted span is data, never a call. The guard ships beside the module.
+// A missing shell-writes.js (only on a broken install): this guard has no reader, so it reads the raw text alone. A
+// command that can break something it cannot undo goes to the user's permission prompt with that harm named and an
+// honest recommendation; every other command runs as before. Never a block, and never a prompt for a command that is
+// safe: the guard is there to help the task along, not to stall it (the user's ruling, 2026-11-19, on the hooks
+// audit's Q6 - a block stalled an auto-run and the repair, which runs through the shell).
+function askUnread(command, judge)
+{
+    const harm = judge(command);
+    if (!harm) process.exit(0);
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+        permissionDecisionReason: `${harm.why}. ${harm.advice} (shell-writes.js is missing beside ${require('path').basename(__filename)}, so this guard read the text only; /alfred-code:update repairs the install.)` } }));
+    process.exit(0);
+}
+// One command's words per segment, read off the raw text: a split on && || ; & | and newlines, quotes dropped from a
+// word. Only the words of one segment are judged together, so `rm -rf dist && cd ..` is no recursive delete of `..`.
+const segmentsOf = (c) => String(c).split(/&&|\|\||[;&|\n]/).map((s) => s.trim().split(/\s+/).filter(Boolean)
+    .map((w) => w.replace(/^['"]+|['"]+$/g, ''))).filter((w) => w.length);
+// The verb after `git` (or `sudo git`), past git's own options; -C and -c take a value.
+const gitVerb = (w) =>
+{
+    let i = w[0] === 'sudo' ? 1 : 0;
+    if (!/^git(?:\.exe)?$/.test(w[i] || '')) return null;
+    for (i++; i < w.length && w[i].startsWith('-'); i += /^-[Cc]$/.test(w[i]) ? 2 : 1);
+    return i < w.length ? { verb: w[i], rest: w.slice(i + 1) } : null;
+};
+const COMMIT_HARM = (c) =>
+{
+    // the publish half switched off (`guard-ungated-commit:push` in ALFRED_CODE_HOOKS_OFF) asks nothing, as it gates nothing
+    try { if (require('./hook-prelude.js').partOff('guard-ungated-commit', 'push')) return null; }
+    catch { if (envOf(process.env, 'PUSH_GATE') === '0') return null; }
+    for (const w of segmentsOf(c))
+    {
+        if (!/^(?:gh|glab)$/.test(w[0])) continue;
+        const [sub, verb] = [w[1], w[2]];
+        if (((sub === 'pr' || sub === 'mr') && verb === 'merge') || (sub === 'release' && ['create', 'delete', 'upload', 'edit'].includes(verb))
+            || (sub === 'repo' && verb === 'delete'))
+            return { why: 'This merges, releases or deletes on the forge, which a revert does not take back', advice: 'Recommended: approve if the change was reviewed, else deny.' };
+    }
+    return null;
+};
 let nativePath = null;
-try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
-if (!nativePath) process.exit(0);
+try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* asked about just below */ }
+if (!nativePath) askUnread(String((payload.tool_input || {}).command || ''), COMMIT_HARM);
 const sw = require(path.join(__dirname, 'shell-writes.js'));
 // A git ALIAS runs another git command - or, with `!`, a shell command - and git resolves it before it runs: `git ci -m
 // x` with `alias.ci = commit` committed ungated on every tree (2.1.6 review T20). A script handed to a shell - `sh -c

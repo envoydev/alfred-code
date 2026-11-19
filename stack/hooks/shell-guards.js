@@ -315,7 +315,10 @@ function combine(results)
         }
         if (reason !== null) { blocks.push({ text: reason, exit: false }); continue; }
         if (hso.updatedInput && typeof hso.updatedInput === 'object' && !Array.isArray(hso.updatedInput)) inputs.push(hso.updatedInput);
-        if (RANK[hso.permissionDecision] > (decision ? RANK[decision.value] : 0))
+        // two guards that both ask: the prompt names every reason, so no harm is hidden behind another (2026-11-19)
+        if (decision && hso.permissionDecision === 'ask' && decision.value === 'ask' && hso.permissionDecisionReason)
+            decision.reason = [decision.reason, hso.permissionDecisionReason].filter(Boolean).join('\n');
+        else if (RANK[hso.permissionDecision] > (decision ? RANK[decision.value] : 0))
             decision = { value: hso.permissionDecision, reason: hso.permissionDecisionReason };
     }
 

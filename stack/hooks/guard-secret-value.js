@@ -1873,6 +1873,43 @@ if (isShellTool(payload.tool_name)) {
       'Per alfred-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');
   }
+  // Without shell-writes.js the reader names no store, `.env` or key file, so the raw words are read here: only a command
+  // that can leak a secret file's values the masker cannot cover asks - an encoder or comparison in the same pipeline
+  // (its output is the values transformed), a send off the machine, or a print in the mode no masker covers (coreMode);
+  // a copy, a move, a presence check or a template (`.env.example`) runs unasked (the user's ruling, 2026-11-19, on the
+  // hooks audit's Q6: never a block, never a prompt for a safe command, an honest recommendation).
+  if (!shellWrites) {
+    const secretWord = (a) => { const x = a.replace(/^['"@<]+|['"]+$/g, ''); return !TEMPLATE_FILE.test(x)
+      && (storeNameTests(x).MENTION.test(x) || x.includes(KEY_FILE) || /(?:^|[\\/])\.(?:env|secrets)(?:\.[\w-]+)?$/i.test(x)); };
+    // a print of a secret FILE: for grep, rg, awk and sed the first word past the options is the pattern or the script,
+    // never a file, so `grep -n '.env' README.md` prints no secret
+    const printsSecret = (w) => {
+      const verb = String(w[0] || '').toLowerCase();
+      if (!['cat', 'less', 'more', 'head', 'tail', 'grep', 'rg', 'awk', 'sed', 'type', 'get-content', 'gc', 'strings'].includes(verb)) return false;
+      let args = w.slice(1);
+      if (['grep', 'rg', 'awk', 'sed'].includes(verb)) { const at = args.findIndex((a) => !a.startsWith('-')); if (at >= 0) args = args.slice(0, at).concat(args.slice(at + 1)); }
+      return args.some(secretWord);
+    };
+    let leak = null;
+    for (const pipeline of raw.split(/&&|\|\||[;\n]|&(?!&)/)) {
+      const segs = pipeline.split('|').map((s) => s.trim().split(/\s+/).filter(Boolean));
+      if (!segs.some((w) => w.slice(1).some(secretWord))) continue;
+      const verbs = segs.map((w) => String(w[0] || '').toLowerCase());
+      if (verbs.some((v) => ['base64', 'xxd', 'od', 'hexdump', 'rev', 'fold', 'diff', 'cmp', 'sdiff'].includes(v)))
+        leak = 'This encodes or compares a secret file, and that output is the values transformed, which no masker can hide';
+      else if (segs.some((w) => ['curl', 'wget', 'scp', 'nc', 'rsync', 'sftp'].includes(String(w[0] || '').toLowerCase()) && w.slice(1).some(secretWord)))
+        leak = 'This sends a secret file off this machine';
+      else if (segs.some(printsSecret) && (coreMode(payload) || segs.length > 1))
+        leak = coreMode(payload) ? 'This prints a secret file, and in this session no masker hides the values, so they stay in this transcript'
+          : 'This prints a secret file into another command, and the masker covers only a print that stands alone';
+      if (leak) break;
+    }
+    if (leak) {
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+        permissionDecisionReason: `${leak}. Recommended: deny; the guard's --presence reads the file without its values. (shell-writes.js is missing beside ${pathMod.basename(__filename)}, so this guard read the text only; /alfred-code:update repairs the install.)` } }));
+    }
+    process.exit(0);
+  }
   const cwd = payload.cwd || process.cwd();
   const sh = shellEntries(raw, cwd);
   const carried = storeCarry(raw, cwd, sh);
