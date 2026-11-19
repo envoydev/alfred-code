@@ -63,6 +63,9 @@ Two places, because one is a record and the other is the switch:
     for (2026-11-04). When the run will end in a merge, ask for it before the user leaves - they merge it themselves
     (`! gh pr merge <n> --merge`) or add a permission rule for it. Never route around a denial; what depends on the
     merge, such as tags or a marketplace move, waits with it.
+  - A thing this run made and recorded that holds no work, and that
+    the `cleanup` rule removes is not such a deletion: it is removed by its recorded identity alone (the user's
+    go-ahead, 2026-11-19).
 - A guard's security ask - a credential shown, work discarded, a write outside the project, a protective guard
   switched off - is never auto-run's to answer, whatever the user authorised around it: take its safe option and list
   the act under `Left for you`. Only the user's own pick of its unsafe option opens it; a reply that merely implies it

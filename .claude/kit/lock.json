@@ -1,11 +1,11 @@
 {
-  "kit": "claude-kit@f5913e2",
+  "kit": "claude-kit@79cd59e",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
     ".claude/agents/plan-grader.md": "051efe60f22cc7128524d197a35656bb966ced61806be2c680d370d89952322d",
     ".claude/rules/auto-run.md": "f22ebf2cc96b8824b31bc005cf6c77e8f969ebb58d882d9016dcbcafaf01a2f7",
-    ".claude/rules/cleanup.md": "0699161912e7102d1dd55d2240f91678e212939a43e1f89ea6333ca7368c8561",
+    ".claude/rules/cleanup.md": "f38bcfc09dc0b0250a568b5472d38714e9787320604fe6fc91b9161c4970b215",
     ".claude/rules/commits.md": "c8da61a6def2fa013c60e95b94d2367a55046e8beee2ca6dd82117a7a017017c",
     ".claude/rules/communication.md": "d5910772f869c6653c04a04afb0ab4ebd4935cfedf04b808d1833b1318c108a1",
     ".claude/rules/execution.md": "cd24e51e2f727d81fb801b9c342156d448abab6f99c15f005ba97b35fd4f2d47",
@@ -16,7 +16,7 @@
     ".claude/rules/skill-authoring.md": "8becdf7851bb7beac89d16444481764198de73e7a26dd34f90f5ccc4b91f5484",
     ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
     ".claude/rules/typescript.md": "3697ea3da2f25bdd6e48178b5cb33c329adb642627c0d07a3e11e39c51735f47",
-    ".claude/skills/auto-run/SKILL.md": "c6013d1700fe3952b42fb7c5340009e76b322b34748a141db56e5f6499abb0a1",
+    ".claude/skills/auto-run/SKILL.md": "d7a97a30ed936155e29c3ca9666a8d96ce546c8c63fb762f47aa133cdc5acf72",
     ".claude/skills/code-comments/SKILL.md": "c88cd1efe4f16f4b35a27fcd0cd82d5c5c4838445ae6e929ccdb1ccb68c78c37",
     ".claude/skills/javascript/SKILL.md": "a764c1dc27bc5d3cb8cb36fedc52f0bab09c5525fb4bebc03ebe092f7b2a980d",
     ".claude/skills/javascript/references/async-patterns.md": "dfd68fb9e95e44442a901769aa1ed7b93368362497bd3be0d3b1580063c64614",
