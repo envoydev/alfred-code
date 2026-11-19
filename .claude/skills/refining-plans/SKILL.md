@@ -68,8 +68,10 @@ Under auto-run the ask is not put: the Recommended option is taken. Auto-run is 
 alfred-mods reads each graded draft's rounds from a file, so every saved round is published there (its README, 'Plan and score files', is the contract).
 
 - Slug: the graded file's basename without a leading `YYYY-MM-DD-` and without its extension. A file with a fixed name in a run folder - an audit's `plan.md`, `ts-convert`'s `convert.md` - puts the folder's name first: `<folder>-plan`. The `refining/<slug>/` folder uses the same slug.
-- Path: `.alfred-mods/scores/<slug>.json` under the project root.
-- Read the file where it exists, append the round, and rewrite the whole file with the Write tool. Never use Edit.
+- Project root: the folder the session started in, never a seat's worktree. Why: alfred-mods reads these files from the folder its own session runs in, so a file under a worktree shows in no other session's band (the alfred-mods session's word, 2026-11-19).
+- Root: the folder the project chose for these files, resolved before each write because the field can change mid-run. Read `plansFolder` inside the `"alfred-mods"` object from the project root's `.claude/settings.local.json`, then its `.claude/settings.json`, then the user settings (`$CLAUDE_CONFIG_DIR/settings.json` where that variable is set and not empty, else `~/.claude/settings.json`). The first file with a value in this map wins: `"default"` is `.claude/session-inspector`, `".alfred"` is `.alfred/alfred-mods`, `".alfred-mods"` is `.alfred-mods`. A file that is missing, cannot be read or does not parse, an `"alfred-mods"` that is missing or not an object, a missing field and a value not in the map each mean the next file; with none, the root is `.alfred-mods`. Never write to a settings file, and never read managed settings or a `--settings` file.
+- Path: `<root>/scores/<slug>.json` under the project root.
+- Read the file where it exists, append the round, and rewrite the whole file with the Write tool. Never use Edit. Where the root changed since the last write and the new root holds no file, read the old root's file and carry its rounds over.
 - Never change an earlier round. A later run on the same slug appends with the next round number after the file's last.
 - Fields: `version` 1, `slug`, `subject` `{ kind: 'plan', ref: <slug> }`, `scale` 100, `updatedAt` (ISO 8601), and `rounds[]`, each `{ round, at, total, criteria, findings }`.
 - `criteria`: one entry per rubric id (`C1` to `C7`), the value `round(100 x points / weight)`.

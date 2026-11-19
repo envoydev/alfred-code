@@ -81,9 +81,11 @@ things in the code for the other three.
 
 alfred-mods reads the plan's progress from a file (its README, 'Plan and score files', is the contract).
 
-- When the build starts from an approved plan file, Write `.alfred-mods/plans/<slug>.json` under the
-  project root. The slug follows the scores file's rule in `refining-plans`: the plan's basename without a leading
-  `YYYY-MM-DD-` and its extension. The score then joins the plan row.
+- When the build starts from an approved plan file, Write `<root>/plans/<slug>.json` under the project root. Take
+  the project root, the root and the slug from the Project root, Root and Slug bullets of 'The scores file' in
+  `refining-plans`, and Read that section first where this session has not loaded the skill (scoring off, a
+  compaction, a dispatched seat). Resolve the root before each write. The slug is the plan's basename without a leading `YYYY-MM-DD-` and its extension.
+  The score then joins the plan row.
 - Fields: `version` 1, `slug`, `title` (the plan's title), `updatedAt`, `steps[]` and `changes[]`.
 - `steps[]`: one per plan task, in order, `{ id, title, status, estimateMin, startedAt, doneAt }`. The id is `T<n>`
   and the title is the task's heading. Every step starts `pending`.
@@ -95,7 +97,8 @@ alfred-mods reads the plan's progress from a file (its README, 'Plan and score f
 - `changes[]` starts with `{ at, kind: 'created', source: 'claude' }`. Text the user gives to fold into the plan
   changes the affected steps and adds `{ at, kind: 'integrated', source: 'user', step, note }`, the note their words
   in 200 characters or fewer. Give `step` the step id when the text is about one step, else leave it out.
-- Always rewrite the whole file with the Write tool and update `updatedAt`. Never patch it with Edit.
+- Always rewrite the whole file with the Write tool and update `updatedAt`. Never patch it with Edit. A root that
+  changed mid-build changes the path only: the steps and `changes[]` carry on.
 - Every subagent dispatched on a task - implementer, reviewers, fix passes - carries the two lines `plan: <slug>` and
   `task: <step id>` in its prompt.
 - A run with no plan file - a bounded change built from an in-chat design - writes no plan file.

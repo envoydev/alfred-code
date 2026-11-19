@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@9db2c22",
+  "kit": "claude-kit@0b09406",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
@@ -36,7 +36,7 @@
     ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "bb95566e76cd5d6661011b9f3be7377e5f0f4a24bea90d09b977f1e5cb2ac522",
     ".claude/skills/plugin-packaging/references/security-and-governance.md": "1e060dfd86fb6ad6aae9e36529e7f817bbe81994c1cd6ac08b85e141d210fa9a",
     ".claude/skills/project-structure/SKILL.md": "a54a1b3cbf16cba0975e9918f94ce2db15fa321fcc90e18cde97af67012cb66b",
-    ".claude/skills/refining-plans/SKILL.md": "eec6e3019a6e1b58f92ad75a5dfd4a060c0d44a3d1905c5553ab1a5a4278893b",
+    ".claude/skills/refining-plans/SKILL.md": "4b0121e778a66eea29052a3138a7df0a8ca42636039261b221a5cce51977bbd8",
     ".claude/skills/refining-plans/references/reviewer-prompt.md": "24d7f43a615e87662c159941c6e7ee035cd8c849366ee32d295b4025bc013631",
     ".claude/skills/refining-plans/references/rubric.md": "8c6bf43913654af755c55363ac5614cb0c86a7168b7d4cebb0567f9902507b84",
     ".claude/skills/repo-audit-agent-md/SKILL.md": "972ebdaad1bd81f5dda775f257217a0debf4a8569d9ad2d2c5552987a047aeed",
@@ -103,7 +103,7 @@
     ".claude/skills/repo-audit-usage/references/questions.md": "ef12d6f670b3d14abad945241e0de210839e642b274e7d2080d6986b9650a9b2",
     ".claude/skills/repo-audit-usage/references/synthesis.md": "122f312aae2ec9c32433f453d3af2f4722985834bab32c515539485f2a2cabf3",
     ".claude/skills/skill-authoring/SKILL.md": "1eaf93e5d8c4a892160d3f439e7467fc857afa52a1f09421ea90b596e56521cd",
-    ".claude/skills/solve-task/SKILL.md": "0c5dd48d581bc1349873e8c8a939c7682ff1b144c919083ef0989443ddf3ea06",
+    ".claude/skills/solve-task/SKILL.md": "d02aa068dea7fccaee9b28f4ca430301aba206e7c3da646aa9d6e9b7fa2a9992",
     ".claude/skills/ts-convert/SKILL.md": "776228d7264cb24301bd54dd673f2a13c8a40103f4e30b2b93f8f623a95cb2c9",
     ".claude/skills/ts-convert/references/conversion-rules.md": "ab1c17ef4f134220a823976d14ad015634a57ada739b021d03b04134838285e8",
     ".claude/skills/ts-convert/references/converter-brief.md": "812ea09e2f2b373d3b48d8a229c9546e95c621fe835e8ed15d1da667b2d42ad7",
