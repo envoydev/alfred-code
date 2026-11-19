@@ -1000,7 +1000,7 @@ test('check 57: a retired 1.x name in any file is a finding, named file:line', (
     assert.strictEqual(of('stack/hooks/h.js', `const v = env.${OLD_ENV}MONITOR;\n`).length, 1, 'the env prefix is a 1.x name too');
     assert.strictEqual(of('stack/hooks/h.js', `const v = env.${OLD_DOCS};\n`).length, 1, 'the older docs-path key is a 1.x name too');
     assert.strictEqual(of('stack/hooks/h.js', `a ${OLD}\nb ${OLD_ENV}X\nc\n`).length, 2, 'every line is its own finding');
-    assert.deepStrictEqual(of('README.md', 'the Cursor twin is cursor-stack\n'), [], 'cursor-stack never matches');
+    assert.deepStrictEqual(of('README.md', 'the tech-stack page\n'), [], 'another -stack name never matches');
     // No file is exempt: evidence, history and the installer's own brand file are checked like any other.
     for (const file of ['docs/plugin-migration-evidence.md', 'docs/notes.md', 'meta/migrations.json', 'meta/stack-manifest.json', 'scripts/install/brand.js', 'scripts/x.test.js', 'CLAUDE.md'])
         assert.strictEqual(of(file, `${OLD} and ${OLD_ENV}X\n`).length, 1, `${file} is checked`);

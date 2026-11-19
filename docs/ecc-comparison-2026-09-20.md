@@ -21,7 +21,7 @@ reliable? Breadth alone is not an advantage by that measure.
 | Rules | 122 files: 10 always-on `common/` (18,377 chars) + 21 path-scoped language folders | 19: 7 always-on (35,452 chars) + 12 path-scoped |
 | Hooks | 9 events, 53 scripts, ~12,150 lines, mostly warn / inject / log | 13 deterministic guards, most BLOCK, block-rate ledger |
 | Installer | ONE Node runtime behind 34 / 54-line `install.sh` / `install.ps1` wrappers | bash + PowerShell twins, 3,032 + 3,384 lines |
-| Harnesses | Claude Code + 13 install targets (Cursor, Codex, OpenCode developed; the rest stubs) | Claude Code here, Cursor in a hand-mirrored sibling repo |
+| Harnesses | Claude Code + 13 install targets (Cursor, Codex, OpenCode developed; the rest stubs) | Claude Code here |
 | Tests / CI | 291 test files, c8 gate 80 / 80 / 79 / 80, 33-job OS x Node x package-manager matrix, packed-install lifecycle job | ~30 `node:test` suites on 3 OSes, 33-check parity lint, manual temp-project matrix |
 | Model-visible descriptions | 106,959 chars (skills 82,928 + agents 14,163 + commands 9,868), all loaded - it ships as ONE plugin | 22-32k per project today (per-item selection), 74,374 if everything loaded |
 
@@ -60,7 +60,7 @@ scripted install copies all 122 rule files whatever language was picked.
 | 6 | Config-protection guard with our allow-receipt pattern and a block row per denial, covering `.eslintrc*`, `.prettierrc*`, `.editorconfig`, `tsconfig*.json` strictness, analyzer rulesets | S | low - measure its block rate before tuning | after 1.0.0 |
 | 7 | Machine-enforce one slice of the temp-project matrix in CI: fresh install, re-run idempotent, user config not clobbered, on 3 OSes | M | low | with Phase 3 |
 | 8 | Skill-adherence harness for the process skills (`project-solve-*`, commit checkpoint, convention skills): three prompt strictness levels, tool trace graded against the skill's steps. Build it on `claude plugin eval` graders rather than a new Python package | L | medium (cost per run, grader false positives) | after 1.0.0 |
-| 9 | One-source generation for cursor-stack through a target adapter (rules -> `.mdc` with a REAL frontmatter transform, agents, a hook adapter reusing our guards). Only if the generator is the single writer and a parity lint covers content | L | medium | after 1.0.0, decide separately |
+| 9 | One-source generation for a Cursor target through an adapter (rules -> `.mdc` with a REAL frontmatter transform, agents, a hook adapter reusing our guards). Only if the generator is the single writer and a parity lint covers content | L | medium | after 1.0.0, decide separately |
 | 10 | Workflow-injection lint over our three workflows | S | low | any time |
 | 11 | Advisory MCP health check for serena (LSP start failures) - first count MCP tool failures in real transcripts with `analyze-usage.js` | M | low | only if the count is material |
 | 12 | One dispatcher process for the Bash-matched guards, per-guard block rows kept. Hooks run in parallel, so the gain is CPU, not wall-clock - measure first | M | low | low priority |
@@ -127,8 +127,7 @@ Already better in ours: security audit depth, test-quality checks with mutation 
 states as a design rule in all ten designer seats, Postgres patterns, zero-downtime migrations,
 Docker and GitHub Actions hardening, API error shape, the WinAppDriver-is-dead note.
 
-Process for any of these: a body edit follows the repo rules (lint, temp-project proof, cursor-stack
-mirror where it maps), and lands before or after migration Phase 3, never during.
+Process for any of these: a body edit follows the repo rules (lint, temp-project proof), and lands before or after migration Phase 3, never during.
 
 ## 7. Function by function (third pass)
 

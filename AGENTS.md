@@ -2,14 +2,12 @@
 
 ## What this repo is
 
-The single source of truth for the **Claude Code** half of the house coding-agent setup - not an
+The single source of truth for the house coding-agent setup - Claude Code today, Cursor later - not an
 application. It holds what is applied to *other* projects: house-style skills, the base instruction
 template, hook scripts, convention rules, agents, and the installer that wires skills / hooks /
-plugins into each project. The **Cursor** twin lives in
-[`cursor-stack`](https://github.com/envoydev/cursor-stack), a sibling with its OWN skills, agents and
-installers (it does not clone this repo, and its lists may diverge).
-A change that maps to Cursor is mirrored there in the same sitting. Consuming projects pull from
-here; a change made only inside a consuming project is throwaway.
+plugins into each project. It will serve Cursor as well as Claude Code later; today no other repo
+mirrors it. Consuming projects pull from here; a change made only inside a consuming project is
+throwaway.
 
 **The goal every change serves: Sonnet at high / xhigh effort, run through this stack, does better
 work than Opus at high effort without it.** Skills, rules, hooks, agents, docs structures and scripts
@@ -87,8 +85,8 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   into a case.
 - **Parity / source-of-truth.** Behaviour lands only in `scripts/install/`, the one route.
   `meta/stack-manifest.json` is hand-edited and carries the six lists the seed reads (`npm run lint`
-  holds it to disk, the HTML and the skill count). A shared baseline change is mirrored into
-  cursor-stack in the same sitting. Never patch only a consuming project's copy - the installer wipes it.
+  holds it to disk, the HTML and the skill count). Never patch only a consuming project's copy - the
+  installer wipes it.
 - **Select a skill by DESCRIPTION, not by name.** Naming works only for a skill guaranteed alongside its
   citer (a frontmatter preload, an own-stack skill). Anything else - a skill no stack seeds, or one from a
   DIFFERENT stack - is described by what it covers. A guard phrase beside the name is not the remedy.
@@ -97,8 +95,7 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   graph emits no body-mention edge. Install need is PROVEN via `meta/evidence.json` or a per-stack seed.
 - **One home per piece, no duplication.** A deterministic gate -> a hook. A per-file-type convention -> a
   path-scoped rule attaching its skill. A keyword capability -> the skill's description. Cross-cutting
-  guidance -> the always-on `alfred-*.md` set (each with an `.mdc` twin in cursor-stack to mirror). The
-  base template carries only per-project structure + platform routing. Never state one trigger twice.
+  guidance -> the always-on `alfred-*.md` set. The base template carries only per-project structure + platform routing. Never state one trigger twice.
 - **Prove a behavioral change, don't assert it.** A model / effort pin, routing rule or plugin-set change
   ships only with evidence: run the build + tests yourself and read the code, measure the token delta when
   the claim is about cost, and commit the evidence BEFORE any reset. Verify outside-world claims
@@ -155,8 +152,7 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 
 ## Maintenance gotchas
 
-- Editing a consuming project's installed copy is local-only; mirror it into `scripts/install/` here
-  (and into cursor-stack when it touches the shared baseline or a twinned agent/rule).
+- Editing a consuming project's installed copy is local-only; mirror it into `scripts/install/` here.
 - Authoring a skill in `stack/skills/`: the method is this repo's own `skill-authoring` skill (`.claude/skills/`,
   beside `plugin-packaging`; this repo's `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`). It
   left the stack on 2026-10-22 - it serves authoring the stack, so no install carries it. Both skills, with
@@ -170,5 +166,5 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   (`task-solve`, `-cross`, `issue-diagnoser`) carry theirs in SKILL.md at a count pinned in
   `ASK_FLOW_TEMPLATES`, so one stop dropped back to prose goes red (pilot 3: 18 of 40 flow asks had no mark,
   and the approver took the first option each time). The init / configure walk's layer asks are templates too (`setup-plugin/references/walk.md` and `references/init-install.md`, pinned in `SETUP_ASK_TEMPLATES`): each layer's first ask is a single-select (keep the marked rows / pick / add every / only the locked rows) and 'Pick' opens ONE call of up to 4 multi-select questions grouped from the table's own labels, so no per-row change is typed.
-- Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
+- Skills will serve Cursor too: a skill body stays platform-neutral (conditionals like 'INLINE when no
   dispatch'), never forked per platform.

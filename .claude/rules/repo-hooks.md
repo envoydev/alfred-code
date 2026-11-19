@@ -13,8 +13,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
 
 - `stack/hooks/` - eighteen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
-  `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
-  with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
+  `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because the skill and seat
+  bodies run `node .claude/hooks/docs.js` (and the history block points at `history.js
   rulings`); `plan-status.js` (PF1, 3.12) is copied the same way, since the plan skills write a plan folder's
   `status.json` through `node .claude/hooks/plan-status.js`. The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none

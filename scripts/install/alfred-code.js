@@ -108,8 +108,8 @@ const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
 ];
-// The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
-// bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
+// The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: the
+// skill and seat bodies run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`; the plan skills write a plan folder's status.json through
 // `node .claude/hooks/plan-status.js` (PF1).
 const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'plan-status.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js', 'model-windows.json'];

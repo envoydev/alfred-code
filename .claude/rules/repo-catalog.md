@@ -121,10 +121,7 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
   branch from HEAD because the installer seeds `worktree.baseRef: "head"` add-only, and fan in as an
-  uncommitted `git apply`). cursor-stack holds twins of all 45 but `output-scoring` (added 2026-10-25,
-  while its mirror is paused), shipped before this rebrand, and is PENDING the same rename - a protocol change here usually needs the same edit
-  there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
-  hard-disable).
+  uncommitted `git apply`).
 - `stack/rules/` - eighteen single-job rules, each a library copy in `.alfred/stack/rules/` (stage 4c), sent by the
   loader; the generated rules and the canary seed `.claude/rules/alfred-rules.md` (a native rule saying when the loader's
   blocks are missing) stay in `.claude/rules/`. Six always-on `alfred-*.md`

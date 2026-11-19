@@ -119,5 +119,4 @@ or the dispatched model) and one for the searches, then 'Rulings I made' and 'De
 
 ## Not here
 
-- The Cursor mirror (paused since 2026-09-23).
 - The stack's own `task-solve` and its seats, stamps and stops.
