@@ -376,6 +376,27 @@ test('harness denials never count as stack hook blocks, and stay visible as thei
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Usage audit 2026-11-19 (bcb7d392): an MCP server's own error body that says 'Blocked' or 'Do NOT retry' was filed as a
+// guard block with no ledger row behind it. On an mcp__ call only the harness's hook prefix or a hook's bracket counts.
+test('an MCP error body that says Blocked is no guard block; a guard denial of an MCP call still is', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+    const file = path.join(dir, 'session.jsonl');
+    const call = (id, name) => ({ type: 'tool_use', id, name, input: {} });
+    const result = (id, content) => line({ type: 'user', timestamp: '2026-07-15T07:00:01.000Z',
+        message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content }] } });
+    fs.writeFileSync(file,
+        line({ type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 100, 5),
+            content: [call('t1', 'mcp__wiki__updatePage'), call('t2', 'mcp__forge__create_pull_request')] } }) +
+        result('t1', '{"error":true,"message":"updatePage failed: 422 Blocked: the edit could not be resolved. Do NOT retry with the same body."}') +
+        result('t2', 'PreToolUse:mcp__forge__create_pull_request hook error: [node "/p/stack/hooks/guard-ungated-commit.js"]: Blocked: a pull request without the publish receipt.'),
+    );
+    const { main } = run([file]);
+    assert.strictEqual(main.toolCalls.mcp__wiki__updatePage.hookBlocks || 0, 0, "the server's own 422 is no guard block");
+    assert.strictEqual(main.toolCalls.mcp__forge__create_pull_request.hookBlocks, 1, 'a guard denial of an MCP call still counts');
+    assert.deepStrictEqual(main.denialsByHook, { 'guard-ungated-commit.js': 1 }, 'no (unattributed) row for the server answer');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // --- the ledger join --------------------------------------------------------------------------
 // `hookLog.firstTs - HOOK_LATENCY_MS` on an ISO STRING is NaN, and every `>=` against NaN is
 // false, so `inWin` was 0 for every session that had a ledger at all: 107 of the 136 cross-check

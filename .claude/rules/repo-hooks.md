@@ -160,7 +160,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
-  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload, a remote branch or tag
+  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, a story, task or epic raised, submitted, filed, created, opened or added with Jira, Linear, YouTrack, GitHub, GitLab, a backlog or a tracker named beside it (2026-11-19, bcb7d392; its wait row carries `clause: tracker-filing`), an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload, a remote branch or tag
   deleted, a hard reset, a database dropped, rotate, revoke, pay - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
@@ -180,9 +180,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `/alfred-code:mode:auto-run off` ends the mode: it deletes this session's stamp and the marker, writes an
   `auto-end` row and says `[mode] auto-run is OFF` ('stop auto-mode' and a bare 'stop' are plain input
   since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`
-  `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
-  session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
-  compacted at 76k of a 100k window), so the mode block's writer sets it per model where the checkout compacts instead
+  `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` when
+  claude launches (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
+  compacted at 76k of a 100k window; a /clear keeps the launch's window - 2026-11-19, a session cleared 21 s after the mode was saved compacted at 967.6k of 1M), so the mode block's writer sets it per model where the checkout compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `mode-settings.js writeModes`, `fresh-session.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
   ruling, 2026-10-14; a cause per call since the mode commands of 2026-11-12): a session compacts instead of offering a
   fresh one for one of three causes, read per call by `hook-prelude.js compactCause` in this order - `project`
@@ -196,7 +196,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left). Only the
   mode block's writer moves an `autoCompactWindow` (the typed command, the installer's `refresh`), and it applies from
-  the next session.
+  the next launch of claude (a /clear keeps the launch's window).
   **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
   command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
   lines forbid a repeat, and a prompt expanded twice (a stacked line) gets them and the contract on its first expansion
@@ -1446,7 +1446,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     holds it at the denial and the priced ask (`tick-hold` rows); it releases as the others do, and also once the Stop
     branch has blocked at the hold's carry or past it (`offered-at-stop`). A seat's tick arms nothing. Cursor and Codex
     have no PreToolUse payload this reads yet, so the tick hold is Claude Code's alone. A compaction point more than
-    5% over the configured `autoCompactWindow`, in a session started after the settings file was written, makes
+    5% over the configured `autoCompactWindow`, in a session launched after the settings file was written (one a /clear started never counts, 2026-11-19), makes
     `autoCompactWindow()` return null - the hook says once that the window was not honoured and names `/autocompact`
     (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs
     name no local-scope rule). A user-scope file is named `~/`-relative with `/`, never by its whole path (audit 2026-10-20,

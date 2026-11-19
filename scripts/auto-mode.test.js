@@ -323,7 +323,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     assert.deepStrictEqual(bannerOf(on), [
         '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on, new sessions included, until you type `/alfred-code:mode:auto-run off`.',
         // v2: the command's save seeds the model's window (ALFRED_CODE_AUTO_COMPACT=1 with it), so the banner names it
-        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.',
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5 - Claude Code reads it when claude launches, so one saved during this launch applies from the next) and the run goes on from the summary and its state files.',
     ]);
     // the second flow of the same run rides the live stamp, and says so too
     assert.match(bannerOf(typedRun(p, 'b1', '/task-solve fix the cache', t))[0], /^\*\*Auto-run: ON\*\* for \/task-solve /);
@@ -333,7 +333,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     fs.writeFileSync(path.join(q.root, '.claude', 'settings.json'), JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
     autoOn(q, 'b2', t);
     assert.strictEqual(bannerOf(typedRun(q, 'b2', '/task-solve x', t))[1],
-        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.');
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5 - Claude Code reads it when claude launches, so one saved during this launch applies from the next) and the run goes on from the summary and its state files.');
 });
 
 test('mode banner: auto-mode OFF says each ask waits, then the fresh-session refresh, the compaction, or the offers off', () =>
@@ -398,7 +398,7 @@ test('mode banner: the model SessionStart recorded gives the window before any r
     start('r2', 'claude-sonnet-5-5');
     autoOn(p, 'r2', none);
     assert.strictEqual(bannerOf(typedRun(p, 'r2', '/capture-awareness', none))[1],
-        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 350k auto-compact window (of 1M, claude-sonnet-5-5) and the run goes on from the summary and its state files.');
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 350k auto-compact window (of 1M, claude-sonnet-5-5 - Claude Code reads it when claude launches, so one saved during this launch applies from the next) and the run goes on from the summary and its state files.');
     // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
     // the auto-compact window', verified 2026-10-21), so after a /model switch to a smaller model the banner never quotes
     // a compaction point past that model's capacity
@@ -529,12 +529,19 @@ const LOCAL_ASKS = [['Next?', 'Add a comment to the function'], ['Next?', 'Rewri
     ['Next?', 'Update the man page'], ['Next?', 'Create the page component'], ['Next?', 'Update the page object tests'],
     ['Next?', 'Edit the landing page markup'], ['Next?', 'Create the GitHub-pages workflow file'], ['Next?', 'Update the issue file in the ledger'],
     ['Next?', 'Update the 3 pages of the spec'], ['Next?', 'Edit the post-install script'], ['Next?', 'Commit locally - no outward acts'],
-    ['Next?', 'Edit post-1 and post-2 in the changelog'], ['Next?', 'Commit locally, not outward acts'], ['Next?', 'Commit locally without outward acts']];
+    ['Next?', 'Edit post-1 and post-2 in the changelog'], ['Next?', 'Commit locally, not outward acts'], ['Next?', 'Commit locally without outward acts'],
+    // usage audit 2026-11-19: the tracker-filing clause needs a tracker beside the story or task, and 'file' as a verb
+    ['Next?', 'Edit the file the tasks read from'], ['Next?', 'Raise the limit for parallel tasks'], ['Next?', 'Submit task 3 to the implementer seat'],
+    ['Next?', 'Update the file the GitHub workflow runs'], ['Next?', 'Create the Storybook story'], ['Next?', 'Open the task list'],
+    ['Next?', 'File the stories into the plan']];
 const OUTWARD_ASKS = [['Next?', 'Comment on all 4 tickets'], ['Next?', 'Add the 5 comments to PROJ-1..PROJ-5 as listed'],
     ['Next?', 'Update the 3 Confluence pages as listed'], ['Create the 3 Confluence pages as outward acts?', 'Create the 3 pages'],
     ['Next?', 'Edit the 3 tickets as listed'], ['Next?', 'Publish the 5 cards as listed - outward acts'], ['Next?', 'Edit the 3 posts'],
     ['Next?', 'Add a comment to the PR'], ['Next?', 'Comment on the thread'], ['Next?', 'Post a comment in Jira'], ['Next?', 'Update the Notion page'],
-    ['Next?', 'Create the Linear issue'], ['Next?', 'Add a comment to PROJ-12']];
+    ['Next?', 'Create the Linear issue'], ['Next?', 'Add a comment to PROJ-12'],
+    // usage audit 2026-11-19 (bcb7d392): a story, task or epic filed in a tracker is a ticket by another name
+    ['File this Task in Jira on the board through the connector? Title and description map 1:1.', 'File it'], ['Next?', 'File the story in Linear'], ['Next?', 'Submit the task in Jira'], ['Next?', 'Raise the epic in the backlog'],
+    ['Next?', 'Create the task in GitLab'], ['Next?', 'Open a story in YouTrack'], ['Next?', 'Add the epic to the GitHub project']];
 test('auto-mode asks: a local comment or docs ask runs on, and an ask aimed at an outward target waits', () =>
 {
     const p = project();
@@ -700,6 +707,35 @@ test('auto-mode Stop: the auto-fields hold skips a progress note over running wo
     const idle = stop('f1', { background_tasks: [] });
     assert.strictEqual(idle.status, 2, 'with nothing running the done close owes its fields');
     assert.match(idle.stderr, /THREE named fields/);
+});
+
+// Usage audit 2026-11-19 (bcb7d392): three auto-fields holds came after the run's close. A cycle whose plan is stamped
+// Completed: and a typed turn since owes no solve-task fields - the field notes stop there already (U08).
+test('auto-mode Stop: past a closed cycle - plan stamped Completed:, then a typed prompt - no auto-fields hold', () =>
+{
+    const p = project();
+    const plan = path.join(p.root, '.alfred', 'docs', 'work', 'plans', 'x.md');
+    const t = transcript([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+        { type: 'assistant', entrypoint: 'cli', message: { id: 'cx', role: 'assistant', content: [{ type: 'tool_use', id: 'ex', name: 'Edit',
+            input: { file_path: plan, old_string: 'Approved: yes', new_string: 'Approved: yes\nCompleted: 2026-11-17' } }] } },
+        { type: 'user', entrypoint: 'cli', message: { role: 'user', content: 'Now rename the wiki page title.' } }]);
+    autoStamp(p, 'f2');
+    const closed = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'f2', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'The page title is done and verified.', background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(closed.status, 0, `no fields owed past the closed cycle: ${closed.stderr}`);
+    assert.ok(!rows(p, 'f2').some((r) => r.detail && r.detail.branch === 'auto-fields'), 'no auto-fields row');
+});
+
+// Usage audit 2026-11-19: no corpus of real recommended questions the size the earlier narrowings were replayed over is
+// reachable, so a wait the tracker-filing clause causes names it in its row, and its false holds can be counted later.
+test('auto-mode asks: a wait the tracker-filing clause causes names it in its row; another wait names none', () =>
+{
+    const p = project();
+    autoStamp(p, 'tf1');
+    assert.strictEqual(answered(ask(p, 'tf1', [q('File this Task in Jira on the board? Title and description map 1:1.', ['File it (Recommended)', 'Not now'])])), null);
+    assert.ok(rows(p, 'tf1').some((r) => r.kind === 'auto-ask-waits' && r.detail && r.detail.clause === 'tracker-filing'), 'the filing wait names its clause');
+    assert.strictEqual(answered(ask(p, 'tf1', [q('Next?', ['Open the PR (Recommended)', 'Not now'])])), null);
+    assert.strictEqual(rows(p, 'tf1').filter((r) => r.kind === 'auto-ask-waits' && r.detail && r.detail.clause).length, 1, 'a PR wait names no clause');
 });
 
 // Audit 2026-10-20 C04 (71d5428a, 3a8a1ee3, 7ec6c7db, 8a1fb350): an auto-answered stop returned before the FLOW STOP
@@ -1495,7 +1531,7 @@ test('mode command: auto-compact on and off write the mode file, never a session
 {
     const p = project();
     const t = bareTranscript();
-    assert.match(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), /^\[mode\] auto-compact is ON: no fresh-session ask is made\. From the next session Claude Code compacts at /);
+    assert.match(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), /^\[mode\] auto-compact is ON: no fresh-session ask is made\. From the next launch of claude - a \/clear keeps the window this launch read - Claude Code compacts at /);
     assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '1');
     assert.match(modeLine(p, 'c1', `${COMPACT_CMD} off`, t), /^\[mode\] auto-compact is OFF: fresh-session asks are back\./);
     assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '0');
@@ -1828,7 +1864,7 @@ test('v2 bare auto-run: ON, OFF, and the reason when the file holds a 1 nobody v
     assert.strictEqual(line(sub(trackedModeProject({ ALFRED_CODE_AUTO_RUN: '1' }), 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF: the file holds it, but git tracks the file - asks stay with you');
     assert.strictEqual(line(sub(linkedClaudeProject({ ALFRED_CODE_AUTO_RUN: '1' }), 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF: the file holds it, but git cannot say the file is yours alone - asks stay with you'); });
 test('v2 auto-compact on: the window in the reply, at its own point for a tier of 0, the replaced note', () => { const p = project();
-    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), ENVS)), '[mode] auto-compact is ON: no fresh-session ask is made. From the next session Claude Code compacts at 400k on claude-opus-5-5');
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), ENVS)), '[mode] auto-compact is ON: no fresh-session ask is made. From the next launch of claude - a /clear keeps the window this launch read - Claude Code compacts at 400k on claude-opus-5-5');
     assert.match(line(sub(project(), 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), { ...ENVS, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' })), /Claude Code compacts at its own point$/);
     const q = project(); fs.mkdirSync(path.join(q.root, '.claude'), { recursive: true }); fs.writeFileSync(modePath(q), '{"autoCompactEnabled":false}');
     assert.match(line(sub(q, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS)), / - replaced autoCompactEnabled false$/); });

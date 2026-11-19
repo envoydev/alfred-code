@@ -3032,10 +3032,19 @@ const AUTO_TARGET = String.raw`(?:tickets?|issues?|PRs?|pull requests?|MRs?|card
 // glued to a word or a dotted name, and not an encoding or standard name ('UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110'), which
 // the rewrite to 'ticket' would turn into an outward target.
 const AUTO_TICKET_KEY_RE = /(?<![\w.])(?!(?:UTF|SHA|ISO|RFC)-)[A-Z][A-Z0-9]{1,9}-\d+\b/g;
+// A story, task or epic filed in a tracker is a ticket by another name (usage audit 2026-11-19, bcb7d392: 'File this Task in
+// Jira ...' -> 'File it' was answered for the user). Raised, submitted, filed, created, opened or added, it holds only with a
+// tracker named beside the story, task or epic, and 'file' only as a verb, so 'Raise the limit for parallel tasks', 'Submit
+// task 3 to the seat', 'Edit the file the tasks read from', 'Open the task list' and a Storybook story run on. Its own regex, so a wait it causes is counted apart (the auto-ask-waits row's detail).
+const AUTO_TRACKER = String.raw`(?:Jira|Linear|YouTrack|GitHub|GitLab|backlog|tracker)`;
+const AUTO_FILED = String.raw`(?:stor(?:y|ies)|tasks?|epics?)`;
+const AUTO_FILING_VERB = String.raw`\b(?:raise|submit|create|open|add|(?<!\b(?:the|a|an|this|that|its|their|each|one)\s+)file)\b`;
+const AUTO_FILING_RE = new RegExp(`${AUTO_FILING_VERB}[^.;?\\n]{0,40}\\b(?:${AUTO_FILED}\\b[^.;?\\n]{0,40}\\b${AUTO_TRACKER}|${AUTO_TRACKER}\\b[^.;?\\n]{0,40}\\b${AUTO_FILED})\\b`, 'i');
 const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
   String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
+  AUTO_FILING_RE.source,
   // The series ask the auto-run contract asks for (one ask for N outward writes, its question naming 'outward acts') waits for
   // the user whatever verb its label uses: a pick made here would read as the user's approval of N writes (final review 2026-11-18).
   // 'no / not / without outward acts' is the opposite statement ('Commit locally - no outward acts') and runs on.
@@ -3131,7 +3140,11 @@ if (autoRun) {
     } }));
     process.exit(0);
   }
-  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user' });
+  // a wait the tracker-filing clause caused names it, so its false holds can be counted from the ledger (usage audit 2026-11-19)
+  const filing = (Array.isArray(input.questions) ? input.questions : []).some((q) => q && Array.isArray(q.options) && q.options.some((o) =>
+    o && /\(Recommended\)/i.test(String(o.label || '')) && AUTO_FILING_RE.test(`${q.question} ${o.label} ${o.description || ''}`.replace(AUTO_TICKET_KEY_RE, 'ticket'))));
+  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user',
+    ...(filing ? { detail: { clause: 'tracker-filing' } } : {}) });
 }
 // THE ask-fixed ROW IS SETTLED LATER (audit 2026-10-20, the hooks track's minor list): PreToolUse hooks run in parallel, so
 // a sibling gate (guard-layer-table.js) can deny the very call this hook fixed, and the row then counted a fix the user
@@ -4088,8 +4101,12 @@ function flowState() {
     return none;
   }
 }
+// Past the cycle - its plan stamped `Completed:` and the user typed since, with no new marker or step call after that turn -
+// no solve-task close is owed: the same test flowFieldNotes reads (U08). The auto-fields hold kept firing on later closes
+// without it (usage audit 2026-11-19, bcb7d392: three holds after the run's close).
 function solveTaskCycle() {
-  return flowState().flow;
+  const flow = flowState();
+  return flow.flow && !(flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt));
 }
 
 // Did a repository/remote state read run since the last typed user turn? The ask's scope has to be

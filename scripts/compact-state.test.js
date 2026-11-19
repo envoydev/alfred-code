@@ -398,6 +398,49 @@ test('compact-state: a configured auto-compact window the compactions show was n
     finally { process.env = saved; }
 });
 
+// Usage audit 2026-11-19 (0fe48ef1): a session a /clear started 21 s after the window was saved compacted at 967.6k of a 400k
+// window - it ran in the launch that had read the window before the save. Its compaction never marks the key not honoured;
+// the same compaction in a session launched after the save still does.
+test('compact-state: a /clear-started session after the save proves nothing about the window; a launch after the save does', () =>
+{
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
+        delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+        delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'acw-clear-')) };
+        const compacted = (clear) =>
+        {
+            const p = project();
+            const file = path.join(p.root, '.claude', 'settings.local.json');
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
+            const twoHours = new Date(Date.now() - 2 * 3600000);
+            fs.utimesSync(file, twoHours, twoHours);
+            const head = clear ? [{ type: 'user', message: { role: 'user', content: '<command-name>/clear</command-name>\n<command-message>clear</command-message>' }, timestamp: ago(1) }] : [];
+            const tp = p.transcript([...head, { ...usageRow('f', { cache_creation_input_tokens: 80000 }), timestamp: ago(1) },
+                { ...usageRow('a', { cache_read_input_tokens: 967300 }), timestamp: ago(0.1) }, { ...boundary('auto', 967600), timestamp: ago(0.09) }]);
+            process.env.CLAUDE_PROJECT_DIR = p.root;
+            const out = p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env).stdout;
+            const point = JSON.parse(fs.readFileSync(path.join(p.sessions, 'compact-points.json'), 'utf8')).pop();
+            fresh.use({ transcript_path: tp, cwd: p.root, session_id: p.sid });
+            return { out, point, window: fresh.autoCompactWindow() };
+        };
+        const cleared = compacted(true);
+        assert.doesNotMatch(cleared.out, /not honoured/, 'a /clear-started session read its launch\'s window');
+        assert.strictEqual(cleared.point.cleared, true, 'the point records that a /clear started its session');
+        assert.strictEqual(cleared.window, 400000, 'the key is still the window');
+        const launched = compacted(false);
+        assert.match(launched.out, /The 400k autoCompactWindow in \.claude\/settings\.local\.json was not honoured: this project compacted at ~968k/);
+        assert.strictEqual(launched.point.cleared, false, 'a launched session records cleared: false');
+        assert.strictEqual(launched.window, null, 'a launch after the save that compacts past the window still marks it');
+    }
+    finally { process.env = saved; }
+});
+
 test('compact-state: the first change after an automatic compaction is held once, with both numbers (C09)', () =>
 {
     const log = fs.mkdtempSync(path.join(TMP, 'hold-'));

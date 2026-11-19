@@ -222,7 +222,7 @@ function tableWindow() {
 // 'auto', garbage or a value outside 100K-1M is no window. This only ever LOWERS the window: the harness caps the
 // auto-compact window at the model's own.
 // The configured window and where it came from: `{ n, source, mtimeMs }` - the env name with no mtime, or the settings
-// file with its mtime (the moment the value could first take effect, at the next session start).
+// file with its mtime (the moment the value could first take effect, at the next launch of claude).
 function configuredCompactWindow() {
   const valid = (v) => { const n = typeof v === 'number' ? v : /^\d+$/.test(String(v || '').trim()) ? parseInt(v, 10) : NaN; return n >= 100000 && n <= 1000000 ? n : null; };
   for (const k of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) {
@@ -252,10 +252,14 @@ function configuredCompactWindow() {
 // `modelSettings.<model>.autoCompactWindow` in the project's settings.local.json, and three sessions compacted at
 // 466.8k-469.7k while the asks quoted 350k. The settings reference does not say which scopes Claude Code reads the key
 // from, so no cause is claimed - only the measurement: an automatic compaction this project recorded for the model, more
-// than 5% above the configured window, by a session that STARTED after the value was written (the key is read at session
-// start only, so a session already running when it was written proves nothing; an env window counts this session's own
-// points). Then the key is no window: the asks stop quoting it, and the start hook says once that it was not honoured.
+// than 5% above the configured window, by a session that LAUNCHED after the value was written (the key is read when claude
+// launches: a session already running when it was written proves nothing, and nor does one a /clear started, which runs in
+// the launch before it - usage audit 2026-11-19, 0fe48ef1: cleared 21 s after the save, it compacted at 967.6k of a 400k
+// window; an env window counts this session's own points). Then the key is no window: the asks stop quoting it, and the
+// start hook says once that it was not honoured.
 const IGNORED_SLACK = 1.05;
+// the /clear command row a session a /clear started opens on
+const CLEAR_START_RE = /<command-name>\/clear<\/command-name>/;
 let _ignored;
 function compactWindowIgnored() {
   if (_ignored !== undefined) return _ignored;
@@ -265,8 +269,9 @@ function compactWindowIgnored() {
     const id = String(sessionModelId() || '').toLowerCase();
     if (!c || !id) return _ignored;
     const sid = String(payload.session_id || '');
-    const mine = (r) => sid && r.session === sid && (c.mtimeMs == null || (sessionStartedAt() || 0) >= c.mtimeMs);
-    const after = (r) => c.mtimeMs != null && Date.parse(r.started || '') >= c.mtimeMs;
+    const launched = (r) => c.mtimeMs == null || !r.cleared;
+    const mine = (r) => sid && r.session === sid && (c.mtimeMs == null || (sessionStartedAt() || 0) >= c.mtimeMs) && launched(r);
+    const after = (r) => c.mtimeMs != null && Date.parse(r.started || '') >= c.mtimeMs && launched(r);
     const over = truePoints().filter((r) => r.model === id && Number(r.tokens) > c.n * IGNORED_SLACK && (mine(r) || after(r)));
     if (over.length) _ignored = { configured: c.n, seen: Math.max(...over.map((r) => Number(r.tokens))), source: c.source };
   } catch { /* unreadable - the key stands */ }
@@ -276,21 +281,29 @@ function autoCompactWindow() {
   const c = configuredCompactWindow();
   return c && !compactWindowIgnored() ? c.n : null;
 }
-// When this session started: the transcript's first timestamped row (its first 64KB).
-let _started;
-function sessionStartedAt() {
-  if (_started !== undefined) return _started;
-  _started = null;
+// The transcript's first 64KB, or '' with none.
+function transcriptHead() {
   try {
     const fd = fs.openSync(String(payload.transcript_path || ''), 'r');
     const buf = Buffer.alloc(64 * 1024);
     let n = 0;
     try { n = fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
-    const m = buf.toString('utf8', 0, n).match(/"timestamp"\s*:\s*"([^"]+)"/);
-    const t = m ? Date.parse(m[1]) : NaN;
-    if (Number.isFinite(t)) _started = t;
-  } catch { /* no transcript */ }
+    return buf.toString('utf8', 0, n);
+  } catch { return ''; }
+}
+// When this session started: the transcript's first timestamped row (its first 64KB).
+let _started;
+function sessionStartedAt() {
+  if (_started !== undefined) return _started;
+  _started = null;
+  const m = transcriptHead().match(/"timestamp"\s*:\s*"([^"]+)"/);
+  const t = m ? Date.parse(m[1]) : NaN;
+  if (Number.isFinite(t)) _started = t;
   return _started;
+}
+// Whether a /clear started this session - it then runs in the launch before it, with that launch's auto-compact window.
+function sessionClearStarted() {
+  return CLEAR_START_RE.test(transcriptHead());
 }
 // The compaction points this PROJECT has measured: each automatic compaction leaves its context in
 // `<data root>/state/sessions/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact
@@ -321,7 +334,7 @@ function recordCompactPoint(tokens, model, { held } = {}) {
     const rows = readCompactPoints().filter((r) => Date.parse(r.at) >= cut);
     const started = sessionStartedAt();
     rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n,
-      ...(started ? { started: new Date(started).toISOString() } : {}), ...(held ? { held: true } : {}) });
+      ...(started ? { started: new Date(started).toISOString() } : {}), ...(held ? { held: true } : {}), cleared: sessionClearStarted() });
     const file = compactPointsFile(true);
     fs.mkdirSync(require('path').dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;

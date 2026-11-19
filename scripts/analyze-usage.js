@@ -88,6 +88,10 @@ const COMPLETED_STAMP_RE = /(?:^|\n)[ \t]*(?:[-*][ \t]+)?\**Completed:\**[ \t]*\
 // `probe:` value.
 const RECEIPT_RE = /\bCOMMIT-GATE\b|\breceipt\.js\b|(?:^|[\s;&|(])node\s+\S+\s+commit\s/;
 const RECEIPT_PROBE_RE = /--probe\s+(?:'([^']*)'|"([^"]*)"|(\S+))|(?:^|\\n|\n)probe:\s*([^\\\n]*)/;
+// An MCP tool's own error body may say 'Blocked' or 'Do NOT retry' (usage audit 2026-11-19, bcb7d392: five 422 answers of
+// one page-update tool counted as guard blocks, none with a ledger row): on an `mcp__` call only a hook's shape counts.
+const MCP_TOOL_RE = /^mcp__/;
+const HOOK_DENIAL_SHAPE_RE = /^\s*(?:\[[^\]]*\]\s*)?PreToolUse:[\w-]+ hook error:|hooks[\\/][\w.-]+\.js\b/;
 const FLOW_SKILL_RE = /^(?:task-(?:solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|loop-[a-z-]+|capture-[a-z-]+|issue-diagnoser)$/;
 const idleTailLine = (main) => (main.idleTail ? `idle tail ${dur(Date.parse(main.idleTail.to) - Date.parse(main.idleTail.from))} after the last turn, to a \`${main.idleTail.rowType || '?'}\` row at ${main.idleTail.to} - not session time` : '');
 // The session-start instruction files, largest first, and any rule loaded under both the old and the new name of a
@@ -3056,7 +3060,8 @@ async function analyzeTranscript(file, window) {
         // The harness's own prefix for a PreToolUse denial names the event whatever the guard wrote: docs-session's hold
         // opens 'Docs not read yet' and landed in the errors column, in no denials-by-hook row (audit 2026-10-10 C23:
         // 81264f0d, a3d497f8, c5000cb1, f24eb967). Its ledger row names the hook (joinUnattributedDenials).
-        const readsAsBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text) || /^\s*(?:\[[^\]]*\]\s*)?PreToolUse:\w+ hook error:/.test(text));
+        const readsAsBlock = c.is_error && (MCP_TOOL_RE.test(info.name) ? HOOK_DENIAL_SHAPE_RE.test(text)
+          : (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text) || /^\s*(?:\[[^\]]*\]\s*)?PreToolUse:\w+ hook error:/.test(text)));
         const isHookBlock = readsAsBlock && !harnessDenial;
         if (isHookBlock) attributeDenial(text, o.timestamp);
         else if (readsAsBlock) s.harnessDenials = (s.harnessDenials || 0) + 1;  // reads as a block, is the harness's
