@@ -269,7 +269,9 @@ function compactWindowIgnored() {
     const id = String(sessionModelId() || '').toLowerCase();
     if (!c || !id) return _ignored;
     const sid = String(payload.session_id || '');
-    const launched = (r) => c.mtimeMs == null || !r.cleared;
+    // A point written before 928a174a carries no `cleared`, so it cannot tell a launch from a /clear: it is no evidence,
+    // and a saved window is never marked not honoured by one (the usage audit's C1a residual, closed 2026-11-19).
+    const launched = (r) => c.mtimeMs == null || r.cleared === false;
     const mine = (r) => sid && r.session === sid && (c.mtimeMs == null || (sessionStartedAt() || 0) >= c.mtimeMs) && launched(r);
     const after = (r) => c.mtimeMs != null && Date.parse(r.started || '') >= c.mtimeMs && launched(r);
     const over = truePoints().filter((r) => r.model === id && Number(r.tokens) > c.n * IGNORED_SLACK && (mine(r) || after(r)));

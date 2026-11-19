@@ -427,7 +427,7 @@ test('compact-state: a /clear-started session after the save proves nothing abou
             const out = p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env).stdout;
             const point = JSON.parse(fs.readFileSync(path.join(p.sessions, 'compact-points.json'), 'utf8')).pop();
             fresh.use({ transcript_path: tp, cwd: p.root, session_id: p.sid });
-            return { out, point, window: fresh.autoCompactWindow() };
+            return { out, point, window: fresh.autoCompactWindow(), p, tp };
         };
         const cleared = compacted(true);
         assert.doesNotMatch(cleared.out, /not honoured/, 'a /clear-started session read its launch\'s window');
@@ -437,6 +437,15 @@ test('compact-state: a /clear-started session after the save proves nothing abou
         assert.match(launched.out, /The 400k autoCompactWindow in \.claude\/settings\.local\.json was not honoured: this project compacted at ~968k/);
         assert.strictEqual(launched.point.cleared, false, 'a launched session records cleared: false');
         assert.strictEqual(launched.window, null, 'a launch after the save that compacts past the window still marks it');
+        // A point written before 928a174a has no `cleared`: it cannot tell a launch from a /clear, so it never marks the key
+        // (the usage audit's C1a residual, closed 2026-11-19).
+        const legacy = compacted(false);
+        const file = path.join(legacy.p.sessions, 'compact-points.json');
+        fs.writeFileSync(file, JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')).map(({ cleared, ...row }) => row)));
+        delete require.cache[require.resolve('../stack/hooks/fresh-session.js')];
+        const reread = require('../stack/hooks/fresh-session.js');
+        reread.use({ transcript_path: legacy.tp, cwd: legacy.p.root, session_id: legacy.p.sid });
+        assert.strictEqual(reread.autoCompactWindow(), 400000, 'a legacy point with no cleared field leaves the key the window');
     }
     finally { process.env = saved; }
 });
