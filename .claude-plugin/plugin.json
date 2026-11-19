@@ -152,7 +152,8 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"
             ],
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },

@@ -2213,7 +2213,8 @@ test('price table: every row is complete, sourced and dated, and the page\'s sta
   // The page states the cache columns as multipliers of the base input price: 1.25x for a
   // 5-minute write, 2x for a 1-hour write, 0.1x for a hit except the two it names. A refresh that
   // mistypes one column breaks here, not in a report.
-  const hit = { 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025, 'claude-opus-5-5': 0.05, 'claude-sonnet-5-5': 0.05 };
+  const hit = { 'claude-fable-5-2': 0.025, 'claude-mythos-5-2': 0.025, 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025,
+    'claude-opus-5-5': 0.05, 'claude-sonnet-5-5': 0.05 };
   const near = (a, b) => Math.abs(a - b) < 1e-9;
   for (const m of t.models) {
     // the pre-4 generation is named version first (claude-3-5-haiku-20241022, per the deprecations page)

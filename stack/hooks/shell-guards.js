@@ -118,6 +118,18 @@ class GuardExit
 const crypto = require('node:crypto');
 const CACHE_PREFIX = 'alfred-v8-';
 const GUARD_PARAMS = ['exports', 'require', 'module', '__filename', '__dirname'];
+// An entry is code V8 runs after checking only the LENGTH of the source against it (replayed in the hooks audit of
+// 2026-11-19: data built from another text of the same length ran in the guard's place), under a key any reader of the
+// plugin can compute. So an entry is read only where this user owns it and no other account can write it - where every
+// account shares the temp dir (Linux /tmp) another one could plant it first - and is written for its owner alone.
+// Windows has no uid (`uid` undefined), and gives each user a temp dir of its own.
+const CACHE_FILE_MODE = 0o600;
+const WRITABLE_BY_OTHERS = 0o022;
+function trustedCacheEntry(stat, uid)
+{
+    if (!stat.isFile()) return false;
+    return uid === undefined || (stat.uid === uid && (stat.mode & WRITABLE_BY_OTHERS) === 0);
+}
 try { require('node:module').enableCompileCache?.(path.join(os.tmpdir(), `${CACHE_PREFIX}modules`)); }
 catch { /* an older Node, or a dir it cannot write */ }
 function compileGuard(file, source)
@@ -127,7 +139,7 @@ function compileGuard(file, source)
     try { entry = path.join(os.tmpdir(), `${CACHE_PREFIX}${path.basename(file, '.js')}-${crypto.createHash('sha1').update(`${process.version}\0${text}`).digest('hex').slice(0, 16)}.bin`); }
     catch { entry = null; }
     let cachedData;
-    try { if (entry) cachedData = fs.readFileSync(entry); }
+    try { if (entry && trustedCacheEntry(fs.lstatSync(entry), process.getuid?.())) cachedData = fs.readFileSync(entry); }
     catch { cachedData = undefined; }
     let script = null;
     try
@@ -142,7 +154,7 @@ function compileGuard(file, source)
             try
             {
                 const tmp = `${entry}.${process.pid}.tmp`;
-                fs.writeFileSync(tmp, script.createCachedData());
+                fs.writeFileSync(tmp, script.createCachedData(), { mode: CACHE_FILE_MODE });
                 fs.renameSync(tmp, entry);
                 const prelude = require('./hook-prelude.js');
                 if (typeof prelude.sweepStale === 'function') prelude.sweepStale(os.tmpdir(), CACHE_PREFIX);
@@ -827,5 +839,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe, trustedCacheEntry };
 if (require.main === module) main();

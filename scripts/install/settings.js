@@ -68,7 +68,9 @@ const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === 
 // broken install blocks every shell and file-tool call until fixed; the rollback is dropping the row here (an update then
 // takes the key off the copy route's entry) or `claude plugin disable` on the plugin route. An older Claude Code drops the
 // key: its hook entry is a non-strict zod object (2.1.100 and 2.1.294 bundles read 2026-10-14), so nothing is rejected.
-const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'], [`${fileGuards.SELF}.js`]: ['PreToolUse'] };
+// The secret guard's own PreToolUse row - a filesystem server's read of a file (audit 2026-10-30 HK-26) - is the same
+// read the file dispatcher refuses on failure, so it fails closed too (hooks audit 2026-11-19 B6-S3).
+const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'], [`${fileGuards.SELF}.js`]: ['PreToolUse'], 'guard-secret-value.js': ['PreToolUse'] };
 const onFailureFor = (file, event) => ((BLOCK_ON_FAILURE[file] || []).includes(event) ? 'block' : undefined);
 const hookEntry = (command, timeout, file, event) => ({ type: 'command', command, timeout, ...(asyncFor(file, event) ? { async: true } : {}),
     ...(onFailureFor(file, event) ? { onFailure: onFailureFor(file, event) } : {}) });

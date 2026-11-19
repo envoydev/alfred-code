@@ -3067,6 +3067,22 @@ test('member: the first change under the child\'s source root is denied with the
   } finally { r.rm(); }
 });
 
+// Hooks audit 2026-11-19 (S-DS1): the hold asked `unattended()` at the member's root, so a joined member's standing
+// auto-run - the mode file of its own checkout - skipped the hold in an interactive session started at the root
+// (0fe48ef1, 2026-11-17). `api` gets a repository of its own here, so that file is its own mode file.
+test('member: a joined member\'s standing auto-run does not skip the hold of a session started at the root', () => {
+  const r = joined();
+  try {
+    const api = path.join(r.root, 'api');
+    spawnSync('git', ['init', '-q', api], { encoding: 'utf8' });
+    r.write('api/.gitignore', '.claude/settings.local.json\n');
+    r.write('api/.claude/settings.local.json', JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    const held = r.run(edit('api/src/a.ts', sid()));
+    assert.ok(denied(held), `held, not skipped: ${held.stdout}${held.stderr}`);
+    assert.match(why(held), /API-SECTION/);
+  } finally { r.rm(); }
+});
+
 test('member: a change under the root\'s own source root still uses the root\'s docs', () => {
   const r = joined();
   try {

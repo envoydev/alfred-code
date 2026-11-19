@@ -288,16 +288,22 @@ test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdde
 test('the shell-guard dispatcher alone blocks the call when it fails - plugin and copy routes, backfilled once (HK07)', () => {
     const flagged = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.onFailure !== undefined)
         .map((h) => `${event} ${b.matcher} ${h.onFailure} ${scriptOf(h)}`)));
-    // audit 2026-10-30 HK-21: the file dispatcher carries it too
-    assert.deepStrictEqual(flagged.sort(), [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`, `PreToolUse ${fileDispatcher.MATCHER} block file-guards.js`].sort());
+    // audit 2026-10-30 HK-21: the file dispatcher carries it too; hooks audit 2026-11-19 B6-S3: so does the secret guard's own
+    // filesystem-server read row, the same read the file dispatcher refuses on failure
+    const secretRead = block.PreToolUse.find((b) => b.hooks.some((h) => scriptOf(h) === 'guard-secret-value.js'));
+    assert.deepStrictEqual(flagged.sort(), [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`, `PreToolUse ${fileDispatcher.MATCHER} block file-guards.js`,
+        `PreToolUse ${secretRead.matcher} block guard-secret-value.js`].sort());
     const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
-    assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 2, 'the generated entry carries it once per dispatcher');
+    assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 3, 'the generated entry carries it once per dispatcher and once on the secret guard\'s read row');
     assert.match(core, /shell-guards\.js"\],"timeout":\d+,"onFailure":"block"/, 'on the dispatcher');
     assert.match(core, /file-guards\.js"\],"timeout":\d+,"onFailure":"block"/, 'on the file dispatcher');
+    assert.match(core, /guard-secret-value\.js"\],"timeout":\d+,"onFailure":"block"/, 'on the secret guard\'s read row');
     const { onFailureFor, writeSettings, hookCommand } = require('./install/settings.js');
     assert.strictEqual(onFailureFor('shell-guards.js', 'PreToolUse'), 'block');
     assert.strictEqual(onFailureFor('file-guards.js', 'PreToolUse'), 'block');
-    for (const [file, event] of [['guard-stop-contract.js', 'Stop'], ['instrument-tool-usage.js', 'PreToolUse'], ['shell-guards.js', 'PostToolUse'], ['file-guards.js', 'PostToolUse']])
+    assert.strictEqual(onFailureFor('guard-secret-value.js', 'PreToolUse'), 'block');
+    for (const [file, event] of [['guard-stop-contract.js', 'Stop'], ['instrument-tool-usage.js', 'PreToolUse'], ['shell-guards.js', 'PostToolUse'], ['file-guards.js', 'PostToolUse'],
+        ['guard-secret-value.js', 'PostToolUse'], ['guard-secret-value.js', 'PostToolUseFailure'], ['guard-secret-value.js', 'SessionStart']])
         assert.strictEqual(onFailureFor(file, event), undefined, `${file} ${event}`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-onfailure-'));
     try {

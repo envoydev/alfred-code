@@ -480,6 +480,22 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
 });
 
+// Hooks audit 2026-11-19 (B7-S1): the auto-run answer's ledger row copied each question and picked label as typed, so a
+// question quoting a token wrote it into the hook-blocks ledger. The answer the session gets keeps the text.
+test('auto-mode asks: the auto-answer ledger row stores <redacted> for a credential shape; the answer keeps the text', () =>
+{
+    const p = project();
+    autoStamp(p, 'a9');
+    const shape = 'ghp_' + 'F'.repeat(24); // fake by construction
+    const question = `Store ${shape} in the vault?`;
+    const r = ask(p, 'a9', [q(question, ['Store it (Recommended)', 'Not now'])]);
+    assert.deepStrictEqual(answered(r), { [question]: 'Store it (Recommended)' }, 'the answer the session gets is unchanged');
+    const row = rows(p, 'a9').find((x) => x.kind === 'auto-answer');
+    assert.ok(row, 'one auto-answer row');
+    assert.ok(!JSON.stringify(row).includes(shape), 'the ledger row holds no credential shape');
+    assert.deepStrictEqual(row.detail.answers, { 'Store <redacted> in the vault?': 'Store it (Recommended)' });
+});
+
 // final review, item 1: the series ask the run puts for N outward writes names its acts as 'outward acts', and the hook holds
 // it for the user whatever verb the label uses - a pick the hook made would be read as the user's approval of N writes.
 test('auto-mode asks: a series ask for outward writes waits for the user; the local recommended asks stay answered', () =>

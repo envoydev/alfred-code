@@ -714,7 +714,8 @@ function firstUsage() { readFloor(); return _firstUsage; }
 // G = F + R - every term an integer, so the boundary is exact. The cache is judged warm on every route: by the time a
 // hook speaks the request it rides has already been paid (spec 2026-10-28, 'The finding that shapes the design').
 const RESUME_READ = 13000;
-const CACHE_READ_RATES = Object.freeze({ 'claude-opus-5-5': 50, 'claude-sonnet-5-5': 50, 'claude-fable-5-1': 25, 'claude-mythos-5-1': 25 });
+const CACHE_READ_RATES = Object.freeze({ 'claude-opus-5-5': 50, 'claude-sonnet-5-5': 50, 'claude-fable-5-2': 25, 'claude-mythos-5-2': 25,
+    'claude-fable-5-1': 25, 'claude-mythos-5-1': 25 });
 const OTHER_READ_RATE = 100;   // an unknown model over-states the read: more offers, the old direction
 const WRITE_RATES = Object.freeze({ '1h': 2000, '5m': 1250 });
 const PAYBACK_DEFAULT = 30;

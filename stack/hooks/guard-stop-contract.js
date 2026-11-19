@@ -741,12 +741,14 @@ const blankRecords = (t) => t.replace(DECISION_RECORD_RE, (m) => m.replace(/[^\n
 //   - a list item another party owns ('Task 7, which waits for <name>'s numbers') or the user's own checks named as such
 //     ('Your own checks: ...'), and a bare 'Still open:' heading left with no item under it (1);
 //   - a 'Not run:' / 'Not verified:' line that says why the check cannot run here or need not ('with a live seat in a
-//     real session', 'covered by tests instead', 'a billed A/B') - a scope record, not a step the turn could take now (2
-//     closes; 'Not run: the card's manual check against the local backend' gives no such reason and stays an item).
+//     real session', 'covered by tests instead', 'a billed A/B', 'no code changed') - a scope record, not a step the turn
+//     could take now (2 closes; 'Not run: the card's manual check against the local backend' gives no such reason and
+//     stays an item). A need-not reason is habits-done-gate's own 'not run - <why>' result line: a small close's
+//     'review: task-verify-code not run - no code changed' was held as a stall (2026-11-17, one recorded session).
 //   - the diff held for the user's review (DIFF_HOLD_RE, below) - the tree's standing state, the judge's own release (7
 //     sampled closes held on it alone, each over a finished run).
 const NOT_RUN_SPAN_RE = /\bnot (?:yet )?(?:run|verified)\**\s*[:\u2013-][^\n]*/gi;
-const CANNOT_RUN_HERE_RE = /\b(?:real|live) (?:session|seat|device|phone|hardware)s?\b|\bon (?:a |the )?real (?:device|phone)\b|\bbilled\b|\bpaid\b|\bcovered by\b|\binstead\b|\bby design\b|\bon (?:Windows|Linux|macOS)\b|\bon this machine\b|\bcan(?:'|\u2019|no)t\b|\bunavailable\b|\bnot available\b|\bout of scope\b/i;
+const CANNOT_RUN_HERE_RE = /\b(?:real|live) (?:session|seat|device|phone|hardware)s?\b|\bon (?:a |the )?real (?:device|phone)\b|\bbilled\b|\bpaid\b|\bcovered by\b|\binstead\b|\bby design\b|\bon (?:Windows|Linux|macOS)\b|\bon this machine\b|\bcan(?:'|\u2019|no)t\b|\bunavailable\b|\bnot available\b|\bout of scope\b|\bno (?:code|source)(?: files?)? (?:was |were )?(?:changed|edited|touched)\b/i;
 const CARRIED_OPEN_RE = /^[^\n]*\b(?:still open|(?:remains?|stays?) open|open|left)\s+from\s+(?:earlier|before|an? (?:earlier|previous) \w+|the (?:last|previous|earlier) \w+)\b[^\n]*(?:\n[ \t]*(?:[-*+\u2022]|\d+[.)])[^\n]*)*/gim;
 const USER_CHOSE_RE = /[^.\n;]*\b(?:as you (?:asked|chose|wanted|said|decided|instructed|requested)|(?:which|that) is what you (?:chose|asked for|wanted|picked|decided)|per your (?:instruction|request|choice|answer)|at your request)\b[^.\n;]*/gi;
 const LATER_ITEM_RE = /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?(?:still open|open|next|leftovers?|still to do|to do)(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*(?:in |at )?(?:the |a )?(?:next|later|following|tomorrow'?s?) session\b[^\n]*/gim;
@@ -1708,8 +1710,17 @@ function scanStateFile(p) {
   const tag = require('crypto').createHash('sha1').update(p).digest('hex').slice(0, 8);
   return require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-stop-scan-${sid}-${tag}.json`);
 }
+// Claude Code's own request records (`api-request`, `-shape` and `-blob` rows, which it skips when it rebuilds the
+// conversation) re-state earlier rows: a shape, a block or an answer in one is no new event. A blob written after an
+// answered rotate ask replayed the model's own earlier command and the ask came back (2026-11-17, one recorded session).
+const REQUEST_RECORD_RE = /"type"\s*:\s*"api-request/;
+function requestRecord(line) {
+  if (!REQUEST_RECORD_RE.test(line)) return false;
+  try { return String(JSON.parse(line).type).startsWith('api-request'); } catch { return false; }
+}
 // One row's effect on the four positions: a rotate-ask block, an answer after one (or naming rotation), a shape.
 function scanRow(line, n, into) {
+  if (requestRecord(line)) return;
   if (isRotateBlock(line)) into.block = n;
   if (ROTATE_ANSWER_RE.test(line) || (into.block >= 0 && ANY_ANSWER_RE.test(line))) into.answer = n;
   if (!SECRET_SHAPE.test(line)) return;
@@ -1827,9 +1838,11 @@ function countAutoContinue(session, markerMtimeMs) {
 // 142,455 cache-read, and this audit hit the same wall three times). A block that cannot be
 // explained cannot be tuned, and an untunable gate is the one the model learns to work around.
 // The matched text is the model's own prose, and a close can quote a credential - the row and the
-// breadcrumb are files on disk, so a value in them is a second copy of the exposure. Redacted first.
+// breadcrumb are files on disk, so a value in them is a second copy of the exposure. Redacted first, as is every ledger
+// row that copies ask or answer text (the auto-run answer, reAskDeny).
+const redactShapes = (text) => String(text == null ? '' : text).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>');
 function blockDetail(branch, matched) {
-  const detail = { branch, matched: String(matched == null ? '' : matched).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>').slice(0, 120) };
+  const detail = { branch, matched: redactShapes(matched).slice(0, 120) };
   global.BLOCK_DETAIL = detail;
   breadcrumb(`block ${branch}: ${detail.matched}`);
 }
@@ -3105,7 +3118,8 @@ if (autoRun) {
       const text = qs.flatMap((q) => (q ? [String(q.question || ''), String(q.header || ''), ...(q.options || []).flatMap((o) => (o ? [String(o.label || ''), String(o.description || '')] : []))] : [])).join('\n');
       fieldNotes = flowFieldNotes(qs, text, turnProseBeforeAsk());
     } catch { /* fail-open: the answer goes out without the note */ }
-    ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option', detail: { answers } });
+    ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option',
+      detail: { answers: Object.fromEntries(Object.entries(answers).map(([question, label]) => [redactShapes(question), redactShapes(label)])) } });
     process.stdout.write(JSON.stringify({ hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'allow',
@@ -3184,7 +3198,7 @@ function reAskDeny() {
   const why = `Blocked: the user asked a question - answer it in prose and end the turn. They met this ask with '${open.text.slice(0, 160)}', `
     + 'so it is not answered yet: answer that question, put no ask in this turn, and end it. The ask comes back when their next '
     + 'message picks, approves or says go on - or re-send it unchanged if the answer itself needs their pick now.';
-  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: why.split('\n')[0].slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
+  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: redactShapes(why.split('\n')[0]).slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
   breadcrumb(`block reask: ${open.kind}`);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }));
   reaskDenied = true;

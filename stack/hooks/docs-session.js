@@ -264,7 +264,15 @@ function otherActorWrites(session, exceptKey, entries = tmpEntries()) {
   }
   return out;
 }
-// Every path an actor of ANOTHER session recorded on this same checkout since `since` (the snapshot's epoch seconds).
+// The paths a session rooted at a folder ABOVE this checkout recorded under it (`<sub>/...`), spelled from the checkout:
+// such a session's edit here was asked about as this session's own (2026-11-17, two recorded sessions on a workspace
+// folder holding several checkouts). `caseFold` is the root key's - folded on win32.
+function pathsUnder(paths, sub, caseFold) {
+  const prefix = `${sub}/`;
+  return paths.filter((p) => (caseFold ? String(p).toLowerCase() : String(p)).startsWith(prefix)).map((p) => String(p).slice(prefix.length));
+}
+// Every path an actor of ANOTHER session recorded on this same checkout - or under it, from a folder above (pathsUnder) -
+// since `since` (the snapshot's epoch seconds).
 // Two sessions on one project - a second terminal, a parallel run - each saw the other's edits as a change no actor of
 // their own claimed, so a read-only session was asked about a migration the other session wrote (2026-10-16, an aspnet
 // project on 2.5.0). A state file last written before the snapshot, or one with no `root` (written before this record),
@@ -280,7 +288,11 @@ function otherSessionWrites(session, root, since, entries = tmpEntries()) {
       const file = path.join(os.tmpdir(), f);
       if (fs.statSync(file).mtimeMs / 1000 < since) continue;
       const v = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (v.root === key) for (const p of [...(v.wrote || []), ...(v.moved || [])]) out.add(p);
+      const claimedPaths = [...(v.wrote || []), ...(v.moved || [])];
+      if (v.root === key) for (const p of claimedPaths) out.add(p);
+      else if (typeof v.root === 'string' && key.startsWith(`${v.root}/`)) {
+        for (const p of pathsUnder(claimedPaths, key.slice(v.root.length + 1), process.platform === 'win32')) out.add(p);
+      }
     } catch {}
   }
   return out;
@@ -1383,8 +1395,8 @@ function stampedPlanWrite(input, root) {
   const rel = toPosix(path.relative(root, hit));
   const reason = `Blocked: ${rel} is stamped Completed: - a stamped plan is the record of a closed cycle, never appended to.\n`
     + 'New scope after Completed: is a NEW cycle in a NEW plan file (task-solve from step 1), or work stated to run outside\n'
-    + 'the cycle in one `ungated: <why>` line. Only a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations)\n'
-    + 'may change in this file, through the Edit tool.';
+    + 'the cycle in one `ungated: <why>` line. Only a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations,\n'
+    + 'Result) may change in this file, through Edit, MultiEdit or Write - never a shell write.';
   log(root, input, { event: 'stamped-plan', target: rel });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
@@ -1630,8 +1642,9 @@ function preToolUse(input, root, docs, state) {
   try { readable = durableDocFiles(docs).filter(notPrefs).length > 0; } catch {}
   if (!readable) { allow(); return; }
   if (gate.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: gate.holds }); allow(); return; }
-  // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made.
-  if (unattended(input)) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); unattendedRow(root, input, 'docs hold'); allow(); return; }
+  // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made. Judged at the
+  // session's own root: under a joined member CLAUDE_PROJECT_DIR is the member's, whose standing auto-run is not this session's.
+  if (unattended(input, { ...process.env, CLAUDE_PROJECT_DIR: home })) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); unattendedRow(root, input, 'docs hold'); allow(); return; }
   gate.holds++;
   saveState(input.session_id, state);
   let hits = [];
@@ -1968,7 +1981,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, pathsUnder, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
   try { main(); entryTail(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } }
   catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }

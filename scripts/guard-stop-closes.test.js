@@ -538,6 +538,7 @@ test('retune 3.7.1: the pending half reads records, items owned elsewhere and th
     ['Committed.\n\nStill open: next session, read the log to confirm the nightly restart.', 'an item set for a later session'],
     ["Committed.\n\nStill open:\n- Task 7, which waits for Dana's numbers.\n- Your own checks: the device run.", "items another party or the user's own checks own"],
     ['Committed. Not run: the live check, which needs a real device.', "a 'Not run:' line saying why it cannot run here"],
+    ['Completed: the three pages are updated.\nResult: review: task-verify-code not run - no code changed.\nNothing is owed on any of the three pages.', "habits-done-gate's 'not run - <why>' line with a need-not reason (2026-11-17)"],
     ['I fixed the parser. Nothing is committed - the diff is waiting for your review.', 'the diff held for review is the tree, not a hand-back'],
     ["I fixed all six findings. Round 1 is with a fresh reviewer now. Once the plan passes, I'll stop for your approval.", 'a stop announced for when the work in flight reports'],
   ]) assert.strictEqual(close(text).status, 0, why);
