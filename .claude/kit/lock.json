@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@e37ea04",
+  "kit": "claude-kit@94adf22",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "8629070010847ff937be91c739e1b8c006b6c81847176f758e8a715a8e15a933",
@@ -63,7 +63,7 @@
     ".claude/skills/repo-audit-commands/references/remediation.md": "2d28917aa024b914f3a75ed50c003697e9455c30c57203950916fb4369720f8f",
     ".claude/skills/repo-audit-commands/references/rubric.md": "5a47d6b7ec07acfeabb010581f1ff89723be95715ba8b6c4319827bdbdb4bade",
     ".claude/skills/repo-audit-hooks/SKILL.md": "cfdc39c068c45f39db6937bbdba340de25c74c93ca9f8735bed6ae2f2b431b1e",
-    ".claude/skills/repo-audit-hooks/references/currency.md": "046b1c78d7ae3144c542ffd99d0c3a21a0237ca7d8fa1168ca6600a1e631e8e0",
+    ".claude/skills/repo-audit-hooks/references/currency.md": "733c22f6a7410dcb030bbd816d4e2fb23baa6c6429e874621d881ce54499f97f",
     ".claude/skills/repo-audit-hooks/references/discovery.md": "303a650f3aad0354d43e529125c4af0825b0088e0f6d53cfd0706b628764095c",
     ".claude/skills/repo-audit-hooks/references/principles.md": "6390673232e3a499e7758a2118748562fb211ecef35750ca63d0c2291a53eb20",
     ".claude/skills/repo-audit-hooks/references/remediation.md": "8e02470bbd2f5b1a8d38c0a42637e71f991107f6ebc46147798d29626005055a",
@@ -88,7 +88,7 @@
     ".claude/skills/repo-audit-system/references/discovery.md": "c445df11879029d0c8328ec45d5b1520b918285b54ae0fa15249fe88a564bfa8",
     ".claude/skills/repo-audit-system/references/principles.md": "ad03545fcd5aff5a93eb95ff8ec4d2c48a77362f8e65834cf9c4853cd9da218d",
     ".claude/skills/repo-audit-system/references/remediation.md": "16da447404c925ddd7675b4730d38788e72bd93f9737a9111c7e091a686bbd17",
-    ".claude/skills/repo-audit-system/references/rubric.md": "e0cc3eb094f93a5e59c6f7f615284510b8b3e364793abb9301ab3a23a78f6547",
+    ".claude/skills/repo-audit-system/references/rubric.md": "d3554722b7b216bf805133f6698537a9462a2284d86fd4f8809f0ed7c67c6103",
     ".claude/skills/repo-audit-tools/SKILL.md": "aa2d875417915c9beffd9a013e6e9c828c6966a6220eb7bcd5f51c7ef24fb597",
     ".claude/skills/repo-audit-tools/references/currency.md": "aab65d83e0174e8d265685518dce0c09da5e1f7463781d0ba977fc72df39f56a",
     ".claude/skills/repo-audit-tools/references/discovery.md": "a2282666631ff5dccde8d1442dde11398108fe9460d3780d31c04de99b5cd25d",
