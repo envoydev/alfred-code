@@ -98,7 +98,8 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
         const reads = own ? 'the note it prints - your own earlier pass -' : 'the notes it prints (newest first; the newest note per name wins)';
         assert.ok(text.includes(`At START, \`node .claude/hooks/handoff.js list ${run}\` - read ${reads} for `), `${f}: reads ${reads}`);
         const name = /-implementer\.md$/.test(f) ? '<feature>/<contract_version>/<seat>/<task>' : '<feature>/<contract_version>/<seat>';
-        assert.ok(text.includes(`\`node .claude/hooks/handoff.js put ${name} <<'EOF'\``), `${f}: hands off as ${name}`);
+        assert.ok(text.includes(`\`node .claude/hooks/handoff.js put ${name} --text '<the note>'\``), `${f}: hands off as ${name}`);
+        assert.ok(!text.includes("<<'EOF'"), `${f}: no heredoc - Claude Code asks before one that holds '{' and then a quote`);
     }
     assert.strictEqual(TRIO_COPIES.length, 5);
     for (const f of TRIO_COPIES)

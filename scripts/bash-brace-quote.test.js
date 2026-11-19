@@ -86,6 +86,8 @@ test('the ported check asks where Claude Code asks, and only there', () =>
     assert.deepStrictEqual(askingAt('echo "${A:-b}" \'{"a":1}\' `x {"y"}`'), [], 'a brace inside quotes or backticks does not');
     assert.deepStrictEqual(askingAt('if ! command -v git >/dev/null; then echo "MISSING git"; exit 1; fi'), [], 'if-then-fi does not');
     assert.deepStrictEqual(askingAt('printf \'%s\\n\' \'[ { "kind": "a" } ]\' | node x'), [], 'JSON in a single-quoted argument does not');
+    assert.deepStrictEqual(askingAt('node .claude/hooks/handoff.js put a/v1/seat --text \'retry { "id": 1 } fixed it\''), [], 'the seats\' handoff form does not');
+    assert.deepStrictEqual(askingAt('node .claude/hooks/handoff.js put a/v1/seat <<\'EOF\'\nretry { "id": 1 }\nEOF'), [58], 'the old heredoc form did');
 });
 
 test('no shipped bash block asks for approval through the brace-with-quote check', () =>
