@@ -129,37 +129,58 @@ test('explain-topic page template: no script, link or URL; every radio has its l
   assert.match(tpl, /input:checked \+ label/);
 });
 
-// 2026-11-19, the user's ask: pictures before prose, the output format asked when a topic is explained, and a video only
-// where the run can make one (else an animated page).
-test('explain-topic: the format ask comes first, a page with diagrams recommended, a video only with a route', () => {
+// 2026-11-19, the user's rulings: the output format is asked, the picture leads and a video is offered (only where the
+// run can make one, else an animated page) - on a SECOND try only, when the first explanation did not land.
+test('explain-topic: the first explanation asks nothing and keeps the diagram near the end', () => {
   const t = read(`${SKILL}/SKILL.md`);
   const before = t.split('## Before writing')[1].split('## The code track')[0];
-  assert.match(before, /^\s*1\. \*\*Ask the format\*\*/, 'the first step before writing');
-  const ask = (before.match(/```ask\n([\s\S]*?)```/) || [])[1] || '';
+  assert.match(before, /^\s*1\. \*\*Find the real question\.\*\*/, 'the first step before writing is the question, not an ask');
+  assert.doesNotMatch(before, /```ask|Ask the format/);
+  const b = flat(t);
+  assert.match(b, /1\. \*\*The short answer\*\*.* 2\. \*\*Picture it like this\*\*.* 6\. \*\*The diagram\*\* - when one was made/);
+  assert.doesNotMatch(b, /its diagram comes before part 2: the reader sees the path/);
+  const ex = read(`${SKILL}/references/worked-example.md`);
+  assert.ok(ex.indexOf('**The diagram:**') > ex.indexOf('**How it works, step by step:**'), 'the worked example keeps the diagram after the steps');
+});
+
+test('explain-topic: a second try, after the first did not land, asks the format and leads with the picture', () => {
+  const t = read(`${SKILL}/SKILL.md`);
+  const second = t.split('## When it did not land')[1].split('## Accuracy')[0];
+  const s = flat(second);
+  assert.match(s, /The first explanation is the walkthrough above, in chat, with no ask\. The format ask, the picture-first order and a video are for a second try only/);
+  assert.match(s, /when the user does not understand a topic explained to them - this walkthrough or a plain answer about it - in any words and any language: 'I don't get it', 'explain it simpler', 'explain it better', 'still unclear'\./);
+  assert.match(s, /A question about a status, a plan or a design answer is not this: it gets a plainer answer at the same length\./);
+  assert.match(second, /^\s*1\. \*\*Ask the format\*\*/m);
+  const ask = (second.match(/```ask\n([\s\S]*?)```/) || [])[1] || '';
+  assert.match(ask, /^\s*The first explanation of <topic> did not land\. How do you want the second\?/);
   const opts = ask.split('\n').filter((l) => /^\s*- '/.test(l));
   assert.match(opts[0] || '', /'HTML page with diagrams \(Recommended\)'/, 'the page is the recommended option, listed first');
   assert.ok(opts.some((o) => /'In chat'/.test(o)) && opts.some((o) => /'Video'/.test(o)), 'chat and video are offered');
-  const b = flat(before);
-  assert.match(b, /Check the tools for a video route first/);
-  assert.match(b, /With no video route, the third option is 'Animated page'/);
-  assert.match(b, /Never offer a video the run cannot make/);
-});
-
-test('explain-topic: the picture leads - part 2 of the layered answer, before the steps, and not repeated in prose', () => {
-  const b = flat(read(`${SKILL}/SKILL.md`));
-  assert.match(b, /1\. \*\*The short answer\*\*.* 2\. \*\*The picture\*\* - when the topic has a shape, the diagram comes here, before any step/);
-  assert.match(b, /its diagram comes before part 2: the reader sees the path, then reads the steps/);
-  assert.match(b, /Picture first: .* and lead with it\. The steps keep the picture's numbers and add the why the picture cannot show; they do not re-describe its layout/);
+  assert.match(s, /Check the tools for a video route first/);
+  assert.match(s, /With no video route, the third option is 'Animated page'/);
+  assert.match(s, /Never offer a video the run cannot make/);
+  assert.match(s, /one depth level plainer \(Depth\), a new analogy - the first did not carry - and a new worked example/);
+  assert.match(s, /\*\*Lead with the picture\.\*\* On the topic track the diagram comes right after the short answer, before any step; on the code track it comes before the walkthrough's part 2/);
+  const b = flat(t);
+  assert.match(b, /On a second try it leads \(When it did not land\)\. The steps keep the picture's numbers and add the why the picture cannot show; they do not re-describe its layout/);
   assert.match(b, /\[ \] Video or animated page, if any: every step appears in order and is readable; reduced motion shows every step/);
   assert.match(b, /An animated page is screenshot with reduced motion emulated, or after its run's length/);
-  const ex = read(`${SKILL}/references/worked-example.md`);
-  assert.ok(ex.indexOf('**The picture:**') > ex.indexOf('**The short answer:**') && ex.indexOf('**The picture:**') < ex.indexOf('**Picture it like this:**'), 'the worked example puts the picture second');
-  assert.doesNotMatch(ex, /\*\*The diagram:\*\*/);
   assert.match(b, /embedded as a `data:` URI, never a downloaded one, so the page stays offline/);
-  assert.match(b, /`<docs root>\/explanations\/<topic-slug>\.<level>\.webm`/);
+  assert.match(b, /With 'Video', on a second try: `<docs root>\/explanations\/<topic-slug>\.<level>\.webm`/);
   const pat = flat(read(`${SKILL}/references/diagram-patterns.md`));
   assert.match(pat, /## Animated steps/);
   assert.match(pat, /prefers-reduced-motion: reduce\) \{ \.step \{ animation: none; \} \}/);
   assert.match(pat, /Watch the file through once before handing it over/);
   assert.match(pat, /a\.currentTime = n \* 100/, 'frames are seeked, not timed by the shots');
+});
+
+test('explain-topic: the walkthrough itself is written to the ASD-STE100 writing rules', () => {
+  const b = flat(read(`${SKILL}/SKILL.md`));
+  assert.match(b, /Write in the style of ASD-STE100 \(Simplified Technical English\), its writing rules, not its dictionary: a description of 25 words or fewer, an instruction of 20 or fewer, the active voice/);
+  assert.match(b, /It keeps the explanation on its main topic\. A depth level's shorter sentences \(Depth\) win where they are shorter\./);
+});
+
+test('interaction rule: a topic explanation that did not land goes to the explainer\'s second try', () => {
+  const r = flat(read('stack/rules/alfred-interaction.md'));
+  assert.match(r, /When the user does not understand a topic explained to them, in any words \('I don't get it', 'explain it simpler', 'explain it better'\), the FIRST action is the `habits-explain-topic` Skill call: its second try asks the format \(a page with diagrams, chat or a video\) and leads with the picture\. After a status, a plan or a design answer, 'I haven't understood' means plainer at the same length\./);
 });
