@@ -182,7 +182,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`
   `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` when
   claude launches (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
-  compacted at 76k of a 100k window; a /clear keeps the launch's window - 2026-11-19, a session cleared 21 s after the mode was saved compacted at 967.6k of 1M), so the mode block's writer sets it per model where the checkout compacts instead
+  compacted at 76k of a 100k window; a /clear keeps the launch's window - 2026-11-19, a session cleared 21 s after the mode was saved compacted at 967.6k of 1M; re-measured the same day on 2.1.328 with a 100k window saved mid-session: the /clear-started session reached 193k with no compaction, the next launch compacted at 73.8k), so the mode block's writer sets it per model where the checkout compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `mode-settings.js writeModes`, `fresh-session.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
   ruling, 2026-10-14; a cause per call since the mode commands of 2026-11-12): a session compacts instead of offering a
   fresh one for one of three causes, read per call by `hook-prelude.js compactCause` in this order - `project`
