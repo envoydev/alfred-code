@@ -1187,3 +1187,11 @@ prompt. In a `-p` run the ask is a refusal. `/alfred-code:update` puts the helpe
 understand it ('I don't get it', 'explain it simpler'), the skill loads, asks the format - a page with diagrams, chat
 or a video - and leads with the picture. After a status, a plan or a design answer, the same words get a plainer reply
 instead.
+
+## after 3.13.0 - the update removes the old status folders itself
+
+The old session status folders (`.claude/session-inspector/status/`, and the exclude lines the stack added for them) no
+longer wait for the next session start: the update removes them in the same run, in every project the update or its
+cascade runs in. One exception stays: a file in the project's own folder that is under 25 hours old may belong to a
+session still running, so it stays and the next session start removes it. The update prints a `session status:` line
+for what it removed and for what it kept.

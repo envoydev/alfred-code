@@ -83,6 +83,7 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   assert it from memory. The `settings.local.json: created ...` line also arrives as a `warn:` line - report it once,
   here.
 - **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim.
+- **SESSION STATUS** - every `session status:` line the grep caught, verbatim; a 'kept' line adds that the next session start finishes it.
 - **LAYOUT** - every `layout:` line the grep caught, verbatim, or 'layout: current - nothing moved'; a `layout: kept`
   line goes on the follow-ups card with the one action its shape leaves - three shapes, three actions:
   - `layout: kept <old> - <new> already holds it`: a doc at both homes, the new file the live one; diff the two and delete the old

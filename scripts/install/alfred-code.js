@@ -866,6 +866,8 @@ function runLayers(ctx)
         try { docs.ensureQualityNotOwned({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
         catch (err) { ctx.note(`quality/watch.json under ${docsPath} could not be updated (${err.message}) - add COVERAGE-QUALITY.md to its notOwned list by hand`); }
     }
+    // The folders an older release wrote the session status to go now, not at the next session start; a root file under 25 h old stays for it.
+    if (!ctx.args.printPlan) uninstallLayer.sweepSessionStatus({ projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited, only while
     // the install works with AGENTS.md (on a CLAUDE.md answer that file already has the name the user picked), and only
     // when no name answer came this run: an answer renames through renameInstructionFiles below.

@@ -226,7 +226,27 @@ function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () 
     if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);
 }
 
-module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus };
+// The same take, run by the install and the update: the folders an older release wrote go at once, with the session
+// start's 25 h guard - a root file younger than that may belong to a running session, so it stays for the next session
+// start, which sweeps it. Fail-open: a throw is a note, never a failed run.
+function sweepSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () => {}, deps = {} })
+{
+    try
+    {
+        let status;
+        try { status = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'session-status.js')); }
+        catch (e) { note(`session status: not swept - the module could not be loaded (${e.message})`); return; }
+        const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, uptime: () => 0, ...deps, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) }, { rootMinAgeMs: status.SWEEP_ROOT_MIN_AGE_MS });
+        const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+        if (got.files) log(`  session status: ${got.files} old status file${got.files === 1 ? '' : 's'} removed from .claude/session-inspector/status${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
+        if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);
+        if (got.bases) log(`  session status: ${got.bases} old status folder${got.bases === 1 ? '' : 's'} kept - a file under 25 h old may belong to a running session; the next session start removes it`);
+        if (got.late) note(`session status: the exclude clean-up was cut short at the time limit (${got.late} folder${got.late === 1 ? '' : 's'} not reached) - run /alfred-code:update again to finish it`);
+    }
+    catch (e) { note(`session status: the old status folders were not swept (${e.message}) - the next session start sweeps them`); }
+}
+
+module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus, sweepSessionStatus };
 
 // `node uninstall.js seed <project root>` - seedPlan over the stamp's ledger, nothing written: one
 // `instructions-seed: <path> unedited|edited` line per seed, or `instructions-seed: none` (no stamp, no ledger, no seed).
