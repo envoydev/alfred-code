@@ -933,10 +933,41 @@ function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine 
             const child = path.join(dir, d.name);
             if (isStamped(child))
             {
+                // an install in a plain subfolder of this repository is no project of its own: nestedInstalls names it
+                if (sameRepo(child, top)) continue;
                 const read = readWorkspace(child);
                 // a garbage record is no project to offer: named, and left to be fixed by hand
                 if (read.state === 'garbage') sayGarbage(read.file, top, log);
                 else if (!read.view.parent && !read.view.parentNone && !read.view.role && !read.view.above && switchOn(child) && !(ignoredBy(child, { env }) || {}).ignored) found.push(relPosix(top, child));
+                continue;
+            }
+            if (depth + 1 < maxDepth) walk(child, depth + 1);
+        }
+    };
+    walk(top, 0);
+    return found.sort();
+}
+
+// The stamped folders below the project that are plain subfolders of its own git repository (rescan's walk, the same
+// skips): the install an older release or a copied folder left, which the repository's own install already reaches.
+// A stamped folder ends its branch. Sorted rel paths.
+function nestedInstalls(projectRoot, { maxDepth = 5, env = process.env } = {})
+{
+    const top = realOf(projectRoot);
+    const dataRoot = dataRootMod.dataRootOf({ projectDir: top }).root.split('/')[0];
+    const found = [];
+    const walk = (dir, depth) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            if (!d.isDirectory() || d.isSymbolicLink() || RESCAN_SKIP.has(d.name) || (dir === top && d.name === dataRoot)) continue;
+            const child = path.join(dir, d.name);
+            if (isStamped(child))
+            {
+                if (sameRepo(child, top)) found.push(relPosix(top, child));
                 continue;
             }
             if (depth + 1 < maxDepth) walk(child, depth + 1);
@@ -2172,7 +2203,7 @@ module.exports = {
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan, nestedInstalls,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,

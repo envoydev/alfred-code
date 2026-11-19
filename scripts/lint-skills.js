@@ -1322,7 +1322,8 @@ const SETUP_ASK_TEMPLATES = {
     // asks became the scope ask - the children too, or only this project - one template with and one without them (2026-10-28).
     // 2026-11-19: the join ask is gone (every update joins what it finds below); a fit ask per joined child took its place, so 3.
     // 2026-11-19 (fix pass): +1, the one-item variant of the fit ask (two options, no Pick), so 4.
-    'setup-plugin/references/update-workspace.md': 4,
+    // 2026-11-19: +1, the nested-install ask (remove it, or keep it), so 5.
+    'setup-plugin/references/update-workspace.md': 5,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.

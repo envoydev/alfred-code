@@ -18,6 +18,8 @@
 //               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
 //   ignore-child  a path below this root marked ignored: its joined children keep their values and sent rules, then run their own update
+//   remove-nested  --path <rel>: the stack's own files out of an install in a plain subfolder of this git repository - only what
+//                 that folder's own stamp records; never the root's install, the account, the plugins or git's exclude file
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
 
@@ -27,6 +29,7 @@ const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
 const stamp = require('./install/stamp.js');
+const nested = require('./install/nested.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { BRAND } = require('./install/brand.js');
@@ -397,7 +400,11 @@ function planVerb(out)
         }
         for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${field(row.rel)}`);
         let rescanned = 0;
-        if (has('--rescan')) for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
+        if (has('--rescan'))
+        {
+            for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
+            for (const rel of ws.nestedInstalls(top, { env })) { out(`nested: ${field(rel)}`); rescanned += 1; }
+        }
         if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
@@ -686,7 +693,19 @@ function checkLoadsVerb(out)
     else out(`!! check-loads: the probe failed - ${r.why}`);
 }
 
-const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild };
+// The stack's own files out of an install nested in the root's repository; the checks and the steps are install/nested.js.
+function removeNestedVerb(out)
+{
+    const root = rootArg();
+    const rel = arg('--path');
+    const checked = nested.check({ root, rel, exec });
+    if (checked.why) throw bad(checked.why);
+    const { SHIPPED_DENY } = require('./install/alfred-code.js');
+    const code = nested.removeNested({ ...checked, sourceDir: path.join(__dirname, '..'), shippedDeny: SHIPPED_DENY, out });
+    if (code) throw new Exit(code, '');
+}
+
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild, 'remove-nested': removeNestedVerb };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()

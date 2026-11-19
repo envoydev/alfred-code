@@ -284,10 +284,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
   writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
   `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `unregister`, `join`, `role`, `ignore`,
-  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`): init reads
+  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`, `remove-nested`): init reads
   `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
   every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
-  child or a rescan row (every update's `plan` carries `--rescan`; a `rescan:` row - no parent, no role recorded, its switch not 0 - is joined with no ask, 2026-11-19, after step 2's answers and before the installer call,
+  child, a rescan row or a `nested:` row (every update's `plan` carries `--rescan`; a `nested:` row - a stamped plain subfolder of this repository, `workspace.js nestedInstalls`, which `rescan` leaves out - is offered a removal, 'Remove the nested install' or 'Keep it', unattended 'Keep it': `workspace.js remove-nested --root . --path <rel>` (`install/nested.js`) takes only that folder's own stamped links, copies, generated rules, settings keys and stamp, through no `uninstall` call - which would resolve to the repository's top - and never a `claude` call, the account, git's exclude file, a workspace record, its instruction file, an edited copy or its `.alfred` data; a `rescan:` row - no parent, no role recorded, its switch not 0 - is joined with no ask, 2026-11-19, after step 2's answers and before the installer call,
   then checked after this project's installer run with validate's `stack-select.js --redundant` against ONE `--plan-out` read of this project, one fit ask per
   joined child with `redundant:` lines whose Recommended answer writes each as a `workspace.js ignore`), and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
   skips its subtree, a run is failed on its summary line since the installer exits 0). Update asks first whether the projects below

@@ -1204,3 +1204,11 @@ with no question, once the update's own questions are answered. The update then 
 against the set it now inherits. When some of that set fits none of the child's stacks, it asks once for that child:
 ignore the suggested items (recommended), keep everything inherited, or pick. A child with nothing to leave out is only
 named. `/alfred-code:configure` in that project ('Leave and become standalone') takes it out again.
+
+## after 3.13.0 - update offers to remove an install nested in the same repository
+
+An install in a plain subfolder of the same git repository (its own `.claude/` and stamp, no `.git` of its own) is not a
+project of its own: this repository's install already reaches that folder. `/alfred-code:update` now names each one and
+asks: remove the nested install (recommended), or keep it. The removal takes only the files that folder's own stamp
+records - its stack copies, links, generated rules, the stack's settings keys and its stamp - and leaves its AGENTS.md, any
+copy you edited, its `.alfred` folder and your own files. Keep it and nothing changes; the next update asks again.

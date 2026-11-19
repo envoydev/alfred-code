@@ -1715,8 +1715,25 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     const walk = flat(refBody('update-walk'));
     const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
-    assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child or a rescan row');
+    assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child, a rescan row or a nested row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+});
+
+test('update offers to remove an install nested in the same repository: one ask per nested row, a removal that never joins or counts it', () =>
+{
+    const workspace = refBody('update-workspace');
+    const flatWorkspace = flat(workspace);
+    const asks = askBlocks(workspace).filter((b) => /holds an install of its own inside this repository/.test(b[0]));
+    assert.strictEqual(asks.length, 1, 'one nested-install ask template');
+    assert.deepStrictEqual(asks[0].slice(1).map((l) => (/^- '(.*)' - /.exec(l) || [])[1]), ['Remove the nested install (Recommended)', 'Keep it']);
+    assert.match(flatWorkspace, /## Installs nested in this repository - on `nested:` rows/);
+    assert.match(flatWorkspace, /- `nested: <rel>` - an install inside this repository[\s\S]*?never joined, never counted as a project below/);
+    assert.match(flatWorkspace, /node "\$TMP\/repo\/scripts\/workspace\.js" remove-nested --root \. --path <rel>/);
+    assert.match(flatWorkspace, /once the answers are applied and before the installer call/);
+    assert.match(flatWorkspace, /Unattended \(no ask tool\), take 'Keep it': an unattended run removes nothing/);
+    assert.match(flat(refBody('update-walk')), /With a `nested:` row answered 'Remove the nested install', run its removal first too/);
+    assert.match(flat(refBody('update-close')), /\*\*NESTED\*\* - read only when step 2 had a `nested:` row: each `remove-nested:` line its removal printed, verbatim/);
+    assert.match(flat(refBody('update-history')), /## after 3\.13\.0 - update offers to remove an install nested in the same repository/);
 });
 
 test('the plan and the cascade calls carry the 10-minute budget, and a cascade that outruns it is waited for, never re-run', () =>

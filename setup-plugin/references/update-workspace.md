@@ -1,6 +1,6 @@
 # /alfred-code:update - the workspace: the children's asks and the cascade
 
-Read by step 2's call only when `workspace.js plan` names a second project, a `gone:` child or a `rescan:` row. This
+Read by step 2's call only when `workspace.js plan` names a second project, a `gone:` child, a `rescan:` row or a `nested:` row. This
 project's own update runs exactly as the walk says; this file adds the projects joined below it. Each child keeps its
 own picks and ignores, and its own scope.
 
@@ -17,6 +17,9 @@ own picks and ignores, and its own scope.
 - `rescan: <rel>` - an installed project below with no parent line, no role recorded and its workspace switch not 0
   (every update's `plan` rescans). Each is joined below, after step 2's answers and before the installer call, and
   counts as a project below.
+- `nested: <rel>` - an install inside this repository: a plain subfolder with its own `.claude/` and stamp and no `.git` of
+  its own, which this repository's install already reaches. It is not a project of its own: never joined, never counted
+  as a project below.
 
 Paste the plan's table in your message verbatim, its `total:` line included, before any ask.
 
@@ -152,6 +155,30 @@ It prints `workspace: ignore <category> <name> added|kept`; a `!!` line is paste
 run never drops what a project may own, and an item the child had installed before the join reads as inherited. Say
 in the close which ignores were applied (`update-close.md`, WORKSPACE). The cascade runs when the plan names a child
 or a `rescan:` row joined: a joined child is a child for it, though `$TMP/plan.txt` listed none.
+
+## Installs nested in this repository - on `nested:` rows
+
+The user's ruling (2026-11-19): an install in a plain subfolder of this repository is not a project of its own, so each
+one is named and offered for removal. The installer always installs at the top of the repository, so such a folder only
+comes from an older release or a copied folder. One question per `nested:` row, in step 2's AskUserQuestion call while it
+holds fewer than four questions, else a call of its own right after:
+
+```ask
+<rel> holds an install of its own inside this repository - this repository's install already reaches that folder. Remove the nested install?
+- 'Remove the nested install (Recommended)' - its stack copies, links, generated rules, the stack's settings keys and stamp go; its AGENTS.md, any copy you edited, its .alfred folder and your own files stay
+- 'Keep it' - nothing changes; the next update asks again
+```
+
+'Remove the nested install' runs, once the answers are applied and before the installer call:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" remove-nested --root . --path <rel>
+```
+
+Report its lines: `remove-nested: <rel> - <n> stack file(s) removed`, one `remove-nested: <rel> kept <path> - <why>` per file that
+stays, and `remove-nested: done <rel>`. It takes only the files that folder's own stamp records, never this
+repository's install, the account, a plugin or git's exclude file; a `!!` line is reported and that folder is left as it
+is. Unattended (no ask tool), take 'Keep it': an unattended run removes nothing.
 
 ## The cascade - after this project's own installer run
 
