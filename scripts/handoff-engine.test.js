@@ -37,9 +37,15 @@ test('put takes the note from --text, ahead of stdin, and refuses an empty or a 
         assert.deepStrictEqual([stored.status, stored.out.trim()], [0, 'handoff: stored checkout/v1/designer']);
         const note = run(root, ['list', 'checkout/v1/designer']).out;
         assert.ok(note.includes('retry { "id": 1 } fixed the order spec') && !note.includes('stdin loses'), note);
-        assert.match(run(root, ['put', 'checkout/v1/designer', '--text', '   ']).err, /handoff: no note text - pass it as --text '<the note>'/);
-        assert.strictEqual(run(root, ['put', 'checkout/v1/designer', '--text']).status, 2, 'a --text with no value');
-        assert.strictEqual(run(root, ['put', 'checkout/v1/designer', '--note', 'x']).status, 2, 'an unknown argument');
+        const blank = run(root, ['put', 'checkout/v1/designer', '--text', '   ']);
+        assert.deepStrictEqual([blank.status, blank.err.trim()], [2, "handoff: no note text - pass it as --text '<the note>'"]);
+        const stray = /^handoff: put takes <name> --text '<the note>' and nothing else$/m;
+        for (const extra of [['--text'], ['--note', 'x'], ['--text', 'a', 'b']])
+        {
+            const r = run(root, ['put', 'checkout/v1/designer', ...extra], 'stdin note\n');
+            assert.strictEqual(r.status, 2, extra.join(' '));
+            assert.match(r.err, stray, extra.join(' '));
+        }
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
