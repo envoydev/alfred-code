@@ -1,10 +1,11 @@
 {
-  "kit": "claude-kit@e73654d",
+  "kit": "claude-kit@9572e65",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
     ".claude/agents/plan-grader.md": "051efe60f22cc7128524d197a35656bb966ced61806be2c680d370d89952322d",
     ".claude/rules/auto-run.md": "f22ebf2cc96b8824b31bc005cf6c77e8f969ebb58d882d9016dcbcafaf01a2f7",
+    ".claude/rules/cleanup.md": "0699161912e7102d1dd55d2240f91678e212939a43e1f89ea6333ca7368c8561",
     ".claude/rules/commits.md": "c8da61a6def2fa013c60e95b94d2367a55046e8beee2ca6dd82117a7a017017c",
     ".claude/rules/communication.md": "d5910772f869c6653c04a04afb0ab4ebd4935cfedf04b808d1833b1318c108a1",
     ".claude/rules/execution.md": "bd6f78a407293a43a6130e483fb632f2bbfe09c607702a3af71e576f28199db1",
