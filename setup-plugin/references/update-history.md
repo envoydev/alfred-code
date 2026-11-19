@@ -1172,3 +1172,18 @@ members share one route. Read the installer's lines as they print:
 - The `seats:` line on the copy route ends with the step that moves the agents back into the plugin.
 
 Nothing to do in an installed project beyond the update; report the lines the installer prints for it.
+
+## after 3.12.1 - a guard whose helper is missing asks instead of letting everything through
+
+When `shell-writes.js` is missing beside a shell guard, the guard no longer lets every command run unread. It reads the
+command text and asks you only where the command can break something it cannot undo - a recursive delete of `/`, `~`
+or the project, a force push or delete of `main`, `master` or `develop`, a merge or release through `gh` / `glab`, a
+secret value sent or encoded - with the harm named and an honest recommendation. Every other command runs with no
+prompt. In a `-p` run the ask is a refusal. `/alfred-code:update` puts the helper back.
+
+## after 3.12.1 - the explainer is installed everywhere and changes approach on a second try
+
+`habits-explain-topic` is now part of every install. The first explanation stays in chat. When you say you did not
+understand it ('I don't get it', 'explain it simpler'), the skill loads, asks the format - a page with diagrams, chat
+or a video - and leads with the picture. After a status, a plan or a design answer, the same words get a plainer reply
+instead.
