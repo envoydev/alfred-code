@@ -127,3 +127,6 @@ docs/usefull/
 # directory - the number worth keeping is the with / without delta, which goes in the eval
 # README, not the artifact.
 setup-plugin/evals/results/
+
+# Machine-local: the plan and score files alfred-mods reads, written by the claude-kit skills
+.alfred-mods/
