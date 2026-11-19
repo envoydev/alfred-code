@@ -1236,3 +1236,13 @@ On a disk that ignores case, as macOS does by default, the hooks now read a fold
 where the project path is spelled in another case.
 
 Nothing to do in an installed project beyond the update; report the lines the installer prints for it.
+
+## after 3.14.0 - update and the seats ask fewer approvals outside auto mode
+
+The update's shell blocks no longer trip two of Claude Code's own checks, so they ask for approval less often outside
+auto mode. One check asked about a brace before a quote; the other asked about a PATH change. A Git Bash shell that
+gets a Windows-form PATH now stops on one `MISSING <tool>` line, and the protocol gives the line that heals it. The
+seats now store their handoff notes as one quoted argument, not a heredoc, so a note with a brace and a quote no longer
+asks for approval.
+
+Nothing to do in an installed project beyond the update.
