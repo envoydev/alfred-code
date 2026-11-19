@@ -26,8 +26,9 @@ plugins run from: no probe, no archive.
 
 ## Why the resolve block is shaped the way it is
 
-- **Guards first.** A Windows-form PATH (`C:\...;C:\...`, where Git Bash finds no coreutils and no `node`) is
-  converted in place; a tool still missing stops the call on one `MISSING <tool>` line, and so does an empty
+- **Guards first.** A Windows-form PATH (`C:\...;C:\...`, where Git Bash finds no coreutils and no `node`) stops
+  the call on one `MISSING <tool>` line; the heal line goes in only then, since Claude Code asks before any PATH
+  assignment and a heal in every block asked every user (live walk, 2026-11-20). An empty
   `$TMP`, before any copy or marker write (session 5b9ce9c5 ran on and printed `RESOLVED TMP= ?` over an empty
   marker - 216k to repair).
 - **Only this session's marker is reused.** The resolve writes `$CLAUDE_CODE_SESSION_ID` into

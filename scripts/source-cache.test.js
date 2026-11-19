@@ -330,13 +330,39 @@ test("the protocol's bash snippet keeps its run marker under $TMPDIR, and a seco
 // session met it, so the case runs on every OS: where the heal finds every tool the run resolves for real,
 // and where it cannot (no node under /usr/bin, no cygpath) the call stops on one MISSING line, writes no
 // marker and never prints RESOLVED.
-test("the protocol's bash snippet heals or stops on a Windows-form PATH - never a success line over an empty $TMP", () => {
+// The heal is not in the block: Claude Code asks before any PATH assignment, so the protocol names the heal line for a
+// MISSING line in Git Bash only (live walk, 2026-11-20). With the line put first, the block heals or stops as before.
+const HEAL_LINE = /`(PATH="\/usr\/bin:\/bin:\/mingw64\/bin:[^`]+)`/;
+test("the bare snippet stops on one MISSING line under a Windows-form PATH, and assigns no PATH", () => {
     const home = work();
     const script = path.join(home, 'resolve.sh');
     try
     {
         plantThree(home);
-        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const snippet = protocolSnippet('bash', 0);
+        assert.doesNotMatch(snippet, /(^|[\s;&|(])PATH=/m, 'the resolve block assigns PATH');
+        fs.writeFileSync(script, snippet);
+        const mark = markOf(home);
+        const r = spawnSync('bash', ['-c', `PATH='C:\\Windows\\system32;C:\\nowhere\\nodejs'; . "$1"`, 'resolve', script], {
+            cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
+        });
+        assert.strictEqual(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /^MISSING (\S+) on the Bash PATH - nothing resolved$/m);
+        assert.doesNotMatch(r.stdout, /RESOLVED|REUSING/);
+        assert.ok(!fs.existsSync(mark), 'a stopped resolve wrote the marker');
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+test("with the documented heal line first, the snippet heals or stops on a Windows-form PATH - never a success line over an empty $TMP", () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    try
+    {
+        plantThree(home);
+        const heal = HEAL_LINE.exec(fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8'));
+        assert.ok(heal, 'the protocol names the heal line');
+        fs.writeFileSync(script, `${heal[1]}\n${protocolSnippet('bash', 0)}`);
         const mark = markOf(home);
         const r = spawnSync('bash', ['-c', `PATH='C:\\Windows\\system32;C:\\nowhere\\nodejs'; . "$1"`, 'resolve', script], {
             cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },

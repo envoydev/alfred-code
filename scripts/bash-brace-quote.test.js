@@ -56,6 +56,31 @@ function blankQuotedBraces(command)
     return out.join('');
 }
 
+// The same release asks before any assignment to a name that changes how later commands are found or run (its Wr set,
+// read case-blind, plus the ld_, dyld_ and bash_func_ prefixes): 'PATH assignment alters command lookup/execution'.
+// The live walk met it on the resolve block's Git Bash heal (2026-11-20).
+const LOOKUP_NAMES = new Set(['path', 'home', 'dirstack', 'tmpprefix', 'bash_env', 'env', 'cdpath', 'globignore', 'shell', 'fpath',
+    'bash_loadables_path', 'module_path', 'manpath', 'mailpath', 'readnullcmd', 'nullcmd', 'histfile', 'zdotdir', 'functions',
+    'commands', 'aliases', 'galiases', 'saliases', 'bash_cmds', 'bash_aliases', 'execignore', 'bash_source_path', 'lang',
+    'language', 'lc_all', 'lc_ctype', 'lc_collate', 'lc_messages', 'lc_numeric', 'lc_time', 'histchars', 'textdomain',
+    'textdomaindir']);
+const LOOKUP_PREFIXES = ['ld_', 'dyld_', 'bash_func_'];
+const ASSIGNMENT = /(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)\+?=/gm;
+const changesLookup = (name) => LOOKUP_NAMES.has(name.toLowerCase()) || LOOKUP_PREFIXES.some((p) => name.toLowerCase().startsWith(p));
+
+// The command with every quoted character blanked, so only words the shell reads as words are left.
+function unquoted(command)
+{
+    let quote = '';
+    return [...command].map((char) =>
+    {
+        if (quote) { if (char === quote) quote = ''; return char === '\n' ? char : ' '; }
+        if (char === "'" || char === '"') { quote = char; return ' '; }
+        return char;
+    }).join('');
+}
+const lookupAssignments = (command) => [...unquoted(command).matchAll(ASSIGNMENT)].filter((m) => changesLookup(m[1])).map((m) => m[1]);
+
 const askingAt = (command) => [...blankQuotedBraces(command).matchAll(ASKS)].map((m) => m.index);
 
 function bashBlocks(file)
@@ -88,6 +113,9 @@ test('the ported check asks where Claude Code asks, and only there', () =>
     assert.deepStrictEqual(askingAt('printf \'%s\\n\' \'[ { "kind": "a" } ]\' | node x'), [], 'JSON in a single-quoted argument does not');
     assert.deepStrictEqual(askingAt('node .claude/hooks/handoff.js put a/v1/seat --text \'retry { "id": 1 } fixed it\''), [], 'the seats\' handoff form does not');
     assert.deepStrictEqual(askingAt('node .claude/hooks/handoff.js put a/v1/seat <<\'EOF\'\nretry { "id": 1 }\nEOF'), [58], 'the old heredoc form did');
+    assert.deepStrictEqual(lookupAssignments('command -v tr || PATH="/usr/bin:$PATH"'), ['PATH'], 'a PATH heal asks');
+    assert.deepStrictEqual(lookupAssignments('export LANG=C; LD_PRELOAD=x cmd'), ['LANG', 'LD_PRELOAD'], 'export and a prefix ask');
+    assert.deepStrictEqual(lookupAssignments('TMP=$(mktemp -d); echo "PATH=x" \'HOME=y\'; MYPATH=1'), [], 'other names and quoted text do not');
 });
 
 test('no shipped bash block asks for approval through the brace-with-quote check', () =>
@@ -99,4 +127,6 @@ test('no shipped bash block asks for approval through the brace-with-quote check
     const hits = blocks.flatMap(({ file, body, firstLine }) =>
         askingAt(body).map((at) => `${file}:${firstLine + body.slice(0, at).split('\n').length - 1}: ${body.slice(at, at + 60).replace(/\n/g, '\\n')}`));
     assert.deepStrictEqual(hits, [], 'rewrite each as if-then-fi, or pass JSON as a single-quoted argument');
+    const lookups = blocks.flatMap(({ file, body, firstLine }) => lookupAssignments(body).map((name) => `${file}:${firstLine}: ${name}=`));
+    assert.deepStrictEqual(lookups, [], 'a block that changes PATH or its kin asks every user - name the line in prose for the one case that needs it');
 });

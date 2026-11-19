@@ -24,7 +24,6 @@ copy, never in the cache.
 It tests its own marker FILE, never `$TMP` (Windows pre-sets a `TMP` variable):
 
 ```bash
-command -v tr >/dev/null 2>&1 || PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"   # Git Bash handed a Windows-form PATH
 for T in git tr cut mktemp node; do if ! command -v "$T" >/dev/null 2>&1; then echo "MISSING $T on the Bash PATH - nothing resolved"; exit 1; fi; done
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
@@ -68,15 +67,18 @@ if [ "$STATE" = RESOLVED ]; then echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED
 
 It prints `RESOLVED TMP=<dir> <version> seed=<seed> running=<version> key=<marketplace key>` on a resolve,
 `REUSING TMP=<dir> <version> seed=<seed>` on a reuse (`<version>` the snapshot's), or one `MISSING <what>` line
-and nothing else - a `MISSING` line stops the run, said with its consequence. Only this session's marker is
-reused; the marker name is derived from the project root, so two projects or two worktrees never share one.
+and nothing else - a `MISSING` line stops the run, said with its consequence. One exception: `MISSING <tool> on the
+Bash PATH` in Git Bash on Windows means the Bash tool got a Windows-form PATH (`C:\...;C:\...`). Put this line first
+in the resolve block and in every later block of the run. Then run the block again:
+`PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"`. Claude Code
+asks before it runs a PATH change, so no block carries the line until that `MISSING` line asks for it. Only this
+session's marker is reused; the marker name is derived from the project root, so two projects or two worktrees never share one.
 
 ## Every later call re-reads the marker
 
 Each Bash call is its own shell, so `$TMP` set in one call is gone by the next. Open every later call with:
 
 ```bash
-command -v tr >/dev/null 2>&1 || PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"   # Git Bash handed a Windows-form PATH
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
