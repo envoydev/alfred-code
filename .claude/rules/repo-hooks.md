@@ -297,7 +297,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   masker runs. A script typed for another shell (`bash -c '...'`, `eval '...'`) is judged by its own words; a script
   piped into a shell cannot be read, so it asks with 'approve only if you trust where it comes from'. Every other
   command runs unasked, and the dispatcher joins two asks' reasons into one prompt. A block
-  stalled an auto-run and the repair, which runs through the shell.
+  stalled an auto-run and the repair, which runs through the shell. What the ask does per mode (docs read
+  2026-11-19, code.claude.com/docs/en/permissions and /hooks): Manual, acceptEdits and auto prompt (auto's classifier does
+  not decide it); dontAsk and a `-p` run deny it, `-p` with the reason shown to Claude; bypassPermissions is not stated -
+  its prompts are skipped but for a list that names no hook, so the call most likely runs; a deny or ask rule still holds.
   Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
   dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
   rollback is dropping the dispatcher's `BLOCK_ON_FAILURE` row - an update then takes the key off the copy route's entry -
