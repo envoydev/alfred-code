@@ -1,8 +1,8 @@
 {
-  "kit": "claude-kit@94adf22",
+  "kit": "claude-kit@5f592b1",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
-    ".claude/agents/audit-planner.md": "8629070010847ff937be91c739e1b8c006b6c81847176f758e8a715a8e15a933",
+    ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
     ".claude/agents/plan-grader.md": "051efe60f22cc7128524d197a35656bb966ced61806be2c680d370d89952322d",
     ".claude/rules/auto-run.md": "f22ebf2cc96b8824b31bc005cf6c77e8f969ebb58d882d9016dcbcafaf01a2f7",
     ".claude/rules/commits.md": "c8da61a6def2fa013c60e95b94d2367a55046e8beee2ca6dd82117a7a017017c",
@@ -68,9 +68,9 @@
     ".claude/skills/repo-audit-hooks/references/principles.md": "6390673232e3a499e7758a2118748562fb211ecef35750ca63d0c2291a53eb20",
     ".claude/skills/repo-audit-hooks/references/remediation.md": "8e02470bbd2f5b1a8d38c0a42637e71f991107f6ebc46147798d29626005055a",
     ".claude/skills/repo-audit-hooks/references/rubric.md": "ce616fa06107c5fd0fd4a98775e5e994ea5eb68be3db5d789427b1ac204e3902",
-    ".claude/skills/repo-audit-plugin/SKILL.md": "44dfcffac4661eab300f6bfb81a4402a58060cc46a0841f341625390da4716c7",
+    ".claude/skills/repo-audit-plugin/SKILL.md": "b60e768003dde72be09a29ce33f3320e9a1d2ee7ba2c440061b8c6962135f5b1",
     ".claude/skills/repo-audit-plugin/references/all-kinds.md": "b96ff143b4aa00a00ba2832c643f11e2cb7a3c3763a2a8b2d34c825626f32da7",
-    ".claude/skills/repo-audit-plugin/references/plan-format.md": "34d4953c142ddf7a58ed97d2d357046ceea147d008d725e03eb2b4cd7f7e4cde",
+    ".claude/skills/repo-audit-plugin/references/plan-format.md": "42672fca1a68c097b0fad05fd5400aed6f35e0619853da5410af75c24e90e19c",
     ".claude/skills/repo-audit-rules/SKILL.md": "21657205e6543ae9ab5d17d9a6467e4658400c5a3b4ef48542e22ed6d1298d26",
     ".claude/skills/repo-audit-rules/references/currency.md": "0468aa345b27820bfb9e9d3484f6f0e244b9e1ba2ac08b6fbc90fc1625bf85b7",
     ".claude/skills/repo-audit-rules/references/discovery.md": "239cdb160213644848d7b095d5599bb1d7c93a16da013b456be22ad98b8ae86a",

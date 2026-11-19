@@ -65,6 +65,14 @@ Two ways in. Say in one line which one this run took:
 run folders, `docs/superpowers/audits/state/<kind>.json` is what the scope script recorded: each item's grade
 with the hashes it was graded under.
 
+**The work folder** holds every tree a check runs in - a copy of the targets, a whole-repository copy, a sibling
+checkout, a probe or mutant tree - and is never inside the audited repo. Why: a test runner that globs, and
+`claude plugin test .`, walk git-ignored folders too (alfred-mods, 2026-11-19: 985 `*.test.ts` copies under one
+run folder stopped its `claude plugin test .`). It is `audit-<run folder name>/` in the session scratchpad, else
+the folder `mktemp -d` makes. Step 1 creates it and writes its path in `run.md`, step 5 names it in each planner's
+dispatch, and step 10 deletes it. A check's results (`test.txt`, `validate.txt`) and the plan's expected folders
+stay in the run folder.
+
 ## The flow
 
 With `auto-run` on, the asks of steps 4 and 6 are not put: each takes its `(Recommended)` option and is ledgered as
@@ -77,7 +85,8 @@ all' is taken and ledgered; off, the ask is put and the user is notified that th
    nothing: a target with an uncommitted change stops the run here, naming the paths to commit or stash first -
    the plan's `Baseline` revision is the audit's snapshot, and step 7 never passes on a target that differs from
    it. List every target file with its size (`wc -c`), and create the run folder - `<date>-<kind>-2/`, then `-3`,
-   where the kind already has one of this date: a folder an earlier record points to is never written over.
+   where the kind already has one of this date: a folder an earlier record points to is never written over - and
+   the work folder, as 'The run folder' says.
 
    Then the scope, where the repository holds `.claude/kit/audit-scope.mjs` and the kind is scoped: `skills`,
    `commands`, `agents`, `rules` and `code` always, `hooks` only where its `audit` entry carries a `scope_with` list -
@@ -134,8 +143,8 @@ all' is taken and ledgered; off, the ask is put and the user is notified that th
 
    Above three batches the mark moves: 'One batch first (Recommended)' is listed first and 'All <N> batches' second.
 5. **Plan.** Dispatch one planner per batch, each with: the kind, the audit skill's folder, the repo root, its
-   target paths, the run folder, the audit skill's parameters, the `checks` and `notes`, step 1's `CARRIED:`
-   lines, and mode `audit`. At most two planner seats run at a time, a third batch waiting for a free seat - four
+   target paths, the run folder, the work folder, the audit skill's parameters, the `checks` and `notes`, step 1's
+   `CARRIED:` lines, and mode `audit`. At most two planner seats run at a time, a third batch waiting for a free seat - four
    where the request says `parallel` after the command, or 'side by side' in chat. A lone batch's dispatch says
    that no `set` seat runs. With more than one batch, then dispatch one more planner in mode `set` with only the
    batches' record and plan files, every batch's item ids and the `CARRIED:` lines: it adds the set-wide findings
@@ -206,7 +215,10 @@ all' is taken and ledgered; off, the ask is put and the user is notified that th
    by side: each batch's own planner gets that message in one turn and writes `final-<n>.md` for its items, then
    the `set` planner is sent those files, re-checks the set-wide findings and merges them into `final.md`. An edit
    the ledger marks `SKIPPED` or `FAILED` is rewritten by the planner against the file as it now is, and steps 9 and
-   10 run again - at most the audit skill's `MAX_ITERATIONS` rounds in all, four where it names none.
+   10 run again - at most the audit skill's `MAX_ITERATIONS` rounds in all, four where it names none. After the
+   last round, delete the work folder. Then
+   `find <run folder> -name '*.test.*' -not -path '*/expected*' -not -path '*/retro-expected/*'` must print
+   nothing; delete each folder it names, and name each in `run.md`.
 
    Then record the grades, where step 1 ran the scope:
    `node .claude/kit/audit-scope.mjs record <kind> --run <run folder> --grades <run folder>/grades.tsv --under <the two hashes of step 1's 'Graded under:' line> [--with <path>]... <root>...`,
