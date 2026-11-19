@@ -1212,3 +1212,27 @@ project of its own: this repository's install already reaches that folder. `/alf
 asks: remove the nested install (recommended), or keep it. The removal takes only the files that folder's own stamp
 records - its stack copies, links, generated rules, the stack's settings keys and its stamp - and leaves its AGENTS.md, any
 copy you edited, its `.alfred` folder and your own files. Keep it and nothing changes; the next update asks again.
+
+## after 3.13.0 - the update finds the installs below the project and offers to tidy them
+
+`/alfred-code:update` now looks below the project for other installs. A project with its own git repository can join
+this one as a child: the update writes both sides, suggests what each should ignore, and updates the children with the
+root. An install in a plain subfolder of the same repository is no project of its own: the update lists it as
+`nested` and offers to remove its stack files, touching only that folder - its docs, data and your own files stay.
+Children joined earlier are checked again, but only on the items this update added. The old session status folders
+are removed as well; files under 25 hours old are left to the next session.
+
+## after 3.13.0 - replies keep to an exact budget and label their confidence
+
+The interaction rule gives replies an exact budget: at most 900 characters of prose, near 150 words, bullets
+included, with 3 lead sentences or fewer and no process talk. A reply that gives a result, a cause or a
+recommendation labels it in its first sentence: '(high confidence)', '(medium confidence - <what is not verified>)' or
+'(low confidence - <why>)'. Your own words lift the budget ('in detail', 'step by step', 'teach me'). The per-turn
+hook line says the same.
+
+## after 3.13.0 - a project spelled in another case is still the project
+
+On a disk that ignores case, as macOS does by default, the hooks now read a folder inside the project as inside even
+where the project path is spelled in another case.
+
+Nothing to do in an installed project beyond the update; report the lines the installer prints for it.
