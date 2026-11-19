@@ -282,10 +282,10 @@ test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdde
 
 // Audit 2026-10-14 HK07 (the user's ruling): a hook that fails - cannot start, times out, exits other than 0 / 2 - lets the
 // call through unless it sets `onFailure: "block"` (code.claude.com/docs/en/hooks, 'Block the action when a hook fails',
-// 2.1.295+). The shell-guard dispatcher alone carries it, on both routes: its rm, force-push and secret guards are the ones a
-// crashed or stalled dispatcher would silently pass. The copy route backfills it onto an older entry once, touches no
+// 2.1.295+). The shell-guard dispatcher carries it on both routes: its rm, force-push and secret guards are the ones a
+// crashed or stalled dispatcher would silently pass. Two more rows carry it since (below), and no other hook does. The copy route backfills it onto an older entry once, touches no
 // hook of the user's, and a re-run changes nothing.
-test('the shell-guard dispatcher alone blocks the call when it fails - plugin and copy routes, backfilled once (HK07)', () => {
+test('only the two dispatchers and the secret guard\'s read row block the call when they fail - plugin and copy routes, backfilled once (HK07)', () => {
     const flagged = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.onFailure !== undefined)
         .map((h) => `${event} ${b.matcher} ${h.onFailure} ${scriptOf(h)}`)));
     // audit 2026-10-30 HK-21: the file dispatcher carries it too; hooks audit 2026-11-19 B6-S3: so does the secret guard's own

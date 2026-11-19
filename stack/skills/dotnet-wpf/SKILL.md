@@ -178,7 +178,7 @@ Two rules an ordinary edit must not get wrong:
   (`await` an I/O `Task`, or `Task.Run` for CPU-bound work) and reports back through `IProgress<T>`,
   which captures the UI `SynchronizationContext` for you. If a ViewModel truly must marshal, inject a
   dispatcher abstraction so it stays testable.
-- **`ItemsControl` does not virtualize.** Any sizeable collection binds to `ListView`, `ListBox`, or
+- **A plain `ItemsControl` does not virtualize by default.** Any sizeable collection binds to `ListView`, `ListBox`, or
   `DataGrid` instead - they do.
 
 **Read `references/threading-and-lists.md` before mutating a bound collection off the UI thread,

@@ -5,7 +5,7 @@ description: "Use when asked to fill in or update AGENTS.md or CLAUDE.md, or one
 
 # Adjust AGENTS.md - create or improve a project's instruction file
 
-An AGENTS.md is read into every session and every custom subagent, so every line is paid for on every
+An AGENTS.md is read into every session and every custom subagent but one set to `omitClaudeMd`, so every line is paid for on every
 message and earns its place only when removing it would make Claude get something wrong. Three homes,
 never mixed:
 

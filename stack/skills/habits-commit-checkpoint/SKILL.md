@@ -152,7 +152,7 @@ a review saw (its staged copy too) still passes (a stash and pop), a review poin
 those alone, a seat covers what its brief names (`git diff HEAD` for the whole change), a review call a
 hook refused is no review, a verifier seat counts once it has reported (a background one at its
 completed notification), and a review skill counts once its result line - `Findings:`, a loop's
-`Outcome:` - follows it; never split a real change into small commits to slip under it. One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an
+`Outcome:` - follows it in a reply of its own (one reply closes one review, so two reports printed together count once); never split a real change into small commits to slip under it. One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an
 ancestor of HEAD and every commit since touches only files its review covered; clear it after the LAST commit of the batch. The hook's staged-diff scan (a conflict marker, a
 debugger, a focused test, a credential-shaped literal, a hidden character) is a fact check this receipt
 never opens: remove the hit and stage again, or, on the user's 'Commit it as is' in the denial's own

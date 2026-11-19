@@ -284,7 +284,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   other than 0 / 2, prints invalid output or stalls past its budget blocks the call as an exit 2 would ('Block the action
   when a hook fails'), the price being that a broken install blocks every shell call until fixed. The FILE dispatcher
   carries it too (audit 2026-10-30 HK-21, the plan's ruling: a crashed `file-guards.js` let a Read of a credential file
-  through), so a broken install blocks every Read, Edit, Write and Grep as well; every other hook keeps the default
+  through), so a broken install blocks every Read, Edit, Write and Grep as well; the secret guard's own
+  filesystem-server row carries it too (hooks audit 2026-11-19 B6-S3), and every other hook keeps the default
   `continue`. Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
   dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
   rollback is dropping the dispatcher's `BLOCK_ON_FAILURE` row - an update then takes the key off the copy route's entry -
@@ -680,7 +681,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     is blocked and `--redacted` of one masks every live value, whatever its keys; a diff
     of one and a walk's line out of one take the store's rule. EXACT TEXT ONLY: an encoded, split or reversed print is not
     caught - leak protection, never a wall. Past `MASK_BUDGET_MS` (5 s from process start) `stdout` becomes `output
-    withheld: the masker ran out of time` and `stderr` empty (`mask-withheld`); an image and empty output pass; a
+    withheld: the masker ran out of time` and `stderr` empty (`mask-withheld`); a throw while it reads or masks gives
+    `output withheld: the masker failed` and one `mask-error` row naming the error's class (hooks audit 2026-11-19 B6-S1:
+    a crash exited 1, and a failed PostToolUse hook left the output unmasked); an image and empty output pass; a
     `tool_response` that is no object with string `stdout` and `stderr` passes with one `mask-shape` probe row; a run past
     `MASK_SLOW_MS` (1 s) writes one `mask-slow` row with its ms and the files read. A `mask` row carries the count, the
     sources (`named`, `well-known`, `store`, `env`, `shape`), file basenames and ms - never a value (`ledgerRow`,

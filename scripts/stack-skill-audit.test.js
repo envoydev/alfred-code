@@ -365,6 +365,9 @@ test('devops: a change to how a container runs is proven by starting it, and a f
     assert.match(prove, /'unproven at runtime' is a step left unrun/);
     assert.match(squash(skill('devops')), /fails exec under `cap_drop: ALL` until `cap_add` names it/);
     assert.match(squash(skill('devops', 'references/docker-hardening.md')), /`cap_add: \[NET_BIND_SERVICE\]`.*no-new-privileges alone did not break it/);
+    // agents audit 2026-11-18 C1-01: only the effective bit (`=ep`) fails exec; a `=p` binary - Caddy's image since 2.11.8 - starts
+    assert.match(squash(skill('devops')), /prints `=ep`\) fails exec .* while one marked `=p` alone starts/);
+    assert.match(squash(skill('devops', 'references/docker-hardening.md')), /One marked `=p` alone starts: the official Caddy image since 2\.11\.8/);
     const implementer = squash(read('stack/agents/devops-implementer.md'));
     assert.match(implementer, /START the container when the task changed how it runs/);
     assert.match(implementer, /with Docker present, that flag is a step left undone/);

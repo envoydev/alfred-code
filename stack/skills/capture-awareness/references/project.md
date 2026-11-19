@@ -134,8 +134,9 @@ report. The doc records the login steps and WHERE it lives - an environment vari
 file (the project's sensitive data, `<data root>/.secrets`, first), a vault item - and the user puts the
 value there by hand. A value the user pastes anyway is never written anywhere: redact it as `<redacted>`, record
 only where it should live, and follow the security rule's credential line (the rotation ask). A seat that needs
-the value to log in checks the file for presence (the secret guard's `--presence`) and goes through that guard's
-one ask before it types it; a command that needs it runs through the guard's `--with-sensitive`.
+the value to log in checks the file for presence (the secret guard's `--presence`) and runs the login command
+through that guard's `--with-sensitive`, which puts the value in that command's environment; the guard refuses a
+read of the store by value in every mode, so a value only a person can type is the user's to type.
 
 ## DISCOVER - the repo answers first
 
