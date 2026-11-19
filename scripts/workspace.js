@@ -29,7 +29,8 @@ const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
 const stamp = require('./install/stamp.js');
-const nested = require('./install/nested.js');
+// Lazy: a top-level load of nested.js pulls in uninstall.js, settings.js and copy.js at startup, which changed what `role --answer leave` reads (AC15, AC24 of install-workspace.test.js).
+const nestedMod = () => require('./install/nested.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { BRAND } = require('./install/brand.js');
@@ -349,16 +350,18 @@ function planVerb(out)
     try { snapshot = JSON.parse(fs.readFileSync(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || '?'; }
     catch { /* a snapshot with no plugin.json names no version */ }
     const rows = ws.subtree(top, { env });
+    // A listed child that lost its own `.git` is part of this repository now: no project row, only a `nested:` one.
+    const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top)).map((r) => r.rel));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-plan-'));
     try
     {
-        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok').length} projects`);
+        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok' && !joinedNested.has(r.rel)).length} projects`);
         const entries = [];
         const plans = new Map();
         const parents = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
         for (const [i, row] of rows.entries())
         {
-            if (row.state !== 'ok') continue;
+            if (row.state !== 'ok' || joinedNested.has(row.rel)) continue;
             // The top project's own changes and asks are its walk's (the preflight printed them): its read-back is taken
             // only to project its children, so a standalone update spawns nothing here.
             if (row.parentRel === null)
@@ -403,8 +406,8 @@ function planVerb(out)
         if (has('--rescan'))
         {
             for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
-            for (const rel of ws.nestedInstalls(top, { env })) { out(`nested: ${field(rel)}`); rescanned += 1; }
         }
+        for (const rel of [...new Set([...(has('--rescan') ? ws.nestedInstalls(top, { env }) : []), ...joinedNested])].sort()) { out(`nested: ${field(rel)}`); rescanned += 1; }
         if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
@@ -523,6 +526,9 @@ const IGNORED_BELOW_FAILED = (rel) => `!! workspace: ${rel} ignored and its own 
 const CASCADE_SHORT = /^cascade: done \d+ updated, (\d+) failed, (\d+) skipped/m;
 const IGNORED_NO_INSTALL = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
 
+// A project row below the top that sits in the top's own git repository: the cascade would resolve it to the top.
+const isSameRepoChild = (row, top) => row.depth > 0 && row.state === 'ok' && ws.sameRepo(row.root, top, { exec });
+
 function cascade(out)
 {
     const top = rootArg();
@@ -572,6 +578,13 @@ function cascade(out)
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
                 ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { runRoot: top, log: out });
                 row(r.rel, 'gone');
+                continue;
+            }
+            if (isSameRepoChild(r, top))
+            {
+                out(`!! cascade: ${r.rel} is part of this repository now - /alfred-code:update offers to remove its install`);
+                blocked.add(r.rel);
+                row(r.rel, 'skipped');
                 continue;
             }
             const first = ws.chain(r.root, { maxDepth: 1 }).members[0];
@@ -698,6 +711,7 @@ function removeNestedVerb(out)
 {
     const root = rootArg();
     const rel = arg('--path');
+    const nested = nestedMod();
     const checked = nested.check({ root, rel, exec });
     if (checked.why) throw bad(checked.why);
     const { SHIPPED_DENY } = require('./install/alfred-code.js');

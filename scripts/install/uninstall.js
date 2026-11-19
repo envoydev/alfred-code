@@ -26,6 +26,7 @@ const { hashItem } = require('./library.js');
 const { commonJsScope, ruleAt } = require('./copy.js');
 const { entryHash } = require('./stamp.js');
 const { locateSeed } = require('./seeds.js');
+const { OUTSIDE_WHY } = require('./nested-constants.js');
 
 const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
@@ -55,7 +56,7 @@ function seedPlan({ projectRoot, files = {}, instructionsKind = 'agents' })
 // Every library copy (library-*) and every other copy (managed-files) whose hash still matches - but the instruction-file
 // seed only on the user's `seed: 'remove'` answer: it is the one file the project reads as its own instructions, so the
 // uninstall asks before it goes (2026-10-23).
-function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claudeDir, 'agents'), library = {}, files = {}, instructionsKind = 'agents', seed = '', log = () => {} })
+function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claudeDir, 'agents'), library = {}, files = {}, instructionsKind = 'agents', seed = '', guard = () => true, log = () => {} })
 {
     const seeds = new Map(seedRows({ projectRoot: path.dirname(claudeDir), files, instructionsKind }).map((r) => [r.row, r.at]));
     const items = [
@@ -81,6 +82,7 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     for (const [label, name, at, hash] of items)
     {
         if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }
+        if (!guard(at)) { log(`  ${label} ${name}: kept - ${OUTSIDE_WHY}`); continue; }   // remove-nested's guard: the item's real folder is not the project's own
         const have = hashItem(at);
         if (!have) continue;
         if (have !== hash) { log(`  ${label} ${name}: kept - changed since the stack wrote it, so it is yours`); continue; }
@@ -222,7 +224,7 @@ function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () 
     const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, uptime: () => 0, ...deps, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) });
     const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
     if (got.files) log(`  session status: ${got.files} file${got.files === 1 ? '' : 's'} removed${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
-    if (got.late) log(`  session status: the exclude clean-up was cut short at the time limit (${got.late} folder${got.late === 1 ? '' : 's'} not reached) - run uninstall again to finish it`);
+    if (got.late) note(`session status: the exclude clean-up was cut short at the time limit (${got.late} folder${got.late === 1 ? '' : 's'} not reached) - run uninstall again to finish it`);
     if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);
 }
 

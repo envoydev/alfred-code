@@ -6,7 +6,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const status = require('../stack/hooks/session-status.js');
@@ -116,13 +118,42 @@ test('--print-plan sweeps nothing', POSIX_ONLY, () =>
     assert.strictEqual(r, true);
 });
 
+// The developer's own repository and its `.git/info/exclude` are never the target of a test: every project root is a temp folder.
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'status-sweep-'));
+test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+let seq = 0;
+const tempRepo = (name) =>
+{
+    const repo = path.join(TMP, `${name}-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    return repo;
+};
+
 test('a sweep that throws is one log line, never a counted failure that stops the cascade', () =>
 {
     const notes = [];
     const logs = [];
     const deps = { get clock() { throw new Error('boom'); } };
-    sweepSessionStatus({ projectRoot: path.resolve('.'), log: (l) => logs.push(l), note: (l) => notes.push(l), deps });
+    sweepSessionStatus({ projectRoot: tempRepo('throws'), log: (l) => logs.push(l), note: (l) => notes.push(l), deps });
     assert.deepStrictEqual(notes, [], 'note() counts a failure and the installer skips the cascade on one');
     assert.strictEqual(logs.length, 1);
     assert.match(logs[0], /^  session status: not swept - .*boom.* - the next session start sweeps them$/);
+});
+
+test('a sweep past the exclude time limit is one log line naming the update, never a counted failure', POSIX_ONLY, () =>
+{
+    const repo = tempRepo('late');
+    const sub = path.join(repo, 'sub');
+    put(path.join(inspector(sub), 'status', 's2.json'), '{}', 30 * HOUR);
+    const exclude = path.join(repo, '.git', 'info', 'exclude');
+    fs.appendFileSync(exclude, `${status.EXCLUDE_COMMENT}\n/sub/.claude/session-inspector/status/\n`);
+    put(path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json'), JSON.stringify([sub.split(path.sep).join('/')]));
+    const notes = [];
+    const logs = [];
+    sweepSessionStatus({ projectRoot: repo, log: (l) => logs.push(l), note: (l) => notes.push(l), deps: { uptime: () => 9000 } });
+    assert.deepStrictEqual(notes, [], 'a cut-short pass counts no failure');
+    assert.strictEqual(logs.filter((l) => /cut short at the time limit/.test(l)).length, 1, logs.join('\n'));
+    assert.match(logs.join('\n'), /session status: the exclude clean-up was cut short at the time limit .* - run \/alfred-code:update again to finish it/);
+    assert.ok(fs.readFileSync(exclude, 'utf8').includes('/sub/.claude/session-inspector/status/'), 'the pair stays for the next run');
 });

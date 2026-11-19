@@ -19,7 +19,9 @@ own picks and ignores, and its own scope.
   counts as a project below.
 - `nested: <rel>` - an install inside this repository: a plain subfolder with its own `.claude/` and stamp and no `.git` of
   its own, which this repository's install already reaches. It is not a project of its own: never joined, never counted
-  as a project below.
+  as a project below. A joined child whose `.git` is gone is one too: it prints only as `nested:`, never as a `project:`
+  row, and the cascade skips it (`cascade: <rel>` and `skipped`, with one `!! <rel> is part of this repository now` line)
+  and never runs the installer there.
 
 Paste the plan's table in your message verbatim, its `total:` line included, before any ask.
 
@@ -140,10 +142,11 @@ With `<k>` of 1 there is nothing to pick from, so the ask has two options:
 - 'Keep it' - nothing is written; the next validate in <rel> offers the same removal
 ```
 
-'Pick' opens ONE call of up to 4 multi-select questions of 2-4 options each, the items split in the order listed (as
-`walk.md` deals its picks): `<k>` items go to `ceil(<k>/4)` questions, as even as the split allows, so none holds one
-option; each option is one item as the `redundant:` line prints it, its description the owning stacks, `header` at most
-12 characters. More than 16 items take a second call. `<csv>` is `none` when nothing was detected. The ignores are
+'Pick' opens the questions of 2-4 multi-select options each. The items split in the order listed (as `walk.md` deals its
+picks) into groups of 2 to 4 options, never a group of 1: with a remainder of 1, the previous group gives one up (17 items
+split 4, 4, 4, 3, 2). One group is one question, at most four questions go in one AskUserQuestion call, and more groups
+take a call right after. Each option is one item as the `redundant:` line prints it, its description the owning stacks,
+`header` at most 12 characters. `<csv>` is `none` when nothing was detected. The ignores are
 written now, one call per item, each `<category> <name>` being the `redundant:` line's two words as they stand:
 
 ```bash
@@ -151,8 +154,10 @@ node "$TMP/repo/scripts/workspace.js" ignore --root <rel> --add "<category> <nam
 ```
 
 It prints `workspace: ignore <category> <name> added|kept`; a `!!` line is pasted and that item is not ignored.
-'Keep everything inherited' writes nothing. Unattended (no ask tool), take 'Keep everything inherited': an unattended
-run never drops what a project may own, and an item the child had installed before the join reads as inherited. Say
+'Keep everything inherited' writes nothing. Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode
+that takes the Recommended options (auto-run) - take 'Keep everything inherited', never 'Ignore the <k> suggested': an
+unanswered run never drops what a project may own, and an item the child had installed before the join reads as
+inherited. Say
 in the close which ignores were applied (`update-close.md`, WORKSPACE). The cascade runs when the plan names a child
 or a `rescan:` row joined: a joined child is a child for it, though `$TMP/plan.txt` listed none.
 
@@ -178,7 +183,8 @@ node "$TMP/repo/scripts/workspace.js" remove-nested --root . --path <rel>
 Report its lines: `remove-nested: <rel> - <n> stack file(s) removed`, one `remove-nested: <rel> kept <path> - <why>` per file that
 stays, and `remove-nested: done <rel>`. It takes only the files that folder's own stamp records, never this
 repository's install, the account, a plugin or git's exclude file; a `!!` line is reported and that folder is left as it
-is. Unattended (no ask tool), take 'Keep it': an unattended run removes nothing.
+is. Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options
+(auto-run) - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own.
 
 ## The cascade - after this project's own installer run
 

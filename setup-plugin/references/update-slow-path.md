@@ -28,7 +28,8 @@ alfred-code 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
 prune: .claude/hooks/inject-code-style.js (migration: style delivery moved to a generated rule)
 ```
 
-On 'proceed': run the installer exactly as in step 3 - its `--add` already carries every `renamed`
+On 'proceed': with a `rescan:` row run `update-workspace.md`'s joins first, and with a `nested:` row answered 'Remove the nested
+install' its removal, as step 3 does; then run the installer exactly as in step 3 - its `--add` already carries every `renamed`
 row's new name (the old copy is on disk, the new one is not yet, so the read-back alone would lose
 it) and every offer the step-2 ask took. A removed name needs no flag - this release
 does not ship it, so the read-back cannot carry it - and the installer prunes its copy; step 5 deletes only
@@ -59,8 +60,8 @@ scopes it to ONE matcher when the file stays wired for its other events, and a
 `settings_hook_wired` detect matches on that wiring being present rather than on a file;
 parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
-as a next step - run nothing on the user's behalf. With a `rescan:` row in the plan, run `update-workspace.md`'s fit check
-now. With `$TMP/plan.txt` naming a child, or a `rescan:` row that joined, run `update-workspace.md`'s cascade call now -
+as a next step - run nothing on the user's behalf. The joins and a `nested:` removal ran before the installer call above. With a
+`rescan:` row in the plan, run `update-workspace.md`'s fit check now. With `$TMP/plan.txt` naming a child, or a `rescan:` row that joined, run `update-workspace.md`'s cascade call now -
 the same call on either answer. Then step 6 of `update-close.md`.
 
 ## Flags the user's own invocation names - `--docs-versioning`

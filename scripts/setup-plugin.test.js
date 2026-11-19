@@ -1730,7 +1730,11 @@ test('update offers to remove an install nested in the same repository: one ask 
     assert.match(flatWorkspace, /- `nested: <rel>` - an install inside this repository[\s\S]*?never joined, never counted as a project below/);
     assert.match(flatWorkspace, /node "\$TMP\/repo\/scripts\/workspace\.js" remove-nested --root \. --path <rel>/);
     assert.match(flatWorkspace, /once the answers are applied and before the installer call/);
-    assert.match(flatWorkspace, /Unattended \(no ask tool\), take 'Keep it': an unattended run removes nothing/);
+    assert.match(flatWorkspace, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own/);
+    assert.match(flatWorkspace, /A joined child whose `\.git` is gone is one too: it prints only as `nested:`, never as a `project:` row, and the cascade skips it[^.]*and never runs the installer there/);
+    const slow = flat(refBody('update-slow-path'));
+    assert.match(slow, /with a `rescan:` row run `update-workspace\.md`'s joins first, and with a `nested:` row answered 'Remove the nested install' its removal, as step 3 does; then run the installer/);
+    assert.match(slow, /The joins and a `nested:` removal ran before the installer call above/);
     assert.match(flat(refBody('update-walk')), /With a `nested:` row answered 'Remove the nested install', run its removal first too/);
     assert.match(flat(refBody('update-close')), /\*\*NESTED\*\* - read only when step 2 had a `nested:` row: each `remove-nested:` line its removal printed, verbatim/);
     assert.match(flat(refBody('update-history')), /## after 3\.13\.0 - update offers to remove an install nested in the same repository/);
@@ -1826,7 +1830,7 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.match(walk, order);
     assert.match(flatCascade, /The check runs after this project's own installer run \(step 3\) and before the cascade/);
     assert.match(flatCascade, /A join that prints `!!` is reported and skipped/);
-    assert.match(flatCascade, /Unattended[^.]*'Keep everything inherited'[^.]*never drops what a project may own/);
+    assert.match(flatCascade, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep everything inherited', never 'Ignore the <k> suggested': an unanswered run never drops what a project may own/);
     assert.match(flatCascade, /The cascade runs when the plan names a child or a `rescan:` row joined/);
     // the fit ask: three labels, the Recommended one first, one per joined child with a `redundant:` line
     const fitAsks = askBlocks(cascade).filter((b) => /joined this workspace as a child/.test(b[0]));
@@ -1834,7 +1838,8 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.strictEqual(fitAsks.length, 2, 'the fit ask for k >= 2 and its one-item variant');
     assert.deepStrictEqual(labelsOf(fitAsks[0]), ['Ignore the <k> suggested (Recommended)', 'Keep everything inherited', 'Pick']);
     assert.deepStrictEqual(labelsOf(fitAsks[1]), ['Ignore it (Recommended)', 'Keep it'], 'one item: no Pick');
-    assert.match(flatCascade, /'Pick' opens ONE call of up to 4 multi-select questions of 2-4 options each, the items split in the order listed/);
+    assert.match(flatCascade, /into groups of 2 to 4 options, never a group of 1: with a remainder of 1, the previous group gives one up \(17 items split 4, 4, 4, 3, 2\)/);
+    assert.match(flatCascade, /at most four questions go in one AskUserQuestion call, and more groups take a call right after/);
     assert.match(flatCascade, /workspace\.js" ignore --root <rel> --add "<category> <name>"/);
     assert.match(flatCascade, /ONE per joined child that has at least one `redundant:` line/);
     assert.match(flatCascade, /A hold answer stops neither: each join and each ignore is still written/);
