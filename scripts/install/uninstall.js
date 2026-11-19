@@ -103,7 +103,8 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     const hooksDir = path.join(claudeDir, 'hooks');
     let left = [];
     try { left = fs.readdirSync(hooksDir).filter((f) => f !== 'package.json'); } catch { left = []; }
-    if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
+    if (!guard(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - ${OUTSIDE_WHY}`);
+    else if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
     else if (isMarker(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - it scopes ${left.join(', ')}, left in .claude/hooks as yours`);
     const stackDirs = ['stack/rules', 'stack'].map((d) => path.join(path.dirname(claudeDir), '.alfred', d));
     for (const dir of [skillsDir, agentsDir, ...['skills', 'agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d)), ...stackDirs])

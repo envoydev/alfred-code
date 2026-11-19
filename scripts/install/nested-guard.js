@@ -2,7 +2,7 @@
 // REMOVE-NESTED'S GUARD (2026-11-19 review, BLOCKER 1) - the removal runs with the nested folder as the project root, but a
 // folder-level link inside it (`.alfred`, `.claude/skills`, `.claude/settings.local.json`...) can point at the REPOSITORY TOP's
 // install, and every helper the steps call follows a link: it read, hashed, deleted or rewrote the root's file. Two layers:
-//   refusal()  before anything moves - each path a step reaches that is a link, or resolves outside the folder, stops the verb
+//   refusal()  before anything moves - each path a step reaches that is a link, a hard-linked file, or resolves outside the folder, stops the verb
 //   guard()    in front of every delete and write - a target whose real folder is not the nested folder is skipped and named
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,6 +11,7 @@ const { GUARDED_PATHS } = require('./nested-constants.js');
 const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { return null; } };
 const lstatOf = (p) => { try { return fs.lstatSync(p); } catch { return null; } };
 const isLink = (p) => Boolean(lstatOf(p) && lstatOf(p).isSymbolicLink());
+const isShared = (p) => { const st = lstatOf(p); return Boolean(st && st.isFile() && st.nlink > 1); };
 const toPosix = (p) => p.split(path.sep).join('/');
 const within = (dir, base) => dir === base || dir.startsWith(base + path.sep);
 
@@ -31,6 +32,7 @@ function refusal({ nested, rel, extra = [] })
         const st = lstatOf(at);
         if (!st) continue;
         if (st.isSymbolicLink()) return `${rel}/${sub} is a link to ${pointsAt(at)} - nothing is removed through a link; replace it with the real folder or file, or remove it, and run again`;
+        if (st.isFile() && st.nlink > 1) return `${rel}/${sub} shares its data with another file (a hard link) - nothing is removed through it; replace it with a copy of its own, and run again`;
         const real = realOf(at);
         if (!real || !within(real, nested)) return `${rel}/${sub} resolves to ${real ? toPosix(real) : 'a path outside this folder'}, outside ${rel} - nothing is removed through it`;
     }
@@ -39,14 +41,17 @@ function refusal({ nested, rel, extra = [] })
 
 // The one gate for a delete (`canRemove`) and a write (`canWrite`): the target's real folder is the nested folder or below it
 // (a target that is not there has nothing to delete).
-// A target that is itself a link is only unlinked by a delete - never followed - and no write goes through one.
+// A target that is itself a link is only unlinked by a delete - never followed - and no write goes through a link or a
+// file another path shares (a hard link: its data is the other path's too).
 function guardFor(nested)
 {
     const base = realOf(nested);
     const folderOk = (target) => { const real = realOf(path.dirname(target)); return Boolean(base && real && within(real, base)); };
     return {
         canRemove: (target) => !lstatOf(target) || folderOk(target),
-        canWrite: (target) => folderOk(target) && !isLink(target),
+        // A folder whose own real path is the nested folder or below it; one that is not there holds nothing to touch.
+        canEnter: (dir) => !lstatOf(dir) || Boolean(base && realOf(dir) && within(realOf(dir), base)),
+        canWrite: (target) => folderOk(target) && !isLink(target) && !isShared(target),
     };
 }
 

@@ -202,7 +202,7 @@ function removeNested({ nested, file, rel, sourceDir, shippedDeny, out })
     }));
     step('generated rules', () =>
     {
-        if (!guard.canRemove(path.join(claudeDir, 'rules', 'x.md'))) { log(`  kept: .claude/rules - ${OUTSIDE_WHY}`); return; }
+        if (!guard.canEnter(path.join(claudeDir, 'rules'))) { log(`  kept: .claude/rules - ${OUTSIDE_WHY}`); return; }
         uninstall.removeGeneratedRules({ claudeDir, projectRoot: nested, sourceDir, docsPath, log });
     });
     let mcpRemoved = [];
@@ -223,7 +223,7 @@ function removeNested({ nested, file, rel, sourceDir, shippedDeny, out })
     step('settings', () =>
     {
         const blocked = SETTINGS_FILES.filter((name) => !mayWrite(`.claude/${name}`) && fs.lstatSync(path.join(claudeDir, name), { throwIfNoEntry: false }));
-        settings.removeManagedSettings({ claudeDir, ledger: guarding.ledgerWithout(ledger, blocked), shippedDeny, mcpRemoved, scope, log, note });
+        settings.removeManagedSettings({ claudeDir, ledger: guarding.ledgerWithout(ledger, blocked), shippedDeny, mcpRemoved, scope, skip: blocked, log, note });
     });
     step('tool ignores', () =>
     {
@@ -237,7 +237,9 @@ function removeNested({ nested, file, rel, sourceDir, shippedDeny, out })
     });
     failures.push(...state.problems.map((p) => `${PREFIX}: ${rel} - ${p}`));
     // The stamp goes only when every step before it finished, so a re-run finishes what this one could not.
-    if (!failures.length && guard.canRemove(file)) removeFile(file, (l) => failures.push(`${PREFIX}: ${rel} -${l.replace(/^\s+!!/, '')}`));
+    // A path the guard skipped keeps the stamp too: a re-run finds what is left.
+    const skipped = state.kept.filter((l) => l.endsWith(` - ${OUTSIDE_WHY}`)).length;
+    if (!failures.length && !skipped && guard.canRemove(file)) removeFile(file, (l) => failures.push(`${PREFIX}: ${rel} -${l.replace(/^\s+!!/, '')}`));
     for (const failure of failures) out(`!! ${failure}`);
     if (failures.length && fs.existsSync(file)) out(`${PREFIX}: ${rel} kept ${rel}/.claude/${path.basename(file)} - a step above did not finish; run the removal again`);
     for (const folder of [...STACK_FOLDERS.map((f) => path.join(claudeDir, f)), claudeDir])
@@ -248,8 +250,9 @@ function removeNested({ nested, file, rel, sourceDir, shippedDeny, out })
     state.kept.forEach((l) => out(l));
     const extra = [...(Object.keys(ledger.mcp || {}).length ? ['.mcp.json'] : []), ...Object.keys(toolRecord)];
     leftoverLines({ nested, rel, known: state.kept, extra }).forEach((l) => out(l));
-    out(`${PREFIX}: done ${rel}`);
-    return failures.length ? 1 : 0;
+    if (skipped) out(`${PREFIX}: not done ${rel} - ${skipped} path(s) ${OUTSIDE_WHY} were left; the stamp stays so a re-run finds them`);
+    else out(`${PREFIX}: done ${rel}`);
+    return failures.length || skipped ? 1 : 0;
 }
 
 module.exports = { check, removeNested, segmentsOf };

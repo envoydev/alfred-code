@@ -29,7 +29,9 @@ const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
 const stamp = require('./install/stamp.js');
-// Lazy: a top-level load of nested.js pulls in uninstall.js, settings.js and copy.js at startup, which changed what `role --answer leave` reads (AC15, AC24 of install-workspace.test.js).
+// Lazy, and workspace.js must never require settings.js, copy.js or uninstall.js at the top either: they reach `hook-prelude.js`
+// (settings.js -> derive-state.js -> hook-prelude.js, and copy.js), whose line 67 runs `layout.applyVariables(<cwd project>)` at load
+// and changes `process.env`, which `role --answer leave` then reads (AC15, AC24 of install-workspace.test.js).
 const nestedMod = () => require('./install/nested.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');

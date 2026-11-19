@@ -1548,7 +1548,7 @@ function removeManagedVariables({ file, rows, scope, log, note })
 // it names nothing in is never tidied or deleted (review finding 12), and one that cannot be read is
 // left exactly as it is.
 // `only` (mode v2 stage 2's move, moveToLocal): that one file, never deleted or tidied, no summary line; returns the rows removed.
-function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], scope = 'project', variablesFile = null, only = null,
+function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], scope = 'project', variablesFile = null, only = null, skip = [],
     log = () => {}, note = () => {} })
 {
     // Review finding 8: at user scope the core's user-scope row is printed, never removed, so it stays
@@ -1557,7 +1557,8 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
     const keptOff = []; let removed = 0;
     const stays = (name, at, len) => log(only ? `  ${name}: ${at} stays - changed since the stack wrote it`
         : `  ${name}${at.startsWith('env.') ? ` env: ${at.slice(4)}` : `: ${at}`} kept - changed since the stack wrote it, so it is yours${len ?? ''}`);
-    for (const name of only ? [only] : ['settings.json', 'settings.local.json'])
+    // `skip`: file names this call never opens (remove-nested's guard blocked them).
+    for (const name of (only ? [only] : ['settings.json', 'settings.local.json']).filter((n) => !skip.includes(n)))
     {
         const file = path.join(claudeDir, name);
         if (!fs.existsSync(file)) continue;
