@@ -1913,6 +1913,21 @@ test('rescan: an ignored stamped folder is never listed; its unmarked sibling is
     assert.deepStrictEqual(ws.rescan(at('ws'), { env: env0, log: () => {} }), ['web']);
 });
 
+test('rescan: a project that recorded a role, or whose own switch is 0, is no row; a plain stamped one is', () =>
+{
+    const at = tree({
+        'ws': { stamp: true, git: true },
+        'ws/plain': { stamp: true, git: true },
+        'ws/alone': { stamp: true, git: true, record: { role: 'standalone' } },
+        'ws/stayed': { stamp: true, git: true, record: { above: '..' } },
+        'ws/top': { stamp: true, git: true, record: { role: 'root', children: ['top/inner'] } },
+        'ws/top/inner': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/off': { stamp: true, git: true },
+    });
+    fs.writeFileSync(path.join(at('ws/off'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }));
+    assert.deepStrictEqual(ws.rescan(at('ws'), { env: env0, log: () => {} }), ['plain'], 'a recorded role, a stay answer and a switch 0 are kept out');
+});
+
 test('stampedAncestors: ignored and cut', () =>
 {
     const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['mid'] } }, 'ws/mid': { stamp: true, git: true },

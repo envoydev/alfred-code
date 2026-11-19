@@ -1198,8 +1198,9 @@ for what it removed and for what it kept.
 
 ## after 3.13.0 - update finds the projects below, joins them and suggests what each leaves out
 
-Every `/alfred-code:update` now looks below the project for installed projects that never joined it. Each one found
-joins as a child, with no question. The update then checks each new child, with the check `/alfred-code:validate` runs,
+Every `/alfred-code:update` now looks below the project for installed projects that never joined it and recorded no
+role (a project that stayed standalone, or whose workspace switch is 0, is left alone). Each one found joins as a child,
+with no question, once the update's own questions are answered. The update then checks each new child, with the check `/alfred-code:validate` runs,
 against the set it now inherits. When some of that set fits none of the child's stacks, it asks once for that child:
 ignore the suggested items (recommended), keep everything inherited, or pick. A child with nothing to leave out is only
 named. `/alfred-code:configure` in that project ('Leave and become standalone') takes it out again.

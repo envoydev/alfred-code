@@ -911,13 +911,17 @@ function stampedUnder(root, folder, { maxDepth = 5 } = {})
 }
 
 // Stamped folders under the project with no `parent` in their record, nor a 2.11 `parent none` line still in the old
-// file - projects installed before their root, offered as children. A stamped folder ends the walk down that branch:
+// file, no role or `above` recorded (an answer already given, a stay and a leave included), and a workspace switch that
+// is not 0 - projects installed before their root, joined as children. A stamped folder ends the walk down that branch:
 // what is below it is that project's.
 function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine } = {})
 {
     const top = realOf(projectRoot);
     const dataRoot = dataRootMod.dataRootOf({ projectDir: top }).root.split('/')[0];
     const found = [];
+    // A project's own switch is read with the account alone, as `refreshBelow` reads a child's; a launch `0` still freezes it.
+    const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR, ...(env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: env.ALFRED_CODE_WORKSPACE } : {}) };
+    const switchOn = (child) => { try { return workspaceOn({ env: childEnv, projectRoot: child }); } catch { return false; } };
     const walk = (dir, depth) =>
     {
         let entries;
@@ -932,7 +936,7 @@ function rescan(projectRoot, { maxDepth = 5, env = process.env, log = printLine 
                 const read = readWorkspace(child);
                 // a garbage record is no project to offer: named, and left to be fixed by hand
                 if (read.state === 'garbage') sayGarbage(read.file, top, log);
-                else if (!read.view.parent && !read.view.parentNone && !(ignoredBy(child, { env }) || {}).ignored) found.push(relPosix(top, child));
+                else if (!read.view.parent && !read.view.parentNone && !read.view.role && !read.view.above && switchOn(child) && !(ignoredBy(child, { env }) || {}).ignored) found.push(relPosix(top, child));
                 continue;
             }
             if (depth + 1 < maxDepth) walk(child, depth + 1);

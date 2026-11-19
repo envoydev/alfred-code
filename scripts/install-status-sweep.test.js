@@ -10,6 +10,7 @@ const path = require('node:path');
 
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const status = require('../stack/hooks/session-status.js');
+const { sweepSessionStatus } = require('./install/uninstall.js');
 
 const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
 const SELECTION = 'rule alfred-docs-root\n';
@@ -62,11 +63,40 @@ test('the install and the update remove the old status folders; a root file unde
     assert.ok(r.exclude.includes('*.mine'), 'the user\'s own line stays');
     assert.ok(!r.exclude.includes('/sub/.claude'), 'the pair of a base with no file goes');
     assert.ok(!r.exclude.includes('/gone/.claude'), 'the pair of a folder that is not there goes');
-    assert.match(outs[0], /session status: 2 old status files removed from \.claude\/session-inspector\/status/);
+    assert.match(outs[0], /session status: 2 old status files removed from the old \.claude\/session-inspector\/status folders/);
     assert.match(outs[0], /\.git\/info\/exclude: 2 lines the stack added removed/);
     assert.match(outs[0], /session status: 1 old status folder kept - a file under 25 h old may belong to a running session; the next session start removes it/);
     assert.doesNotMatch(outs[1], /old status files? removed/, 'a re-run has nothing left to remove');
     assert.match(outs[1], /session status: 1 old status folder kept/, 'the kept line shows again while the file stays');
+});
+
+test('the current data-root status file survives the install and the update, at any age', POSIX_ONLY, () =>
+{
+    const current = (repo) => path.join(repo, '.alfred', 'state', 'sessions', 'status', 'sess-now.json');
+    const { result: r } = seedRun(['install', 'update'], SELECTION, {
+        env: COPY_ENV,
+        prepare: (repo) => put(current(repo), '{"keep":true}', 40 * HOUR),
+        inspect: (repo) => ({ there: fs.existsSync(current(repo)), text: fs.existsSync(current(repo)) ? fs.readFileSync(current(repo), 'utf8') : null }),
+    });
+    assert.deepStrictEqual(r, { there: true, text: '{"keep":true}' });
+});
+
+test('the 25 h guard: a root file 24 h 59 min old stays, one 25 h 1 min old goes', POSIX_ONLY, () =>
+{
+    const MINUTE = 60 * 1000;
+    const { result: r } = seedRun(['install'], SELECTION, {
+        env: COPY_ENV,
+        prepare(repo)
+        {
+            put(path.join(inspector(repo), 'status', 'sess-under.json'), '{}', 24 * HOUR + 59 * MINUTE);
+            put(path.join(inspector(repo), 'status', 'sess-over.json'), '{}', 25 * HOUR + MINUTE);
+        },
+        inspect: (repo) => ({
+            under: fs.existsSync(path.join(inspector(repo), 'status', 'sess-under.json')),
+            over: fs.existsSync(path.join(inspector(repo), 'status', 'sess-over.json')),
+        }),
+    });
+    assert.deepStrictEqual(r, { under: true, over: false });
 });
 
 test('a run with no old status folder prints no session status line', POSIX_ONLY, () =>
@@ -84,4 +114,15 @@ test('--print-plan sweeps nothing', POSIX_ONLY, () =>
         inspect: (repo) => fs.existsSync(path.join(inspector(repo), 'status', 'sess-old.json')),
     });
     assert.strictEqual(r, true);
+});
+
+test('a sweep that throws is one log line, never a counted failure that stops the cascade', () =>
+{
+    const notes = [];
+    const logs = [];
+    const deps = { get clock() { throw new Error('boom'); } };
+    sweepSessionStatus({ projectRoot: path.resolve('.'), log: (l) => logs.push(l), note: (l) => notes.push(l), deps });
+    assert.deepStrictEqual(notes, [], 'note() counts a failure and the installer skips the cascade on one');
+    assert.strictEqual(logs.length, 1);
+    assert.match(logs[0], /^  session status: not swept - .*boom.* - the next session start sweeps them$/);
 });

@@ -287,8 +287,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`): init reads
   `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
   every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
-  child or a rescan row (every update's `plan` carries `--rescan`; a `rescan:` row is joined with no ask, 2026-11-19,
-  then checked with validate's `stack-select.js --redundant` against its parent's `--plan-out` set, one fit ask per
+  child or a rescan row (every update's `plan` carries `--rescan`; a `rescan:` row - no parent, no role recorded, its switch not 0 - is joined with no ask, 2026-11-19, after step 2's answers and before the installer call,
+  then checked after this project's installer run with validate's `stack-select.js --redundant` against ONE `--plan-out` read of this project, one fit ask per
   joined child with `redundant:` lines whose Recommended answer writes each as a `workspace.js ignore`), and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
   skips its subtree, a run is failed on its summary line since the installer exits 0). Update asks first whether the projects below
   run at all (the user's ask of 2026-10-28): 'only this project' is written at the ask as `answer --hold` (the answers

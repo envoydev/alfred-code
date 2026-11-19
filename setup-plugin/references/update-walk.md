@@ -37,8 +37,8 @@ node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; n
 ```
 
 (The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
-standalone, nothing. Every update looks below for installed projects that never joined: each is a `rescan:` row,
-joined by `update-workspace.md`.) Pass
+standalone, nothing. Every update looks below for installed projects with no role recorded: each is a `rescan:` row. The joins run
+after step 2's AskUserQuestion answers are applied - this project's own `role --answer` first - and before the installer call.) Pass
 `timeout: 600000` to this call: `plan` reads each parent back, one installer run per project with children.
 
 (The preflight reads the settings as the installer does - `settings.local.json`, the stack's file at every scope, laid
@@ -210,7 +210,7 @@ Load CLAUDE.md and AGENTS.md both, in every project of this account? A parent fo
 
 ## 3. Fast path - refresh in place (the common case)
 
-Run the installer; it reads the install back itself, closes new dependencies through `stack-select.js`, and logs
+With a `rescan:` row, run `update-workspace.md`'s joins first. Then run the installer; it reads the install back itself, closes new dependencies through `stack-select.js`, and logs
 any `installed-only: required:` additions. **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on
 the call itself (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
@@ -244,7 +244,7 @@ claude-hud is installed - this run or already - and no settings file this projec
 never a second grep (a tail is ~75% static boilerplate, and two greps of one log cost two full context re-sends):
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|session status:|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy|seats:' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|session status:|\.git/info/exclude: |!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy|seats:' "$TMP/install.log"
 ```
 
 Add a marker to the pattern when the report needs another fact; do not add a call. The RESTART row and any
@@ -261,7 +261,8 @@ restart for the hook delta.
 
 Then:
 
-- With `$TMP/plan.txt` naming a child, run `update-workspace.md`'s cascade call now - the same call on either answer.
+- With a `rescan:` row, run `update-workspace.md`'s fit check now.
+- With `$TMP/plan.txt` naming a child, or a `rescan:` row that joined, run `update-workspace.md`'s cascade call now - the same call on either answer.
 - Reconcile the project's AGENTS.md (`update-close.md`'s step 6).
 - Report per its step 7.
 - On the copy route, NAME every `installed-only: adopting hook <name>` line in the report with what it blocks; a
