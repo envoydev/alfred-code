@@ -23,4 +23,4 @@ Five to ten lines in the reply or the todo list, never a plan file unless the us
 
 ## Close
 
-One line on the mode and why, what changed, each tier's command with its result, and what was not verified and why.
+One line on the mode and why, what changed, each tier's command with its result, the `cleanup` rule's `Cleanup:` line, and what was not verified and why.

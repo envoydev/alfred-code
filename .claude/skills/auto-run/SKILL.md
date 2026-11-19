@@ -97,6 +97,7 @@ Tool permission prompts follow Claude Code's permission mode; this skill changes
 Done: <what the request asked for, and whether it is met>
 Changed: <files, and each commit with its subject>
 Checks: <each command run, with its result line>
+Cleanup: <what was removed or stopped, and what was left with its reason - no line where the run made and started nothing>
 Decisions auto-mode made for you:
 - <the ask> - <the option taken>
 - approval of <path> - approved by the run at <score path>
