@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { realLong } = require('./test-paths.js');
 
 const PRELUDE_SOURCE = path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js');
 const PROJECT_FOLDER = 'proj';
@@ -22,7 +23,7 @@ const caseInsensitiveDisk = (probe) => fs.existsSync(path.join(probe, SPELLED_UP
 
 test('the no-layout fallback folds case as the disk does: a case-different spelling of the project is inside', (t) =>
 {
-    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-case-')));
+    const base = realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-case-')));
     const { folder, prelude } = preludeWithoutLayout();
     t.after(() =>
     {
@@ -43,7 +44,7 @@ test('the no-layout fallback folds case as the disk does: a case-different spell
 
 test('the no-layout fallback still reads a folder behind a link that leaves the project as outside', (t) =>
 {
-    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-link-')));
+    const base = realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-link-')));
     const { folder, prelude } = preludeWithoutLayout();
     t.after(() =>
     {
