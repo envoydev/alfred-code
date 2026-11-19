@@ -128,7 +128,8 @@ test('entryFor reads the record', () =>
 });
 
 // --- session-status.js (plan task 3) -----------------------------------------------------------------------------
-const { spawnSync } = require('node:child_process');
+const { spawnSync, execFileSync } = require('node:child_process');
+const SLOW_HOST_GIT_TIMEOUT_MS = 30000;
 const { scrubbed, strayRoots, statusAccount } = require('./hook-test-env');
 const STATUS = path.join(HOOKS, 'session-status.js');
 const S = () => require(STATUS);
@@ -722,11 +723,11 @@ test('one spawn per common dir, none past the deadline', () =>
         const exclude = path.join(root, '.git', 'info', 'exclude');
         const before = fs.readFileSync(exclude, 'utf8');
         let spawns = 0;
-        const late = S().ensureExcluded([root, ...wts], { env: {}, uptime: () => 9000, exec: (...a) => { spawns++; return execFileSync(...a); } });
+        const late = S().ensureExcluded([root, ...wts], { env: {}, uptime: () => 9000, exec: (cmd, argv, opts) => { spawns++; return execFileSync(cmd, argv, { ...opts, timeout: SLOW_HOST_GIT_TIMEOUT_MS }); } });
         assert.deepStrictEqual(late, ['late', 'late', 'late']);
         assert.strictEqual(spawns, 0, 'no spawn past the deadline');
         assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'the exclude file untouched');
-        const got = S().ensureExcluded([root, ...wts], { env: {}, uptime: () => 0, exec: (...a) => { spawns++; return execFileSync(...a); } });
+        const got = S().ensureExcluded([root, ...wts], { env: {}, uptime: () => 0, exec: (cmd, argv, opts) => { spawns++; return execFileSync(cmd, argv, { ...opts, timeout: SLOW_HOST_GIT_TIMEOUT_MS }); } });
         assert.deepStrictEqual(got, ['added', 'present', 'present']);
         assert.strictEqual(spawns, 1, 'one spawn for the main checkout and its two worktrees');
         const text = fs.readFileSync(exclude, 'utf8');
@@ -1602,7 +1603,7 @@ test('uninstall: a worktree list cut by the deadline marks its group late and ke
     const { execFileSync } = require('node:child_process');
     const f = sweepProject();
     let calls = 0;
-    const out = removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => (++calls <= 1 ? 0 : 9000), exec: (...a) => execFileSync(...a) });
+    const out = removeStatus(f.root, { env: { CLAUDE_PROJECT_DIR: f.root }, uptime: () => (++calls <= 1 ? 0 : 9000), exec: (cmd, argv, opts) => execFileSync(cmd, argv, { ...opts, timeout: SLOW_HOST_GIT_TIMEOUT_MS }) });
     assert.ok(out.late > 0, `late: ${JSON.stringify(out)}`);
     assert.ok(fs.existsSync(f.list), 'the list stays for the next run');
     assert.deepStrictEqual(f.held().sort(), [f.root, f.a, f.ab].map(posixOf).sort(), 'every base stays on it');
@@ -1762,7 +1763,8 @@ test('the legacy sweep runs with the reader on', () =>
     fs.writeFileSync(exclude, `/mine/\n${stackPair('')}${stackPair('a')}${stackPair('a/b')}`);
     fs.mkdirSync(path.dirname(listOf(root)), { recursive: true });
     fs.writeFileSync(listOf(root), JSON.stringify([root, a, ab].map(posixOf)));
-    S().onSessionStart(startPayload(root, 'sweeper'), null, { env: sweepEnv(root, 'on'), clock: () => now, uptime: () => 0 });
+    const slowHostExec = (cmd, argv, opts) => execFileSync(cmd, argv, { ...opts, timeout: SLOW_HOST_GIT_TIMEOUT_MS });
+    S().onSessionStart(startPayload(root, 'sweeper'), null, { env: sweepEnv(root, 'on'), clock: () => now, uptime: () => 0, exec: slowHostExec });
     assert.ok(subFiles.every((f) => !fs.existsSync(f)), 'the subfolder files are gone');
     assert.ok(!fs.existsSync(path.join(ab, '.claude')), 'the emptied subfolders go');
     assert.ok(!fs.existsSync(rootFiles.older), 'the root file at 25 h plus 60 s is gone');

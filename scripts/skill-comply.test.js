@@ -1117,9 +1117,25 @@ test('answer-budget fixture: its graders check the exact budget, the lead and th
         ['501 fence lines, one left open (no runaway backtracking)', '```\nx\n'.repeat(501) + 'A. B. C.', 'lead-sentences', false],
         ['1,500 indented list lines between prose (no runaway backtracking)', 'x `y` ~~~ z\n  - q\n'.repeat(1500), 'lead-sentences', false],
         ['an e.g. is no sentence end', 'It clamps, e.g. a negative one (high confidence). Next. Last.', 'lead-sentences', false],
+        ['a dot inside inline code is no sentence end', 'It clamps (high confidence). Use `a. b. c. d.` here.', 'lead-sentences', false],
+        ['an inline code span ends before its own sentence does', 'It clamps (high confidence). Use `a. b.` now. Then `c. d.` here. Last one. Done.', 'lead-sentences', true],
+        ['a lone backtick is a plain character', 'It clamps (high confidence). A ` mark. Next one. Last one. Done.', 'lead-sentences', true],
+        ['a span opened on one line does not close on the next', 'It clamps (high confidence). Use `a. b.\nc. d.` here.', 'lead-sentences', true],
         ['three links with 300-character URLs', [1, 2, 3].map((n) => `[link ${n}](https://example.com/${'a'.repeat(300)})`).join(' '), 'budget', true],
     ];
     for (const [name, text, id, want] of grader) assert.strictEqual(hit(id, text), want, name);
+    const runaway = [
+        ['3,000 inline spans on one line', 'a `b. c` '.repeat(3000)],
+        ['a lone backtick on each of 3,000 lines', 'a ` b\n'.repeat(3000)],
+        ['500 spans beside fences', `x \`a\` y\n${F}\ncode \`b\`\n${F}\n`.repeat(500)],
+    ];
+    for (const [name, text] of runaway)
+    {
+        const start = process.hrtime.bigint();
+        hit('lead-sentences', text);
+        const ms = Number(process.hrtime.bigint() - start) / 1e6;
+        assert.ok(ms < 1000, `${name}: ${ms.toFixed(1)} ms`); // a runaway hangs; 1000 ms leaves a loaded host room
+    }
     for (const [name, text, [lead, conf, prose]] of samples)
         assert.deepStrictEqual([hit('lead-sentences', text), hit('confidence-first', text), hit('budget', text)], [lead, conf, prose], name);
     assert.deepStrictEqual(Object.keys(steps), ['budget', 'lead-sentences', 'confidence-first', 'no-em-dash', 'no-closing-offer']);

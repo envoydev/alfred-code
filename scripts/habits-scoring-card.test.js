@@ -513,6 +513,11 @@ test('the topic-explainer rubric grades the child level under A2 (item 6)', () =
     assert.match(read('stack/skills/mode-output-scoring/references/rubric-topic-explainer.md'), /child level/);
     assert.ok(rubricOf('topic-explainer').checks.A2, 'A2 still parses');
 });
+test('the topic-explainer rubric A10 names the three confidence labels', () => {
+    const text = read('stack/skills/mode-output-scoring/references/rubric-topic-explainer.md');
+    assert.ok(text.includes("- **A10** (8.33) - a result, a cause or a recommendation carries '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)' in its first sentence, and nothing is invented."));
+    assert.ok(rubricOf('topic-explainer').checks.A10, 'A10 still parses');
+});
 test('every rubric parses, sums to 100, and has the spec\'s check count; OUTPUTS names it', () => {
     for (const [output, n] of RUBRICS) {
         const r = rubricOf(output);
