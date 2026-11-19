@@ -240,12 +240,16 @@ const parseList = (fm, key) =>
 
 // The docs' three rules (hooks, the matcher table): `*`, empty or none match all; only letters, digits, `_`, `-`,
 // spaces, `,` and `|` is an exact name or a list split on `|` or `,`; anything else is an UNANCHORED regex. An event
-// with no matcher support ignores the field.
+// with no matcher support ignores the field. FileChanged and StopFailure take a narrower exact set - letters, digits,
+// `_` and `|`, split on `|` alone - so a `-`, a space or a `,` keeps their matcher a regex (hooks page, re-read
+// 2026-11-19).
+const NARROW_MATCHER = new Set(['FileChanged', 'StopFailure']);
 function matches(matcher, value, event = '')
 {
     if (NO_MATCHER.has(event) || matcher === undefined || matcher === null || matcher === '' || matcher === '*') return true;
     const m = String(matcher);
-    if (/^[A-Za-z0-9_\- ,|]+$/.test(m)) return m.split(/[|,]/).map((x) => x.trim()).includes(value);
+    const narrow = NARROW_MATCHER.has(event);
+    if (narrow ? /^[A-Za-z0-9_|]+$/.test(m) : /^[A-Za-z0-9_\- ,|]+$/.test(m)) return m.split(narrow ? /\|/ : /[|,]/).map((x) => x.trim()).includes(value);
     try { return new RegExp(m).test(value); } catch { return false; }
 }
 
@@ -437,7 +441,7 @@ function surface(projectRoot, options = {})
     {
         const r = require('../stack/hooks/rules-session.js').rulesFor(projectRoot);
         const real = fs.realpathSync.native(projectRoot);   // the loader's spelling; Windows expands an 8.3 name the root keeps
-        for (const x of [...r.always, ...r.scoped]) ruleFiles.push({ file: path.join(projectRoot, path.relative(real, x.file)), owner: ruleOwner(x.name) });
+        for (const x of [...r.always, ...r.scoped]) ruleFiles.push({ file: path.join(projectRoot, path.relative(real, x.file)), owner: ruleOwner(x.name), loader: true });
     }
     catch { /* no loader: the native rules alone */ }
     if (options.withUser) walkRules(path.join(account.dir, 'rules'), 'user');
@@ -531,8 +535,8 @@ function surface(projectRoot, options = {})
         }
         else
         {
-            add({ loadPoint: 'session-start', owner: r.owner, source, chars: sent.length, note: 'pathless rule' });
-            injections.push({ path: `rule:${source}`, text: sent, injected: false });
+            add({ loadPoint: 'session-start', owner: r.owner, source, chars: sent.length, note: 'pathless rule', ...(r.loader ? { loader: true } : {}) });
+            injections.push({ path: `rule:${source}`, text: sent, injected: false, loader: Boolean(r.loader) });
         }
     }
 
@@ -656,6 +660,15 @@ function surface(projectRoot, options = {})
     }
     for (const w of writes.stray) flags.push({ kind: 'stray-write', detail: `a hook wrote outside the project: ${w.startsWith(account.dir) ? `~config/${path.relative(account.dir, w)}` : w}` });
 
+    // The rule loader's own rules reach a session only as its hook's text: once that hook ran at session start, each store
+    // rule is already inside its rows, so the rule row stays in the map uncounted and is no overlap with the text that
+    // sent it (a native rule, or any other hook repeating a rule, is still counted and flagged).
+    const LOADER = 'rules-session.js';
+    const loaderSent = rows.some((r) => r.hook && r.source === LOADER && r.loadPoint === 'session-start' && r.chars > 0);
+    if (loaderSent)
+        for (const r of rows.filter((x) => x.loader && x.loadPoint === 'session-start')) Object.assign(r, { counted: false, note: `pathless rule - sent by ${LOADER}, counted in its rows` });
+    const loaderRules = new Set(injections.filter((i) => i.loader).map((i) => i.path));
+    const byLoader = (home) => (home.startsWith('hook:') ? home.includes(`:${LOADER}:`) : loaderRules.has(home));
     // An injection that repeats a rule or memory file is paid twice.
     const overlapFiles = injections.map((i) => ({ path: i.path, text: i.text }));
     if (overlapFiles.some((f) => f.path.startsWith('hook:')))
@@ -663,12 +676,13 @@ function surface(projectRoot, options = {})
         {
             const homes = f.homes.map((h) => h.file);
             if (!homes.some((h) => h.startsWith('hook:')) || !homes.some((h) => !h.startsWith('hook:'))) continue;
+            if (loaderSent && homes.every(byLoader)) continue;
             flags.push({ kind: 'injection-overlap', detail: `${homes.join(' and ')} share '${f.homes[0].text.slice(0, 90)}' (score ${f.score.toFixed(2)})` });
         }
 
-    const sum = (pred) => rows.filter(pred).reduce((n, r) => n + r.chars, 0);
+    const sum = (pred) => rows.filter((r) => r.counted !== false && pred(r)).reduce((n, r) => n + r.chars, 0);
     const byOwner = {};
-    for (const r of rows.filter((x) => x.loadPoint === 'session-start')) byOwner[r.owner] = (byOwner[r.owner] || 0) + r.chars;
+    for (const r of rows.filter((x) => x.loadPoint === 'session-start' && x.counted !== false)) byOwner[r.owner] = (byOwner[r.owner] || 0) + r.chars;
     const listingChars = sum((r) => r.listing === 'skill');
     const window = Number(options.window) || 200000;
     const fraction = Number(options.listingFraction) || 0;
