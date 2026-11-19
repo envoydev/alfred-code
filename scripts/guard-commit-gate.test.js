@@ -2386,15 +2386,17 @@ test('review proof 3.12: of two receipt calls the file proves the one that wrote
   const tp1 = writeTranscript(one, 'rp-a10-1', [cpSkill('a', 'review-code'),
     rpAt(cpBash('r1', rpCmd(undefined, '', '; echo rc=$?')), M - 10000), rpAt(cpResult('r1', RP_REFUSED), M - 9000),
     rpAt(cpBash('r2', RP_PIPED), M - 500), rpAt(cpResult('r2', RP_TAIL3), M + 500)]);
-  rpStamp(rpDisk(one, 'review-code over the change'), M);
-  rpPass(rpCommit(one, tp1), 'A10 the later piped call wrote it');
-  // the first write closes review-code; a review loaded after it stays open, and the refused second call proves nothing
+  // the first write closes review-code; a review loaded after it stays open, and the refused second call proves nothing.
+  // Both repos and transcripts are made before either commit runs: made after the first commit, the second transcript
+  // was newer than M on the Windows VM (3.4s for the test) and the gate read its receipt as written before the session.
   const two = scratchRepo();
   const both = `R="${CP_PATH}"\nnode "$R" commit ${CP_ARGS}`;
   const tp2 = writeTranscript(two, 'rp-a10-2', [cpSkill('a', 'review-code'),
     rpAt(cpBash('r1', `${both} | tail -n 3`), M - 500), rpAt(cpResult('r1', RP_TAIL3), M + 500),
     cpSkill('s', 'review-security'),
     rpAt(cpBash('r2', `${both}; echo rc=$?`), M + 5000), rpAt(cpResult('r2', RP_REFUSED), M + 6000)]);
+  rpStamp(rpDisk(one, 'review-code over the change'), M);
+  rpPass(rpCommit(one, tp1), 'A10 the later piped call wrote it');
   rpStamp(rpDisk(two, 'review-code and review-security over the change', CP_SEC), M);
   rpRefused(rpCommit(two, tp2), /names review-security, but no run of it/, 'A10 the later review stays open');
 });
