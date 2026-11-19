@@ -24,7 +24,8 @@ delete process.env.CLAUDE_CODE_ENTRYPOINT;
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-mode-'));
-test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+// Out of TMP first: Windows refuses to remove the folder a process stands in (EBUSY).
+test.after(() => { process.chdir(os.tmpdir()); fs.rmSync(TMP, { recursive: true, force: true }); });
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.CLAUDE_PROJECT_DIR;
 // With no project dir the prelude reads the variables of the project the cwd sits in, at load and in every hook it

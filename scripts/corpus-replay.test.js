@@ -11,7 +11,10 @@ const { spawnSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k]; // C19: the session's own stack env never decides a case
 // The hooks the replay spawns read the variables of the project the cwd sits in: run from a temp dir, so this checkout's
 // own mode switches (its local settings) never decide a case.
-process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'replay-cwd-')));
+const REPLAY_CWD = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-cwd-'));
+process.chdir(REPLAY_CWD);
+// Out of it before it goes: Windows refuses to remove the folder a process stands in (EBUSY).
+test.after(() => { process.chdir(os.tmpdir()); fs.rmSync(REPLAY_CWD, { recursive: true, force: true }); });
 
 const SCRIPT = path.join(__dirname, 'corpus-replay.js');
 
