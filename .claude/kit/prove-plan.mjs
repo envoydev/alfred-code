@@ -4,7 +4,9 @@
 // Proves an audit plan (shared/skills/repo-audit-plugin/references/plan-format.md): reads every edited file at the
 // plan's Baseline revision, never from the working tree, and applies the edits in plan order - each Old found exactly
 // once, at or after the end of the last edit to the same file, and replaced by its New. When every edit applied it
-// writes the resulting files into a folder beside the plan (plan.md -> expected/) and prints one line per file.
+// writes the resulting files into a folder beside the plan (plan.md -> expected/) and prints one line per file. Each
+// file there carries the suffix .expected (expected/src/a.test.ts.expected), so no test runner's pattern picks it up;
+// --check also reads a folder written before the suffix.
 //
 //   node .claude/kit/prove-plan.mjs [--check] <plan> [--without E<n>[,E<m>]]...    run at the repository root
 //
@@ -19,6 +21,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { EXPECTED_FILE_SUFFIX } from './constants.mjs';
 import {
     PlanError,
     appliesDifference,
@@ -49,7 +52,7 @@ function writeFolder(folder, files)
     mkdirSync(folder, { recursive: true });
     for (const [file, text] of files)
     {
-        const target = path.join(folder, file);
+        const target = path.join(folder, `${file}${EXPECTED_FILE_SUFFIX}`);
         mkdirSync(path.dirname(target), { recursive: true });
         writeFileSync(target, text);
     }
@@ -57,7 +60,7 @@ function writeFolder(folder, files)
 
 const variantFolderName = (folderName, named) => `${folderName}-${WITHOUT_WORD}-${named.map((number) => `E${number}`).join('-')}`;
 
-// Every regular file under a folder, as a map from its '/' path to its text, with no .DS_Store; a folder that is not there holds none.
+// Every regular file under a folder, as a map from its '/' path without the .expected suffix to its text, with no .DS_Store; a folder that is not there holds none.
 function readFolder(folder)
 {
     try
@@ -66,7 +69,9 @@ function readFolder(folder)
         return new Map(entries.map((entry) =>
         {
             const file = path.join(entry.parentPath, entry.name);
-            return [path.relative(folder, file).split(path.sep).join('/'), readFileSync(file, 'utf8')];
+            const relative = path.relative(folder, file).split(path.sep).join('/');
+            const proved = relative.endsWith(EXPECTED_FILE_SUFFIX) ? relative.slice(0, -EXPECTED_FILE_SUFFIX.length) : relative;
+            return [proved, readFileSync(file, 'utf8')];
         }));
     }
     catch (error)
