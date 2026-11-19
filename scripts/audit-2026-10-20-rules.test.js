@@ -33,8 +33,9 @@ test('row 1: a step the tools can do is never handed over as an instruction - do
 test('row 2 + S9: the budget spares a baseline close line, and step by step lifts it', () =>
 {
     const rule = injected('alfred-interaction');
-    assert.match(rule, /never trim a field a skill's report contract or a baseline rule's close line requires, or a self-correction disclosure\./);
-    assert.match(rule, /Only the user's own message lifts it \('in detail', 'walk me through', 'step by step', 'teach me', 'ELI5', 'write a plan', the same ask in any language\), and an entry of their personal preferences doc sets it; 'explain' does not\./);
+    // 2026-11-19: the exact budget split each long sentence in two (the rule's 20/25-word limits); the meaning is kept.
+    assert.match(rule, /Never trim a field a skill's report contract or a baseline rule's close line requires, or a self-correction disclosure\./);
+    assert.match(rule, /Only the user's own message lifts it \('in detail', 'walk me through', 'step by step', 'teach me', 'ELI5', 'write a plan', the same ask in any language\)\. An entry of their personal preferences doc also sets it; 'explain' does not\./);
 });
 
 // Row 3: three pros and three cons per candidate in prose blew the budget; a table is exempt.
