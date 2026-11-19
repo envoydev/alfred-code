@@ -144,13 +144,16 @@ test('FB 3: the variable expander reads each assignment once per command - linea
 
 test('FB 3: an 8,000-pair assignment chain over 8,000 rm operands is judged in seconds, not tens', () => {
   const dir = project('fb3-');
-  const cmd = `${'a=$b;b=$a; '.repeat(8000)}rm -rf ${'$a '.repeat(8000)}`;
-  const c0 = process.hrtime.bigint();
-  const r = fire(dir, cmd);
-  const ms = Number(process.hrtime.bigint() - c0) / 1e6;
+  const shape = (n) => `${'a=$b;b=$a; '.repeat(n)}rm -rf ${'$a '.repeat(n)}`;
+  const timed = (cmd) => { const c0 = process.hrtime.bigint(); const r = fire(dir, cmd); return { r, ms: Number(process.hrtime.bigint() - c0) / 1e6 }; };
+  const small = timed(shape(800));
+  const { r, ms } = timed(shape(8000));
   assert.notStrictEqual(r.v, null);
-  // 10.2s on the branch tip before the fix; the bound is a sanity bound only - the work count above is the verdict
-  assert.ok(ms < 5000, `judged in ${Math.round(ms)}ms`);
+  // 10.2s on the branch tip before the fix; the bound is a sanity bound only - the work count above is the verdict. A
+  // loaded machine slows both runs alike, so the bound scales with the 800-pair run (linear work is about 10x it, the old
+  // scan per lookup about 100x); 6.2s was seen with five suites running at once (2026-11-19).
+  const bound = Math.max(5000, 20 * small.ms);
+  assert.ok(ms < bound, `judged in ${Math.round(ms)}ms, bound ${Math.round(bound)}ms (800 pairs: ${Math.round(small.ms)}ms)`);
 });
 
 // FB 4 (declare / typeset listings rewritten into the masked env listing) left with the rewrite in swap 1 Task 2:

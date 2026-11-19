@@ -619,7 +619,8 @@ test('a control character in the base\'s path writes no exclude line', { skip: p
     fs.mkdirSync(odd);
     const exclude = path.join(root, '.git', 'info', 'exclude');
     const before = fs.readFileSync(exclude, 'utf8');
-    assert.deepStrictEqual(S().ensureExcluded([odd], { env: {} }), ['skipped']);
+    // the deadline pinned, as every other call here: a loaded runner past 8 s of uptime would read 'late' (2026-11-19)
+    assert.deepStrictEqual(S().ensureExcluded([odd], { env: {}, uptime: () => 0 }), ['skipped']);
     assert.strictEqual(fs.readFileSync(exclude, 'utf8'), before, 'no line, so no `*` pattern');
     const env = { CLAUDE_PROJECT_DIR: odd, CLAUDE_CONFIG_DIR: ACCOUNT };
     assert.strictEqual(S().writeStatus({ session_id: 's1', cwd: odd }, {}, { when: 'always', deps: { env } }), 'skipped', 'and no file the exclude cannot cover');
