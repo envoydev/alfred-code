@@ -1107,6 +1107,16 @@ test('answer-budget fixture: its graders check the exact budget, the lead and th
         ['an e.g. inside the first sentence', 'It clamps bad input, e.g. a negative percent (high confidence).', 'confidence-first', true],
         ['a first sentence wrapped over two lines', 'applyDiscount cuts the price\nby the percent (high confidence).', 'confidence-first', true],
         ['forty list lines', Array.from({ length: 40 }, (_, i) => `- item ${String(i).padStart(2, '0')} ok text`).join('\n'), 'budget', true],
+        ['prose after a list adds to the lead', 'It clamps (high confidence).\n- a\n- b\n\nOne more. Two more. Three more.', 'lead-sentences', true],
+        ['sentences inside list items are not prose', 'It clamps (high confidence). Next.\n- a. b. c.\n- d. e. f.\n1. g. h.', 'lead-sentences', false],
+        ['sentences inside code, a table, a quote or a heading are not prose', `It clamps (high confidence).\n${F}\na. b. c. d.\n${F}\n| a. | b. c. |\n> d. e. f.\n## g. h. i.\nDone.`, 'lead-sentences', false],
+        ['700 inline triple backticks (no runaway backtracking)', 'a ``` b '.repeat(700), 'lead-sentences', false],
+        ['an indented line under a list item is list content', 'It clamps (high confidence). Next.\n1. **Neg**\n   Clamps to 0. Stays. More.\n', 'lead-sentences', false],
+        ['E.g., I.e. and vs. are no sentence end', 'It clamps (high confidence). E.g. a negative one, i.e. below 0, vs. the old code. I.e. done.', 'lead-sentences', false],
+        ['a tilde fence is code', 'It clamps (high confidence).\n~~~\na. b. c. d.\n~~~\nDone.', 'lead-sentences', false],
+        ['501 fence lines, one left open (no runaway backtracking)', '```\nx\n'.repeat(501) + 'A. B. C.', 'lead-sentences', false],
+        ['1,500 indented list lines between prose (no runaway backtracking)', 'x `y` ~~~ z\n  - q\n'.repeat(1500), 'lead-sentences', false],
+        ['an e.g. is no sentence end', 'It clamps, e.g. a negative one (high confidence). Next. Last.', 'lead-sentences', false],
         ['three links with 300-character URLs', [1, 2, 3].map((n) => `[link ${n}](https://example.com/${'a'.repeat(300)})`).join(' '), 'budget', true],
     ];
     for (const [name, text, id, want] of grader) assert.strictEqual(hit(id, text), want, name);

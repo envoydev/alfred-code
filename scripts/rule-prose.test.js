@@ -591,6 +591,10 @@ test('alfred-interaction: answers follow the ASD-STE100 writing rules, the answe
     assert.match(style, /one from memory or another session is labeled recalled\./, 'the source rule stays');
 });
 
+// The verbs the interaction rule's instructions open on; a sentence opening on one of them is an instruction.
+const INSTRUCTION_VERBS = /^(?:Lead|Cut|Count|Never|Verify|Keep|Use|Give|Write|Name|Put|Label|Say|State|Ask|Add|Drop|Fit|Trim|Read|Run|Check|Make|Take|Leave|Send|End|Open|Close|Start|Do|Don't)\b/;
+const opensOnVerb = (sentence) => INSTRUCTION_VERBS.test(sentence.trim());
+
 test('alfred-interaction: every budget and confidence sentence keeps the house limits', () => {
     const style = rule('alfred-interaction').split('## Communication style')[1].split('## Asking the user')[0];
     const lines = style.split('\n').filter((l) => l.startsWith('- **Answer budget') || l.startsWith('- Confidence:'));
@@ -601,5 +605,9 @@ test('alfred-interaction: every budget and confidence sentence keeps the house l
         const sentence = raw.replace(/\([^()]*'[^()]*\)/g, 'LIST');
         const words = sentence.trim().split(/\s+/).length;
         assert.ok(words <= 25, `${words} words, over 25: ${sentence.slice(0, 80)}`);
+        // An instruction - a sentence that opens on its verb - keeps to 20 words (the ASD-STE100 bullet).
+        if (opensOnVerb(sentence)) assert.ok(words <= 20, `an instruction of ${words} words, over 20: ${sentence.slice(0, 80)}`);
     }
+    assert.ok(opensOnVerb('Cut an over-budget draft in this order.') && opensOnVerb('Never trim a field.'), 'an imperative is found');
+    assert.ok(!opensOnVerb('Code, tables and command output do not count.') && !opensOnVerb('Only the user\'s own message lifts it.'), 'a description is not an instruction');
 });

@@ -30,7 +30,7 @@
       "from": "stack/rules/alfred-interaction.md",
       "quote": "Lead with 3 sentences or fewer; the rest is bullets.",
       "graders": [
-        { "type": "regex", "name": "no more than 3 sentences before the first list, table, quote or code block", "target": "last_message", "flags": "m", "pattern": "(?<![\\s\\S])(?:(?:(?!^[ \\t]*(?:[-*+][ \\t]|[|>]|\\d+[.)][ \\t]|```))[\\s\\S])*?[.!?](?=[\\s)]|$)){4}", "match": "not_contains" }
+        { "type": "regex", "name": "no more than 3 prose sentences in the answer - lists and their indented lines, tables, quotes, headings and code are not prose", "target": "last_message", "flags": "m", "pattern": "(?<![\\s\\S])(?:(?:^[ \\t]*```[^\\n]*\\n(?:(?!^[ \\t]*```)[\\s\\S])*^[ \\t]*```[^\\n]*(?![^\\n])|^[ \\t]*~~~[^\\n]*\\n(?:(?!^[ \\t]*~~~)[\\s\\S])*^[ \\t]*~~~[^\\n]*(?![^\\n])|^(?![ \\t]*(?:```|~~~))(?=[ \\t]*(?:[-*+][ \\t]|[|>#]|\\d+[.)][ \\t])| {2}|\\t)[^\\n]*(?![^\\n])|(?!^(?:[ \\t]*(?:[-*+][ \\t]|[|>#]|\\d+[.)][ \\t]|```|~~~)| {2}|\\t))[\\s\\S])*?(?<!\\b[Ee]\\.[Gg]|\\b[Ii]\\.[Ee]|\\b[Ee]tc|\\b[Vv]s|\\.\\.)[.!?](?=[\\s)]|$)){4}", "match": "not_contains" }
       ]
     },
     {

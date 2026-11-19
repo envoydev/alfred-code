@@ -138,7 +138,7 @@ function proseOf(text) {
 // needs the last-position slot (audit 2026-10-14 RU06: the full 751-char text rode every prompt and session start, saved
 // in the transcript each turn - ~22.5K chars over a 30-turn session).
 const BUDGET_TEXT =
-        `Answer budget (alfred-interaction.md): at most ${BUDGET} characters of prose, near 150 words, bullets count; lead with 3 sentences or fewer, result first; fit it before sending. ` +
+        `Answer budget (alfred-interaction.md): at most ${BUDGET} characters of prose, near 150 words, bullets count; lead with 3 sentences or fewer, result first; a result, cause or recommendation's first sentence carries its label: (high confidence), (medium confidence - <what is not verified>) or (low confidence - <why>); fit it before sending. ` +
         `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
         `through / step by step / teach me / ELI5 / write a plan, or the same ask in any language), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
