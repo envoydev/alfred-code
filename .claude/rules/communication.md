@@ -4,9 +4,14 @@ These are the user's own rulings, gathered in one rule (the user, 2026-11-19).
 
 ## 1. Style
 
-- Length: at most 3 sentences plus bullets, about 900 characters. Code, tables and command output do not count toward it. Only the user's own words lift it: 'in detail', 'step by step', 'teach me'.
+- Length: a reply has at most 900 characters of prose, near 150 words, and bullets count. Lead with 3 sentences or fewer; the rest is bullets. Code blocks, tables and command output do not count.
+- Why the cap is exact: 'about 900' and 'plus bullets' read as soft. On 2026-11-19, 16 of 63 final replies in three sessions passed 900 characters, and 32 led with more than 3 sentences.
+- Only the user's own words lift the cap: 'in detail', 'step by step', 'teach me'.
+- A close that a rule or a skill requires is outside the cap. Keep the form its rule or skill gives; where none is given, write one-line bullets with a `Checks:` label.
+- Cut a draft over the cap in this order: process talk, facts an earlier reply gave, what did not change. Count again before you send.
 - Write to the ASD-STE100 rules: an instruction is 20 words or fewer, a description 25. Use the active voice, one instruction per sentence, one word for one meaning, and common words.
-- Tone: the result first, then the recommendation and why. No filler and no process talk. Label how confident you are, and name the source of each number.
+- Tone: the result first, then the recommendation and why. No filler and no process talk. Name the source of each number.
+- Confidence: a reply that gives a result, a cause or a recommendation labels it in the first sentence, in parentheses. The label is '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)'.
 - Format: single dashes and single quotes in prose. Never use the user's name.
 
 ## 2. Asking the user

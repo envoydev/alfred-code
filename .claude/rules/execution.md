@@ -19,6 +19,7 @@ Five to ten lines in the reply or the todo list, never a plan file unless the us
 - Per batch (seconds): run the tests that cover the change and `npm run lint`; fix before the next batch.
 - Once after the whole change: the full `npm test`, never after every step. A wait of minutes runs in the background.
 - Before a push: run here every command the repo's CI workflow runs (`.github/workflows/`), in its order, and push only when each passes - the remote run confirms the other operating systems, it is never the first run. Name what could not run here (another OS's leg, a step behind a secret). After the push, watch the run to its end; a red run is fixed before anything else is pushed. Do not invent a check the project lacks.
+- A `claude` run under a throwaway `HOME` on macOS - a probe, a harness, a scratch project - puts a `security` stub first on its `PATH`: `printf '#!/bin/sh\ncase "$1" in find-*) exit 44;; esac\nexit 1\n' > <dir>/security`, then `chmod +x`. Why: with no keychain under that `HOME`, Claude Code's credential save opens macOS's 'Keychain Not Found' dialog on the user's screen, and its 'Reset To Defaults' can replace a keychain (2026-11-19). alfred-tools' `withKeychainStub` (`tests/helpers.ts`) is the same stub in code.
 
 ## Close
 

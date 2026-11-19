@@ -30,7 +30,7 @@ Before round 0, take the values from the `kit status` line the status hook added
 
 ## Inputs
 
-Write them to a folder `refining/<slug>/` in the session scratchpad:
+Write them to a folder `refining/<slug>/` in the session scratchpad. The slug is the one 'The scores file' below defines:
 
 1. `task.md` - the user's request and hard constraints verbatim (typos kept), their answers to the design questions, and the repo constraints the draft must honour (from `AGENTS.md` and the rules). No author reasoning, no alternatives weighed, no self-assessment.
 2. The artifact is the file the request asked for - the spec file, the plan file - never a stand-in: a chat summary or an inline outline is never graded in its place, and a missing file is written first (2026-10-25: 3 of 18 scored stack runs graded an inline plan instead of the plan file asked for, and lost all 3). For an implementation plan, the spec it implements is part of the artifact (the reviewer prompt's last line says how to pass it).
@@ -41,7 +41,7 @@ Write them to a folder `refining/<slug>/` in the session scratchpad:
 Round 0 grades the draft; rounds 1-3 each revise, then grade again. Where the caller names fewer rounds - the audit flow grades a plan twice at most - the loop ends at the caller's last round: the confirmed findings are fixed, the ask below is not put and none of its options is taken, under auto-run too, and the draft waits for the user as the `plan-approval` rule says of a loop that ended under the pass score.
 
 1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model:` the review model, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
-2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder, and a copy of the draft it graded as `draft-<n>` (the draft's own extension) beside it.
+2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder, and a copy of the draft it graded as `draft-<n>` (the draft's own extension) beside it. Then publish the round as 'The scores file' says.
 3. Verify each finding against what it cites before acting on it. A finding that is factually wrong is rejected with the evidence, never 'fixed' to please the grader.
 4. Decide, in this order. The pass score is the target, not a strict bar: whether another round is worth it depends on what it can still reach.
    - ROLL BACK first - when this total is lower than an earlier round's, copy the highest-scoring round's `draft-<k>` back over the draft and take its `round-<k>.md` as this round's scorecard: every rule below, the stall test and the next revision work from the best version, never the lower one. A tie keeps the newer draft. Why: a revision can trade a fixed finding for two new ones, and the user's bar is the best the loop reached, not the last it wrote (the user, 2026-10-27).
@@ -62,6 +62,29 @@ The draft scored <S>/100 after round <n> (<why it stopped>); the next round can 
 Recommend 'Fix all, one more round' when the ceiling is the pass score or more; under it, 'Answer <the decision> first' when your decision lifts it, else 'Hand it over as is'. The recommended option is always listed first.
 
 Under auto-run the ask is not put: the Recommended option is taken. Auto-run is on when the user's words in this session said to take the recommended options or to run without asking ('auto-run', 'auto mode'), or the `auto-run` skill is loaded - and the user has not since said to stop it or turn it off. A decision only the user can make - an `Answer <the decision> first` recommendation, a MATERIAL tagged `[needs: ...]` - takes that decision's own recommended answer the same way; then the loop goes on: fix and finish on a pass, else one more grade. Write `Ruling: <the ask> - <the option taken> - <cost if wrong>` to the run's ledger when one is named (a plan's `progress.md`, a task ledger under `docs/superpowers/`), else to `docs/superpowers/<YYYY-MM-DD>-auto-run.md` - the default ledger of the `auto-run` skill.
+
+## The scores file
+
+alfred-mods reads each graded draft's rounds from a file, so every saved round is published there (its README, 'Plan and score files', is the contract).
+
+- Slug: the graded file's basename without a leading `YYYY-MM-DD-` and without its extension. A file with a fixed name in a run folder - an audit's `plan.md`, `ts-convert`'s `convert.md` - puts the folder's name first: `<folder>-plan`. The `refining/<slug>/` folder uses the same slug.
+- Path: `.alfred-mods/scores/<slug>.json` under the project root.
+- Read the file where it exists, append the round, and rewrite the whole file with the Write tool. Never use Edit.
+- Never change an earlier round. A later run on the same slug appends with the next round number after the file's last.
+- Fields: `version` 1, `slug`, `subject` `{ kind: 'plan', ref: <slug> }`, `scale` 100, `updatedAt` (ISO 8601), and `rounds[]`, each `{ round, at, total, criteria, findings }`.
+- `criteria`: one entry per rubric id (`C1` to `C7`), the value `round(100 x points / weight)`.
+- `findings`: `{ text, severity }` only, severity `BLOCKER`, `MATERIAL` or `MINOR`. Give no id, status or by: a fresh grader each round cannot recognise a finding across rounds.
+- A rolled-back round publishes the scorecard the loop takes for it, the best round's, so the score shown is the draft's. A `SELF` fallback grade is published the same way.
+- Scoring off means the loop does not run, and no file is written.
+- The file is a view, never a gate: a write the permission mode denies is skipped, the loop goes on, and the handoff says so.
+
+```json
+{ "version": 1, "slug": "token-refresh", "subject": { "kind": "plan", "ref": "token-refresh" },
+  "updatedAt": "2026-10-27T13:10:00Z", "scale": 100,
+  "rounds": [ { "round": 0, "at": "2026-10-27T13:10:00Z", "total": 60,
+    "criteria": { "C1": 75, "C2": 50, "C3": 75, "C4": 75, "C5": 50, "C6": 50, "C7": 75 },
+    "findings": [ { "text": "No migration rollback", "severity": "BLOCKER" } ] } ] }
+```
 
 ## In the chat
 
