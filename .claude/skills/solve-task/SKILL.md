@@ -21,7 +21,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
   made (`.claude/rules/execution.md`), its covering check runs, done. Anything that adds or changes behaviour - a new
   flag, option, output or branch - is at least bounded, however short the request.
 - spike, bounded, architectural - load superpowers:brainstorming next and take its path for this size: a spike has its question
-  and probe approved first, then ends in an answer and keeps nothing; a bounded change gets an in-chat design,
+  and probe approved first, then ends in an answer and keeps nothing in the tree - a spike branch that holds commits
+  is left and named, as the `cleanup` rule says; a bounded change gets an in-chat design,
   approved as step 3 says, then the build; an architectural change takes every step below.
 - A design already settled by a run order or the user's rulings skips the spec and goes to the plan.
 
@@ -88,7 +89,8 @@ alfred-mods reads the plan's progress from a file (its README, 'Plan and score f
   The score then joins the plan row.
 - Fields: `version` 1, `slug`, `title` (the plan's title), `updatedAt`, `steps[]` and `changes[]`.
 - `steps[]`: one per plan task, in order, `{ id, title, status, estimateMin, startedAt, doneAt }`. The id is `T<n>`
-  and the title is the task's heading. Every step starts `pending`.
+  and the title is the task's heading without its number prefix: `Task 2: Rotate tokens` gives `Rotate tokens`.
+  Every step starts `pending`.
 - `estimateMin`: the plan's figure where it gives one. Else the run's estimate of the builder's working minutes, with
   tests, the gate, one fix pass and build waits - not waits for the user. It can change only while the step is
   `pending`.
