@@ -1076,3 +1076,28 @@ test('PF1: the three plan-status steps grade a folder run, a hand stamp, a statu
     assert.strictEqual(after['approved-plan-never-edited'], 'FAIL');
     assert.strictEqual(after['no-self-approval'], 'FAIL', 'an approve call with no answer is a self-approval');
 });
+
+// 2026-11-19: the replay grades what the rule says now - the exact prose budget, the 3-sentence lead, the label in the
+// first sentence. Each sample's expected result is the probe of the plan (lead>3 / label / prose<=900).
+test('answer-budget fixture: its graders check the exact budget, the lead and the label', () => {
+    const steps = Object.fromEntries(expectOf('answer-budget').steps.map((s) => [s.id, s]));
+    const hit = (id, text) =>
+    {
+        const g = steps[id].graders[0];
+        assert.strictEqual(g.type, 'regex');
+        return new RegExp(g.pattern, g.flags || '').test(text);
+    };
+    const samples = [
+        ['a labelled 3-sentence lead plus bullets', 'The price drops by the percent (high confidence). A negative percent clamps to zero. Over 100 clamps to 100.\n- one\n- two', [false, true, true]],
+        ['4 lead sentences', 'The price drops. A negative percent clamps. Over 100 clamps too. The result is a number.\n- one', [true, false, true]],
+        ['label after the first sentence', 'The price drops by the percent. A negative percent clamps (high confidence). Done.', [false, false, true]],
+        ['a medium label', 'The price drops by the percent (medium confidence - not run). Next.\n- one', [false, true, true]],
+        ['a dot inside a file name', 'applyDiscount in src/pricing.js cuts the price by the percent (high confidence). Next.', [false, true, true]],
+        ['950 characters of prose', 'word '.repeat(190).trim(), [false, false, false]],
+        ['a short labelled lead plus a 2,000-character code block', 'The price drops (high confidence).\n```js\n' + 'x'.repeat(2000) + '\n```', [false, true, true]],
+    ];
+    for (const [name, text, [lead, conf, prose]] of samples)
+        assert.deepStrictEqual([hit('lead-sentences', text), hit('confidence-first', text), hit('budget', text)], [lead, conf, prose], name);
+    assert.deepStrictEqual(Object.keys(steps), ['budget', 'lead-sentences', 'confidence-first', 'no-em-dash', 'no-closing-offer']);
+    assert.strictEqual(steps.budget.quote, 'at most 900 characters of prose');
+});

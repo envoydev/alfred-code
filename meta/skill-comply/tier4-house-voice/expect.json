@@ -20,7 +20,7 @@
       "id": "budget",
       "session": false,
       "from": "stack/rules/alfred-interaction.md",
-      "quote": "about 900 characters of prose",
+      "quote": "at most 900 characters of prose",
       "graders": [
         { "type": "regex", "name": "the closing answer stays near the budget (1,200 chars)", "target": "last_message", "pattern": "^[\\s\\S]{1,1200}$", "match": "contains" }
       ]

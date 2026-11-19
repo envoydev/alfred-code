@@ -582,6 +582,24 @@ test('alfred-interaction: answers follow the ASD-STE100 writing rules, the answe
     assert.match(style, /Code, commands, quotes and a fixed report line keep their own form\./, 'a report contract keeps its wording');
     assert.match(style, /Use one word for one meaning, and the same word each time\./);
     assert.match(style, /In another language, apply the same rules as plain-language principles\./);
-    assert.match(style, /about 900 characters of prose/, 'the answer budget stays');
-    assert.ok(style.indexOf('about 900 characters') < style.indexOf('ASD-STE100'), 'the budget is stated first');
+    assert.match(style, /at most 900 characters of prose, near 150 words, and bullets count\./, 'the answer budget is exact');
+    assert.match(style, /Lead with 3 sentences or fewer; the rest is bullets\./);
+    assert.match(style, /in this order: process talk, facts an earlier reply gave, what did not change\. Count again before you send/);
+    assert.ok(style.indexOf('900 characters of prose') < style.indexOf('ASD-STE100'), 'the budget is stated first');
+    assert.doesNotMatch(style, /about 900 characters of prose|3 sentences plus bullet points/, 'the old soft wording is gone (the Why sentence still quotes \'about 900\' as the reason)');
+    assert.match(style, /labels it in the first sentence, in parentheses\. The label is '\(high confidence\)', '\(medium confidence - <what is not verified>\)' or '\(low confidence - <why>\)'\./);
+    assert.match(style, /one from memory or another session is labeled recalled\./, 'the source rule stays');
+});
+
+test('alfred-interaction: every budget and confidence sentence keeps the house limits', () => {
+    const style = rule('alfred-interaction').split('## Communication style')[1].split('## Asking the user')[0];
+    const lines = style.split('\n').filter((l) => l.startsWith('- **Answer budget') || l.startsWith('- Confidence:'));
+    assert.strictEqual(lines.length, 2, 'the budget bullet and the confidence bullet are found');
+    const text = lines.map((l) => l.replace(/^- /, '')).join(' ').replace(/\*\*/g, '');
+    for (const raw of text.split(/(?<=[.!?])\s+(?=[A-Z'(])/)) {
+        // A quoted list is a quote, and quotes keep their own form (the ASD-STE100 bullet), so it counts as one word.
+        const sentence = raw.replace(/\([^()]*'[^()]*\)/g, 'LIST');
+        const words = sentence.trim().split(/\s+/).length;
+        assert.ok(words <= 25, `${words} words, over 25: ${sentence.slice(0, 80)}`);
+    }
 });
