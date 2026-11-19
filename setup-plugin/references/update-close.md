@@ -116,7 +116,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   stamped version alone (the left side of its `version=` field), and `-` for a project step 2's plan printed no row for,
   a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` -
   each `!!` line under it verbatim, then the `cascade: done ...` line. A `gone-kept` row is a folder that no longer
-  holds an install: its line stays in this project's file until a cascade runs. Any `held` row puts ONE line on the
+  holds an install: its line stays in this project's file until a cascade runs. After the rows, report each project
+  joined by this update and the ignores applied to it, one line each (`update-workspace.md` names them). Any `held` row puts ONE line on the
   follow-ups card: '`/alfred-code:update` here again, answering yes, updates the held projects' - and, where the core is
   installed for the whole account, that a held project already runs its new hooks and agents beside its older copies.
   Then ONE call,

@@ -33,11 +33,12 @@ install owes (only the releases between its stamp and the snapshot, from `setup-
 a snapshot without the script prints an error - read nothing more for it and go on):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
 ```
 
 (The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
-standalone, nothing. Add `--rescan` to `plan` when the user asks to find installed projects below.) Pass
+standalone, nothing. Every update looks below for installed projects that never joined: each is a `rescan:` row,
+joined by `update-workspace.md`.) Pass
 `timeout: 600000` to this call: `plan` reads each parent back, one installer run per project with children.
 
 (The preflight reads the settings as the installer does - `settings.local.json`, the stack's file at every scope, laid

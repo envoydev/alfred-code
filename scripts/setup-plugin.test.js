@@ -1664,7 +1664,8 @@ test('setup-plugin: every new ask is a template with one Recommended option, lis
     const cascade = refBody('update-workspace');
     assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project: its rel and its asks'), 'Yes, their questions the recommended way (Recommended)');
     assert.strictEqual(firstOption(cascade, 'Update the <n> project\\(s\\) below this one as well\\? <each project\'s rel>'), 'Yes, update them too (Recommended)');
-    assert.strictEqual(firstOption(cascade, 'Join these installed projects'), 'Join as children (Recommended)');
+    assert.strictEqual(firstOption(cascade, '<rel> joined this workspace as a child'), 'Ignore the <k> suggested (Recommended)');
+    assert.strictEqual(firstOption(cascade, 'Join these installed projects'), null, 'the join ask is gone');
     assert.strictEqual(firstOption(refBody('init-bootstrap'), 'Load CLAUDE\\.md and AGENTS\\.md both'), 'Load both (Recommended)');
     // U01 of the 2026-11-03 usage audit: the auto-update ask rides step 4's call, and each answer is one script call.
     const boot = refBody('init-bootstrap');
@@ -1715,7 +1716,7 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
     assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child or a rescan row');
-    assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+    assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
 });
 
 test('the plan and the cascade calls carry the 10-minute budget, and a cascade that outruns it is waited for, never re-run', () =>
@@ -1766,13 +1767,51 @@ test('update asks whether the children update too, and \'only this project\' run
     const notes = flat(refBody('update-history'));
     assert.ok(!/leaves every project below as it is/.test(notes), 'the notes no longer say a hold freezes everything');
     assert.match(notes, /Where the core plugin is installed for your whole account, it still moves for every project/);
-    assert.match(flatCascade, /The scope ask and the join ask go in one call, the scope ask first; when step 2's own call has no room for both, they take a call of their own right after\./);
+    assert.ok(!/The scope ask and the join ask go in one call/.test(flatCascade), 'no join ask rides beside the scope ask');
     assert.ok(!/joined below this one as well/.test(cascade), 'a rescan row is not joined yet');
     assert.match(close, /Any `held` row puts ONE line on the follow-ups card: '`\/alfred-code:update` here again, answering yes, updates the held projects'/);
     assert.match(flat(refBody('update-walk')), /With `\$TMP\/plan\.txt` naming a child, run `update-workspace\.md`'s cascade call now - the same call on either answer/);
     // Review 2026-10-28: the slow path ran no cascade at all - it now points at the same call before the close.
     assert.match(flat(refBody('update-slow-path')), /With `\$TMP\/plan\.txt` naming a child, run `update-workspace\.md`'s cascade call now - the same call on either answer\. Then step 6 of `update-close\.md`\./);
     assert.match(flat(cmdBody('update')), /whether the projects joined below update too/);
+});
+
+// The user's ruling of 2026-11-19: every update looks below for installed projects, joins each one found with no ask,
+// then checks it with validate's --redundant against what it now inherits and asks once per child with removals.
+test('update rescans every time, joins each found project with no ask and asks once per child about its ignores', () =>
+{
+    const walk = flat(refBody('update-walk'));
+    assert.match(walk, /workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/, 'the plan call always carries --rescan');
+    assert.ok(!/Add `--rescan`/.test(walk), 'no longer something the user asks for');
+    assert.match(walk, /Pass `timeout: 600000` to this call: `plan` reads each parent back/);
+    const cascade = refBody('update-workspace');
+    const flatCascade = flat(cascade);
+    assert.ok(!/Join these installed projects|'Join as children|'Leave them standalone'|'Ignore them'/.test(cascade), 'no join ask');
+    assert.match(flatCascade, /node "\$TMP\/repo\/scripts\/workspace\.js" join --root <rel> --answer join/);
+    assert.match(flatCascade, /`\/alfred-code:configure` in that project \('Leave and become standalone'\) takes it out again/);
+    assert.match(flatCascade, /It prints `workspace: parent <up> written\|kept`/);
+    // the check: validate's own commands, the parent's set from the plan-out, the child's own scan
+    assert.match(flatCascade, /--print-plan --plan-out "\$TMP\/parent-<n>\.json"/);
+    assert.match(flatCascade, /node "\$TMP\/repo\/scripts\/stack-select\.js" --inherited-check "\$TMP\/parent-<n>\.json"/);
+    assert.match(flatCascade, /scan-evidence\.js" --root <rel> --catalog "\$TMP\/repo\/meta\/evidence\.json" --out "\$TMP\/found-<n>\.json"/);
+    assert.match(flatCascade, /stack-select\.js" --redundant --installed "\$TMP\/parent-<n>\.json" --found "\$TMP\/found-<n>\.json" --recs "\$TMP\/repo\/meta\/recommendations\.json" --graph "\$TMP\/repo\/meta\/stack-graph\.json" --stacks "<the child's stacks, csv>"/);
+    assert.match(flatCascade, /cat "\$TMP\/repo\/setup-plugin\/references\/stack-detection\.md"/);
+    assert.match(flatCascade, /keeps everything it inherits/);
+    assert.match(flatCascade, /its fit is checked at its own next update/);
+    // the fit ask: three labels, the Recommended one first, one per joined child with a `redundant:` line
+    const block = cascade.slice(cascade.indexOf('<rel> joined this workspace as a child')).split('```')[0];
+    const labels = [...block.matchAll(/^- '([^\n]*?)' - /gm)].map((m) => m[1]);
+    assert.deepStrictEqual(labels, ['Ignore the <k> suggested (Recommended)', 'Keep everything inherited', 'Pick']);
+    assert.match(flatCascade, /workspace\.js" ignore --root <rel> --add "<category> <name>"/);
+    assert.match(flatCascade, /ONE per joined child that has at least one `redundant:` line/);
+    assert.match(flatCascade, /before the scope ask is put, before any answer is acted on and before the cascade/);
+    // the unchanged asks stay
+    assert.match(flatCascade, /'No, only this project' - nothing below runs/);
+    assert.match(flatCascade, /answer --file "\$TMP\/answers\.json" --hold/);
+    const close = flat(refBody('update-close'));
+    assert.match(close, /each project joined by this update and the ignores applied to it, one line each/);
+    const notes = flat(refBody('update-history'));
+    assert.match(notes, /## after 3\.13\.0 - update finds the projects below, joins them and suggests what each leaves out/);
 });
 
 test('update-close reads the cascade rows and runs check-loads only when cascade.txt exists', () =>

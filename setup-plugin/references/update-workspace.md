@@ -14,18 +14,19 @@ own picks and ignores, and its own scope.
 - Indented under a row, that project's own asks, as its own update would print them:
   `docs-move: offer`, `instructions-file: ... update=ask*`, `instructions-both: ask`, `workspace: role-ask <case> <rel>`.
 - `gone: <rel>` - a listed child folder that no longer holds an install; the cascade removes its line.
-- `rescan: <rel>` - with `--rescan`, an installed project below with no parent line.
+- `rescan: <rel>` - an installed project below with no parent line (every update's `plan` rescans). Each is joined
+  below, before any ask, and counts as a project below.
 
 Paste the plan's table in your message verbatim, its `total:` line included, before any ask.
 
 ## The children too, or only this project - ONE ask
 
-Asked whenever a project below would run: the plan names a second project, or a `rescan:` row (counted as if joined);
-a plan whose only rows below are `gone:` asks nothing and runs the cascade, which only removes their lines. `<n>` is
-the plan's count less this project, plus the `rescan:` rows. In the same AskUserQuestion call as step 2's own asks
-while it holds fewer than four questions, else a call of its own right after. The scope ask and the join ask go in one
-call, the scope ask first; when step 2's own call has no room for both, they take a call of their own right after. When
-a child row carries its own asks:
+Asked whenever a project below would run: the plan names a second project, or a `rescan:` row (joined first, so it
+counts as a project below; one whose join printed a `!!` line does not); a plan whose only rows below are `gone:` asks
+nothing and runs the cascade, which only removes their lines. `<n>` is the plan's count less this project, plus the
+`rescan:` rows that joined. It comes after the joins and their fit asks (the next section). In the same AskUserQuestion
+call as step 2's own asks while it holds fewer than four questions, else a call of its own right after. When a child
+row carries its own asks:
 
 ```ask
 Update the <n> project(s) below this one as well? <each project: its rel and its asks, in a few words>.
@@ -71,20 +72,69 @@ node "$TMP/repo/scripts/workspace.js" answer --file "$TMP/answers.json" --projec
 A `!!` line means the flag or value was refused and the file is as it was: ask that one again. Unattended, take the
 Recommended option for every ask, `update=ask-local` excepted, as the walk does.
 
-## Projects installed below - on `rescan:` rows
+## Projects installed below - joined, then checked - on `rescan:` rows
 
-```ask
-Join these installed projects as children of this one? <each rescan: rel>. Each then takes this install's set and keeps its own picks.
-- 'Join as children (Recommended)' - each join is written now, and the cascade below updates them unless the scope ask's answer was 'No, only this project'
-- 'Leave them standalone' - nothing is written; the next --rescan lists them again
-- 'Ignore them' - never offered again; nothing of this workspace reaches them
+The user's ruling (2026-11-19): every update joins each installed project it finds below and suggests what that child
+should leave out. This runs right after the plan is pasted - before the scope ask is put, before any answer is acted on
+and before the cascade - so a held cascade still leaves each join and its ignores written.
+
+**The join - no ask.** For each `rescan:` row, in the order the plan lists them (a row below another is joined after
+that one):
+
+```bash
+node "$TMP/repo/scripts/workspace.js" join --root <rel> --answer join
 ```
 
-'Join as children' runs `node "$TMP/repo/scripts/workspace.js" join --root <rel> --answer join` for each `rescan:` row,
-before the cascade; a `!!` line names one that could not join, and the rest still do. 'Ignore them' runs
-`node "$TMP/repo/scripts/workspace.js" ignore-child --root . --add <rel> --source "$TMP/repo"` for each `rescan:` row,
-before the cascade; a row the verb refuses - a folder of this repository - is named with its `!!` line and stays
-listed, the rest are marked.
+It prints `workspace: parent <up> written|kept`, `workspace: child <rel-from-that-parent> written|kept in <up>`,
+`role: child of <name>` and `join: join`; `<up>` is the way from the child to the folder it joined (`..`, `../..`) - for
+a row below another child that is that child, not this project. A `!!` line names a project that could not join (it
+stays standalone and gets no check), and the rest still do. Narrate one line per joined project: `<rel> joined as a
+child of <name>`, and that `/alfred-code:configure` in that project ('Leave and become standalone') takes it out again.
+
+**The check - per joined child, with the check `/alfred-code:validate` runs** (its step 2 - same flags, same
+stack-select modes), against the set the child now inherits, its parent's. Two Bash calls per child, `<n>` its number
+in the plan's order, because the child's stacks come from reading it between them.
+
+First call, the parent's set, the detection list and the evidence scan:
+
+```bash
+(cd "<rel>/<up>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent-<n>.json" > "$TMP/parent-<n>.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent-<n>.json" ; echo "parent-read: $?" ; cat "$TMP/repo/setup-plugin/references/stack-detection.md" ; node "$TMP/repo/scripts/scan-evidence.js" --root <rel> --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found-<n>.json"
+```
+
+`<rel>/<up>` is the folder `join` joined. `parent-read` not 0 -> no check for that child: paste its `!! inherited:` line
+when it printed one and say its fit is checked at its own next update. Otherwise apply `stack-detection.md` to the
+child folder - the catalog keys of `meta/recommendations.json` (`web-angular`, never `angular`); read the list once,
+the first child's call, and reuse it. This is no veto ask: the fit ask below is the child's choice. Then the second call:
+
+```bash
+node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/parent-<n>.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+```
+
+`--installed` takes the parent's `--plan-out` file as it is - the file validate's own `installed.json` is. The
+`redundant: <category> <name> - owned by <stacks>, not detected` lines are the items the child inherits that fit none of
+its stacks. A child with none gets no ask: narrate `<rel> keeps everything it inherits`.
+
+**The fit ask - ONE per joined child that has at least one `redundant:` line.** All of them ride in one
+AskUserQuestion call, up to four questions, one per child; more children take a second call, before the scope ask.
+
+```ask
+<rel> joined this workspace as a child - its stacks: <csv>. Of what it inherits, <k> item(s) fit none of them: <category name - owned by <stacks>, ...>. Ignore those here?
+- 'Ignore the <k> suggested (Recommended)' - each is written as an ignore of <rel>, so it never reaches that project; everything else it inherits stays
+- 'Keep everything inherited' - nothing is written; the next validate in <rel> offers the same removals
+- 'Pick' - one multi-select question lists the <k>; the ones picked are ignored
+```
+
+`<csv>` is `none` when nothing was detected. The ignores are written now, one call per item, each `<category> <name>`
+being the `redundant:` line's two words as they stand:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" ignore --root <rel> --add "<category> <name>"
+```
+
+It prints `workspace: ignore <category> <name> added|kept`; a `!!` line is pasted and that item is not ignored.
+'Keep everything inherited' writes nothing. Unattended, take the Recommended option. Say in the close which ignores
+were applied (`update-close.md`, WORKSPACE). A joined child is a child for the cascade below, though `$TMP/plan.txt`
+did not list it: run the cascade call even when the plan named no other child.
 
 ## The cascade - after this project's own installer run
 

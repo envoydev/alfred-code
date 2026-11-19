@@ -1195,3 +1195,11 @@ longer wait for the next session start: the update removes them in the same run,
 cascade runs in. One exception stays: a file in the project's own folder that is under 25 hours old may belong to a
 session still running, so it stays and the next session start removes it. The update prints a `session status:` line
 for what it removed and for what it kept.
+
+## after 3.13.0 - update finds the projects below, joins them and suggests what each leaves out
+
+Every `/alfred-code:update` now looks below the project for installed projects that never joined it. Each one found
+joins as a child, with no question. The update then checks each new child, with the check `/alfred-code:validate` runs,
+against the set it now inherits. When some of that set fits none of the child's stacks, it asks once for that child:
+ignore the suggested items (recommended), keep everything inherited, or pick. A child with nothing to leave out is only
+named. `/alfred-code:configure` in that project ('Leave and become standalone') takes it out again.

@@ -1318,8 +1318,9 @@ const SETUP_ASK_TEMPLATES = {
     // The join ask became the role ask, one template over its five cases (workspace roles and variables D2, 2026-10-27).
     // -1: the data-root ask - the data root is always .alfred (the fixed root, 2026-11-11).
     'setup-plugin/references/update-walk.md': 5,
-    // the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26); the children's
+    // the rescan join (replaced 2026-11-19, see below), read only when the plan names a second project (workspace layering, 2026-10-26); the children's
     // asks became the scope ask - the children too, or only this project - one template with and one without them (2026-10-28).
+    // 2026-11-19: the join ask is gone (every update joins what it finds below); a fit ask per joined child took its place, so 3.
     'setup-plugin/references/update-workspace.md': 3,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's

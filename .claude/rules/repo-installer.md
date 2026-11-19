@@ -287,7 +287,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`): init reads
   `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
   every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
-  child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
+  child or a rescan row (every update's `plan` carries `--rescan`; a `rescan:` row is joined with no ask, 2026-11-19,
+  then checked with validate's `stack-select.js --redundant` against its parent's `--plan-out` set, one fit ask per
+  joined child with `redundant:` lines whose Recommended answer writes each as a `workspace.js ignore`), and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
   skips its subtree, a run is failed on its summary line since the installer exits 0). Update asks first whether the projects below
   run at all (the user's ask of 2026-10-28): 'only this project' is written at the ask as `answer --hold` (the answers
   file's `.` entry), so the one `cascade` line then reads nothing back, runs nothing and names each project below
@@ -320,7 +322,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   range from the ignored path's parent up to the topmost stamped ancestor (`WIDE`: `CLAUDE.md`, `CLAUDE.local.md`,
   `.claude/CLAUDE.md`, `AGENTS.md`, `.claude/AGENTS.md`, `.claude/rules/` as `<path>/**`), and `mcpJsonIgnores` disables
   every `.mcp.json` server of that range less the project's own names. `workspace.js ignore-child --add <rel>` (configure's
-  workspace role and update's rescan ask) refuses through `markRefusal` (no path below, another spelling on disk, a
+  workspace role ask; update's rescan ask went with the 2026-11-19 auto-join) refuses through `markRefusal` (no path below, another spelling on disk, a
   folder of the root's repository or a no-checkout project under a no-checkout root, a folder another stamped folder
   holds), keeps each joined child's values (`keepOnLeave`) and the rules the loader sends it (`keepRules`, [F12]: copied
   into its store, `addToStore mine`), writes the mark, then runs each child's own update, whose `prepare` releases it
