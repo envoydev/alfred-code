@@ -49,7 +49,7 @@ One table, no ask - it is eight rows and every other area reads against it:
 | data root | .alfred |
 | docs root | .alfred/docs |
 | initialised | 2026-09-24 |
-| workspace | child of .. - own 3, ignored 1 - load check clean 2026-10-25 |
+| workspace | child of .. (ws) - own 3, ignored 1 - load check clean 2026-10-25 |
 | plans | 2 plans, 1 flat |
 
 - `stack version`: the stamp's version and commit - `alfred-code.stamp` (`no stamp - source never
@@ -65,7 +65,7 @@ One table, no ask - it is eight rows and every other area reads against it:
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 - `workspace`: one call, `node "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" status --root . ; node
   "${CLAUDE_PLUGIN_ROOT}/scripts/workspace.js" children --root .`. Its first line, `role: <role>`, opens the row:
-  `child of <rel>`, `root of <n> children`, `root, no child yet`, `standalone`, `standalone (no role recorded)` or
+  `child of <rel> (<folder name>)`, `root of <n> children`, `root, no child yet`, `standalone`, `standalone (no role recorded)` or
   `workspace off`. A child adds ` - own <n>, ignored <n> - load check <state> <at>` (the counts of its `own:` and
   `ignored:` lines, its `check:` line, `never` when none ran); a `gone` child line adds `, <n> gone`. Pasted under the
   table as they are: a child's `docs:` and `memory:` lines (the ancestor docs roots it reads and the workspace root's

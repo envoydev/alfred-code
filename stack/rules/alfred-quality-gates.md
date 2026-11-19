@@ -7,6 +7,7 @@ description: "House baseline - quality gates: code quality, the done-claim gate,
 ## Code quality
 
 - No dead code (unfinished work goes in the report).
+- Leave a line's layout as it is - its wrapping, indentation, quotes and trailing commas - unless the task changes that line or the project's formatter rewrote it: a hand re-wrap of an untouched line is noise in the diff.
 - Comments: none by default; a why only when the code cannot say it, in one short line. Never a ticket id (a public upstream issue on a workaround excepted), change narration, commented-out code or an unasked `TODO`; the project's comment conventions and language win; a comment your change made stale is updated or deleted. Writing a doc comment (XML docs, TSDoc, JSDoc, docstring) - the FIRST action is the `habits-code-comments` Skill call, before it is written.
 - No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row, filed under the architecture docs' Known ceilings.
 

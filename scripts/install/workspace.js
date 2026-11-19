@@ -169,6 +169,15 @@ function readWorkspace(projectRoot, opts = {})
     return { file: read.file, state: read.state, source: read.source, singular: read.singular, record: read.record, view: viewOf(read.record), problems: read.problems };
 }
 
+// Whether the project is the top or a linked member of a workspace: the stamp records links into a chain (a link into the
+// project's own store is a local-scope install's, no workspace) or member picks, or its record names a parent or a child. A garbage or absent record names nothing.
+function inWorkspace({ projectRoot, stampFile, dataRoot })
+{
+    if (stampFile && (require('./links.js').inherited(projectRoot, stamp.readLinks(stampFile)).length || (stamp.readMemberPicks(stampFile) || []).length)) return true;
+    const { view } = readWorkspace(projectRoot, { dataRoot });
+    return Boolean(view.parent) || view.children.length > 0;
+}
+
 // The one line for a garbage record, `rel` the file's path from the folder the run reads from.
 const garbageLine = (rel) => `!! workspace: ${rel} is not valid JSON - fix it by hand; the workspace pass neither reads nor writes it until then`;
 // Named once per run, wherever it is met first.
@@ -440,9 +449,30 @@ function roleOf(projectRoot, { env = process.env, log = printLine } = {})
     if (parentRead && parentRead.state === 'garbage') { sayGarbage(parentRead.file, realOf(projectRoot), log); return { kind: 'unknown', asked: true }; }
     const children = view.children.length;
     const asked = Boolean(view.role || view.parent || view.above);
-    if (view.parent && chain(projectRoot, { env, maxDepth: 1 }).members.length) return { kind: 'child', rel: view.parent, children, asked: true };
+    if (view.parent && chain(projectRoot, { env, maxDepth: 1 }).members.length) return { kind: 'child', rel: view.parent, name: nameOfRel(realOf(projectRoot), view.parent), children, asked: true };
     if (view.role === 'root' || children) return { kind: 'root', children, asked };
     return { kind: 'standalone', asked };
+}
+
+// The folder's own name for a printed rel: the basename of `rel` resolved against `root`, or null for the filesystem root.
+function nameOfRel(root, rel)
+{
+    if (!rel || rel === 'none') return null;
+    return path.basename(path.resolve(root, ...String(rel).split('/'))) || null;
+}
+
+// `rel (name)` - a bare `..` says nothing to a person; machine-read lines and answer values keep the rel alone.
+function relName(root, rel)
+{
+    if (!rel) return '';
+    const name = nameOfRel(root, rel);
+    return name ? `${rel} (${name})` : rel;
+}
+
+// `..` -> `.. (<name>)` for a line a person reads; a rel that is no climb, or a name the folder does not have, stays as it is.
+function parentLabel(root, rel)
+{
+    return /^\.\.(\/\.\.)*$/.test(String(rel)) ? relName(root, rel) : String(rel);
 }
 
 const childCount = (n) => `${n} ${n === 1 ? 'child' : 'children'}`;
@@ -451,7 +481,7 @@ function roleText(role)
 {
     if (!role) return 'workspace off';
     if (role.kind === 'unknown') return 'unknown - the workspace record is not valid JSON';
-    if (role.kind === 'child') return `child of ${role.rel}${role.children ? `, root of ${childCount(role.children)}` : ''}`;
+    if (role.kind === 'child') return `child of ${role.name ? `${role.rel} (${role.name})` : role.rel}${role.children ? `, root of ${childCount(role.children)}` : ''}`;
     if (role.kind === 'root') return role.children ? `root of ${childCount(role.children)}` : 'root, no child yet';
     return role.asked ? 'standalone' : 'standalone (no role recorded)';
 }
@@ -483,11 +513,11 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     const near = v.parent;
     const opt = (label, answer) => ({ label, answer });
     const out = (kind, rel, opts, extra = {}) => ({ case: kind, rel, options: opts.map((o) => o.label), answers: opts.map((o) => o.answer), ...extra });
-    const join = near && v.ok ? [opt(`Join ${near.rel}`, `join:${near.rel}`)] : [];
+    const join = near && v.ok ? [opt(`Join ${relName(root, near.rel)}`, `join:${near.rel}`)] : [];
     if (when === 'init')
     {
-        if (near && v.ok) return out('init-child', near.rel, [opt(`Child of ${near.rel} (Recommended)`, 'child'), opt('Standalone', 'standalone'), opt('Root', 'root')]);
-        if (near) return out('init-why', near.rel, [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')], { why: WHY[v.why](v.by || near.rel) });
+        if (near && v.ok) return out('init-child', near.rel, [opt(`Child of ${relName(root, near.rel)} (Recommended)`, 'child'), opt('Standalone', 'standalone'), opt('Root', 'root')]);
+        if (near) return out('init-why', near.rel, [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')], { why: WHY[v.why](parentLabel(root, v.by || near.rel)) });
         return out('init-none', null, isCheckout(projectRoot, { exec })
             ? [opt('Standalone (Recommended)', 'standalone'), opt('Root', 'root')] : [opt('Root (Recommended)', 'root'), opt('Standalone', 'standalone')]);
     }
@@ -505,19 +535,19 @@ function roleAsk(projectRoot, { env = process.env, exec = runtime.execCommand, w
     if (view.parent && role.kind !== 'child')
     {
         const lost = chain(projectRoot, { env, maxDepth: 1 }).notes.some((n) => n.endsWith('does not list this folder as a child'));
-        if (lost) return out('rejoin', view.parent, [opt(`Rejoin ${view.parent} (Recommended)`, 'rejoin'), opt('Become standalone', 'leave:standalone')]);
+        if (lost) return out('rejoin', view.parent, [opt(`Rejoin ${relName(root, view.parent)} (Recommended)`, 'rejoin'), opt('Become standalone', 'leave:standalone')]);
         return out('parent-gone', view.parent, [opt('Become standalone (Recommended)', 'leave:standalone'), ...join]);
     }
     if (role.kind === 'child')
     {
         if (near && v.ok && near.rel !== view.parent && near.rel !== view.above)
-            return out('between', near.rel, [opt(`Stay child of ${view.parent} (Recommended)`, 'stay'), opt(`Join ${near.rel}`, `join:${near.rel}`)]);
+            return out('between', near.rel, [opt(`Stay child of ${relName(root, view.parent)} (Recommended)`, 'stay'), opt(`Join ${relName(root, near.rel)}`, `join:${near.rel}`)]);
         return null;
     }
     if (!near || !v.ok) return null;
-    if (!view.role && !view.above) return out('never', near.rel, [opt(`Join ${near.rel} (Recommended)`, `join:${near.rel}`), opt(`Stay ${role.kind}`, role.kind)]);
+    if (!view.role && !view.above) return out('never', near.rel, [opt(`Join ${relName(root, near.rel)} (Recommended)`, `join:${near.rel}`), opt(`Stay ${role.kind}`, role.kind)]);
     // A role with no above line (a 2.12 `parent none`, a hand-typed role) was answered before above existed: quiet.
-    if (view.above !== null && near.rel !== view.above) return out('above', near.rel, [opt(`Join ${near.rel} (Recommended)`, `join:${near.rel}`), opt(`Keep ${role.kind}`, 'stay')]);
+    if (view.above !== null && near.rel !== view.above) return out('above', near.rel, [opt(`Join ${relName(root, near.rel)} (Recommended)`, `join:${near.rel}`), opt(`Keep ${role.kind}`, 'stay')]);
     return null;
 }
 
@@ -748,7 +778,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
     const joinHere = (rel) =>
     {
         const v = joinVerdict(root, { env, exec });
-        if (!v.parent || !v.ok || (rel !== null && v.parent.rel !== rel)) return fail(2, `!! workspace: ${rel || 'the folder above'} is not a folder this project can join${v.parent && !v.ok ? ` (${v.why})` : ''}`);
+        if (!v.parent || !v.ok || (rel !== null && v.parent.rel !== rel)) return fail(2, `!! workspace: ${rel === null ? 'the folder above' : parentLabel(root, rel)} is not a folder this project can join${v.parent && !v.ok ? ` (${v.why})` : ''}`);
         if (view.parent && view.parent !== v.parent.rel)
         {
             const r = leaveParent({ projectRoot: root, env, dataRoot, log });
@@ -758,7 +788,7 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
         lines.push(...r.lines);
         if (!r.ok) return { ok: false, code: r.code, lines };
         pruneChained(root, { env, log, seeds: true });
-        return { ok: true, code: 0, lines: [...lines, `role: child of ${r.rel}`] };
+        return { ok: true, code: 0, lines: [...lines, `role: child of ${relName(root, r.rel)}`] };
     };
     if (answer === 'stay') return write((m) => setAbove(m, nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${roleText(roleOf(root, { env, log }))}`] };
     if (answer === 'leave:standalone' || answer === 'leave:root')
@@ -2137,8 +2167,8 @@ module.exports = {
     editDenyRule, ancestorAccess,
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
-    workspacePath, readWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
+    workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,

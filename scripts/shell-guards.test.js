@@ -13,6 +13,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const crypto = require('node:crypto');
+const vm = require('node:vm');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DISPATCH = path.join(HOOKS, 'shell-guards.js');
@@ -926,6 +928,76 @@ test('the compile cache never serves an edited guard, and a corrupt entry falls 
   fs.writeFileSync(guard, src);
   for (const f of entries()) fs.writeFileSync(path.join(cacheDir, f), 'not v8 data');
   assert.ok(push(), 'a corrupt entry is a plain compile with the same verdict');
+});
+
+// Hooks audit 2026-11-19 (B11-C1): V8 runs a cache entry after checking only the source's LENGTH, and the key is the hash
+// of a public source, so on a temp dir every account shares another one could plant code the dispatcher would run.
+// An entry is read only where its owner is this user and no other account can write it, and it is written as 0600.
+test('trustedCacheEntry: a regular file this user owns and no other account can write, any file where there is no uid', () => {
+  const stat = (over = {}) => ({ isFile: () => true, uid: 501, mode: 0o100600, ...over });
+  assert.equal(shell.trustedCacheEntry(stat(), 501), true, 'its own entry');
+  assert.equal(shell.trustedCacheEntry(stat({ mode: 0o100644 }), 501), true, 'readable by others is no risk');
+  assert.equal(shell.trustedCacheEntry(stat({ uid: 502 }), 501), false, 'another account planted it');
+  assert.equal(shell.trustedCacheEntry(stat({ mode: 0o100664 }), 501), false, 'its group can rewrite it');
+  assert.equal(shell.trustedCacheEntry(stat({ mode: 0o100666 }), 501), false, 'anyone can rewrite it');
+  assert.equal(shell.trustedCacheEntry(stat({ isFile: () => false }), 501), false, 'a link, a FIFO or a folder');
+  assert.equal(shell.trustedCacheEntry(stat({ uid: 0, mode: 0o100666 }), undefined), true, 'no uid (Windows): a per-user temp dir');
+});
+
+test('a planted cache entry anyone could write never runs: the guard compiles afresh and blocks', { skip: typeof process.getuid !== 'function' && 'no uid on this platform' }, () => {
+  const dir = project();
+  const cacheDir = fs.mkdtempSync(path.join(TMP, 'v8-planted-'));
+  const env = { CLAUDE_PROJECT_DIR: dir, TMPDIR: cacheDir, TMP: cacheDir, TEMP: cacheDir };
+  const guard = path.join(HOOKS, 'guard-protected-force-push.js');
+  const text = fs.readFileSync(guard, 'utf8').replace(/^#!/, '//');
+  const marker = path.join(cacheDir, 'planted-code-ran');
+  const planted = new vm.Script(`(function (exports, require, module, __filename, __dirname) {${`require('fs').writeFileSync(${JSON.stringify(marker)}, 'x');`.padEnd(text.length)}\n})`, { filename: guard });
+  planted.runInThisContext();
+  const key = crypto.createHash('sha1').update(`${process.version}\0${text}`).digest('hex').slice(0, 16);
+  const entry = path.join(cacheDir, `alfred-v8-guard-protected-force-push-${key}.bin`);
+  const SHARED = /rewriting or deleting a shared branch/;
+  const push = () => SHARED.test(run(DISPATCH, bashPayload('git push --force origin main', dir), { cwd: dir, env }).stderr);
+  fs.writeFileSync(entry, planted.createCachedData());
+  fs.chmodSync(entry, 0o666);
+  assert.ok(push(), 'an entry others can write is a plain compile: the force-push guard still blocks');
+  assert.ok(!fs.existsSync(marker), 'and the planted code never ran');
+  assert.equal(fs.lstatSync(entry).mode & 0o777, 0o600, 'the entry the run wrote back is its owner\'s alone');
+  fs.rmSync(entry);
+  const elsewhere = path.join(cacheDir, 'elsewhere.bin');
+  fs.writeFileSync(elsewhere, planted.createCachedData(), { mode: 0o600 });
+  fs.symlinkSync(elsewhere, entry);
+  assert.ok(push(), 'a link in the entry\'s place is no entry');
+  assert.ok(!fs.existsSync(marker), 'and its target never ran');
+});
+
+// Hooks audit 2026-11-19 (B11-C3, round 2): the save writes `<entry>.<pid>.tmp` first, and a write that followed a link
+// planted at that name overwrote the link's target with V8 data. The tmp is created or the save is skipped.
+test('the cache save never writes through a link at its tmp name, and saves once the name is free', { skip: process.platform === 'win32' && 'a link needs a privilege there' }, () => {
+  const cacheDir = fs.mkdtempSync(path.join(TMP, 'v8-tmp-link-'));
+  const probe = path.join(cacheDir, 'probe-guard.js');
+  const source = 'process.exit(0);\n';
+  fs.writeFileSync(probe, source);
+  const key = crypto.createHash('sha1').update(`${process.version}\0${source}`).digest('hex').slice(0, 16);
+  const entry = path.join(cacheDir, `alfred-v8-probe-guard-${key}.bin`);
+  const tmpName = `${entry}.${process.pid}.tmp`;
+  const victim = path.join(cacheDir, 'victim.txt');
+  fs.writeFileSync(victim, 'original\n');
+  fs.symlinkSync(victim, tmpName);
+  const saved = Object.fromEntries(['TMPDIR', 'TMP', 'TEMP'].map((k) => [k, process.env[k]]));
+  for (const k of Object.keys(saved)) process.env[k] = cacheDir;
+  try
+  {
+    assert.equal(shell.runGuard(probe, Buffer.from('{}')).code, 0, 'the guard runs');
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'original\n', 'the link\'s target is untouched');
+    assert.ok(!fs.existsSync(entry), 'and the save is skipped');
+    fs.unlinkSync(tmpName);
+    assert.equal(shell.runGuard(probe, Buffer.from('{}')).code, 0, 'the guard runs again');
+    assert.equal(fs.lstatSync(entry).mode & 0o777, 0o600, 'with the name free the entry is written, its owner\'s alone');
+  }
+  finally
+  {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
 });
 
 // Audit 2026-10-20 A-T1: a read-only seat carries Bash, and a verifier's `git reset -q` unstaged a user's `git rm` (audit

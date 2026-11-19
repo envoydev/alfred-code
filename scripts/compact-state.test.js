@@ -5,6 +5,7 @@
 // injection points at it.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+const { statusAccount } = require('./hook-test-env');
 require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
@@ -17,7 +18,9 @@ const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-fresh-session-s
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-state-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
-const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')) };
+// The in-process window cases read, and one writes, the account's settings.json, so they get an account of their own.
+const WINDOW_ACCOUNT = fs.mkdtempSync(path.join(TMP, 'acct-'));
+const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: statusAccount() };   // the account enabling alfred-mods: the status gate is open
 for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_CONTEXT_WINDOW_DEFAULT', 'ALFRED_CODE_DOCS_ASK',
     'ALFRED_CODE_CONTEXT_WINDOW_FOR_200K', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'ALFRED_CODE_CONTEXT_WINDOW_FOR_300K', 'ALFRED_CODE_AUTO_COMPACT'])
     delete BASE_ENV[k];
@@ -277,7 +280,7 @@ test('compact-state: an automatic compaction records its context, and the trigge
     try
     {
         process.env.CLAUDE_PROJECT_DIR = p.root;
-        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
         delete process.env.ALFRED_CODE_CONTEXT_WINDOW_FOR_1M;
         delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
         delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
@@ -309,10 +312,10 @@ test('compact-state: an automatic compaction records its context, and the trigge
         assert.strictEqual(fresh.knownWindow(), 1000000, "'auto' is no window");
         // audit HK03: the USER file's top-level key is 'Scope: Any file' with no model limit (settings-reference) - it
         // lowers an Opus 5.5 window like any other file's
-        set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), { autoCompactWindow: 500000 });
+        set(path.join(WINDOW_ACCOUNT, 'settings.json'), { autoCompactWindow: 500000 });
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.knownWindow(), 500000, "the USER file's top-level key reaches Opus 5.5");
-        set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), {});
+        set(path.join(WINDOW_ACCOUNT, 'settings.json'), {});
     }
     finally { process.env = saved; }
 });
@@ -337,7 +340,7 @@ test('compact-state: a configured auto-compact window the compactions show was n
     const saved = { ...process.env };
     try
     {
-        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
         delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
         delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
         const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'acw-')) };
@@ -391,6 +394,58 @@ test('compact-state: a configured auto-compact window the compactions show was n
         const said = startText(u.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tu }, userEnv));
         assert.match(said, /The 350k autoCompactWindow in ~\/\.claude\/settings\.json was not honoured/);
         assert.ok(!said.includes(home), 'the home folder\'s own name is never printed');
+    }
+    finally { process.env = saved; }
+});
+
+// Usage audit 2026-11-19 (0fe48ef1): a session a /clear started 21 s after the window was saved compacted at 967.6k of a 400k
+// window - it ran in the launch that had read the window before the save. Its compaction never marks the key not honoured;
+// the same compaction in a session launched after the save still does.
+test('compact-state: a /clear-started session after the save proves nothing about the window; a launch after the save does', () =>
+{
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
+        delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+        delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
+        const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'acw-clear-')) };
+        const compacted = (clear) =>
+        {
+            const p = project();
+            const file = path.join(p.root, '.claude', 'settings.local.json');
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
+            const twoHours = new Date(Date.now() - 2 * 3600000);
+            fs.utimesSync(file, twoHours, twoHours);
+            const head = clear ? [{ type: 'user', message: { role: 'user', content: '<command-name>/clear</command-name>\n<command-message>clear</command-message>' }, timestamp: ago(1) }] : [];
+            const tp = p.transcript([...head, { ...usageRow('f', { cache_creation_input_tokens: 80000 }), timestamp: ago(1) },
+                { ...usageRow('a', { cache_read_input_tokens: 967300 }), timestamp: ago(0.1) }, { ...boundary('auto', 967600), timestamp: ago(0.09) }]);
+            process.env.CLAUDE_PROJECT_DIR = p.root;
+            const out = p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env).stdout;
+            const point = JSON.parse(fs.readFileSync(path.join(p.sessions, 'compact-points.json'), 'utf8')).pop();
+            fresh.use({ transcript_path: tp, cwd: p.root, session_id: p.sid });
+            return { out, point, window: fresh.autoCompactWindow(), p, tp };
+        };
+        const cleared = compacted(true);
+        assert.doesNotMatch(cleared.out, /not honoured/, 'a /clear-started session read its launch\'s window');
+        assert.strictEqual(cleared.point.cleared, true, 'the point records that a /clear started its session');
+        assert.strictEqual(cleared.window, 400000, 'the key is still the window');
+        const launched = compacted(false);
+        assert.match(launched.out, /The 400k autoCompactWindow in \.claude\/settings\.local\.json was not honoured: this project compacted at ~968k/);
+        assert.strictEqual(launched.point.cleared, false, 'a launched session records cleared: false');
+        assert.strictEqual(launched.window, null, 'a launch after the save that compacts past the window still marks it');
+        // A point written before 928a174a has no `cleared`: it cannot tell a launch from a /clear, so it never marks the key
+        // (the usage audit's C1a residual, closed 2026-11-19).
+        const legacy = compacted(false);
+        const file = path.join(legacy.p.sessions, 'compact-points.json');
+        fs.writeFileSync(file, JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')).map(({ cleared, ...row }) => row)));
+        delete require.cache[require.resolve('../stack/hooks/fresh-session.js')];
+        const reread = require('../stack/hooks/fresh-session.js');
+        reread.use({ transcript_path: legacy.tp, cwd: legacy.p.root, session_id: legacy.p.sid });
+        assert.strictEqual(reread.autoCompactWindow(), 400000, 'a legacy point with no cleared field leaves the key the window');
     }
     finally { process.env = saved; }
 });
@@ -1153,7 +1208,7 @@ test('compact-state: compact-points.json is read from state/sessions/, else from
     try
     {
         process.env.CLAUDE_PROJECT_DIR = p.root;
-        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = WINDOW_ACCOUNT;
         for (const k of ['ALFRED_CODE_CONTEXT_WINDOW_FOR_1M', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) delete process.env[k];
         point(p.flow, 300000);
         fresh.use({ transcript_path: tp, cwd: p.root });
@@ -1717,7 +1772,7 @@ function folderSetup(planOpts = {}, more = {})
     const via = (hook, tool, input, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp, ...extra }, env, hook);
     const edit = () => via(FILES, 'Edit', { file_path: path.join(p.root, 'src.js'), old_string: 'a', new_string: 'b' });
     const ledger = () => { try { return fs.readFileSync(path.join(p.root, '.alfred', 'statistics', 'hook-blocks', `${p.sid}.jsonl`), 'utf8'); } catch { return ''; } };
-    const statusFile = () => path.join(p.root, '.claude', 'session-inspector', 'status', `${p.sid}.json`);
+    const statusFile = () => path.join(p.root, '.alfred', 'state', 'sessions', 'status', `${p.sid}.json`);
     const resetStatus = () => fs.rmSync(statusFile(), { force: true });
     if (more.hold)
     {
@@ -1778,6 +1833,21 @@ test('PF1 tick: a done that did not land leaves no hold (R27); unreadable status
     fs.writeFileSync(path.join(g.plan.dir, 'status.json'), '{');
     g.via(SHELL, 'Bash', { command: `${ENGINE} done --plan csv --task 1` });
     assert.doesNotMatch(g.ledger(), /tick-offer/);
+});
+
+test('the status gate: the mod enabled in the account settings writes the file, neither route writes none', () =>
+{
+    const call = (settings) =>
+    {
+        const account = fs.mkdtempSync(path.join(TMP, 'gate-acct-'));
+        if (settings) fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify(settings));
+        const s = folderSetup({ approve: true });
+        s.env.CLAUDE_CONFIG_DIR = account;
+        s.via(SHELL, 'Bash', { command: `${ENGINE} start --plan csv --task 1` });
+        return s.statusFile();
+    };
+    assert.ok(fs.existsSync(call({ enabledPlugins: { 'alfred-mods@market': true } })), 'written through the settings route');
+    assert.ok(!fs.existsSync(call(null)), 'no mod: no file');
 });
 
 test('PF1: the plan call sets the session plan - four spellings name one folder, complete and a seat set nothing', () =>

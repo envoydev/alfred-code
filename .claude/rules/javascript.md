@@ -10,4 +10,6 @@ loaded, or say they were already in context - the receipt is what makes the load
 already-in-context skip. Conventions are the source of truth, not recall.
 
 Writing or changing a `*.test.js` / `*.spec.js` (or `.mjs`) loads `ts-js-testing` in the same action, before the
-first test edit lands. Skip one-line tweaks.
+first test edit lands.
+
+Skip one-line tweaks.

@@ -1,6 +1,6 @@
 {
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched": "2026-10-14",
+  "fetched": "2026-11-19",
   "currency": "USD",
   "unit": "per million tokens",
   "use": "List prices for the cost row of scripts/analyze-usage.js. Refresh by re-fetching the source page and moving 'fetched' - never from memory. A transcript model id with no row here is reported unpriced, never guessed.",
@@ -10,6 +10,8 @@
   "fast": "A message whose usage.speed is 'fast' bills the row's fast input and output; the cache columns scale by the same factor, because the page applies the caching multipliers on top of fast pricing. A model with no fast row bills a fast message at standard rates.",
   "not_modeled": "The 1.1x US-only inference multiplier (usage.inference_geo 'us'), web search at $10 per 1,000 searches, the Batch API discount and partner-cloud pricing.",
   "models": [
+    { "id": "claude-fable-5-2", "name": "Claude Fable 5.2", "input": 8, "cache_write_5m": 10, "cache_write_1h": 16, "cache_read": 0.2, "output": 40, "fast": { "input": 16, "output": 80 } },
+    { "id": "claude-mythos-5-2", "name": "Claude Mythos 5.2", "input": 8, "cache_write_5m": 10, "cache_write_1h": 16, "cache_read": 0.2, "output": 40, "fast": { "input": 16, "output": 80 } },
     { "id": "claude-fable-5-1", "name": "Claude Fable 5.1", "input": 10, "cache_write_5m": 12.5, "cache_write_1h": 20, "cache_read": 0.25, "output": 50 },
     { "id": "claude-mythos-5-1", "name": "Claude Mythos 5.1", "input": 10, "cache_write_5m": 12.5, "cache_write_1h": 20, "cache_read": 0.25, "output": 50 },
     { "id": "claude-fable-5", "name": "Claude Fable 5", "input": 10, "cache_write_5m": 12.5, "cache_write_1h": 20, "cache_read": 1, "output": 50 },

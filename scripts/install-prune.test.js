@@ -70,8 +70,10 @@ for (const action of ['update', 'install'])
 {
     test(`seed ${action} on the plugin route: a copy a plugin now carries is pruned, the user's own files are not`, POSIX_ONLY, () =>
     {
-        const { result: r } = seedRun(action, SELECTION, { prepare: oldLayout, inspect: after });
-        assert.ok(!r.has('.claude/agents/aspnet-implementer.md'), 'a plugin-carried agent copy survived - it shadows the plugin seat');
+        const { result: r, out } = seedRun(action, SELECTION, { prepare: oldLayout, inspect: after });
+        // Spec Part 2 (4): a core-seat file the stamp does not record is the project's own, so it stays and is named.
+        assert.ok(r.has('.claude/agents/aspnet-implementer.md'), 'an unrecorded core-seat file is the project\'s own and is kept');
+        assert.match(out, /!! agent kept: aspnet-implementer\.md - a project seat of that name the stamp does not record/);
         assert.ok(!r.has('.claude/hooks/guard-secret-value.js'), 'a plugin-carried hook copy survived');
         assert.ok(!r.wired.includes('guard-secret-value.js'), 'the pruned hook is still wired');
         assert.ok(r.has('.claude/agents/my-own-seat.md') && r.has('.claude/hooks/my-own-hook.js'), "the user's own seat or hook was pruned");

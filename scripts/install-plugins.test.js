@@ -1692,20 +1692,119 @@ test('routes: at project scope a route switch only settings.local.json holds is 
     const log = (m) => logs.push(m);
     const personal = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
     const env = { ...personal };
-    assert.deepStrictEqual(P.committedRoutes({ env, shared: {}, personal, scope: 'project', log }), { hooks: true, skills: true },
+    assert.deepStrictEqual(P.committedRoutes({ env, shared: {}, personal, scope: 'project', log }), { hooks: true, skills: true, skillsFrom: 'env' },
         'the two switches the local file holds came from it');
     // A shell export the local file does not hold is the invocation's own and stands.
-    assert.deepStrictEqual(P.committedRoutes({ env: { ...env, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' }, shared: {}, personal: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, scope: 'project' }), { hooks: true, skills: false });
+    assert.deepStrictEqual(P.committedRoutes({ env: { ...env, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' }, shared: {}, personal: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, scope: 'project' }), { hooks: true, skills: false, skillsFrom: 'env' });
     assert.strictEqual(logs.length, 2, logs.join('\n'));
     assert.match(logs[0], /^routes: ALFRED_CODE_HOOKS_VIA_PLUGIN=false comes from settings\.local\.json - personal, so this project-scope run follows settings\.json \(unset - the plugin route\)$/);
     // settings.json holding the same value: nothing to override, nothing said.
     const quiet = [];
-    assert.deepStrictEqual(P.committedRoutes({ env, shared: env, personal, scope: 'project', log: (m) => quiet.push(m) }), P.pluginRoutes(env));
+    assert.deepStrictEqual(P.committedRoutes({ env, shared: env, personal, scope: 'project', log: (m) => quiet.push(m) }), { ...P.pluginRoutes(env), skillsFrom: 'shared' });
     assert.deepStrictEqual(quiet, []);
     // settings.json naming the other route: its value decides.
     assert.strictEqual(P.committedRoutes({ env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'true' }, shared: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, personal: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'true' }, scope: 'user' }).hooks, false);
     // Local scope: the local file IS the install's settings.
-    assert.deepStrictEqual(P.committedRoutes({ env, shared: {}, personal, scope: 'local' }), P.pluginRoutes(env));
+    assert.deepStrictEqual(P.committedRoutes({ env, shared: {}, personal, scope: 'local' }), { ...P.pluginRoutes(env), skillsFrom: 'env' });
+});
+
+// The skills key's read-back (agents route switch, Task 6): the flag, settings.json, the stack's own ledgered local value,
+// then the run's env. The hooks key keeps the reading above.
+const SKILLS = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
+const HOOKS = 'ALFRED_CODE_HOOKS_VIA_PLUGIN';
+const ledgeredAt = (value) => ({ [SKILLS]: require('./install/stamp.js').valueHash(value) });
+const skillsRead = (input) => { const logs = []; const out = P.committedRoutes({ ...input, log: (m) => logs.push(m) }); return { skills: out.skills, skillsFrom: out.skillsFrom, logs }; };
+
+test('routes: a ledgered local false decides over an empty run env at local, project and user scope', () =>
+{
+    for (const scope of ['local', 'project', 'user'])
+    {
+        const out = skillsRead({ env: {}, shared: {}, personal: { [SKILLS]: 'false' }, scope, ledgerEnv: ledgeredAt('false') });
+        assert.deepStrictEqual(out, { skills: false, skillsFrom: 'ledgered', logs: [] }, scope);
+    }
+});
+
+test('routes: a ledgered local true beats a stale run env of false', () =>
+{
+    for (const scope of ['local', 'project'])
+    {
+        const out = skillsRead({ env: { [SKILLS]: 'false' }, shared: {}, personal: { [SKILLS]: 'true' }, scope, ledgerEnv: ledgeredAt('true') });
+        assert.deepStrictEqual(out, { skills: true, skillsFrom: 'ledgered', logs: [] }, scope);
+    }
+});
+
+test('routes: settings.json true, a ledgered local false and a run env false - settings.json decides with the C5 line', () =>
+{
+    const out = skillsRead({ env: { [SKILLS]: 'false' }, shared: { [SKILLS]: 'true' }, personal: { [SKILLS]: 'false' }, scope: 'project', ledgerEnv: ledgeredAt('false') });
+    assert.strictEqual(out.skills, true);
+    assert.strictEqual(out.skillsFrom, 'shared');
+    assert.deepStrictEqual(out.logs, [`routes: ${SKILLS}=false comes from settings.local.json - personal, so this project-scope run follows settings.json (true - the plugin route)`]);
+});
+
+test('routes: a shell export of false stands over settings.json true when the local file lacks the key', () =>
+{
+    const out = skillsRead({ env: { [SKILLS]: 'false' }, shared: { [SKILLS]: 'true' }, personal: {}, scope: 'project', ledgerEnv: {} });
+    assert.deepStrictEqual(out, { skills: false, skillsFrom: 'env', logs: [] });
+});
+
+test('routes: settings.json false reaches a plain shell with no run value, at project and user scope', () =>
+{
+    for (const scope of ['project', 'user'])
+    {
+        assert.deepStrictEqual(skillsRead({ env: {}, shared: { [SKILLS]: 'false' }, personal: {}, scope }), { skills: false, skillsFrom: 'shared', logs: [] }, scope);
+    }
+    assert.strictEqual(skillsRead({ env: {}, shared: { [SKILLS]: 'false' }, personal: {}, scope: 'local' }).skills, true, 'local scope has no shared file');
+});
+
+test('routes: the hooks key keeps today\'s reading - settings.json false with an empty run env is the plugin route', () =>
+{
+    assert.strictEqual(P.committedRoutes({ env: {}, shared: { [HOOKS]: 'false' }, personal: {}, scope: 'project', ledgerEnv: {} }).hooks, true);
+    assert.strictEqual(P.committedRoutes({ env: {}, shared: {}, personal: { [HOOKS]: 'false' }, scope: 'project', ledgerEnv: ledgeredAt('false') }).hooks, true);
+});
+
+test('routes: with no file key the run env decides, and an unledgered local value is C5 as today', () =>
+{
+    assert.deepStrictEqual(skillsRead({ env: { [SKILLS]: 'false' }, shared: {}, personal: {}, scope: 'project' }), { skills: false, skillsFrom: 'env', logs: [] });
+    const unledgered = skillsRead({ env: { [SKILLS]: 'false' }, shared: {}, personal: { [SKILLS]: 'false' }, scope: 'project', ledgerEnv: {} });
+    assert.deepStrictEqual(unledgered.logs, [`routes: ${SKILLS}=false comes from settings.local.json - personal, so this project-scope run follows settings.json (unset - the plugin route)`]);
+    assert.strictEqual(unledgered.skills, true);
+    assert.deepStrictEqual(skillsRead({ env: {}, shared: {}, personal: { [SKILLS]: 'false' }, scope: 'project', ledgerEnv: {} }), { skills: true, skillsFrom: 'env', logs: [] }, 'an unledgered local value with no run value is the plugin route');
+    assert.strictEqual(skillsRead({ env: { [SKILLS]: 'false' }, shared: {}, personal: { [SKILLS]: 'false' }, scope: 'local', ledgerEnv: null }).skills, false, 'local scope: the run value stands');
+});
+
+test('routes: a local value whose hash no row holds (hand-edited since) is not the stack\'s', () =>
+{
+    const out = skillsRead({ env: {}, shared: {}, personal: { [SKILLS]: 'false' }, scope: 'project', ledgerEnv: ledgeredAt('true') });
+    assert.deepStrictEqual(out, { skills: true, skillsFrom: 'env', logs: [] });
+});
+
+test('routes: --seats-route decides over the files, except against a settings.json that sets the key', () =>
+{
+    assert.deepStrictEqual(skillsRead({ env: {}, shared: {}, personal: { [SKILLS]: 'true' }, scope: 'project', ledgerEnv: ledgeredAt('true'), flag: 'copy' }), { skills: false, skillsFrom: 'flag', logs: [] });
+    assert.deepStrictEqual(skillsRead({ env: {}, shared: {}, personal: {}, scope: 'local', flag: 'plugin' }), { skills: true, skillsFrom: 'flag', logs: [] });
+    const against = skillsRead({ env: {}, shared: { [SKILLS]: 'true' }, personal: {}, scope: 'project', flag: 'copy' });
+    assert.strictEqual(against.skills, true);
+    assert.strictEqual(against.skillsFrom, 'shared');
+    assert.deepStrictEqual(against.logs, [`!! seats route: settings.json sets ${SKILLS}=true for everyone - change it there`]);
+    assert.strictEqual(skillsRead({ env: {}, shared: { [SKILLS]: 'true' }, personal: {}, scope: 'local', flag: 'copy' }).skills, false, 'local scope has no shared file');
+});
+
+test('routes: committedRoutesAt over an empty, a garbage and an absent settings.local.json does not throw and the next step decides', () =>
+{
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'routes-at-'));
+    try
+    {
+        const local = path.join(dir, 'settings.local.json');
+        const read = () => P.committedRoutesAt({ env: { [SKILLS]: 'false' }, claudeDir: dir, scope: 'project', ledgerEnv: ledgeredAt('false') });
+        assert.deepStrictEqual([read().skills, read().skillsFrom], [false, 'env'], 'absent');
+        fs.writeFileSync(local, '');
+        assert.deepStrictEqual([read().skills, read().skillsFrom], [false, 'env'], 'empty');
+        fs.writeFileSync(local, '{ not json');
+        assert.deepStrictEqual([read().skills, read().skillsFrom], [false, 'env'], 'garbage');
+        fs.writeFileSync(local, JSON.stringify({ env: { [SKILLS]: 'false' } }));
+        assert.strictEqual(P.committedRoutesAt({ env: {}, claudeDir: dir, scope: 'project', ledgerEnv: ledgeredAt('false') }).skillsFrom, 'ledgered');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('seed: a personal ALFRED_CODE_HOOKS_VIA_PLUGIN=false in settings.local.json does not move the committed settings.json onto the hooks copy route (C5)', POSIX_ONLY, () =>

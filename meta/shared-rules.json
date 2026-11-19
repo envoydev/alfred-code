@@ -27,6 +27,19 @@
         }
       ]
     },
+    "repair-router-contract-change": {
+      "_note": "Audit 2026-11-19 (rules) DUP-2: the routers' BLOCKED_CONTRACT_CHANGE paragraph, the part of the protocol repair-router-delegation-protocol describes that no marker pinned - verbatim in both routers because either may be absent per project.",
+      "owner": {
+        "file": "stack/rules/dotnet-repair-agents.md",
+        "marker": "A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change - outside its bounded scope by design; a running `task-solve-cross` flow handles it per its contract protocol - otherwise name `/task-solve-cross` as the user's next step (the skill is manual-only; a model Skill call is blocked). Never edit the contract to go green."
+      },
+      "sites": [
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change - outside its bounded scope by design; a running `task-solve-cross` flow handles it per its contract protocol - otherwise name `/task-solve-cross` as the user's next step (the skill is manual-only; a model Skill call is blocked). Never edit the contract to go green."
+        }
+      ]
+    },
     "seat-gates-are-fast": {
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
@@ -4174,6 +4187,10 @@
         {
           "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "400,000 tokens on a window of 1M or more, 280,000 on one of 300k up to 1M, 180,000 on any other"
+        },
+        {
+          "file": "stack/skills/capture-usage-report/references/diagnosis-discipline.md",
+          "marker": "`ALFRED_CODE_CONTEXT_WINDOW_FOR_1M` (400,000 seeded), one of 300k up to 1M by `ALFRED_CODE_CONTEXT_WINDOW_FOR_300K` (280,000)"
         }
       ]
     },
@@ -5699,7 +5716,7 @@
       ]
     },
     "verifier-output-named-fields": {
-      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries six (Regression joined in the 2026-10-08 audit, the receipt for step 4's callers and vacuous-test checks), task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
+      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries six (Regression joined in the 2026-10-08 audit, the receipt for step 4's callers and vacuous-test checks), task-verify-plan eight; the RULE is the shape, so both copies move together when a field is added.",
       "owner": {
         "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "named fields, every run, each with a value"
@@ -6399,6 +6416,19 @@
         {
           "file": "stack/AGENTS.template.md",
           "marker": "`.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include"
+        }
+      ]
+    },
+    "agents-md-import-keeps-both": {
+      "_note": "Audit 2026-11-19 agent-md DUP-1: the AGENTS template's fill-in block and the AGENTS.md skill's improve mode both say how an `@` import keeps a CLAUDE.md and the AGENTS.md loading together and where the import resolves from. The template owns where the file lives (the skill's opening says so); the skill restates it in the report it gives on a project holding both files. Both stay - a hand copy has no skill, and the skill's report has no template open - so the pin is what makes an edit to one visible.",
+      "owner": {
+        "file": "stack/AGENTS.template.md",
+        "marker": "keeps both loading - it resolves from the importing file, so `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-adjust-agents-md/SKILL.md",
+          "marker": "keeps both loading - it resolves from the importing file, so `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside"
         }
       ]
     },
@@ -7128,6 +7158,36 @@
         {
           "file": "stack/skills/capture-quality/SKILL.md",
           "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
+        }
+      ]
+    },
+    "auto-run-outward-series-ask": {
+      "_note": "One ask covers a listed series of outward acts of one kind under auto-run (feat(auto-run) 758e29c2, 63b82c52): the hook's contract item (1) is the mechanism; the mode-auto-run skill and the mode command restate it because the skill runs alongside the contract and the command must hold where no hook runs. scripts/auto-mode.test.js pins the skill and the command.",
+      "owner": {
+        "file": "stack/hooks/guard-fresh-session-start.js",
+        "marker": "its question naming them 'outward acts' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/mode-auto-run/SKILL.md",
+          "marker": "its question naming them 'outward acts' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed."
+        },
+        {
+          "file": "setup-plugin/commands/mode/auto-run.md",
+          "marker": "its question naming them 'outward acts' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed."
+        }
+      ]
+    },
+    "auto-run-security-ask-safe-option": {
+      "_note": "A guard's security ask (a credential shown, work discarded, a write outside the project, a protective guard switched off) is never auto-run's to allow (audit 2026-10-30 fix #6, SYS-01 of 2026-11-03): the hook's contract carries it, and mode-auto-run states it before its route. scripts/auto-mode.test.js:283-289 pins both.",
+      "owner": {
+        "file": "stack/hooks/guard-fresh-session-start.js",
+        "marker": "is never auto-run's to allow: take its safe option and list the act for the user in the close"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/mode-auto-run/SKILL.md",
+          "marker": "is never auto-run's to allow: take its safe option and list the act for the user in the close"
         }
       ]
     },
@@ -8668,6 +8728,19 @@
         {
           "file": "stack/skills/capture-awareness/scripts/awareness-state.js",
           "marker": "// listing-key: a drive-letter path case-folded, any other path its real path with its case kept - the plugin listing's own compare (bug 5 of the complexity audit, Task 5's probe)."
+        }
+      ]
+    },
+    "preferences-precedence-order": {
+      "_note": "The order the preferences docs rank in - the personal code and architecture docs, the project doc, the decision log and AGENTS.md, a loop prompt, a convention skill. Owned by the always-on preferences rule; the capture's doc shape restates it beside the precedence ask (audit 2026-11-18 CP-05: the order sentence sat beside the registered ask with no pin of its own).",
+      "owner": {
+        "file": "stack/rules/alfred-preferences.md",
+        "marker": "in this order: the personal code and architecture docs, the project doc, the decision log and AGENTS.md, a loop prompt, a convention skill"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-preferences/references/doc-shape.md",
+          "marker": "in this order: the personal code and architecture docs, the project doc, the decision log and AGENTS.md, a loop prompt, a convention skill"
         }
       ]
     }

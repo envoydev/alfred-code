@@ -1,6 +1,6 @@
 ---
 name: habits-explain-topic
-description: "Use when asked to explain a topic or code in depth - 'teach me X', 'ELI5', 'step by step', 'walk me through this'. Not for quick lookups or fixes."
+description: "Use when explaining a topic or code in depth - 'teach me', 'ELI5', 'step by step', 'walk me through' - or a topic did not land. Not for quick lookups or fixes."
 ---
 
 # Explain a topic - simple first, accurate throughout
@@ -17,7 +17,7 @@ A general idea asked about this project ('how does the retry here back off?') ta
 ## When to use
 
 - Explains any topic - a concept, a process, a technology, or this project's code, a bug in it or a design trade-off - for someone new to it: an everyday analogy and where it breaks, numbered steps, a worked example, the common mix-ups, a recap, check-yourself questions, a glossary, an offline HTML diagram when the topic has a shape, and every walkthrough saved under the docs root's `explanations/` beside an offline page; depth adjustable from a child's story to expert.
-- Use ONLY where the user asked for depth ('teach me', 'ELI5', 'in detail', 'step by step', 'walk me through'), because a bare 'explain X', 'what is X' or 'how does this work' is capped like any other answer, and a request to FIX a failure is a fix, run on the root-cause habit.
+- Use ONLY where the user asked for depth ('teach me', 'ELI5', 'in detail', 'step by step', 'walk me through') or did not understand a topic explained to them (the second try, When it did not land), because a bare 'explain X', 'what is X' or 'how does this work' is capped like any other answer, and a request to FIX a failure is a fix, run on the root-cause habit.
 - Do NOT fire on quick lookups answerable in a sentence, on writing or editing code or documents, or on formal code review.
 
 ## The answer budget
@@ -80,6 +80,24 @@ Use these parts and headings, in this order; drop one that adds nothing to this 
 10. **Check yourself** - two to four short questions: at least one 'what would happen if...' prediction and one new case to apply it to. Put the answers after the questions, so the reader tries first: recalling an answer builds memory better than rereading one.
 11. **Words to know** - every technical term used, each defined in one plain sentence.
 
+## When it did not land
+
+The first explanation is the walkthrough above, in chat, with no ask. The format ask, the picture-first order and a video are for a second try only: when the user does not understand a topic explained to them - this walkthrough or a plain answer about it - in any words and any language: 'I don't get it', 'explain it simpler', 'explain it better', 'still unclear'. A question about a status, a plan or a design answer is not this: it gets a plainer answer at the same length.
+
+1. **Ask the format** - unless their words already name one ('as a page', 'in chat', 'a video') or their preferences doc sets one. Check the tools for a video route first: a video tool this session holds, a headless browser that records a page (Playwright's `recordVideo`), or headless screenshots plus `ffmpeg` on PATH. Then put one ask:
+
+   ```ask
+   The first explanation of <topic> did not land. How do you want the second? An HTML page with diagrams is recommended: the picture leads, and it opens offline.
+   - 'HTML page with diagrams (Recommended)' - an offline page: the diagram first, then the steps, then questions to click; the chat gets the short answer and the path
+   - 'In chat' - the answer here, led by a text diagram; the page is saved too
+   - 'Video' - the page's animated diagram, recorded to a video file beside the page
+   ```
+
+   With no video route, the third option is 'Animated page' - the diagram's steps play in order in the page, with no video file. Never offer a video the run cannot make.
+2. **Change the approach, not only the words:** one depth level plainer (Depth), a new analogy - the first did not carry - and a new worked example. Where their words name the step that lost them, start there; else start again from the short answer.
+3. **Lead with the picture.** On the topic track the diagram comes right after the short answer, before any step; on the code track it comes before the walkthrough's part 2. In the page it is the figure itself; in chat, a text diagram (a fenced block of boxes and arrows) plus the page's path and one line on what to look at first.
+4. **Save it** as the new level's files (Saving it): the page with the diagram first, and with 'Video' the recording beside it.
+
 ## Accuracy
 
 A simple explanation is only good if it is true.
@@ -108,13 +126,14 @@ Fix any line that fails:
 - [ ] Facts are right, uncertainty is labelled, nothing is invented
 - [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
 - [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
+- [ ] Video or animated page, if any: every step appears in order and is readable; reduced motion shows every step
 - [ ] The walkthrough and its page saved under explanations/, the page checked: one right option per question, every label's input, rendered
 - [ ] The length is in proportion to the question
 ```
 
 ## The diagram
 
-Make one when the topic has a shape the eye takes in faster than text - steps in order, a cycle, parts of a whole, a comparison, change over time, a hierarchy, actors trading messages. Skip it for a definition or a single fact, or when the user asked for text only. One diagram; two at most for a large topic, each showing one idea.
+Make one when the topic has a shape the eye takes in faster than text - steps in order, a cycle, parts of a whole, a comparison, change over time, a hierarchy, actors trading messages. On a second try it leads (When it did not land). The steps keep the picture's numbers and add the why the picture cannot show; they do not re-describe its layout. An image is one the run draws (inline SVG) or one from the project, embedded as a `data:` URI, never a downloaded one, so the page stays offline. Skip it for a definition or a single fact, or when the user asked for text only. One diagram; two at most for a large topic, each showing one idea.
 
 Build it as one self-contained HTML file with inline SVG and plain CSS - no external script, font, image or CDN - so it opens offline and renders the same everywhere. Use Mermaid only when the user asks for it, and then say it needs a network connection to render. Start from `references/diagram-template.md`; the shape-to-diagram table and the cycle, timeline, comparison and before-and-after patterns are `references/diagram-patterns.md`.
 
@@ -134,17 +153,18 @@ It goes into the run's page, `<docs root>/explanations/<topic-slug>.<level>.html
 
 Every run saves its walkthrough, so the user can review it later: under `<docs root>/explanations/` (the docs root is `<data root>/docs`, `.alfred/docs` by default; the folder made when absent), unless the user names another place, two files named for the topic and the level - `child`, `eli5`, `intermediate` or `expert`:
 
-- `<docs root>/explanations/<topic-slug>.<level>.md` - the walkthrough as sent, opening with `Topic:`, `Level:`, `Created:` and, on the code track, `Captured: <branch>@<short-sha>`, since it quotes code that drifts.
-- `<docs root>/explanations/<topic-slug>.<level>.html` - the page: the steps, the diagram when the topic has a shape, and Check yourself as questions to click.
+- `<docs root>/explanations/<topic-slug>.<level>.md` - the full walkthrough, whatever the chat carried, opening with `Topic:`, `Level:`, `Created:` and, on the code track, `Captured: <branch>@<short-sha>`, since it quotes code that drifts.
+- `<docs root>/explanations/<topic-slug>.<level>.html` - the page: the steps, the diagram when the topic has a shape (first, on a second try), and Check yourself as questions to click.
+- With 'Video', on a second try: `<docs root>/explanations/<topic-slug>.<level>.webm` - the page's animated diagram, recorded by the video route the format ask found (`references/diagram-patterns.md`, Animated steps). With 'Animated page', the page itself carries that animation and no video file is written.
 
-The slug carries the topic's words in lower-case `[a-z0-9-]`. A new level on the same topic writes a new pair, the same level rewrites its pair, and a different topic whose slug is taken takes `-2`, then `-3`. The answer ends with one line naming both paths.
+The slug carries the topic's words in lower-case `[a-z0-9-]`. A new level on the same topic writes new files, the same level rewrites its files, and a different topic whose slug is taken takes `-2`, then `-3`. The answer ends with one line naming the paths it wrote.
 
 Build the page from `references/page-template.md`: Check yourself becomes radio questions whose feedback shows on a click through CSS alone, with no script, and the answers and Words to know sit in `<details>` reveals. Check it before handing it over:
 
 1. Re-read the file: every tag closed, every `id` unique, every `aria-labelledby` id present; in a diagram, every element inside the viewBox and no two boxes or labels overlapping (compare x, y, width, height).
 2. Each diagram label fits its box (about 0.6 x the font size per character), and the step numbers and words match the text.
 3. Each question has exactly one option marked `data-right`, and every `label for=` names an input `id` that exists.
-4. Render it where the run can - open it in a browser, or screenshot it with a headless browser - and look at it. Where nothing can render it, say it was checked by reading the code and ask the user to open it.
+4. Render it where the run can - open it in a browser, or screenshot it with a headless browser - and look at it. An animated page is screenshot with reduced motion emulated, or after its run's length, so every step shows. Where nothing can render it, say it was checked by reading the code and ask the user to open it.
 5. Fix what failed, then check again.
 
 ## Depth
@@ -161,7 +181,7 @@ Honor an explicit depth request. If none is given, infer it from how the questio
 ## Style
 
 - Concrete before abstract: the example or the picture first, then the general rule.
-- Short sentences, concrete words, one new idea per sentence.
+- Write in the style of ASD-STE100 (Simplified Technical English), its writing rules, not its dictionary: a description of 25 words or fewer, an instruction of 20 or fewer, the active voice, one idea in each sentence, common words, and one word for one meaning, the same word each time. It keeps the explanation on its main topic. A depth level's shorter sentences (Depth) win where they are shorter. Code, commands and quotes keep their own form.
 - Define every technical term the first time it appears, then keep that one term - a synonym makes a beginner think there are two things.
 - Senior-mentor voice: calm, plain, warm ('you', 'imagine'), never talking down. No theatrics, no 'as a developer with N years' posturing - the experience shows in the clarity, not in claims about it.
 - Cut the interesting-but-irrelevant tangent; it competes with the main idea for attention.

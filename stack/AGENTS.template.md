@@ -26,7 +26,8 @@ file - shared conventions only; each part gets its own thin <part>/AGENTS.md (<p
 specific to that subtree (Claude loads it when it reads a file there, or at launch from that
 folder, where no CLAUDE.md sits - never a sibling's), so anything two parts share belongs here, and `claudeMdExcludes` in
 settings.json keeps another team's ancestor file out.
-This file auto-injects every session and into every custom subagent (the built-in Explore / Plan
+This file auto-injects every session and into every custom subagent but one whose definition sets
+`omitClaudeMd` (the built-in Explore / Plan
 seats load none of it) - keep it lean (target: under 200 live lines) and route work by an
 observable trigger (an artifact, a command, a checkpoint). The test for every line you add: would removing it
 make Claude make a mistake? If not, cut it - what Claude can read from the code ('the UserService handles

@@ -24,9 +24,13 @@ delete process.env.CLAUDE_CODE_ENTRYPOINT;
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-mode-'));
-test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+// Out of TMP first: Windows refuses to remove the folder a process stands in (EBUSY).
+test.after(() => { process.chdir(os.tmpdir()); fs.rmSync(TMP, { recursive: true, force: true }); });
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.CLAUDE_PROJECT_DIR;
+// With no project dir the prelude reads the variables of the project the cwd sits in, at load and in every hook it
+// spawns: run from a temp dir, so this checkout's own mode switches (its local settings) never decide a case.
+process.chdir(TMP);
 const { approvalStamp, autoStampLive } = require('../stack/hooks/hook-prelude.js');
 const settings = require('../scripts/install/settings.js');
 const { valueHash, renderLedger, readLedger } = require('../scripts/install/stamp.js');
@@ -323,7 +327,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     assert.deepStrictEqual(bannerOf(on), [
         '**Auto-run: ON** for /loop-code-quality - every question takes its (Recommended) option without waiting for you; one with no recommended option, or whose recommendation acts outward (push, merge, deploy, publish, a PR, a billed run), still waits. A message you type mid-run is input to the run; auto-run stays on, new sessions included, until you type `/alfred-code:mode:auto-run off`.',
         // v2: the command's save seeds the model's window (ALFRED_CODE_AUTO_COMPACT=1 with it), so the banner names it
-        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.',
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5 - Claude Code reads it when claude launches, so one saved during this launch applies from the next) and the run goes on from the summary and its state files.',
     ]);
     // the second flow of the same run rides the live stamp, and says so too
     assert.match(bannerOf(typedRun(p, 'b1', '/task-solve fix the cache', t))[0], /^\*\*Auto-run: ON\*\* for \/task-solve /);
@@ -333,7 +337,7 @@ test('mode banner: auto-mode ON says every ask takes its Recommended option and 
     fs.writeFileSync(path.join(q.root, '.claude', 'settings.json'), JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 400000 } } }));
     autoOn(q, 'b2', t);
     assert.strictEqual(bannerOf(typedRun(q, 'b2', '/task-solve x', t))[1],
-        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5) and the run goes on from the summary and its state files.');
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 400k auto-compact window (of 1M, claude-opus-5-5 - Claude Code reads it when claude launches, so one saved during this launch applies from the next) and the run goes on from the summary and its state files.');
 });
 
 test('mode banner: auto-mode OFF says each ask waits, then the fresh-session refresh, the compaction, or the offers off', () =>
@@ -398,7 +402,7 @@ test('mode banner: the model SessionStart recorded gives the window before any r
     start('r2', 'claude-sonnet-5-5');
     autoOn(p, 'r2', none);
     assert.strictEqual(bannerOf(typedRun(p, 'r2', '/capture-awareness', none))[1],
-        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 350k auto-compact window (of 1M, claude-sonnet-5-5) and the run goes on from the summary and its state files.');
+        '**Context:** no fresh-session hand-off - the session auto-compacts as it nears its 350k auto-compact window (of 1M, claude-sonnet-5-5 - Claude Code reads it when claude launches, so one saved during this launch applies from the next) and the run goes on from the summary and its state files.');
     // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
     // the auto-compact window', verified 2026-10-21), so after a /model switch to a smaller model the banner never quotes
     // a compaction point past that model's capacity
@@ -478,6 +482,78 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two, { agent_id: 'seat-1' })), null, 'a seat');
     fs.rmSync(p.gate);
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
+});
+
+// Hooks audit 2026-11-19 (B7-S1): the auto-run answer's ledger row copied each question and picked label as typed, so a
+// question quoting a token wrote it into the hook-blocks ledger. The answer the session gets keeps the text.
+test('auto-mode asks: the auto-answer ledger row stores <redacted> for a credential shape; the answer keeps the text', () =>
+{
+    const p = project();
+    autoStamp(p, 'a9');
+    const shape = 'ghp_' + 'F'.repeat(24); // fake by construction
+    const question = `Store ${shape} in the vault?`;
+    const r = ask(p, 'a9', [q(question, ['Store it (Recommended)', 'Not now'])]);
+    assert.deepStrictEqual(answered(r), { [question]: 'Store it (Recommended)' }, 'the answer the session gets is unchanged');
+    const row = rows(p, 'a9').find((x) => x.kind === 'auto-answer');
+    assert.ok(row, 'one auto-answer row');
+    assert.ok(!JSON.stringify(row).includes(shape), 'the ledger row holds no credential shape');
+    assert.deepStrictEqual(row.detail.answers, { 'Store <redacted> in the vault?': 'Store it (Recommended)' });
+});
+
+// final review, item 1: the series ask the run puts for N outward writes names its acts as 'outward acts', and the hook holds
+// it for the user whatever verb the label uses - a pick the hook made would be read as the user's approval of N writes.
+test('auto-mode asks: a series ask for outward writes waits for the user; the local recommended asks stay answered', () =>
+{
+    const p = project();
+    autoStamp(p, 'ser1');
+    for (const [question, label] of [['4 ticket comments are outward acts. Go ahead?', 'Comment on all 4 tickets (Recommended)'],
+        ['The run holds 5 outward acts. Which?', 'Add the 5 comments to PROJ-1..PROJ-5 as listed (Recommended)'],
+        ['The run holds 3 outward acts. Which?', 'Update the 3 Confluence pages as listed (Recommended)'],
+        ['The run holds 3 outward acts. Which?', 'Create the 3 pages (Recommended)'],
+        ['Three writes, one kind. Go?', 'Edit the 3 tickets as listed (Recommended)'],
+        ['Seven outward acts to list. Go?', 'Run the series as listed (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'ser1', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
+    const rowsBefore = rows(p, 'ser1').filter((x) => x.kind === 'auto-ask-waits').length;
+    assert.ok(rowsBefore >= 6, 'each wait is logged');
+    for (const [question, label] of [['Fix the issue now?', 'Fix it (Recommended)'], ['Drop the unused import?', 'Drop it (Recommended)'],
+        ['Dead code found.', 'Remove the dead code (Recommended)'], ['Commit the fix?', 'Commit now (Recommended)'],
+        ['Variable unused. Rename it?', 'Rename $value to $count (Recommended)'],
+        ['Plan ready: 4 steps in 2 files, too small to pay for seats. Approve it?', 'Approve - build in this session (Recommended)'],
+        ['This chat sends about 226k tokens with every message. Go on?', 'Run in this session (Recommended)']])
+        assert.ok(answered(ask(p, 'ser1', [q(question, [label, 'Not now'])])), `answered, a local act: ${question} ${label}`);
+});
+
+// 63b82c52 widened the hold to the bare word 'comment' and to a verb + page / ticket shape, and every local comment or docs ask
+// then waited for a user who was away. The hold needs an outward TARGET (a ticket, an issue, a PR, a card, a thread, Confluence,
+// Notion, a wiki, Jira, Linear, a ticket key); 'no outward acts' is the opposite statement.
+const LOCAL_ASKS = [['Next?', 'Add a comment to the function'], ['Next?', 'Rewrite the comments'], ['The JSDoc comment is wrong. Fix?', 'Fix it'],
+    ['code-comments review found 3 issues. Apply?', 'Apply'], ['Next?', 'Address the review comments'], ['Next?', 'Comment out the failing test'],
+    ['Next?', 'Update the commented-out block'], ['Next?', 'Lint flags the comment style'], ['Next?', 'Update the docs pages'],
+    ['Next?', 'Create the docs page for the hook'], ['Next?', 'Edit the page in docs/'], ['Next?', 'Update the HTML page'],
+    ['Next?', 'Update the man page'], ['Next?', 'Create the page component'], ['Next?', 'Update the page object tests'],
+    ['Next?', 'Edit the landing page markup'], ['Next?', 'Create the GitHub-pages workflow file'], ['Next?', 'Update the issue file in the ledger'],
+    ['Next?', 'Update the 3 pages of the spec'], ['Next?', 'Edit the post-install script'], ['Next?', 'Commit locally - no outward acts'],
+    ['Next?', 'Edit post-1 and post-2 in the changelog'], ['Next?', 'Commit locally, not outward acts'], ['Next?', 'Commit locally without outward acts'],
+    // usage audit 2026-11-19: the tracker-filing clause needs a tracker beside the story or task, and 'file' as a verb
+    ['Next?', 'Edit the file the tasks read from'], ['Next?', 'Raise the limit for parallel tasks'], ['Next?', 'Submit task 3 to the implementer seat'],
+    ['Next?', 'Update the file the GitHub workflow runs'], ['Next?', 'Create the Storybook story'], ['Next?', 'Open the task list'],
+    ['Next?', 'File the stories into the plan']];
+const OUTWARD_ASKS = [['Next?', 'Comment on all 4 tickets'], ['Next?', 'Add the 5 comments to PROJ-1..PROJ-5 as listed'],
+    ['Next?', 'Update the 3 Confluence pages as listed'], ['Create the 3 Confluence pages as outward acts?', 'Create the 3 pages'],
+    ['Next?', 'Edit the 3 tickets as listed'], ['Next?', 'Publish the 5 cards as listed - outward acts'], ['Next?', 'Edit the 3 posts'],
+    ['Next?', 'Add a comment to the PR'], ['Next?', 'Comment on the thread'], ['Next?', 'Post a comment in Jira'], ['Next?', 'Update the Notion page'],
+    ['Next?', 'Create the Linear issue'], ['Next?', 'Add a comment to PROJ-12'],
+    // usage audit 2026-11-19 (bcb7d392): a story, task or epic filed in a tracker is a ticket by another name
+    ['File this Task in Jira on the board through the connector? Title and description map 1:1.', 'File it'], ['Next?', 'File the story in Linear'], ['Next?', 'Submit the task in Jira'], ['Next?', 'Raise the epic in the backlog'],
+    ['Next?', 'Create the task in GitLab'], ['Next?', 'Open a story in YouTrack'], ['Next?', 'Add the epic to the GitHub project']];
+test('auto-mode asks: a local comment or docs ask runs on, and an ask aimed at an outward target waits', () =>
+{
+    const p = project();
+    autoStamp(p, 'loc1');
+    for (const [question, label] of LOCAL_ASKS)
+        assert.ok(answered(ask(p, 'loc1', [q(question, [`${label} (Recommended)`, 'Not now'])])), `answered, a local act: ${question} ${label}`);
+    for (const [question, label] of OUTWARD_ASKS)
+        assert.strictEqual(answered(ask(p, 'loc1', [q(question, [`${label} (Recommended)`, 'Not now'])])), null, `waits: ${question} ${label}`);
 });
 
 // 2026-10-16, the user's bug report: an auto-mode task-solve approval reached the user. 'too small to pay for seats' read
@@ -635,6 +711,35 @@ test('auto-mode Stop: the auto-fields hold skips a progress note over running wo
     const idle = stop('f1', { background_tasks: [] });
     assert.strictEqual(idle.status, 2, 'with nothing running the done close owes its fields');
     assert.match(idle.stderr, /THREE named fields/);
+});
+
+// Usage audit 2026-11-19 (bcb7d392): three auto-fields holds came after the run's close. A cycle whose plan is stamped
+// Completed: and a typed turn since owes no solve-task fields - the field notes stop there already (U08).
+test('auto-mode Stop: past a closed cycle - plan stamped Completed:, then a typed prompt - no auto-fields hold', () =>
+{
+    const p = project();
+    const plan = path.join(p.root, '.alfred', 'docs', 'work', 'plans', 'x.md');
+    const t = transcript([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+        { type: 'assistant', entrypoint: 'cli', message: { id: 'cx', role: 'assistant', content: [{ type: 'tool_use', id: 'ex', name: 'Edit',
+            input: { file_path: plan, old_string: 'Approved: yes', new_string: 'Approved: yes\nCompleted: 2026-11-17' } }] } },
+        { type: 'user', entrypoint: 'cli', message: { role: 'user', content: 'Now rename the wiki page title.' } }]);
+    autoStamp(p, 'f2');
+    const closed = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'f2', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'The page title is done and verified.', background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(closed.status, 0, `no fields owed past the closed cycle: ${closed.stderr}`);
+    assert.ok(!rows(p, 'f2').some((r) => r.detail && r.detail.branch === 'auto-fields'), 'no auto-fields row');
+});
+
+// Usage audit 2026-11-19: no corpus of real recommended questions the size the earlier narrowings were replayed over is
+// reachable, so a wait the tracker-filing clause causes names it in its row, and its false holds can be counted later.
+test('auto-mode asks: a wait the tracker-filing clause causes names it in its row; another wait names none', () =>
+{
+    const p = project();
+    autoStamp(p, 'tf1');
+    assert.strictEqual(answered(ask(p, 'tf1', [q('File this Task in Jira on the board? Title and description map 1:1.', ['File it (Recommended)', 'Not now'])])), null);
+    assert.ok(rows(p, 'tf1').some((r) => r.kind === 'auto-ask-waits' && r.detail && r.detail.clause === 'tracker-filing'), 'the filing wait names its clause');
+    assert.strictEqual(answered(ask(p, 'tf1', [q('Next?', ['Open the PR (Recommended)', 'Not now'])])), null);
+    assert.strictEqual(rows(p, 'tf1').filter((r) => r.kind === 'auto-ask-waits' && r.detail && r.detail.clause).length, 1, 'a PR wait names no clause');
 });
 
 // Audit 2026-10-20 C04 (71d5428a, 3a8a1ee3, 7ec6c7db, 8a1fb350): an auto-answered stop returned before the FLOW STOP
@@ -1430,7 +1535,7 @@ test('mode command: auto-compact on and off write the mode file, never a session
 {
     const p = project();
     const t = bareTranscript();
-    assert.match(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), /^\[mode\] auto-compact is ON: no fresh-session ask is made\. From the next session Claude Code compacts at /);
+    assert.match(modeLine(p, 'c1', `${COMPACT_CMD} on`, t), /^\[mode\] auto-compact is ON: no fresh-session ask is made\. From the next launch of claude - a \/clear keeps the window this launch read - Claude Code compacts at /);
     assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '1');
     assert.match(modeLine(p, 'c1', `${COMPACT_CMD} off`, t), /^\[mode\] auto-compact is OFF: fresh-session asks are back\./);
     assert.strictEqual(modeOf(p).env.ALFRED_CODE_AUTO_COMPACT, '0');
@@ -1763,7 +1868,7 @@ test('v2 bare auto-run: ON, OFF, and the reason when the file holds a 1 nobody v
     assert.strictEqual(line(sub(trackedModeProject({ ALFRED_CODE_AUTO_RUN: '1' }), 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF: the file holds it, but git tracks the file - asks stay with you');
     assert.strictEqual(line(sub(linkedClaudeProject({ ALFRED_CODE_AUTO_RUN: '1' }), 'A', '/alfred-code:mode:auto-run', transcript())), '[mode] auto-run is OFF: the file holds it, but git cannot say the file is yours alone - asks stay with you'); });
 test('v2 auto-compact on: the window in the reply, at its own point for a tier of 0, the replaced note', () => { const p = project();
-    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), ENVS)), '[mode] auto-compact is ON: no fresh-session ask is made. From the next session Claude Code compacts at 400k on claude-opus-5-5');
+    assert.strictEqual(line(sub(p, 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), ENVS)), '[mode] auto-compact is ON: no fresh-session ask is made. From the next launch of claude - a /clear keeps the window this launch read - Claude Code compacts at 400k on claude-opus-5-5');
     assert.match(line(sub(project(), 'A', '/alfred-code:mode:auto-compact on', transcript([], 'claude-opus-5-5'), { ...ENVS, ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' })), /Claude Code compacts at its own point$/);
     const q = project(); fs.mkdirSync(path.join(q.root, '.claude'), { recursive: true }); fs.writeFileSync(modePath(q), '{"autoCompactEnabled":false}');
     assert.match(line(sub(q, 'A', '/alfred-code:mode:auto-compact on', transcript(), ENVS)), / - replaced autoCompactEnabled false$/); });
@@ -1799,4 +1904,57 @@ test('auto-run off ends a live run even when the mode file cannot be saved: the 
         assert.ok(!fs.existsSync(marker(p, 'off1')), 'the run marker is gone');
         assert.strictEqual(rawMode(p), before, 'no byte of the file changed');
     }
+});
+
+// ---------------------------------------------------------------------------------------------
+// the series rule: one ask covers a listed series of outward acts
+// ---------------------------------------------------------------------------------------------
+const SERIES = 'When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the first, its question naming them \'outward acts\' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed. The user\'s pick is the approval a plan or project rule asks for each listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN ask outranks the pick: then ask per act, as before.';
+const folded = (text) => text.replace(/\s+/g, ' ');
+const readRepo = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+
+test('auto-run contract: one ask covers a listed series of outward acts', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoOn(p, 'sr1', t);
+    const said = context(expand(p, 'sr1', '/loop-code-quality src/', t));
+    assert.ok(said.includes(SERIES), 'clause (1) carries the series sentence');
+    assert.ok(said.includes('never push, merge, deploy or send anything out, unless the user\'s own pick in this run approved that exact act (the series rule in (1))'), 'clause (3) names the pick');
+});
+
+test('auto-continue hold names an unapproved outward act and puts its ask once', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoStamp(p, 'sr2');
+    openRun(p, 'sr2');
+    const held = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'sr2', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.strictEqual(held.status, 2);
+    assert.ok(folded(held.stderr).includes('an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.'), held.stderr);
+});
+
+test('mode-auto-run skill and the mode command carry the series rule', () =>
+{
+    const skill = folded(readRepo('stack', 'skills', 'mode-auto-run', 'SKILL.md'));
+    assert.ok(skill.includes(SERIES), 'the skill carries the series sentence');
+    assert.ok(skill.includes('Never push, merge, deploy, publish, open a PR or pay unless the user\'s own pick in this run approved that exact act - each other one goes under `Left for you:`'));
+    const command = folded(readRepo('setup-plugin', 'commands', 'mode', 'auto-run.md'));
+    assert.ok(command.includes('nothing goes outward unless the user\'s own pick approved that act'));
+    assert.ok(command.includes(SERIES), 'the command carries the series sentence');
+});
+
+// 'UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110' and 'X-1' are no ticket keys: the key shape needs two letters and no encoding
+// or standard name. `\bcomment\s+on\b` holds an ask with or without a key, so the key's effect shows through the target
+// word: 'Update PROJ-12 (Recommended)' is outward only because the key reads as 'ticket'.
+test('auto-mode asks: UTF-8, SHA-256, ISO-8601, RFC-9110 and X-1 are no ticket keys, ABC-12 and AB2-7 are', () =>
+{
+    const p = project();
+    autoStamp(p, 'key1');
+    for (const token of ['UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110', 'X-1'])
+        assert.ok(answered(ask(p, 'key1', [q('Next?', [`Update the ${token} handling in the parser (Recommended)`, 'Not now'])])), `answered, no key: ${token}`);
+    for (const key of ['ABC-12', 'AB2-7'])
+        assert.strictEqual(answered(ask(p, 'key1', [q('Next?', [`Update ${key} (Recommended)`, 'Not now'])])), null, `waits, a key: ${key}`);
+    assert.strictEqual(answered(ask(p, 'key1', [q('Next?', ['Comment on ABC-12 (Recommended)', 'Not now'])])), null, 'waits: Comment on ABC-12');
 });

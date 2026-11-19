@@ -83,9 +83,10 @@ test('M67: the shell-no-attach rationale is a maintainer comment in the path rul
         assert.ok(!/through the shell|first shell write/.test(live), `${name}.md: the injected text still explains the shell route: ${live}`);
         assert.match(squash(rule(name)), /<!--[^>]*shell[^>]*guard-read-whole-file\.js[^>]*-->/, `${name}.md keeps the rationale as a comment`);
     }
-    // audit 2026-10-14 RU07: a plain one-file shell view attaches a path-scoped rule (code.claude.com/docs/en/memory); a shell write never does
+    // audit 2026-11-19 C-1: the loader sends a path rule on a file-tool touch only (rules-session.js, its PostToolUse row), so a shell view attaches none
     const nav = injected('alfred-navigation');
-    assert.ok(nav.includes('Only a plain one-file view (`cat`, `head`, `tail`, `sed -n`, `grep`, no pipe or redirect) attaches path-scoped rules; a shell write never does, so the read guard names the governing rule on the first shell write.'), 'the always-on copy reaches the shell run and stays');
+    assert.ok(nav.includes('The stack\'s path-scoped rules attach on a file-tool touch only (Read, Edit, Write) - a shell view or write attaches none, so the read guard names the governing rule on the first shell write.'), 'the always-on copy reaches the shell run and stays');
+    assert.ok(!nav.includes('Only a plain one-file view'), 'the native-attach claim the loader made stale');
     assert.ok(!nav.includes('do not attach on the shell route'), 'the drifted claim');
     for (const name of ['csharp-conventions', 'markdown-docs'])
         assert.ok(squash(rule(name)).includes('gets no attach on a shell write'), `${name}.md: the comment names the shell write`);
@@ -561,4 +562,26 @@ test('canary: the text names both block lines the loader prints', () =>
         assert.ok(loader.includes(phrase), `the loader prints '${phrase}'`);
         assert.ok(text.includes(phrase), `the canary names '${phrase}'`);
     }
+});
+
+test('quality gates: a line keeps its layout unless the task or the formatter changes it', () =>
+{
+    const bullet = '- Leave a line\'s layout as it is - its wrapping, indentation, quotes and trailing commas - unless the task changes that line or the project\'s formatter rewrote it: a hand re-wrap of an untouched line is noise in the diff.';
+    assert.ok(rule('alfred-quality-gates').includes(bullet));
+});
+
+// 2026-11-19, the user's ask: answers in ASD-STE100 style - its writing rules (20 words an instruction, 25 a description,
+// active voice, one instruction a sentence, one word one meaning), never its dictionary - beside the answer budget, which
+// stays; in another language the same rules as plain-language principles.
+test('alfred-interaction: answers follow the ASD-STE100 writing rules, the answer budget kept', () => {
+    const style = injected('alfred-interaction').split('## Communication style')[1].split('## Asking the user')[0];
+    assert.match(style, /\*\*Write in the style of ASD-STE100 \(Simplified Technical English\): use its writing rules, not its dictionary\.\*\*/);
+    assert.match(style, /Keep an instruction to 20 words or fewer and a description to 25 or fewer\./);
+    assert.match(style, /Use the active voice\. Give one instruction in each sentence, in the command form; a condition goes first, then a comma\./);
+    assert.match(style, /Prefer a common word to a rare one\./);
+    assert.match(style, /Code, commands, quotes and a fixed report line keep their own form\./, 'a report contract keeps its wording');
+    assert.match(style, /Use one word for one meaning, and the same word each time\./);
+    assert.match(style, /In another language, apply the same rules as plain-language principles\./);
+    assert.match(style, /about 900 characters of prose/, 'the answer budget stays');
+    assert.ok(style.indexOf('about 900 characters') < style.indexOf('ASD-STE100'), 'the budget is stated first');
 });

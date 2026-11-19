@@ -38,8 +38,8 @@ const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./se
 const { placement, formerCore, descriptionChars, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
-const { committedRoutesAt, corePluginOn } = require('./install/plugins.js');
-const { BRAND } = require('./install/brand.js');
+const { committedRoutesAt, ledgerEnvOf, corePluginOn } = require('./install/plugins.js');
+const { BRAND, stampFile: stampIn } = require('./install/brand.js');
 const { validItemName } = require('./install/stamp.js');
 
 const REPO = path.resolve(__dirname, '..');
@@ -349,9 +349,11 @@ function writable(state, { routes = {}, answered = { hooks: true, agents: true }
 {
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
     // Whenever the CORE loads - it carries every seat (2.1.0), so on the skills copy route with the
-    // core on its UNPICKED seats are switched off the same way; a picked seat lists twice there, its
-    // copy and <core>:<seat> (install-placement.test.js pins it - the 0.2.x fallback's cost, M8).
+    // core on, EVERY core seat is switched off: a picked seat is copied into .claude/agents, and the
+    // bare copy is a different listing entry from <core>:<seat>, so denying the namespaced name leaves
+    // the copy as the one listing (install-placement.test.js pins it).
     const agents = Boolean(state && answered.agents && corePluginOn(routes));
+    const copied = agents && !routes.skills;
     // The hooks copy route with the core on: the core carries every hook, and a hook the project does
     // not wire has no twin to stand down for, so this name is its only off-switch. The list is the
     // complement of what the run WIRES, whatever the read-back answered - a pre-11b install never
@@ -362,8 +364,8 @@ function writable(state, { routes = {}, answered = { hooks: true, agents: true }
         // absence is off.
         hooksOff: besideCore ? shipped.filter((h) => !wired.includes(h)) : hooks && corePluginOn(routes) ? state.hooks.off : [],
         hooksAnswered: besideCore || hooks,
-        agentDeny: agents ? state.agents.deny : [],
-        agentAllow: agents ? state.agents.allow : [],
+        agentDeny: copied ? placement().plugins[CORE].agents.map((a) => denySpec(a, CORE)) : agents ? state.agents.deny : [],
+        agentAllow: agents && !copied ? state.agents.allow : [],
     };
 }
 
@@ -515,7 +517,9 @@ function main(argv)
     // derivation before the install reports the copy routes as writing no off-state. N6: read the way the
     // installer reads them (C5) - a switch only settings.local.json holds yields to settings.json at
     // project and user scope - from the project `--root` names (the cwd by default) at `--scope`.
-    const routes = committedRoutesAt({ env: process.env, claudeDir: path.join(path.resolve(arg('--root') || '.'), '.claude'), scope: arg('--scope') || 'project' });
+    const routeDir = path.join(path.resolve(arg('--root') || '.'), '.claude');
+    const { hooks, skills } = committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: arg('--scope') || 'project', ledgerEnv: ledgerEnvOf(stampIn(routeDir).read) });
+    const routes = { hooks, skills };
     console.log(JSON.stringify({ ...state, routes, written: writable(state, { routes }) }, null, 2));
     return 0;
 }

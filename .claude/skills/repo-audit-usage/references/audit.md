@@ -4,11 +4,11 @@ Read at Phase B, before the first bundle.
 
 Contents: bundle anatomy - principles - Phase B0 discovery - Phase B1 per bundle (facts, decision trail,
 contract conformance, token and effectiveness verdicts, generated docs, skills, the plugin's flow-skill runs, report
-integrity, the audit file) - delegated execution.
+integrity, the audit file).
 
 `SESSIONS_ROOT` is the root step 0 found among `roots`; a swept collection nests one project level above
 the session-id folders, so enumerate `<root>/*/<session-id>/` too and carry the project
-name into every finding's evidence. Audit output goes to `<SESSIONS_ROOT>/AUDIT/` - inside the
+name into every finding's evidence. Audit output goes to `AUDIT_DIR` - `<SESSIONS_ROOT>/AUDIT/`, inside the
 ignored root deliberately, so private data never reaches a tracked file.
 
 ## Bundle anatomy - discover, never assume
@@ -67,7 +67,7 @@ real trigger was the file's content).
 
 ## Phase B0 - discovery
 
-Enumerate bundles and inventory their files. Read any root `SUMMARY_*.md` for the already-known
+Enumerate bundles and inventory their files. Read every `SUMMARY*.md` - at the root, in a project folder, in `AUDIT/` - for the already-known
 list. Snapshot the plugin's current version and recent release history as the already-fixed
 reference. Order bundles oldest-first where timestamps allow, so later ones validate shipped fixes.
 Read each bundle's collector receipt (and the report section that prints it, where a note names one) before
@@ -158,12 +158,3 @@ already has one is skipped on re-invocation.
   plugin-surface scorecard (generated docs used or bypassed; skills fired, missed and misused; each
   flow-skill run with its conformance and cost), the findings ledger including positive findings,
   report-integrity result, and `FIXED-SINCE` observations.
-
-## Delegated execution
-
-**Delegated execution** (the Q-EXECUTION answer): a read-only subagent per bundle carries the bundle
-path, the anatomy table, the principles, and the ledger shape as its mandatory return contract,
-plus any prior-summary claim about that session as a verify-don't-re-report seed. Subagents return
-`status: PROPOSED`; only the main session classifies OPEN / FIXED-SINCE / NOT-STACK, and only the
-main session writes the audit files and Phase B2 - those need the live tree. Expect a concurrency
-cap: launch up to it, replace as completions arrive, write each audit file before its replacement.

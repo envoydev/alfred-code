@@ -410,7 +410,10 @@ for (const scope of ['project', 'local'])
         assert.ok(/autoCompactWindow/.test(before.own) && /"autoMemoryEnabled":false/.test(before.own), before.own);
         // Mode commands v2: the windows are writeModes's now (the team's 1 copied into the mode file once), never ledgered
         const windows = (own) => JSON.stringify(JSON.parse(own).modelSettings);
-        assert.strictEqual(windows(after.own), windows(before.own), outs[1]);
+        // each window v2.12.0 wrote is kept as it was; a model the table gained since (claude-fable-5-2) gets its own row beside them
+        const windowsNamedIn = (own, from) => JSON.stringify(Object.fromEntries(Object.keys(JSON.parse(from).modelSettings)
+            .map((id) => [id, JSON.parse(own).modelSettings[id]])));
+        assert.strictEqual(windowsNamedIn(after.own, before.own), windows(before.own), outs[1]);
         assert.match(after.own, /"autoMemoryEnabled":false/);
         const noWindows = (rows) => Object.fromEntries(Object.entries(rows).filter(([k]) => !k.startsWith('modelSettings.')));
         assert.deepStrictEqual(after.settingsRows, noWindows(before.settingsRows));

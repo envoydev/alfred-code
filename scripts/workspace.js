@@ -51,20 +51,31 @@ const env = process.env;
 const exec = rt.execCommand;
 const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
 
+// The run's --root, checked and resolved once; a later call returns the first answer.
+let rootMemo = null;
 function rootArg()
 {
+    if (rootMemo !== null) return rootMemo;
     const root = arg('--root');
     if (!root) throw bad('--root <dir> is required');
     if (!fs.existsSync(root)) throw bad(`--root ${root} does not exist`);
-    return realOf(root);
+    rootMemo = realOf(root);
+    return rootMemo;
 }
+
+// A folder name or rel in a tab-separated line: a TAB or line break inside it would split the field or the line.
+const field = (text) => String(text).replace(/[\t\r\n]/g, ' ');
 
 function parentVerb(out)
 {
     const v = ws.joinVerdict(rootArg(), { env, exec });
     if (!v.parent) out('parent: none');
-    else if (v.ok) out(`parent: ${v.parent.rel}\tchild=yes`);
-    else out(`parent: ${v.parent.rel}\tchild=no\twhy=${v.why}`);
+    else
+    {
+        const name = ws.nameOfRel(rootArg(), v.parent.rel);
+        const tail = name ? `\tname=${field(name)}` : '';
+        out(v.ok ? `parent: ${field(v.parent.rel)}\tchild=yes${tail}` : `parent: ${field(v.parent.rel)}\tchild=no\twhy=${v.why}${tail}`);
+    }
 }
 
 // A library result's lines, its failure as the exit code with the `!!` line last.
@@ -106,8 +117,8 @@ function roleVerb(out)
     out(`role: ${ws.roleText(ws.workspaceOn({ env, projectRoot: root }) ? ws.roleOf(root, { env, log: out }) : null)}`);
     const ask = ws.roleAsk(root, { env, exec, when, log: out });
     if (!ask) return;
-    if (ask.why) out(`why: ${ask.why}`);
-    ask.options.forEach((label, i) => out(`ask: ${label}\t${ask.answers[i]}`));
+    if (ask.why) out(`why: ${field(ask.why)}`);
+    ask.options.forEach((label, i) => out(`ask: ${field(label)}\t${ask.answers[i]}`));
 }
 
 function ignore(out)
@@ -128,7 +139,7 @@ function ignore(out)
 
 function children(out)
 {
-    for (const row of ws.subtree(rootArg(), { env, log: out }).filter((r) => r.depth === 1)) out(`child: ${row.rel}\t${row.state}`);
+    for (const row of ws.subtree(rootArg(), { env, log: out }).filter((r) => r.depth === 1)) out(`child: ${field(row.rel)}\t${row.state}`);
 }
 
 const list = (lines) => (lines.length ? lines.join(', ') : '-');
@@ -147,6 +158,8 @@ function status(out)
     for (const n of linked.notes) out(n);
     const parent = linked.members[0];
     out(`workspace: parent ${parent ? parent.rel : 'none'}`);
+    const parentName = parent && ws.nameOfRel(root, parent.rel);
+    if (parentName) out(`workspace: parent-folder ${parentName}`);
     // R067: the excludes are written for every stamped folder above, joined or not - validate's load check keys on this.
     out(`installed-above: ${ws.workspaceOn({ env, projectRoot: root }) ? ws.stampedAncestors(root, { env }).length : 0}`);
     const stampFile = stamp.stampFiles({ projectRoot: root }).read;
@@ -378,11 +391,11 @@ function planVerb(out)
             }
             const entry = { rel: row.rel, scope: stamp.installScope(row.root), version: `${version}->${snapshot}`, add, drop, asks: [] };
             entries.push(entry);
-            out(`project: ${row.rel}\tscope=${entry.scope}\tversion=${entry.version}\tadd=${add}\tdrop=${drop}`);
+            out(`project: ${field(row.rel)}\tscope=${entry.scope}\tversion=${entry.version}\tadd=${add}\tdrop=${drop}`);
             if (why) out(`  !! ${why}`);
             for (const l of asksOf(row.root)) { out(`  ${l}`); entry.asks.push(l.trim()); }
         }
-        for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${row.rel}`);
+        for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${field(row.rel)}`);
         let rescanned = 0;
         if (has('--rescan')) for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
         if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
@@ -519,7 +532,7 @@ function cascade(out)
     {
         // A gone row is no project to update later, only its line: it is named apart and left out of the count.
         const below = ws.subtree(top, { env }).filter((r) => r.depth > 0);
-        for (const r of below) out(`cascade: ${r.rel}\t${r.state === 'gone' ? 'gone-kept' : 'held'}`);
+        for (const r of below) out(`cascade: ${field(r.rel)}\t${r.state === 'gone' ? 'gone-kept' : 'held'}`);
         out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== 'gone').length} held`);
         return;
     }
@@ -531,7 +544,7 @@ function cascade(out)
     const plans = new Map();
     const blocked = new Set();
     const count = { updated: 0, failed: 0, skipped: 0 };
-    const row = (rel, state) => { out(`cascade: ${rel}\t${state}`); if (state in count) count[state] += 1; };
+    const row = (rel, state) => { out(`cascade: ${field(rel)}\t${state}`); if (state in count) count[state] += 1; };
     try
     {
         // The top project ran before the cascade (update's own run): its read-back is taken once, here.

@@ -1,0 +1,140 @@
+Validating plugin manifest: <repo>/.claude-plugin/plugin.json
+
+Provides:
+
+  ❯ hooks: PreToolUse AskUserQuestion command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"]
+  ❯ hooks: PreToolUse AskUserQuestion command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"]
+  ❯ hooks: PreToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"]
+  ❯ hooks: PreToolUse Bash|PowerShell|Monitor command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js"]
+  ❯ hooks: PreToolUse Read|Edit|Write|MultiEdit|NotebookEdit|Grep command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js"]
+  ❯ hooks: PreToolUse ^mcp__.+__(read_file|read_text_file|read_multiple_files|read_media_file)$ command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"]
+  ❯ hooks: PreToolUse Task|Agent|SendMessage command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js"]
+  ❯ hooks: PreToolUse ^mcp__.* command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js"]
+  ❯ hooks: PreToolUse ^mcp__.* command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"]
+  ❯ hooks: PreToolUse SubagentHandback command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"]
+  ❯ hooks: PreToolUse SubagentHandback command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"]
+  ❯ hooks: PreToolUse Skill command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ hooks: PreToolUse Skill command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"]
+  ❯ hooks: PreToolUse Agent|Task command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ hooks: PreToolUse ^mcp__.+__(write_file|edit_file|move_file)$ command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js"]
+  ❯ hooks: PreToolUse ^mcp__.+__(write_file|edit_file|move_file|create_directory)$ command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js"]
+  ❯ hooks: PreToolUse ^mcp__.+__(rename_symbol|safe_delete_symbol)$ command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"]
+  ❯ hooks: PreToolUse LSP command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"]
+  ❯ hooks: PreToolUse .* command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"]
+  ❯ hooks: PostToolUse AskUserQuestion command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"]
+  ❯ hooks: PostToolUse AskUserQuestion command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"]
+  ❯ hooks: PostToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js","stack-select"]
+  ❯ hooks: PostToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js","workspace"]
+  ❯ hooks: PostToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js","plugin-settings"]
+  ❯ hooks: PostToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js","audit-install"]
+  ❯ hooks: PostToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js","update-preflight"]
+  ❯ hooks: PostToolUse Bash command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"]
+  ❯ hooks: PostToolUse Read|Edit|Write|MultiEdit|NotebookEdit command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js"]
+  ❯ hooks: SessionStart startup|clear|resume|fork command node ["${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","1"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","2"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","3"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","4"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","5"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js"]
+  ❯ hooks: SessionStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"]
+  ❯ hooks: SessionStart compact command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"]
+  ❯ hooks: PostToolUseFailure Bash command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","1"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","2"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","3"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","4"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js","--part","5"]
+  ❯ hooks: SubagentStart command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/forge-session.js"]
+  ❯ hooks: SubagentStop command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js"]
+  ❯ hooks: SubagentStop command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"]
+  ❯ hooks: SubagentStop command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"]
+  ❯ hooks: Stop command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js"]
+  ❯ hooks: Stop command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js"]
+  ❯ hooks: Stop command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js"]
+  ❯ hooks: UserPromptExpansion "(^|[^A-Za-z0-9_-])((alfred-)?(loop-[a-z][a-z0-9-]*|capture-[a-z][a-z0-9-]*|task-[a-z][a-z0-9-]*|issue-[a-z][a-z0-9-]*|mode-[a-z][a-z0-9-]*|review-code|review-security)|security-review|init|update|configure|validate)$" command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ hooks: UserPromptExpansion "^((alfred-)?(capture|loop|task|issue|mode)-[a-z][a-z0-9-]*|review-code|review-security|code-review|security-review)$" command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/preferences-session.js"]
+  ❯ hooks: PostModelSwitch command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ hooks: UserPromptSubmit command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ hooks: UserPromptSubmit command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"]
+  ❯ hooks: PreCompact command node ["${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js"]
+  ❯ mcpServers: context7 http https://mcp.context7.com/mcp
+  ❯ skills: alfred-code:alfred-code
+  ❯ commands: alfred-code:configure
+  ❯ commands: alfred-code:init
+  ❯ commands: alfred-code:mode:auto-compact
+  ❯ commands: alfred-code:mode:auto-run
+  ❯ commands: alfred-code:mode:scoring
+  ❯ commands: alfred-code:status
+  ❯ commands: alfred-code:uninstall
+  ❯ commands: alfred-code:update
+  ❯ commands: alfred-code:validate
+  ❯ agents: alfred-code:angular-test-resolver
+  ❯ agents: alfred-code:architecture-analyzer
+  ❯ agents: alfred-code:aspnet-implementer
+  ❯ agents: alfred-code:aspnet-solution-designer
+  ❯ agents: alfred-code:aspnet-verifier
+  ❯ agents: alfred-code:browser-extension-implementer
+  ❯ agents: alfred-code:browser-extension-solution-designer
+  ❯ agents: alfred-code:browser-extension-verifier
+  ❯ agents: alfred-code:code-quality-analyzer
+  ❯ agents: alfred-code:code-style-analyzer
+  ❯ agents: alfred-code:console-implementer
+  ❯ agents: alfred-code:console-solution-designer
+  ❯ agents: alfred-code:console-verifier
+  ❯ agents: alfred-code:data-implementer
+  ❯ agents: alfred-code:data-solution-designer
+  ❯ agents: alfred-code:data-verifier
+  ❯ agents: alfred-code:devops-implementer
+  ❯ agents: alfred-code:devops-solution-designer
+  ❯ agents: alfred-code:devops-verifier
+  ❯ agents: alfred-code:dotnet-build-error-resolver
+  ❯ agents: alfred-code:dotnet-test-failure-resolver
+  ❯ agents: alfred-code:evidence-gatherer
+  ❯ agents: alfred-code:integration-reviewer
+  ❯ agents: alfred-code:ionic-angular-implementer
+  ❯ agents: alfred-code:ionic-angular-solution-designer
+  ❯ agents: alfred-code:ionic-angular-verifier
+  ❯ agents: alfred-code:issue-diagnoser-ci
+  ❯ agents: alfred-code:issue-diagnoser-runtime
+  ❯ agents: alfred-code:ng-build-error-resolver
+  ❯ agents: alfred-code:output-scoring
+  ❯ agents: alfred-code:related-project-analyzer
+  ❯ agents: alfred-code:security-auditor
+  ❯ agents: alfred-code:test-coverage-analyzer
+  ❯ agents: alfred-code:web-angular-implementer
+  ❯ agents: alfred-code:web-angular-solution-designer
+  ❯ agents: alfred-code:web-angular-verifier
+  ❯ agents: alfred-code:windows-service-implementer
+  ❯ agents: alfred-code:windows-service-solution-designer
+  ❯ agents: alfred-code:windows-service-verifier
+  ❯ agents: alfred-code:winforms-implementer
+  ❯ agents: alfred-code:winforms-solution-designer
+  ❯ agents: alfred-code:winforms-verifier
+  ❯ agents: alfred-code:wpf-implementer
+  ❯ agents: alfred-code:wpf-solution-designer
+  ❯ agents: alfred-code:wpf-verifier
+
+Plugin directory checks for <repo>. The plugin directory is the catalog that plugins are submitted to; this is a subset of what it runs.
+
+⚠ Found 1 plugin directory warning:
+
+  ❯ .claude-plugin/plugin.json icon: No icon (ICON_MISSING). No icon found in the plugin. The validator looked for `icon` in plugin.json and for a file at .claude-plugin/icon.png or .svg, assets/icon.png or .svg, or a similar path.
+    Fix: Add a square PNG to the plugin folder at .claude-plugin/icon.png, or set `icon` in plugin.json to the path of a square PNG or JPEG in the plugin: 512 to 2048 px on each side, under 2 MB. SVG and WebP are not accepted. That file may become the listing icon only once: the first time the plugin is saved or submitted in the developer portal. Adding or changing it later does not change the icon.
+
+About these checks:
+
+  ❯ System files: this command reads the folder on disk. A plugin submitted from a git repository holds only what is committed there. For each file a finding names, run `git ls-files <file>`. If it prints nothing, the file is not committed and so is not submitted with the plugin; add its name to .gitignore. If it prints the file, remove it as the finding says. In CI, run --profile directory --strict on a fresh checkout; --strict also fails on the directory's other warnings.
+
+These plugin directory checks do not change the result below.
+
+The directory also runs a safety scan and a policy review that this command does not.
+
+✔ Validation passed

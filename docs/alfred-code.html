@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Alfred Code - agent roster + inventory</title>
+<title>Alfred Code - plugin reference</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/png" href="../assets/alfred-code-logo.png">
 <style>
@@ -199,8 +199,8 @@
   input[type=search] { flex: 1; min-width: 220px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--ink); font-size: 14px; font-family: var(--sans); }
   input[type=search]::placeholder { color: var(--faint); }
   input[type=search]:focus { outline: none; border-color: var(--brass); }
-  #content h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--brass); border: 0; border-bottom: 1px solid var(--line); padding: 0 0 7px; margin: 30px 0 4px; font-weight: 700; }
-  #content h2 .src { color: var(--faint); font-weight: 400; }
+  .inv h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--brass); border: 0; border-bottom: 1px solid var(--line); padding: 0 0 7px; margin: 30px 0 4px; font-weight: 700; }
+  .inv h2 .src { color: var(--faint); font-weight: 400; }
   .group-meta { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; line-height: 1.5; }
   table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
   thead { background: var(--panel-2); }
@@ -228,30 +228,316 @@
   .inv-sources { color: var(--faint); font-size: 12px; margin-top: 18px; font-family: var(--mono); line-height: 1.6; }
   .inv-sources code { color: var(--muted); }
   .logo { display: block; width: 88px; height: 88px; border-radius: 16px; margin-bottom: 18px; }
+
+  /* ---- tabs (one panel at a time; with no script every panel shows, one after another) ---- */
+  .tabs {
+    position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; overflow-x: auto;
+    margin-top: 30px; padding: 8px 0; background: var(--ground); border-bottom: 1px solid var(--line);
+    scrollbar-width: thin;
+  }
+  .tab {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+    font: 600 13.5px var(--sans); color: var(--muted); text-decoration: none;
+    background: transparent; border: 1px solid transparent; border-radius: 9px; padding: 8px 13px; cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); background: var(--panel); text-decoration: none; }
+  .tab[aria-selected="true"] { color: var(--ink); background: var(--panel-2); border-color: var(--line); }
+  .tab:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+  .tab .n { font: 600 11px var(--mono); color: var(--brass); font-variant-numeric: tabular-nums; }
+  .js .panel { display: none; }
+  .js .panel.active { display: block; }
+  .panel { padding-top: 34px; }
+  .panel-intro { color: var(--muted); font-size: 15px; max-width: 920px; margin: 8px 0 0; }
+  .panel-intro b { color: var(--ink); font-weight: 600; }
+  .sub-h { font-size: 16px; font-weight: 700; margin: 38px 0 4px; }
+  .sub-p { color: var(--muted); font-size: 14px; margin: 0 0 16px; max-width: 920px; }
+  td { overflow-wrap: anywhere; }
+
+  /* ---- cards ---- */
+  .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 14px; margin-top: 18px; }
+  .feat { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--c, var(--brass)); border-radius: 12px; padding: 15px 17px; }
+  .feat .kick { font: 600 10.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--c, var(--brass)); }
+  .feat h3 { font-size: 15px; margin: 5px 0 6px; }
+  .feat p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .feat p + p { margin-top: 7px; }
+  .feat ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
+  .feat code, .sub-p code, .panel-intro code, .lanes code, .step code { font-family: var(--mono); font-size: 0.9em; color: var(--ink); }
+  pre.code {
+    margin: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    font: 12.5px/1.65 var(--mono); color: var(--ink); overflow-x: auto;
+  }
+  pre.code .c { color: var(--faint); }
+
+  /* ---- flow charts: a row of steps that turns into a column on a phone ---- */
+  .chart { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .chart > h3 { margin: 0; font-size: 16px; }
+  .chart > p { color: var(--muted); font-size: 13.5px; margin: 4px 0 18px; max-width: 900px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: stretch; row-gap: 12px; }
+  .steps > li { display: flex; align-items: stretch; flex: 1 1 0; min-width: 165px; max-width: 290px; }
+  .steps > li + li::before { content: "\2192"; color: var(--faint); align-self: center; padding: 0 8px; font-size: 17px; }
+  .step {
+    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--brass));
+    border-radius: 9px; padding: 9px 12px; width: 100%;
+  }
+  .step .k { font: 600 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--c, var(--brass)); }
+  .step b { display: block; font-size: 13.5px; margin-top: 1px; }
+  .step span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.45; }
+  .step .stop {
+    display: inline-block; margin-top: 7px; font: 700 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ground); background: var(--brass); border-radius: 4px; padding: 1px 6px;
+  }
+  .branch { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
+  .branch .step { width: auto; }
+  .branch-cap { margin-top: 16px; font: 600 10.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
+  .note { margin-top: 14px; color: var(--muted); font-size: 12.5px; border-left: 2px solid var(--line); padding-left: 10px; }
+  .note b { color: var(--ink); }
+
+  /* ---- a session: one row per event, the hooks that answer it beside it ---- */
+  .lanes { display: grid; grid-template-columns: minmax(160px, 230px) 1fr; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .lanes > div { padding: 11px 14px; border-top: 1px solid var(--line-soft); }
+  .lanes > div:nth-child(-n+2) { border-top: 0; }
+  .lanes .ev { background: var(--panel-2); font: 600 12px var(--mono); color: var(--brass); }
+  .lanes .ev small { display: block; font: 400 12px var(--sans); color: var(--muted); margin-top: 3px; }
+  .lanes .what { font-size: 13.5px; color: var(--muted); }
+  .lanes .what b { color: var(--ink); font-weight: 600; }
+  .lanes .what .chips { margin-top: 7px; }
+
+  .inv-counts { margin-top: 18px; }
+
+  /* long catalog text: cut to a few lines, one click opens it in place */
+  .clip { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
+  .group-meta > .clip { -webkit-line-clamp: 2; line-clamp: 2; }
+  .clip.open { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
+  .has-clip:has(> .clip.cut) { cursor: pointer; }
+  .has-clip:has(> .clip.cut)::after, .has-clip:has(> .clip.open)::after {
+    display: block; margin-top: 4px; font: 600 11px var(--mono); color: var(--brass); content: "show all \25BE";
+  }
+  .has-clip:has(> .clip.open)::after { content: "show less \25B4"; }
+
+  @media (max-width: 720px) {
+    .steps { flex-direction: column; }
+    .steps > li { flex-direction: column; max-width: none; }
+    .steps > li + li::before { content: "\2193"; padding: 4px 0 4px 16px; align-self: flex-start; }
+    .step { width: 100%; }
+    .lanes { grid-template-columns: 1fr; }
+    .lanes > div.what { border-top: 0; }
+    .lanes > div:nth-child(2) { border-top: 0; }
+    .tab { padding: 7px 10px; font-size: 13px; }
+  }
 </style>
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 <div class="wrap">
 
   <img class="logo" src="../assets/alfred-code-logo.png" alt="Alfred Code">
-  <p class="eyebrow">envoydev/alfred-code · Claude Code stack reference</p>
-  <h1>Everything the stack installs<span class="q">.</span><br>The agents, and every tool behind them.</h1>
+  <p class="eyebrow">envoydev/alfred-code · Claude Code plugin reference</p>
+  <h1>Alfred Code<span class="q">.</span><br>The house rules, the tools and the checks, set up before Claude starts work.</h1>
   <p class="lede">
-    One place to find it all. The <b>agent roster</b> maps the specialist team - what each seat does,
-    and how a solution designer, several implementers and a verifier take a feature from plan to
-    verified. Below it, the <b>full inventory</b> lists everything else the installer lays down - every
-    skill, subagent, plugin, hook and path-scoped rule - searchable, each with how it's
-    installed. Look here for any agent or tool in the stack: what it is, what it does, and how it gets
-    there.
+    Alfred Code sets <b>Claude Code</b> up before it starts work in your project. It reads the project, picks what the
+    project needs from a catalog of <b>skills</b>, <b>agents</b>, <b>rules</b>, <b>hooks</b> and <b>plugins</b>, and
+    installs it. From then on Claude follows your conventions without being asked, works in gated steps you approve,
+    and a risky move is stopped before it runs. Each tab below covers one part: start with <b>Overview</b> and
+    <b>How it works</b>, then open the catalog tabs to look anything up.
   </p>
   <div class="stat-row">
-    <div class="stat"><b>45</b><span>subagents</span></div>
-    <div class="stat"><b>92</b><span>house skills</span></div>
-    <div class="stat"><b>5</b><span>plugins</span></div>
-    <div class="stat"><b>17</b><span>hooks</span></div>
-    <div class="stat"><b>20</b><span>rules</span></div>
+    <div class="stat"><b>88</b><span>house skills</span></div>
+    <div class="stat"><b>45</b><span>agents</span></div>
+    <div class="stat"><b>18</b><span>rules</span></div>
+    <div class="stat"><b>18</b><span>hooks</span></div>
+    <div class="stat"><b>9</b><span>commands</span></div>
+    <div class="stat"><b>3</b><span>plugins</span></div>
     <div class="stat"><b>10</b><span>domains</span></div>
   </div>
+
+  <nav class="tabs" role="tablist" aria-label="Page sections">
+    <a class="tab" role="tab" id="t-overview" href="#overview" aria-controls="p-overview">Overview</a>
+    <a class="tab" role="tab" id="t-flow" href="#flow" aria-controls="p-flow">How it works</a>
+    <a class="tab" role="tab" id="t-features" href="#features" aria-controls="p-features">Features</a>
+    <a class="tab" role="tab" id="t-skills" href="#skills" aria-controls="p-skills">Skills <span class="n" id="n-skills">102</span></a>
+    <a class="tab" role="tab" id="t-agents" href="#agents" aria-controls="p-agents">Agents <span class="n" id="n-agents">45</span></a>
+    <a class="tab" role="tab" id="t-hooks" href="#hooks" aria-controls="p-hooks">Hooks <span class="n" id="n-hooks">18</span></a>
+    <a class="tab" role="tab" id="t-rules" href="#rules" aria-controls="p-rules">Rules <span class="n" id="n-rules">18</span></a>
+    <a class="tab" role="tab" id="t-plugins" href="#plugins" aria-controls="p-plugins">Plugins &amp; commands <span class="n" id="n-plugins">3</span></a>
+  </nav>
+
+  <!-- ===================== OVERVIEW ===================== -->
+  <div class="panel" id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+    <div class="sec-head"><h2>The idea</h2></div>
+    <p class="panel-intro">
+      Claude Code starts every project cold: it does not know your conventions, it can run a command that destroys work,
+      and left alone it plans, builds and reviews in one breath. Alfred Code closes that gap before the first message.
+      The yardstick every part is judged by: <b>Sonnet at high effort, run through this stack, does better work than Opus
+      at high effort without it</b> - pre-digested context, deterministic scripts and hooks doing the navigation and the
+      checking, and small gated steps instead of broad reads.
+    </p>
+
+    <div class="feat-grid">
+      <div class="feat" style="--c:var(--design)">
+        <span class="kick">Conventions</span>
+        <h3>The house style loads by itself</h3>
+        <p>Open a <code>.cs</code>, <code>.ts</code> or template file and the matching rule attaches its skill on its own. Claude writes the code the way the stack expects - no prompt needed.</p>
+      </div>
+      <div class="feat" style="--c:var(--repair)">
+        <span class="kick">Guards</span>
+        <h3>Mistakes are stopped, not warned about</h3>
+        <p>A force-push to <code>main</code>, a <code>reset --hard</code> over uncommitted work, a secret printed, an unreviewed commit, a write into another repo - each is blocked before it runs. When a block needs your decision, it ends in one question.</p>
+      </div>
+      <div class="feat" style="--c:var(--build)">
+        <span class="kick">Gated flows</span>
+        <h3>Work runs in steps you approve</h3>
+        <p><code>/task-solve</code> designs, checks the plan, waits for your approval, builds test-first, reviews and closes. <code>/issue-diagnoser</code> proves a cause before anything is fixed.</p>
+      </div>
+      <div class="feat" style="--c:var(--qa)">
+        <span class="kick">Agents</span>
+        <h3>Specialists plan, build and check</h3>
+        <p>Each stack has three seats - a designer plans, implementers build in parallel after you approve, a verifier reviews. Work across backend and frontend ends with a read-only integration review.</p>
+      </div>
+    </div>
+
+    <h3 class="sub-h">What one install lays down</h3>
+    <p class="sub-p">The installer picks from the catalog by what it finds in the project; <code>/alfred-code:configure</code> adds or removes any row later.</p>
+    <table>
+      <thead><tr><th style="width:16%">Part</th><th style="width:9%">Count</th><th>What it is</th><th style="width:28%">Where it lives</th></tr></thead>
+      <tbody>
+        <tr><td><span class="name">Skills</span></td><td>88</td><td class="desc">House conventions per language and framework, and the workflows you start by name (<code>/task-solve</code>, <code>/issue-diagnoser</code>, the captures and loops). Open the <b>Skills</b> tab.</td><td><code>.alfred/stack/skills/</code>, a link per pick in <code>.claude/skills/</code></td></tr>
+        <tr><td><span class="name">Agents</span></td><td>45</td><td class="desc">Designers, implementers and verifiers for ten domains, plus diagnosers, resolvers, analyzers and reviewers. Open the <b>Agents</b> tab.</td><td>the core <code>alfred-code</code> plugin; a seat the project did not pick is denied</td></tr>
+        <tr><td><span class="name">Rules</span></td><td>18</td><td class="desc">Six always-on house basics and twelve path-scoped rules that attach a skill when a matching file is touched. Open the <b>Rules</b> tab.</td><td><code>.alfred/stack/rules/</code>, sent by the rule loader hook</td></tr>
+        <tr><td><span class="name">Hooks</span></td><td>18</td><td class="desc">The guards, plus the hooks that load the rules, the docs, the preferences and the session history. Open the <b>Hooks</b> tab.</td><td>the core <code>alfred-code</code> plugin</td></tr>
+        <tr><td><span class="name">Commands</span></td><td>9</td><td class="desc">Install, update, configure, check and remove the stack, and switch the three modes. Open <b>Plugins &amp; commands</b>.</td><td>the core plugin: <code>/alfred-code:&lt;command&gt;</code></td></tr>
+        <tr><td><span class="name">Plugins</span></td><td>3</td><td class="desc">Optional: the claude-hud status line (recommended) and the C# and TypeScript language servers.</td><td>the Claude Code plugin cache</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-h">Quick start</h3>
+    <p class="sub-p">Node 26 (22.12 is the oldest that still runs), Claude Code 2.1.296 or newer, the <code>claude</code> CLI and git.</p>
+<pre class="code"><span class="c"># 1. in your project folder</span>
+claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin marketplace add envoydev/plugins-marketplaces
+claude plugin install alfred-code@envoydev --scope local
+
+<span class="c"># 2. inside Claude Code: scan, recommend, install what you keep</span>
+/alfred-code:init
+
+<span class="c"># 3. restart Claude Code, then the one-time finish</span>
+/alfred-code:init</pre>
+
+    <h3 class="sub-h">Where it writes</h3>
+    <table>
+      <thead><tr><th style="width:30%">Place</th><th>What goes there</th></tr></thead>
+      <tbody>
+        <tr><td><code>.claude/</code> in your project</td><td class="desc">a link per picked skill, the install stamp, and the stack's settings in <code>settings.local.json</code></td></tr>
+        <tr><td><code>.alfred/</code> in your project</td><td class="desc">the picked skills and rules (<code>stack/</code>), the docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git</td></tr>
+        <tr><td><code>~/.claude/</code></td><td class="desc">the plugin cache and the status line</td></tr>
+      </tbody>
+    </table>
+    <p class="sub-p" style="margin-top:10px"><code>/alfred-code:uninstall</code> removes only what the install recorded in its stamp - nothing of yours.</p>
+
+    <h3 class="sub-h">Supported stacks</h3>
+    <table>
+      <thead><tr><th style="width:24%">Stack</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><span class="name">.NET / C#</span></td><td class="desc">ASP.NET web and API, WPF, WinForms, console apps, Windows services</td></tr>
+        <tr><td><span class="name">Angular / TypeScript</span></td><td class="desc">web apps, Ionic / Capacitor mobile, browser extensions</td></tr>
+        <tr><td><span class="name">SQL</span></td><td class="desc">PostgreSQL, SQLite, SQL Server: schema, migrations, queries</td></tr>
+        <tr><td><span class="name">DevOps</span></td><td class="desc">Docker, GitHub Actions</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===================== HOW IT WORKS ===================== -->
+  <div class="panel" id="p-flow" role="tabpanel" aria-labelledby="t-flow">
+    <div class="sec-head"><h2>How it works</h2></div>
+    <p class="panel-intro">
+      Six pictures, from the install to how one domain team runs. A <b>stop</b> tag marks a step that waits for you: one
+      question with a recommended option. Under auto-run each stop takes that option, and nothing outward (a push, a merge,
+      a deploy) happens unasked.
+    </p>
+
+    <div class="chart">
+      <h3>1 &middot; Install, then keep it current</h3>
+      <p>One command per step; the installer is the only route that writes, on every OS.</p>
+      <ol class="steps">
+        <li><div class="step"><span class="k">plugin</span><b>Install the core plugin</b><span><code>claude plugin install alfred-code@envoydev</code> - the hooks, the 45 seats and the nine commands</span></div></li>
+        <li><div class="step" style="--c:var(--design)"><span class="k">scan</span><b><code>/alfred-code:init</code></b><span>reads the project, finds its stacks, recommends a set with the reason for each row</span><span class="stop">stop - you pick</span></div></li>
+        <li><div class="step" style="--c:var(--build)"><span class="k">install</span><b>The installer writes</b><span>skills and rules into <code>.alfred/stack/</code>, a link per skill, the settings, the install stamp</span></div></li>
+        <li><div class="step" style="--c:var(--qa)"><span class="k">finish</span><b>Restart, <code>/alfred-code:init</code> again</b><span>the language servers, the status line, the first project docs</span></div></li>
+        <li><div class="step" style="--c:var(--build)"><span class="k">work</span><b>Work as usual</b><span>rules, guards and seats run on their own</span></div></li>
+      </ol>
+      <div class="branch-cap">Later</div>
+      <div class="branch">
+        <div class="step"><b><code>/alfred-code:update</code></b><span>compares the stamp with the newest release and refreshes what changed; asks only about a new item</span></div>
+        <div class="step"><b><code>/alfred-code:configure</code></b><span>adds or removes skills, agents, rules, hooks and plugins, area by area</span></div>
+        <div class="step"><b><code>/alfred-code:validate</code></b><span>matches the install to the project again when its stacks changed</span></div>
+        <div class="step"><b><code>/alfred-code:status</code></b><span>read-only: what is installed, whether it runs, what gets used</span></div>
+        <div class="step" style="--c:var(--repair)"><b><code>/alfred-code:uninstall</code></b><span>removes exactly what the stamp recorded, nothing of yours</span></div>
+      </div>
+    </div>
+
+    <div class="chart">
+      <h3>2 &middot; A session, event by event</h3>
+      <p>Claude Code fires an event; the plugin's hooks answer it. Nothing here needs a prompt from you.</p>
+      <div class="lanes">
+        <div class="ev">Session start<small>a new session, a compaction, a seat starting</small></div>
+        <div class="what"><b>Context is loaded, not searched for.</b> The always-on rules arrive in parts, the architecture docs' start block, the personal preferences, one line of forge facts (remote, host, the CLIs on PATH), and the modes left on.
+          <div class="chips"><span class="chip">rules-session</span><span class="chip">docs-session</span><span class="chip">preferences-session</span><span class="chip">forge-session</span><span class="chip">history-session</span></div></div>
+        <div class="ev">Each prompt<small>UserPromptSubmit</small></div>
+        <div class="what"><b>The answer contract and the session size.</b> The answer budget and the <code>Modes ON:</code> line are added; a long session is asked whether to go on fresh, with the reason and the cost.
+          <div class="chips"><span class="chip">guard-answer</span><span class="chip">guard-fresh-session-start</span></div></div>
+        <div class="ev">Before each tool call<small>PreToolUse</small></div>
+        <div class="what"><b>The guards judge the call.</b> The shell guards run in one process, the file guards in another: force-push, destructive git and rm, a whole-file read, a secret value, an unreviewed commit, a guard switched off, a write into another project. An implementer dispatch needs its plan's approval stamp. An allowed call runs; a blocked one names why, and asks you when it needs your decision.
+          <div class="chips"><span class="chip">guard-protected-force-push</span><span class="chip">guard-catastrophic-rm</span><span class="chip">guard-read-whole-file</span><span class="chip">guard-secret-value</span><span class="chip">guard-ungated-commit</span><span class="chip">guard-config-protection</span><span class="chip">guard-cross-project-write</span><span class="chip">guard-unapproved-dispatch</span></div></div>
+        <div class="ev">After a tool call<small>PostToolUse</small></div>
+        <div class="what"><b>Path rules attach.</b> The first touch of a file sends the rule its path matches - a <code>.cs</code> edit gets the C# conventions, a <code>Dockerfile</code> the DevOps ones.
+          <div class="chips"><span class="chip">rules-session</span></div></div>
+        <div class="ev">End of a turn<small>Stop, SubagentStop</small></div>
+        <div class="what"><b>The stop contract.</b> A turn that stops for you ends in one question; a close names what is still pending. The session record and the docs' state are written. An optional per-turn build check is off by default.
+          <div class="chips"><span class="chip">guard-stop-contract</span><span class="chip">history-session</span><span class="chip">docs-session</span><span class="chip">check-turn-build</span></div></div>
+      </div>
+    </div>
+
+    <div class="chart">
+      <h3>3 &middot; One task through <code>/task-solve</code></h3>
+      <p>The single-chat flow for a feature or a fix. The size is stated first and decides which steps run: a trivial change skips the plan, a cross-stack one is pointed to <code>/task-solve-cross</code>.</p>
+      <ol class="steps">
+        <li><div class="step"><span class="k">size</span><b>One <code>Size:</code> line</b><span>trivial, small, standard or cross - never below the floor the spec check prints</span></div></li>
+        <li><div class="step" style="--c:var(--design)"><span class="k">1 design</span><b>Clarify, then design</b><span>the readings of the ask, one question at a time; the plan folder is written</span><span class="stop">stop - review</span></div></li>
+        <li><div class="step" style="--c:var(--design)"><span class="k">2 gate</span><b>Check the plan</b><span>a risk review names the traps the stack will hit, and stamps the plan</span></div></li>
+        <li><div class="step" style="--c:var(--brass)"><span class="k">3 approve</span><b>Approve and pick the mode</b><span>build in this session, or fan out to the stack's seats</span><span class="stop">stop - approve</span></div></li>
+        <li><div class="step" style="--c:var(--build)"><span class="k">4 build</span><b>Build test-first</b><span>task by task, each ticked in the plan's status file</span><span class="stop">stop - reviewer</span></div></li>
+        <li><div class="step" style="--c:var(--qa)"><span class="k">5 review</span><b>Conformance</b><span>in-session review or the stack's verifier; each fix re-reviewed</span></div></li>
+        <li><div class="step" style="--c:var(--qa)"><span class="k">6 close</span><b>The done gate</b><span>build and tests run after the last edit, output quoted; anything pending goes into the close question</span><span class="stop">stop - close</span></div></li>
+      </ol>
+      <div class="note"><b>The plan folder</b> holds the plan, a <code>status.json</code> and a <code>scoring.json</code>, written only by the plan-status script. A fresh session resumes from the folder alone. With scoring on, a fresh grader scores the plan before you see it.</div>
+    </div>
+
+    <div class="chart">
+      <h3>4 &middot; A failure through <code>/issue-diagnoser</code></h3>
+      <p>Any evidence - a stack trace, a red CI run, written repro steps, a bare report. The cause is proven before anything is fixed.</p>
+      <ol class="steps">
+        <li><div class="step" style="--c:var(--repair)"><span class="k">1 triage</span><b>Name the evidence tier</b><span>tier 1 a trace, down to tier 4 a bare report; the tier is carried as the confidence label</span></div></li>
+        <li><div class="step" style="--c:var(--repair)"><span class="k">2 gather</span><b>Reproduce and collect</b><span>in this session, or one evidence-gatherer seat per source</span></div></li>
+        <li><div class="step" style="--c:var(--repair)"><span class="k">3 root cause</span><b>The root-cause loop</b><span>fail on demand, walk back from the throw, one hypothesis per change</span><span class="stop">stop - the fork</span></div></li>
+      </ol>
+      <div class="branch-cap">4 &middot; the fork - one question, three outcomes</div>
+      <div class="branch">
+        <div class="step" style="--c:var(--build)"><b>Plan the fix as tasks</b><span>recommended when the cause is proven: task cards for <code>/task-solve</code></span></div>
+        <div class="step" style="--c:var(--qa)"><b>Write a report</b><span>a standalone document, when the fix is someone else's or not now</span></div>
+        <div class="step" style="--c:var(--design)"><b>Add log points and re-run</b><span>recommended when the cause is unproven: the next occurrence arrives a tier higher</span></div>
+      </div>
+    </div>
+
+    <div class="chart">
+      <h3>5 &middot; A feature across stacks through <code>/task-solve-cross</code></h3>
+      <p>Scoped in the session first; the seats are dispatched only after you approve. The producer of a shared contract goes first.</p>
+      <ol class="steps">
+        <li><div class="step"><span class="k">scope</span><b>Scope in the session</b><span>the awareness docs, a bounded symbol search, the seam catalog</span></div></li>
+        <li><div class="step" style="--c:var(--design)"><span class="k">design</span><b>A designer per domain</b><span>tasks and contracts, producer first</span><span class="stop">stop - approve</span></div></li>
+        <li><div class="step" style="--c:var(--build)"><span class="k">build</span><b>Implementers in parallel</b><span>one task each, code and its tests</span></div></li>
+        <li><div class="step" style="--c:var(--qa)"><span class="k">verify</span><b>A verifier per domain</b><span>against the plan and the code quality</span></div></li>
+        <li><div class="step" style="--c:var(--qa)"><span class="k">integrate</span><b>Integration review</b><span>read-only: the assembled feature against the frozen contract</span></div></li>
+      </ol>
+    </div>
 
   <div class="flow">
     <div class="cap">How one domain runs - a feature or a bug fix</div>
@@ -284,6 +570,93 @@
     </div>
     <div class="loopback"><span class="dash">&larr; &middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span> &nbsp;gaps return to the implementers as a punch-list, and re-verify, until the verifier signs off. The main session runs the fan-out - the vertical's seats never dispatch agents; the two diagnosers are the one exception, each dispatching a read-only evidence-gatherer.</div>
   </div>
+
+  </div>
+
+  <!-- ===================== FEATURES ===================== -->
+  <div class="panel" id="p-features" role="tabpanel" aria-labelledby="t-features">
+    <div class="sec-head"><h2>Features</h2></div>
+    <p class="panel-intro">What the stack does for you once it is installed, grouped by the job it does.</p>
+
+    <h3 class="sub-h">Safety</h3>
+    <div class="feat-grid">
+      <div class="feat" style="--c:var(--repair)"><span class="kick">Guards</span><h3>Blocked before it runs</h3>
+        <ul>
+          <li>a force-push to <code>main</code>, <code>master</code> or <code>develop</code></li>
+          <li><code>git reset --hard</code>, <code>clean -f</code> or <code>rm</code> over work that has no undo</li>
+          <li>a large commit that was never reviewed</li>
+          <li>loosening a lint or test config so a failing check passes</li>
+          <li>reading a whole 2,000-line file to find one method - symbol search instead</li>
+        </ul></div>
+      <div class="feat" style="--c:var(--repair)"><span class="kick">Secrets</span><h3>A credential is read for its presence</h3>
+        <p><code>cat .env</code> shows the keys with the values masked. The project's secrets file under <code>.alfred/</code> cannot be read, and a printed value is masked; a command that needs one gets it in its environment.</p></div>
+      <div class="feat" style="--c:var(--repair)"><span class="kick">Boundaries</span><h3>One session, one project</h3>
+        <p>A write into another repository is blocked and becomes a task card for that repo. In a workspace, a session may write anywhere inside it; past it, the main session asks and a seat is refused.</p></div>
+      <div class="feat" style="--c:var(--repair)"><span class="kick">Approval</span><h3>Nothing builds unapproved</h3>
+        <p>An implementer seat is dispatched only with its plan's approval stamp, written when your decision lands. A guard's own question - a discard, a write outside the project - is always yours, even under auto-run.</p></div>
+    </div>
+
+    <h3 class="sub-h">Modes - typed once, on until off</h3>
+    <p class="sub-p">Type the command alone on a line with <code>on</code> or <code>off</code>. A mode stays on in this session and every new one in the same checkout; each prompt shows the modes that are on.</p>
+    <div class="feat-grid">
+      <div class="feat" style="--c:var(--brass)"><span class="kick">auto-run</span><h3><code>/alfred-code:mode:auto-run on</code></h3>
+        <p>Each question takes its recommended option, so a run goes on while you are away. No push, merge, deploy or publish happens unasked. <code>/mode-auto-run &lt;request&gt;</code> runs one request this way.</p></div>
+      <div class="feat" style="--c:var(--qa)"><span class="kick">scoring</span><h3><code>/alfred-code:mode:scoring on</code></h3>
+        <p>A fresh grader scores plans and root-cause verdicts before they are released to you. <code>on 80</code> also sets the pass level (60 to 100).</p></div>
+      <div class="feat" style="--c:var(--design)"><span class="kick">auto-compact</span><h3><code>/alfred-code:mode:auto-compact on</code></h3>
+        <p>Stops the fresh-session question: a long session compacts and goes on.</p></div>
+    </div>
+
+    <h3 class="sub-h">Context that is ready, not searched for</h3>
+    <div class="feat-grid">
+      <div class="feat" style="--c:var(--design)"><span class="kick">Rules</span><h3>Conventions by file type</h3>
+        <p>Six always-on basics (interaction, quality gates, security, preferences, navigation, the docs root) and twelve path rules that attach the right skill on the first touch of a matching file.</p></div>
+      <div class="feat" style="--c:var(--design)"><span class="kick">Docs memory</span><h3>The project's own docs</h3>
+        <p>The captures write the architecture, code style, run book and related-project docs under <code>.alfred/docs/</code>; a session starts with their start block instead of reading the code broadly.</p></div>
+      <div class="feat" style="--c:var(--design)"><span class="kick">Preferences</span><h3>What you want, in your words</h3>
+        <p><code>/capture-preferences</code> records how you like to work, your code taste, architecture and git habits; every session and seat follows them, the personal doc in the main session.</p></div>
+      <div class="feat" style="--c:var(--design)"><span class="kick">Navigation</span><h3>Symbols, not whole files</h3>
+        <p>The language servers and a scoped search locate code; a whole-file read of a large source file is blocked and pointed at symbol search.</p></div>
+    </div>
+
+    <h3 class="sub-h">Workflows you start by name</h3>
+    <table>
+      <thead><tr><th style="width:26%">Run</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><code>/task-solve</code></td><td class="desc">a change you want to approve step by step</td></tr>
+        <tr><td><code>/task-solve-cross</code></td><td class="desc">a feature across backend and frontend</td></tr>
+        <tr><td><code>/issue-diagnoser</code></td><td class="desc">find the cause of a failure</td></tr>
+        <tr><td><code>/task-version-upgrade</code></td><td class="desc">a breaking upgrade, like a framework major</td></tr>
+        <tr><td><code>/task-build-from-scratch</code></td><td class="desc">a new application or a major module</td></tr>
+        <tr><td><code>/capture-awareness</code></td><td class="desc">the architecture docs, code style, run book, what is installed, sibling repos</td></tr>
+        <tr><td><code>/capture-quality</code></td><td class="desc">a code-quality, architecture-quality or test-coverage capture</td></tr>
+        <tr><td><code>/loop-code-quality</code></td><td class="desc">find and fix code-quality issues in rounds (architecture and coverage loops too)</td></tr>
+        <tr><td><code>/review-code</code>, <code>/review-security</code></td><td class="desc">the stack's own review of a change set, a branch, a PR or a path</td></tr>
+        <tr><td><code>/capture-usage-report</code></td><td class="desc">is the stack efficient here - tokens and tool use across the session transcripts</td></tr>
+        <tr><td><code>/mode-auto-run</code></td><td class="desc">any request, start to finish, while you are away</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-h">More</h3>
+    <div class="feat-grid">
+      <div class="feat" style="--c:var(--build)"><span class="kick">Workspaces</span><h3>Several projects, one install</h3>
+        <p>A folder of projects shares one install's skills, rules, hooks and seats. Each project below the root joins at its own init and keeps only its own values.</p></div>
+      <div class="feat" style="--c:var(--build)"><span class="kick">Fresh session</span><h3>A long session is asked to restart</h3>
+        <p>When a fresh session would cost less than going on, the ask says so with the numbers, and a resume block carries the work over.</p></div>
+      <div class="feat" style="--c:var(--build)"><span class="kick">History</span><h3>A record of each session</h3>
+        <p>A machine-local record of each session under the data root, kept out of git.</p></div>
+      <div class="feat" style="--c:var(--build)"><span class="kick">Cursor</span><h3>The same guards in Cursor</h3>
+        <p>Cursor reads the stack's guards from <code>.claude/settings.local.json</code>; a sibling repo carries the Cursor skills and agents.</p></div>
+    </div>
+  </div>
+
+  <!-- ===================== AGENTS ===================== -->
+  <div class="panel" id="p-agents" role="tabpanel" aria-labelledby="t-agents">
+    <div class="sec-head"><h2>Agents</h2></div>
+    <p class="panel-intro">
+      45 seats in the core plugin, dispatched as <code>alfred-code:&lt;seat&gt;</code>. The team matrix shows who does
+      what, the domain cards what each seat owns, and the table at the end lists every seat with its model pin.
+    </p>
 
   <!-- ===================== TEAM MATRIX ===================== -->
   <section>
@@ -729,36 +1102,90 @@
     </div>
   </section>
 
-  <!-- ===================== FULL INVENTORY (folded in from alfred-code.html) ===================== -->
   <section>
-    <div class="sec-head"><span class="sec-num">03</span><h2>The full inventory</h2></div>
-    <p class="sec-sub">
-      Everything the installer lays down, live-filterable: the <b>subagents</b>, the <b>skills</b> (built-in and house - the repository tier is empty, every stack skill is house-owned), the <b>plugins</b> (one row each, expand to see the skills / commands / hooks a pack ships), the <b>hooks</b>, and the path-scoped <b>rules</b>. Type to filter across name, source, and description.
+    <div class="sec-head"><span class="sec-num">03</span><h2>Every seat</h2></div>
+    <p class="sec-sub">Each seat with its area and how it is installed; a seat the project did not pick is denied. Type to filter.</p>
+    <div class="controls"><input type="search" class="inv-q" placeholder="Filter the seats by name, area or description..." aria-label="Filter the seats"></div>
+    <div class="counts inv-counts"><div><strong id="c-subagents">45</strong> subagents</div></div>
+    <div class="inv" id="content-agents"></div>
+  </section>
+  </div>
+
+  <!-- ===================== SKILLS ===================== -->
+  <div class="panel" id="p-skills" role="tabpanel" aria-labelledby="t-skills">
+    <div class="sec-head"><h2>Skills</h2></div>
+    <p class="panel-intro">
+      A skill is judgment loaded on demand: Claude sees its one-line description on every turn and reads the body only
+      when the moment comes. The <b>house</b> skills are this stack's own - conventions per language and framework, and
+      the workflows you start by name. The <b>built-in</b> ones ship with Claude Code. Type to filter; the filter is
+      shared by every catalog tab, and each tab's count shows its matches.
     </p>
-
-    <div class="counts">
-      <div><strong id="c-total">112</strong> total</div>
-      <div><strong id="c-subagents">37</strong> subagents</div>
-      <div><strong id="c-bi">14</strong> built-in</div>
-      <div><strong id="c-house">52</strong> house</div>
-      <div><strong id="c-plugins">7</strong> plugins</div>
-      <div><strong id="c-hooks">18</strong> hooks</div>
-    </div>
-
-    <div class="controls">
-      <input type="search" id="q" placeholder="Filter by name, source, or description...">
-    </div>
-
-    <div id="content"></div>
-
+    <div class="controls" style="margin-top:18px"><input type="search" class="inv-q" placeholder="Filter the skills by name, area or description..." aria-label="Filter the skills"></div>
+    <div class="counts"><div><strong id="c-house">88</strong> house</div><div><strong id="c-bi">14</strong> built-in</div></div>
+    <div class="inv" id="content-skills"></div>
     <div class="inv-sources">
       Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/alfred-code</code>, every skill pick copied into the project as a library copy - once, into <code>.alfred/stack/skills</code>, and linked into <code>.claude/skills</code> where git ignores that folder - and every subagent carried by the core <code>alfred-code</code> plugin, each one the project did not pick denied (<code>node scripts/install/alfred-code.js install --skills-only</code>, or the <code>alfred-code</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
     </div>
-  </section>
+  </div>
+
+  <!-- ===================== HOOKS ===================== -->
+  <div class="panel" id="p-hooks" role="tabpanel" aria-labelledby="t-hooks">
+    <div class="sec-head"><h2>Hooks</h2></div>
+    <p class="panel-intro">
+      A hook is a script Claude Code runs at an event - before a tool call, after one, at a session's start, at a turn's
+      end. A deterministic check lives here rather than in prose, because the model may skip prose and nobody skips a
+      gate. All of them ship inside the core plugin; the <b>How it works</b> tab shows which event each one answers.
+    </p>
+    <div class="controls" style="margin-top:18px"><input type="search" class="inv-q" placeholder="Filter the hooks by name, event or description..." aria-label="Filter the hooks"></div>
+    <div class="counts"><div><strong id="c-hooks">18</strong> hooks</div></div>
+    <div class="inv" id="content-hooks"></div>
+  </div>
+
+  <!-- ===================== RULES ===================== -->
+  <div class="panel" id="p-rules" role="tabpanel" aria-labelledby="t-rules">
+    <div class="sec-head"><h2>Rules</h2></div>
+    <p class="panel-intro">
+      A rule is standing guidance the rule loader sends as context. The six <b>always-on</b> rules (<code>alfred-*</code>)
+      arrive at every session start; a <b>path rule</b> arrives the first time a file matching its globs is touched,
+      and its one job is to point at the skill that holds the convention.
+    </p>
+    <div class="controls" style="margin-top:18px"><input type="search" class="inv-q" placeholder="Filter the rules by name, path or description..." aria-label="Filter the rules"></div>
+    <div class="counts"><div><strong id="c-rules">18</strong> rules</div></div>
+    <div class="inv" id="content-rules"></div>
+  </div>
+
+  <!-- ===================== PLUGINS & COMMANDS ===================== -->
+  <div class="panel" id="p-plugins" role="tabpanel" aria-labelledby="t-plugins">
+    <div class="sec-head"><h2>Commands</h2></div>
+    <p class="panel-intro">
+      The core plugin's nine commands. The first time: <b>init</b>, restart, <b>init</b> again; after that, <b>update</b>
+      when a release lands. Not sure which one? Type <code>/alfred-code</code> and it names the command to run.
+    </p>
+    <table style="margin-top:18px">
+      <thead><tr><th style="width:30%">Command</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>/alfred-code:init</code></td><td class="desc">First install: scan the project, recommend, install what you keep - then, after the restart, the one-time finish (language servers, status line, first docs).</td></tr>
+        <tr><td><code>/alfred-code:update</code></td><td class="desc">Move to the newest release fast: no selection questions, unless the release adds an item this install would not otherwise carry.</td></tr>
+        <tr><td><code>/alfred-code:configure</code></td><td class="desc">Add or remove skills, agents, rules, hooks and plugins: what is installed, what an update would bring, then the areas you pick.</td></tr>
+        <tr><td><code>/alfred-code:validate</code></td><td class="desc">Match the install to the project again: detect its real stacks and walk what no longer fits.</td></tr>
+        <tr><td><code>/alfred-code:status</code></td><td class="desc">Read-only: version, scope, docs root, what is enabled, whether each plugin runs, and what gets used.</td></tr>
+        <tr><td><code>/alfred-code:uninstall</code></td><td class="desc">Remove the stack from this project - exactly what the install ledger in the stamp recorded, nothing of yours.</td></tr>
+        <tr><td><code>/alfred-code:mode:auto-run on|off</code></td><td class="desc">Each question takes its recommended option, until off - new sessions included.</td></tr>
+        <tr><td><code>/alfred-code:mode:scoring on|off [level]</code></td><td class="desc">A fresh grader scores plans and root-cause verdicts before they are released, until off.</td></tr>
+        <tr><td><code>/alfred-code:mode:auto-compact on|off</code></td><td class="desc">No fresh-session question: a long session compacts and goes on, until off.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sec-head" style="margin-top:44px"><h2>Plugins</h2></div>
+    <p class="panel-intro">The optional plugins the installer can add beside the core one.</p>
+    <div class="controls" style="margin-top:18px"><input type="search" class="inv-q" placeholder="Filter the plugins by name or description..." aria-label="Filter the plugins"></div>
+    <div class="counts"><div><strong id="c-plugins">3</strong> plugins</div></div>
+    <div class="inv" id="content-plugins"></div>
+  </div>
 
   <footer>
-    <span>envoydev/alfred-code &middot; agent roster + full stack inventory</span>
-    <span>10 domains &middot; 30 seats &middot; 4 cross-cutting &middot; 4 resolvers &middot; 4 analysis/support &middot; 42 total</span>
+    <span>envoydev/alfred-code &middot; Claude Code stack reference</span>
+    <span>10 domains &middot; 30 domain seats &middot; 15 cross-cutting seats &middot; 45 total</span>
   </footer>
 </div>
 <script>
@@ -1082,12 +1509,16 @@ function renderRepository(filtered) {
 }
 
 function render(query) {
-  const root = document.getElementById("content");
-  root.innerHTML = "";
+  // One container per catalog tab; the filter is shared, so every tab's count reads its own matches.
+  const box = {};
+  for (const k of ["skills", "agents", "hooks", "rules", "plugins"]) {
+    box[k] = document.getElementById("content-" + k);
+    if (box[k]) box[k].innerHTML = "";
+  }
   const q = query;
   const has = (...parts) => !q || parts.join(" ").toLowerCase().includes(q);
 
-  // Subagents and MCP servers get their own top-level sections (subagents first).
+  // Subagents and MCP servers get their own groups (subagents on the Agents tab).
   const otherF     = otherTools.filter(([n, t, a, i, u, d]) => has(n, t, a, u, d));
   const subagentsF = otherF.filter(r => bucketOfType(r[1]) === "agents");
   const mcpsF      = otherF.filter(r => bucketOfType(r[1]) === "mcps");
@@ -1100,15 +1531,21 @@ function render(query) {
   const hooksF    = hooks.filter(([n, m, d]) => has(n, m, d));
   const rulesF    = rules.filter(([n, p, d]) => has(n, p, d));
 
-  const add = h => root.insertAdjacentHTML("beforeend", h);
-  if (subagentsF.length) add(renderSubagents(subagentsF));
-  if (biF.length)        add(renderFixedSource(builtin, biF));
-  if (houseF.length)  add(renderFixedSource(house, houseF));
-  if (plugins.length)    add(renderPlugins(plugins));
-  if (repoF.length)      add(renderRepository(repoF));
-  if (mcpsF.length)      add(renderMcps(mcpsF));
-  if (hooksF.length)     add(renderHooks(hooksF));
-  if (rulesF.length)     add(renderRules(rulesF));
+  const add = (k, h) => { if (box[k]) box[k].insertAdjacentHTML("beforeend", h); };
+  if (subagentsF.length) add("agents", renderSubagents(subagentsF));
+  if (houseF.length)     add("skills", renderFixedSource(house, houseF));
+  if (biF.length)        add("skills", renderFixedSource(builtin, biF));
+  if (repoF.length)      add("skills", renderRepository(repoF));
+  if (plugins.length)    add("plugins", renderPlugins(plugins));
+  if (mcpsF.length)      add("plugins", renderMcps(mcpsF));
+  if (hooksF.length)     add("hooks", renderHooks(hooksF));
+  if (rulesF.length)     add("rules", renderRules(rulesF));
+  for (const k in box) if (box[k] && !box[k].innerHTML) box[k].innerHTML = '<p class="group-meta">Nothing here matches the filter.</p>';
+  for (const k in box) if (box[k]) for (const el of box[k].querySelectorAll("td.desc, .group-meta")) {
+    el.classList.add("has-clip");
+    el.innerHTML = '<div class="clip">' + el.innerHTML + "</div>";
+  }
+  markClipped();
 
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set("c-subagents", subagentsF.length);
@@ -1116,8 +1553,13 @@ function render(query) {
   set("c-house", houseF.length);
   set("c-plugins", plugins.length);
   set("c-mcp", mcpsF.length);
-  set("c-hooks", hooksF.length);   // hooks tallied separately, never folded into c-total
-  set("c-total", subagentsF.length + biF.length + houseF.length + plugins.length + repoF.length + mcpsF.length);
+  set("c-hooks", hooksF.length);
+  set("c-rules", rulesF.length);
+  set("n-skills", houseF.length + biF.length + repoF.length);
+  set("n-agents", subagentsF.length);
+  set("n-hooks", hooksF.length);
+  set("n-rules", rulesF.length);
+  set("n-plugins", plugins.length + mcpsF.length);
 }
 
 // Non-skill capabilities: plugins providing only agents/LSPs/commands, plus top-level MCP servers.
@@ -1218,7 +1660,7 @@ const hooks = [
   ["instrument-tool-usage", "(wired, env-gated off)", "Env-gated tool-usage instrumentation for measured stats: wired on PreToolUse '.*' as a plain node spawn - the generated entry carries no shell gate, so the off path still pays that spawn on every call. The script's own env check inside it skips logging until ALFRED_CODE_INSTRUMENT flips from 0 to 1 in &lt;data root&gt;/.variables; then it logs every tool call - built-ins + Skill + mcp__* - as one JSONL row (ts/session/tool/non-sensitive detail) to &lt;data root&gt;/statistics/tools-usage/&lt;session&gt;.jsonl, so a run's skill/MCP usage can be tallied exactly. Never blocks."],
   ["docs-session", "SessionStart + SubagentStart + SubagentStop + PreToolUse (file tools, the shell route, any MCP rename_symbol / safe_delete_symbol by name, SubagentHandback) + Stop", "the architecture docs' start block (orientation, branch overrides, auto-promote of merged branches), the first source change held until a covering section was read (Claude Code's own Explore, Plan, claude-code-guide and statusline-setup seats get no block and no ask), and the finish ask - a finished agent, then the session itself, asked once whether the sections documenting what they changed still hold. A seat is asked at its first SubagentHandback, which is denied until the ask is answered, so the report it sends again carries the docs line (asked at SubagentStop, 48 of 48 asks came after the report had left); SubagentStop asks only a seat that stopped without a hand-back. A hand write of a plan folder's status.json or scoring.json, and an edit of an approved plan's Markdown, are denied: plan-status.js is the only writer. Ships its engine, docs.js, beside it."],
   ["preferences-session", "Read + Grep + LSP + Write + Edit + MultiEdit + NotebookEdit + every MCP call (a rename_symbol / safe_delete_symbol and five symbol lookups, read by tool name) + the shell route (Bash + PowerShell + Monitor) + Skill + SessionStart (every source) + SubagentStart + UserPromptExpansion (the typed runs)", "Makes the read alfred-preferences.md asks for happen when it matters. PERSONAL-PREFERENCES.md (how the user wants the assistant to work) is pushed into every session's start - startup, resume, clear and compact, so it is back after each compaction - comment lines dropped, cut near 3,200 chars with a Read line for the rest - then the tool order: each job's ranks from TOOLS-PREFERENCES.md (or the stack's defaults for a job it leaves out) resolved against what this machine reaches, each with its ToolSearch select: load line; every seat but Claude Code's two guides is told its own, a stack seat only what its tools grant. Each push, session and seat, ends on the host's own shell traps - the Windows Git Bash line on win32, the zsh glob and word-split lines under a zsh $SHELL, nothing on bash. The FIRST file edit of each actor (the main session, and each seat by its agent_id) is held until the code docs that exist under &lt;docs-path&gt;/preferences/ were read (each where it first sits - this checkout, then a linked worktree's main checkout, which alone holds the git-ignored personal docs; a link is never read) - the PERSONAL-CODE-PREFERENCES.md and ARCHITECTURE-PREFERENCES.md entries whose Scope: reaches the target, without their Check: lines, then the PROJECT-CODE-PREFERENCES.md sections covering the target plus its cover-less ones; a solution designer, a verifier, the code-quality analyzer, the security auditor and the integration reviewer, which edit nothing, are handed the code docs at their start (a bare seat name only where the install stamp records its copy); the architecture analyzer is handed the architecture doc alone, inside an architecture quality run only - never the map capture's; the main session's review run (review-code, review-security, the built-in two when the user types one, a quality capture or loop) is handed the code docs before it starts, at its first Skill call or its typed expansion; a run ends at the user's next typed message other than a go-on reply such as continue; the FIRST git write (a call that moves the index, the tree, a ref or a stash, makes a branch or tag, or a gh pr merge / create) is held until GIT-PREFERENCES.md was read, read live with its locked consent, checkpoint, safety, attribution and checks entries first. The denial HANDS the docs over (one room of 7,000 chars: what does not fit comes with the retry, the project doc's rest named as docs.js show lines; such a seat's first Reads, Greps, LSP calls, symbol lookups and shell reads of a file bring what its start could not hold, and so do a reviewing main session's), so the retry passes; a whole Read of a doc, a shell read naming it or a docs.js show of it counts too. The record is per session and per actor under &lt;data root&gt;/state/sessions/, and a compaction clears its marks (the run goes on), so the held docs are handed over again. Edits outside the project, under state/, statistics/, the preferences folder, .claude/ and .git/ are no code change. Holds with nobody at the terminal (it asks nothing); fail-open."],
-  ["history-session", "SessionStart + Stop", "A machine-local record of each session under &lt;data root&gt;/state/history/ (kept out of git by the data root's one .gitignore): at Stop it reads only the transcript bytes past a stored offset (8MB at most per pass) and keeps the commits since the session began, the files left dirty and the user's AskUserQuestion answers, credential shapes scrubbed and each capped at 300 chars; at SessionStart it injects the last ALFRED_CODE_HISTORY records of the same branch (seeded 3, at most 10) in at most 150 chars plus 150 per record, framed as history, not instructions - each plan still on disk with where it stands now, read from the plan as the block renders: its cards done of all and its Resume: line, or completed. No model call; ALFRED_CODE_HISTORY=0 is off. Engine history.js is copied beside the hook, run as node .claude/hooks/history.js rulings. It also keeps each session's session-inspector status file, .claude/session-inspector/status/&lt;id&gt;.json under its working directory (schema 1), prunes those past 7 days and keeps the folder out of git with a line in info/exclude. The status file's plan key names the plan folder the session works on, set by a plan-status.js call naming a plan; a plan folder is read through its status.json."],
+  ["history-session", "SessionStart + Stop", "A machine-local record of each session under &lt;data root&gt;/state/history/ (kept out of git by the data root's one .gitignore): at Stop it reads only the transcript bytes past a stored offset (8MB at most per pass) and keeps the commits since the session began, the files left dirty and the user's AskUserQuestion answers, credential shapes scrubbed and each capped at 300 chars; at SessionStart it injects the last ALFRED_CODE_HISTORY records of the same branch (seeded 3, at most 10) in at most 150 chars plus 150 per record, framed as history, not instructions - each plan still on disk with where it stands now, read from the plan as the block renders: its cards done of all and its Resume: line, or completed. No model call; ALFRED_CODE_HISTORY=0 is off. Engine history.js is copied beside the hook, run as node .claude/hooks/history.js rulings. It also keeps each session's status file, &lt;data root&gt;/state/sessions/status/&lt;id&gt;.json at the project root (schema 1; no exclude line), only while alfred-mods (or session-inspector) is enabled in the merged enabledPlugins (a --plugin-dir session lists alfred-mods@&lt;any&gt;: true in the account settings.json or the project's .claude/settings.json or settings.local.json - a --settings file is not read), prunes those past 7 days and clears the old .claude/session-inspector/status/ files and exclude lines. The status file's plan key names the plan folder the session works on, set by a plan-status.js call naming a plan; a plan folder is read through its status.json."],
   ["forge-session", "SessionStart + SubagentStart", "One line of forge facts at the start of every session and every seat - the remote the branch pushes to, its host and kind, the forge CLIs on PATH and the MCP servers that are forge servers by their launch command or URL (never their name) - so the model maps each concept (merge a change, write a branch, watch a pipeline) onto whatever tool it has. No network. The engine forge.js beside it reads every tool call as a concept for the publish gate and the first-git-write hold."],
   ["rules-session", "SessionStart + SubagentStart + PostToolUse", "The project's own rules from .alfred/stack/rules (and each workspace member's) sent as context: the always-on rules in up to five parts of 9,500 characters at session and seat start, a path rule the first time a touched file matches its globs - nothing at all until a project holds .alfred/stack/rules."],
   ["check-turn-build", "Stop", "One scoped build check per turn, seeded OFF (ALFRED_CODE_TURN_CHECK=0; 1 turns it on per project after a measured week of green claims with no check behind them; validate and status print one advisory row once 3 such claims land in the newest 10 sessions, and never set it). At Stop it reads the turn's changed files from git - every path git status lists whose mtime is past the previous Stop's marker (&lt;data root&gt;/state/sessions/turn-check-&lt;session&gt;), or past the session's start - and when they hold source files, runs ONE check per nearest root - the project's own tsc --noEmit -p for TypeScript, dotnet build --no-restore -v q for C# - and hands the first 20 error lines back as a block, once per turn: the continuation Stop passes and leaves the marker, so its fix-up edits are the next turn's check. Outside git, nothing is this turn's. A missing compiler, a timeout or anything unreadable is a pass. Its timeout is 60s, the one declared exception to the 10s rule, with its checks kept inside 50s of it. Since 2026-10-16 it starts no node process of its own: history-session's Stop runs it in-process, with the check's own gates, and that wiring takes the 60s; with history-session not picked it keeps its own Stop row."],
@@ -1269,10 +1711,66 @@ function renderRules(filtered) {
   return html;
 }
 
-document.getElementById("q").addEventListener("input", e => {
-  render(e.target.value.trim().toLowerCase());
+// A cut text shows 'show all' only when it really overflows; measured on the visible panel.
+function markClipped() {
+  for (const c of document.querySelectorAll(".panel.active .clip:not(.open)"))
+    c.classList.toggle("cut", c.scrollHeight > c.clientHeight + 1);
+}
+document.addEventListener("click", e => {
+  if (e.target.closest("a, summary, input")) return;
+  const box = e.target.closest(".has-clip");
+  const clip = box && box.querySelector(":scope > .clip");
+  if (!clip || !(clip.classList.contains("cut") || clip.classList.contains("open"))) return;
+  const open = clip.classList.toggle("open");
+  clip.classList.toggle("cut", !open);
 });
+window.addEventListener("resize", markClipped);
+
+// The catalog filter: one query shared by every catalog tab's box.
+const filters = [...document.querySelectorAll(".inv-q")];
+for (const input of filters) {
+  input.addEventListener("input", () => {
+    for (const other of filters) if (other !== input) other.value = input.value;
+    render(input.value.trim().toLowerCase());
+  });
+}
 render("");
+
+// Tabs: one panel at a time, addressed by the URL hash, arrow keys move between tabs.
+(function tabs() {
+  const nav = document.querySelector(".tabs");
+  const list = [...nav.querySelectorAll(".tab")];
+  const ids = list.map(t => t.getAttribute("href").slice(1));
+  const navTop = () => document.querySelector(".stat-row").getBoundingClientRect().bottom + window.scrollY;
+  function show(id, focus) {
+    if (!ids.includes(id)) id = ids[0];
+    for (const t of list) {
+      const on = t.getAttribute("href") === "#" + id;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).classList.toggle("active", on);
+      if (on && focus) t.focus();
+      if (on) t.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    markClipped();
+  }
+  function open(id, focus) {
+    history.replaceState(null, "", "#" + id);
+    show(id, focus);
+    if (window.scrollY > navTop()) window.scrollTo(0, navTop());
+  }
+  for (const t of list) t.addEventListener("click", e => { e.preventDefault(); open(t.getAttribute("href").slice(1)); });
+  nav.addEventListener("keydown", e => {
+    const at = list.indexOf(document.activeElement);
+    if (at < 0) return;
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: list.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    open(ids[(to + list.length) % list.length], true);
+  });
+  window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+})();
 </script>
 </body>
 </html>

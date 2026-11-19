@@ -205,7 +205,10 @@ test('plugin-packaging is self-contained (it names no stack skill), and the repo
     const raw = read('.claude/skills/plugin-packaging/SKILL.md');
     const pa = squash(raw);
     const bullet = raw.split('\n').filter((l, i, all) => l.startsWith('- **Skills**') || (i && all[i - 1].startsWith('- **Skills**') && /^  \S/.test(l)));
-    assert.strictEqual(bullet.length, 1, 'the Skills bullet is one line');
+    // claude-kit owns the file's wrapping (15c04ca wraps the bullet onto a second line); what holds here is that the bullet
+    // routes to the skills docs instead of restating the habit.
+    assert.ok(bullet.length >= 1, 'the Skills bullet is there');
+    assert.match(bullet.join(' '), /code\.claude\.com\/docs\/en\/skills/, 'the Skills bullet points at the skills docs');
     assert.ok(!pa.includes('habits-skill-writing'), 'plugin-packaging names no stack skill: it is this repo\'s own and stands alone');
     for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers', '1,536', 'skillListingBudgetFraction',
         'user-invocable', 'description, not the body'])

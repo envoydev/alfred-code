@@ -119,8 +119,8 @@ comparable banner by banner; the content varies, the skeleton never does.
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
-  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy>
-  hooks=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
+  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy> hooks=<plugin|copy> skills-from=<flag|shared|ledgered|env> seats-switch=<open|shared|local|workspace>`
+  names the routes (`skills=` is where the agents come from now; `seats-switch=` is step 8's agents-route ask); `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
   report which, since every carried seat would read as dropped. `hooks=no` means the hooks layer is
@@ -288,7 +288,7 @@ write time rather than trusting a preview a few turns stale, and report its prin
 for that same row is a deliberate decision like any other row's and goes through `variables.js set` as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
-**Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with both questions, each carrying its current line:
+**Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with the questions this step puts (three with the agents ask below), each carrying its current line:
 
 ```ask
 Memory for this project? (now: <the modes memory: line>)
@@ -315,27 +315,43 @@ Copy your <n> memory files to the new place?
 
 A memory answer other than the current mode rides step 11's ONE installer call as `--memory <default|docs|custom>` ('Copy them' adds `--memory-copy`) - a change on its own, so that call runs - and applies from the next session; its `autoMemoryDirectory`, `memory: copied` and `.gitattributes` lines are reported verbatim.
 
+**Where the agents come from** rides this area too. The current route is `skills=` of step 1's `plan routes:` line in `$TMP/plan.out` - never from a settings file by hand. `seats-switch=` other than `open` puts no ask and says why in one line: `shared` - `agents: settings.json decides where they come from - change it there`; `local` - `agents: your .claude/settings.local.json cannot be written - not switched here`; `workspace` - `agents: a workspace's top and members share one route - not switched here`. On `open`, ask the template for the current route in the same call as the memory and navigation asks (an unattended run takes its Recommended option, so it keeps the route and writes nothing):
+
+```ask
+Where your agents come from? (now: the plugin)
+- 'Keep them in the plugin (Recommended)' - one plugin carries every agent and the project holds no agent files; nothing changes.
+- 'Files in .claude/agents' - each picked agent as a file you can read; /alfred-code:update refreshes it, and an edit of yours is overwritten with a line saying so; this machine's choice.
+```
+
+```ask
+Where your agents come from? (now: files in .claude/agents)
+- 'Keep them as files in .claude/agents (Recommended)' - nothing changes.
+- 'Back to the plugin' - one plugin carries every agent and the project holds no agent files; your edited copies stay.
+```
+
+An answer that keeps the route passes nothing. The other route adds `--seats-route copy` ('Files in .claude/agents') or `--seats-route plugin` ('Back to the plugin') to step 11's ONE installer call - a change on its own, so that call runs - and the installer's `seats:` line and its `!!` lines are reported as they are. The switch is this machine's: the installer writes it into `.claude/settings.local.json` and never into the shared file.
+
 **The workspace role** rides this area too. `node "$TMP/repo/scripts/workspace.js" role --root .` prints `role:
-<current>` and one `ask: <label><TAB><answer>` line per option; ask the template for the current role, its `Join <rel>`
+<current>` and one `ask: <label><TAB><answer>` line per option; ask the template for the current role, its `Join <rel> (<name>)`
 option only when an `ask:` line offers it. `role: workspace off` (`ALFRED_CODE_WORKSPACE=0`) prints no `ask:` line:
 show the role line, ask nothing.
 
 ```ask
 This project's workspace role is standalone - change it?
 - 'Keep (Recommended)' - nothing changes
-- 'Join <rel>' - a child of <rel>: it takes that install's set and values, and its own picks and values stay its own
+- 'Join <rel> (<name>)' - a child of <rel> (<name>): it takes that install's set and values, and its own picks and values stay its own
 - 'Become a root' - projects below can join this one as children
 ```
 
 ```ask
 This project's workspace role is root of <n> children - change it?
 - 'Keep (Recommended)' - nothing changes
-- 'Join <rel>' - it becomes a child of <rel> and stays the root of its own children
+- 'Join <rel> (<name>)' - it becomes a child of <rel> (<name>) and stays the root of its own children
 - 'Become standalone' - refused while a child line stands: each child leaves first (its own configure), or /alfred-code:uninstall here releases them
 ```
 
 ```ask
-This project's workspace role is child of <rel> - change it?
+This project's workspace role is child of <rel> (<name>) - change it?
 - 'Keep (Recommended)' - nothing changes
 - 'Leave and become standalone' - every value it reads from the workspace is written into its own .variables first, so nothing changes
 - 'Leave and become a root' - the same, and projects below can join it
@@ -418,7 +434,7 @@ the lines the run leaves OFF: `kept-off <line>` is a switched-off item the closu
 the user never picked - report it as 'stays switched off; pick it in the walk to turn it on', never
 as added; `keep-parked plugin <name>` is a parked plugin the read-back would otherwise enable -
 pass it as a `--drop` whenever the installer runs, but it is no reason to run it. When it prints `none` AND no removals were accepted AND no env,
-permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
+permission-mode, plugin-settings or seats route change was chosen, print ONE line - `unchanged - nothing to
 install, nothing to remove` - and skip to step 12 (a rename or place answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
 installer pass whose only real effect was resetting the agent model/effort pins).
@@ -439,7 +455,7 @@ kept, or the plugins layer not walked); the narration line before the call names
 `placement: not asked - <why>`). That answer is where the `--scope-of` flags come from, so an installer run
 before it owes a second run when the answer moves an item (audit 2026-10-20 C46, 878f253d).
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|docs|custom [--memory-copy]] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--keep-pins] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--instructions-file agents|claude] [--instructions-at root|claude] [--memory default|docs|custom [--memory-copy]] [--seats-route plugin|copy] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

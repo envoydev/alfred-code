@@ -118,6 +118,20 @@ class GuardExit
 const crypto = require('node:crypto');
 const CACHE_PREFIX = 'alfred-v8-';
 const GUARD_PARAMS = ['exports', 'require', 'module', '__filename', '__dirname'];
+// An entry is code V8 runs after checking only the LENGTH of the source against it (replayed in the hooks audit of
+// 2026-11-19: data built from another text of the same length ran in the guard's place), under a key any reader of the
+// plugin can compute. So an entry is read only where this user owns it and no other account can write it - where every
+// account shares the temp dir (Linux /tmp) another one could plant it first - and is written for its owner alone.
+// Windows has no uid (`uid` undefined), and gives each user a temp dir of its own.
+const CACHE_FILE_MODE = 0o600;
+const WRITABLE_BY_OTHERS = 0o022;
+// 'wx' creates the file or fails: a link or a file already at the save's tmp name is never written through (B11-C3).
+const CREATE_ONLY = 'wx';
+function trustedCacheEntry(stat, uid)
+{
+    if (!stat.isFile()) return false;
+    return uid === undefined || (stat.uid === uid && (stat.mode & WRITABLE_BY_OTHERS) === 0);
+}
 try { require('node:module').enableCompileCache?.(path.join(os.tmpdir(), `${CACHE_PREFIX}modules`)); }
 catch { /* an older Node, or a dir it cannot write */ }
 function compileGuard(file, source)
@@ -127,7 +141,7 @@ function compileGuard(file, source)
     try { entry = path.join(os.tmpdir(), `${CACHE_PREFIX}${path.basename(file, '.js')}-${crypto.createHash('sha1').update(`${process.version}\0${text}`).digest('hex').slice(0, 16)}.bin`); }
     catch { entry = null; }
     let cachedData;
-    try { if (entry) cachedData = fs.readFileSync(entry); }
+    try { if (entry && trustedCacheEntry(fs.lstatSync(entry), process.getuid?.())) cachedData = fs.readFileSync(entry); }
     catch { cachedData = undefined; }
     let script = null;
     try
@@ -142,12 +156,14 @@ function compileGuard(file, source)
             try
             {
                 const tmp = `${entry}.${process.pid}.tmp`;
-                fs.writeFileSync(tmp, script.createCachedData());
+                fs.writeFileSync(tmp, script.createCachedData(), { mode: CACHE_FILE_MODE, flag: CREATE_ONLY });
                 fs.renameSync(tmp, entry);
                 const prelude = require('./hook-prelude.js');
                 if (typeof prelude.sweepStale === 'function') prelude.sweepStale(os.tmpdir(), CACHE_PREFIX);
             }
-            catch { /* a cache that cannot be written costs only the next compile */ }
+            // EEXIST lands here too - another account's link, or this pid's leftover from a crashed run until sweepStale
+            // takes it - and is a skipped save, like any cache that cannot be written: it costs only the next compile
+            catch { /* the save is skipped */ }
         } };
     }
     catch
@@ -299,7 +315,10 @@ function combine(results)
         }
         if (reason !== null) { blocks.push({ text: reason, exit: false }); continue; }
         if (hso.updatedInput && typeof hso.updatedInput === 'object' && !Array.isArray(hso.updatedInput)) inputs.push(hso.updatedInput);
-        if (RANK[hso.permissionDecision] > (decision ? RANK[decision.value] : 0))
+        // two guards that both ask: the prompt names every reason, so no harm is hidden behind another (2026-11-19)
+        if (decision && hso.permissionDecision === 'ask' && decision.value === 'ask' && hso.permissionDecisionReason)
+            decision.reason = [decision.reason, hso.permissionDecisionReason].filter(Boolean).join('\n');
+        else if (RANK[hso.permissionDecision] > (decision ? RANK[decision.value] : 0))
             decision = { value: hso.permissionDecision, reason: hso.permissionDecisionReason };
     }
 
@@ -827,5 +846,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe, trustedCacheEntry };
 if (require.main === module) main();

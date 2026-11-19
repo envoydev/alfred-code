@@ -393,7 +393,8 @@ function yamlPairs(lines, meaningful, text, file) {
     if (YAML_BLOCK.test(rest)) {
       const body = [];
       while (i + 1 < lines.length && (!lines[i + 1].trim() || lines[i + 1].match(/^\s*/)[0].length > indent)) body.push(lines[++i]);
-      const cut = Math.min(...body.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length), Infinity);
+      // a reduce, never a spread: a block of 130,000 lines overflowed the call stack (audit 2026-11-19 B6-S1)
+      const cut = body.reduce((least, l) => (l.trim() ? Math.min(least, l.match(/^\s*/)[0].length) : least), Infinity);
       push(path, key, body.map((l) => l.slice(Number.isFinite(cut) ? cut : 0)).join('\n').trim());
       continue;
     }
@@ -900,7 +901,7 @@ function maskFormatText(text, file, mask, count) {
         if (YAML_BLOCK.test(rest)) {
           const body = [];
           for (let j = idx + 1; j < lines.length && (!lines[j].trim() || indentOf(lines[j]).length > lead.length); j++) body.push(lines[j]);
-          const cut = Math.min(...body.filter((l) => l.trim()).map((l) => indentOf(l).length), Infinity);
+          const cut = body.reduce((least, l) => (l.trim() ? Math.min(least, indentOf(l).length) : least), Infinity);
           const v = body.map((l) => l.slice(Number.isFinite(cut) ? cut : 0)).join('\n').trim();
           if (credValue(key, v)) block = lead.length;
           return line;
@@ -1513,6 +1514,7 @@ const msOr = (v, d) => (Number.isFinite(v) ? v : d);
 const MASK_BUDGET_MS = msOr(global.MASK_BUDGET_MS, 5000);
 const MASK_SLOW_MS = msOr(global.MASK_SLOW_MS, 1000);
 const WITHHELD = 'output withheld: the masker ran out of time';
+const WITHHELD_FAILED = 'output withheld: the masker failed';
 const spentMs = () => Math.round(process.uptime() * 1000);
 const JSON_CONFIG = /(?:^|[\\/])(?:\.mcp\.json|\.claude[\\/]settings[^\\/]*\.json)$/i;
 const WELL_KNOWN = Object.freeze([
@@ -1647,12 +1649,23 @@ if (posted || eventIs(payload, 'PostToolUseFailure')) {
     done();
   }
   if (!res.stdout && !res.stderr) done();
-  const got = collectValues(payload);
-  files = got.files.length;
   const answer = (stdout, stderr) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: { ...res, stdout, stderr } } }));
-  if (spentMs() > MASK_BUDGET_MS) { ledgerRow('probe', { kind: 'mask-withheld' }); answer(WITHHELD, ''); done(); }
-  const out = maskText(res.stdout, got.values);
-  const err = maskText(res.stderr, got.values);
+  // A throw here would exit 1, and a failed PostToolUse hook leaves the result as it was - unmasked. It withholds the
+  // output instead, as the time budget does (audit 2026-11-19 B6-S1); the row names the error's class, never its text.
+  let got;
+  let out;
+  let err;
+  try {
+    got = collectValues(payload);
+    files = got.files.length;
+    if (spentMs() > MASK_BUDGET_MS) { ledgerRow('probe', { kind: 'mask-withheld' }); answer(WITHHELD, ''); done(); }
+    out = maskText(res.stdout, got.values);
+    err = maskText(res.stderr, got.values);
+  } catch (e) {
+    ledgerRow('probe', { kind: 'mask-error', error: String((e && e.name) || 'Error').slice(0, 40) });
+    answer(WITHHELD_FAILED, '');
+    done();
+  }
   const count = out.count + err.count;
   if (count) { // the masker answers only when it masked something
     const hits = out.hits.concat(err.hits);
@@ -1665,10 +1678,15 @@ if (posted || eventIs(payload, 'PostToolUseFailure')) {
 const input = payload.tool_input || {};
 // A refusal ends in no ask: no receipt opens one (swap 1). The one ask left is the host's, on a Read (askOrDeny).
 const refuse = (msg) => { process.stderr.write(msg); process.exit(2); };
+// The store's values reach a command through --with-sensitive, which alfred-security.md says the denial names; a key
+// file's never do (--with-sensitive reads the data-root store alone).
+const runHint = (file) => (isStoreName(realOf(file)) && baseOf(realOf(file)) !== KEY_FILE
+  ? `A command that needs its values gets them in its own environment, each printed as <KEY>:\n  node "${__filename}" --with-sensitive -- "<command line>"\n`
+  : '');
 const presenceHint = (file) =>
   `Read it for PRESENCE: node "${__filename}" --presence "${file}" [KEY ...]  ->  KEY=set (N chars) | empty | absent.\n` +
   `Every value masked: node "${__filename}" --redacted "${file}". The user sets values by hand; a value a .mcp.json\n` +
-  `expands (\`\${NAME}\`) belongs in the ACCOUNT settings file (~/.claude/settings.json), never a project one.\n`;
+  `expands (\`\${NAME}\`) belongs in the ACCOUNT settings file (~/.claude/settings.json), never a project one.\n` + runHint(file);
 // SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list,
 // shipped beside this hook on both routes. A copy that runs before it lands judges by the payload's shape - a
 // string `command` - so a protective gate never goes quiet for want of a module.
@@ -1854,6 +1872,45 @@ if (isShellTool(payload.tool_name)) {
     refuse('Blocked: the command carries a credential-shaped literal (a token / key / JWT).\n' +
       'Per alfred-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');
+  }
+  // Without shell-writes.js the reader names no store, `.env` or key file, so the raw words are read here: only a command
+  // that can leak a secret file's values the masker cannot cover asks - an encoder or comparison in the same pipeline
+  // (its output is the values transformed), a send off the machine, or a print in the mode no masker covers (coreMode);
+  // a copy, a move, a presence check or a template (`.env.example`) runs unasked (the user's ruling, 2026-11-19, on the
+  // hooks audit's Q6: never a block, never a prompt for a safe command, an honest recommendation).
+  if (!shellWrites) {
+    const secretWord = (a) => { const x = a.replace(/^['"@<]+|['"]+$/g, ''); return !TEMPLATE_FILE.test(x)
+      && (storeNameTests(x).MENTION.test(x) || x.includes(KEY_FILE) || /(?:^|[\\/])\.(?:env|secrets)(?:\.[\w-]+)?$/i.test(x)); };
+    // a print of a secret FILE: for grep, rg, awk and sed the first word past the options is the pattern or the script,
+    // never a file, so `grep -n '.env' README.md` prints no secret
+    const printsSecret = (w) => {
+      const verb = String(w[0] || '').toLowerCase();
+      if (!['cat', 'less', 'more', 'head', 'tail', 'grep', 'rg', 'awk', 'sed', 'type', 'get-content', 'gc', 'strings'].includes(verb)) return false;
+      let args = w.slice(1);
+      if (['grep', 'rg', 'awk', 'sed'].includes(verb)) { const at = args.findIndex((a) => !a.startsWith('-')); if (at >= 0) args = args.slice(0, at).concat(args.slice(at + 1)); }
+      return args.some(secretWord);
+    };
+    let leak = null;
+    // a script typed for another shell (`bash -c '...'`, `eval '...'`) is unwrapped and read by its own words
+    const unwrapped = raw.replace(/(?:^|[\s;&|(])(?:sudo\s+)?(?:(?:ba|z|da|k)?sh|pwsh|powershell)(?:\.exe)?(?:\s+-[a-zA-Z]+)*?\s+-(?:[a-zA-Z]*c|command)\s+|(?:^|[\s;&|(])eval\s+/g, ';');
+    for (const pipeline of unwrapped.split(/&&|\|\||[;\n]|&(?!&)/)) {
+      const segs = pipeline.split('|').map((s) => s.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^['"]+|['"]+$/g, '')));
+      if (!segs.some((w) => w.slice(1).some(secretWord))) continue;
+      const verbs = segs.map((w) => String(w[0] || '').toLowerCase());
+      if (verbs.some((v) => ['base64', 'xxd', 'od', 'hexdump', 'rev', 'fold', 'diff', 'cmp', 'sdiff'].includes(v)))
+        leak = 'This encodes or compares a secret file, and that output is the values transformed, which no masker can hide';
+      else if (segs.some((w) => ['curl', 'wget', 'scp', 'nc', 'rsync', 'sftp'].includes(String(w[0] || '').toLowerCase()) && w.slice(1).some(secretWord)))
+        leak = 'This sends a secret file off this machine';
+      else if (segs.some(printsSecret) && (coreMode(payload) || segs.length > 1))
+        leak = coreMode(payload) ? 'This prints a secret file, and in this session no masker hides the values, so they stay in this transcript'
+          : 'This prints a secret file into another command, and the masker covers only a print that stands alone';
+      if (leak) break;
+    }
+    if (leak) {
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+        permissionDecisionReason: `${leak}. Recommended: deny; the guard's --presence reads the file without its values. (shell-writes.js is missing beside ${pathMod.basename(__filename)}, so this guard read the text only; /alfred-code:update repairs the install.)` } }));
+    }
+    process.exit(0);
   }
   const cwd = payload.cwd || process.cwd();
   const sh = shellEntries(raw, cwd);
@@ -2043,18 +2100,19 @@ if (payload.tool_name === 'Grep') {
       const key = secretIn(file);
       if (key) {
         refuse(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +
-          `A content-mode Grep PRINTS the matching lines, so it is the same value read the Read and\n` +
-          `shell routes already block - just spelled as a search. Use \`output_mode: "count"\` or\n` +
-          `\`"files_with_matches"\` to ask whether the key is there, or the presence route for what it holds.\n` +
+          `A content-mode Grep of a credential file is refused whatever the pattern - a narrower one is refused again.\n` +
+          `Use \`output_mode: "count"\` or \`"files_with_matches"\` to ask whether a key is there, or search the file's\n` +
+          `value-free view: node "${__filename}" --redacted "${file}" --note-to-stderr | grep -n '<pattern>'\n` +
           presenceHint(file));
       }
     } else if (!target || dir) {
       const hit = walkCredentialFile(dir || (typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.env.CLAUDE_PROJECT_DIR || process.cwd()), input);
       if (hit) {
         refuse(`Blocked: Grep -> content over a directory reaches ${hit}, which holds a credential under \`${secretIn(hit)}\`, and the pattern matches a line of it.\n` +
-          `A content-mode Grep PRINTS the matching lines, so this is the same value read the Read and shell routes\n` +
-          `already block - spelled as a tree search. Use \`output_mode: "count"\` or \`"files_with_matches"\` to ask which files\n` +
-          `mention it, narrow the pattern or \`glob\` away from that file, or the presence route for what it holds.\n` +
+          `A content-mode Grep is refused on ANY line of a credential file - a narrower pattern that still matches a line of\n` +
+          `it is refused again, and a \`!\` glob is not read. Leave the file out with a positive \`glob\` (\`*.cs\`) or a narrower\n` +
+          `\`path\`, use \`output_mode: "count"\` or \`"files_with_matches"\`, or search the file's value-free view:\n` +
+          `  node "${__filename}" --redacted "${hit}" --note-to-stderr | grep -n '<pattern>'\n` +
           presenceHint(hit));
       }
     }

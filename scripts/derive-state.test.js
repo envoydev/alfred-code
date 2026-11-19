@@ -441,6 +441,27 @@ test('derive-state: `hook none` - the walk\'s None at the hooks layer - switches
     assert.deepStrictEqual(got.hooks.off, shipped.filter((h) => !locked.includes(h)));
 });
 
+test('derive-state CLI: the routes read a ledgered local skills route back, so configure agrees with the installer', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const { valueHash } = require('./install/stamp.js');
+    const { BRAND } = require('./install/brand.js');
+    const KEY = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
+    const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'derive-routes-'));
+    try
+    {
+        fs.mkdirSync(path.join(root, '.claude'));
+        fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { [KEY]: 'false' } }));
+        const sel = selectionFile(fs.readFileSync(realSelection(), 'utf8').split('\n'));
+        const routesOf = () => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', sel, '--root', root],
+            { encoding: 'utf8', env: { ...process.env, [KEY]: '', ALFRED_CODE_HOOKS_VIA_PLUGIN: '' } })).routes;
+        assert.deepStrictEqual(routesOf(), { hooks: true, skills: true }, 'an unledgered local value is not the stack\'s');
+        fs.writeFileSync(path.join(root, '.claude', BRAND.stamp), `managed-env: settings.local.json:${KEY}=${valueHash('false')}\n`);
+        assert.deepStrictEqual(routesOf(), { hooks: true, skills: false }, 'a ledgered one holds from a plain shell');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('derive-state CLI: `written` is what THIS route writes - the full copy route writes no off-state', () =>
 {
     const { execFileSync } = require('node:child_process');
@@ -815,7 +836,8 @@ test('writable (2.1.0): the seat off-state is written whenever the core loads th
     const both = { hooks: true, agents: true };
     assert.deepStrictEqual(writable(state, { routes: ALL_ROUTES, answered: both }).agentDeny, state.agents.deny);
     const mixed = writable(state, { routes: { skills: false, hooks: true, mcps: true }, answered: both });
-    assert.deepStrictEqual([mixed.agentDeny, mixed.agentAllow], [state.agents.deny, state.agents.allow], 'the core lists every seat on this route too - the unpicked ones are denied');
+    const everySeat = require('./plugin-placement.js').placement().plugins['alfred-code'].agents.map((a) => `Agent(alfred-code:${a})`);
+    assert.deepStrictEqual([mixed.agentDeny, mixed.agentAllow], [everySeat, []], 'the core lists every seat on this route too - every one is denied, so a copied seat lists once');
     assert.deepStrictEqual(writable(state, { routes: {}, answered: both }).agentDeny, [], 'no core on the full copy route - absence is off');
     assert.ok(!Object.hasOwn(mixed, 'undroppable'));
 });

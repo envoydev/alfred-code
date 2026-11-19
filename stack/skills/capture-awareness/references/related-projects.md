@@ -25,7 +25,7 @@ The mode comes from the arguments and disk:
   plain-text ask where the harness lacks the tool); the mode question joins this call when dispatch is available:
 
   ```ask
-  Does this project depend on sibling repos the capture should map? Type local paths or git URLs via Other, each with an optional relation hint (`../backend provides-to`).
+  Does this project depend on sibling repos the capture should map? Each is a local path or a git URL, with an optional relation hint (`../backend provides-to`).
   - 'None - a standalone repo (Recommended)' - the doc records the answer with no entry, so later runs ask nothing; a run with sibling paths adds them
   - 'I will list them' - I ask for the paths or URLs next, in plain text; the run maps the locations you type
   ```
@@ -55,7 +55,7 @@ Characterize <the siblings> through the related-project-analyzer seats, one per 
 ```
 
 - **DELEGATED** (the user chose seats) - fan out related-project-analyzer per sibling as below, exactly as the
-  roster spells it (`alfred-code:<seat>` where the core plugin carries it); you merge and write.
+  roster spells it (`alfred-code:<seat>` on the plugin route); you merge and write.
 - **INLINE** (chosen - or forced, no question asked: no dispatch, or that seat is absent - it is an opt-in pick, so a
   project can carry this capture without it) - do the same characterization in-session, one sibling at a time,
   honoring the seat's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes,

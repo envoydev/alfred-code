@@ -127,7 +127,8 @@ test('a switch to the skills copy route copies the seats the core carried, and b
     const [plugin, copied, back] = steps;
     assert.deepStrictEqual([plugin.agents, plugin.seatsRoute], [[], 'plugin']);
     assert.deepStrictEqual([copied.agents, copied.seatsRoute], [['aspnet-implementer.md'], 'copy'], 'the seat picked on the plugin route is copied');
-    assert.deepStrictEqual(copied.seatDeny, plugin.seatDeny, 'the core still loads beside the copies - the unpicked seats stay denied');
+    assert.deepStrictEqual(copied.seatDeny, SEATS.map((a) => `Agent(alfred-code:${a})`), 'the core still loads beside the copies - it is denied for every seat, so a copied seat lists once');
+    assert.ok(copied.seatDeny.includes('Agent(alfred-code:aspnet-implementer)'), 'the picked, copied seat has no second listing under the core');
     assert.deepStrictEqual([back.agents, back.seatsRoute, back.seatDeny], [[], 'plugin', plugin.seatDeny], 'and back: the copy goes, the seat stays picked');
     assert.ok(back.pickedAgents.includes('aspnet-implementer@alfred-code'), back.pickedAgents.join(','));
 });

@@ -330,7 +330,8 @@ root = true
 indent_style = space
 indent_size = 4
 tab_width = 4
-end_of_line = crlf   # repo-wide pick per section 1 - flip to lf where the repo standardizes on LF
+# end_of_line: a repo-wide pick per section 1 - flip to lf where the repo standardizes on LF. Comments sit on their own line: the EditorConfig spec reads an inline # as part of the value.
+end_of_line = crlf
 insert_final_newline = true
 trim_trailing_whitespace = true
 charset = utf-8

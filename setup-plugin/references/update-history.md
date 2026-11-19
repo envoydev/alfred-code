@@ -1144,3 +1144,46 @@ it speaks for - the review of the code always, `review-security` when the comman
 'names review-security' after a receipt was written means that review's report never reached the transcript and the
 receipt did not speak for it: print its report, or name it in the receipt - report the refusal as it reads. Nothing
 to do in an installed project; no file of it changes shape.
+
+## after 3.12.1 - the session status file moves into the data root
+
+The session status file moves from `.claude/session-inspector/status/<session id>.json` to
+`<data root>/state/sessions/status/<session id>.json` (`.alfred/state/sessions/status/` by default); the data root's own
+`.gitignore` keeps it out of git, so no exclude line is written for it. The old folder's files and the exclude lines the
+stack added for them go at the next session start (the root's own files once they are 25 h old, so a session of the old
+version keeps its file). alfred-mods must be updated first: it reads the new path, then the old ones. Nothing to do in
+an installed project beyond the update; report the clean-up if the installer's lines name it.
+
+## after 3.12.1 - the agents route can be switched from configure
+
+`/alfred-code:configure` (Environment) now asks where your agents come from: the plugin, or files in `.claude/agents`.
+An answer that changes the route runs the installer with `--seats-route plugin|copy`, which writes
+`ALFRED_CODE_SKILLS_VIA_PLUGIN` into `.claude/settings.local.json` (this machine's choice, never the shared
+`settings.json`). The ask is left out where `settings.json` already holds the key, and in a workspace, whose top and
+members share one route. Read the installer's lines as they print:
+
+- On the copy route an edited skill or seat copy that the update would refresh is named first -
+  `overwriting a hand-edited copy: <skill|agent> <name>` - and an edited copy of a skill or seat you did not pick, or one the
+  stack retired, is kept on either route with `<skill|agent> kept: <name>` (delete it to drop it).
+- A project's own seat file named like a core seat is kept and named with `!! agent kept: <name>.md`; on the plugin route
+  it lists beside the core's `alfred-code:<name>`, so rename or remove it.
+- On the copy route every core seat's namespaced name is denied, so the seats are dispatched by their bare names; on the
+  plugin route they carry the `alfred-code:` prefix again.
+- The `seats:` line on the copy route ends with the step that moves the agents back into the plugin.
+
+Nothing to do in an installed project beyond the update; report the lines the installer prints for it.
+
+## after 3.12.1 - a guard whose helper is missing asks instead of letting everything through
+
+When `shell-writes.js` is missing beside a shell guard, the guard no longer lets every command run unread. It reads the
+command text and asks you only where the command can break something it cannot undo - a recursive delete of `/`, `~`
+or the project, a force push or delete of `main`, `master` or `develop`, a merge or release through `gh` / `glab`, a
+secret value sent or encoded - with the harm named and an honest recommendation. Every other command runs with no
+prompt. In a `-p` run the ask is a refusal. `/alfred-code:update` puts the helper back.
+
+## after 3.12.1 - the explainer is installed everywhere and changes approach on a second try
+
+`habits-explain-topic` is now part of every install. The first explanation stays in chat. When you say you did not
+understand it ('I don't get it', 'explain it simpler'), the skill loads, asks the format - a page with diagrams, chat
+or a video - and leads with the picture. After a status, a plan or a design answer, the same words get a plainer reply
+instead.

@@ -264,6 +264,26 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and its HO
   assert.equal(stop('r5', [leak, assistantRow('a5', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the old key, read for the 2.x line');
 });
 
+// 2026-11-17, one recorded session: a request record Claude Code wrote after an answered rotate ask (an `api-request-blob`
+// row replaying the model's own earlier command) brought the ask back. Such a row re-states earlier ones; a shape in a real
+// row after the answer still asks.
+test('guard-stop-contract: a request-record row after an answered rotate ask asks nothing; a new exposure still does', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'projRB-'));
+  const shape = 'ghp_' + 'D'.repeat(24); // fake by construction
+  const leak = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `TOKEN=${shape}` }] } };
+  const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: "A GitHub token (ghp_ shape) entered this session through a tool result. Rotate it now?"="Acknowledge and defer"' }] } };
+  const filler = [1, 2, 3, 4].flatMap((n) => [
+    { type: 'assistant', message: { id: `rf${n}`, content: [{ type: 'tool_use', id: `trf${n}`, name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `trf${n}`, content: 'ok' }] } },
+  ]);
+  const blob = { type: 'api-request-blob', hash: 'h1', blob: { messages: [{ role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: `curl -H "Authorization: Bearer ${shape}" https://example.invalid` } }] }] } };
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const stop = (name, rows) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env }).status;
+  assert.equal(stop('rb1', [leak, answered, ...filler, blob, assistantRow('rb1a', 'Updated the page as asked; nothing else changed.')]), 0, 'a request record re-states the answered exposure');
+  const second = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: `OTHER=${'ghp_' + 'E'.repeat(24)}` }] } };
+  assert.equal(stop('rb2', [leak, answered, ...filler, blob, second, assistantRow('rb2a', 'Copied the second token as asked; nothing else changed.')]), 2, 'a new exposure in a tool result still asks');
+});
+
 // hooks review 2026-10-16: the scan reads only the lines a previous run of this session has not, from a state file
 // beside the hook's log - the whole-tail rescan was ~450 ms of a Stop on a long session. The same verdicts as a cold read.
 test('guard-stop-contract: the credential scan reads only what is new, and falls back to a cold read', () => {
@@ -297,6 +317,28 @@ test('guard-stop-contract: the credential scan reads only what is new, and falls
   fs.rmSync(tp);
   fs.writeFileSync(tp, line(assistantRow('g7', 'Fresh file; nothing read.')));
   assert.equal(stop(), 0, 'a replaced file is read cold, never through the old state');
+});
+
+// Hooks audit 2026-11-19 (B7-S1): the re-ask denial's ledger row stored the first line of its reason, which quotes the
+// user's own answer, so a token typed into Other reached the ledger file. The denial the model reads still quotes it.
+test('guard-stop-contract: a re-ask denial stores <redacted> for a credential shape in its ledger row', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'projRQ-'));
+  const shape = 'ghp_' + 'G'.repeat(24); // fake by construction
+  const question = 'Approve the plan?';
+  const ask = { questions: [{ question, header: 'Plan', multiSelect: false, options: [{ label: 'Approve (Recommended)', description: 'x' }, { label: 'Change', description: 'y' }] }] };
+  const rows = [
+    { type: 'user', message: { role: 'user', content: 'plan it' } },
+    { type: 'assistant', uuid: 'a1', message: { id: 'm1', role: 'assistant', content: [{ type: 'tool_use', id: 'tq', name: 'AskUserQuestion', input: ask }] } },
+    { type: 'user', uuid: 'u2', parentUuid: 'a1', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tq', content: `Your questions have been answered: "${question}"="why does it need ${shape} at all?"` }] } },
+  ];
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const payload = { session_id: 'rq1', cwd: root, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'tu2', tool_input: ask, transcript_path: transcript('rq1', rows) };
+  const r = runIn('guard-stop-contract.js', payload, { env, cwd: root });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny', 'the re-ask is denied');
+  const ledger = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'rq1.jsonl'), 'utf8');
+  assert.ok(!ledger.includes(shape), 'the ledger row holds no credential shape');
+  assert.match(ledger, /<redacted>/);
 });
 
 // The user's ruling 2026-10-14: a Jira issue read returned an image's media link carrying a ten-minute `?token=<JWT>`,

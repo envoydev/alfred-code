@@ -242,7 +242,9 @@ function removeDropped({ drop = [], dirs, shipped, keep = () => false, log = () 
         if (!DROP_PATH[category] || !(shipped[category] || []).includes(name)) continue;
         const target = path.join(dirs[category], DROP_PATH[category](name));
         if (!fs.existsSync(target)) continue;
-        if (keep(category, name)) { log(`  ${category} kept (dropped, but the project's own - the stamp does not record it): ${name}`); continue; }
+        const kept = keep(category, name);
+        if (kept && typeof kept === 'object') { if (kept.say) log(kept.say); continue; }
+        if (kept) { log(`  ${category} kept (dropped, but the project's own - the stamp does not record it): ${name}`); continue; }
         fs.rmSync(target, { recursive: true, force: true });
         log(`  ${category} removed (dropped): ${name}`);
     }

@@ -22,7 +22,7 @@ If the test only exercises a repository or query against Postgres, do not stand 
 
 ## Packages
 
-Use the database-specific module, not the generic `Testcontainers` builder - the module ships the image default, the wait strategy, and a typed connection string, so you write less and get the readiness check for free.
+Use the database-specific module, not the generic `Testcontainers` builder - the module takes the image you pin and ships the wait strategy and a typed connection string, so you write less and get the readiness check for free.
 
 ```xml
 <PackageReference Include="Testcontainers.PostgreSql" />
@@ -45,8 +45,7 @@ using Testcontainers.PostgreSql;
 
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .Build();
 
     public string ConnectionString => _container.GetConnectionString();

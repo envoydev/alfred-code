@@ -11,9 +11,7 @@ ship-ready quality: audit every agent under `AGENTS_ROOT`, score each one agains
 then rewrite each agent in place until it reaches grade A (numeric 9) without changing what the agent
 does.
 
-This is a sibling of `repo-audit-skills` and shares its philosophy: objective scoring with cited
-evidence, a gated A that cannot be reached by averaging, hard anti-gaming guards, bounded loops, and
-honest reporting. Two things matter more here than for skills. First, an excellent agent is written as
+Two things matter more here than for skills. First, an excellent agent is written as
 an overqualified domain expert: its system prompt establishes deep expertise in its role, the
 standards it holds output to, and the failure modes an expert would check for, so the agent performs
 above the bar of the tasks routed to it. Second, agents duplicate text badly, from each other, from
@@ -36,17 +34,17 @@ repo's own maintenance tool, not part of the shipped catalog.
 
 - `AGENTS_ROOT`: folders containing subagent definitions (default: the `audit.agents` roots from step 1). Each agent is a markdown file with YAML frontmatter (`name`, `description`, optional `tools`, optional `model`) and a system-prompt body.
 - `SKILLS_ROOT`: folders containing skills (default: the `audit.skills` roots). Required, because reuse and duplication are scored against the real skill catalog. If absent, note it and score skill reuse as not applicable.
-- `RULES_ROOT`: folders containing rule files (default: the `audit.rules` roots), plus the instruction-file template the repo ships (the `audit.agent-md` roots, or the template its `notes` name). Required, because agents must refer to the rules that govern their process instead of restating them, and you may only point an agent at rules that exist; with none, note it and score rule reuse against the project CLAUDE.md files alone. Note that agents cite rules by their deployed path (`.claude/rules/...`, where an install places them in a target project), while existence is validated against the source catalog at `RULES_ROOT`. The repo's own working `CLAUDE.md` is out of scope unless the map lists it as shipped.
+- `RULES_ROOT`: folders containing rule files (default: the `audit.rules` roots), plus the instruction-file template the repo ships (the `audit.agent-md` roots, or the template its `notes` name). Required, because agents must refer to the rules that govern their process instead of restating them, and you may only point an agent at rules that exist; with none, note it and score rule reuse against the instruction files alone (`AGENTS.md` or `CLAUDE.md`, whichever the project keeps). Note that agents cite rules by their deployed path (`.claude/rules/...`, where an install places them in a target project), while existence is validated against the source catalog at `RULES_ROOT`. The repo's own working instruction file (`AGENTS.md` or `CLAUDE.md`) is out of scope unless the map lists it as shipped.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).
 - `MAX_ITERATIONS`: max remediation passes per agent (default: `4`).
 - `WRITE`: `true` takes the run to the flow's ask and applies what it picks, `false` stops after the report and the plan (default: `true`).
 
 ## How the run goes
 
-**Load the `repo-audit-flow` skill before step 1 and run this audit through it.** Its planner seat does Phases 0
+**Load the `repo-audit-plugin` skill before step 1 and run this audit through its flow.** Its planner seat does Phases 0
 to 1b and writes Phase 2's edits as a plan, its editor seat applies them, and the planner does Phase 3. This session
-coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the one
-stop the flow adds is its ask before any edit lands. Stop otherwise only on the stop conditions
+coordinates and is the only one that asks the user. The seats do not ask for confirmation between phases; the stops
+the flow adds are its own asks, one of them before any edit lands. Stop otherwise only on the stop conditions
 below. When a stop or finding genuinely needs the user's answer - a proposed split, a conflict with no
 repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool
 with concrete options and a marked recommendation, never a prose question buried in a report.
@@ -108,5 +106,7 @@ Produce a single report with:
 5. Extracted-skill recommendations: procedures repeated across agents with no skill owner that should become skills, whether or not you extracted them this run.
 6. Install-unit description budget: per install unit (what one install carries, per the repo's `notes`; with none, the whole shipped set), the resident description total in chars and tokens against the 15,000-token warning, the always-installed share where installs differ, and any seat whose description overlaps a sibling's routing cases (file, the two descriptions' shared cue).
 7. If `WRITE` is true, the list of files edited, moved, or created, including any new skills or shared references, and the snapshot location for rollback.
+8. The `checks`: each command with its result line, before and after the edits.
+9. The Phase 1b currency table with this run's verdicts.
 
 Keep the report dense. No preamble, no restating this skill back, no filler.

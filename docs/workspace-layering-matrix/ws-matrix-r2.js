@@ -173,7 +173,7 @@ run('AC2', (sb) =>
     const i0 = sb.install('.', ROOT_SEL);
     sb.ws('.', 'role', ['--answer', 'root']);
     const api = sb.ws('api', 'role', ['--when', 'init']);
-    check('AC2 under a root: \'Child of .. (Recommended)\' first', i0.code === 0 && firstAsk(api.out)?.label === 'Child of .. (Recommended)' && firstAsk(api.out)?.answer === 'child', api.out);
+    check('AC2 under a root: \'Child of .. (Recommended)\' first', i0.code === 0 && firstAsk(api.out)?.label === 'Child of .. (top) (Recommended)' && firstAsk(api.out)?.answer === 'child', api.out);
     const before = treeHash(sb.at('.'), ['api', 'solo']);
     const join = sb.ws('api', 'role', ['--answer', 'child']);
     const after = treeHash(sb.at('.'), ['api', 'solo']);
@@ -224,7 +224,7 @@ run('AC4', (sb) =>
     const a = sb.asks('api'); const opts = sb.ws('api', 'role', ['--when', 'update']);
     const keep = sb.ws('api', 'role', ['--answer', 'stay']); const a2 = sb.asks('api');
     check('AC4 an install above a standalone: one ask, Join first; Keep quiets the next run',
-        !asksLine(q0.out) && asksLine(a.out) === 'above ..' && firstAsk(opts.out)?.label === 'Join .. (Recommended)' && keep.code === 0 && !asksLine(a2.out), `${q0.out}\n${a.out}\n${opts.out}\n${keep.out}\n${a2.out}`);
+        !asksLine(q0.out) && asksLine(a.out) === 'above ..' && firstAsk(opts.out)?.label === 'Join .. (ws) (Recommended)' && keep.code === 0 && !asksLine(a2.out), `${q0.out}\n${a.out}\n${opts.out}\n${keep.out}\n${a2.out}`);
 });
 run('AC4b', (sb) =>
 {
@@ -233,7 +233,7 @@ run('AC4b', (sb) =>
     sb.install('.', ROOT_SEL); sb.ws('.', 'role', ['--answer', 'root']); sb.initChild('api');
     fs.writeFileSync(path.join(sb.at('.'), '.alfred', 'workspace'), sb.wsFile('.').replace(/^child api\n/m, ''));
     const lost = sb.asks('api'); const lostOpts = sb.ws('api', 'role', ['--when', 'update']);
-    check('AC4 a parent that lost the child line offers Rejoin first', asksLine(lost.out) === 'rejoin ..' && firstAsk(lostOpts.out)?.label === 'Rejoin .. (Recommended)', `${lost.out}\n${lostOpts.out}`);
+    check('AC4 a parent that lost the child line offers Rejoin first', asksLine(lost.out) === 'rejoin ..' && firstAsk(lostOpts.out)?.label === 'Rejoin .. (ws) (Recommended)', `${lost.out}\n${lostOpts.out}`);
     const re = sb.ws('api', 'role', ['--answer', 'rejoin']);
     check('AC4 Rejoin (unattended, the first) restores both lines', re.code === 0 && /^child api$/m.test(sb.wsFile('.')) && /^parent \.\.$/m.test(sb.wsFile('api')) && !asksLine(sb.asks('api').out), re.out);
     fs.rmSync(path.join(sb.at('.'), '.claude'), { recursive: true, force: true });
@@ -254,7 +254,7 @@ run('AC4c', (sb) =>
     const a = sb.asks('apps/api'); const opts = sb.ws('apps/api', 'role', ['--when', 'update']);
     const stay = sb.ws('apps/api', 'role', ['--answer', 'stay']);
     check('AC4 a stamped folder between child and parent offers Stay first; Stay quiets it',
-        c.inst.code === 0 && parentRel === '../..' && asksLine(a.out) === 'between ..' && firstAsk(opts.out)?.label === 'Stay child of ../.. (Recommended)' && stay.code === 0 && !asksLine(sb.asks('apps/api').out),
+        c.inst.code === 0 && parentRel === '../..' && asksLine(a.out) === 'between ..' && firstAsk(opts.out)?.label === 'Stay child of ../.. (ws) (Recommended)' && stay.code === 0 && !asksLine(sb.asks('apps/api').out),
         `parent ${parentRel}\n${a.out}\n${opts.out}\n${stay.out}`);
 });
 
@@ -269,7 +269,7 @@ run('AC5', (sb) =>
     const opts = sb.ws('api', 'role', ['--when', 'configure']);
     const join = sb.ws('api', 'role', ['--answer', 'join:..']);
     check('AC5 root to child: Join .. offered, then parent .. here and child api in ws',
-        /^ask: Join \.\.\tjoin:\.\.$/m.test(opts.out) && join.code === 0 && /^parent \.\.$/m.test(sb.wsFile('api')) && !/^role /m.test(sb.wsFile('api')) && /^child api$/m.test(sb.wsFile('.')), `${opts.out}\n${join.out}\n${sb.wsFile('api')}`);
+        /^ask: Join \.\. \(ws\)\tjoin:\.\.$/m.test(opts.out) && join.code === 0 && /^parent \.\.$/m.test(sb.wsFile('api')) && !/^role /m.test(sb.wsFile('api')) && /^child api$/m.test(sb.wsFile('.')), `${opts.out}\n${join.out}\n${sb.wsFile('api')}`);
     const toStd = sb.ws('api', 'role', ['--answer', 'leave:standalone']);
     check('AC5 child to standalone: role standalone, the parent line and ws\'s child line gone',
         toStd.code === 0 && /^role standalone$/m.test(sb.wsFile('api')) && !/^parent /m.test(sb.wsFile('api')) && !/^child api$/m.test(sb.wsFile('.')), `${toStd.out}\n${sb.wsFile('api')}\n${sb.wsFile('.')}`);
@@ -293,7 +293,7 @@ run('AC6', (sb) =>
     const role = (rel, extra) => (/^role: (.*)$/m.exec(sb.ws(rel, 'status', [], extra).out) || [])[1];
     const got = { api: role('api'), root: role('.'), solo: role('solo'), fresh: role('fresh'), off: role('solo', { ALFRED_CODE_WORKSPACE: '0' }) };
     check('AC6 status: child of .., root of 2 children, standalone, standalone (no role recorded), workspace off',
-        got.api === 'child of ..' && got.root === 'root of 2 children' && got.solo === 'standalone' && got.fresh === 'standalone (no role recorded)' && got.off === 'workspace off', JSON.stringify(got));
+        got.api === 'child of .. (ws)' && got.root === 'root of 2 children' && got.solo === 'standalone' && got.fresh === 'standalone (no role recorded)' && got.off === 'workspace off', JSON.stringify(got));
 });
 
 // ---------------------------------------------------------------- AC7 - a fresh install at each scope
@@ -742,7 +742,7 @@ for (const via of ['update', 'configure'])
         {
             const a = sb.asks('api'); const opts = sb.ws('api', 'role', ['--when', 'update']);
             picked = firstAsk(opts.out);
-            if (asksLine(a.out) !== 'never ..' || picked?.label !== 'Join .. (Recommended)') { check(`AC24 ${via}: the ask`, false, `${a.out}\n${opts.out}`); return; }
+            if (asksLine(a.out) !== 'never ..' || picked?.label !== 'Join .. (ws) (Recommended)') { check(`AC24 ${via}: the ask`, false, `${a.out}\n${opts.out}`); return; }
             sb.ws('api', 'role', ['--answer', picked.answer]);
             sb.update('api');
         }
@@ -750,7 +750,7 @@ for (const via of ['update', 'configure'])
         {
             sb.update('api');
             const opts = sb.ws('api', 'role', ['--when', 'configure']);
-            picked = (/^ask: (Join \.\.)\t(.*)$/m.exec(opts.out) || []).slice(1);
+            picked = (/^ask: (Join \.\. \(ws\))\t(.*)$/m.exec(opts.out) || []).slice(1);
             sb.ws('api', 'role', ['--answer', picked[1]]);
         }
         const show = sb.show('api').map;

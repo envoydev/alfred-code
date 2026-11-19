@@ -49,6 +49,8 @@ const ALLOWED = {
     'stack/hooks/hook-prelude.js:SCORING_ROUNDS': 'reads the hook\'s env, which applyVariables fills',
     'stack/hooks/hook-prelude.js:TURN_CHECK': 'the strict profile\'s switch list - no read',
     'stack/hooks/check-turn-build.js:TURN_CHECK': 'switchOn reads the process env, which applyVariables fills',
+    'stack/hooks/session-status.js:env-lookup': 'envOf reads the env it is handed - the hook\'s own env, which applyVariables fills (the fallback spells ALFRED_CODE_<suffix> on that same env); the settings files readerOn reads give enabledPlugins only, never a moved key',
+    'stack/hooks/session-status.js:HISTORY': 'the plan lookup reads the env it is handed - the hook\'s env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_DEFAULT': 'freshAt reads the process env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_FOR_1M': 'freshAt reads the process env, which applyVariables fills',
     'stack/hooks/fresh-session.js:CONTEXT_WINDOW_FOR_300K': 'freshAt reads the process env, which applyVariables fills',

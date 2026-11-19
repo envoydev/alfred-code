@@ -13,19 +13,19 @@ The user's bar for anything they approve before work starts is 9 or 10 out of 10
 - Again when the user's requested changes alter a graded draft's substance; a wording fix needs no new grade.
 - Also when the user asks for it in their words - 'grade this plan', 'scoring for plans', 'score the spec'.
 - Not for code diffs (the review skills own those), and not for an inline plan of five to ten lines.
-- Off for the rest of the session once the user says to stop it or turn it off - 'stop scoring', 'turn off scoring', 'disable scoring', any words - the always-grade rule and a `KIT_SCORING=on` in the settings included. A handoff after that says `ungraded - scoring stopped` in place of a score path.
-- Off as a standing default while the user's settings carry `KIT_SCORING=off` (the Settings step below finds `scoring` off): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same, and once they say to turn scoring on or enable it, it is on for the rest of the session.
-- The session's last word on it wins over the settings, both ways. The status hook records a request that opens with such words in `kit-session.md` and reports it as `(this session)`; said any other way, append `Scoring: on - <date>` or `Scoring: off - <date>` to that file yourself.
+- Off once the user says to stop it or turn it off - 'stop scoring', 'turn off scoring', 'disable scoring', any words - in this session and every later one until they turn it on, the always-grade rule and a `KIT_SCORING=on` variable included. A handoff in the session where they said it says `ungraded - scoring stopped` in place of a score path.
+- Off as a standing default where a session finds it so (the Settings step below finds `scoring` off): the handoff says `ungraded - scoring off in the settings`. A grade the user asks for in their words runs all the same, and once they say to turn scoring on or enable it, it is on until they turn it off.
+- What the user says about it is saved in the kit's settings file, `.claude/kit/settings.json`, and outranks a `KIT_SCORING` variable. Where that request's `kit status` line says `saved: scoring=off in .claude/kit/settings.json` (or `on`), the status hook saved it; where it carries no `saved: scoring=` - it says `not saved`, says nothing of it, or did not arrive - run `node .claude/kit/settings.mjs set scoring off` (or `on`) yourself.
 - Cost, measured 2026-10-24 on a 250-300-line design: 160k-280k tokens and 9-13 minutes per round on Opus; that run took five rounds (60, 86, 86, 91, 95).
 
 ## Settings
 
-Before round 0, take the values from the `kit status` line the status hook added to the request; where none arrived, run `node .claude/kit/settings.mjs` once. Both give what the user's Claude Code settings carry (the `KIT_*` variables of an `env` block), each value with its source:
+Before round 0, take the values from the `kit status` line the status hook added to the request; where none arrived, run `node .claude/kit/settings.mjs` once. Both give the values this run takes, each with its source:
 
 - `scoring` off - stop here unless the user asked for this grade in their words.
-- `pass_score` - the score this run grades to, 'the pass score' below: `KIT_PASS_SCORE`, else 90. Where neither source is there, 90.
-- `review_model` - the reviewer's model: `KIT_REVIEW_MODEL`, else the `plan-grader` agent's own. Where it says `none` or neither source is there, `opus`.
-- The user's words in this session outrank the settings - 'grade it to 95', 'grade with fable' - for this run only.
+- `pass_score` - the score this run grades to, 'the pass score' below. Where neither source is there, 90.
+- `review_model` - the reviewer's model. Where it says `none` or neither source is there, `opus`.
+- What the user says for this run only outranks the settings: 'grade it to 95', or a review model named for this run. A review model named without that limit ('grade with fable') is a saved setting, and the `kit status` line gives it from then on.
 - Write the pass score and the review model, each with its source, to `refining/<slug>/run.md`. After a compaction, Read that file before the next round: it is how the run's values outlive the summary.
 
 ## Inputs
@@ -38,7 +38,7 @@ Write them to a folder `refining/<slug>/` in the session scratchpad:
 
 ## The loop
 
-Round 0 grades the draft; rounds 1-3 each revise, then grade again.
+Round 0 grades the draft; rounds 1-3 each revise, then grade again. Where the caller names fewer rounds - the audit flow grades a plan twice at most - the loop ends at the caller's last round: the confirmed findings are fixed, the ask below is not put and none of its options is taken, under auto-run too, and the draft waits for the user as the `plan-approval` rule says of a loop that ended under the pass score.
 
 1. Dispatch ONE new reviewer: the Agent tool, `subagent_type: general-purpose`, `model:` the review model, description `Review <kind> round <n>`, prompt = `references/reviewer-prompt.md` with TASK = `task.md`, RUBRIC = `${CLAUDE_SKILL_DIR}/references/rubric.md`, ARTIFACT = the draft (and, for a plan, its spec). Never a fork, never resumed, never told earlier scores, findings, the change log, or that this is a revision.
 2. Validate the scorecard: recompute each criterion as weight x met / 4 and the total rounded; flip a `yes` with no quote to `no`, and an `n/a` on a check that allows none to `no`; apply the BLOCKER cap of 60. Change nothing else. A malformed reply gets one re-run with a new reviewer - a failed grade, not a second opinion. A well-formed grade is never repeated on an unchanged draft: a fail is revised at once (2026-10-25: 10 of 10 stack re-grades of an unchanged draft were followed by the revision anyway, 16% of the scored minutes). Save it as `round-<n>.md` in the folder, and a copy of the draft it graded as `draft-<n>` (the draft's own extension) beside it.
@@ -61,7 +61,7 @@ The draft scored <S>/100 after round <n> (<why it stopped>); the next round can 
 
 Recommend 'Fix all, one more round' when the ceiling is the pass score or more; under it, 'Answer <the decision> first' when your decision lifts it, else 'Hand it over as is'. The recommended option is always listed first.
 
-Under auto-run the ask is not put: the Recommended option is taken. Auto-run is on when the user's words in this session said to take the recommended options or to run without asking ('auto-run', 'auto mode'), or the `auto-run` skill is loaded - and the user has not since said to stop it or turn it off. A decision only the user can make - an `Answer <the decision> first` recommendation, a MATERIAL tagged `[needs: ...]` - takes that decision's own recommended answer the same way; then the loop goes on: fix and finish on a pass, else one more grade. Write `Ruling: <the ask> - <the option taken> - <cost if wrong>` to the run's ledger when one is named (a plan's `progress.md`, a task ledger under `docs/superpowers/`), else to `refining/<slug>/rulings.md`.
+Under auto-run the ask is not put: the Recommended option is taken. Auto-run is on when the user's words in this session said to take the recommended options or to run without asking ('auto-run', 'auto mode'), or the `auto-run` skill is loaded - and the user has not since said to stop it or turn it off. A decision only the user can make - an `Answer <the decision> first` recommendation, a MATERIAL tagged `[needs: ...]` - takes that decision's own recommended answer the same way; then the loop goes on: fix and finish on a pass, else one more grade. Write `Ruling: <the ask> - <the option taken> - <cost if wrong>` to the run's ledger when one is named (a plan's `progress.md`, a task ledger under `docs/superpowers/`), else to `docs/superpowers/<YYYY-MM-DD>-auto-run.md` - the default ledger of the `auto-run` skill.
 
 ## In the chat
 

@@ -1305,7 +1305,8 @@ const SETUP_ASK_TEMPLATES = {
     // +3: step 8's workspace role, one template per role (workspace roles and variables D2, 2026-10-27).
     // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
     // -2: step 8's data-root asks, the move and the keep-or-change one (the fixed root, 2026-11-11).
-    'setup-plugin/commands/configure.md': 13,
+    // +2: step 8's agents-route ask, one template per current route (the agents route switch, 2026-11-18).
+    'setup-plugin/commands/configure.md': 15,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -3157,7 +3158,7 @@ const REALPATH_PINS = {
     'scripts/scan-evidence.test.js': 1,
     'scripts/secrets-run.test.js': 1,
     'scripts/session-scope.test.js': 1,
-    'scripts/session-status.test.js': 3,
+    'scripts/session-status.test.js': 2,
     'scripts/session-surface.test.js': 1,
     'scripts/shell-guards.test.js': 7,
     'scripts/shell-writes.test.js': 1,
@@ -3544,8 +3545,29 @@ function lintMarketplaceEntries(liveIn, root)
 // every other probe. Every warning of the manifest's own section counts, the one on a root CLAUDE.md included: this
 // repo's own instruction file is AGENTS.md (2026-11-15), which the validator says nothing about, and a CLAUDE.md beside
 // it would stop Claude Code reading AGENTS.md. The plugin-directory section below it (an icon, OS metadata files on
-// disk) does not change the result and is not read.
+// disk) does not change the result and is not read. Claude Code 2.1.327 also prints a 'Provides:' block above it, one
+// `\u276f` row per component the plugin ships (119 here) - a listing, never a warning, so the block is skipped: it opens
+// at the `Provides:` line and closes at the first line that is neither blank nor a `\u276f` row, and a `\u276f` line
+// anywhere else still counts.
 const VALIDATE_ACCEPTED = [];
+function validateFindings(text)
+{
+    const out = [];
+    const own = String(text).split(/\n\s*Plugin directory checks/)[0];
+    let listing = false;
+    for (const line of own.split(/\r?\n/))
+    {
+        if (/^\s*Provides:\s*$/.test(line)) { listing = true; continue; }
+        const m = /^\s*\u276f\s+(.*)$/.exec(line);
+        if (listing)
+        {
+            if (m || !line.trim()) continue;
+            listing = false;
+        }
+        if (m && !VALIDATE_ACCEPTED.some((re) => re.test(m[1]))) out.push(`\`claude plugin validate\` warns on the plugin manifest: ${m[1]}`);
+    }
+    return out;
+}
 function lintMarketplaceSchema()
 {
     const out = [];
@@ -3562,13 +3584,7 @@ function lintMarketplaceSchema()
         const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');
         return [`\`claude plugin validate\` failed on .claude-plugin/plugin.json: ${said}`];
     }
-    const own = text.split(/\n\s*Plugin directory checks/)[0];
-    for (const line of own.split('\n'))
-    {
-        const m = /^\s*\u276f\s+(.*)$/.exec(line);
-        if (m && !VALIDATE_ACCEPTED.some((re) => re.test(m[1]))) out.push(`\`claude plugin validate\` warns on the plugin manifest: ${m[1]}`);
-    }
-    return out;
+    return validateFindings(text);
 }
 
 // The environment catalog (meta/environment.json) is the ONE list the three guided commands read
@@ -3670,6 +3686,7 @@ module.exports = {
     lintInvocationFlags,
     lintRepoRootReserved,
     lintMarketplaceSchema,
+    validateFindings,
     RESERVED_ROOT_NAMES,
     paths: { ROOT, SKILLS_DIR, MANIFEST_JSON, AGENTS_DIR, CLAUDE_RULES_DIR },
     readStackManifest,

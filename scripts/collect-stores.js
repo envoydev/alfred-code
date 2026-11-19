@@ -511,13 +511,18 @@ const STORES = [
     ...SESSION_PREFIXES.map(([prefix, cls]) => prefixRow('sessions', prefix, cls)),
     unlistedRow('sessions', SESSION_PREFIXES.map(([p]) => p), ['scoring']),
     {
-        // session-status.js writes <cwd>/.claude/session-inspector/status/<sid>.json for session-inspector.
+        // session-status.js writes <data root>/state/sessions/status/<sid>.json for session-inspector; through 3.12.1 it
+        // wrote <cwd>/.claude/session-inspector/status/<sid>.json, still read for a session an older release left.
         id: 'session-inspector', cls: 'meta', match: 'name',
         find: (ctx) =>
         {
-            const file = path.join(ctx.project, '.claude', 'session-inspector', 'status', `${ctx.sid}.json`);
+            const found = [
+                layout.statePath(ctx.project, 'sessions', path.join('status', `${ctx.sid}.json`), ctx.env),
+                path.join(ctx.project, '.claude', 'session-inspector', 'status', `${ctx.sid}.json`),
+            ].find((candidate) => exists(ctx.fs, candidate));
             const to = 'context/session-inspector-status.json';
-            if (!exists(ctx.fs, file)) return { items: [] };
+            if (!found) return { items: [] };
+            const file = found;
             if ((ctx.opts || {}).text !== 'withhold') return { items: [{ to, from: file }] };
             // A meta store kept under withhold, but its handoffPrompt quotes the open plan's Resume: line - conversation
             // text, so the withheld copy carries it as null (R168).

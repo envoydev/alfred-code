@@ -68,7 +68,9 @@ const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === 
 // broken install blocks every shell and file-tool call until fixed; the rollback is dropping the row here (an update then
 // takes the key off the copy route's entry) or `claude plugin disable` on the plugin route. An older Claude Code drops the
 // key: its hook entry is a non-strict zod object (2.1.100 and 2.1.294 bundles read 2026-10-14), so nothing is rejected.
-const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'], [`${fileGuards.SELF}.js`]: ['PreToolUse'] };
+// The secret guard's own PreToolUse row - a filesystem server's read of a file (audit 2026-10-30 HK-26) - is the same
+// read the file dispatcher refuses on failure, so it fails closed too (hooks audit 2026-11-19 B6-S3).
+const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'], [`${fileGuards.SELF}.js`]: ['PreToolUse'], 'guard-secret-value.js': ['PreToolUse'] };
 const onFailureFor = (file, event) => ((BLOCK_ON_FAILURE[file] || []).includes(event) ? 'block' : undefined);
 const hookEntry = (command, timeout, file, event) => ({ type: 'command', command, timeout, ...(asyncFor(file, event) ? { async: true } : {}),
     ...(onFailureFor(file, event) ? { onFailure: onFailureFor(file, event) } : {}) });
@@ -387,6 +389,8 @@ function renameEnv(env, migrations, log, label = 'settings.json')
 
 // The env keys the stack owns - what R99 reads from and writes to settings.local.json.
 const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
+// The key `--seats-route` writes (alfred-code.js, plugins.js pluginRoutes reads it).
+const ROUTE_KEY = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
 
 // Steps 2 and 3 of the env pass, in place, over the keys `only` admits. `stackWrote(label, key, value)` answers from the
 // install ledger whether the stack wrote that value there; with none given (no ledger) the value match alone decides.
@@ -828,7 +832,7 @@ function writeSettings(opts)
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
-        variablesFile = null, childEnv = null, keepOwn = false, carried = {}, log = () => {}, note = () => {},
+        variablesFile = null, childEnv = null, keepOwn = false, carried = {}, routeKey = null, log = () => {}, note = () => {},
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
     // wirings the RELEASE writes, whatever this run's selection wires.
@@ -1064,6 +1068,13 @@ function writeSettings(opts)
         renamedHooks: (renamed && renamed.hooks) || {}, inherited: inheritedEnv, overlay, log, label, overlayLabel: label, stackWrote,
         seeds: childSeeds || noModeSeed ? (key) => (!childSeeds || childSeeds(key)) && !(noModeSeed && MODE_KEYS.includes(key)) : null, seedLabel: vars ? (key) => (MOVED.has(key) || Object.hasOwn(fileValues, key) ? '.variables' : label) : null,
         chain: childEnv && childEnv.linked ? { values: memberEnv, ignored: childEnv.ignored || [] } : null }) && !vars) changed = true;
+    // The seats route (`--seats-route`): written into this file's env, never removed, and ledgered by `writtenNow` below.
+    if (routeKey && plain(data.env) && data.env[ROUTE_KEY] !== routeKey)
+    {
+        log(`  ${label} env: ${ROUTE_KEY} ${data.env[ROUTE_KEY] === undefined ? 'absent' : `'${data.env[ROUTE_KEY]}'`} -> '${routeKey}' (--seats-route)`);
+        data.env[ROUTE_KEY] = routeKey;
+        changed = true;
+    }
     // D5: a decision for a key settings.local.json holds lands there, where it takes effect over .variables - said so.
     const overrides = new Set();
     const overridden = (key) => { if (!overrides.has(key)) { overrides.add(key); log(`  variables: ${key} set in .claude/settings.local.json (it overrides .variables here)`); } };
@@ -1122,8 +1133,9 @@ function writeSettings(opts)
             log(`  ${label}: autoMemoryEnabled: false kept - yours; native memory needs it on, so Claude's own memory stays off until you remove it`);
     }
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
-    const releaseEnv = new Set(catalog.map((r) => r.key));
-    const writtenNow = {};
+    // The route key has no catalog row: it joins the release's keys here, so the ledger pass never prunes it.
+    const releaseEnv = new Set([...catalog.map((r) => r.key), ROUTE_KEY]);
+    const writtenNow = routeKey ? { [ROUTE_KEY]: routeKey } : {};
     const priorEnv = (name) => (prior && prior.env ? prior.env[name] || {} : null);
     const managedEnv = {};
     const kept = docsPath && docsPath.keep ? ['ALFRED_CODE_DOCS_PATH'] : [];

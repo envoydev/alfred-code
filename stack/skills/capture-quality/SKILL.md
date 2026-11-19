@@ -183,9 +183,9 @@ Run the chosen parts through their analyzer seats or in this session?
 - The architecture part's verify-and-rewrite path dispatches nothing, so it runs in this session whatever the mode
   answer.
 - 'Refresh it' and 'Run it again' are each part's full run - for the coverage part, its UPDATE path.
-- A chain that picks the coverage part with no coverage doc asks that part's first-capture questions (the % bar, the
-  exclusions) in ONE more AskUserQuestion call, right after the chain ask and before any part runs - never deferred to
-  the middle of the run.
+- A chain that picks the coverage part with no coverage doc asks that part's first-capture questions (the % bar, and
+  the run-it-or-record-unmeasured decision where a suite cannot run) in ONE more AskUserQuestion call, right after the
+  chain ask and before any part runs - never deferred to the middle of the run.
 - The mode answer reaches the coverage part only on a first capture: its update analysis is INLINE by its own rule.
 - Under auto-run (the hook's contract, or the user's word with no hook line), each question takes its Recommended
   option.

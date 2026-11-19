@@ -38,13 +38,16 @@ const ENUMS = {
     // Uninstall's answer for an unedited instruction-file seed - /alfred-code:uninstall asks it (the user's ask of
     // 2026-10-23). Not given, the seed stays and the log names this flag; an edited one is the project's either way.
     instructionsSeed: { values: ['', 'keep', 'remove'], text: "--instructions-seed must be 'keep' or 'remove'" },
+    // Where the seats come from - the switch: 'plugin' (the core carries them) or 'copy' (copies in .claude/agents). The
+    // run writes ALFRED_CODE_SKILLS_VIA_PLUGIN into the project's settings.local.json. Not given, the route stands.
+    seatsRoute: { values: ['', 'plugin', 'copy'], text: "--seats-route must be 'plugin' or 'copy'" },
 };
 
 const VALUED = new Map([
     ['--scope', 'scope'],
     ['--docs-versioning', 'docsVersioning'],
     ['--docs-root-move', 'docsRootMove'], ['--docs-root-leave', 'docsRootLeaveRaw'], ['--auto-compact', 'autoCompact'], ['--memory', 'memory'],
-    ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'],
+    ['--instructions-at', 'instructionsAt'], ['--instructions-file', 'instructionsFile'], ['--instructions-seed', 'instructionsSeed'], ['--seats-route', 'seatsRoute'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'], ['--parent-plan', 'parentPlan'],
 ]);
 
@@ -93,7 +96,7 @@ const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 const ALIASES = new Map([['--github-cli', '--forge-cli']]);
 const NOTED_ALIASES = new Set(['--github-cli']);
 
-const FLAG_LIST = '--scope, --docs-versioning, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --memory-copy, --instructions-at, --instructions-file, --instructions-seed, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
+const FLAG_LIST = '--scope, --docs-versioning, --docs-root-move, --docs-root-leave, --auto-compact, --memory, --memory-copy, --instructions-at, --instructions-file, --instructions-seed, --seats-route, --forge-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --parent-plan, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -111,7 +114,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', scope: '',
-        docsVersioning: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '',
+        docsVersioning: '', docsRootMove: '', docsRootLeaveRaw: '', autoCompact: '', memory: '', instructionsAt: '', instructionsFile: '', instructionsSeed: '', seatsRoute: '',
         selection: '', source: '', planOut: '', parentPlan: '',
         forgeCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false, memoryCopy: false,
         add: [], drop: [], scopeOf: {}, ignored: [], notes: [],
@@ -211,6 +214,7 @@ function parseArgs(argv)
     out.instructionsAt = lower(out.instructionsAt);
     out.instructionsFile = lower(out.instructionsFile);
     out.instructionsSeed = lower(out.instructionsSeed);
+    out.seatsRoute = lower(out.seatsRoute);
     if (out.instructionsSeed && out.action !== 'uninstall') fail('--instructions-seed is uninstall\'s answer - install and update never remove the seed');
 
     for (const [key, { values, text }] of Object.entries(ENUMS))

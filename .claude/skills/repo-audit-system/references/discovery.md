@@ -45,7 +45,7 @@ by hand as described, saying so in the report.
    event, same decision. Record each pair as `contradicts`, `duplicates`, `collides`, `blocks`, `dangling` or
    `shadows` (the rubric's S1 defines them), with file and line on both sides and the profiles it shows
    in. A pair with a third-party side is recorded with its recommended home and goes to
-   `/repo-audit-plugins` as a handoff.
+   `/repo-audit-tools` as a handoff.
 7. **The guard-route map.** For each dangerous action - a secret read, a destructive delete, a
    force-push, a commit without the gate, a write outside the project, a config write - list every tool
    that reaches it in the fixture (the per-tool rows' matchers, the MCP servers' write and shell tools,

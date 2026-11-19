@@ -75,7 +75,7 @@ Lean work cuts the work, report terseness cuts the words; the third lever cuts t
 
 ## The fourth lever - quiet the command output
 
-The tool's own output is context you pay for, so run every gate at minimal verbosity rather than letting it stream a wall of text: `dotnet test -v minimal` (or `--logger "console;verbosity=minimal"`), `nx <target> --output-style=static`, `tsc --pretty false`, `git --no-pager status --short`. Then window a failing log to the first real error instead of pasting the whole run - the evidence-gatherer already does this for the diagnosers, and any seat running a build / test / lint gate should do the same. This is a cheaper, dependency-free version of a shell-output compressor: cut the noise at the source instead of filtering it after.
+The tool's own output is context you pay for, so run every gate at minimal verbosity rather than letting it stream a wall of text: `dotnet test -v minimal` (or `--logger "console;verbosity=minimal"`), `nx <target>` with no style where Nx prints its agent `summary` (else `--output-style=static`), `tsc --pretty false`, `git --no-pager status --short`. Then window a failing log to the first real error instead of pasting the whole run - the evidence-gatherer already does this for the diagnosers, and any seat running a build / test / lint gate should do the same. This is a cheaper, dependency-free version of a shell-output compressor: cut the noise at the source instead of filtering it after.
 
 ## The fifth lever - a Sonnet orchestrator
 

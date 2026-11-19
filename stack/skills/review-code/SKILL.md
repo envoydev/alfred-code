@@ -54,7 +54,7 @@ This change is <n> changed lines over <stacks> - review it in a seat to keep thi
 - 'Review it here' - the passes run in this chat; its reads land in this context
 ```
 
-The seat is the touched stack's `<stack>-verifier`, dispatched exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), with a diff brief: the target's read commands, the depth, and the report shape below. Otherwise - under the bar, or a touched stack with no verifier on the roster (verifiers cover ten stacks, and an install holds only the ones it picked) - run inline without asking. Inside the solve flows dispatch stays explicit-only: inline unless the stop that led here offered the seat and the user picked it.
+The seat is the touched stack's `<stack>-verifier`, dispatched exactly as the roster spells it (`alfred-code:<seat>` on the plugin route), with a diff brief: the target's read commands, the depth, and the report shape below. Otherwise - under the bar, or a touched stack with no verifier on the roster (verifiers cover ten stacks, and an install holds only the ones it picked) - run inline without asking. Inside the solve flows dispatch stays explicit-only: inline unless the stop that led here offered the seat and the user picked it.
 
 ## Run
 

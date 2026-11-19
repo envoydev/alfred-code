@@ -141,6 +141,7 @@ const CROSS_READS = {
     'capture-quality -> capture-preferences/scripts/preferences.js': 'preferences-by-hand',
     'review-code -> capture-preferences/scripts/preferences.js': 'SKF-14',
     'task-verify-code -> capture-preferences/scripts/preferences.js': 'SKF-14',
+    'task-verify-code -> habits-commit-checkpoint/scripts/receipt.js': 'commit-gate-receipt',
 };
 test('SKF-13: every cross-folder skill read is a registered exception', () =>
 {

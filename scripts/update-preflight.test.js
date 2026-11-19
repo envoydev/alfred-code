@@ -473,6 +473,21 @@ test('new items: the routes are read the installer\'s way - a personal switch in
     assert.match(verdict({ local: true, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n' }), /^new: agent evidence-gatherer\toffer\t-/, 'at local scope the local file is the install\'s own');
 });
 
+test('new items: a relative --root and --settings still read the stamp\'s ledgered local route (the copy route)', () => {
+    const fixture = { files: [{ status: 'added', filename: 'stack/agents/evidence-gatherer.md' }] };
+    const KEY = 'ALFRED_CODE_SKILLS_VIA_PLUGIN';
+    const { valueHash } = require('./install/stamp.js');
+    const { snap, install, fixtureFile } = scaffold({ fixture, settings: { env: {} }, stamp: `sha: aaa111\nversion: 0.2.60\nmanaged-env: settings.local.json:${KEY}=${valueHash('false')}\n` });
+    fs.writeFileSync(path.join(install, '.claude', 'settings.local.json'), JSON.stringify({ env: { [KEY]: 'false' } }));
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const env = { ...process.env };
+    delete env[KEY];
+    const cwd = path.dirname(install);
+    const out = execFileSync('node', [SCRIPT, '--snapshot', snap, '--root', 'project', '--settings', path.join('project', '.claude', 'settings.json'), '--fixture', fixtureFile, '--listing', listing], { encoding: 'utf8', env, cwd });
+    assert.match(/^new: agent evidence-gatherer\t.*$/m.exec(out)[0], /^new: agent evidence-gatherer\toffer\t-/, 'the ledgered copy route is read, not the plugin route');
+});
+
 test('new items: a library skill the project already copied makes the rule that pulls it the free take', () => {
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/rules/sql-conventions.md' }] } });
     const listing = path.join(install, 'listing.json');
@@ -1075,7 +1090,7 @@ test('a child whose child line was deleted by hand gets workspace: role-ask rejo
     const p = nestedPreflight({ parentRecord: {}, childRecord: { parent: '..' } });
     assert.match(p.full(), /^workspace: role-ask rejoin \.\.$/m);
     const joined = execFileSync('node', [path.join(__dirname, 'workspace.js'), 'role', '--root', p.install, '--answer', 'rejoin'], { encoding: 'utf8', env: p.env });
-    assert.match(joined, /^role: child of \.\.$/m);
+    assert.ok(joined.split('\n').includes(`role: child of .. (${path.basename(p.parent)})`), joined);
     assert.deepStrictEqual(readWorkspaceRecord(p.parent).record.children, ['project']);
     assert.doesNotMatch(p.full(), /^workspace:/m);
 });

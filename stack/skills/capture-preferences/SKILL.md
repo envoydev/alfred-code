@@ -26,10 +26,12 @@ The install seeds `GIT-PREFERENCES.md` from `references/git-seed.md`: the crucia
 With no arguments, the four area asks go in ONE AskUserQuestion call, one question per area - personal, code, architecture, git, in that order; the personal one asks for the personal rules the user wants added (how to answer, which language, when to ask, what to never do). Ranking tools is no fifth question - it lists this machine's servers first - so the personal question's text ends with 'Ranking tools is its own run: /capture-preferences tools.':
 
 ```ask
-Any <area> preferences to record? Type them via Other - one per line, or split on `;`.
+Any <area> preferences to record?
 - 'Skip <area> (Recommended)' - nothing is written for this area; a later run can add them
-- 'I have some' - I ask for them next, in plain text
+- 'I have some' - I ask for them next, in plain text: one per line, or split on `;`
 ```
+
+Text the user types in Other instead is that area's preferences, split the same way. The question never tells them to type there: the ask hook denies a question that does, since a picked option returns only its label.
 
 `/capture-preferences <area>` walks that area's entries that are not locked, up to four per AskUserQuestion call:
 
@@ -70,7 +72,7 @@ When the user's words name one case - a type, a file, an API, a single call such
 - 'Only this case' - the entry's Rule: is '<the words as given>', and nothing else is bound
 ```
 
-Under auto-run this ask goes out with no `(Recommended)` mark, so it waits for the user: a rule every later session follows is theirs to widen.
+Under auto-run this ask goes out with no `(Recommended)` mark, its question opening 'no option is recommended: a rule every later session follows is yours to widen' - the ask hook passes an unmarked question only when it says why, and auto-run answers only a marked one, so this one waits for the user.
 
 ### 3. CONFLICT CHECK
 

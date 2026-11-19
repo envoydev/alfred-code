@@ -81,9 +81,12 @@ or you pay for the wrong tool:
 - Never run `npx nx configure-ai-agents` yourself: it rewrites `CLAUDE.md` / `AGENTS.md` and adds third-party agent skills and an MCP entry. Name it to the user, who reviews what it writes before running it.
 
 ## Keep the output quiet
-- Nx output is context you pay for: run tasks with `--output-style=static` so the captured log is
-  compact rather than a stream of live spinners, and window a failing task's log to the first real
-  error, not the whole run. Reach for `--skip-nx-cache` only when a genuinely cold run is needed.
+- Nx output is context you pay for: a recent Nx already runs `--output-style=summary` when it detects
+  an agent - run counts and one line per failing task, naming the file that holds its full output - so
+  pass no style there and read that file to its first real error. Where `nx affected --help` lists no
+  `summary` style, run with `--output-style=static` so the captured log is plain lines rather than a
+  stream of live spinners, and window a failing task's log to the first real error, not the whole run.
+  Reach for `--skip-nx-cache` only when a genuinely cold run is needed.
 - Filtering task output: it carries ANSI colour codes and bytes that make `grep` treat the stream
   as binary and print nothing - strip the codes first (`sed 's/\x1b\[[0-9;]*m//g'`) and grep with
   `-a`, so the first filter returns the lines instead of an empty result and a retry.

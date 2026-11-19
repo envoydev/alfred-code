@@ -6,11 +6,11 @@ Work the system-level defects first, in this order, before touching prose.
 
 ## Step 1 - Fix facts and conflicts
 
-Correct every stale or wrong fact against the verified repository state. For each conflict in the conflict map, decide which instruction wins based on tier precedence and what the repo's code actually does, and remove or rewrite the loser. Where you cannot determine the intended winner, do not guess: leave both, flag the conflict prominently as unresolved, and mark the file blocked from A. A silently wrong resolution is worse than a reported conflict.
+Correct every stale or wrong fact against the verified repository state. For each conflict in the conflict map, decide which instruction wins based on tier precedence and what the repo's code actually does, and remove or rewrite the loser. Where you cannot determine the intended winner, do not guess: leave both, flag the conflict prominently as unresolved, and mark the file blocked from A. A silently wrong resolution is worse than a reported conflict. A resolution that lets the session act once a condition holds - a skill has started, a mode is on, a setting has a value - names who can make that condition true. Read the frontmatter of every skill the line names: without `disable-model-invocation: true` the model can load it, so 'starting X' is the user's act only where the line says the user started it. Before the line goes into the plan, read it as Phase 3's attacker will: it loosens no permission and skips no confirmation for a case the conflict did not name.
 
 ## Step 2 - Relocate misplaced content
 
-For each block the mechanism map classified as misplaced: move procedures to skills, path-specific guidance to path-scoped rules, deterministic steps to hooks, hard blocks to permissions entries, and individual preference to local or user tier - under the same do-not-delete-before-the-replacement-exists condition as `repo-audit-rules`. Anything you create must meet the bar of its own family audit (skills `repo-audit-skills`, rules `repo-audit-rules`), or do not create it and leave the content in place with a recommendation instead. Respect the scope boundary: when running alongside `repo-audit-rules`, emit rule-file changes as recommendations for it rather than editing rule files yourself.
+For each block the mechanism map classified as misplaced: move procedures to skills, path-specific guidance to path-scoped rules, deterministic steps to hooks, hard blocks to permissions entries, and individual preference to local or user tier - under the same do-not-delete-before-the-replacement-exists condition as `repo-audit-rules`. Anything you create is written to the bar its own family audit grades A - a skill by the `skill-authoring` skill's method - or it is not created and the content stays in place with a recommendation instead; the report tells the user to run `/repo-audit-skills` or `/repo-audit-rules` on it, since both are manual-only and this run cannot. Respect the scope boundary: when running alongside `repo-audit-rules`, emit rule-file changes as recommendations for it rather than editing rule files yourself.
 
 ## Step 3 - Build the hub
 
@@ -22,7 +22,7 @@ For each cluster in the duplication map: pick the single home, replace the copie
 
 ## Step 5 - Per-file loop
 
-Then, for each file still scoring below A / 9, run this bounded loop:
+Then, for each file still scoring below A / 9, run this bounded loop. A file already at A / 9 gets no loop edit: each deduction it keeps is scored, cited in the report and listed as not planned, with the reason 'at the target - the loop runs only below it'. Two files that contradict each other where both load in one run are not held to that, whether they are two items or two files of one: they are a conflict of Step 1 and are fixed at any grade. The loop:
 
 1. Snapshot the file before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.

@@ -160,7 +160,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
-  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, post, send, upload, a remote branch or tag
+  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, a story, task or epic raised, submitted, filed, created, opened or added with Jira, Linear, YouTrack, GitHub, GitLab, a backlog or a tracker named beside it (2026-11-19, bcb7d392; its wait row carries `clause: tracker-filing`), an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload, a remote branch or tag
   deleted, a hard reset, a database dropped, rotate, revoke, pay - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
@@ -180,9 +180,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `/alfred-code:mode:auto-run off` ends the mode: it deletes this session's stamp and the marker, writes an
   `auto-end` row and says `[mode] auto-run is OFF` ('stop auto-mode' and a bare 'stop' are plain input
   since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`
-  `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
-  session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
-  compacted at 76k of a 100k window), so the mode block's writer sets it per model where the checkout compacts instead
+  `harnessPrompt`, HK14 - is no input. A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` when
+  claude launches (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
+  compacted at 76k of a 100k window; a /clear keeps the launch's window - 2026-11-19, a session cleared 21 s after the mode was saved compacted at 967.6k of 1M; re-measured the same day on 2.1.328 with a 100k window saved mid-session: the /clear-started session reached 193k with no compaction, the next launch compacted at 73.8k), so the mode block's writer sets it per model where the checkout compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `mode-settings.js writeModes`, `fresh-session.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
   ruling, 2026-10-14; a cause per call since the mode commands of 2026-11-12): a session compacts instead of offering a
   fresh one for one of three causes, read per call by `hook-prelude.js compactCause` in this order - `project`
@@ -196,7 +196,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `guard-stop-contract.js` denies an `AskUserQuestion` still carrying a fresh-session option (check 13, once per ask
   text, the fix handed back with the option dropped and its `(Recommended)` mark moved to the first option left). Only the
   mode block's writer moves an `autoCompactWindow` (the typed command, the installer's `refresh`), and it applies from
-  the next session.
+  the next launch of claude (a /clear keeps the launch's window).
   **The mode banner** (the user's ruling, 2026-10-15): every typed `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*`
   command (the expansion matcher takes each family whole) gets two fixed lines its first reply opens with, said once - the
   lines forbid a repeat, and a prompt expanded twice (a stacked line) gets them and the contract on its first expansion
@@ -284,8 +284,25 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   other than 0 / 2, prints invalid output or stalls past its budget blocks the call as an exit 2 would ('Block the action
   when a hook fails'), the price being that a broken install blocks every shell call until fixed. The FILE dispatcher
   carries it too (audit 2026-10-30 HK-21, the plan's ruling: a crashed `file-guards.js` let a Read of a credential file
-  through), so a broken install blocks every Read, Edit, Write and Grep as well; every other hook keeps the default
-  `continue`. Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
+  through), so a broken install blocks every Read, Edit, Write and Grep as well; the secret guard's own
+  filesystem-server row carries it too (hooks audit 2026-11-19 B6-S3), and every other hook keeps the default
+  `continue`.
+  A MISSING HELPER never blocks (the user's ruling, 2026-11-19, on the hooks audit's Q6): without `shell-writes.js` the
+  rm, force-push and commit guards and the secret guard's shell route read the raw words one segment at a time
+  (`askUnread`, one copy per guard, held identical by `guard-seam.test.js`), and only a command that can break something
+  it cannot undo goes to the user's prompt (`permissionDecision: 'ask'`) with the harm named and an honest
+  recommendation: a recursive delete of the root, home, current or parent dir; a discard of uncommitted work or a stash;
+  a force push or delete of `main`, `master` or `develop`, or a force push naming no branch; a forge merge or release
+  (not once its publish half is switched off); a secret file encoded, compared, sent, piped on, or printed where no
+  masker runs. A script typed for another shell (`bash -c '...'`, `eval '...'`) is judged by its own words; a script
+  piped into a shell cannot be read, so it asks with 'approve only if you trust where it comes from'. Every other
+  command runs unasked, and the dispatcher joins two asks' reasons into one prompt. A block
+  stalled an auto-run and the repair, which runs through the shell. What the ask does per mode (measured
+  2026-11-19 on Claude Code 2.1.328, a fixture with the helper moved away, `git push --force origin main`): Manual, auto
+  and bypassPermissions show the hook's prompt, its reason and Yes / No (the docs are silent on bypassPermissions); in a
+  `-p` run every mode - default, acceptEdits, dontAsk, bypassPermissions - refuses the call and shows Claude the reason;
+  a safe push ran unasked. A deny or ask rule still holds (code.claude.com/docs/en/permissions).
+  Plain text on exit 0 is no failure; a guard that throws inside a dispatcher fails open alone and the
   dispatcher still returns, and a cold dispatcher answers well inside its budget (`hooks-entry.test.js`, HK-21). The
   rollback is dropping the dispatcher's `BLOCK_ON_FAILURE` row - an update then takes the key off the copy route's entry -
   or `claude plugin disable` on the plugin route. An older Claude Code drops the key: its hook entry is a non-strict
@@ -375,7 +392,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   contract at each Stop (`guard-stop-*`, the `alfred-stop-held-*` chain markers, and its log capped to the newest 256KB
   past 1MB, `capLog`), the fresh-session hook when it writes an offer (`guard-fresh-*`), the read guard when it logs a
   range (`guard-read-*`) and the commit guard when it writes its
-  trivial ledger (`<data root>/state/sessions/trivial-*`).
+  trivial ledger (`<data root>/state/sessions/trivial-*`); a folder inside the project that resolves outside it (a link) is never stamped or swept - `sweepStale`, `sweepScoringFolders` and docs-session's untracked-record sweep all ask `hook-prelude.js leavesProject`.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<data root>/state/approvals/*-ALLOW` receipt (this session's own, under 8h).
   THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,
@@ -680,7 +697,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     is blocked and `--redacted` of one masks every live value, whatever its keys; a diff
     of one and a walk's line out of one take the store's rule. EXACT TEXT ONLY: an encoded, split or reversed print is not
     caught - leak protection, never a wall. Past `MASK_BUDGET_MS` (5 s from process start) `stdout` becomes `output
-    withheld: the masker ran out of time` and `stderr` empty (`mask-withheld`); an image and empty output pass; a
+    withheld: the masker ran out of time` and `stderr` empty (`mask-withheld`); a throw while it reads or masks gives
+    `output withheld: the masker failed` and one `mask-error` row naming the error's class (hooks audit 2026-11-19 B6-S1:
+    a crash exited 1, and a failed PostToolUse hook left the output unmasked); an image and empty output pass; a
     `tool_response` that is no object with string `stdout` and `stderr` passes with one `mask-shape` probe row; a run past
     `MASK_SLOW_MS` (1 s) writes one `mask-slow` row with its ms and the files read. A `mask` row carries the count, the
     sources (`named`, `well-known`, `store`, `env`, `shape`), file basenames and ms - never a value (`ledgerRow`,
@@ -1446,7 +1465,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     holds it at the denial and the priced ask (`tick-hold` rows); it releases as the others do, and also once the Stop
     branch has blocked at the hold's carry or past it (`offered-at-stop`). A seat's tick arms nothing. Cursor and Codex
     have no PreToolUse payload this reads yet, so the tick hold is Claude Code's alone. A compaction point more than
-    5% over the configured `autoCompactWindow`, in a session started after the settings file was written, makes
+    5% over the configured `autoCompactWindow`, in a session launched after the settings file was written (one a /clear started never counts, 2026-11-19), makes
     `autoCompactWindow()` return null - the hook says once that the window was not honoured and names `/autocompact`
     (C10: a 350k value in `settings.local.json` compacted at 466.8k-469.7k in three sessions; cause unproven, the docs
     name no local-scope rule). A user-scope file is named `~/`-relative with `/`, never by its whole path (audit 2026-10-20,
@@ -1906,13 +1925,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     old on seed `1` to `3` (`history-switch-is-a-count`).
     THE STATUS FILE (session-inspector, the user's contract of 2026-10-29; the sections cited are its spec's):
     `session-status.js`, a module with
-    no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<cwd>/.claude/session-inspector/status/<session
-    id>.json`, schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
-    `scorer`, `autoCompact`, `handoffPrompt`, `plan`, a public contract that only ever gains fields. `plan` (PF1, 3.12) is
+    no stdin carried beside the hooks (`HOOK_MODULES`, lint's ENGINES), keeps `<root>/<data root>/state/sessions/status/<session
+    id>.json` (`.alfred/...` unless an absolute `ALFRED_CODE_DATA_PATH` moves the data root; `statusFolder`), schema 1 - `schema`, `session`, `fullContext`, `updatedAt`, `model`, `window`, `resumeAt`, `autoRun`,
+    `scorer`, `autoCompact`, `handoffPrompt`, `plan`, a public contract that only ever gains fields. It sat in `<root>/.claude/session-inspector/status/` through 3.12.1;
+    the data root's own `.gitignore` keeps the new file out of git, so no exclude line is written for it. `plan` (PF1, 3.12) is
     `planField`: the plan folder the session works on, relative to the root with one trailing slash, carried by every write and
-    null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the live `cwd` (A1), written only
-    when it is the project's own (inside its root, or a linked worktree of its checkout - A8), the id matches
-    `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no `session-inspector` / `status` folder is a link (section 1).
+    null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the root (`CLAUDE_PROJECT_DIR`, else the start cwd) - the cwd base of 2026-10-29 replaced on 2026-11-18 after the user's report of a status folder in every working folder; a session started in a linked worktree has that worktree as its root (A8). THE GATE (status-file-root design, 2026-11-18): `readerOn` writes only while `alfred-mods@*` or `session-inspector@*` is enabled in the merged `enabledPlugins` (user `<CLAUDE_CONFIG_DIR or ~/.claude>/settings.json`, project `.claude/settings.json`, local `settings.local.json`, managed settings and their `managed-settings.d` drop-ins) and nothing overrides it (a `--plugin-dir` session lists `alfred-mods@<any>: true` in the account `settings.json` or the project's `.claude/settings.json` or `settings.local.json` - a `--settings` file is never read, since Claude Code gives a hook no path to it); a settings layer that cannot be read adds nothing, and only a throw in the gate itself reads as off. The settings are re-read at every write moment (A6), so enabling the mod mid-session writes at the next Stop or prompt, and a disable stops the file's updates. The id matches
+    `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no data-root segment is a link that leaves the project (`linkedState`, fail-closed: a link that cannot be resolved counts as outside; a refused write leaves one `status-write` row, `result: refused`).
     The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
     `autoStampLive`, the stamp must name the session), `scoringState` and the newest open plan's `Resume:` text from
     `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). `fullContext` reads `compact` wherever no
@@ -1926,20 +1945,19 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Stop, which recomputes the field from history, writes it back - a stated residual, no lock on every prompt (final
     review m6, WONTFIX). The
     gates are this hook's (`historyOff`, Cursor), so `HOOKS_OFF=history-session` stops it at all three events. The
-    SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) under the `cwd` and
-    each base in `<data root>/state/sessions/status-folders.json` (at most 32), and puts an anchored
-    `/<rel>/.claude/session-inspector/status/` line under `# alfred-code: session-inspector status files` into the common
-    dir's `info/exclude` - one `gitSafe` spawn per common dir, none past 8s of the process (section 6). Each write leaves a
-    `status-write` probe row (`ok`, `slow` past 200ms, `failed`), an exclude that failed or came late a `status-exclude` one.
-    Uninstall takes both back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
-    removeSessionStatus`): under the root and each listed base the files a status write names and the folders they leave
-    empty, then each exclude pair it added for those bases - session-inspector's own files beside `status/`, a line of the
+    SessionStart prunes every status file past 7 days (`now - mtime > 7 days`, the session's own kept) in the new folder alone (`pruneStatus`).
+    THE LEGACY SWEEP (Part 3 of the 2026-11-18 sweep design, reshaped by the data-root move): nothing writes under `.claude/session-inspector/status/` any more, and the legacy list `<data root>/state/sessions/status-folders.json` and the old exclude pairs belong to `removeStatus` alone, which removes pairs and never writes one. At SessionStart (reader on or off, once `sweepDue` finds an absolute base in the list or the root's legacy folder) `removeStatus` runs with `rootMinAgeMs` over the status files earlier versions left - a subfolder's at any age, a linked worktree's top and the root's only once 25 h old (`SWEEP_ROOT_MIN_AGE_MS`, a session of the old version owns a younger one) - with the existing care (never `HANDOFF.md`, `plans/`, `scores/` or a folder holding anything else), inside the 8s deadline; a base still holding a file or not reached keeps its list entry and pair. Each write leaves a
+    `status-write` probe row (`ok`, `slow` past 200ms, `failed`, `refused`, with `gateMs`, the time of the whole `statusFile` call - the gate, the folder stat, the root check and the link check), a start with the reader off one `status-gate` row (once per SessionStart, a compact start included) and a sweep that removed anything one `status-sweep` row (`files`, `lines`, `bases`, `ms`).
+    Uninstall takes the files back through the module's own `removeStatus` (audit 2026-11-03 SYS-03; `uninstall.js
+    removeSessionStatus`), which with no `except` and no `rootMinAgeMs` removes the `PRUNE_NAME` files of the new folder - under the kept data root the uninstall passes and under the root the hook writes to, each once, refused on `linkedState` - and the folder once empty (`removeStateStatus`), then, for the legacy folders, the files a status write named under the root and each listed base and the folders they leave
+    empty, then each exclude pair the old release added for those bases - session-inspector's own files beside `status/`, a line of the
     user's own and another project's pair still in use stay. A stack pair (the comment with its anchored line right under
     it) whose status folder exists in NONE of the repository's work trees goes too (E-batch SYS-03: a base the list had
-    dropped kept its pair) - it excludes nothing, and the next write re-adds it; the work trees are listed once per common
-    dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair goes through the
-    list alone, and a lone anchored line is the user's.
-    `docs/install-footprint.md` lists both writes.
+    dropped kept its pair) - it excludes nothing; the work trees are listed once per common
+    dir (`git worktree list --porcelain`, 1.5s), and with no answer nothing is swept. The root-form pair is one line the main
+    checkout and every linked worktree share, so a sweep keeps it while any work tree in git's listing still holds a legacy
+    status file, or when the listing cannot be read; an uninstall takes it with its listed base. A lone anchored line is the user's. The 8s deadline binds the hook's own sweep alone: the installer has no hook timeout, so `removeSessionStatus` passes `uptime: () => 0` and the clean-up is never cut short (a test seam can still inject an age). Past the deadline `removeStatus` spawns no git: it keeps the list, cut to the bases not reached, and their pairs, and returns `late` (a group whose exclude file cannot hold the pair, or has no drop set, is never counted; a `worktree list` the deadline cut marks its group late too) - a caller that notes it says to run again.
+    `docs/install-footprint.md` lists the file and the legacy clean-up.
     THE PLAN KEY (PF1, 3.12; R28-R30): `onPlan`, called by the fresh-session hook at a plan call's PreToolUse, is a
     fourth `when` of `writeStatus`, `'plan'`: the candidate is checked first (`planField`) and compared with the
     file's value - equal is `unchanged`, no build and no write - and a write carries `autoRun`, `scorer` and
@@ -2013,12 +2031,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     reaches only the members whose stamps pick it. A file that is a link or over 64 KB is skipped. Pathless rules go out
     at session and seat start, packed first fit into at most five parts of 9,500 characters (the harness caps one hook's
     context at 10,000), a rule too long for one part cut at line ends, past part 5 named on an unsent line; `resume` and
-    `fork` send nothing, `Explore` and `Plan` seats nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
+    `fork` send like a startup, a root's main-session start opens part 1 with the members index (`memberIndex`: a line for each child its record lists, ignored ones out and one whose own record does not point back at this root left out too (hop rule N1), naming the child's instruction file and its rule-file count - at most 12 lines and 1,500 characters, then `- and <k> more`, which the `rules-push` row's `members` does not count; no index while `ALFRED_CODE_WORKSPACE` is 0; counted in part 1's room like the natives line, and a seat start has none), `Explore` and `Plan` seats get nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
     the first time a touched file matches one of its globs (`**/`, a trailing `/**`, `*`; a glob with `? [ { !` matches
     nothing and check 73 fails a shipped one), the file's path read from the rule's project, else from its own checkout;
     once per session and actor, recorded in `<data root>/state/sessions/rules-<session>-<actor>.json` (temp file and
-    rename; `compact` and `clear` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
-    (`mode: probe`, chars, parts, unsent) to the session's `hook-blocks` ledger. A JOINED MEMBER (workspace stage 5): the
+    rename; `compact`, `clear`, `resume` and `fork` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
+    (`mode: probe`, chars, parts, unsent, source, members - the index's line count) to the session's `hook-blocks` ledger. A JOINED MEMBER (workspace stage 5): the
     first touch of a file under a member outside the start's chain (`layout.memberOf`; a grandchild brings its parent
     first) sends that member's block - `Project <T>, part <k>`, a head naming its AGENTS.md (else CLAUDE.md), its
     `.claude/rules` files, docs root, preferences and the start's always-on rules it leaves out, then its own always-on
@@ -2026,8 +2044,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     part is claimed by the exclusive marker `rules-<session>-<actor>-m-<sha256(rel) 12>-<k>` beside the record (first line
     `/ <T> <chars> <session> <actor>`, an optional `/ not sent:` line, then the item names), so parallel calls send it
     once; a marker found empty is another call mid-claim and prints nothing, an unwritable folder sends the part
-    unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`
-    and `clear` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
+    unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`,
+    `clear`, `resume` and `fork` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
     record as `<holder key>/<name>`, and the blocks and path rules of one call share one 9,500-character room (a rule
     that does not fit waits for the next touch). One `member-push` row per part (member, part, chars, unsent, tool). A
     Cursor payload gets the same text in `additional_context`; `session-surface.js` lists the members the newest session

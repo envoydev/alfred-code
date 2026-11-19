@@ -236,6 +236,26 @@ test('the session-inspector status file lands in context/', (t) =>
     assert.strictEqual(got.session, fx.sid);
 });
 
+test('the status file in the data root lands in context/, and wins over an older release\'s folder', (t) =>
+{
+    const newPath = (fx) => path.join(fx.dataRoot, 'state', 'sessions', 'status', `${fx.sid}.json`);
+    const oldPath = (fx) => path.join(fx.project, '.claude', 'session-inspector', 'status', `${fx.sid}.json`);
+    const copy = (fx) => JSON.parse(fs.readFileSync(path.join(fx.out, 'context', 'session-inspector-status.json'), 'utf8'));
+    const alone = makeSession({}); t.after(alone.cleanup);
+    alone.write(newPath(alone), JSON.stringify({ schema: 1, session: alone.sid, where: 'data root' }));
+    run(alone);
+    assert.strictEqual(copy(alone).where, 'data root');
+    const both = makeSession({}); t.after(both.cleanup);
+    both.write(newPath(both), JSON.stringify({ schema: 1, session: both.sid, where: 'data root' }));
+    both.write(oldPath(both), JSON.stringify({ schema: 1, session: both.sid, where: 'old folder' }));
+    run(both);
+    assert.strictEqual(copy(both).where, 'data root', 'the new path is read first');
+    const older = makeSession({}); t.after(older.cleanup);
+    older.write(oldPath(older), JSON.stringify({ schema: 1, session: older.sid, where: 'old folder' }));
+    run(older);
+    assert.strictEqual(copy(older).where, 'old folder', 'the old path is the fallback');
+});
+
 test('no data root and an empty one', (t) =>
 {
     const fx = makeSession({}); t.after(fx.cleanup);

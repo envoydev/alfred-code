@@ -25,7 +25,7 @@ Loaded from the `npm` skill when wiring CI installs, configuring update bots, ch
 
 | Manager | State | Reach for it when |
 |---|---|---|
-| npm 11.x | universal default, ships with Node, gap largely closed | legacy, maximum compatibility, no pain points |
+| npm 12.x (11.x is labelled Legacy) | universal default, ships with Node (read `npm -v` for which major), gap largely closed | legacy, maximum compatibility, no pain points |
 | pnpm 10/11 | de facto default for new projects/monorepos: content-addressable store, strict resolution (no phantom deps), cooldown on by default in pnpm 11, lifecycle scripts opt-in | monorepo pain, disk/CI cost, phantom-dependency correctness |
 | Yarn v1 | maintenance mode - no new projects | never for new work |
 | Yarn Berry v4 | fast PnP, but toolchain-compat complexity | only if the whole stack supports PnP |
@@ -39,4 +39,4 @@ npm workspaces suffice for a handful of packages sharing a lockfile - they have 
 
 ## Node targeting
 
-Node 24 is Active LTS - target it for new work; Node 22 is Maintenance LTS (EOL Apr 2027). From Oct 2026 the release model changes: one major per year (every April), every release becomes LTS, plus an Alpha channel.
+Target the newest LTS line for new work, and read which one that is at use (nodejs.org/en/about/previous-releases). Read 2026-11-16: Node 26 is the newest LTS, 24 and 22 are still LTS, 27 is in Alpha. From Node 27 the cycle is annual: every major becomes LTS after six months as Current, with an Alpha phase before it.

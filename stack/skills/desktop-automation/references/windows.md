@@ -29,8 +29,9 @@ file writes, moves and deletes are not there unless the user turns them on. What
 Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
 starts any program (`powershell.exe -Command ...` included) with no guard in front of it: use that mode only
 when the user asked for that program. `launch`, `switch` and `resize` are the UI's own.
-The server reads the list at start, so reconnect it from `/mcp` after a change. Windows-MCP matches the names
-case-sensitively and skips an unknown one silently, so spell each as the Tools list above does. Its own
+The server reads the list at start, so reconnect it from `/mcp` after a change. Spell each name as the Tools list above
+does: releases have differed on whether a name is matched case-sensitively and whether an unknown one is skipped
+silently or stops the server, so read the current README through the documentation tools before leaning on either. Its own
 `WINDOWS_MCP_TOOLS` (its `--tools`) OVERRIDES the exclude list: leave it unset. Turning a tool on is the user's
 decision, never a way around a blocked step.
 

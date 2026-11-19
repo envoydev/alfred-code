@@ -29,7 +29,7 @@ Markdown form only - not prose clarity (that is Vale), spelling (codespell / hun
 
 ## How to run a review
 
-**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<data root>` (the docs root `<docs-path>` and the hooks' `state/` and `statistics/` beside it) and every generated rule under `.claude/rules/` (`alfred-awareness.md`) - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
+**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<data root>` (the docs root `<docs-path>` and the hooks' `state/` and `statistics/` beside it), every generated rule under `.claude/rules/` (`alfred-awareness.md`) and a skill's own files - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
 
 Two passes, syntax before style. The reviewer reads a syntax violation differently from a style violation, so do not interleave them.
 
@@ -113,4 +113,4 @@ Reviewing `./README.md` - the only README in the tree. Pass 1 fixes syntax bugs 
 
 ## Attribution
 
-Distilled from the Markdown Guide (CC BY-SA 4.0) and Google's Markdown style guide (Apache 2.0); link out, never paste long excerpts.
+Distilled from the Markdown Guide (CC BY-SA 4.0) and Google's Markdown style guide (CC BY 3.0); link out, never paste long excerpts.

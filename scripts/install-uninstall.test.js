@@ -278,23 +278,144 @@ test('uninstall: the session status files and the exclude line the stack added g
         {
             if (i !== 0) return null;
             fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), '*.mine\n');
-            const env = { CLAUDE_PROJECT_DIR: repo };
-            assert.strictEqual(status.writeStatus({ session_id: 's1', cwd: repo }, {}, { when: 'always', deps: { env } }), 'written');
+            // what an older release wrote: the root's status file, its exclude pair and the list of bases
+            put(path.join(repo, '.claude', 'session-inspector', 'status', 's1.json'), '{}');
+            fs.appendFileSync(path.join(repo, '.git', 'info', 'exclude'), `${status.EXCLUDE_COMMENT}\n/.claude/session-inspector/status/\n`);
             put(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md'), '# handoff\n');
+            // a folder an older release listed: uninstall passes no options, so it is swept at any age, with the list
+            put(path.join(repo, 'sub', '.claude', 'session-inspector', 'status', 's2.json'), '{}');
+            const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
+            put(list, JSON.stringify([repo, path.join(repo, 'sub')].map((b) => b.split(path.sep).join('/'))));
             return fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');
         },
         inspect: (repo) => ({
             status: fs.existsSync(path.join(repo, '.claude', 'session-inspector', 'status')),
+            stray: fs.existsSync(path.join(repo, 'sub', '.claude')),
+            list: fs.existsSync(path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json')),
             handoff: fs.existsSync(path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md')),
             exclude: fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8'),
         }),
     });
     assert.strictEqual(result.status, false, outs[1]);
+    assert.strictEqual(result.stray, false, 'a listed folder is swept at any age');
+    assert.strictEqual(result.list, false, 'the list of folders goes');
     assert.strictEqual(result.handoff, true, 'session-inspector\'s own file stays');
     assert.ok(result.exclude.endsWith('*.mine\n'), `the user's own line stays: ${result.exclude}`);
     assert.doesNotMatch(result.exclude, /session-inspector/, 'the pair the stack added goes');
-    assert.match(outs[1], /session status: 1 file removed/);
+    assert.match(outs[1], /session status: 2 files removed/);
     assert.match(outs[1], /info\/exclude: 1 line the stack added removed/);
+});
+
+// The status files live under the data root now (`<data root>/state/sessions/status`), and no exclude line covers them: an
+// uninstall takes the files and the emptied folder, under the kept data root and under the one the hook writes to.
+test('uninstall removes the data-root status files', POSIX_ONLY, () =>
+{
+    const folderOf = (repo, dataRoot) => path.join(repo, dataRoot, 'state', 'sessions', 'status');
+    const run = (repo, dataRoot) =>
+    {
+        const logs = [];
+        uninstall.removeSessionStatus({ projectRoot: repo, dataRoot, log: (m) => logs.push(m), note: () => {}, deps: { uptime: () => 0 } });
+        return logs.join('\n');
+    };
+
+    const repo = path.join(TMP, `data-root-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    const folder = folderOf(repo, '.alfred');
+    put(path.join(folder, 's1.json'), '{}');
+    put(path.join(folder, 's2.json'), '{}');
+    const handoff = path.join(repo, '.claude', 'session-inspector', 'HANDOFF.md');
+    put(handoff, '# handoff\n');
+    const log = run(repo, '.alfred');
+    assert.ok(!fs.existsSync(folder), 'the emptied status folder goes');
+    assert.ok(fs.existsSync(path.join(repo, '.alfred', 'state', 'sessions')), 'the folders above it stay');
+    assert.ok(fs.existsSync(handoff), 'the mod\'s own file stays');
+    assert.match(log, /session status: 2 files removed, and the emptied \.alfred\/state\/sessions\/status/);
+
+    const kept = path.join(TMP, `data-root-kept-${seq++}`);
+    fs.mkdirSync(kept, { recursive: true });
+    const keptFolder = folderOf(kept, 'legacy-data');
+    const writtenFolder = folderOf(kept, '.alfred');
+    put(path.join(keptFolder, 'a.json'), '{}');
+    put(path.join(writtenFolder, 'b.json'), '{}');
+    put(path.join(writtenFolder, 'notes.txt'), 'the user\'s own file');
+    const keptLog = run(kept, 'legacy-data');
+    assert.ok(!fs.existsSync(keptFolder), 'the kept root\'s folder is emptied');
+    assert.ok(!fs.existsSync(path.join(writtenFolder, 'b.json')), 'the status file under the written root goes too');
+    assert.ok(fs.existsSync(path.join(writtenFolder, 'notes.txt')), 'a file the pattern does not name stays, and so does its folder');
+    assert.match(keptLog, /session status: 2 files removed/);
+});
+
+test('uninstall leaves status files behind a data-root link that leaves the project', POSIX_ONLY, () =>
+{
+    const repo = path.join(TMP, `data-root-link-${seq++}`);
+    const outside = path.join(TMP, `data-root-outside-${seq++}`);
+    put(path.join(outside, 'sessions', 'status', 's1.json'), '{}');
+    fs.mkdirSync(path.join(repo, '.alfred'), { recursive: true });
+    fs.symlinkSync(outside, path.join(repo, '.alfred', 'state'));
+    uninstall.removeSessionStatus({ projectRoot: repo, log: () => {}, note: () => {}, deps: { uptime: () => 0 } });
+    assert.ok(fs.existsSync(path.join(outside, 'sessions', 'status', 's1.json')), 'a file outside the project is never removed');
+});
+
+// A run past the exclude deadline (the installer's own uptime is easily past 8 s) leaves the pairs and the list that names
+// their bases, and says so: the stamp stays and uninstall can be run again.
+test('uninstall: past the exclude time limit the pairs and the list stay, and one line says to run it again', POSIX_ONLY, () =>
+{
+    const status = require('../stack/hooks/session-status.js');
+    const repo = path.join(TMP, `late-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    const sub = path.join(repo, 'sub');
+    put(path.join(sub, '.claude', 'session-inspector', 'status', 's2.json'), '{}');
+    const exclude = path.join(repo, '.git', 'info', 'exclude');
+    fs.appendFileSync(exclude, `${status.EXCLUDE_COMMENT}\n/sub/.claude/session-inspector/status/\n`);
+    const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
+    put(list, JSON.stringify([sub.split(path.sep).join('/')]));
+    const logs = [];
+    const notes = [];
+    uninstall.removeSessionStatus({ projectRoot: repo, log: (m) => logs.push(m), note: (m) => notes.push(m), deps: { uptime: () => 9000 } });
+    assert.ok(fs.readFileSync(exclude, 'utf8').includes('/sub/.claude/session-inspector/status/'), 'the pair stays');
+    assert.ok(fs.existsSync(list), 'the list stays');
+    assert.strictEqual(notes.length, 1, notes.join('\n'));
+    assert.match(notes[0], /session status: the exclude clean-up was cut short at the time limit .*run uninstall again/);
+    uninstall.removeSessionStatus({ projectRoot: repo, log: (m) => logs.push(m), note: (m) => notes.push(m), deps: { uptime: () => 0 } });
+    assert.ok(!fs.readFileSync(exclude, 'utf8').includes('/sub/'), 'a run in time takes the pair');
+    assert.ok(!fs.existsSync(list));
+    assert.strictEqual(notes.length, 1, 'and says nothing more');
+});
+
+// final review, item 2: the installer has no hook timeout, so its own process age never cuts the clean-up short, and a
+// repository with no status folder and no pair has nothing to be late for.
+test('uninstall: the installer\'s own uptime is no deadline - a run past 8 s of process age still takes the pair and the list', POSIX_ONLY, () =>
+{
+    const status = require('../stack/hooks/session-status.js');
+    const repo = path.join(TMP, `age-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    const sub = path.join(repo, 'sub');
+    put(path.join(sub, '.claude', 'session-inspector', 'status', 's2.json'), '{}');
+    const exclude = path.join(repo, '.git', 'info', 'exclude');
+    fs.appendFileSync(exclude, `${status.EXCLUDE_COMMENT}\n/sub/.claude/session-inspector/status/\n`);
+    const list = path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json');
+    put(list, JSON.stringify([sub.split(path.sep).join('/')]));
+    const notes = [];
+    const realUptime = process.uptime;
+    process.uptime = () => 9;
+    try { uninstall.removeSessionStatus({ projectRoot: repo, note: (m) => notes.push(m) }); }
+    finally { process.uptime = realUptime; }
+    assert.deepStrictEqual(notes, [], 'no time-limit note');
+    assert.ok(!fs.readFileSync(exclude, 'utf8').includes('/sub/'), 'the pair goes');
+    assert.ok(!fs.existsSync(list), 'the list goes');
+});
+
+test('uninstall: a fresh repository with no status folder and no pair is never late, whatever the clock says', POSIX_ONLY, () =>
+{
+    const repo = path.join(TMP, `fresh-${seq++}`);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'pipe' });
+    const notes = [];
+    uninstall.removeSessionStatus({ projectRoot: repo, note: (m) => notes.push(m), deps: { uptime: () => 9000 } });
+    assert.deepStrictEqual(notes, [], 'no note');
+    assert.ok(!fs.existsSync(path.join(repo, '.alfred', 'state', 'sessions', 'status-folders.json')), 'no list written');
 });
 
 // E-batch SYS-03: a pair for a base the list has dropped, whose status folder is gone, goes with the uninstall; a pair whose

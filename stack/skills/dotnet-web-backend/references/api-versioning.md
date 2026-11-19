@@ -31,23 +31,9 @@ public void Process(Order order, CancellationToken ct = default) { }
 
 ## API-approval testing
 
-This is the enforcement mechanism - the reason an accidental break gets caught instead of shipping. Snapshot the public API surface to a checked-in file with PublicApiGenerator, and gate it with Verify: any change to the surface fails the test in CI, so a reviewer must consciously approve the new `.verified.txt`.
+This is the enforcement mechanism - the reason an accidental break gets caught instead of shipping. Snapshot the public API surface to a checked-in file with PublicApiGenerator, and gate it with Verify: any change to the surface fails the test in CI, so a reviewer must consciously approve the new `.verified.txt`. The packages and the test are `dotnet-testing`'s public-API approval snapshot - load it and write the test from there, so the Verify adapter matches the project's runner.
 
-```bash
-dotnet add package PublicApiGenerator
-dotnet add package Verify.Xunit
-```
-
-```csharp
-[Fact]
-public Task PublicApi_HasNotChanged()
-{
-    var api = typeof(MyLibrary.Marker).Assembly.GeneratePublicApi();
-    return Verify(api);
-}
-```
-
-The verified snapshot is the human-readable API surface; a diff to it in a PR is exactly the set of contract changes, breaking ones included. Test-project wiring belongs to dotnet-testing - this is only the surface-approval pattern layered on top of it.
+The verified snapshot is the human-readable API surface; a diff to it in a PR is exactly the set of contract changes, breaking ones included.
 
 ## Deprecation and SemVer
 

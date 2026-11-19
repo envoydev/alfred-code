@@ -811,8 +811,10 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
   if (flags.compact === 'off') return '[mode] auto-compact is OFF: fresh-session asks are back. From the next session Claude Code no longer compacts'
     + ` by itself here - /compact still works${allOff ? ' - the fresh-session offer is off here too, so nothing else relieves a full context' : ''}`
     + ms.said(r);
+  // Claude Code reads the window when claude launches: a /clear in the same process kept the old one (usage audit
+  // 2026-11-19, 0fe48ef1: the mode was saved 21 s before its /clear, and the session compacted at 967.6k of 1M).
   const id = (() => { try { return fresh.sessionModelId(); } catch { return null; } })();   // no engine: its own point
-  return `[mode] auto-compact is ON: no fresh-session ask is made. From the next session Claude Code compacts at ${
+  return `[mode] auto-compact is ON: no fresh-session ask is made. From the next launch of claude - a /clear keeps the window this launch read - Claude Code compacts at ${
     id && r.windows[id] ? `${Math.round(r.windows[id] / 1000)}k on ${id}` : 'its own point'}${ms.said(r)}`;
 }
 function modePrompt() {
@@ -1484,13 +1486,18 @@ function modeBanner(autoOn) {
   const window = fresh.tableWindow();
   const room = `its ${window ? `${tokens(window)} ` : ''}context window${model ? ` (${model})` : ''}`;
   const acw = fresh.autoCompactWindow();
+  // A settings-file window takes effect when claude launches (repo-hooks.md, the compaction point), so the banner says one
+  // saved during this launch is the next launch's (usage audit 2026-11-19, bcb7d392: the window was saved 54 s into the
+  // session, 8 s before its auto-run banner, and the session compacted at 977.7k of 1M).
+  const saved = typeof fresh.configuredCompactWindow === 'function' ? fresh.configuredCompactWindow() : null;
+  const launchNote = saved && saved.mtimeMs != null ? ' - Claude Code reads it when claude launches, so one saved during this launch applies from the next' : '';
   // Claude Code caps an auto-compact window at the model's context window (code.claude.com/docs/en/model-config, 'Set
   // the auto-compact window', verified 2026-10-21), so one past the capacity - a /model switch to a smaller model - is
   // quoted as the capacity it compacts at
   const where = acw && window && acw > window
     ? `as it nears its ${tokens(window)} context window (its ${tokens(acw)} auto-compact window is capped there${model ? `, ${model}` : ''})`
     : acw
-      ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''})`
+      ? `as it nears its ${tokens(acw)} auto-compact window (${window ? `of ${tokens(window)}` : 'context'}${model ? `, ${model}` : ''}${launchNote})`
       : `at Claude Code's own point in ${room}`;
   const name = `/${skill.replace(/^alfred-code:/, '')}`;
   const mode = autoOn
@@ -1580,9 +1587,10 @@ if (auto) {
     + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
     + "a guard's security ask (a credential shown, work discarded, a write outside the project, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
+    + "When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the first, its question naming them 'outward acts' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed. The user's pick is the approval a plan or project rule asks for each listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN ask outranks the pick: then ask per act, as before. "
     + (m ? `(2) Do not end a turn between steps: the Stop hook sends you back while ${m} stands. ` : '(2) Do not end a turn between steps: no run marker stands, so carry each step on in the same turn. ')
     + 'A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
-    + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
+    + "(3) Commit through the usual gates; never push, merge, deploy or send anything out, unless the user's own pick in this run approved that exact act (the series rule in (1)) - list each other one for the user in the close (an unpushed commit is a Leftovers line, never an ask). "
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
     + "(5) A `--mode-*` token in the arguments is a retired flag, not a target - leave it out. "
     + `(6) The stamp is the session's approval: never write an APPROVED or AUTO line over it and never delete it - only the user's /alfred-code:mode:auto-run off ends auto-run. An answered ask is the go - carry on in the same turn. `

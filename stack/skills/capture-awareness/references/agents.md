@@ -123,9 +123,9 @@ carrying a two-release-old one. `/alfred-code:validate` compares a project's sta
 
 ## How each section is filled
 
-The fill rules the script implements - read them to audit a row, never on a normal run. Every character written
-into the doc is paid by every session and every subagent of the project (the rule imports it), so keep the rows
-lean.
+The fill rules the script implements - a run reads them with the rest of this file but applies none by hand: they
+explain a row when one is questioned. Every character written into the doc is paid by every session and every
+subagent of the project (the rule imports it), so keep the rows lean.
 
 - **Orchestration skills** - one line per detected `disable-model-invocation` skill: `/name - <first clause, max
   120 chars>`. The row is a ROUTER, not the skill's documentation - the skill's own description is loaded anyway.

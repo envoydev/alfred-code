@@ -37,7 +37,7 @@ Build it clean the first time - the container and CI traps to hunt as you write 
 - Pin base images by digest and actions by commit SHA - never a floating :latest or a moving major tag.
 - Order the Dockerfile restore-before-copy-source and key the Actions cache on the lockfile hash.
 - Run as a non-root USER with a healthcheck and a .dockerignore.
-- Drop capabilities, then add back what the image's binary needs - one carrying a file capability (caddy's `cap_net_bind_service`) fails exec under `cap_drop: ALL` until `cap_add` names it.
+- Drop capabilities, then add back what the image's binary needs - a binary whose file capability carries the effective bit (`getcap` prints `=ep`) fails exec under `cap_drop: ALL` until `cap_add` names it, while one marked `=p` alone starts; read it off the image you ship (`docker run --rm --entrypoint getcap <image> <binary>`), never from memory - an image can change it between releases.
 - Never write a secret into an image layer or an unmasked log - mask derived secrets, keep a least-privilege permissions block, and federate with OIDC over a stored credential.
 - Wire an integration job against a real service container, not a mock.
 - Run a migration as a gated expand-contract step, never folded into the app roll.

@@ -58,10 +58,57 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 
-// The reader every git guard shares. A copy that runs before it lands fails open like every gate here (the parity
-// test's copy set), rather than judging with a second, weaker reader.
-let shellWrites;
-try { shellWrites = require('./shell-writes.js'); } catch { process.exit(0); }
+// The reader every git guard shares; never a second, weaker reader here - without it the command is asked about below
+// (askUnread).
+let shellWrites = null;
+try { shellWrites = require('./shell-writes.js'); } catch { /* askUnread, once the command is read */ }
+// A missing shell-writes.js (only on a broken install): this guard has no reader, so it reads the raw text alone. A
+// command that can break something it cannot undo goes to the user's permission prompt with that harm named and an
+// honest recommendation; every other command runs as before. Never a block, and never a prompt for a command that is
+// safe: the guard is there to help the task along, not to stall it (the user's ruling, 2026-11-19, on the hooks
+// audit's Q6 - a block stalled an auto-run and the repair, which runs through the shell).
+function askUnread(command, judge)
+{
+    const harm = judge(command);
+    if (!harm) process.exit(0);
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
+        permissionDecisionReason: `${harm.why}. ${harm.advice} (shell-writes.js is missing beside ${require('path').basename(__filename)}, so this guard read the text only; /alfred-code:update repairs the install.)` } }));
+    process.exit(0);
+}
+// One command's words per segment, read off the raw text: a split on && || ; & | and newlines, quotes dropped from a
+// word. Only the words of one segment are judged together, so `rm -rf dist && cd ..` is no recursive delete of `..`. A
+// script typed for another shell (`bash -c '...'`, `eval '...'`) is unwrapped first and judged by its own words.
+const CARRIER = /(?:^|[\s;&|(])(?:sudo\s+)?(?:(?:ba|z|da|k)?sh|pwsh|powershell)(?:\.exe)?(?:\s+-[a-zA-Z]+)*?\s+-(?:[a-zA-Z]*c|command)\s+|(?:^|[\s;&|(])eval\s+/g;
+const segmentsOf = (c) => String(c).replace(CARRIER, ';').split(/&&|\|\||[;&|\n]/).map((s) => s.trim().split(/\s+/).filter(Boolean)
+    .map((w) => w.replace(/^['"]+|['"]+$/g, ''))).filter((w) => w.length);
+// The verb after `git` (or `sudo git`), past git's own options; -C and -c take a value.
+const gitVerb = (w) =>
+{
+    let i = w[0] === 'sudo' ? 1 : 0;
+    if (!/^git(?:\.exe)?$/.test(w[i] || '')) return null;
+    for (i++; i < w.length && w[i].startsWith('-'); i += /^-[Cc]$/.test(w[i]) ? 2 : 1);
+    return i < w.length ? { verb: w[i], rest: w.slice(i + 1) } : null;
+};
+const PUSH_HARM = (c) =>
+{
+    for (const w of segmentsOf(c))
+    {
+        const g = gitVerb(w);
+        if (!g || g.verb !== 'push') continue;
+        const opts = g.rest.filter((a) => a.startsWith('-'));
+        const pos = g.rest.filter((a) => !a.startsWith('-'));
+        const refs = pos.slice(1);
+        const forced = opts.some((a) => /^--(?:force(?:-with-lease|-if-includes)?(?:=.*)?|mirror|delete)$/.test(a) || /^-[a-zA-Z]*[fd][a-zA-Z]*$/.test(a))
+            || refs.some((r) => /^[+:]/.test(r));
+        if (!forced) continue;
+        const dsts = refs.map((r) => r.replace(/^\+/, '').split(':').pop().replace(/^refs\/heads\//, ''));
+        if (opts.includes('--mirror') || dsts.some((d) => PROTECTED.includes(d)))
+            return { why: `This force-pushes or deletes a shared branch (${PROTECTED.join(', ')}), rewriting history others build on`, advice: 'Recommended: deny, unless you meant to rewrite it.' };
+        if (!dsts.length)
+            return { why: 'This force-pushes the current branch, and without the helper this guard cannot see which branch that is', advice: `Recommended: approve if the current branch is not ${PROTECTED.join(', ')}, else deny.` };
+    }
+    return null;
+};
 
 const PROTECTED = ['main', 'master', 'develop'];
 const FORCE_FLAG = /^(?:-f|--force|--force-with-lease|--force-if-includes)(?:=\S*)?$/;
@@ -832,6 +879,7 @@ function main()
     })();
 
     const command = String(payload?.tool_input?.command ?? '');
+    if (!shellWrites) askUnread(command, PUSH_HARM);
     const cwd = payload?.cwd ?? process.cwd();
     const route = isProtectedForcePush(command, cwd);
     if (!route)

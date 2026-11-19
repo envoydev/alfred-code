@@ -1167,6 +1167,29 @@ test('state files older than seven days are swept, at the boundary and only ours
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('the untracked-record sweep stands down on a folder inside the project that a link takes outside', () => {
+  const { sweepRecords } = require('../stack/hooks/docs-session.js');
+  const root = scratch();
+  try {
+    const project = require('node:path').join(root, 'project');
+    const outside = require('node:path').join(root, 'outside');
+    fs.mkdirSync(require('node:path').join(project, '.alfred', 'state'), { recursive: true });
+    fs.mkdirSync(outside);
+    const old = plantOld(outside, 'untracked-session-old.txt', 30 * DAY);
+    const link = require('node:path').join(project, '.alfred', 'state', 'sessions');
+    fs.symlinkSync(outside, link, 'junction');
+    sweepRecords(link, Date.now(), { project });
+    assert.ok(fs.existsSync(old), 'a record outside the project is not removed through the link');
+    const inside = require('node:path').join(project, 'store');
+    fs.mkdirSync(inside);
+    const stale = plantOld(inside, 'untracked-session-old.txt', 30 * DAY);
+    const inLink = require('node:path').join(project, '.alfred', 'state', 'inner');
+    fs.symlinkSync(inside, inLink, 'junction');
+    sweepRecords(inLink, Date.now(), { project });
+    assert.ok(!fs.existsSync(stale), 'a link that stays inside the project is followed');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('the sweep runs by itself when a new state file appears, and never fails the hook', () => {
   // os.tmpdir() reads TMPDIR on posix and TEMP (then TMP) on Windows, so all three point at this scratch
   // directory: the hook's own state and its sweep both land here, and the machine's temp directory is left alone.
@@ -3041,6 +3064,22 @@ test('member: the first change under the child\'s source root is denied with the
     assert.match(why(held), /API-SECTION/);
     assert.doesNotMatch(why(held), /ROOT-SECTION/);
     assert.ok(!denied(r.run(edit('api/src/a.ts', s))), 'the retry passes');
+  } finally { r.rm(); }
+});
+
+// Hooks audit 2026-11-19 (S-DS1): the hold asked `unattended()` at the member's root, so a joined member's standing
+// auto-run - the mode file of its own checkout - skipped the hold in an interactive session started at the root
+// (0fe48ef1, 2026-11-17). `api` gets a repository of its own here, so that file is its own mode file.
+test('member: a joined member\'s standing auto-run does not skip the hold of a session started at the root', () => {
+  const r = joined();
+  try {
+    const api = path.join(r.root, 'api');
+    spawnSync('git', ['init', '-q', api], { encoding: 'utf8' });
+    r.write('api/.gitignore', '.claude/settings.local.json\n');
+    r.write('api/.claude/settings.local.json', JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    const held = r.run(edit('api/src/a.ts', sid()));
+    assert.ok(denied(held), `held, not skipped: ${held.stdout}${held.stderr}`);
+    assert.match(why(held), /API-SECTION/);
   } finally { r.rm(); }
 });
 

@@ -147,5 +147,20 @@ function foreignWords(count, seed = 1)
 const userPick = (source = 'user_temporary') =>
     (source === null ? {} : { permissionDecision: { decision: 'accept', source, grantScope: 'once', reasonCode: 'unknown' } });
 
-module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
+// The account folder a suite hands a hook as CLAUDE_CONFIG_DIR when the hook must read the status-file gate as open: a
+// settings.json enabling `alfred-mods@test`, the one thing that opens it (session-status.js readerOn). One per process,
+// made on first use and removed when the suite ends.
+const STATUS_ACCOUNT_SETTINGS = { enabledPlugins: { 'alfred-mods@test': true } };
+let statusAccountDir = null;
+function statusAccount()
+{
+    if (statusAccountDir) return statusAccountDir;
+    statusAccountDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hook-suite-status-account-')));
+    fs.writeFileSync(path.join(statusAccountDir, 'settings.json'), JSON.stringify(STATUS_ACCOUNT_SETTINGS));
+    const dir = statusAccountDir;
+    process.once('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* gone */ } });
+    return statusAccountDir;
+}
+
+module.exports = { isolateHookSuite, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
     reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick };

@@ -86,6 +86,9 @@ test('a matcher is a name, a | list or a regex; empty and * match everything', (
     assert.ok(matches('Write, Edit', 'Edit'), 'a comma list with spaces is exact names too');
     assert.ok(matches('Edit.*', 'NotebookEdit'), 'a regex is unanchored, as the docs say');
     assert.ok(matches('nothing-like-it', 'any prompt', 'UserPromptSubmit'), 'an event with no matcher support ignores the field');
+    assert.ok(matches('api-key', 'old-api-key', 'FileChanged'), 'on FileChanged a - keeps the matcher a regex, unanchored');
+    assert.ok(!matches('api-key', 'old-api-key', 'PreToolUse'), 'elsewhere a - is part of an exact name');
+    assert.ok(matches('rate_limit|overloaded', 'overloaded', 'StopFailure') && !matches('rate_limit|overloaded', 'overloaded_x', 'StopFailure'), 'a | list on StopFailure is exact names');
 });
 
 test('a fresh install: rules, listings and seats land at their load points, each with its owner', () =>
@@ -349,6 +352,26 @@ test('an injection that repeats a rule is flagged as paid twice', () =>
     const overlap = flagsOf(s, 'injection-overlap');
     assert.equal(overlap.length, 1);
     assert.ok(overlap[0].detail.includes('hook:house:echo.js:SessionStart') && overlap[0].detail.includes('rule:.claude/rules/alfred-git.md'), overlap[0].detail);
+});
+
+test('the rule loader\'s store rules count once with its hook run, and are no overlap with the text that sent them', () =>
+{
+    const sentence = 'Never print a credential value or a token in any reply, log or commit message.';
+    const fx = install({
+        project: { '.git/HEAD': 'x', '.claude/alfred-code.stamp': 'source: test\n', '.alfred/stack/rules/alfred-security.md': `${sentence}\n` },
+        plugins: { 'alfred-code@envoydev': {
+            files: { 'hooks/rules-session.js': hookScript(sentence) },
+            entry: { hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/rules-session.js"', timeout: 10 }] }] } },
+        } },
+    });
+    const s = fx.run({ runHooks: true });
+    assert.equal(flagsOf(s, 'injection-overlap').length, 0, JSON.stringify(flagsOf(s, 'injection-overlap')));
+    const store = rowsAt(s, 'session-start').find((r) => r.source === '.alfred/stack/rules/alfred-security.md');
+    assert.ok(store && store.counted === false && /sent by rules-session\.js/.test(store.note), `the store row stays, uncounted: ${JSON.stringify(store)}`);
+    assert.equal(rowsAt(s, 'session-start').filter((r) => r.source === 'rules-session.js').reduce((n, r) => n + r.chars, 0), sentence.length);
+    assert.equal(s.totals.sessionStartByOwner.project, undefined, 'the store rule adds nothing beside the hook that sent it');
+    const floor = rowsAt(fx.run(), 'session-start').find((r) => r.source === '.alfred/stack/rules/alfred-security.md');
+    assert.ok(floor && floor.counted === undefined && floor.chars === sentence.length, 'without the hooks run, the store rule is the floor\'s');
 });
 
 test('a bare name beside a namespaced one shadows it; two namespaces sharing a name only overlap', () =>

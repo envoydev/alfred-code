@@ -11,13 +11,13 @@ Loaded from the `javascript` skill when choosing language features or dates/deco
 - Iterator helpers (ES2025): `.map`/`.filter`/`.take`/`.drop`/`.flatMap`/`.reduce`/`.toArray` on any iterator - lazy pipelines without materializing intermediate arrays; prefer over eager chains on large or infinite sequences.
 - Set methods (ES2025): `union`, `intersection`, `difference`, `symmetricDifference`, `isSubsetOf`/`isSupersetOf`/`isDisjointFrom` - retire hand-rolled set logic.
 - `Promise.try` (sync-or-async wrapping), `RegExp.escape` (safe user-string interpolation into regexes), top-level await in ESM.
-- Explicit resource management: `using` / `await using` (TS 5.2+, Node 24+, not yet in Safari; spec-wise ES2026) for deterministic cleanup of disposables.
+- Explicit resource management: `using` / `await using` (TS 5.2+, Node 24+, not yet in Safari; a finished TC39 proposal) for deterministic cleanup of disposables.
 
 Unlearn on sight: `var`, the `arguments` object, `require`/`module.exports` in new code, JSON-round-trip cloning, `apply`-based max/min, moment.js, hand-rolled deep equality for grouping, IIFE module patterns.
 
 ## Temporal - dates are solved
 
-Temporal is ES2026 (Stage 4, March 2026): Node 26 and current Firefox/Chrome/Edge ship it unflagged; Safari is the one remaining gap. Use it freely server-side; on the frontend feature-detect `globalThis.Temporal` and lazy-load `@js-temporal/polyfill` for Safari (keep the polyfill unconditionally only when Safari share is high). Treat moment.js, luxon, and for most new code date-fns/dayjs as legacy; `Date` coexists but is legacy for new code.
+Temporal is a finished TC39 proposal (Stage 4): Node 26 and current Firefox/Chrome/Edge ship it unflagged; Safari is the one remaining gap. Use it freely server-side; on the frontend feature-detect `globalThis.Temporal` and lazy-load `@js-temporal/polyfill` for Safari (keep the polyfill unconditionally only when Safari share is high). Treat moment.js, luxon, and for most new code date-fns/dayjs as legacy; `Date` coexists but is legacy for new code.
 
 ## Decorators - two incompatible systems
 

@@ -8,12 +8,12 @@ Work system-level defects first, before the per-agent loops. Break every invocat
 - Choose the home for the shared content:
   - Agent reimplements an existing skill: replace the inline steps with an instruction to use that skill - named where the seat's install unit guarantees it, described by what it covers otherwise - keeping only the agent-specific orchestration.
   - Agent restates a process or convention a rule or CLAUDE.md defines: replace the restated block with a named citation of the governing rule, keeping only what is genuinely role-specific.
-  - Several agents inline the same procedure with no skill owner: extract a new skill for it, then have each agent invoke the new skill. Any skill you extract must itself meet the bar of the `repo-audit-skills` rubric (grade A), or do not extract it.
+  - Several agents inline the same procedure with no skill owner: extract a new skill for it, then have each agent invoke the new skill. Any skill you extract is written by the `skill-authoring` skill's method to the bar the `/repo-audit-skills` rubric grades A, or it is not extracted; the report tells the user to run that audit on it, since it is manual-only and this run cannot.
   - Agent-to-agent overlap with no skill or rule fit: move the shared text to one shared reference each agent cites, or let the narrower agent own it and the others delegate.
 - Replace the copies with a short pointer to that home (named where guaranteed, described otherwise). Confirm each affected agent still reads and behaves the same.
 - Re-score every agent in the cluster on Dimension 4 and any dimension the edit touched.
 
-Then, for each agent still scoring below A / 9, run this bounded loop:
+Then, for each agent still scoring below A / 9, run this bounded loop. An agent already at A / 9 gets no loop edit: each deduction it keeps is scored, cited in the report and listed as not planned, with the reason 'at the target - the loop runs only below it'. Two files that contradict each other where both load in one run are not held to that, whether they are two items or two files of one: they are a cross-layer contradiction of the system-level work above and are fixed at any grade. The loop:
 
 1. Snapshot the agent file before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.

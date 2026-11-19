@@ -39,4 +39,4 @@ npm workspaces suffice for a handful of packages sharing a lockfile - they have 
 
 ## Node targeting
 
-Node 24 is Active LTS - target it for new work; Node 22 is Maintenance LTS (EOL Apr 2027). From Oct 2026 the release model changes: one major per year (every April), every release becomes LTS, plus an Alpha channel.
+Target the newest line the Node.js release schedule (`https://github.com/nodejs/Release`) lists as Active LTS for new work - read it there at use, never from memory: a new line enters Active LTS every October. From Oct 2026 the release model changes: one major per year (every April), every release becomes LTS, plus an Alpha channel.

@@ -741,12 +741,14 @@ const blankRecords = (t) => t.replace(DECISION_RECORD_RE, (m) => m.replace(/[^\n
 //   - a list item another party owns ('Task 7, which waits for <name>'s numbers') or the user's own checks named as such
 //     ('Your own checks: ...'), and a bare 'Still open:' heading left with no item under it (1);
 //   - a 'Not run:' / 'Not verified:' line that says why the check cannot run here or need not ('with a live seat in a
-//     real session', 'covered by tests instead', 'a billed A/B') - a scope record, not a step the turn could take now (2
-//     closes; 'Not run: the card's manual check against the local backend' gives no such reason and stays an item).
+//     real session', 'covered by tests instead', 'a billed A/B', 'no code changed') - a scope record, not a step the turn
+//     could take now (2 closes; 'Not run: the card's manual check against the local backend' gives no such reason and
+//     stays an item). A need-not reason is habits-done-gate's own 'not run - <why>' result line: a small close's
+//     'review: task-verify-code not run - no code changed' was held as a stall (2026-11-17, one recorded session).
 //   - the diff held for the user's review (DIFF_HOLD_RE, below) - the tree's standing state, the judge's own release (7
 //     sampled closes held on it alone, each over a finished run).
 const NOT_RUN_SPAN_RE = /\bnot (?:yet )?(?:run|verified)\**\s*[:\u2013-][^\n]*/gi;
-const CANNOT_RUN_HERE_RE = /\b(?:real|live) (?:session|seat|device|phone|hardware)s?\b|\bon (?:a |the )?real (?:device|phone)\b|\bbilled\b|\bpaid\b|\bcovered by\b|\binstead\b|\bby design\b|\bon (?:Windows|Linux|macOS)\b|\bon this machine\b|\bcan(?:'|\u2019|no)t\b|\bunavailable\b|\bnot available\b|\bout of scope\b/i;
+const CANNOT_RUN_HERE_RE = /\b(?:real|live) (?:session|seat|device|phone|hardware)s?\b|\bon (?:a |the )?real (?:device|phone)\b|\bbilled\b|\bpaid\b|\bcovered by\b|\binstead\b|\bby design\b|\bon (?:Windows|Linux|macOS)\b|\bon this machine\b|\bcan(?:'|\u2019|no)t\b|\bunavailable\b|\bnot available\b|\bout of scope\b|\bno (?:code|source)(?: files?)? (?:was |were )?(?:changed|edited|touched)\b/i;
 const CARRIED_OPEN_RE = /^[^\n]*\b(?:still open|(?:remains?|stays?) open|open|left)\s+from\s+(?:earlier|before|an? (?:earlier|previous) \w+|the (?:last|previous|earlier) \w+)\b[^\n]*(?:\n[ \t]*(?:[-*+\u2022]|\d+[.)])[^\n]*)*/gim;
 const USER_CHOSE_RE = /[^.\n;]*\b(?:as you (?:asked|chose|wanted|said|decided|instructed|requested)|(?:which|that) is what you (?:chose|asked for|wanted|picked|decided)|per your (?:instruction|request|choice|answer)|at your request)\b[^.\n;]*/gi;
 const LATER_ITEM_RE = /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?(?:still open|open|next|leftovers?|still to do|to do)(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*(?:in |at )?(?:the |a )?(?:next|later|following|tomorrow'?s?) session\b[^\n]*/gim;
@@ -1708,8 +1710,17 @@ function scanStateFile(p) {
   const tag = require('crypto').createHash('sha1').update(p).digest('hex').slice(0, 8);
   return require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-stop-scan-${sid}-${tag}.json`);
 }
+// Claude Code's own request records (`api-request`, `-shape` and `-blob` rows, which it skips when it rebuilds the
+// conversation) re-state earlier rows: a shape, a block or an answer in one is no new event. A blob written after an
+// answered rotate ask replayed the model's own earlier command and the ask came back (2026-11-17, one recorded session).
+const REQUEST_RECORD_RE = /"type"\s*:\s*"api-request/;
+function requestRecord(line) {
+  if (!REQUEST_RECORD_RE.test(line)) return false;
+  try { return String(JSON.parse(line).type).startsWith('api-request'); } catch { return false; }
+}
 // One row's effect on the four positions: a rotate-ask block, an answer after one (or naming rotation), a shape.
 function scanRow(line, n, into) {
+  if (requestRecord(line)) return;
   if (isRotateBlock(line)) into.block = n;
   if (ROTATE_ANSWER_RE.test(line) || (into.block >= 0 && ANY_ANSWER_RE.test(line))) into.answer = n;
   if (!SECRET_SHAPE.test(line)) return;
@@ -1827,9 +1838,11 @@ function countAutoContinue(session, markerMtimeMs) {
 // 142,455 cache-read, and this audit hit the same wall three times). A block that cannot be
 // explained cannot be tuned, and an untunable gate is the one the model learns to work around.
 // The matched text is the model's own prose, and a close can quote a credential - the row and the
-// breadcrumb are files on disk, so a value in them is a second copy of the exposure. Redacted first.
+// breadcrumb are files on disk, so a value in them is a second copy of the exposure. Redacted first, as is every ledger
+// row that copies ask or answer text (the auto-run answer, reAskDeny).
+const redactShapes = (text) => String(text == null ? '' : text).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>');
 function blockDetail(branch, matched) {
-  const detail = { branch, matched: String(matched == null ? '' : matched).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>').slice(0, 120) };
+  const detail = { branch, matched: redactShapes(matched).slice(0, 120) };
   global.BLOCK_DETAIL = detail;
   breadcrumb(`block ${branch}: ${detail.matched}`);
 }
@@ -2725,8 +2738,8 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
       + `print its close and delete ${autoMarker} - that ends this run; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
-      + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if only the\n'
-      + 'user can decide the next step (an ask with no Recommended option, a push), put that ask now.');
+      + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if the next\n'
+      + 'step needs the user - an ask with no Recommended option, or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
     process.exit(2);
   }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
@@ -3014,10 +3027,35 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // A money word counts outside a path segment ('/purchases/' in a URL) and not as the cost idiom 'too small to pay for
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+const AUTO_TARGET = String.raw`(?:tickets?|issues?|PRs?|pull requests?|MRs?|cards?|threads?|Confluence|Notion|wiki|Jira|Linear)`;
+// A ticket key: two to ten capitals or digits led by a capital, a dash, digits (PROJ-12, AB2-7). Not one letter ('X-1'), not
+// glued to a word or a dotted name, and not an encoding or standard name ('UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110'), which
+// the rewrite to 'ticket' would turn into an outward target.
+const AUTO_TICKET_KEY_RE = /(?<![\w.])(?!(?:UTF|SHA|ISO|RFC)-)[A-Z][A-Z0-9]{1,9}-\d+\b/g;
+// A story, task or epic filed in a tracker is a ticket by another name (usage audit 2026-11-19, bcb7d392: 'File this Task in
+// Jira ...' -> 'File it' was answered for the user). Raised, submitted, filed, created, opened or added, it holds only with a
+// tracker named beside the story, task or epic, and 'file' only as a verb, so 'Raise the limit for parallel tasks', 'Submit
+// task 3 to the seat', 'Edit the file the tasks read from', 'Open the task list' and a Storybook story run on. Its own regex, so a wait it causes is counted apart (the auto-ask-waits row's detail).
+const AUTO_TRACKER = String.raw`(?:Jira|Linear|YouTrack|GitHub|GitLab|backlog|tracker)`;
+const AUTO_FILED = String.raw`(?:stor(?:y|ies)|tasks?|epics?)`;
+const AUTO_FILING_VERB = String.raw`\b(?:raise|submit|create|open|add|(?<!\b(?:the|a|an|this|that|its|their|each|one)\s+)file)\b`;
+const AUTO_FILING_RE = new RegExp(`${AUTO_FILING_VERB}[^.;?\\n]{0,40}\\b(?:${AUTO_FILED}\\b[^.;?\\n]{0,40}\\b${AUTO_TRACKER}|${AUTO_TRACKER}\\b[^.;?\\n]{0,40}\\b${AUTO_FILED})\\b`, 'i');
 const AUTO_OUTWARD_RE = new RegExp([
   String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
   String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
+  AUTO_FILING_RE.source,
+  // The series ask the auto-run contract asks for (one ask for N outward writes, its question naming 'outward acts') waits for
+  // the user whatever verb its label uses: a pick made here would read as the user's approval of N writes (final review 2026-11-18).
+  // 'no / not / without outward acts' is the opposite statement ('Commit locally - no outward acts') and runs on.
+  String.raw`(?<!\b(?:no|not|without)\s+)\boutward acts?\b`,
+  // A comment or a page, ticket or post write holds only with an outward TARGET: a comment on a ticket, a page update aimed at
+  // Confluence. The bare words ('Add a comment to the function', 'Update the docs pages', 'Comment out the test', the
+  // 'post-install' script) are local work and run on. A ticket key is rewritten to 'ticket' first (`outwardAsk`), because
+  // this pattern is case-insensitive and a key shape would read 'post-1' as one. Known false hold: 'Add a comment in the
+  // issue parser'.
+  String.raw`\bcomment(?:s|ed|ing)?\b(?![- ]out\b)[^.;?\n]{0,40}\b(?:on|to|in)\b[^.;?\n]{0,30}\b${AUTO_TARGET}\b|\bcomment\s+on\b`,
+  String.raw`\b(?:update|create|edit|post|add)\b[^.;?\n]{0,40}\b(?:${AUTO_TARGET}\b(?!\s+files?\b)|(?:pages?|comments?|posts?)\b(?!-)[^.;?\n]{0,30}\b(?:on|to|in)\b[^.;?\n]{0,20}\b${AUTO_TARGET}\b)`,
   // ... but not the fresh-session cost line ('this chat sends about 226k tokens with every message', '~254k tokens re-sent
   // per message'), so auto-mode can step past a fresh-session ask. Measured over the 2,656 real recommended questions to
   // 2026-10-16: this and the money-word narrowing below drop 91 of 955 hits, every one a cost line, the pay idiom or a URL
@@ -3048,6 +3086,8 @@ function autoBilled(question, pick) {
   const own = `${pick.label} ${pick.description || ''}`;
   return AUTO_BILL_RE.test(own) || AUTO_AMOUNT_RE.test(own) || AUTO_BILL_RE.test(question) || AUTO_FORWARD_AMOUNT_RE.test(question);
 }
+// The text a pick is judged on, its ticket keys (PROJ-12, case-sensitive) read as the word 'ticket'.
+function outwardAsk(text) { return AUTO_OUTWARD_RE.test(text.replace(AUTO_TICKET_KEY_RE, 'ticket')); }
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
@@ -3060,7 +3100,7 @@ function autoAnswers(questions) {
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) return null;
-    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
+    if (outwardAsk(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
     if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;
@@ -3087,7 +3127,8 @@ if (autoRun) {
       const text = qs.flatMap((q) => (q ? [String(q.question || ''), String(q.header || ''), ...(q.options || []).flatMap((o) => (o ? [String(o.label || ''), String(o.description || '')] : []))] : [])).join('\n');
       fieldNotes = flowFieldNotes(qs, text, turnProseBeforeAsk());
     } catch { /* fail-open: the answer goes out without the note */ }
-    ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option', detail: { answers } });
+    ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option',
+      detail: { answers: Object.fromEntries(Object.entries(answers).map(([question, label]) => [redactShapes(question), redactShapes(label)])) } });
     process.stdout.write(JSON.stringify({ hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'allow',
@@ -3099,7 +3140,11 @@ if (autoRun) {
     } }));
     process.exit(0);
   }
-  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user' });
+  // a wait the tracker-filing clause caused names it, so its false holds can be counted from the ledger (usage audit 2026-11-19)
+  const filing = (Array.isArray(input.questions) ? input.questions : []).some((q) => q && Array.isArray(q.options) && q.options.some((o) =>
+    o && /\(Recommended\)/i.test(String(o.label || '')) && AUTO_FILING_RE.test(`${q.question} ${o.label} ${o.description || ''}`.replace(AUTO_TICKET_KEY_RE, 'ticket'))));
+  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user',
+    ...(filing ? { detail: { clause: 'tracker-filing' } } : {}) });
 }
 // THE ask-fixed ROW IS SETTLED LATER (audit 2026-10-20, the hooks track's minor list): PreToolUse hooks run in parallel, so
 // a sibling gate (guard-layer-table.js) can deny the very call this hook fixed, and the row then counted a fix the user
@@ -3166,7 +3211,7 @@ function reAskDeny() {
   const why = `Blocked: the user asked a question - answer it in prose and end the turn. They met this ask with '${open.text.slice(0, 160)}', `
     + 'so it is not answered yet: answer that question, put no ask in this turn, and end it. The ask comes back when their next '
     + 'message picks, approves or says go on - or re-send it unchanged if the answer itself needs their pick now.';
-  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: why.split('\n')[0].slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
+  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: redactShapes(why.split('\n')[0]).slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
   breadcrumb(`block reask: ${open.kind}`);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }));
   reaskDenied = true;
@@ -4056,8 +4101,12 @@ function flowState() {
     return none;
   }
 }
+// Past the cycle - its plan stamped `Completed:` and the user typed since, with no new marker or step call after that turn -
+// no solve-task close is owed: the same test flowFieldNotes reads (U08). The auto-fields hold kept firing on later closes
+// without it (usage audit 2026-11-19, bcb7d392: three holds after the run's close).
 function solveTaskCycle() {
-  return flowState().flow;
+  const flow = flowState();
+  return flow.flow && !(flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt));
 }
 
 // Did a repository/remote state read run since the last typed user turn? The ask's scope has to be

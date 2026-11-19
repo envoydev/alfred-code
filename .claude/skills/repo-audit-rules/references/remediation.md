@@ -14,7 +14,7 @@ For each rule the mechanism map classified as misplaced: move it to the mechanis
 
 - Deterministic must-run step: propose a hook. Write the hook if the repo already has a hooks setup and the event is unambiguous; otherwise emit it as a concrete recommendation with the event and command specified, and leave the prose rule in place until the hook exists. Never delete the prose rule before its replacement is real, because that silently drops the constraint.
 - Hard block on a tool, command, or path: propose a `permissions.deny` entry, under the same do-not-delete-before-it-exists condition.
-- Repeatable multi-step procedure: move it into a skill, and replace the rule with a one-line pointer or delete it if the skill fully subsumes it. Any skill you create must itself meet the bar of the `repo-audit-skills` rubric (grade A), or do not create it.
+- Repeatable multi-step procedure: move it into a skill, and replace the rule with a one-line pointer or delete it if the skill fully subsumes it. Any skill you create is written by the `skill-authoring` skill's method to the bar the `/repo-audit-skills` rubric grades A, or it is not created; the report tells the user to run that audit on it, since it is manual-only and this run cannot.
 - Path-specific guidance: move it into a `.claude/rules/` file with a `paths` glob, and verify the glob matches the files it is meant to govern.
 - Content that belongs nowhere: delete it and record what was deleted and why.
 
@@ -24,7 +24,7 @@ For each cluster in the duplication map: pick the single home, replace the copie
 
 ## Step 4 - Per-file loop
 
-Then, for each file still scoring below A / 9, run this bounded loop:
+Then, for each file still scoring below A / 9, run this bounded loop. A file already at A / 9 gets no loop edit: each deduction it keeps is scored, cited in the report and listed as not planned, with the reason 'at the target - the loop runs only below it'. Two files that contradict each other where both load in one run are not held to that, whether they are two items or two files of one: they are a conflict of Step 1 and are fixed at any grade. The loop:
 
 1. Snapshot the file before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.
