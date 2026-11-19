@@ -2,9 +2,7 @@
 // Repo lint: keep the registration surfaces and all cross-skill references in
 // sync. The installer's six lists - skills, agents, rules, hooks, plugins, MCPs - live in ONE
 // hand-edited file, meta/stack-manifest.json (Phase 7b, R33, deleted the frozen shell and
-// PowerShell installers that used to carry them). SKILLS and MCPS are ALSO shared with the Cursor
-// stack (the separate cursor-stack repo, whose installers clone this repo for skills); that
-// cross-repo parity is held by discipline (a baseline change is a two-repo commit).
+// PowerShell installers that used to carry them).
 // Catches the failure modes that actually happen:
 //   1. a skill directory exists but is missing from a manifest or the HTML
 //      inventory (it would silently never install);
@@ -949,7 +947,7 @@ function lintSkillDescription(label, description, whenToUse)
 
 // 37. A plugin-qualified name (`superpowers:verification-before-completion`) is a cite of a skill
 // the stack does not own and cannot guarantee: the plugin is per-install on Claude Code and
-// documented OPTIONAL on the cursor-stack twin. Naming it BARE teaches a seat without the plugin
+// absent wherever it was never installed. Naming it BARE teaches a seat without the plugin
 // nothing at all - the 2026-09-12 agent audits found 10 verifiers plus security-auditor resting the
 // whole done gate on a bare `superpowers:verification-before-completion`, and 4 resolvers resting
 // their whole method on a bare `superpowers:systematic-debugging`. The house form pairs the name
@@ -1318,9 +1316,13 @@ const SETUP_ASK_TEMPLATES = {
     // The join ask became the role ask, one template over its five cases (workspace roles and variables D2, 2026-10-27).
     // -1: the data-root ask - the data root is always .alfred (the fixed root, 2026-11-11).
     'setup-plugin/references/update-walk.md': 5,
-    // the rescan join, read only when the plan names a second project (workspace layering, 2026-10-26); the children's
+    // the rescan join (replaced 2026-11-19, see below), read only when the plan names a second project (workspace layering, 2026-10-26); the children's
     // asks became the scope ask - the children too, or only this project - one template with and one without them (2026-10-28).
-    'setup-plugin/references/update-workspace.md': 3,
+    // 2026-11-19: the join ask is gone (every update joins what it finds below); a fit ask per joined child took its place, so 3.
+    // 2026-11-19 (fix pass): +1, the one-item variant of the fit ask (two options, no Pick), so 4.
+    // 2026-11-19: +1, the nested-install ask (remove it, or keep it), so 5.
+    // +1: the re-check of children joined earlier, on the items this update added (the user's ruling of 2026-11-19).
+    'setup-plugin/references/update-workspace.md': 6,
     'setup-plugin/references/update-close.md': 2,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.
@@ -1593,8 +1595,7 @@ function main()
 {
     const dirs = localSkillDirs();
 
-    // SKILLS are cross-repo shared with the cursor-stack twins too (a separate repo, its own
-    // parity held by discipline). The one Node-side source is meta/stack-manifest.json.
+    // The one Node-side source is meta/stack-manifest.json.
     const raw = readStackManifest();
     const primary = manifestSkillMap(raw.skills);   // canonical SKILLS view
     // The manifest's SKILLS rows name this repo's own skills by its GitHub slug.

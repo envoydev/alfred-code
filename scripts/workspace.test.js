@@ -1913,6 +1913,35 @@ test('rescan: an ignored stamped folder is never listed; its unmarked sibling is
     assert.deepStrictEqual(ws.rescan(at('ws'), { env: env0, log: () => {} }), ['web']);
 });
 
+test('rescan: a project that recorded a role, or whose own switch is 0, is no row; a plain stamped one is', () =>
+{
+    const at = tree({
+        'ws': { stamp: true, git: true },
+        'ws/plain': { stamp: true, git: true },
+        'ws/alone': { stamp: true, git: true, record: { role: 'standalone' } },
+        'ws/stayed': { stamp: true, git: true, record: { above: '..' } },
+        'ws/top': { stamp: true, git: true, record: { role: 'root', children: ['top/inner'] } },
+        'ws/top/inner': { stamp: true, git: true, record: { parent: '..' } },
+        'ws/off': { stamp: true, git: true },
+    });
+    fs.writeFileSync(path.join(at('ws/off'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_WORKSPACE: '0' } }));
+    assert.deepStrictEqual(ws.rescan(at('ws'), { env: env0, log: () => {} }), ['plain'], 'a recorded role, a stay answer and a switch 0 are kept out');
+});
+
+test('nestedInstalls lists a stamped plain subfolder of the root\'s own repository; rescan does not, and a project with its own .git is a rescan row, not a nested one', () =>
+{
+    const at = tree({
+        'ws': { stamp: true, git: true },
+        'ws/pkg': { stamp: true },
+        'ws/deep/inner': { stamp: true },
+        'ws/pkg/below': { stamp: true },
+        'ws/web': { stamp: true, git: true },
+        'ws/plain': {},
+    });
+    assert.deepStrictEqual(ws.nestedInstalls(at('ws'), { env: env0 }), ['deep/inner', 'pkg'], 'a stamped folder ends its branch, so pkg/below is not listed');
+    assert.deepStrictEqual(ws.rescan(at('ws'), { env: env0, log: () => {} }), ['web'], 'a same-repository folder is no project to join');
+});
+
 test('stampedAncestors: ignored and cut', () =>
 {
     const at = tree({ ws: { stamp: true, git: true, record: { role: 'root', ignoredChildren: ['mid'] } }, 'ws/mid': { stamp: true, git: true },

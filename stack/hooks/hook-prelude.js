@@ -1476,7 +1476,7 @@ const lowerPath = (p) => path.resolve(p).toLowerCase();
 const realKey = (p) =>
 {
     if (layout && layout.dirKey) return layout.dirKey(p);
-    const real = path.resolve(fs.realpathSync(p));
+    const real = path.resolve(fs.realpathSync.native(p));
     return path.sep === '\\' ? real.toLowerCase() : real;
 };
 function leavesProject(dir, project = process.env.CLAUDE_PROJECT_DIR)

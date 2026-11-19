@@ -3,7 +3,7 @@
   "skill": "tier4-house-voice",
   "sources": ["stack/rules/alfred-interaction.md"],
   "extracted": "2026-11-03",
-  "note": "Audit 2026-10-30 Tier 4, RU-06 and RU-20: the always-on interaction rule lowers 'ANSWER BUDGET - a HARD rule' to sentence case (RU-06) and drops 'casual but professional' and 'Analogies only for non-technical or abstract ideas' (RU-20). Not a skill: the arms differ only in the rule's text. The fixture asks a concept question about a small inventory module - the kind of answer that invites a long tutorial, an analogy and a filler opener; 'explain' does not lift the budget. 1,200 chars is the ~900 prose budget with a third of slack (answer-budget's bound). Every step is bound to this fixture (session: false).",
+  "note": "Audit 2026-10-30 Tier 4, RU-06 and RU-20: the always-on interaction rule lowers 'ANSWER BUDGET - a HARD rule' to sentence case (RU-06) and drops 'casual but professional' and 'Analogies only for non-technical or abstract ideas' (RU-20). Not a skill: the arms differ only in the rule's text. The fixture asks a concept question about a small inventory module - the kind of answer that invites a long tutorial, an analogy and a filler opener; 'explain' does not lift the budget. 1,200 chars is this fixture's own slack over the prose budget; the answer-budget fixture grades 900 characters of prose. Every step is bound to this fixture (session: false).",
   "run": {
     "max_turns": 10,
     "stacks": ["javascript"],
@@ -20,7 +20,7 @@
       "id": "budget",
       "session": false,
       "from": "stack/rules/alfred-interaction.md",
-      "quote": "about 900 characters of prose",
+      "quote": "at most 900 characters of prose",
       "graders": [
         { "type": "regex", "name": "the closing answer stays near the budget (1,200 chars)", "target": "last_message", "pattern": "^[\\s\\S]{1,1200}$", "match": "contains" }
       ]

@@ -16,7 +16,8 @@ run its sync, which rewrites them in every repo.
   same values with every request.
 - `node .claude/kit/prove-plan.mjs <plan>` proves an audit plan: it reads each edited file at the plan's `Baseline`
   revision, finds every `Old` exactly once and applies its `New`, writes the results into a folder beside the plan
-  (`expected/` for `plan.md`) and prints `Applies: <n> of <n> edits`. It exits 1 and names each edit that did not
+  (`expected/` for `plan.md`, each file named `<path>.expected` so no test runner picks it up) and prints
+  `Applies: <n> of <n> edits`. It exits 1 and names each edit that did not
   apply, 2 when the plan cannot be read; `--without E<n>` also writes the files of the plan with that edit and the
   edits that need it left out, into `expected-without-E<n>/`. With `--check` before the plan's path it writes
   nothing: it compares the replay with the folders already there and with the plan's `Applies:` line, and exits 1

@@ -284,10 +284,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   adds the parent's set minus the ignores itself, whatever rows the walk's selection kept. It never
   writes a `child` line into a parent: only `workspace.js register` / `join` do, the back-reference being the consent.
   `scripts/workspace.js` is the one CLI the bodies call (`parent`, `register`, `unregister`, `join`, `role`, `ignore`,
-  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`): init reads
+  `children`, `status`, `account-instructions`, `plan`, `answer`, `cascade`, `check-loads`, `ignore-child`, `remove-nested`): init reads
   `references/init-role.md` beside `role --when init` and `references/init-child.md` only on its Child answer,
   every role change runs `role --answer <answer>`, update's step 2 reads `references/update-workspace.md` only when `plan` names a second project, a gone
-  child or a rescan row, and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
+  child, a rescan row or a `nested:` row (every update's `plan` carries `--rescan`; a `nested:` row - a stamped plain subfolder of this repository, `workspace.js nestedInstalls`, which `rescan` leaves out - is offered a removal, 'Remove the nested install' or 'Keep it', an ask nobody answers (unattended, no ask tool, auto-run) takes 'Keep it', and a joined child that lost its `.git` prints only as `nested:` and is counted `nested` by the cascade (no `!!`, rows below it `skipped`, the summary `cascade: done <u> updated, <f> failed, <s> skipped, <k> nested` with the suffix only when k > 0; 2026-11-19): `workspace.js remove-nested --root . --path <rel>` (`install/nested.js`; `nested-guard.js` refuses a folder whose `.claude`, `.alfred`, settings, `.mcp.json` or ignore files are a link, a hard-linked file or resolve outside it, and gates every delete and write; a skipped path keeps the stamp and the run ends `not done`) takes only that folder's own stamped links, copies, generated rules, settings keys, `.mcp.json` entries, `mcp-denied` rows, tool-ignore blocks and stamp, through no `uninstall` call - which would resolve to the repository's top - and never a `claude` call, the account, git's exclude file, a workspace record, its instruction file, an edited copy or its `.alfred` data; a `rescan:` row - no parent, no role recorded, its switch not 0 - is joined with no ask, 2026-11-19, after step 2's answers and before the installer call,
+  then checked after this project's installer run with validate's `stack-select.js --redundant` against ONE `--plan-out` read of this project, one fit ask per
+  joined child with `redundant:` lines whose Recommended answer writes each as a `workspace.js ignore`; a child an earlier update joined gets the same check again on the items this update added only - `$TMP/added.txt`, the `arrives` rows and the offers taken, read through `stack-select.js --redundant --only <file>` - the user's ruling of 2026-11-19), and `cascade` runs each child top-down from its parent's fresh read-back (a failed project
   skips its subtree, a run is failed on its summary line since the installer exits 0). Update asks first whether the projects below
   run at all (the user's ask of 2026-10-28): 'only this project' is written at the ask as `answer --hold` (the answers
   file's `.` entry), so the one `cascade` line then reads nothing back, runs nothing and names each project below
@@ -320,7 +322,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   range from the ignored path's parent up to the topmost stamped ancestor (`WIDE`: `CLAUDE.md`, `CLAUDE.local.md`,
   `.claude/CLAUDE.md`, `AGENTS.md`, `.claude/AGENTS.md`, `.claude/rules/` as `<path>/**`), and `mcpJsonIgnores` disables
   every `.mcp.json` server of that range less the project's own names. `workspace.js ignore-child --add <rel>` (configure's
-  workspace role and update's rescan ask) refuses through `markRefusal` (no path below, another spelling on disk, a
+  workspace role ask; update's rescan ask went with the 2026-11-19 auto-join) refuses through `markRefusal` (no path below, another spelling on disk, a
   folder of the root's repository or a no-checkout project under a no-checkout root, a folder another stamped folder
   holds), keeps each joined child's values (`keepOnLeave`) and the rules the loader sends it (`keepRules`, [F12]: copied
   into its store, `addToStore mine`), writes the mark, then runs each child's own update, whose `prepare` releases it

@@ -779,7 +779,7 @@ function onPrompt(payload, modes, gate) {
 }
 
 module.exports = {
-  FIELDS, ID_RE, PRUNE_MS, SLOW_MS, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS,
+  FIELDS, ID_RE, PRUNE_MS, SLOW_MS, PROMPT_MAX, EXCLUDE_COMMENT, EXCLUDE_DEADLINE_MS, SWEEP_ROOT_MIN_AGE_MS,
   baseOf, rootOf, ownBase, readerOn, statusFile, scoringField, handoffPrompt, planField, buildStatus, writeStatus, statusFolder, linkedState, pruneStatus,
   ensureExcluded, removeStatus, onSessionStart, onStop, onPrompt, onPlan, modesLine,
 };

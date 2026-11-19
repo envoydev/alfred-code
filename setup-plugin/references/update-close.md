@@ -83,6 +83,7 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   assert it from memory. The `settings.local.json: created ...` line also arrives as a `warn:` line - report it once,
   here.
 - **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim.
+- **SESSION STATUS** - every `session status:` and `.git/info/exclude:` line the grep caught, verbatim; a 'kept' line adds that the next session start finishes it.
 - **LAYOUT** - every `layout:` line the grep caught, verbatim, or 'layout: current - nothing moved'; a `layout: kept`
   line goes on the follow-ups card with the one action its shape leaves - three shapes, three actions:
   - `layout: kept <old> - <new> already holds it`: a doc at both homes, the new file the live one; diff the two and delete the old
@@ -108,14 +109,17 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   and apply the answer with `--apply gitignore` or `--apply exclude`, reporting its `applied` /
   `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
   it.
+- **NESTED** - read only when step 2 had a `nested:` row: each `remove-nested:` line its removal printed, verbatim. A nested
+  install the user kept is one follow-ups line: '`<rel>` holds an install inside this repository; the next update asks again'.
 - **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade or its hold call): append
   `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
   `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
   project from its `cascade: <rel><TAB><state>` line - `<rel>`; its version from step 2's plan row, for a `held` row the
   stamped version alone (the left side of its `version=` field), and `-` for a project step 2's plan printed no row for,
-  a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` -
-  each `!!` line under it verbatim, then the `cascade: done ...` line. A `gone-kept` row is a folder that no longer
-  holds an install: its line stays in this project's file until a cascade runs. Any `held` row puts ONE line on the
+  a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` / `nested` -
+  each `!!` line under it verbatim, then the `cascade: done ...` line. A `nested` row is a child that is part of this repository now: it is not unfinished and puts nothing on the follow-ups card, and its `cascade: <rel> is part of this repository now` line is pasted as it stands. A `gone-kept` row is a folder that no longer
+  holds an install: its line stays in this project's file until a cascade runs. After the rows, report each project
+  joined or re-checked by this update and the ignores applied to it, one line each (`update-workspace.md` names them). Any `held` row puts ONE line on the
   follow-ups card: '`/alfred-code:update` here again, answering yes, updates the held projects' - and, where the core is
   installed for the whole account, that a held project already runs its new hooks and agents beside its older copies.
   Then ONE call,

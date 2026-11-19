@@ -108,8 +108,8 @@ const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
 ];
-// The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: 22
-// bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
+// The hook ENGINES, the layout module they share and the window table are copied beside the hooks rather than wired: the
+// skill and seat bodies run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`; the plan skills write a plan folder's status.json through
 // `node .claude/hooks/plan-status.js` (PF1).
 const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'plan-status.js', 'secret-chain.js', 'secrets-run.js', 'workspace-file.js', 'model-windows.json'];
@@ -866,6 +866,8 @@ function runLayers(ctx)
         try { docs.ensureQualityNotOwned({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
         catch (err) { ctx.note(`quality/watch.json under ${docsPath} could not be updated (${err.message}) - add COVERAGE-QUALITY.md to its notOwned list by hand`); }
     }
+    // The folders an older release wrote the session status to go now, not at the next session start; a root file under 25 h old stays for it.
+    if (!ctx.args.printPlan) uninstallLayer.sweepSessionStatus({ projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited, only while
     // the install works with AGENTS.md (on a CLAUDE.md answer that file already has the name the user picked), and only
     // when no name answer came this run: an answer renames through renameInstructionFiles below.

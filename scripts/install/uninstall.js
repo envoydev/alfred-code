@@ -26,6 +26,7 @@ const { hashItem } = require('./library.js');
 const { commonJsScope, ruleAt } = require('./copy.js');
 const { entryHash } = require('./stamp.js');
 const { locateSeed } = require('./seeds.js');
+const { OUTSIDE_WHY } = require('./nested-constants.js');
 
 const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
@@ -55,7 +56,7 @@ function seedPlan({ projectRoot, files = {}, instructionsKind = 'agents' })
 // Every library copy (library-*) and every other copy (managed-files) whose hash still matches - but the instruction-file
 // seed only on the user's `seed: 'remove'` answer: it is the one file the project reads as its own instructions, so the
 // uninstall asks before it goes (2026-10-23).
-function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claudeDir, 'agents'), library = {}, files = {}, instructionsKind = 'agents', seed = '', log = () => {} })
+function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claudeDir, 'agents'), library = {}, files = {}, instructionsKind = 'agents', seed = '', guard = () => true, log = () => {} })
 {
     const seeds = new Map(seedRows({ projectRoot: path.dirname(claudeDir), files, instructionsKind }).map((r) => [r.row, r.at]));
     const items = [
@@ -81,6 +82,7 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     for (const [label, name, at, hash] of items)
     {
         if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }
+        if (!guard(at)) { log(`  ${label} ${name}: kept - ${OUTSIDE_WHY}`); continue; }   // remove-nested's guard: the item's real folder is not the project's own
         const have = hashItem(at);
         if (!have) continue;
         if (have !== hash) { log(`  ${label} ${name}: kept - changed since the stack wrote it, so it is yours`); continue; }
@@ -101,7 +103,8 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     const hooksDir = path.join(claudeDir, 'hooks');
     let left = [];
     try { left = fs.readdirSync(hooksDir).filter((f) => f !== 'package.json'); } catch { left = []; }
-    if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
+    if (!guard(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - ${OUTSIDE_WHY}`);
+    else if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
     else if (isMarker(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - it scopes ${left.join(', ')}, left in .claude/hooks as yours`);
     const stackDirs = ['stack/rules', 'stack'].map((d) => path.join(path.dirname(claudeDir), '.alfred', d));
     for (const dir of [skillsDir, agentsDir, ...['skills', 'agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d)), ...stackDirs])
@@ -226,7 +229,28 @@ function removeSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () 
     if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);
 }
 
-module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus };
+// The same take, run by the install and the update: the folders an older release wrote go at once, with the session
+// start's 25 h guard - a root file younger than that may belong to a running session, so it stays for the next session
+// start, which sweeps it. Fail-open: a load failure, a throw and a cut-short pass are log lines, never `note()` - a note
+// counts a failure, and the installer's 'step(s) reported a failure' line then skips the whole cascade.
+function sweepSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () => {}, deps = {} })
+{
+    try
+    {
+        let status;
+        try { status = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'session-status.js')); }
+        catch (e) { log(`  session status: not swept - the module could not be loaded (${e.message}) - the next session start sweeps them`); return; }
+        const got = status.removeStatus(projectRoot, { env: { CLAUDE_PROJECT_DIR: projectRoot }, uptime: () => 0, ...deps, ...(dataRoot && dataRoot !== '.alfred' ? { dataRoot } : {}) }, { rootMinAgeMs: status.SWEEP_ROOT_MIN_AGE_MS });
+        const rel = (p) => path.relative(projectRoot, p).split(path.sep).join('/');
+        if (got.files) log(`  session status: ${got.files} old status file${got.files === 1 ? '' : 's'} removed from the old .claude/session-inspector/status folders${got.folders.length ? `, and the emptied ${got.folders.map(rel).join(', ')}` : ''}`);
+        if (got.lines) log(`  .git/info/exclude: ${got.lines} line${got.lines === 1 ? '' : 's'} the stack added removed (# alfred-code: session-inspector status files); your own lines stay`);
+        if (got.bases) log(`  session status: ${got.bases} old status folder${got.bases === 1 ? '' : 's'} kept - a file under 25 h old may belong to a running session; the next session start removes it`);
+        if (got.late) log(`  session status: the exclude clean-up was cut short at the time limit (${got.late} folder${got.late === 1 ? '' : 's'} not reached) - run /alfred-code:update again to finish it`);
+    }
+    catch (e) { log(`  session status: not swept - ${e.message} - the next session start sweeps them`); }
+}
+
+module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus, sweepSessionStatus };
 
 // `node uninstall.js seed <project root>` - seedPlan over the stamp's ledger, nothing written: one
 // `instructions-seed: <path> unedited|edited` line per seed, or `instructions-seed: none` (no stamp, no ledger, no seed).

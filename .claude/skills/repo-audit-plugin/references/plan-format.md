@@ -104,24 +104,30 @@ New:
   that git does not track - and says what they leave behind and whether any step is irreversible; the editor
   never runs them. Under them, one row per edit that hangs on an open question, written when the plan is: the
   question, the option the edit is written for and how the edit is struck alone - the file as every other edit
-  leaves it is kept under `expected-without-E<n>/<path>` beside the plan and proved with the rest.
+  leaves it is kept under `expected-without-E<n>/<path>.expected` beside the plan and proved with the rest.
 
 ## Rules for every edit
 
 - `Old` is copied from the file, never retyped, and appears exactly once in it. Where the text repeats, take more
   lines until it does not.
 - The planner proves it before the plan is handed over, and again after every change to the plan: on a copy of
-  the targets inside the run folder, each `Old` is found exactly once at its turn, in file order, and replaced by
+  the targets in the work folder, each `Old` is found exactly once at its turn, in file order, and replaced by
   its `New`. The plan says so in one line above `Summary` (`Applies: <n> of <n> edits`), the result of each edited
-  file is kept under a folder beside the plan - `expected/<path>` for `plan.md`, `retro-expected/<path>` for
-  `retro-plan.md` - and the plan's first check compares the edited file with it (`cmp`). Every other check is run
+  file is kept under a folder beside the plan - `expected/<path>.expected` for `plan.md`,
+  `retro-expected/<path>.expected` for `retro-plan.md` - and the plan's first check compares the edited file with
+  it (`cmp <path> <folder>/<path>.expected`). Every other check is run
   against those results before the plan is handed over, with no exception: what a check needs and the copy lacks -
-  a sibling checkout, say - the planner builds inside the run folder, and a check it cannot prove is not listed.
+  a sibling checkout, say - the planner builds in the work folder, and a check it cannot prove is not listed.
   A check that writes - a sync, a
-  generator, a fixer - is run only on a copy of the whole repository inside the run folder, from a script file kept
+  generator, a fixer - is run only on a copy of the whole repository in the work folder, from a script file kept
   beside the plan that changes into the copy by its full path and stops unless its working directory is that copy -
   never as a command typed after a `cd` in one shell line, where a failed link leaves the shell at the repository
-  root and the write lands there. A plan the user picks edits from goes back to its author:
+  root and the write lands there. The work folder is outside the repository, as the flow's 'The run folder' says: a
+  copy, a checkout or a probe tree is never built in the run folder, and only a check's results (`test.txt`,
+  `validate.txt`) are written there. The expected folders (`expected/`, `retro-expected/`,
+  `expected-without-E<n>/`) stay beside the plan, since the `cmp` check reads them, and each file in them ends in
+  `.expected`, so a test runner's pattern never picks up an expected copy of a test file.
+  A plan the user picks edits from goes back to its author:
   each edit not picked moves from `Edits` to `Not planned` with 'struck at the ask', the rest are proved again,
   and the expected files and the checks are replaced before the editor starts.
 - `insert-after` gives `Old` as the anchor that stays and `New` as what follows it. `delete` gives `Old` only.

@@ -443,7 +443,6 @@ test('the CLAUDE.md seat counts match the agents on disk', () =>
     const n = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).length;
     const doc = readClaudeDocs();
     assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
-    assert.match(doc, new RegExp(`twins of all ${n}\\b`));
     assert.match(doc, new RegExp(`all ${n} in the core plugin`));
 });
 

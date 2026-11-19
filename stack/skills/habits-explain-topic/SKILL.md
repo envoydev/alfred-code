@@ -22,7 +22,7 @@ A general idea asked about this project ('how does the retry here back off?') ta
 
 ## The answer budget
 
-This walkthrough is a depth-lifted answer: it is written at this length because the user's own words lifted the house answer budget. Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead. The user's own words decide, not this file.
+This walkthrough is a depth-lifted answer: it is written at this length because the user's own words lifted the house answer budget. Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the house budget - 900 characters of prose, and bullets count - and offer the walkthrough in one line instead. The user's own words decide, not this file.
 
 Inside the lift, keep the answer in proportion to the question: drop a part that adds nothing to this topic.
 
@@ -105,6 +105,7 @@ A simple explanation is only good if it is true.
 - **Simplify, never falsify.** A good simplification is one later learning extends rather than contradicts. When you simplify a lot, say so: 'This is the simple version; the full story also involves...'.
 - Separate what is well established, what is the leading explanation, and what is still unknown - say 'nobody knows yet' when that is the truth.
 - Never invent a number, date, name, quote or study. An unsure figure is marked approximate or left out; a recent or fast-changing fact is checked with a documentation or search tool where one is available.
+- Label confidence the house way: '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)'. A walkthrough that gives a cause or a verdict (bug mode, compare mode) carries the label in its first sentence.
 - The analogy, the example and the diagram agree with the facts: a diagram with the steps in the wrong order teaches the wrong thing even when the text is right.
 - A contested topic gets its main positions fairly, and where the evidence is strongest.
 - A health, legal or financial topic: explain the concept, and point to a qualified professional for a decision about the reader's own case.
@@ -123,7 +124,7 @@ Fix any line that fails:
 - [ ] A worked example with concrete details (code track: quoted from the real files)
 - [ ] The most common misconception is named and corrected (topic track)
 - [ ] Every technical term is defined, and listed under Words to know (topic track)
-- [ ] Facts are right, uncertainty is labelled, nothing is invented
+- [ ] Facts are right and nothing is invented; a claim carries '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)', and a cause or a verdict (bug mode, compare mode) carries its label in the first sentence
 - [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
 - [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
 - [ ] Video or animated page, if any: every step appears in order and is readable; reduced motion shows every step

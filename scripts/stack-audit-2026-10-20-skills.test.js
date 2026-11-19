@@ -223,7 +223,7 @@ test('S9: habits-explain-topic agrees with the budget rule', () =>
     assert.match(t.split('---')[1], /'step by step'/, 'the description trigger stays');
     const b = flat(t);
     assert.match(b, /a bare 'explain X', 'what is X' or 'how does this work' is capped like any other answer/);
-    assert.match(b, /Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead/);
+    assert.match(b, /Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the house budget - 900 characters of prose, and bullets count - and offer the walkthrough in one line instead/, 'the exact budget, 2026-11-19');
     assert.match(flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md')), /'in detail', 'walk me through', 'step by step', 'teach me', 'ELI5', 'write a plan' \(in any language\) lifts the cap/);
 });
 

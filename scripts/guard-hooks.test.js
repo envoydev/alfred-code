@@ -1754,7 +1754,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
-  assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
+  assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route');
   assert.equal(disp('alfred-code-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
   assert.equal(disp('alfred-code:wpf-implementer'), 2, 'scoped to the core plugin');
   // 2.1.0 ships every seat in the core, so this is the ONLY spelling a plugin-route flow can dispatch.
@@ -3717,7 +3717,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   // excluded it only for a RELATIVE root and returned null for an absolute one - so a project whose
   // docs root is set to an absolute path INSIDE the repo (the shape blocker B4 was about) had every
   // conformant receipt fail its own `spec:` count, and the gate blocked the commit it had just
-  // authorized. Found by porting this hook to the Cursor twin, where the payload carries no
+  // authorized. Found by running this hook under a Cursor payload, which carries no
   // CLAUDE_PROJECT_DIR and an absolute docs root is the natural spelling.
   const dir = scratchRepo();
   const docs = path.join(dir, '.alfred', 'docs');           // absolute, and inside the tree

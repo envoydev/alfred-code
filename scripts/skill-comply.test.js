@@ -1076,3 +1076,68 @@ test('PF1: the three plan-status steps grade a folder run, a hand stamp, a statu
     assert.strictEqual(after['approved-plan-never-edited'], 'FAIL');
     assert.strictEqual(after['no-self-approval'], 'FAIL', 'an approve call with no answer is a self-approval');
 });
+
+// 2026-11-19: the replay grades what the rule says now - the exact prose budget, the 3-sentence lead, the label in the
+// first sentence. Each sample's expected result is the probe of the plan (lead>3 / label / prose<=900).
+test('answer-budget fixture: its graders check the exact budget, the lead and the label', () => {
+    const steps = Object.fromEntries(expectOf('answer-budget').steps.map((s) => [s.id, s]));
+    const hit = (id, text) =>
+    {
+        const g = steps[id].graders[0];
+        assert.strictEqual(g.type, 'regex');
+        return new RegExp(g.pattern, g.flags || '').test(text);
+    };
+    const samples = [
+        ['a labelled 3-sentence lead plus bullets', 'The price drops by the percent (high confidence). A negative percent clamps to zero. Over 100 clamps to 100.\n- one\n- two', [false, true, true]],
+        ['4 lead sentences', 'The price drops. A negative percent clamps. Over 100 clamps too. The result is a number.\n- one', [true, false, true]],
+        ['label after the first sentence', 'The price drops by the percent. A negative percent clamps (high confidence). Done.', [false, false, true]],
+        ['a medium label', 'The price drops by the percent (medium confidence - not run). Next.\n- one', [false, true, true]],
+        ['a dot inside a file name', 'applyDiscount in src/pricing.js cuts the price by the percent (high confidence). Next.', [false, true, true]],
+        ['950 characters of prose', 'word '.repeat(190).trim(), [false, false, false]],
+        ['a short labelled lead plus a 2,000-character code block', 'The price drops (high confidence).\n```js\n' + 'x'.repeat(2000) + '\n```', [false, true, true]],
+    ];
+    // The fix pass: a bold opener, a list or a heading before the label, a link target and a whitespace run as the hook counts them.
+    const F = '```';
+    const grader = [
+        ['a bold opener and five lead sentences', '**Answer:** applyDiscount cuts the price by the percent (high confidence). A negative percent clamps to 0. Over 100 clamps to 100. The result is rounded. It returns a number.', 'lead-sentences', true],
+        ['a bold label line, then five sentences', 'It clamps (high confidence).\n**Why:** One. Two. Three. Four. Five.', 'lead-sentences', true],
+        ['the label after a list', 'applyDiscount cuts the price by the percent:\n- negative -> clamps to 0\n- over 100 -> clamps to 100\n\nAll three paths are tested (high confidence).', 'confidence-first', false],
+        ['the label after a code block', `It does this:\n${F}js\nreturn price * (1 - pct / 100);\n${F}\nSo it clamps (high confidence).`, 'confidence-first', false],
+        ['the label after a heading', '## How it works\n...percent\n## Edge cases\nNegative clamps to 0 (high confidence).', 'confidence-first', false],
+        ['an e.g. inside the first sentence', 'It clamps bad input, e.g. a negative percent (high confidence).', 'confidence-first', true],
+        ['a first sentence wrapped over two lines', 'applyDiscount cuts the price\nby the percent (high confidence).', 'confidence-first', true],
+        ['forty list lines', Array.from({ length: 40 }, (_, i) => `- item ${String(i).padStart(2, '0')} ok text`).join('\n'), 'budget', true],
+        ['prose after a list adds to the lead', 'It clamps (high confidence).\n- a\n- b\n\nOne more. Two more. Three more.', 'lead-sentences', true],
+        ['sentences inside list items are not prose', 'It clamps (high confidence). Next.\n- a. b. c.\n- d. e. f.\n1. g. h.', 'lead-sentences', false],
+        ['sentences inside code, a table, a quote or a heading are not prose', `It clamps (high confidence).\n${F}\na. b. c. d.\n${F}\n| a. | b. c. |\n> d. e. f.\n## g. h. i.\nDone.`, 'lead-sentences', false],
+        ['700 inline triple backticks (no runaway backtracking)', 'a ``` b '.repeat(700), 'lead-sentences', false],
+        ['an indented line under a list item is list content', 'It clamps (high confidence). Next.\n1. **Neg**\n   Clamps to 0. Stays. More.\n', 'lead-sentences', false],
+        ['E.g., I.e. and vs. are no sentence end', 'It clamps (high confidence). E.g. a negative one, i.e. below 0, vs. the old code. I.e. done.', 'lead-sentences', false],
+        ['a tilde fence is code', 'It clamps (high confidence).\n~~~\na. b. c. d.\n~~~\nDone.', 'lead-sentences', false],
+        ['501 fence lines, one left open (no runaway backtracking)', '```\nx\n'.repeat(501) + 'A. B. C.', 'lead-sentences', false],
+        ['1,500 indented list lines between prose (no runaway backtracking)', 'x `y` ~~~ z\n  - q\n'.repeat(1500), 'lead-sentences', false],
+        ['an e.g. is no sentence end', 'It clamps, e.g. a negative one (high confidence). Next. Last.', 'lead-sentences', false],
+        ['a dot inside inline code is no sentence end', 'It clamps (high confidence). Use `a. b. c. d.` here.', 'lead-sentences', false],
+        ['an inline code span ends before its own sentence does', 'It clamps (high confidence). Use `a. b.` now. Then `c. d.` here. Last one. Done.', 'lead-sentences', true],
+        ['a lone backtick is a plain character', 'It clamps (high confidence). A ` mark. Next one. Last one. Done.', 'lead-sentences', true],
+        ['a span opened on one line does not close on the next', 'It clamps (high confidence). Use `a. b.\nc. d.` here.', 'lead-sentences', true],
+        ['three links with 300-character URLs', [1, 2, 3].map((n) => `[link ${n}](https://example.com/${'a'.repeat(300)})`).join(' '), 'budget', true],
+    ];
+    for (const [name, text, id, want] of grader) assert.strictEqual(hit(id, text), want, name);
+    const runaway = [
+        ['3,000 inline spans on one line', 'a `b. c` '.repeat(3000)],
+        ['a lone backtick on each of 3,000 lines', 'a ` b\n'.repeat(3000)],
+        ['500 spans beside fences', `x \`a\` y\n${F}\ncode \`b\`\n${F}\n`.repeat(500)],
+    ];
+    for (const [name, text] of runaway)
+    {
+        const start = process.hrtime.bigint();
+        hit('lead-sentences', text);
+        const ms = Number(process.hrtime.bigint() - start) / 1e6;
+        assert.ok(ms < 1000, `${name}: ${ms.toFixed(1)} ms`); // a runaway hangs; 1000 ms leaves a loaded host room
+    }
+    for (const [name, text, [lead, conf, prose]] of samples)
+        assert.deepStrictEqual([hit('lead-sentences', text), hit('confidence-first', text), hit('budget', text)], [lead, conf, prose], name);
+    assert.deepStrictEqual(Object.keys(steps), ['budget', 'lead-sentences', 'confidence-first', 'no-em-dash', 'no-closing-offer']);
+    assert.strictEqual(steps.budget.quote, 'at most 900 characters of prose');
+});

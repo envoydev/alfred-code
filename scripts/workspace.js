@@ -18,6 +18,8 @@
 //               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
 //   ignore-child  a path below this root marked ignored: its joined children keep their values and sent rules, then run their own update
+//   remove-nested  --path <rel>: the stack's own files out of an install in a plain subfolder of this git repository - only what
+//                 that folder's own stamp records; never the root's install, the account, the plugins or git's exclude file
 //
 // Exit 0 on success, 2 with a `!!` line on bad input, 3 when the parent's file is locked, 1 when a write failed.
 
@@ -27,6 +29,10 @@ const os = require('node:os');
 const path = require('node:path');
 const ws = require('./install/workspace.js');
 const stamp = require('./install/stamp.js');
+// Lazy, and workspace.js must never require settings.js, copy.js or uninstall.js at the top either: they reach `hook-prelude.js`
+// (settings.js -> derive-state.js -> hook-prelude.js, and copy.js), whose line 67 runs `layout.applyVariables(<cwd project>)` at load
+// and changes `process.env`, which `role --answer leave` then reads (AC15, AC24 of install-workspace.test.js).
+const nestedMod = () => require('./install/nested.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { BRAND } = require('./install/brand.js');
@@ -346,16 +352,18 @@ function planVerb(out)
     try { snapshot = JSON.parse(fs.readFileSync(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || '?'; }
     catch { /* a snapshot with no plugin.json names no version */ }
     const rows = ws.subtree(top, { env });
+    // A listed child that lost its own `.git` is part of this repository now: no project row, only a `nested:` one.
+    const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top)).map((r) => r.rel));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-plan-'));
     try
     {
-        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok').length} projects`);
+        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok' && !joinedNested.has(r.rel)).length} projects`);
         const entries = [];
         const plans = new Map();
         const parents = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
         for (const [i, row] of rows.entries())
         {
-            if (row.state !== 'ok') continue;
+            if (row.state !== 'ok' || joinedNested.has(row.rel)) continue;
             // The top project's own changes and asks are its walk's (the preflight printed them): its read-back is taken
             // only to project its children, so a standalone update spawns nothing here.
             if (row.parentRel === null)
@@ -397,7 +405,11 @@ function planVerb(out)
         }
         for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${field(row.rel)}`);
         let rescanned = 0;
-        if (has('--rescan')) for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
+        if (has('--rescan'))
+        {
+            for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
+        }
+        for (const rel of [...new Set([...(has('--rescan') ? ws.nestedInstalls(top, { env }) : []), ...joinedNested])].sort()) { out(`nested: ${field(rel)}`); rescanned += 1; }
         if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
@@ -512,9 +524,12 @@ const IGNORED_RELEASED = (rel) => `workspace: ${rel} ignored - nothing of this w
 const IGNORED_STAMPED = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
 const IGNORED_SWITCH_OFF = (rel) => `workspace: ${rel} ignored - its ALFRED_CODE_WORKSPACE is 0, so its update released nothing: it keeps its parent line, and Claude Code still loads this workspace's instruction files there until the switch is on and an update runs there`;
 const IGNORED_BELOW_FAILED = (rel) => `!! workspace: ${rel} ignored and its own update finished, but a project below it did not (the cascade lines above) - run /alfred-code:update in that project`;
-// A cascade's summary line: a failed or skipped project below is a cascade that did not finish (the cascade exits 0).
+// A cascade's summary line: a failed or skipped project below is a cascade that did not finish (the cascade exits 0); a nested one is not.
 const CASCADE_SHORT = /^cascade: done \d+ updated, (\d+) failed, (\d+) skipped/m;
 const IGNORED_NO_INSTALL = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
+
+// A project row below the top that sits in the top's own git repository: the cascade would resolve it to the top.
+const isSameRepoChild = (row, top) => row.depth > 0 && row.state === 'ok' && ws.sameRepo(row.root, top, { exec });
 
 function cascade(out)
 {
@@ -543,7 +558,7 @@ function cascade(out)
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cascade-'));
     const plans = new Map();
     const blocked = new Set();
-    const count = { updated: 0, failed: 0, skipped: 0 };
+    const count = { updated: 0, failed: 0, skipped: 0, nested: 0 };
     const row = (rel, state) => { out(`cascade: ${field(rel)}\t${state}`); if (state in count) count[state] += 1; };
     try
     {
@@ -565,6 +580,13 @@ function cascade(out)
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
                 ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { runRoot: top, log: out });
                 row(r.rel, 'gone');
+                continue;
+            }
+            if (isSameRepoChild(r, top))
+            {
+                out(`cascade: ${r.rel} is part of this repository now - not updated; /alfred-code:update offers to remove its install`);
+                blocked.add(r.rel);
+                row(r.rel, 'nested');
                 continue;
             }
             const first = ws.chain(r.root, { maxDepth: 1 }).members[0];
@@ -610,7 +632,8 @@ function cascade(out)
         }
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
-    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped`);
+    // A nested row is no failure and no skipped one: it follows `skipped`, so a reader of the line up to there keeps matching.
+    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped${count.nested ? `, ${count.nested} nested` : ''}`);
 }
 
 // W3 Task 7: a path below this root marked ignored. Each joined child at or below it keeps the values and rules it reads
@@ -686,7 +709,20 @@ function checkLoadsVerb(out)
     else out(`!! check-loads: the probe failed - ${r.why}`);
 }
 
-const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild };
+// The stack's own files out of an install nested in the root's repository; the checks and the steps are install/nested.js.
+function removeNestedVerb(out)
+{
+    const root = rootArg();
+    const rel = arg('--path');
+    const nested = nestedMod();
+    const checked = nested.check({ root, rel, exec });
+    if (checked.why) throw bad(checked.why);
+    const { SHIPPED_DENY } = require('./install/alfred-code.js');
+    const code = nested.removeNested({ ...checked, sourceDir: path.join(__dirname, '..'), shippedDeny: SHIPPED_DENY, out });
+    if (code) throw new Exit(code, '');
+}
+
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild, 'remove-nested': removeNestedVerb };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()

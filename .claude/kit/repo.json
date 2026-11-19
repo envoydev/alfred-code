@@ -15,7 +15,6 @@
   "voice": "single dashes; lint check 32",
   "commit": "never `.gitignore` or `docs/habits-scorer-flow.html`",
   "not_here": [
-    "- The Cursor mirror (paused since 2026-09-23).",
     "- The stack's own `task-solve` and its seats, stamps and stops."
   ],
   "structure_paths": "[\"stack/hooks/**/*.js\", \"scripts/**/*.js\", \"setup-plugin/hooks/**/*.js\"]",
@@ -127,7 +126,6 @@
         "Shared hook code has one home each in stack/hooks: hook-prelude.js holds the gates (the csv opt-out, the hook_profile userConfig, the stand-down beside a still-wired copied twin, a repo never set up, a Cursor host), fresh-session.js the fresh-session arithmetic, shell-writes.js the shell-write parse, hidden-chars.js the hidden-character class; a hook requires them from its own directory and never inlines them.",
         "A regex several hooks still carry inline (the Git Bash mount path) is pinned as a shared rule with marker-pinned copies in meta/shared-rules.json.",
         "A user-facing gate ends in ONE AskUserQuestion whose answer is honoured through a session-own, expiring receipt under <data root>/state/.",
-        "The Cursor twin repo ships a hook layer of its own: a hook protocol change here is written to a task card for that repo.",
         "The stack installs to Windows, so a guard's tests replay its failure shape on the PowerShell route too.",
         "Measured cold p50 latency (audit 2026-10-14): a bare node start 23.8 ms, a single hook 26-52 ms, the shell-guards.js dispatcher 58.7-209.9 ms - re-measure per machine."
       ]
@@ -174,7 +172,6 @@
         "Usage is measured by node scripts/analyze-usage.js <CORPUS> - its INVENTORY vs USE block scores each installed plugin per session and per corpus with a how column; pass --plugins <registry> when the corpus came from another machine.",
         "The install-side cost floor is the stack's own /alfred-code:status line.",
         "The always-on house rules are the alfred-*.md set; the capabilities rule makes agent dispatch explicit-only, so a child agent's proactive cues are a finding, and side-effect skills fall under the house side-effect gate.",
-        "Plugins are a Claude-only surface: the Cursor twin repo ships none, so the two-repo mirror discipline does not apply to the PLUGINS block.",
         "The LSP pair ships no plugin.json (declared wholly in its marketplace entry), so the 2026-11-03 rule that entry mcpServers/lspServers/userConfig/channels do not apply beside a plugin.json leaves it untouched.",
         "The stack's own plugin splits commands from skills on purpose, for display, and that split stands despite the docs preferring skills.",
         "For a plugin replaced by a house hook, verify through the <data root>/statistics/hook-blocks/ ledger row of the replacement hook.",

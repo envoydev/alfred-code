@@ -1,6 +1,6 @@
 // Copied into each repo as .claude/kit/constants.mjs by claude-kit's sync - edit it in claude-kit, never here.
 //
-// The named values kit-settings.mjs and status-hook.mjs share.
+// The named values kit-settings.mjs, status-hook.mjs and prove-plan.mjs share.
 
 // What a dispatch accepts as its model.
 export const MODELS = Object.freeze(['sonnet', 'opus', 'haiku', 'fable']);
@@ -144,3 +144,6 @@ export const DESCRIPTION_PROBLEM = Object.freeze({
 export const BLOCK_SCALAR_PATTERN = /^[>|][+-]?\d*$/;
 export const CONTINUATION_PATTERN = /^[ \t]+\S/;
 export const QUOTE_MARKS = Object.freeze(["'", '"']);
+
+// What prove-plan.mjs adds to each file it writes into an expected folder, so that no test runner's pattern matches it.
+export const EXPECTED_FILE_SUFFIX = '.expected';

@@ -33,7 +33,7 @@ Grades a `habits-explain-topic` answer - the walkthrough, or the within-budget a
 - **A7** (8.33) - the most common misconception is named and corrected. n/a: the code track, or a within-budget answer.
 - **A8** (8.33) - every technical term is defined and listed under Words to know. n/a: the code track, or a within-budget answer.
 - **A9** (8.33) - every claim about this repository is verified by a quote or a `file:line`, and every claim from a vendor page matches the page, which you re-fetch. n/a: the answer makes no such claim.
-- **A10** (8.33) - uncertainty is labelled and nothing is invented.
+- **A10** (8.33) - a result, a cause or a recommendation carries '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)' in its first sentence, and nothing is invented.
 - **A11** (8.33) - a recap plus 2-4 Check yourself questions, the answers after them. n/a: the code track, or a within-budget answer.
 - **A12** (8.33) - the length is in proportion to the question, and a within-budget answer ends with the skill's one-line offer of the walkthrough.
 

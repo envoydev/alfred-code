@@ -1717,7 +1717,7 @@
       ]
     },
     "review-passes-vendored": {
-      "_note": "review-code's eight review passes and refute pass, vendored VERBATIM (whole file) into task-verify-code, which runs passes 1, 2, 3, 5 and 6 from its own copy - a pointer into another skill's folder breaks wherever that folder is absent (a Cursor twin, a trimmed install) and named a Claude-only path (2026-10-30 audit SKF-01). An edit to the owner is a copy of the whole file over the site; scripts/own-reviewers.test.js fails the pair when they differ.",
+      "_note": "review-code's eight review passes and refute pass, vendored VERBATIM (whole file) into task-verify-code, which runs passes 1, 2, 3, 5 and 6 from its own copy - a pointer into another skill's folder breaks wherever that folder is absent (a Cursor install, a trimmed install) and named a Claude-only path (2026-10-30 audit SKF-01). An edit to the owner is a copy of the whole file over the site; scripts/own-reviewers.test.js fails the pair when they differ.",
       "owner": {
         "file": "stack/skills/review-code/references/passes.md",
         "marker": "The method `review-code` runs, and `task-verify-code` uses for its code checks."
@@ -1730,7 +1730,7 @@
       ]
     },
     "domain-trio-protocol-vendored": {
-      "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
+      "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor install, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The main session is the only orchestrator for the whole vertical"
@@ -3603,10 +3603,10 @@
       ]
     },
     "answer-budget": {
-      "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
+      "_note": "The short-answer budget - at most 900 characters of prose, near 150 words, bullets counted, 3 lead sentences or fewer, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
       "owner": {
         "file": "stack/rules/alfred-interaction.md",
-        "marker": "about 900 characters of prose"
+        "marker": "at most 900 characters of prose"
       },
       "sites": [
         {
@@ -6915,7 +6915,7 @@
       ]
     },
     "seat-dispatch-spelling": {
-      "_note": "A plugin seat resolves only as `<plugin>:<seat>` (plugin-migration spike S1 run 4: the bare name returns 'Agent type not found'), and 2.1.0 ships all 44 seats in the core plugin, while the full copy route and cursor-stack still resolve the bare name. So every body that dispatches a named seat - or one built from the `<stack>-implementer` pattern - dispatches it as the roster spells it. Owned by the trio protocol; restated at each dispatch instruction because a flow that never reads the protocol still dispatches (scripts/seat-dispatch-spelling.test.js fails a new dispatch site without it).",
+      "_note": "A plugin seat resolves only as `<plugin>:<seat>` (plugin-migration spike S1 run 4: the bare name returns 'Agent type not found'), and 2.1.0 ships all 44 seats in the core plugin, while the full copy route still resolves the bare name. So every body that dispatches a named seat - or one built from the `<stack>-implementer` pattern - dispatches it as the roster spells it. Owned by the trio protocol; restated at each dispatch instruction because a flow that never reads the protocol still dispatches (scripts/seat-dispatch-spelling.test.js fails a new dispatch site without it).",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "exactly as the roster spells it"

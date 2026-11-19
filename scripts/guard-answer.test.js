@@ -46,6 +46,9 @@ test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     const ctx = out.hookSpecificOutput.additionalContext;
     assert.match(ctx, /3 sentences/, 'the budget names the sentence cap');
     assert.match(ctx, /900 characters/, 'the budget names the character cap');
+    assert.match(ctx, /at most 900 characters of prose, near 150 words, bullets count; lead with 3 sentences or fewer/, 'the hook line matches the rule');
+    assert.doesNotMatch(ctx, /~900|plus bullets/, 'no soft wording in the hook line');
+    assert.match(ctx, /first sentence carries its label: \(high confidence\), \(medium confidence - <what is not verified>\) or \(low confidence - <why>\)/, 'the hook line names the confidence label, as the rule does');
     assert.match(ctx, /Code, tables and command output are exempt/, 'the exemption travels with the budget');
     // Ruling S9 (the user's, 2026-10-20): 'step by step' lifts the budget like the other depth words.
     assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ teach me \/ ELI5 \/ write a plan, or the same ask in any language\)/, 'the lift list names step by step');

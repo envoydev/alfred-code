@@ -3,7 +3,7 @@
 // `<plugin>:<agent>` (plugin-migration spike S1 run 4: the bare name returns 'Agent type not found').
 // A body that tells the model to dispatch a seat by its bare name - or by a name built from the
 // `<stack>-implementer` pattern - now costs a failed call on every plugin-route install, while the
-// full copy route and cursor-stack still resolve the bare name. So a dispatch instruction never spells
+// full copy route still resolves the bare name. So a dispatch instruction never spells
 // the seat bare as a literal `subagent_type`, and every body that dispatches a named seat carries the
 // pinned clause (`seat-dispatch-spelling` in shared-rules.json): dispatch it exactly as the roster
 // spells it.

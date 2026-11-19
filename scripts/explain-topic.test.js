@@ -39,7 +39,7 @@ test('explain-topic: the description fires on depth asks only, inside the 160-ch
   assert.match(d, /Not for quick lookups or fixes\.$/);
   const b = flat(t);
   assert.match(b, /a bare 'explain X', 'what is X' or 'how does this work' is capped like any other answer/);
-  assert.match(b, /Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the budget and offer the walkthrough in one line instead/);
+  assert.match(b, /Where they did not - a bare 'explain X', 'what is X', 'how does this work' - answer inside the house budget - 900 characters of prose, and bullets count - and offer the walkthrough in one line instead/);
   assert.ok(b.includes("The user's own words decide, not this file"));
 });
 
@@ -183,4 +183,20 @@ test('explain-topic: the walkthrough itself is written to the ASD-STE100 writing
 test('interaction rule: a topic explanation that did not land goes to the explainer\'s second try', () => {
   const r = flat(read('stack/rules/alfred-interaction.md'));
   assert.match(r, /When the user does not understand a topic explained to them, in any words \('I don't get it', 'explain it simpler', 'explain it better'\), the FIRST action is the `habits-explain-topic` Skill call: its second try asks the format \(a page with diagrams, chat or a video\) and leads with the picture\. After a status, a plan or a design answer, 'I haven't understood' means plainer at the same length\./);
+});
+
+// 2026-11-19: the explainer names the house budget exactly and uses the three labels of the interaction rule.
+test('explain-topic: the budget is named exactly and the confidence labels match the rule', () => {
+  const t = read(`${SKILL}/SKILL.md`);
+  const budget = t.split('## The answer budget')[1].split('## Before writing')[0];
+  assert.match(budget, /answer inside the house budget - 900 characters of prose, and bullets count - and offer the walkthrough in one line instead/);
+  const accuracy = t.split('## Accuracy')[1].split('## Last check before sending')[0];
+  assert.match(accuracy, /'\(high confidence\)', '\(medium confidence - <what is not verified>\)' or '\(low confidence - <why>\)'/);
+  assert.match(accuracy, /A walkthrough that gives a cause or a verdict \(bug mode, compare mode\) carries the label in its first sentence\./);
+  const check = t.split('## Last check before sending')[1].split('## The diagram')[0];
+  assert.match(check, /a claim carries .*, and a cause or a verdict \(bug mode, compare mode\) carries its label in the first sentence/);
+  assert.match(check, /The length is in proportion to the question/, 'no length cap on a lifted walkthrough');
+  const rule = read('stack/rules/alfred-interaction.md');
+  for (const label of ["'(high confidence)'", "'(medium confidence - <what is not verified>)'", "'(low confidence - <why>)'"])
+    assert.ok(rule.includes(label) && accuracy.includes(label) && check.includes(label), `the rule, Accuracy and the last check share ${label}`);
 });
