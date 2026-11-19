@@ -3603,7 +3603,7 @@
       ]
     },
     "answer-budget": {
-      "_note": "The short-answer budget - at most 900 characters of prose, bullets counted, 3 lead sentences or fewer, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
+      "_note": "The short-answer budget - at most 900 characters of prose, near 150 words, bullets counted, 3 lead sentences or fewer, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
       "owner": {
         "file": "stack/rules/alfred-interaction.md",
         "marker": "at most 900 characters of prose"

@@ -1096,6 +1096,20 @@ test('answer-budget fixture: its graders check the exact budget, the lead and th
         ['950 characters of prose', 'word '.repeat(190).trim(), [false, false, false]],
         ['a short labelled lead plus a 2,000-character code block', 'The price drops (high confidence).\n```js\n' + 'x'.repeat(2000) + '\n```', [false, true, true]],
     ];
+    // The fix pass: a bold opener, a list or a heading before the label, a link target and a whitespace run as the hook counts them.
+    const F = '```';
+    const grader = [
+        ['a bold opener and five lead sentences', '**Answer:** applyDiscount cuts the price by the percent (high confidence). A negative percent clamps to 0. Over 100 clamps to 100. The result is rounded. It returns a number.', 'lead-sentences', true],
+        ['a bold label line, then five sentences', 'It clamps (high confidence).\n**Why:** One. Two. Three. Four. Five.', 'lead-sentences', true],
+        ['the label after a list', 'applyDiscount cuts the price by the percent:\n- negative -> clamps to 0\n- over 100 -> clamps to 100\n\nAll three paths are tested (high confidence).', 'confidence-first', false],
+        ['the label after a code block', `It does this:\n${F}js\nreturn price * (1 - pct / 100);\n${F}\nSo it clamps (high confidence).`, 'confidence-first', false],
+        ['the label after a heading', '## How it works\n...percent\n## Edge cases\nNegative clamps to 0 (high confidence).', 'confidence-first', false],
+        ['an e.g. inside the first sentence', 'It clamps bad input, e.g. a negative percent (high confidence).', 'confidence-first', true],
+        ['a first sentence wrapped over two lines', 'applyDiscount cuts the price\nby the percent (high confidence).', 'confidence-first', true],
+        ['forty list lines', Array.from({ length: 40 }, (_, i) => `- item ${String(i).padStart(2, '0')} ok text`).join('\n'), 'budget', true],
+        ['three links with 300-character URLs', [1, 2, 3].map((n) => `[link ${n}](https://example.com/${'a'.repeat(300)})`).join(' '), 'budget', true],
+    ];
+    for (const [name, text, id, want] of grader) assert.strictEqual(hit(id, text), want, name);
     for (const [name, text, [lead, conf, prose]] of samples)
         assert.deepStrictEqual([hit('lead-sentences', text), hit('confidence-first', text), hit('budget', text)], [lead, conf, prose], name);
     assert.deepStrictEqual(Object.keys(steps), ['budget', 'lead-sentences', 'confidence-first', 'no-em-dash', 'no-closing-offer']);

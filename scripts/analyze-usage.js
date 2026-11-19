@@ -197,7 +197,7 @@ function proseOf(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
-// The answer budget as alfred-interaction states it (shared-rules.json `answer-budget`): ~900 chars of prose, code,
+// The answer budget as alfred-interaction states it (shared-rules.json `answer-budget`): at most 900 chars of prose, code,
 // tables and command output exempt - proseOf strips them, as the rule counts. No hook enforces it, so this count is
 // its one observable; the 1,800 count stays beside it for comparison with reports from before 2026-10-20.
 const ANSWER_BUDGET = 900;

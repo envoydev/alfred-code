@@ -4,7 +4,7 @@
   "window": "turn",
   "sources": ["stack/rules/alfred-interaction.md"],
   "extracted": "2026-10-14",
-  "note": "Not a skill: the answer budget and house voice the always-on interaction rule states and guard-answer.js injects each turn (audit 2026-10-14 RU06). A replay runs unattended, where the hook's Stop block stands down, so the arms differ only in the injected text and the rule. The fixture question needs no code in the answer; The replay grades the exact prose budget (900 characters, code exempt), the 3-sentence lead and the confidence label in the first sentence.",
+  "note": "Not a skill: the answer budget and house voice the always-on interaction rule states and guard-answer.js injects each turn (audit 2026-10-14 RU06). A replay runs unattended, where the hook's Stop block stands down, so the arms differ only in the injected text and the rule. The fixture question needs no code in the answer; the replay grades the exact prose budget (900 characters, code exempt), the 3-sentence lead and the confidence label in the first sentence.",
   "run": {
     "max_turns": 12,
     "stacks": ["javascript"],
@@ -22,7 +22,7 @@
       "from": "stack/rules/alfred-interaction.md",
       "quote": "at most 900 characters of prose",
       "graders": [
-        { "type": "regex", "name": "the closing answer's prose stays within 900 characters (code, inline code, tables and quotes exempt)", "target": "last_message", "flags": "m", "pattern": "(?<![\\s\\S])(?:(?=(```[\\s\\S]*?```|`[^`\\n]+`|^[ \\t]*[|>][^\\n]*|[\\s\\S]))\\1){0,900}(?![\\s\\S])", "match": "contains" }
+        { "type": "regex", "name": "the closing answer's prose stays within 900 characters (code, inline code, tables and quotes exempt)", "target": "last_message", "flags": "m", "pattern": "(?<![\\s\\S])(?:(?=(```[\\s\\S]*?```|\\x60[^\\x60\\n]+\\x60|^[ \\t]*[|>][^\\n]*|\\]\\([^)\\s]*\\)|\\s+|[\\s\\S]))\\1){0,900}(?![\\s\\S])", "match": "contains" }
       ]
     },
     {
@@ -30,7 +30,7 @@
       "from": "stack/rules/alfred-interaction.md",
       "quote": "Lead with 3 sentences or fewer; the rest is bullets.",
       "graders": [
-        { "type": "regex", "name": "no more than 3 sentences before the first bullet, table, quote or code block", "target": "last_message", "flags": "m", "pattern": "(?<![\\s\\S])(?:(?:(?!^[ \\t]*(?:[-*+|>]|\\d+[.)][ \\t]|```))[\\s\\S])*?[.!?](?=[\\s)]|$)){4}", "match": "not_contains" }
+        { "type": "regex", "name": "no more than 3 sentences before the first list, table, quote or code block", "target": "last_message", "flags": "m", "pattern": "(?<![\\s\\S])(?:(?:(?!^[ \\t]*(?:[-*+][ \\t]|[|>]|\\d+[.)][ \\t]|```))[\\s\\S])*?[.!?](?=[\\s)]|$)){4}", "match": "not_contains" }
       ]
     },
     {
@@ -38,7 +38,7 @@
       "from": "stack/rules/alfred-interaction.md",
       "quote": "labels it in the first sentence, in parentheses",
       "graders": [
-        { "type": "regex", "name": "a confidence label in the first sentence", "target": "last_message", "pattern": "(?<![\\s\\S])(?:[^.!?]|[.!?](?![\\s)]|$))*?\\((?:high confidence\\)|medium confidence - [^)]+\\)|low confidence - [^)]+\\))", "match": "contains" }
+        { "type": "regex", "name": "a confidence label in the first sentence", "target": "last_message", "pattern": "(?<![\\s\\S])(?:(?!\\n[ \\t]*\\n|\\n[ \\t]*(?:[-*+][ \\t]|\\d+[.)][ \\t]|```|#))(?:e\\.g\\.|i\\.e\\.|etc\\.|\\.\\.\\.|[^.!?]|[.!?](?![\\s)]|$)))*?\\((?:high confidence\\)|medium confidence - [^)]+\\)|low confidence - [^)]+\\))", "match": "contains" }
       ]
     },
     {

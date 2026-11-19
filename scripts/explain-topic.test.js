@@ -194,7 +194,7 @@ test('explain-topic: the budget is named exactly and the confidence labels match
   assert.match(accuracy, /'\(high confidence\)', '\(medium confidence - <what is not verified>\)' or '\(low confidence - <why>\)'/);
   assert.match(accuracy, /A walkthrough that gives a cause or a verdict \(bug mode, compare mode\) carries the label in its first sentence\./);
   const check = t.split('## Last check before sending')[1].split('## The diagram')[0];
-  assert.match(check, /an unsure fact carries .*, and a cause or a verdict \(bug mode, compare mode\) carries its label in the first sentence/);
+  assert.match(check, /a claim carries .*, and a cause or a verdict \(bug mode, compare mode\) carries its label in the first sentence/);
   assert.match(check, /The length is in proportion to the question/, 'no length cap on a lifted walkthrough');
   const rule = read('stack/rules/alfred-interaction.md');
   for (const label of ["'(high confidence)'", "'(medium confidence - <what is not verified>)'", "'(low confidence - <why>)'"])

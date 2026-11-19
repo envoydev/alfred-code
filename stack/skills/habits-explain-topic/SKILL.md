@@ -124,7 +124,7 @@ Fix any line that fails:
 - [ ] A worked example with concrete details (code track: quoted from the real files)
 - [ ] The most common misconception is named and corrected (topic track)
 - [ ] Every technical term is defined, and listed under Words to know (topic track)
-- [ ] Facts are right and nothing is invented; an unsure fact carries '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)', and a cause or a verdict (bug mode, compare mode) carries its label in the first sentence
+- [ ] Facts are right and nothing is invented; a claim carries '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)', and a cause or a verdict (bug mode, compare mode) carries its label in the first sentence
 - [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
 - [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
 - [ ] Video or animated page, if any: every step appears in order and is readable; reduced motion shows every step
