@@ -45,14 +45,14 @@ after step 2's AskUserQuestion answers are applied - this project's own `role --
 over `settings.json`. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE pre-install read - never
 hand-write a second probe for anything it already prints, and never open `meta/migrations.json` yourself: the script
-evaluates its declarative `detect` rules (measured: the hand-run form cost four API round trips). A printed release-notes section
+evaluates its declarative `detect` rules. A printed release-notes section
 is reported in step 7 beside the installer lines it explains.
 
 It prints, in order:
 
 - `version: <old> -> <new>` then `base: <sha> head: <sha>` - lead your narration with the version delta.
 - `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with `<- old-path`) filtered
-  to stack-owned paths - what has been RELEASED since the stamp (work still on `develop` is invisible by design).
+  to stack-owned paths - what has been RELEASED since the stamp.
 - `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the RELEASE's delta bucketed by
   install class; the installer's log tail counts every file it COPIED, which is all of them on every run,
   so it can never answer 'what changed'.
@@ -261,7 +261,7 @@ restart for the hook delta.
 
 Then:
 
-- With a `rescan:` row, run `update-workspace.md`'s fit check now.
+- With a `rescan:` row, run `update-workspace.md`'s fit check now; with a joined child this run did not join and a non-empty `$TMP/added.txt`, its re-check.
 - With `$TMP/plan.txt` naming a child, or a `rescan:` row that joined, run `update-workspace.md`'s cascade call now - the same call on either answer.
 - Reconcile the project's AGENTS.md (`update-close.md`'s step 6).
 - Report per its step 7.

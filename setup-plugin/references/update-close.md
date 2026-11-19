@@ -116,10 +116,10 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
   project from its `cascade: <rel><TAB><state>` line - `<rel>`; its version from step 2's plan row, for a `held` row the
   stamped version alone (the left side of its `version=` field), and `-` for a project step 2's plan printed no row for,
-  a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` -
-  each `!!` line under it verbatim, then the `cascade: done ...` line. A `gone-kept` row is a folder that no longer
+  a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` / `nested` -
+  each `!!` line under it verbatim, then the `cascade: done ...` line. A `nested` row is a child that is part of this repository now: it is not unfinished and puts nothing on the follow-ups card, and its `cascade: <rel> is part of this repository now` line is pasted as it stands. A `gone-kept` row is a folder that no longer
   holds an install: its line stays in this project's file until a cascade runs. After the rows, report each project
-  joined by this update and the ignores applied to it, one line each (`update-workspace.md` names them). Any `held` row puts ONE line on the
+  joined or re-checked by this update and the ignores applied to it, one line each (`update-workspace.md` names them). Any `held` row puts ONE line on the
   follow-ups card: '`/alfred-code:update` here again, answering yes, updates the held projects' - and, where the core is
   installed for the whole account, that a held project already runs its new hooks and agents beside its older copies.
   Then ONE call,

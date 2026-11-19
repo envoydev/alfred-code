@@ -265,7 +265,7 @@ test('the guard allows a folder\'s own files, refuses a target whose folder is a
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a joined child that lost its .git is no project row: plan prints it only as nested, the cascade skips it and never runs the installer there', POSIX_ONLY, () =>
+test('a joined child that lost its .git is no project row: plan prints it only as nested, the cascade counts it nested and never runs the installer there', POSIX_ONLY, () =>
 {
     const got = seedRun(['install', 'install'], SELECTION, {
         plugins: PLUGINS, env: COPY_ROUTE, source: SOURCE, cwds: ['repo', 'repo/pkg'], prepare: layOutNested,
@@ -287,7 +287,9 @@ test('a joined child that lost its .git is no project row: plan prints it only a
     assert.match(got.plan.out, /^nested: pkg$/m);
     assert.doesNotMatch(got.plan.out, /^project: pkg\t/m);
     assert.match(got.plan.out, /^workspace-plan: 1 projects$/m);
-    assert.match(got.cascade.out, /^cascade: pkg\tskipped$/m);
-    assert.match(got.cascade.out, /^!! cascade: pkg is part of this repository now - \/alfred-code:update offers to remove its install$/m);
+    assert.match(got.cascade.out, /^cascade: pkg\tnested$/m);
+    assert.match(got.cascade.out, /^cascade: pkg is part of this repository now - not updated; \/alfred-code:update offers to remove its install$/m);
+    assert.doesNotMatch(got.cascade.out, /^!! /m);
+    assert.match(got.cascade.out, /^cascade: done 0 updated, 0 failed, 0 skipped, 1 nested$/m);
     assert.ok(got.stampSame, 'no installer ran in the folder');
 });

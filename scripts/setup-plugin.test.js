@@ -1731,7 +1731,7 @@ test('update offers to remove an install nested in the same repository: one ask 
     assert.match(flatWorkspace, /node "\$TMP\/repo\/scripts\/workspace\.js" remove-nested --root \. --path <rel>/);
     assert.match(flatWorkspace, /once the answers are applied and before the installer call/);
     assert.match(flatWorkspace, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own/);
-    assert.match(flatWorkspace, /A joined child whose `\.git` is gone is one too: it prints only as `nested:`, never as a `project:` row, and the cascade skips it[^.]*and never runs the installer there/);
+    assert.match(flatWorkspace, /A joined child whose `\.git` is gone is one too: it prints only as `nested:`, never as a `project:` row, and the cascade counts it `nested`[^.]*and never runs the installer there/);
     const slow = flat(refBody('update-slow-path'));
     assert.match(slow, /with a `rescan:` row run `update-workspace\.md`'s joins first, and with a `nested:` row answered 'Remove the nested install' its removal, as step 3 does; then run the installer/);
     assert.match(slow, /The joins and a `nested:` removal ran before the installer call above/);
@@ -1847,7 +1847,7 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.match(flatCascade, /'No, only this project' - nothing below runs/);
     assert.match(flatCascade, /answer --file "\$TMP\/answers\.json" --hold/);
     const close = flat(refBody('update-close'));
-    assert.match(close, /each project joined by this update and the ignores applied to it, one line each/);
+    assert.match(close, /each project joined or re-checked by this update and the ignores applied to it, one line each/);
     const notes = flat(refBody('update-history'));
     assert.match(notes, /## after 3\.13\.0 - update finds the projects below, joins them and suggests what each leaves out/);
 });

@@ -731,8 +731,15 @@ function main(argv)
         if (!installed || !recs) { console.error('stack-select: --redundant needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
         const detected = parseStacks(recs);
         const foundFile = readJsonSoft('--found', arg('--found'));
+        // --only <file>: lines of '<category> <name>'; only a redundant row that one of them names prints.
+        let only = null;
+        if (has('--only'))
+        {
+            try { only = new Set(fs.readFileSync(arg('--only') || '', 'utf8').split('\n').map((l) => l.trim().replace(/\s+/g, ' ')).filter(Boolean)); }
+            catch (e) { console.error(`stack-select: cannot read --only ${arg('--only')}: ${e.code || e.message}`); process.exit(2); }
+        }
         for (const r of findStackRedundant(graph, recs, installed, detected, foundFile ? (foundFile.found || foundFile) : null))
-            console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
+            if (!only || only.has(`${r.category} ${r.name}`)) console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
         return;
     }
 
@@ -807,7 +814,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--forge-cli] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--forge-cli] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected> [--only <added.txt>]'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }

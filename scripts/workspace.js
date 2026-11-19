@@ -524,7 +524,7 @@ const IGNORED_RELEASED = (rel) => `workspace: ${rel} ignored - nothing of this w
 const IGNORED_STAMPED = (rel) => `workspace: ${rel} ignored - its exclude rows are written at this root's next update, its disabled-server rows at its own`;
 const IGNORED_SWITCH_OFF = (rel) => `workspace: ${rel} ignored - its ALFRED_CODE_WORKSPACE is 0, so its update released nothing: it keeps its parent line, and Claude Code still loads this workspace's instruction files there until the switch is on and an update runs there`;
 const IGNORED_BELOW_FAILED = (rel) => `!! workspace: ${rel} ignored and its own update finished, but a project below it did not (the cascade lines above) - run /alfred-code:update in that project`;
-// A cascade's summary line: a failed or skipped project below is a cascade that did not finish (the cascade exits 0).
+// A cascade's summary line: a failed or skipped project below is a cascade that did not finish (the cascade exits 0); a nested one is not.
 const CASCADE_SHORT = /^cascade: done \d+ updated, (\d+) failed, (\d+) skipped/m;
 const IGNORED_NO_INSTALL = (rel) => `workspace: ${rel} ignored - no install there: the stack sends it nothing; Claude Code still loads this workspace's instruction files, .claude/rules and .mcp.json servers into it until an install there writes the exclude and disabled-server rows`;
 
@@ -558,7 +558,7 @@ function cascade(out)
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cascade-'));
     const plans = new Map();
     const blocked = new Set();
-    const count = { updated: 0, failed: 0, skipped: 0 };
+    const count = { updated: 0, failed: 0, skipped: 0, nested: 0 };
     const row = (rel, state) => { out(`cascade: ${field(rel)}\t${state}`); if (state in count) count[state] += 1; };
     try
     {
@@ -584,9 +584,9 @@ function cascade(out)
             }
             if (isSameRepoChild(r, top))
             {
-                out(`!! cascade: ${r.rel} is part of this repository now - /alfred-code:update offers to remove its install`);
+                out(`cascade: ${r.rel} is part of this repository now - not updated; /alfred-code:update offers to remove its install`);
                 blocked.add(r.rel);
-                row(r.rel, 'skipped');
+                row(r.rel, 'nested');
                 continue;
             }
             const first = ws.chain(r.root, { maxDepth: 1 }).members[0];
@@ -632,7 +632,8 @@ function cascade(out)
         }
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
-    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped`);
+    // A nested row is no failure and no skipped one: it follows `skipped`, so a reader of the line up to there keeps matching.
+    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped${count.nested ? `, ${count.nested} nested` : ''}`);
 }
 
 // W3 Task 7: a path below this root marked ignored. Each joined child at or below it keeps the values and rules it reads

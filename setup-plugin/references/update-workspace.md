@@ -20,8 +20,8 @@ own picks and ignores, and its own scope.
 - `nested: <rel>` - an install inside this repository: a plain subfolder with its own `.claude/` and stamp and no `.git` of
   its own, which this repository's install already reaches. It is not a project of its own: never joined, never counted
   as a project below. A joined child whose `.git` is gone is one too: it prints only as `nested:`, never as a `project:`
-  row, and the cascade skips it (`cascade: <rel>` and `skipped`, with one `!! <rel> is part of this repository now` line)
-  and never runs the installer there.
+  row, and the cascade counts it `nested` (`cascade: <rel>` and `nested`, with one `cascade: <rel> is part of this repository now`
+  line, no `!!`) and never runs the installer there. Rows below it stay `skipped`.
 
 Paste the plan's table in your message verbatim, its `total:` line included, before any ask.
 
@@ -104,7 +104,7 @@ wrote it, offers taken: every row's parent is this project, so ONE parent read s
 own commands (`/alfred-code:validate`, step 2 - same flags, same stack-select modes). A failed installer run
 (`step(s) reported a failure above`) skips the check and its asks: say `/alfred-code:validate` in that project
 offers the same check. First call, once - the parent's set, the detection list and the evidence scan
-of every joined child (one `scan-evidence.js` per child, `<n>` its number in the plan's order, joined by ` ; `):
+of every child checked in this run - the ones joined now and the ones re-checked below - (one `scan-evidence.js` per child, `<n>` its number across both, joined ones first, each group in the plan's order, joined by ` ; `):
 
 ```bash
 (node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?" ; cat "$TMP/repo/setup-plugin/references/stack-detection.md" ; node "$TMP/repo/scripts/scan-evidence.js" --root <rel> --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found-<n>.json"
@@ -160,6 +160,50 @@ unanswered run never drops what a project may own, and an item the child had ins
 inherited. Say
 in the close which ignores were applied (`update-close.md`, WORKSPACE). The cascade runs when the plan names a child
 or a `rescan:` row joined: a joined child is a child for it, though `$TMP/plan.txt` listed none.
+
+## Children joined earlier - re-checked on the items this update added
+
+The user's ruling (2026-11-19): a child joined by an earlier update gets the fit check again, but only on the items this
+update added to this project - an item a later update brings reaches every earlier child, so it is checked there too. A
+child joined in this run keeps the full check above, unchanged.
+
+**The added items - `$TMP/added.txt`.** Once step 2's new-items answer is applied (either path), before the installer call, write one line
+`<category> <name>` for every `new:` row whose verdict is `arrives` and for each offer taken as an `--add`, from the
+`new:` lines in `update-walk.md`. No such row and no offer taken: the file stays empty, and this section runs nothing
+and asks nothing.
+
+**The children.** Every `project:` row of the plan whose parent is this project - no other `project:` row is a path
+prefix of its `<rel>` - that this run did NOT join (not a `rescan:` row) and that is not ignored. A grandchild is not
+checked here: its own parent's update checks it, and the cascade runs that update.
+
+**The check - after the installer call, with a non-empty `$TMP/added.txt` and at least one such child.** Run it beside
+the fit check above and reuse its parent read: its first call already scanned each child checked here, under the same `<n>`.
+When that first call did not run (no `rescan:` row), make it once, with one `scan-evidence.js` per child checked here. A
+`parent-read` not 0 stops this check as it stops that one. Per child,
+apply `stack-detection.md` to its folder, then the second call with one more flag, `--only`:
+
+```bash
+node "$TMP/repo/scripts/stack-select.js" --redundant --only "$TMP/added.txt" --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+```
+
+`--only` prints only a `redundant:` line naming an item of the file; a missing file exits 2 with one line on stderr and
+no list, and an empty one prints nothing. A child with no line gets no ask and no narration. A failed installer run
+skips this check as it skips the one above.
+
+**The ask - ONE per such child that has at least one line.** It rides the same AskUserQuestion call(s) as the join
+fit asks, up to four questions a call. `<k>` is the line count. Its three options act as the fit ask's: 'Ignore' is
+written one `workspace.js ignore --root <rel> --add "<category> <name>"` per item, and 'Pick' groups the items as above.
+With `<k>` of 1, leave out 'Pick'.
+
+```ask
+<rel> inherits <k> new item(s) from this update that fit none of its stacks: <category name - owned by <stacks>, ...>. Ignore those here?
+- 'Ignore the <k> suggested (Recommended)' - each is written as an ignore of <rel>, so it never reaches that project; everything else it inherits stays
+- 'Keep everything inherited' - nothing is written; only new items are asked, so this answer is not asked again for these
+- 'Pick' - up to 4 multi-select questions list the <k>; the ones picked are ignored
+```
+
+Whenever nobody answers this ask - `unattended: on`, no ask tool, or auto-run - take 'Keep everything inherited', as the
+join ask does. Say in the close which ignores were applied (`update-close.md`, WORKSPACE).
 
 ## Installs nested in this repository - on `nested:` rows
 
