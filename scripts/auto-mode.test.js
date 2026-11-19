@@ -27,6 +27,9 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-mode-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.CLAUDE_PROJECT_DIR;
+// With no project dir the prelude reads the variables of the project the cwd sits in, at load and in every hook it
+// spawns: run from a temp dir, so this checkout's own mode switches (its local settings) never decide a case.
+process.chdir(TMP);
 const { approvalStamp, autoStampLive } = require('../stack/hooks/hook-prelude.js');
 const settings = require('../scripts/install/settings.js');
 const { valueHash, renderLedger, readLedger } = require('../scripts/install/stamp.js');

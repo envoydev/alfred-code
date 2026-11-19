@@ -9,6 +9,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k]; // C19: the session's own stack env never decides a case
+// The hooks the replay spawns read the variables of the project the cwd sits in: run from a temp dir, so this checkout's
+// own mode switches (its local settings) never decide a case.
+process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'replay-cwd-')));
 
 const SCRIPT = path.join(__dirname, 'corpus-replay.js');
 
