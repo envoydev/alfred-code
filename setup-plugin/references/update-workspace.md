@@ -165,7 +165,7 @@ holds fewer than four questions, else a call of its own right after:
 
 ```ask
 <rel> holds an install of its own inside this repository - this repository's install already reaches that folder. Remove the nested install?
-- 'Remove the nested install (Recommended)' - its stack copies, links, generated rules, the stack's settings keys and stamp go; its AGENTS.md, any copy you edited, its .alfred folder and your own files stay
+- 'Remove the nested install (Recommended)' - its stack copies, links, generated rules, the stack's settings keys and stamp go; its AGENTS.md, any copy you edited, its docs and data in .alfred and your own files stay
 - 'Keep it' - nothing changes; the next update asks again
 ```
 
