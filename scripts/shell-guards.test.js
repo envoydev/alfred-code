@@ -970,6 +970,36 @@ test('a planted cache entry anyone could write never runs: the guard compiles af
   assert.ok(!fs.existsSync(marker), 'and its target never ran');
 });
 
+// Hooks audit 2026-11-19 (B11-C3, round 2): the save writes `<entry>.<pid>.tmp` first, and a write that followed a link
+// planted at that name overwrote the link's target with V8 data. The tmp is created or the save is skipped.
+test('the cache save never writes through a link at its tmp name, and saves once the name is free', { skip: process.platform === 'win32' && 'a link needs a privilege there' }, () => {
+  const cacheDir = fs.mkdtempSync(path.join(TMP, 'v8-tmp-link-'));
+  const probe = path.join(cacheDir, 'probe-guard.js');
+  const source = 'process.exit(0);\n';
+  fs.writeFileSync(probe, source);
+  const key = crypto.createHash('sha1').update(`${process.version}\0${source}`).digest('hex').slice(0, 16);
+  const entry = path.join(cacheDir, `alfred-v8-probe-guard-${key}.bin`);
+  const tmpName = `${entry}.${process.pid}.tmp`;
+  const victim = path.join(cacheDir, 'victim.txt');
+  fs.writeFileSync(victim, 'original\n');
+  fs.symlinkSync(victim, tmpName);
+  const saved = Object.fromEntries(['TMPDIR', 'TMP', 'TEMP'].map((k) => [k, process.env[k]]));
+  for (const k of Object.keys(saved)) process.env[k] = cacheDir;
+  try
+  {
+    assert.equal(shell.runGuard(probe, Buffer.from('{}')).code, 0, 'the guard runs');
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'original\n', 'the link\'s target is untouched');
+    assert.ok(!fs.existsSync(entry), 'and the save is skipped');
+    fs.unlinkSync(tmpName);
+    assert.equal(shell.runGuard(probe, Buffer.from('{}')).code, 0, 'the guard runs again');
+    assert.equal(fs.lstatSync(entry).mode & 0o777, 0o600, 'with the name free the entry is written, its owner\'s alone');
+  }
+  finally
+  {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+});
+
 // Audit 2026-10-20 A-T1: a read-only seat carries Bash, and a verifier's `git reset -q` unstaged a user's `git rm` (audit
 // 2026-10-10). The dispatcher's own check denies such a seat - by the payload's agent_type, bare or house-prefixed - a
 // file write outside the OS temp dirs and any git call that moves the index, the tree, a ref or a stash; a read, a build,

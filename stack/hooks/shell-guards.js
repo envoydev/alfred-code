@@ -125,6 +125,8 @@ const GUARD_PARAMS = ['exports', 'require', 'module', '__filename', '__dirname']
 // Windows has no uid (`uid` undefined), and gives each user a temp dir of its own.
 const CACHE_FILE_MODE = 0o600;
 const WRITABLE_BY_OTHERS = 0o022;
+// 'wx' creates the file or fails: a link or a file already at the save's tmp name is never written through (B11-C3).
+const CREATE_ONLY = 'wx';
 function trustedCacheEntry(stat, uid)
 {
     if (!stat.isFile()) return false;
@@ -154,12 +156,14 @@ function compileGuard(file, source)
             try
             {
                 const tmp = `${entry}.${process.pid}.tmp`;
-                fs.writeFileSync(tmp, script.createCachedData(), { mode: CACHE_FILE_MODE });
+                fs.writeFileSync(tmp, script.createCachedData(), { mode: CACHE_FILE_MODE, flag: CREATE_ONLY });
                 fs.renameSync(tmp, entry);
                 const prelude = require('./hook-prelude.js');
                 if (typeof prelude.sweepStale === 'function') prelude.sweepStale(os.tmpdir(), CACHE_PREFIX);
             }
-            catch { /* a cache that cannot be written costs only the next compile */ }
+            // EEXIST lands here too - another account's link, or this pid's leftover from a crashed run until sweepStale
+            // takes it - and is a skipped save, like any cache that cannot be written: it costs only the next compile
+            catch { /* the save is skipped */ }
         } };
     }
     catch
