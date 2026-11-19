@@ -7,7 +7,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');
 
 const { seedRun, scrubStackEnv } = require('./seed-sandbox.js');
 const { cleanExport } = require('./clean-export.js');
@@ -38,7 +39,8 @@ function layOutNested(repo)
 {
     const pkg = path.join(repo, 'pkg');
     fs.mkdirSync(pkg);
-    execFileSync('git', ['init', '-q', pkg]);
+    const init = rt.spawnCommand('git', ['init', '-q', pkg], { encoding: 'utf8' });
+    if (init.status !== 0) throw new Error(`git init failed in ${pkg}`);
 }
 
 function sandboxEnv(work)
