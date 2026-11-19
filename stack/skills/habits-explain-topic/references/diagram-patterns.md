@@ -12,6 +12,7 @@ an HTML-only one inside `<main>`, then update the `viewBox`, the `<title>` and t
 - Timeline (events over time)
 - Comparison table (options side by side)
 - Before and after panels (what changes)
+- Animated steps (the 'Animated page' and 'Video' formats)
 
 ## Shape to diagram
 
@@ -109,3 +110,26 @@ HTML and a CSS grid: side by side on a wide screen, stacked on a phone.
   <section class="panel after"><h2>After</h2><p>What changes, and why.</p></section>
 </div>
 ```
+
+## Animated steps
+
+The 'Animated page' and 'Video' formats. Each step group of the template appears in turn, by CSS alone: give every
+`<g>` the class `step` and its index, `<g class="step" style="--i: 0">`, then `--i: 1` and on, in the text's step order.
+A reader who asks the system for less motion sees every step at once.
+
+```html
+<style>
+  .step { animation: step-in 0.6s ease-out both; animation-delay: calc(var(--i) * 1.6s); }
+  @keyframes step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .step { animation: none; } }
+</style>
+```
+
+- The arrow into a step belongs to that step's group, so it appears with the step, never before it.
+- The whole run lasts `(steps - 1) x 1.6 s + 0.6 s`; a reader reloads the page to play it again.
+- Video: open the page in the headless browser at 1280 x 720 and save the recording as `<topic-slug>.<level>.webm`
+  beside the page - with a browser that records a page (Playwright's `recordVideo`, for the run's length plus one
+  second), or with frames: pause the animations, and before shot `n` set
+  `document.getAnimations().forEach((a) => { a.currentTime = n * 100; })`, so each frame is 100 ms on whatever a shot
+  costs; then join them with `ffmpeg -framerate 10 -i frame-%03d.png -c:v libvpx-vp9 -crf 30 -b:v 0 <file>.webm`. Watch the file through once before handing it over: every step appears, in order, and is
+  readable.

@@ -128,3 +128,38 @@ test('explain-topic page template: no script, link or URL; every radio has its l
   assert.match(tpl, /<details>\s*<summary>/);
   assert.match(tpl, /input:checked \+ label/);
 });
+
+// 2026-11-19, the user's ask: pictures before prose, the output format asked when a topic is explained, and a video only
+// where the run can make one (else an animated page).
+test('explain-topic: the format ask comes first, a page with diagrams recommended, a video only with a route', () => {
+  const t = read(`${SKILL}/SKILL.md`);
+  const before = t.split('## Before writing')[1].split('## The code track')[0];
+  assert.match(before, /^\s*1\. \*\*Ask the format\*\*/, 'the first step before writing');
+  const ask = (before.match(/```ask\n([\s\S]*?)```/) || [])[1] || '';
+  const opts = ask.split('\n').filter((l) => /^\s*- '/.test(l));
+  assert.match(opts[0] || '', /'HTML page with diagrams \(Recommended\)'/, 'the page is the recommended option, listed first');
+  assert.ok(opts.some((o) => /'In chat'/.test(o)) && opts.some((o) => /'Video'/.test(o)), 'chat and video are offered');
+  const b = flat(before);
+  assert.match(b, /Check the tools for a video route first/);
+  assert.match(b, /With no video route, the third option is 'Animated page'/);
+  assert.match(b, /Never offer a video the run cannot make/);
+});
+
+test('explain-topic: the picture leads - part 2 of the layered answer, before the steps, and not repeated in prose', () => {
+  const b = flat(read(`${SKILL}/SKILL.md`));
+  assert.match(b, /1\. \*\*The short answer\*\*.* 2\. \*\*The picture\*\* - when the topic has a shape, the diagram comes here, before any step/);
+  assert.match(b, /its diagram comes before part 2: the reader sees the path, then reads the steps/);
+  assert.match(b, /Picture first: .* and lead with it\. The steps keep the picture's numbers and add the why the picture cannot show; they do not re-describe its layout/);
+  assert.match(b, /\[ \] Video or animated page, if any: every step appears in order and is readable; reduced motion shows every step/);
+  assert.match(b, /An animated page is screenshot with reduced motion emulated, or after its run's length/);
+  const ex = read(`${SKILL}/references/worked-example.md`);
+  assert.ok(ex.indexOf('**The picture:**') > ex.indexOf('**The short answer:**') && ex.indexOf('**The picture:**') < ex.indexOf('**Picture it like this:**'), 'the worked example puts the picture second');
+  assert.doesNotMatch(ex, /\*\*The diagram:\*\*/);
+  assert.match(b, /embedded as a `data:` URI, never a downloaded one, so the page stays offline/);
+  assert.match(b, /`<docs root>\/explanations\/<topic-slug>\.<level>\.webm`/);
+  const pat = flat(read(`${SKILL}/references/diagram-patterns.md`));
+  assert.match(pat, /## Animated steps/);
+  assert.match(pat, /prefers-reduced-motion: reduce\) \{ \.step \{ animation: none; \} \}/);
+  assert.match(pat, /Watch the file through once before handing it over/);
+  assert.match(pat, /a\.currentTime = n \* 100/, 'frames are seeked, not timed by the shots');
+});

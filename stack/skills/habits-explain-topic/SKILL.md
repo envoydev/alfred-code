@@ -28,10 +28,20 @@ Inside the lift, keep the answer in proportion to the question: drop a part that
 
 ## Before writing
 
-1. **Find the real question.** 'How do vaccines work' asks for a mechanism, 'are vaccines safe' for evidence - answer the one asked. Ask back only when the topic is truly ambiguous ('Java' the island or the language); otherwise answer and offer to go deeper.
-2. **Read the level** (see Depth): the words and vocabulary of the request set it.
-3. **Explain the core mechanism to yourself in plain words.** Wherever you need a technical word to get past a step, that step needs the most care in the answer.
-4. **Pick the pieces:** the 3-7 key ideas in the order they depend on each other, one analogy that maps onto the mechanism and the point where it stops being true, one concrete example with real names or numbers, the most common misconception, and whether a diagram helps (see The diagram).
+1. **Ask the format** - unless the user's words already name one ('as a page', 'in chat', 'a video') or their preferences doc sets one. Check the tools for a video route first: a video tool this session holds, a headless browser that records a page (Playwright's `recordVideo`), or headless screenshots plus `ffmpeg` on PATH. Then put one ask:
+
+   ```ask
+   How do you want the explanation of <topic>? An HTML page with diagrams is recommended: the picture leads, and it opens offline.
+   - 'HTML page with diagrams (Recommended)' - an offline page: the diagram first, then the steps, then questions to click; the chat gets the short answer and the path
+   - 'In chat' - the answer here, led by a text diagram; the page is saved too
+   - 'Video' - the page's animated diagram, recorded to a video file beside the page
+   ```
+
+   With no video route, the third option is 'Animated page' - the diagram's steps play in order in the page, with no video file. Never offer a video the run cannot make.
+2. **Find the real question.** 'How do vaccines work' asks for a mechanism, 'are vaccines safe' for evidence - answer the one asked. Ask back only when the topic is truly ambiguous ('Java' the island or the language); otherwise answer and offer to go deeper.
+3. **Read the level** (see Depth): the words and vocabulary of the request set it.
+4. **Explain the core mechanism to yourself in plain words.** Wherever you need a technical word to get past a step, that step needs the most care in the answer.
+5. **Pick the pieces:** the 3-7 key ideas in the order they depend on each other, one analogy that maps onto the mechanism and the point where it stops being true, one concrete example with real names or numbers, the most common misconception, and whether a diagram helps (see The diagram).
 
 ## The code track
 
@@ -55,6 +65,8 @@ If the request is ambiguous, pick based on signal words: 'why is this failing', 
 
 ### The walkthrough, in five parts
 
+Where the code path has a shape (a call chain, a data flow, two paths compared), its diagram comes before part 2: the reader sees the path, then reads the steps.
+
 1. **The why, then one everyday analogy for the core idea.** Optionally one sentence naming the problem this code solves - the why, not the how ('This exists to stop two requests writing the same row at once.'). Then a single concrete analogy in 2-4 short sentences, no code. It is the spine: every term introduced later attaches to it, and it holds to the end - switching metaphors mid-explanation loses the reader. Fit it to THIS mechanism, never a stock metaphor from habit: a promise is a coat-check ticket because you get a stub now and the value later; a mutex is a single bathroom key because only one holder enters at a time.
 2. **The real path, in numbered steps** - execution order (data-flow order for a concept, one path per approach for a comparison). Each step is a real snippet of **3-5 lines, trimmed hard** (an ellipsis comment where lines are cut from the middle), the **file name** (and line range if useful) beside it, and **one line** tying the step back to the analogy. Introduce each new term the moment it first appears, right after its analogy role: 'This is the `resolver` - the clerk who walks to the drawer and pulls the file.' A full-file dump defeats the purpose.
 3. **Mark the moment** with a bold label:
@@ -69,11 +81,11 @@ If the request is ambiguous, pick based on signal words: 'why is this failing', 
 Use these parts and headings, in this order; drop one that adds nothing to this topic.
 
 1. **The short answer** - one or two sentences that answer the question directly, so a reader who stops here has the point.
-2. **Picture it like this** - one familiar analogy, mapped part by part ('the heart is a pump: the chambers are its cups, the valves its one-way doors'), then say where it breaks down ('unlike a pump, the heart is a muscle that squeezes by itself'). Every analogy fails somewhere, and naming the limit stops it from becoming a new misconception.
-3. **How it works, step by step** - a numbered list, one idea per step, each saying what happens and why. 3-7 steps; group more into stages, since a newcomer holds only a few new pieces at once.
-4. **A worked example** - one specific case followed through every step, with real numbers, names or objects. A beginner learns more from one fully worked case than from the abstract rule.
-5. **Where you see it in real life** - two or three everyday places the reader meets the idea.
-6. **The diagram** - when one was made: the page's path (Saving it, below) and one line on what to look at first.
+2. **The picture** - when the topic has a shape, the diagram comes here, before any step: in the page the figure itself, in chat a text diagram (a fenced block of boxes and arrows) plus the page's path (Saving it, below) and one line on what to look at first.
+3. **Picture it like this** - one familiar analogy, mapped part by part ('the heart is a pump: the chambers are its cups, the valves its one-way doors'), then say where it breaks down ('unlike a pump, the heart is a muscle that squeezes by itself'). Every analogy fails somewhere, and naming the limit stops it from becoming a new misconception.
+4. **How it works, step by step** - a numbered list, one idea per step, each saying what happens and why. 3-7 steps; group more into stages, since a newcomer holds only a few new pieces at once.
+5. **A worked example** - one specific case followed through every step, with real numbers, names or objects. A beginner learns more from one fully worked case than from the abstract rule.
+6. **Where you see it in real life** - two or three everyday places the reader meets the idea.
 7. **Common mix-ups** - for each: the wrong idea, a plain statement that it is wrong, the right idea, and why the wrong one feels right. Naming a misconception and refuting it corrects it better than explaining the right idea alone.
 8. **Going deeper** (optional) - the precise version with the correct technical terms, now that the intuition exists. Concrete to abstract, never the reverse.
 9. **Recap** - three to five bullets with the key ideas.
@@ -108,13 +120,14 @@ Fix any line that fails:
 - [ ] Facts are right, uncertainty is labelled, nothing is invented
 - [ ] Recap plus 2-4 Check yourself questions, answers after (topic track)
 - [ ] Diagram, if any: one idea, title, caption, direct labels, contrast, dark mode, phone width, nothing external, checked
+- [ ] Video or animated page, if any: every step appears in order and is readable; reduced motion shows every step
 - [ ] The walkthrough and its page saved under explanations/, the page checked: one right option per question, every label's input, rendered
 - [ ] The length is in proportion to the question
 ```
 
 ## The diagram
 
-Make one when the topic has a shape the eye takes in faster than text - steps in order, a cycle, parts of a whole, a comparison, change over time, a hierarchy, actors trading messages. Skip it for a definition or a single fact, or when the user asked for text only. One diagram; two at most for a large topic, each showing one idea.
+Picture first: make one when the topic has a shape the eye takes in faster than text - steps in order, a cycle, parts of a whole, a comparison, change over time, a hierarchy, actors trading messages - and lead with it. The steps keep the picture's numbers and add the why the picture cannot show; they do not re-describe its layout. An image is one the run draws (inline SVG) or one from the project, embedded as a `data:` URI, never a downloaded one, so the page stays offline. Skip it for a definition or a single fact, or when the user asked for text only. One diagram; two at most for a large topic, each showing one idea.
 
 Build it as one self-contained HTML file with inline SVG and plain CSS - no external script, font, image or CDN - so it opens offline and renders the same everywhere. Use Mermaid only when the user asks for it, and then say it needs a network connection to render. Start from `references/diagram-template.md`; the shape-to-diagram table and the cycle, timeline, comparison and before-and-after patterns are `references/diagram-patterns.md`.
 
@@ -134,17 +147,18 @@ It goes into the run's page, `<docs root>/explanations/<topic-slug>.<level>.html
 
 Every run saves its walkthrough, so the user can review it later: under `<docs root>/explanations/` (the docs root is `<data root>/docs`, `.alfred/docs` by default; the folder made when absent), unless the user names another place, two files named for the topic and the level - `child`, `eli5`, `intermediate` or `expert`:
 
-- `<docs root>/explanations/<topic-slug>.<level>.md` - the walkthrough as sent, opening with `Topic:`, `Level:`, `Created:` and, on the code track, `Captured: <branch>@<short-sha>`, since it quotes code that drifts.
-- `<docs root>/explanations/<topic-slug>.<level>.html` - the page: the steps, the diagram when the topic has a shape, and Check yourself as questions to click.
+- `<docs root>/explanations/<topic-slug>.<level>.md` - the full walkthrough, whatever the chat carried, opening with `Topic:`, `Level:`, `Created:` and, on the code track, `Captured: <branch>@<short-sha>`, since it quotes code that drifts.
+- `<docs root>/explanations/<topic-slug>.<level>.html` - the page: the diagram first when the topic has a shape, then the steps, and Check yourself as questions to click.
+- With 'Video': `<docs root>/explanations/<topic-slug>.<level>.webm` - the page's animated diagram, recorded by the video route the format ask found (`references/diagram-patterns.md`, Animated steps). With 'Animated page', the page itself carries that animation and no video file is written.
 
-The slug carries the topic's words in lower-case `[a-z0-9-]`. A new level on the same topic writes a new pair, the same level rewrites its pair, and a different topic whose slug is taken takes `-2`, then `-3`. The answer ends with one line naming both paths.
+The slug carries the topic's words in lower-case `[a-z0-9-]`. A new level on the same topic writes new files, the same level rewrites its files, and a different topic whose slug is taken takes `-2`, then `-3`. The answer ends with one line naming the paths it wrote.
 
 Build the page from `references/page-template.md`: Check yourself becomes radio questions whose feedback shows on a click through CSS alone, with no script, and the answers and Words to know sit in `<details>` reveals. Check it before handing it over:
 
 1. Re-read the file: every tag closed, every `id` unique, every `aria-labelledby` id present; in a diagram, every element inside the viewBox and no two boxes or labels overlapping (compare x, y, width, height).
 2. Each diagram label fits its box (about 0.6 x the font size per character), and the step numbers and words match the text.
 3. Each question has exactly one option marked `data-right`, and every `label for=` names an input `id` that exists.
-4. Render it where the run can - open it in a browser, or screenshot it with a headless browser - and look at it. Where nothing can render it, say it was checked by reading the code and ask the user to open it.
+4. Render it where the run can - open it in a browser, or screenshot it with a headless browser - and look at it. An animated page is screenshot with reduced motion emulated, or after its run's length, so every step shows. Where nothing can render it, say it was checked by reading the code and ask the user to open it.
 5. Fix what failed, then check again.
 
 ## Depth

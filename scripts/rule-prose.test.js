@@ -569,3 +569,19 @@ test('quality gates: a line keeps its layout unless the task or the formatter ch
     const bullet = '- Leave a line\'s layout as it is - its wrapping, indentation, quotes and trailing commas - unless the task changes that line or the project\'s formatter rewrote it: a hand re-wrap of an untouched line is noise in the diff.';
     assert.ok(rule('alfred-quality-gates').includes(bullet));
 });
+
+// 2026-11-19, the user's ask: answers in ASD-STE100 style - its writing rules (20 words an instruction, 25 a description,
+// active voice, one instruction a sentence, one word one meaning), never its dictionary - beside the answer budget, which
+// stays; in another language the same rules as plain-language principles.
+test('alfred-interaction: answers follow the ASD-STE100 writing rules, the answer budget kept', () => {
+    const style = injected('alfred-interaction').split('## Communication style')[1].split('## Asking the user')[0];
+    assert.match(style, /\*\*Write in the style of ASD-STE100 \(Simplified Technical English\): use its writing rules, not its dictionary\.\*\*/);
+    assert.match(style, /Keep an instruction to 20 words or fewer and a description to 25 or fewer\./);
+    assert.match(style, /Use the active voice\. Give one instruction in each sentence, in the command form; a condition goes first, then a comma\./);
+    assert.match(style, /Prefer a common word to a rare one\./);
+    assert.match(style, /Code, commands, quotes and a fixed report line keep their own form\./, 'a report contract keeps its wording');
+    assert.match(style, /Use one word for one meaning, and the same word each time\./);
+    assert.match(style, /In another language, apply the same rules as plain-language principles\./);
+    assert.match(style, /about 900 characters of prose/, 'the answer budget stays');
+    assert.ok(style.indexOf('about 900 characters') < style.indexOf('ASD-STE100'), 'the budget is stated first');
+});
