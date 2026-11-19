@@ -2285,7 +2285,9 @@ test('D25: a skip label a hook answered is no waiver; the user\'s is; the answer
 // file's own time inside the call's window now proves the write (D3), and a receipt closes only the review kinds it
 // speaks for (D2).
 // A whole-second file time just ahead of now, so the stamped receipt is newer than every transcript written before it.
-const rpTime = () => Math.ceil(Date.now() / 1000) * 1000 + 2000;
+// M sits 30s ahead: the gate reads a receipt stamped before its transcript was created as another session's, and a slow
+// Windows VM took up to 6s to write one test's repos and transcripts - a 2s lead failed A5 and A10 there (2026-11-19).
+const rpTime = () => Math.ceil(Date.now() / 1000) * 1000 + 30000;
 const rpAt = (row, ms) => ({ ...row, timestamp: new Date(ms).toISOString() });
 const rpArgs = (verified, extra = '') => `--verified '${verified}' --authorized 'commit it' --probe 'npm test' --format 'npm run format - clean' --findings 'none'${extra}`;
 const rpCmd = (verified = 'review-code over the change', extra = '', tail = '') => `R="${CP_PATH}"\nnode "$R" commit ${rpArgs(verified, extra)}${tail}`;
