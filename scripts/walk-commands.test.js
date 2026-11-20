@@ -6,15 +6,10 @@ const path = require('node:path');
 const { fenceBlocks, buildTable, isResolve } = require('./run-dir-gate/table.js');
 const { approvesForms, approvesPluginRead } = require('./run-dir-gate/forms.js');
 const { markerName } = require('./run-dir-gate/marker.js');
-const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, RESOLVE_LINE } = require('./run-dir-gate/constants.js');
+const { reachableFiles, walkFilesOf, commandsOf, isNotCall } = require('./run-dir-gate/calls.js');
+const { PLACEHOLDER_RE, WALKS, BODY } = require('./run-dir-gate/constants.js');
 
 const ROOT = path.join(__dirname, '..');
-const COMMANDS_DIR = 'setup-plugin/commands';
-const REFERENCES_DIR = 'setup-plugin/references';
-const WALKS = ['init', 'update', 'configure', 'validate'];
-const SKIPPED_REFERENCE = 'source-protocol-powershell.md';
-// Reached by name, but a record or a handout the walk hands over, never a body the walk runs: its commands are prose.
-const DOCUMENT_REFERENCES = ['update-history.md', 'post-install.md'];
 const MAX_PROMPTS_PER_WALK = 3;
 const RUN_DIR = '/t/alfred-code.AbC123';
 const RUN_DIR_WIN = 'C:\\t\\alfred-code.AbC123';
@@ -25,40 +20,9 @@ const SAMPLE_WORD = 'x';
 // The workspace line prints the parent folder as a `..`-shaped path; a child one level and two levels below its parent.
 const PARENT_SAMPLES = ['..', '../..'];
 const PARENT_CD = 'cd "<rel>"';
-// A span that opens with `;` or `&&` is the end of a call the prose says to append it to; it is judged on a stand-in call.
-const APPENDED = /^(?:;|&&)\s/;
-const APPEND_BASE = 'node "$TMP/repo/scripts/install/stamp.js" state .';
 const CHILD_FILE = 'init-child.md';
-// A prose read of the plugin's own files: 'in ONE Bash `cat`', after the `${CLAUDE_PLUGIN_ROOT}/...` paths it names.
-const PROSE_CAT = /in one Bash `cat`/gi;
-const PLUGIN_PATH = /\$\{CLAUDE_PLUGIN_ROOT\}\/[^\s`"')]+/g;
-const PROSE_WINDOW = 500;
-const PARAGRAPH_BREAK = /\n\n|\n(?:[-*]|\d+\.) /;
-const TRAILING_PUNCTUATION = /[.,;:]+$/;
-// An inline code span is a command when it opens with a command word and an argument, never a bare word or a phrase.
-const COMMAND_SPAN = new RegExp([
-    String.raw`node\s+(?:["'$<.]|-e\s+'|\S+\.js\b)`, String.raw`cat\s+["'$<./]`, String.raw`grep\s+-[EF]\s`, String.raw`head\s+-\d`, String.raw`rm\s+-rf\s`,
-    String.raw`uname\s`, 'pwd$', String.raw`printenv\s`, String.raw`git\s+(?:mv|rev-parse|status|diff|check-ignore|ls-files|rm|add)\b`,
-    String.raw`set\s+-o\s+pipefail;\s\S`, String.raw`printf\s+'`, String.raw`\(\s*(?:cd|node)\s`,
-].map((part) => `^${part}`).join('|'));
-// An inline span may wrap across up to four lines of a paragraph.
-const WRAPPED_SPAN = /`([^`\n]+(?:\n[^`\n]+){0,3})`/g;
-const SCRIPT_PLACEHOLDER = /\/repo\/[^"\s]*<[^<>"\n]+>[^"\s]*\.js"/;
-const REFERENCE_NAME = /references\/([a-z0-9-]+\.md)/g;
-const ASSIGNMENT = /(?:^|[;&|(]\s*)[A-Za-z_][A-Za-z0-9_]*=/;
-const COMMENT_LINE = /^\s*#/;
 // Wording of the opener block, removed when the walks began to name the run dir literally.
 const RETIRED_WORDING = ['marker block', 'every later block', 're-reads the marker', 'opener block'];
-
-// Inline spans that open like a command but are text the walk hands the user or warns against; no walk call runs them.
-const NOT_CALLS = [
-    { file: 'update-walk.md', prefix: 'git mv <to>/<entry>', why: 'the move line the close tells the user, to move a docs entry back' },
-    { file: 'update-close.md', prefix: 'git mv', why: 'names how the installer renamed a file, no call' },
-    { file: 'update-close.md', prefix: 'git status', why: 'the call the close forbids' },
-    { file: 'source-protocol.md', prefix: 'node "$TMP/repo/scripts/install/alfred-code.js" <install|update|uninstall> [flags]', why: 'the installer call as a template; each real call is written with its own flags and its --source' },
-    { file: 'init-bootstrap.md', prefix: `${APPEND_BASE} ; node <version> is under`, why: 'a quoted hud line the run prints, no call' },
-    { file: 'update-close.md', prefix: 'node .claude/hooks/docs.js prune', why: 'the command the close names for the user to run' },
-];
 
 // Commands that stay behind Claude Code's own prompt: they name no run dir, or they are not a form the gate reads.
 // `walk` is the typed walk the prompt shows in; `prefix` starts the command as the body writes it.
@@ -78,60 +42,7 @@ const EXPECTED_PROMPTS = [
 
 const readText = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const listed = (dir) => fs.readdirSync(path.join(ROOT, dir)).filter((name) => name.endsWith('.md')).map((name) => `${dir}/${name}`);
-
-function reachableFiles(walk)
-{
-    const seen = new Set([`${COMMANDS_DIR}/${walk}.md`]);
-    const queue = [...seen];
-    while (queue.length)
-    {
-        const file = queue.shift();
-        for (const match of readText(file).matchAll(REFERENCE_NAME))
-        {
-            const next = `${REFERENCES_DIR}/${match[1]}`;
-            if (match[1] === SKIPPED_REFERENCE || DOCUMENT_REFERENCES.includes(match[1]) || seen.has(next) || !fs.existsSync(path.join(ROOT, next))) continue;
-            seen.add(next);
-            queue.push(next);
-        }
-    }
-    return seen;
-}
-
-const isResolveBlock = (body) => body.includes(RESOLVE_LINE);
-
-function commandsOf(file)
-{
-    const text = readText(file);
-    const found = [];
-    for (const block of fenceBlocks(text))
-    {
-        if (!SHELL_LANGS.has(block.lang)) continue;
-        if (isResolveBlock(block.body)) { found.push({ file, text: block.body, resolve: true }); continue; }
-        for (const line of block.body.split('\n')) if (line.trim() && !COMMENT_LINE.test(line)) found.push({ file, text: line.trim(), resolve: false });
-    }
-    for (const span of text.replace(FENCE_RE, '').matchAll(WRAPPED_SPAN))
-    {
-        const flat = span[1].replace(/\s*\n\s*/g, ' ').trim();
-        if (APPENDED.test(flat)) found.push({ file, text: `${APPEND_BASE} ${flat}`, resolve: false });
-        else if (COMMAND_SPAN.test(flat) && !SCRIPT_PLACEHOLDER.test(flat)) found.push({ file, text: flat, resolve: false });
-    }
-    for (const read of proseReads(text)) found.push({ file, text: read, resolve: false });
-    return found;
-}
-
-// Each 'in ONE Bash `cat`' sentence is a call that reads the plugin-root paths named before it in the same paragraph or item.
-function proseReads(text)
-{
-    const reads = [];
-    for (const match of text.matchAll(PROSE_CAT))
-    {
-        const before = text.slice(Math.max(0, match.index - PROSE_WINDOW), match.index);
-        const cut = before.split(PARAGRAPH_BREAK).pop();
-        const paths = [...new Set((cut.match(PLUGIN_PATH) || []).map((found) => found.replace(TRAILING_PUNCTUATION, '')))];
-        if (paths.length) reads.push(`cat ${paths.map((found) => `"${found}"`).join(' ')}`);
-    }
-    return reads;
-}
+const ASSIGNMENT = /(?:^|[;&|(]\s*)[A-Za-z_][A-Za-z0-9_]*=/;
 
 const PLUGIN_ROOT_TOKEN = '${CLAUDE_PLUGIN_ROOT}';
 const ALL_PLACEHOLDERS = new RegExp(PLACEHOLDER_RE.source, 'g');
@@ -153,19 +64,19 @@ function untemplated(command)
 const filled = (command, parent = PARENT_SAMPLES[0]) => untemplated(command.replaceAll(PARENT_CD, `cd "${parent}"`).replace(ALL_PLACEHOLDERS, SAMPLE_WORD))
     .replaceAll(PLUGIN_ROOT_TOKEN, PLUGIN_ROOT).replaceAll('$TMP_WIN', RUN_DIR_WIN).replaceAll('$TMP', RUN_DIR).replaceAll('$MARK', MARKER_PATH);
 
-const bodyFiles = [...listed(COMMANDS_DIR), ...listed(REFERENCES_DIR)].map((file) => ({ file, text: readText(file) }));
-const walkFiles = new Map(WALKS.map((walk) => [walk, reachableFiles(walk)]));
-const allFiles = [...new Set([...walkFiles.values()].flatMap((files) => [...files]))].sort();
-const table = buildTable(bodyFiles.filter((body) => !body.file.endsWith(SKIPPED_REFERENCE)));
+const bodyFiles = [...listed(BODY.commands), ...listed(BODY.references)].map((file) => ({ file, text: readText(file) }));
+const texts = new Map(bodyFiles.map(({ file, text }) => [file, text]));
+const walkFiles = new Map(WALKS.map((walk) => [walk, reachableFiles(walk, texts)]));
+const allFiles = walkFilesOf(texts);
+const table = buildTable(bodyFiles);
 const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: table.scripts, markerPath: MARKER_PATH };
 
-const collected = allFiles.flatMap(commandsOf).map((command) => ({
+const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), fenceBlocks(texts.get(file)))).map((command) => ({
     ...command,
     walks: WALKS.filter((walk) => walkFiles.get(walk).has(command.file)),
     runs: [...new Set(PARENT_SAMPLES.map((parent) => filled(command.text, parent)))],
     child: command.file.endsWith(CHILD_FILE) || command.text.includes(PARENT_CD),
 }));
-const isNotCall = (command) => NOT_CALLS.some((entry) => command.file.endsWith(entry.file) && command.text.startsWith(entry.prefix));
 const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command));
 const isApproved = (run) => approvesForms(run, ctx) || approvesPluginRead(run, ctx);
 const prompting = nonResolve.filter((command) => !command.runs.every(isApproved));

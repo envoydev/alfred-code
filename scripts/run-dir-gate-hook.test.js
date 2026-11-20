@@ -148,7 +148,7 @@ test('the shipped table is current - run `npm run protocol-blocks` after a shell
     assert.deepEqual(writeTable(ROOT, { check: true }), { file: 'setup-plugin/hooks/protocol-blocks.json', current: true });
     const table = JSON.parse(fs.readFileSync(path.join(ROOT, 'setup-plugin', 'hooks', 'protocol-blocks.json'), 'utf8'));
     assert.deepEqual(Object.keys(table), ['generatedBy', 'note', 'resolves', 'scripts']);
-    assert.ok(table.scripts['scripts/install/stamp.js'].modes.includes('state'));
+    assert.ok('state' in table.scripts['scripts/install/stamp.js']);
 });
 
 test('a run dir counts only on a trusted marker that names it, or with no marker when it sits in the hook\'s temp dir', () =>

@@ -2,18 +2,47 @@
 // What the form matcher knows about one call: the run dir, the project dir, the script shapes and the marker path - and the
 // tests every form shares to place a word against them. Pure.
 const { SHELL, SESSION_FILE, REPO_DIR, ARG } = require('./constants.js');
+const { compileTemplate } = require('./values.js');
 const { canon, resolveWord, isUnder, isStrictlyUnder, sepOf, fold, segmentsBelow } = require('./paths.js');
 
-// The table's `scripts` object as a Map keyed in lower case: { modes: Set, flags: Set } each. Anything else is empty.
+// The table's `scripts` object as a Map keyed in lower case: script -> mode -> { sequences, flags }, where `sequences` are the
+// positional templates of each call the bodies write and `flags` maps a flag to { values, bare } (`bare`: it may stand
+// alone). A malformed entry is left out, which only narrows what passes. Anything else is empty.
+const compiled = (templates) => (Array.isArray(templates) ? templates.map(compileTemplate).filter(Boolean) : []);
+
+function flagsOf(flags)
+{
+    const out = new Map();
+    if (!flags || typeof flags !== 'object' || Array.isArray(flags)) return out;
+    for (const [name, entries] of Object.entries(flags))
+    {
+        if (!Array.isArray(entries)) continue;
+        out.set(name, { values: compiled(entries.filter((entry) => entry !== true)), bare: entries.includes(true) });
+    }
+    return out;
+}
+
+function modeOf(shape)
+{
+    if (!shape || !Array.isArray(shape.positionals)) return null;
+    const sequences = shape.positionals.filter(Array.isArray).map((sequence) => sequence.map(compileTemplate)).filter((sequence) => !sequence.includes(null));
+    return { sequences, flags: flagsOf(shape.flags) };
+}
+
 function shapesOf(scripts)
 {
     const shapes = new Map();
     if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return shapes;
-    for (const [name, shape] of Object.entries(scripts))
+    for (const [name, modes] of Object.entries(scripts))
     {
-        if (!shape || !Array.isArray(shape.modes) || !Array.isArray(shape.flags)) continue;
-        const modes = new Set(shape.modes);
-        shapes.set(name.toLowerCase(), { modes, flags: new Set(shape.flags), hasModes: [...modes].some((mode) => mode !== ARG.noMode) });
+        if (!modes || typeof modes !== 'object' || Array.isArray(modes)) continue;
+        const byMode = new Map();
+        for (const [mode, shape] of Object.entries(modes))
+        {
+            const read = modeOf(shape);
+            if (read) byMode.set(mode, read);
+        }
+        shapes.set(name.toLowerCase(), byMode);
     }
     return shapes;
 }

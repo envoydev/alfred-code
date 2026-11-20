@@ -1,276 +1,1061 @@
 {
   "generatedBy": "scripts/protocol-blocks.js",
-  "note": "Generated: the hash of each spelling of the resolve block, and each script the walk bodies run from the snapshot with the modes and flags they call it with. Run `npm run protocol-blocks` after a block changes.",
+  "note": "Generated: the hash of each spelling of the resolve block, and each script the four walks run from the snapshot with a template per mode - the positionals and the flag values the walk bodies write. Run `npm run protocol-blocks` after a block changes.",
   "resolves": [
     "21c576e1df277fc88848519e44696cc63ec95e96fb142dfeeb58f0b4957cc4a3",
     "9c69112117e52326960bde92c9e24fbc8bad90af512866a8277c050f53c9f2a1"
   ],
   "scripts": {
     "scripts/agents-md-check.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--root"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "scripts/analyze-usage.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--turn-check-advice"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--turn-check-advice": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "scripts/audit-install.js": {
-      "modes": [
-        ""
-      ],
-      "flags": []
+      "": {
+        "positionals": [
+          [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        ],
+        "flags": {}
+      }
     },
     "scripts/derive-state.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--delta",
-        "--installed",
-        "--picked",
-        "--scope",
-        "--selection",
-        "--source"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--delta": [
+            true
+          ],
+          "--installed": [
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            }
+          ],
+          "--picked": [
+            {
+              "kind": "runDir",
+              "suffix": "final.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "raw.json"
+            }
+          ],
+          "--scope": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--selection": [
+            {
+              "kind": "runDir",
+              "suffix": "selection.txt"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      }
     },
     "scripts/git-hygiene.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--apply",
-        "--local-child",
-        "--root"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--apply": [
+            {
+              "kind": "literal",
+              "value": "exclude"
+            },
+            {
+              "kind": "literal",
+              "value": "gitignore"
+            }
+          ],
+          "--local-child": [
+            true
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "scripts/init-plan.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--installed",
-        "--plugin-root",
-        "--root"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--installed": [
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            }
+          ],
+          "--plugin-root": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "scripts/install/alfred-code.js": {
-      "modes": [
-        "",
-        "install",
-        "uninstall",
-        "update"
-      ],
-      "flags": [
-        "--add",
-        "--auto-compact",
-        "--docs-root-leave",
-        "--docs-root-move",
-        "--docs-versioning",
-        "--drop",
-        "--installed-only",
-        "--instructions-at",
-        "--instructions-file",
-        "--instructions-seed",
-        "--keep-pins",
-        "--memory",
-        "--memory-copy",
-        "--plan-out",
-        "--print-plan",
-        "--scope",
-        "--scope-of",
-        "--seats-route",
-        "--selection",
-        "--source"
-      ]
+      "install": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--auto-compact": [
+            {
+              "kind": "literal",
+              "value": "off"
+            },
+            {
+              "kind": "literal",
+              "value": "on"
+            }
+          ],
+          "--docs-versioning": [
+            {
+              "kind": "literal",
+              "value": "git"
+            },
+            {
+              "kind": "literal",
+              "value": "local"
+            }
+          ],
+          "--instructions-at": [
+            {
+              "kind": "literal",
+              "value": "claude"
+            },
+            {
+              "kind": "literal",
+              "value": "root"
+            }
+          ],
+          "--instructions-file": [
+            {
+              "kind": "literal",
+              "value": "agents"
+            },
+            {
+              "kind": "literal",
+              "value": "claude"
+            }
+          ],
+          "--scope": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--scope-of": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--selection": [
+            {
+              "kind": "runDir",
+              "suffix": "selection.txt"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      },
+      "update": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--add": [
+            {
+              "kind": "phrase"
+            }
+          ],
+          "--docs-root-leave": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--docs-root-move": [
+            {
+              "kind": "literal",
+              "value": "move"
+            }
+          ],
+          "--docs-versioning": [
+            {
+              "kind": "literal",
+              "value": "git"
+            },
+            {
+              "kind": "literal",
+              "value": "local"
+            }
+          ],
+          "--drop": [
+            {
+              "kind": "phrase"
+            }
+          ],
+          "--installed-only": [
+            true
+          ],
+          "--instructions-at": [
+            {
+              "kind": "literal",
+              "value": "claude"
+            },
+            {
+              "kind": "literal",
+              "value": "root"
+            }
+          ],
+          "--instructions-file": [
+            {
+              "kind": "literal",
+              "value": "agents"
+            },
+            {
+              "kind": "literal",
+              "value": "claude"
+            }
+          ],
+          "--keep-pins": [
+            true
+          ],
+          "--memory": [
+            {
+              "kind": "literal",
+              "value": "custom"
+            },
+            {
+              "kind": "literal",
+              "value": "default"
+            },
+            {
+              "kind": "literal",
+              "value": "docs"
+            },
+            {
+              "kind": "word"
+            }
+          ],
+          "--memory-copy": [
+            true
+          ],
+          "--plan-out": [
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "parent.json"
+            }
+          ],
+          "--print-plan": [
+            true
+          ],
+          "--scope": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--scope-of": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--seats-route": [
+            {
+              "kind": "literal",
+              "value": "copy"
+            },
+            {
+              "kind": "literal",
+              "value": "plugin"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      }
     },
     "scripts/install/installed-scopes.js": {
-      "modes": [
-        ""
-      ],
-      "flags": []
+      "": {
+        "positionals": [
+          [
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            }
+          ]
+        ],
+        "flags": {}
+      }
     },
     "scripts/install/marketplace-autoupdate.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--apply",
-        "--root"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--apply": [
+            true
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "scripts/install/release-notes.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--root"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "scripts/install/stamp.js": {
-      "modes": [
-        "mark",
-        "scope",
-        "state"
-      ],
-      "flags": []
+      "mark": {
+        "positionals": [
+          [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        ],
+        "flags": {}
+      },
+      "scope": {
+        "positionals": [
+          [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        ],
+        "flags": {}
+      },
+      "state": {
+        "positionals": [
+          [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        ],
+        "flags": {}
+      }
     },
     "scripts/library-check.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--project",
-        "--source"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--project": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      }
     },
     "scripts/plugin-settings.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--apply",
-        "--catalog",
-        "--config-dir",
-        "--installed"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--apply": [
+            true
+          ],
+          "--catalog": [
+            {
+              "kind": "runDir",
+              "suffix": "repo/meta/plugin-settings.json"
+            }
+          ],
+          "--config-dir": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--installed": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      }
     },
     "scripts/scan-evidence.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--catalog",
-        "--out",
-        "--root"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--catalog": [
+            {
+              "kind": "runDir",
+              "suffix": "repo/meta/evidence.json"
+            }
+          ],
+          "--out": [
+            {
+              "kind": "runDir",
+              "suffix": "found-<n>.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "found.json"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            },
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      }
     },
     "scripts/stack-select.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--catalog",
-        "--check",
-        "--deal",
-        "--defer-init",
-        "--dependents",
-        "--dropped",
-        "--emit",
-        "--evidence-gaps",
-        "--found",
-        "--graph",
-        "--hooks-answered",
-        "--inherited-check",
-        "--installed",
-        "--missing",
-        "--only",
-        "--recs",
-        "--redundant",
-        "--selection",
-        "--stacks",
-        "--table"
-      ]
+      "": {
+        "positionals": [
+          [],
+          [
+            {
+              "kind": "word"
+            }
+          ]
+        ],
+        "flags": {
+          "--catalog": [
+            {
+              "kind": "runDir",
+              "suffix": "repo/meta/evidence.json"
+            }
+          ],
+          "--check": [
+            true
+          ],
+          "--deal": [
+            {
+              "kind": "literal",
+              "value": "fresh"
+            }
+          ],
+          "--defer-init": [
+            true
+          ],
+          "--dependents": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--dropped": [
+            {
+              "kind": "runDir",
+              "suffix": "dropped.json"
+            }
+          ],
+          "--emit": [
+            {
+              "kind": "runDir",
+              "suffix": "selection.txt"
+            }
+          ],
+          "--evidence-gaps": [
+            true
+          ],
+          "--found": [
+            {
+              "kind": "runDir",
+              "suffix": "found-<n>.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "found.json"
+            }
+          ],
+          "--graph": [
+            {
+              "kind": "runDir",
+              "suffix": "repo/meta/stack-graph.json"
+            }
+          ],
+          "--hooks-answered": [
+            true
+          ],
+          "--inherited-check": [
+            {
+              "kind": "runDir",
+              "suffix": "parent.json"
+            }
+          ],
+          "--installed": [
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "parent.json"
+            }
+          ],
+          "--missing": [
+            true
+          ],
+          "--only": [
+            {
+              "kind": "runDir",
+              "suffix": "added.txt"
+            }
+          ],
+          "--recs": [
+            {
+              "kind": "runDir",
+              "suffix": "repo/meta/recommendations.json"
+            },
+            {
+              "kind": "word"
+            }
+          ],
+          "--redundant": [
+            true
+          ],
+          "--selection": [
+            {
+              "kind": "runDir",
+              "suffix": "final.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            },
+            {
+              "kind": "runDir",
+              "suffix": "raw.json"
+            }
+          ],
+          "--stacks": [
+            {
+              "kind": "phrase"
+            },
+            {
+              "kind": "word"
+            }
+          ],
+          "--table": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      }
     },
     "scripts/stamp-compare.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--snapshot",
-        "--stamp"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--snapshot": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ],
+          "--stamp": [
+            {
+              "kind": "literal",
+              "value": ".claude/alfred-code.stamp"
+            }
+          ]
+        }
+      }
     },
     "scripts/stamp-docs-root.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--seed-versioning"
-      ]
+      "": {
+        "positionals": [
+          [
+            {
+              "kind": "word"
+            }
+          ]
+        ],
+        "flags": {
+          "--seed-versioning": [
+            true
+          ]
+        }
+      }
     },
     "scripts/update-preflight.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--hooks",
-        "--inventory",
-        "--log",
-        "--offers",
-        "--respell",
-        "--root",
-        "--running",
-        "--snapshot"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--hooks": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--inventory": [
+            {
+              "kind": "runDir",
+              "suffix": "installed.json"
+            }
+          ],
+          "--log": [
+            {
+              "kind": "runDir",
+              "suffix": "install.log"
+            }
+          ],
+          "--offers": [
+            true
+          ],
+          "--respell": [
+            true
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            },
+            {
+              "kind": "word"
+            }
+          ],
+          "--running": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--snapshot": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      }
     },
     "scripts/variables.js": {
-      "modes": [
-        "recommend",
-        "set",
-        "show"
-      ],
-      "flags": [
-        "--child",
-        "--root",
-        "--scope"
-      ]
+      "recommend": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--child": [
+            true
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--scope": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      },
+      "set": {
+        "positionals": [
+          [
+            {
+              "kind": "literal",
+              "value": "KEY=value"
+            }
+          ]
+        ],
+        "flags": {
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--scope": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      },
+      "show": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--root": [
+            {
+              "kind": "cwdPath"
+            },
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      }
     },
     "scripts/workspace.js": {
-      "modes": [
-        "account-instructions",
-        "answer",
-        "cascade",
-        "check-loads",
-        "ignore",
-        "ignore-child",
-        "join",
-        "plan",
-        "remove-nested",
-        "role",
-        "status"
-      ],
-      "flags": [
-        "--",
-        "--add",
-        "--answer",
-        "--answers",
-        "--apply",
-        "--file",
-        "--hold",
-        "--path",
-        "--project",
-        "--rescan",
-        "--root",
-        "--source",
-        "--when"
-      ]
+      "account-instructions": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--apply": [
+            true
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      },
+      "answer": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--file": [
+            {
+              "kind": "runDir",
+              "suffix": "answers.json"
+            }
+          ],
+          "--hold": [
+            true
+          ],
+          "--project": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      },
+      "cascade": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--answers": [
+            {
+              "kind": "runDir",
+              "suffix": "answers.json"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      },
+      "check-loads": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--root": [
+            {
+              "kind": "cwdPath"
+            },
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      },
+      "ignore": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--add": [
+            {
+              "kind": "phrase"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            },
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      },
+      "ignore-child": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--add": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      },
+      "join": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--answer": [
+            {
+              "kind": "literal",
+              "value": "join"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      },
+      "plan": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--rescan": [
+            true
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--source": [
+            {
+              "kind": "runDir",
+              "suffix": "repo"
+            }
+          ]
+        }
+      },
+      "remove-nested": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--path": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      },
+      "role": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--answer": [
+            {
+              "kind": "literal",
+              "value": "child"
+            },
+            {
+              "kind": "word"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            },
+            {
+              "kind": "word"
+            }
+          ],
+          "--when": [
+            {
+              "kind": "literal",
+              "value": "init"
+            },
+            {
+              "kind": "literal",
+              "value": "update"
+            }
+          ]
+        }
+      },
+      "status": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     },
     "stack/hooks/guard-secret-value.js": {
-      "modes": [
-        ""
-      ],
-      "flags": [
-        "--redacted"
-      ]
+      "": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--redacted": [
+            {
+              "kind": "word"
+            }
+          ]
+        }
+      }
     },
     "stack/skills/capture-preferences/scripts/tools.js": {
-      "modes": [
-        "modes",
-        "validate"
-      ],
-      "flags": [
-        "--lsp",
-        "--memory",
-        "--project"
-      ]
+      "modes": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--lsp": [
+            true
+          ],
+          "--memory": [
+            {
+              "kind": "literal",
+              "value": "custom"
+            },
+            {
+              "kind": "literal",
+              "value": "docs"
+            }
+          ],
+          "--project": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      },
+      "validate": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--project": [
+            {
+              "kind": "cwdPath"
+            }
+          ]
+        }
+      }
     }
   }
 }

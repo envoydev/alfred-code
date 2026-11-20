@@ -1,76 +1,62 @@
 'use strict';
-// Whether the arguments of one `node "<run dir>/repo/<script>"` call are ones a walk body writes: a mode and flags the table
-// lists for the script, and values that are plain words or paths under the run dir or the project. Pure.
-const { SHELL, QUOTE, FLAG, ARG, OUTPUT_FLAGS, PHRASE_FLAGS, INSTALLER_MODES, WORD, PARENT_READ } = require('./constants.js');
-const { isAbsoluteWord, isUnder, sepOf, resolveWord, sameFolded, fold } = require('./paths.js');
+// Whether the arguments of one `node "<run dir>/repo/<script>"` call are ones a walk body writes: a mode of the script's table
+// entry, and flags, values and positionals that fit its templates. Pure.
+const { SHELL, QUOTE, FLAG, ARG, OUTPUT_FLAGS, INSTALLER_MODES, PARENT_READ } = require('./constants.js');
+const { sepOf, sameFolded, fold } = require('./paths.js');
+const { fitsTemplate } = require('./values.js');
 const { resolveIn, isTarget } = require('./state.js');
 
 const isBare = (word) => word.quote === QUOTE.none;
 const isFlagShape = (text) => ARG.longFlag.test(text) || ARG.shortFlag.test(text);
+const looksLikeFlag = (word) => isBare(word) && word.value.startsWith(FLAG.dash);
 
-// The mode and the words after it. A first plain word is a mode when the script has modes; a script with none reads it as a value.
-function splitMode(args, shape)
+// The mode and the words after it. A first plain word that names a mode of the script is the mode; otherwise the call has no
+// mode, and the script must list the empty one.
+function splitMode(args, modes)
 {
     const [first] = args;
-    if (first && isBare(first) && ARG.modeWord.test(first.value))
+    if (first && isBare(first) && ARG.modeWord.test(first.value) && modes.has(first.value)) return { mode: first.value, rest: args.slice(1) };
+    return modes.has(ARG.noMode) ? { mode: ARG.noMode, rest: args } : null;
+}
+
+const fitsAny = (templates, word, base, state, afterDashes = false) => templates.some((template) => fitsTemplate(template, word, base, state, { afterDashes }));
+
+const fitsSequence = (sequence, words, base, state) => sequence.length === words.length && sequence.every((template, at) => fitsTemplate(template, words[at], base, state));
+
+// Whether the words after the mode are the flags, flag values and positionals one mode's template lists. A flag takes the next
+// word as its value when a template of the flag fits it; otherwise it must be one that stands alone. After a `--` every
+// word is data and must fit one of the `--`'s templates.
+function fitsMode(shape, rest, base, state)
+{
+    const positionals = [];
+    for (let at = 0; at < rest.length; at++)
     {
-        if (shape.modes.has(first.value)) return { mode: first.value, rest: args.slice(1) };
-        if (shape.hasModes) return null;
-    }
-    return shape.modes.has(ARG.noMode) ? { mode: ARG.noMode, rest: args } : null;
-}
-
-function isPathValue(word, base, state)
-{
-    const text = word.value;
-    if (word.quote === QUOTE.single || ARG.badPathChar.test(text)) return false;
-    const absolute = word.quote === QUOTE.double && isAbsoluteWord(text, state.win);
-    if (!absolute && text !== WORD.here && !ARG.relativePath.test(text)) return false;
-    const resolved = resolveWord(text, base, state.win);
-    return Boolean(resolved) && state.roots.some((root) => isUnder(resolved, root, state.win));
-}
-
-function isValueWord(word, previousFlag, base, state)
-{
-    const text = word.value;
-    if (text === '' || text.startsWith(FLAG.dash)) return false;
-    if (PHRASE_FLAGS.has(previousFlag) && word.quote !== QUOTE.none && ARG.phrase.test(text)) return true;
-    if (word.quote === QUOTE.single) return false;
-    if (ARG.plainWord.test(text) && text !== WORD.here) return !ARG.allDots.test(text);
-    return isPathValue(word, base, state);
-}
-
-// The mode of a call whose arguments all pass, else null. After a `--` the table lists for the script, flags are data: any
-// flag-shaped word goes, and each value still passes the value test.
-function checkArgs(shape, args, base, state)
-{
-    const split = splitMode(args, shape);
-    if (!split) return null;
-    const { rest } = split;
-    let previous = '';
-    let data = false;
-    for (let i = 0; i < rest.length; i++)
-    {
-        const word = rest[i];
-        if (isBare(word) && word.value.startsWith(FLAG.dash))
+        const word = rest[at];
+        if (!looksLikeFlag(word)) { positionals.push(word); continue; }
+        const entry = isFlagShape(word.value) || word.value === ARG.passthrough ? shape.flags.get(word.value) : null;
+        if (!entry) return false;
+        if (word.value === ARG.passthrough)
         {
-            const known = shape.flags.has(word.value);
-            if (word.value === ARG.passthrough && (!known || data)) return null;
-            if (word.value === ARG.passthrough) data = true;
-            else if (!isFlagShape(word.value) || !(known || data)) return null;
-            previous = word.value === ARG.passthrough ? '' : word.value;
-            if (OUTPUT_FLAGS.has(previous) && !data)
-            {
-                i++;
-                if (!rest[i] || !isTarget(rest[i], base, state)) return null;
-                previous = '';
-            }
-            continue;
+            const data = rest.slice(at + 1);
+            if (data.length === 0 ? !entry.bare : !data.every((one) => fitsAny(entry.values, one, base, state, true))) return false;
+            break;
         }
-        if (!isValueWord(word, previous, base, state)) return null;
-        previous = '';
+        const next = rest[at + 1];
+        if (next && !looksLikeFlag(next) && fitsAny(entry.values, next, base, state))
+        {
+            if (OUTPUT_FLAGS.has(word.value) && !isTarget(next, base, state)) return false;
+            at++;
+        }
+        else if (!entry.bare || OUTPUT_FLAGS.has(word.value)) return false;
     }
-    return split.mode;
+    return shape.sequences.some((sequence) => fitsSequence(sequence, positionals, base, state));
+}
+
+// The mode of a call whose arguments all fit a template of the script, else null.
+function checkArgs(modes, args, base, state)
+{
+    const split = splitMode(args, modes);
+    return split && fitsMode(modes.get(split.mode), split.rest, base, state) ? split.mode : null;
 }
 
 // The script a word names under the run dir's snapshot, as the table spells it, or null.

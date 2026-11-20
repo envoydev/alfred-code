@@ -11,26 +11,10 @@ const { approvesForms, approvesPluginRead } = require('./run-dir-gate/forms.js')
 const { decide, hookOutput } = require('./run-dir-gate/verdict.js');
 const { RESOLVE_LINE, OFF_SWITCH, REASON } = require('./run-dir-gate/constants.js');
 
-const ROOT = path.join(__dirname, '..');
+const { ROOT, D, MARKER, readBodies, SHAPES, ctx, stamp, alfred, own, foreign, BODY_FILE } = require('./run-dir-gate-fixture.js');
+
 const PROTOCOL = fs.readFileSync(path.join(ROOT, 'setup-plugin/references/source-protocol.md'), 'utf8');
 const resolveBlock = fenceBlocks(PROTOCOL).find((block) => block.lang === 'bash' && block.body.includes(RESOLVE_LINE)).body;
-
-function readBodies()
-{
-    const files = [];
-    const walk = (dir) =>
-    {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true }))
-        {
-            const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) walk(full);
-            else if (entry.name.endsWith('.md')) files.push({ file: path.relative(ROOT, full), text: fs.readFileSync(full, 'utf8') });
-        }
-    };
-    walk(path.join(ROOT, 'setup-plugin/commands'));
-    walk(path.join(ROOT, 'setup-plugin/references'));
-    return files;
-}
 
 test('findRunDirs finds a run dir in each spelling and nothing in the shipped resolve block', () =>
 {
@@ -100,7 +84,7 @@ test('buildTable takes scripts from fenced shell blocks and inline code spans, n
     const block = `\`\`\`bash\n${RESOLVE_LINE}\n\`\`\``;
     const text = [block, 'Prose names "$TMP/repo/scripts/prose.js" in plain words.', 'An inline `node "$TMP/repo/scripts/inline.js" x` span.',
         '```bash', 'node "<run dir>/repo/scripts/fenced.js" <arg>', '```', '```powershell', 'node "$TMP/repo/scripts/other-shell.js"', '```'].join('\n');
-    const table = buildTable([{ file: 'a.md', text }]);
+    const table = buildTable([{ file: BODY_FILE, text }]);
     assert.deepEqual(Object.keys(table.scripts), ['scripts/fenced.js', 'scripts/inline.js']);
     assert.ok(!('scripts/x.js' in buildTable(readBodies()).scripts), 'the protocol\'s prose example is no allowlisted script');
 });
@@ -111,21 +95,6 @@ test('buildTable refuses bodies with no resolve block or two', () =>
     assert.throws(() => buildTable([{ file: 'a.md', text: 'none' }]), /exactly one resolve block/);
     assert.throws(() => buildTable([{ file: 'a.md', text: `${block}\n${block.replace('printf', 'echo x; printf')}` }]), /exactly one resolve block/);
 });
-
-const D = '/t/alfred-code.AbC123';
-const MARKER = '/m/alfred-code-run.x.path';
-const INSTALLER_FLAGS = ['--source', '--scope', '--selection', '--installed-only', '--print-plan', '--plan-out', '--add', '--drop', '--memory'];
-const SHAPES = {
-    'scripts/install/stamp.js': { modes: ['', 'scope', 'state', 'x', 'y'], flags: ['--root', '--out'] },
-    'scripts/install/alfred-code.js': { modes: ['', 'install', 'uninstall', 'update'], flags: INSTALLER_FLAGS },
-    'scripts/stack-select.js': { modes: [''], flags: ['--inherited-check', '--emit'] },
-    'scripts/scan-evidence.js': { modes: [''], flags: ['--root', '--out'] },
-    'scripts/workspace.js': { modes: ['answer', 'role'], flags: ['--file', '--project', '--root', '--'] },
-    'stack/hooks/guard-secret-value.js': { modes: [''], flags: ['--redacted', '--presence'] },
-};
-const ctx = { runDir: D, cwd: '/p', pluginRoot: '/plug', scripts: SHAPES, markerPath: MARKER };
-const stamp = `node "${D}/repo/scripts/install/stamp.js"`;
-const alfred = `node "${D}/repo/scripts/install/alfred-code.js"`;
 
 test('approvesForms passes each of the walk\'s forms', () =>
 {
@@ -140,8 +109,8 @@ test('approvesForms passes each of the walk\'s forms', () =>
         `(${stamp} scope .)`,
         `${stamp} x > "${D}/o.txt" 2>&1; cat "${D}/o.txt"`,
         `${stamp} x | grep -qE 'a' && cat "${D}/o.txt"`,
-        `${stamp} x --root sub/dir --out "${D}/o.json" --root ./sub`,
-        `${stamp} x || ${stamp} y`,
+        `${stamp} x --root ./sub/dir --out "${D}/o.json" --root ./sub`,
+        `${stamp} x || ${stamp} y .`,
         `rm -rf "${D}" "${MARKER}"`,
         `${stamp} state .\n`,
     ];
@@ -309,7 +278,7 @@ test('approvesForms pins every installer form\'s --source to this run dir\'s sna
     const pinned = `--source "${D}/repo"`;
     const good = [
         `${alfred} update ${pinned} --scope local`,
-        `${alfred} install --scope local ${pinned} --selection "${D}/sel.json"`,
+        `${alfred} install --scope local ${pinned} --selection "${D}/selection.txt"`,
         `(cd "./child" && ${alfred} update ${pinned} --installed-only)`,
         `(cd ".." && ${alfred} update ${pinned} --installed-only --print-plan --plan-out "${D}/parent.json")`,
     ];
@@ -333,7 +302,7 @@ test('approvesForms pins every installer form\'s --source to this run dir\'s sna
         assert.equal(approvesForms(`(cd "./child" && ${alfred} update ${probe})`, ancestorCtx), false, `child: ${probe}`);
         assert.equal(approvesForms(`(cd ".." && ${alfred} update ${probe} --installed-only --print-plan --plan-out "${D}/parent.json")`, ancestorCtx), false, `ancestor: ${probe}`);
     }
-    assert.equal(approvesForms(`${stamp} x --root sub`, ancestorCtx), true, 'a flag with a value stays fine on another script');
+    assert.equal(approvesForms(`${stamp} x --root ./sub`, ancestorCtx), true, 'a flag with a value stays fine on another script');
     assert.equal(approvesForms(`${stamp} x --root=sub`, ancestorCtx), false, 'no --flag=value spelling passes');
 });
 
@@ -408,7 +377,7 @@ test('decide allows a plugin-root cat with no run dir named, and only that', () 
 test('approvesForms reads Windows spellings of one run dir and the same dir in MSYS form', () =>
 {
     const win = { runDir: 'C:\\Temp\\alfred-code.AbC123', cwd: 'C:\\p', pluginRoot: 'C:\\plug', scripts: SHAPES, markerPath: 'C:\\Temp\\m.path' };
-    assert.equal(approvesForms('node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" x "C:/p/sub"', win), true);
+    assert.equal(approvesForms('node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" x --root ./sub', win), true);
     assert.equal(approvesForms('node "/c/Temp/alfred-code.AbC123/repo/scripts/install/stamp.js" x', win), true);
     assert.equal(approvesForms('node "/c/Temp/alfred-code.AbC123/repo/scripts/gate.js" x', win), false);
     assert.equal(approvesForms('node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" x "/tmp/x"', win), false);
@@ -422,8 +391,6 @@ test('approvesForms reads Windows spellings of one run dir and the same dir in M
 const table = { resolves: [], scripts: [] };
 const resolveTable = buildTable([{ file: 'a.md', text: `\`\`\`bash\n${RESOLVE_LINE}\n\`\`\`` }]);
 const resolveTable2 = buildTable([{ file: 'a.md', text: `\`\`\`bash\n${resolveBlock}\n\`\`\`` }]);
-const own = { raw: D, path: D, real: D, inTemp: true, session: 's1', owned: true };
-const foreign = { raw: '/t/alfred-code.Other1', path: '/t/alfred-code.Other1', real: '/t/alfred-code.Other1', inTemp: true, session: 's2', owned: true };
 const form = `${stamp} state .`;
 const base = { command: form, table, sessionId: 's1', dirs: [own], marker: null, ctx };
 
@@ -500,6 +467,6 @@ test('decide never denies two sessions of one project and allows this one\'s for
 test('the logic files touch no file system, process, environment or clock', () =>
 {
     const banned = /require\(['"]node:(fs|child_process|os)['"]\)|process\.(env|platform|cwd)|Date\.now|new Date/;
-    for (const name of ['constants', 'dirs', 'marker', 'paths', 'shell', 'forms', 'table', 'verdict', 'shapes', 'state', 'args'])
+    for (const name of ['constants', 'dirs', 'marker', 'paths', 'shell', 'forms', 'table', 'verdict', 'call-words', 'calls', 'templates', 'values', 'state', 'args'])
         assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'run-dir-gate', `${name}.js`), 'utf8'), banned, name);
 });

@@ -3,7 +3,8 @@
 // them. Values in, values out.
 const crypto = require('node:crypto');
 const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, RESOLVE_LINE, CONTROL_RE, CARRIAGE_RETURN_RE, HASH } = require('./constants.js');
-const { scriptShapes } = require('./shapes.js');
+const { walkFilesOf, commandsOf, isNotCall } = require('./calls.js');
+const { callsOf, mergeCall, scriptsObject } = require('./templates.js');
 
 // Whether a block holds a `<name>` the model fills in, comments left out.
 const hasPlaceholder = (body) => PLACEHOLDER_RE.test(body.replace(COMMENT_RE, '$1'));
@@ -52,28 +53,16 @@ function fenceBlocks(markdown)
     }));
 }
 
-function mergeShapes(into, from)
-{
-    for (const [name, shape] of from)
-    {
-        if (!into.has(name)) into.set(name, { modes: new Set(), flags: new Set() });
-        for (const mode of shape.modes) into.get(name).modes.add(mode);
-        for (const flag of shape.flags) into.get(name).flags.add(flag);
-    }
-}
-
-// The table from the bodies ({ file, text } each): the sorted hashes of the resolve block's spellings, and each script the
-// bodies name with the sorted modes and flags the bodies call it with.
+// The table from the bodies ({ file, text } each): the sorted hashes of the resolve block's spellings, and each script the four
+// walks run from the snapshot with a template per mode - the positionals and the flag values the walk bodies write.
 function buildTable(files)
 {
     const resolveBodies = new Set();
     const resolves = new Set();
-    const shapes = new Map();
+    const texts = new Map(files.map(({ file, text }) => [file, text]));
     for (const { text } of files)
     {
-        const blocks = fenceBlocks(text);
-        mergeShapes(shapes, scriptShapes(text, blocks));
-        for (const block of blocks)
+        for (const block of fenceBlocks(text))
         {
             if (!SHELL_LANGS.has(block.lang) || hasPlaceholder(block.body)) continue;
             const body = normalize(block.body);
@@ -83,9 +72,14 @@ function buildTable(files)
         }
     }
     if (resolveBodies.size !== 1) throw new Error(`run-dir-gate: exactly one resolve block, found ${resolveBodies.size}`);
-    const scripts = {};
-    for (const name of [...shapes.keys()].sort()) scripts[name] = { modes: [...shapes.get(name).modes].sort(), flags: [...shapes.get(name).flags].sort() };
-    return { resolves: [...resolves].sort(), scripts };
+    const scripts = new Map();
+    for (const file of walkFilesOf(texts))
+    {
+        const text = texts.get(file);
+        for (const command of commandsOf(file, text, fenceBlocks(text)))
+            if (!command.resolve && !isNotCall(command)) for (const call of callsOf(command.text)) mergeCall(scripts, call);
+    }
+    return { resolves: [...resolves].sort(), scripts: scriptsObject(scripts) };
 }
 
 // Whether a Bash call's text is the resolve block, in either shipped spelling.

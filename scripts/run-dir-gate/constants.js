@@ -5,7 +5,7 @@ const HOOK_NAME = 'run-dir-gate';
 const OFF_SWITCH = `ALFRED_CODE_HOOKS_OFF=${HOOK_NAME}`;
 const TABLE_FILE = 'setup-plugin/hooks/protocol-blocks.json';
 const GENERATED_BY = 'scripts/protocol-blocks.js';
-const TABLE_NOTE = 'Generated: the hash of each spelling of the resolve block, and each script the walk bodies run from the snapshot with the modes and flags they call it with. Run `npm run protocol-blocks` after a block changes.';
+const TABLE_NOTE = 'Generated: the hash of each spelling of the resolve block, and each script the four walks run from the snapshot with a template per mode - the positionals and the flag values the walk bodies write. Run `npm run protocol-blocks` after a block changes.';
 const QUICK_REJECT = 'alfred-code.';
 const ALLOW_REASON = 'a shipped alfred-code walk call on this run\'s dir, unchanged';
 const HOOK_FILE = 'run-dir-gate.js';
@@ -29,7 +29,12 @@ const REASON = Object.freeze({
     wrongDir: (dir) => `This call names a run dir that is not this run's dir. This run's dir is ${dir}. ${RESOLVE_AGAIN} To switch this check off, set ${OFF_SWITCH}.`,
 });
 
-const BODY_DIRS = Object.freeze(['setup-plugin/commands', 'setup-plugin/references']);
+const BODY = Object.freeze({ commands: 'setup-plugin/commands', references: 'setup-plugin/references' });
+const BODY_DIRS = Object.freeze([BODY.commands, BODY.references]);
+const WALKS = Object.freeze(['init', 'update', 'configure', 'validate']);
+// Reached by name, but a record or a handout the walk hands over, never a body the walk runs: its commands are prose.
+const SKIPPED_REFERENCES = Object.freeze(new Set(['source-protocol-powershell.md', 'update-history.md', 'post-install.md']));
+const REFERENCE_NAME = /references\/([a-z0-9-]+\.md)/g;
 const SHELL_LANGS = Object.freeze(new Set(['bash', 'sh', 'shell']));
 // A fence pairs with its own closer whatever its language, so a closer is never read as an opener.
 const FENCE_RE = /^([ \t]*)```([^`\n]*)\n([\s\S]*?)^\1```[ \t]*$/gm;
@@ -147,11 +152,11 @@ const ARG = Object.freeze({
     badPathChar: /[|;&<>*?[\]{}()]/,
     relativePath: /^(?:\.\/)?[A-Za-z0-9._:@,=+-]+(?:\/[A-Za-z0-9._:@,=+-]+)*$/,
     targetSegment: /^[A-Za-z0-9._-]+$/,
+    cwdSegment: /^(?!\.+$)[A-Za-z0-9._-]+$/,
     passthrough: '--',
     noMode: '',
 });
 const OUTPUT_FLAGS = Object.freeze(new Set(['--out', '--emit', '--plan-out']));
-const PHRASE_FLAGS = Object.freeze(new Set(['--add', '--drop']));
 const INSTALLER_MODES = Object.freeze(new Set(['install', 'update']));
 // The words that start a node call in a body, and what ends its argument list.
 const CALL = Object.freeze({
@@ -162,6 +167,46 @@ const CALL = Object.freeze({
     continuation: '\\\n',
 });
 const PLUGIN_READ = Object.freeze({ dir: 'setup-plugin', suffix: '.md' });
+const COLLECT = Object.freeze({
+    // A span that opens with `;` or `&&` is the end of a call the prose says to append it to; it is judged on a stand-in call.
+    appended: /^(?:;|&&)\s/,
+    appendBase: 'node "$TMP/repo/scripts/install/stamp.js" state .',
+    // An inline code span is a command when it opens with a command word and an argument, never a bare word or a phrase.
+    commandSpan: new RegExp([
+        String.raw`node\s+(?:["'$<.]|-e\s+'|\S+\.js\b)`, String.raw`cat\s+["'$<./]`, String.raw`grep\s+-[EF]\s`, String.raw`head\s+-\d`, String.raw`rm\s+-rf\s`,
+        String.raw`uname\s`, 'pwd$', String.raw`printenv\s`, String.raw`git\s+(?:mv|rev-parse|status|diff|check-ignore|ls-files|rm|add)\b`,
+        String.raw`set\s+-o\s+pipefail;\s\S`, String.raw`printf\s+'`, String.raw`\(\s*(?:cd|node)\s`,
+    ].map((part) => `^${part}`).join('|')),
+    scriptPlaceholder: /\/repo\/[^"\s]*<[^<>"\n]+>[^"\s]*\.js"/,
+    commentLine: /^\s*#/,
+    // A prose read of the plugin's own files: 'in ONE Bash `cat`', after the `${CLAUDE_PLUGIN_ROOT}/...` paths it names.
+    proseCat: /in one Bash `cat`/gi,
+    pluginPath: /\$\{CLAUDE_PLUGIN_ROOT\}\/[^\s`"')]+/g,
+    proseWindow: 500,
+    paragraphBreak: /\n\n|\n(?:[-*]|\d+\.) /,
+    trailingPunctuation: /[.,;:]+$/,
+});
+// Inline spans that open like a command but are text the walk hands the user or warns against; no walk call runs them.
+const NOT_CALLS = Object.freeze([
+    { file: 'update-walk.md', prefix: 'git mv <to>/<entry>', why: 'the move line the close tells the user, to move a docs entry back' },
+    { file: 'update-close.md', prefix: 'git mv', why: 'names how the installer renamed a file, no call' },
+    { file: 'update-close.md', prefix: 'git status', why: 'the call the close forbids' },
+    { file: 'source-protocol.md', prefix: 'node "$TMP/repo/scripts/install/alfred-code.js" <install|update|uninstall> [flags]', why: 'the installer call as a template; each real call is written with its own flags and its --source' },
+    { file: 'init-bootstrap.md', prefix: `${COLLECT.appendBase} ; node <version> is under`, why: 'a quoted hud line the run prints, no call' },
+    { file: 'update-close.md', prefix: 'node .claude/hooks/docs.js prune', why: 'the command the close names for the user to run' },
+]);
+// The kinds of value a table template names, and what the generator reads off a body's spelling.
+const VALUE = Object.freeze({ literal: 'literal', word: 'word', phrase: 'phrase', runDir: 'runDir', cwdPath: 'cwdPath' });
+const TEMPLATE = Object.freeze({
+    tmpPrefix: '$TMP/',
+    choiceSep: '|',
+    segmentSep: '/',
+    segmentPlaceholder: '[A-Za-z0-9._-]+',
+    placeholderParts: /(<[A-Za-z][^<>\n]*>)/,
+    regexSpecials: /[.*+?^${}()|[\]\\]/g,
+    whitespace: /\s/,
+    kinds: Object.freeze(new Set(Object.values(VALUE))),
+});
 const GREP_FLAGS = Object.freeze(new Set(['-E', '-F']));
 const GREP_QUIET_FLAGS = Object.freeze(new Set(['-qE', '-qF']));
 const RM_FLAGS = '-rf';
@@ -170,7 +215,8 @@ const REPO_DIR = 'repo';
 const SESSION_FILE = 'run-session';
 
 module.exports = {
+    BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, COLLECT, NOT_CALLS,
     HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
-    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, PHRASE_FLAGS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE,
+    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE, VALUE, TEMPLATE,
 };
