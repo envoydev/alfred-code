@@ -87,8 +87,16 @@ function byShape(placeholder, at, text)
     if (quoted && /\s/.test(name)) return SHAPE_SAMPLES.phrase;
     return SAMPLE_WORD;
 }
-const filled = (command, parent = PARENT_SAMPLES[0], sample = standIn) => untemplated(withRealistic(command.replaceAll(PARENT_CD, `cd "${parent}"`)).replace(new RegExp(ALL_PLACEHOLDERS.source, 'g'), (placeholder, at, text) => sample(placeholder, at, text)))
-    .replaceAll(PLUGIN_ROOT_TOKEN, PLUGIN_ROOT).replaceAll('$TMP_WIN', RUN_DIR_WIN).replaceAll('$TMP', RUN_DIR).replaceAll('$MARK', MARKER_PATH);
+const TOKEN_VALUES = [['$TMP_WIN', RUN_DIR_WIN], ['$TMP', RUN_DIR], ['$MARK', MARKER_PATH]];
+const filled = (command, parent = PARENT_SAMPLES[0], sample = standIn, keepTokens = false) =>
+{
+    const text = untemplated(withRealistic(command.replaceAll(PARENT_CD, `cd "${parent}"`)).replace(new RegExp(ALL_PLACEHOLDERS.source, 'g'), (placeholder, at, whole) => sample(placeholder, at, whole)))
+        .replaceAll(PLUGIN_ROOT_TOKEN, PLUGIN_ROOT);
+    return keepTokens ? text : TOKEN_VALUES.reduce((out, [token, value]) => out.replaceAll(token, value), text);
+};
+// The same call as a model may write it: the run dir's tokens set first, the call keeping `$TMP` and `$MARK`.
+const RUN_DIR_TOKEN = /\$TMP(?![A-Za-z0-9_])/;
+const assigned = (run) => `${RUN_DIR_TOKEN.test(run) ? `TMP=${RUN_DIR}; ` : ''}${run.includes('$MARK') ? `MARK=${MARKER_PATH}; ` : ''}${run}`;
 
 const bodyFiles = [...listed(BODY.commands), ...listed(BODY.references)].map((file) => ({ file, text: readText(file) }));
 const texts = new Map(bodyFiles.map(({ file, text }) => [file, text]));
@@ -101,11 +109,13 @@ const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), f
     ...command,
     walks: WALKS.filter((walk) => walkFiles.get(walk).has(command.file)),
     runs: [...new Set(PARENT_SAMPLES.flatMap((parent) => [filled(command.text, parent), filled(command.text, parent, byShape)]))],
+    assignedRuns: [...new Set(PARENT_SAMPLES.flatMap((parent) => [filled(command.text, parent, standIn, true), filled(command.text, parent, byShape, true)]))].map(assigned),
     child: command.file.endsWith(CHILD_FILE) || command.text.includes(PARENT_CD),
 }));
 const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command) && !isConditionalPrefix(command));
 const isApproved = (run) => approvesForms(run, ctx) || approvesPluginRead(run, ctx);
 const prompting = nonResolve.filter((command) => !command.runs.every(isApproved));
+const promptingAssigned = nonResolve.filter((command) => !command.assignedRuns.every(isApproved));
 const entryFor = (command, walk) => EXPECTED_PROMPTS.find((entry) => entry.walk === walk && command.text.startsWith(entry.prefix));
 
 test('the walks name commands to check', () =>
@@ -200,4 +210,17 @@ test('the Windows PATH line is one named conditional prefix: stated as the one c
     assert.ok(!collected.some((command) => command.text.includes('PATH="')), 'the prefix is no collected call');
     assert.equal(isApproved(`${entry.prefix}$(/usr/bin/cygpath -u -p "$PATH")" ; node "${RUN_DIR}/repo/scripts/install/stamp.js" state .`), false);
     assert.equal(isApproved(`PATH=/usr/bin:/bin node "${RUN_DIR}/repo/scripts/install/stamp.js" state .`), false);
+});
+
+test('the same calls with the run dir\'s tokens set first prompt exactly where the literal calls do', () =>
+{
+    assert.deepEqual(promptingAssigned.map((command) => command.text), prompting.map((command) => command.text));
+    const tokenCalls = nonResolve.filter((command) => command.assignedRuns.some((run) => run.startsWith('TMP=')));
+    assert.ok(tokenCalls.length > 40, `only ${tokenCalls.length} calls carry a token`);
+    for (const walk of WALKS)
+    {
+        const entries = new Set(promptingAssigned.filter((command) => command.walks.includes(walk)).map((command) => entryFor(command, walk)).filter(Boolean));
+        console.log(`EXPECTED_PROMPTS ${walk} (tokens set first): ${entries.size}`);
+        assert.ok(entries.size <= MAX_PROMPTS_PER_WALK, walk);
+    }
 });

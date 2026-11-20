@@ -6,6 +6,7 @@ const { parse } = require('./shell.js');
 const { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf, sameFolded } = require('./paths.js');
 const { makeState, resolveIn, isTarget, isRunDirFile } = require('./state.js');
 const { checkArgs, valueAfter, pinsSource, isNodeCall } = require('./args.js');
+const { withoutTokenPrefix } = require('./tokens.js');
 
 const isScriptAt = (word, relative, base, state) => state.scripts.has(relative.toLowerCase()) && sameFolded(resolveIn(word, base, state) || '', `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`);
 
@@ -117,9 +118,11 @@ function isEchoTail(element)
     return !out && !err && words.length === 2 && words[0].quote === QUOTE.none && words[0].value === WORD.echo && Boolean(words[1].label);
 }
 
-function approvesForms(command, ctx)
+function approvesForms(call, ctx)
 {
-    if (typeof command !== 'string' || !ctx || typeof ctx.runDir !== 'string' || typeof ctx.cwd !== 'string' || typeof ctx.pluginRoot !== 'string') return false;
+    if (typeof call !== 'string' || !ctx || typeof ctx.runDir !== 'string' || typeof ctx.cwd !== 'string' || typeof ctx.pluginRoot !== 'string') return false;
+    const command = withoutTokenPrefix(call, ctx);
+    if (command === null) return false;
     const text = command.replace(SHELL.trailingNewlines, '');
     if (!text || ANY_CONTROL_RE.test(text)) return false;
     const list = parse(text);
