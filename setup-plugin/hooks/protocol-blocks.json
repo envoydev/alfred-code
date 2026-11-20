@@ -1,0 +1,31 @@
+{
+  "generatedBy": "scripts/protocol-blocks.js",
+  "note": "Generated: the hash of each fixed shell block in the setup bodies, and the opener every later call starts with. Run `npm run protocol-blocks` after a block changes.",
+  "opener": "RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\nTD=\"${TMPDIR:-/tmp}\"; TD=\"${TD%/}\"   # a sandboxed command writes only under $TMPDIR (and the project)\nMARK=\"$TD/alfred-code-run.$(printf '%s' \"$RUN_ROOT\" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' \"$RUN_ROOT\" | git hash-object --stdin | cut -c1-12).path\"\nTMP=$(cat \"$MARK\" 2>/dev/null); if [ -z \"$TMP\" ]; then echo \"MISSING the run marker - run the resolve block first\"; exit 1; fi\nTMP_WIN=$(cygpath -w \"$TMP\" 2>/dev/null || printf '%s' \"$TMP\")         # Windows spelling, empty-safe",
+  "blocks": [
+    "01e2e6e7dd8b2594f1dc140efdfe7c86f58647b486543e15dc5f7c2106c76441",
+    "1cb0ab8c8de82886187717b335a415ba9a241ff4f27d5b3cf17a517c64f807fc",
+    "271bf3be87289f369eae22aa6660dc1df7fcbdeefeee17d695578e9a5b289349",
+    "3e76fc7b360f01c43a1a07d0b9cad258acf8814b700ed9572a817219a1768fd3",
+    "3ff442fad67edfb074625ebdd15e5f280255c2e83f49f16fa5ad7587d32f6f72",
+    "462bbdd09899916054e816b20d6007c87ba3f8687f5bbd1b53c327cc72ec8fef",
+    "46c351920ba94a8f898e8663a548932dd708526d533cc3628414fcc87a38c61a",
+    "57113b9ef735a8d46d108e8280902fd1b60cb80c19d0d83bfee42f45d5b753e8",
+    "5a4e00014bffb939131399da0cce9dcf90aeacf7f12acc39f557c830327d2278",
+    "5d7473d3bd014973de8436d7d44f444c1cffcb0e668ad8018ee22ba2ea5d86c7",
+    "5f553b2e17ad24d53d7e25b79f2c0c428f5d1e100ec317e9f24039bd37716925",
+    "6df3553c0153af2646f05f7e94f8d54c46ffa08f26d3016a53b749d906fb95b7",
+    "720e4360443132b75ac821504496dffee53a0533e75c69f3432237f9d48de3da",
+    "9f4e11665d350c9648fdc4608c7cb3a6c37cda7fc754c2ad3e28c453c952f212",
+    "a2b4b3595385ed545e784ba53a7054bf11e999bde76438f0fee5e7ec6c4f8178",
+    "a6c8389e1f7df9dfba9a8d00be9f7c8b5c5d9ffc3db2acd6424bbb4ca9e9ddb6",
+    "a77b26c428d37da6e854a6f0d65d56ad5b9e6e826d770960cf2eb60664614a22",
+    "ab4046322df794caddc1527639d36396343bed5f764b3b28b467a7ab74e9a7fb",
+    "ad0eeefdabc5328b3e1d50cd97683a68710286afb92f9407ba03f34cac9f919e",
+    "b6dd240e5000b02be4cecd0ceeb61fe6f4ac49f5759d9574a6fba76680250cdb",
+    "b9a0fe4dcc349da1dc64076ed5f80aa0968fdba12ee84f32445a23e06a0efdcf",
+    "bbf68e6c17cc796cb0653b2a71f142337e5d0bdbbaf864a9d2f1d7bc9dc07ed3",
+    "ce86fb4e06d70687fc83d10dc8eba866ad89e884916dc168d0508480a68a3974",
+    "cfed422814917dd7efbf1e4fba80dae38fdec45a9feecb8428b2ffefa79dc262"
+  ]
+}

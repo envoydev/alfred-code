@@ -116,7 +116,10 @@ function coreEntry(options = {})
                 // walk step is a `node` call, so `if` keeps the spawn off every other shell command (code.claude.com/
                 // docs/en/hooks, 'if': each subcommand is checked); the hook leaves at once on a non-walk node call.
                 matcher: 'Bash',
-                hooks: [{ type: 'command', if: 'Bash(node *)', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+                hooks: [{ type: 'command', if: 'Bash(node *)', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 },
+                    // 2026-11-20: a shipped protocol block, run unchanged, is approved - Claude Code asks before every command that
+                    // sets a shell variable and uses it, and each block uses $TMP. No `if`: a block opens with a loop or an assignment.
+                    { type: 'command', ...launch('setup-plugin/hooks/approve-protocol-block.js'), timeout: 10 }],
             }],
             // F4 (2026-10-28): the ask's own message is on disk only once the PreToolUse hooks finish, so the paste and
             // banner checks run here and void an unpasted answer through updatedToolOutput.

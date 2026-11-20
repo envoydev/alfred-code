@@ -76,6 +76,9 @@ session's marker is reused; the marker name is derived from the project root, so
 
 ## Every later call re-reads the marker
 
+Run every block on this page and the walk's pages exactly as written: add no line, merge no two calls, and fill each
+`<placeholder>` alone. The plugin approves an unchanged block, so it runs with no approval prompt.
+
 Each Bash call is its own shell, so `$TMP` set in one call is gone by the next. Open every later call with:
 
 ```bash

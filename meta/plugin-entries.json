@@ -116,6 +116,14 @@
                   "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js"
                 ],
                 "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node",
+                "args": [
+                  "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/approve-protocol-block.js"
+                ],
+                "timeout": 10
               }
             ]
           },
