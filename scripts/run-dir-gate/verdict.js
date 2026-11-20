@@ -4,7 +4,7 @@
 const { CONTROL_RE, REASON, VERDICT, ALLOW_REASON, EVENT } = require('./constants.js');
 const { sameDir } = require('./dirs.js');
 const { isResolve } = require('./table.js');
-const { approvesForms } = require('./forms.js');
+const { approvesForms, approvesPluginRead } = require('./forms.js');
 
 // A marker proves the run dir only when this user owns it and the dir it names holds this session's id.
 const isTrusted = (marker, sessionId) => Boolean(marker) && marker.owned === true && marker.session !== '' && marker.session === sessionId;
@@ -16,6 +16,7 @@ function decide({ command, table, sessionId, dirs, marker, ctx })
     if (typeof command !== 'string') return VERDICT.silent;
     if (CONTROL_RE.test(command)) return VERDICT.silent;
     if (isResolve(command, table)) return VERDICT.allow;
+    if ((!Array.isArray(dirs) || dirs.length === 0) && approvesPluginRead(command, ctx)) return VERDICT.allow;
     if (!sessionId || !Array.isArray(dirs) || dirs.length === 0) return VERDICT.silent;
     if (dirs.some((dir) => !dir.path || !dir.session)) return VERDICT.silent;
     if (isTrusted(marker, sessionId) && dirs.some((dir) => !isMarkerDir(dir, marker))) return { decision: VERDICT.deny, reason: REASON.wrongDir(marker.dir) };

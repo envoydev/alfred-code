@@ -22,16 +22,16 @@ this project installs as its child`.
 
 ## The parent's set - read once, right after screen A
 
-Two calls. The first prints the parent's scope word, read in the child's own folder:
+Two calls, with `<rel>` written as the `..`-shaped path the workspace line prints. The first prints the parent's scope word:
 
 ```bash
-(cd "./<rel>" && node "$TMP/repo/scripts/install/stamp.js" scope .)
+(cd "<rel>" && node "$TMP/repo/scripts/install/stamp.js" scope .)
 ```
 
 The second writes that word where `<scope>` stands:
 
 ```bash
-(cd "./<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"
+(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"
 ```
 
 `--print-plan` writes nothing there; the check fails a read-back that ran but reported failures, unreadable files or a

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { fenceBlocks, buildTable, isResolve } = require('./run-dir-gate/table.js');
-const { approvesForms } = require('./run-dir-gate/forms.js');
+const { approvesForms, approvesPluginRead } = require('./run-dir-gate/forms.js');
 const { markerName } = require('./run-dir-gate/marker.js');
 const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, RESOLVE_LINE } = require('./run-dir-gate/constants.js');
 
@@ -22,6 +22,16 @@ const PROJECT = '/p';
 const PLUGIN_ROOT = '/plug';
 const MARKER_PATH = `/t/${markerName(PROJECT)}`;
 const SAMPLE_WORD = 'x';
+// The workspace line prints the parent folder as a `..`-shaped path; a child one level and two levels below its parent.
+const PARENT_SAMPLES = ['..', '../..'];
+const PARENT_CD = 'cd "<rel>"';
+const CHILD_FILE = 'init-child.md';
+// A prose read of the plugin's own files: 'in ONE Bash `cat`', after the `${CLAUDE_PLUGIN_ROOT}/...` paths it names.
+const PROSE_CAT = /in one Bash `cat`/gi;
+const PLUGIN_PATH = /\$\{CLAUDE_PLUGIN_ROOT\}\/[^\s`"')]+/g;
+const PROSE_WINDOW = 500;
+const PARAGRAPH_BREAK = /\n\n|\n(?:[-*]|\d+\.) /;
+const TRAILING_PUNCTUATION = /[.,;:]+$/;
 // An inline code span is a command when it opens with a command word and an argument, never a bare word or a phrase.
 const COMMAND_SPAN = new RegExp([
     String.raw`node\s+(?:["'$<.]|-e\s+'|\S+\.js\b)`, String.raw`cat\s+["'$<./]`, String.raw`grep\s+-[EF]\s`, String.raw`head\s+-\d`, String.raw`rm\s+-rf\s`,
@@ -97,7 +107,22 @@ function commandsOf(file)
         const flat = span[1].replace(/\s*\n\s*/g, ' ').trim();
         if (COMMAND_SPAN.test(flat) && !SCRIPT_PLACEHOLDER.test(flat)) found.push({ file, text: flat, resolve: false });
     }
+    for (const read of proseReads(text)) found.push({ file, text: read, resolve: false });
     return found;
+}
+
+// Each 'in ONE Bash `cat`' sentence is a call that reads the plugin-root paths named before it in the same paragraph or item.
+function proseReads(text)
+{
+    const reads = [];
+    for (const match of text.matchAll(PROSE_CAT))
+    {
+        const before = text.slice(Math.max(0, match.index - PROSE_WINDOW), match.index);
+        const cut = before.split(PARAGRAPH_BREAK).pop();
+        const paths = [...new Set((cut.match(PLUGIN_PATH) || []).map((found) => found.replace(TRAILING_PUNCTUATION, '')))];
+        if (paths.length) reads.push(`cat ${paths.map((found) => `"${found}"`).join(' ')}`);
+    }
+    return reads;
 }
 
 const PLUGIN_ROOT_TOKEN = '${CLAUDE_PLUGIN_ROOT}';
@@ -117,7 +142,7 @@ function untemplated(command)
     }).join('');
 }
 
-const filled = (command) => untemplated(command.replace(ALL_PLACEHOLDERS, SAMPLE_WORD))
+const filled = (command, parent = PARENT_SAMPLES[0]) => untemplated(command.replaceAll(PARENT_CD, `cd "${parent}"`).replace(ALL_PLACEHOLDERS, SAMPLE_WORD))
     .replaceAll(PLUGIN_ROOT_TOKEN, PLUGIN_ROOT).replaceAll('$TMP_WIN', RUN_DIR_WIN).replaceAll('$TMP', RUN_DIR).replaceAll('$MARK', MARKER_PATH);
 
 const bodyFiles = [...listed(COMMANDS_DIR), ...listed(REFERENCES_DIR)].map((file) => ({ file, text: readText(file) }));
@@ -129,11 +154,13 @@ const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: n
 const collected = allFiles.flatMap(commandsOf).map((command) => ({
     ...command,
     walks: WALKS.filter((walk) => walkFiles.get(walk).has(command.file)),
-    run: filled(command.text),
+    runs: [...new Set(PARENT_SAMPLES.map((parent) => filled(command.text, parent)))],
+    child: command.file.endsWith(CHILD_FILE) || command.text.includes(PARENT_CD),
 }));
 const isNotCall = (command) => NOT_CALLS.some((entry) => command.file.endsWith(entry.file) && command.text.startsWith(entry.prefix));
 const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command));
-const prompting = nonResolve.filter((command) => !approvesForms(command.run, ctx));
+const isApproved = (run) => approvesForms(run, ctx) || approvesPluginRead(run, ctx);
+const prompting = nonResolve.filter((command) => !command.runs.every(isApproved));
 const entryFor = (command, walk) => EXPECTED_PROMPTS.find((entry) => entry.walk === walk && command.text.startsWith(entry.prefix));
 
 test('the walks name commands to check', () =>
@@ -152,7 +179,7 @@ test('the resolve block is the one block the table knows', () =>
 
 test('no walk command outside the resolve block expands a variable or sets one', () =>
 {
-    const bad = nonResolve.filter((command) => command.run.includes('${') || command.run.includes('$(') || ASSIGNMENT.test(command.run));
+    const bad = nonResolve.filter((command) => command.runs.some((run) => run.includes('${') || run.includes('$(') || ASSIGNMENT.test(run)));
     assert.deepEqual(bad.map((command) => `${command.file}: ${command.text}`), []);
 });
 
@@ -180,4 +207,28 @@ test('no walk has more than the bar of prompting commands', () =>
         assert.ok(entries.size <= MAX_PROMPTS_PER_WALK, `${walk}: ${entries.size} entries - ${[...entries].map((entry) => entry.prefix).join(' | ')}`);
         console.log(`EXPECTED_PROMPTS ${walk}: ${entries.size}`);
     }
+});
+
+test('the child paths stay inside the bar too, and are counted apart', () =>
+{
+    for (const walk of ['init', 'configure'])
+    {
+        const walkCommands = prompting.filter((command) => command.walks.includes(walk));
+        const entriesOf = (commands) => new Set(commands.map((command) => entryFor(command, walk)).filter(Boolean));
+        const standalone = entriesOf(walkCommands.filter((command) => !command.child));
+        const child = entriesOf(walkCommands);
+        const childOnly = walkCommands.filter((command) => command.child).map((command) => command.text);
+        assert.ok(child.size <= MAX_PROMPTS_PER_WALK, `${walk} child path: ${child.size} entries - ${[...child].map((entry) => entry.prefix).join(' | ')}`);
+        assert.deepEqual(childOnly, [], `${walk}: a child-only call still prompts`);
+        console.log(`EXPECTED_PROMPTS ${walk} standalone path: ${standalone.size}, child path: ${child.size}`);
+    }
+});
+
+test('a parent read is approved for a parent one and two folders up, and the plugin-root reads are collected', () =>
+{
+    const parentReads = nonResolve.filter((command) => command.text.includes(PARENT_CD));
+    assert.ok(parentReads.length >= 4, `${parentReads.length} parent reads collected`);
+    for (const command of parentReads) assert.equal(command.runs.length, PARENT_SAMPLES.length, command.text);
+    const proseCats = nonResolve.filter((command) => command.text.startsWith('cat "${CLAUDE_PLUGIN_ROOT}/'));
+    assert.ok(proseCats.length >= 4, `${proseCats.length} plugin-root reads collected`);
 });

@@ -1,9 +1,9 @@
 'use strict';
 // Whether a Bash command is one of the walk's own narrow forms on its run dir. Pure: the caller gives the run dir, the
 // project dir, the plugin root, the script allowlist and the marker path.
-const { ANY_CONTROL_RE, SHELL, OP, KIND, QUOTE, FLAG, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL, REPO_DIR, SESSION_FILE } = require('./constants.js');
+const { ANY_CONTROL_RE, SHELL, OP, KIND, QUOTE, FLAG, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL, REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ } = require('./constants.js');
 const { parse } = require('./shell.js');
-const { canon, resolveWord, isUnder, isStrictlyUnder, sepOf } = require('./paths.js');
+const { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf } = require('./paths.js');
 
 function makeState(ctx)
 {
@@ -48,7 +48,8 @@ function isSafeArg(word, base, state)
     }
     else if (value.startsWith(FLAG.dash)) return value.length <= FLAG.shortLength;
     const resolved = resolveWord(value, base, state.win);
-    return Boolean(resolved) && state.roots.some((root) => isUnder(resolved, root, state.win));
+    const roots = state.ancestor && !isAbsoluteWord(value, state.win) ? [...state.roots, state.ancestor] : state.roots;
+    return Boolean(resolved) && roots.some((root) => isUnder(resolved, root, state.win));
 }
 
 function isAllowedScript(word, base, state)
@@ -103,15 +104,55 @@ function isPipeline(element, base, state)
 const isWords = (element, words) => element.kind === KIND.pipeline && element.commands.length === 1
     && element.commands[0].words.map((word) => word.value).join(SHELL.space) === words.join(SHELL.space) && !element.commands[0].out && !element.commands[0].err;
 
+// A `cd` element: null when the element is no `cd`, false for one the gate refuses, else where it goes. A child folder is
+// `./<dir under cwd>`; a parent read goes up by `..` segments only, and then carries `ancestor`.
 function isChangeDir(element, state)
 {
     if (element.kind !== KIND.pipeline || element.commands.length !== 1) return null;
     const command = element.commands[0];
     if (hasLabel(command) || command.out || command.err || command.words.length !== 2 || command.words[0].value !== WORD.cd) return null;
     const [, word] = command.words;
-    if (word.quote !== QUOTE.double || !word.value.startsWith(SHELL.childPrefix)) return false;
+    if (word.quote !== QUOTE.double) return false;
+    if (ANCESTOR_TARGET_RE.test(word.value)) return { base: ancestorOf(word.value, state.cwd, state.win), ancestor: true };
+    if (!word.value.startsWith(SHELL.childPrefix)) return false;
     const resolved = resolveWord(word.value, state.cwd, state.win);
-    return resolved && isUnder(resolved, state.cwd, state.win) ? resolved : false;
+    return resolved && isUnder(resolved, state.cwd, state.win) ? { base: resolved, ancestor: false } : false;
+}
+
+const isScriptAt = (word, relative, base, state) => state.scripts.has(state.win ? relative.toLowerCase() : relative) && resolveIn(word, base, state) === `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`;
+
+function valueAfter(words, flag)
+{
+    const at = words.findIndex((word) => word.value === flag);
+    return at < 0 || words.some((word, index) => index > at && word.value === flag) ? null : words[at + 1] || null;
+}
+
+// The installer as a read of the parent: `update ... --installed-only --print-plan` over this run's snapshot, its read-back
+// written under the run dir. Nothing else of the installer passes.
+function isInstallerRead(command, base, state)
+{
+    const args = command.words.slice(2);
+    if (args[0].value !== WORD.update || command.words.some((word) => word.value.startsWith(PARENT_READ.planOutAssigned))) return false;
+    if (!PARENT_READ.required.every((flag) => args.some((word) => word.value === flag))) return false;
+    const source = valueAfter(args, PARENT_READ.source);
+    const planOut = valueAfter(args, PARENT_READ.planOut);
+    if (!source || !planOut || resolveIn(source, base, state) !== state.repoDir || !isTarget(planOut, base, state)) return false;
+    if (args.filter((word) => word.value === PARENT_READ.planOut).length !== 1) return false;
+    if (command.out && !isTarget(command.out, base, state)) return false;
+    return args.slice(1).every((word) => isSafeArg(word, base, state));
+}
+
+// The one command a parent read may run in the folder above: the scope read, or the installer as a read.
+function isParentRead(element, base, state)
+{
+    if (element.kind !== KIND.pipeline || element.commands.length !== 1) return false;
+    const [command] = element.commands;
+    const [head, script, ...rest] = command.words;
+    if (hasLabel(command) || head.quote !== QUOTE.none || head.value !== WORD.node || !script) return false;
+    const inner = { ...state, ancestor: base };
+    if (isScriptAt(script, PARENT_READ.stamp, base, state))
+        return rest.length === 2 && rest[0].value === WORD.scope && rest[1].value === WORD.here && !command.out && !command.err;
+    return isScriptAt(script, PARENT_READ.installer, base, state) && rest.length > 0 && isInstallerRead(command, base, inner);
 }
 
 function isGroup(list, state)
@@ -124,7 +165,8 @@ function isGroup(list, state)
     if (moved)
     {
         if (elements.length < 2 || seps[0] !== OP.and) return false;
-        base = moved;
+        if (moved.ancestor) return elements.length === 2 && isParentRead(elements[1], moved.base, state);
+        base = moved.base;
         from = 1;
     }
     return elements.slice(from).every((element) => element.kind === KIND.pipeline && isPipeline(element, base, state));
@@ -154,4 +196,26 @@ function approvesForms(command, ctx)
     return body.length > 0 && body.every((element) => (element.kind === KIND.group ? isGroup(element.list, state) : isPipeline(element, state.cwd, state)));
 }
 
-module.exports = { approvesForms };
+// A `cat` of double-quoted files under the plugin's own folder, nothing else: no flag, no redirect, no second command. It names
+// no run dir, so the verdict asks for it apart from `approvesForms`.
+function approvesPluginRead(command, ctx)
+{
+    if (typeof command !== 'string' || !ctx || typeof ctx.pluginRoot !== 'string' || ctx.pluginRoot === '') return false;
+    const text = command.replace(SHELL.trailingNewlines, '');
+    if (!text || ANY_CONTROL_RE.test(text)) return false;
+    const list = parse(text);
+    if (!list || list.elements.length !== 1 || list.elements[0].kind !== KIND.pipeline || list.elements[0].commands.length !== 1) return false;
+    const { words, out, err } = list.elements[0].commands[0];
+    const [head, ...files] = words;
+    if (out || err || head.quote !== QUOTE.none || head.value !== WORD.cat || files.length === 0) return false;
+    const win = SHELL.driveStart.test(ctx.pluginRoot);
+    const root = canon(ctx.pluginRoot, win);
+    return files.every((word) =>
+    {
+        if (word.quote !== QUOTE.double || word.label || word.value.startsWith(FLAG.dash) || !isAbsoluteWord(word.value, win)) return false;
+        const file = resolveWord(word.value, root, win);
+        return Boolean(file) && isStrictlyUnder(file, root, win);
+    });
+}
+
+module.exports = { approvesForms, approvesPluginRead };

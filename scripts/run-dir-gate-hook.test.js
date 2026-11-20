@@ -62,6 +62,25 @@ test('the resolve block and this session\'s run-dir forms are allowed', () =>
     silent(run(payload(fx, `node "${own}/repo/scripts/install/stamp.js" state . ; rm -rf ~`)), 'an injected command prompts');
 });
 
+test('a cat of the plugin\'s own files is allowed in a typed walk with no run dir named, and only there', () =>
+{
+    const fx = fixture();
+    const own = fx.runDir(SESSION);
+    fx.marker(own);
+    const one = `cat "${ROOT}/setup-plugin/references/walk.md"`;
+    const two = `cat "${ROOT}/setup-plugin/references/init-install.md" "${ROOT}/setup-plugin/references/stack-detection.md"`;
+    assert.equal(decisionOf(run(payload(fx, one))).permissionDecision, 'allow', 'one file');
+    assert.equal(decisionOf(run(payload(fx, two))).permissionDecision, 'allow', 'two files');
+    assert.equal(decisionOf(run(payload(fx, one, { session_id: '' }))).permissionDecision, 'allow', 'no session id needed');
+    silent(run(payload(fx, 'cat "/etc/hosts"')), 'a file outside the plugin root');
+    silent(run(payload(fx, `cat "${ROOT}/setup-plugin/../package.json"`)), 'a `..` path');
+    silent(run(payload(fx, `${one} > "${ROOT}/x.md"`)), 'a redirect');
+    silent(run(payload(fx, `${one} ; ls`)), 'a second command');
+    silent(run(payload(fx, one, { transcript_path: fx.transcript([typed('fix the parser')]) })), 'no walk typed');
+    silent(run(payload(fx, one, { transcript_path: undefined })), 'no transcript');
+    silent(run(payload(fx, one), { ALFRED_CODE_HOOKS_OFF: 'run-dir-gate' }), 'switched off by name');
+});
+
 test('a run dir of another session is denied on a trusted marker and a block row is written where the repo is set up', () =>
 {
     const fx = fixture();

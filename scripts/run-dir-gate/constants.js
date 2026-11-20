@@ -120,8 +120,21 @@ const VERDICT = Object.freeze({
 });
 
 const WORD = Object.freeze({
-    node: 'node', cat: 'cat', grep: 'grep', head: 'head', rm: 'rm', tee: 'tee', cd: 'cd', echo: 'echo', set: 'set',
+    node: 'node', cat: 'cat', grep: 'grep', head: 'head', rm: 'rm', tee: 'tee', cd: 'cd', echo: 'echo', set: 'set', update: 'update', scope: 'scope', here: '.',
 });
+// A parent read's `cd` target: one or more `..` segments joined by `/`, a trailing `/` allowed - the folder above, never a named one.
+const ANCESTOR_TARGET_RE = /^\.\.(?:\/\.\.)*\/?$/;
+// The two scripts a child flow runs in its parent's folder, and the flags that keep the installer call a read.
+const PARENT_READ = Object.freeze({
+    stamp: 'scripts/install/stamp.js',
+    installer: 'scripts/install/alfred-code.js',
+    source: '--source',
+    planOut: '--plan-out',
+    planOutAssigned: '--plan-out=',
+    required: Object.freeze(['--installed-only', '--print-plan']),
+});
+// A command that starts like this can be a read of the plugin's own files, so the hook does not quit on it.
+const PLUGIN_READ_START_RE = /^cat\s+"/;
 const GREP_FLAGS = Object.freeze(new Set(['-E', '-F']));
 const GREP_QUIET_FLAGS = Object.freeze(new Set(['-qE', '-qF']));
 const RM_FLAGS = '-rf';
@@ -132,5 +145,5 @@ const SESSION_FILE = 'run-session';
 module.exports = {
     HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
-    REPO_DIR, SESSION_FILE,
+    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE,
 };

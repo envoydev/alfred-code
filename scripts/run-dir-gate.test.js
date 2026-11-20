@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process');
 const { findRunDirs, mapRunDir } = require('./run-dir-gate/dirs.js');
 const { gitBlobSha1, markerName } = require('./run-dir-gate/marker.js');
 const { buildTable, isResolve, fenceBlocks, withoutComments, normalize } = require('./run-dir-gate/table.js');
-const { approvesForms } = require('./run-dir-gate/forms.js');
+const { approvesForms, approvesPluginRead } = require('./run-dir-gate/forms.js');
 const { decide, hookOutput } = require('./run-dir-gate/verdict.js');
 const { RESOLVE_LINE, OFF_SWITCH, REASON } = require('./run-dir-gate/constants.js');
 
@@ -217,6 +217,141 @@ test('approvesForms refuses an injected command, an escape from the roots, a scr
     for (const form of forms) assert.equal(approvesForms(form, ctx), false, JSON.stringify(form));
     assert.equal(approvesForms(`rm -rf "${D}" "${MARKER}"`, { ...ctx, markerPath: null }), false);
     assert.equal(approvesForms(`${stamp} x`, { ...ctx, scripts: new Set() }), false);
+});
+
+// A child's read of its parent: the folder above, reached by a `..`-only cd, read-only forms only.
+const ancestorCtx = { ...ctx, scripts: new Set([...ctx.scripts, 'scripts/stack-select.js']) };
+const readOnly = `--source "${D}/repo" --scope local --installed-only --print-plan --plan-out "${D}/parent.json" > "${D}/parent.out" 2>&1`;
+const parentRead = (target) => `(cd "${target}" && ${alfred} update ${readOnly}) && node "${D}/repo/scripts/stack-select.js" --inherited-check "${D}/parent.json" ; echo "parent-read: $?"`;
+
+test('approvesForms passes a child flow\'s read-only parent reads through a `..`-only cd', () =>
+{
+    const forms = [
+        `(cd ".." && ${stamp} scope .)`,
+        `(cd "../.." && ${stamp} scope .)`,
+        `(cd "../" && ${stamp} scope .)`,
+        `(cd "../../" && ${stamp} scope .)`,
+        `(cd ".." && ${alfred} update ${readOnly})`,
+        `(cd ".." && ${alfred} update --installed-only --print-plan --source "${D}/repo" --plan-out "${D}/parent.json")`,
+        parentRead('..'),
+        parentRead('../..'),
+        `(cd ".." && ${alfred} update ${readOnly}) ; cat "${D}/parent.out"`,
+    ];
+    for (const form of forms) assert.equal(approvesForms(form, ancestorCtx), true, form);
+});
+
+test('approvesForms refuses everything a `..`-only cd must not carry', () =>
+{
+    const source = `--source "${D}/repo"`;
+    const all = `--installed-only --print-plan --plan-out "${D}/parent.json"`;
+    const forms = [
+        `(cd ".." && ${alfred} update ${source} --installed-only --plan-out "${D}/parent.json")`,
+        `(cd ".." && ${alfred} update ${source} --print-plan --plan-out "${D}/parent.json")`,
+        `(cd ".." && ${alfred} install ${source} ${all})`,
+        `(cd ".." && ${alfred} uninstall ${source} ${all})`,
+        `(cd ".." && ${alfred} ${source} ${all})`,
+        `(cd ".." && ${alfred} update ${source} --installed-only --print-plan --plan-out "/etc/parent.json")`,
+        `(cd ".." && ${alfred} update ${source} --installed-only --print-plan --plan-out "${D}/repo/x.json")`,
+        `(cd ".." && ${alfred} update ${source} --installed-only --print-plan --plan-out "${D}/run-session")`,
+        `(cd ".." && ${alfred} update ${source} --installed-only --print-plan --plan-out="${D}/parent.json")`,
+        `(cd ".." && ${alfred} update ${source} ${all} --plan-out "${D}/repo/y.json")`,
+        `(cd ".." && ${alfred} update ${source} --installed-only --print-plan)`,
+        `(cd ".." && ${alfred} update ${source} ${all} > "${D}/repo/out.txt" 2>&1)`,
+        `(cd ".." && ${alfred} update ${source} ${all} > "out.txt" 2>&1)`,
+        `(cd ".." && ${alfred} update --source "/etc" ${all})`,
+        `(cd ".." && ${alfred} update --source "${D}/other" ${all})`,
+        `(cd ".." && ${alfred} update ${source} ${all} --root ../x)`,
+        `(cd ".." && ${alfred} update ${source} ${all} --root /etc)`,
+        `(cd ".." && ${alfred} update ${source} ${all} | tee "${D}/o")`,
+        `(cd ".." && ${stamp} scope ..)`,
+        `(cd ".." && ${stamp} scope /etc)`,
+        `(cd ".." && ${stamp} state .)`,
+        `(cd ".." && ${stamp} scope . > "${D}/o")`,
+        `(cd ".." && node "${D}/repo/scripts/gate.js" scope .)`,
+        `(cd ".." && node "${D}/repo/scripts/stack-select.js" --inherited-check "${D}/parent.json")`,
+        `(cd ".." && cat "${D}/a")`,
+        `(cd ".." && ${stamp} scope . && ${stamp} scope .)`,
+        `(cd ".." && ${stamp} scope .) ; (cd "." && ${stamp} scope .)`,
+        `(cd "../x" && ${stamp} scope .)`,
+        `(cd "../.." && cd "x" && ${stamp} scope .)`,
+        `(cd "-" && ${stamp} scope .)`,
+        `(cd "../-" && ${stamp} scope .)`,
+        `(cd ".../.." && ${stamp} scope .)`,
+        `(cd "..\\.." && ${stamp} scope .)`,
+        `(cd ".." ; ${stamp} scope .)`,
+        `(cd ".." || ${stamp} scope .)`,
+        `(cd ".." && ${stamp} scope .) ; rm -rf "${D}"`,
+        `cd ".." ; ${stamp} scope .`,
+        `cd ".." && ${stamp} scope .`,
+        `cd ".." ; rm -rf "${D}" "${MARKER}"`,
+        `(cd ".." && rm -rf "${D}" "${MARKER}")`,
+        `(cd ".." ; ${stamp} scope .) ; rm -rf /x`,
+        `(cd '..' && ${stamp} scope .)`,
+        `(cd .. && ${stamp} scope .)`,
+        `(cd "../$HOME" && ${stamp} scope .)`,
+    ];
+    for (const form of forms) assert.equal(approvesForms(form, ancestorCtx), false, JSON.stringify(form));
+    assert.equal(approvesForms(`(cd ".." && ${alfred} update ${readOnly})`, { ...ancestorCtx, scripts: new Set() }), false, 'a script off the list');
+});
+
+test('approvesForms reads a `..`-only cd in Windows spellings and keeps the child form as it was', () =>
+{
+    const win = { runDir: 'C:\\Temp\\alfred-code.AbC123', cwd: 'C:\\p\\child', pluginRoot: 'C:\\plug', scripts: new Set(['scripts/install/stamp.js']), markerPath: 'C:\\Temp\\m.path' };
+    assert.equal(approvesForms('(cd ".." && node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" scope .)', win), true);
+    assert.equal(approvesForms('(cd "../.." && node "/c/Temp/alfred-code.AbC123/repo/scripts/install/stamp.js" scope .)', win), true);
+    assert.equal(approvesForms('(cd "./sub" && node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" scope .)', win), true);
+    assert.equal(approvesForms('(cd "..\\x" && node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" scope .)', win), false);
+});
+
+test('approvesPluginRead passes a cat of double-quoted files under the plugin root and nothing else', () =>
+{
+    const root = ctx.pluginRoot;
+    const good = [
+        `cat "${root}/setup-plugin/references/walk.md"`,
+        `cat "${root}/setup-plugin/references/init-install.md" "${root}/setup-plugin/references/stack-detection.md"`,
+        `cat "${root}/a.md"\n`,
+    ];
+    for (const form of good) assert.equal(approvesPluginRead(form, ctx), true, form);
+    const bad = [
+        'cat "/etc/passwd"',
+        `cat "${root}"`,
+        `cat "${root}/../etc/passwd"`,
+        `cat "${root}/a/../../x"`,
+        `cat "${root}x/a.md"`,
+        `cat "${root}/a.md" "/etc/passwd"`,
+        `cat "${root}/a.md" > "${root}/b.md"`,
+        `cat "${root}/a.md" 2>&1`,
+        `cat "${root}/a.md" ; ls`,
+        `cat "${root}/a.md" && cat "${root}/b.md"`,
+        `cat "${root}/a.md" | sh`,
+        `cat ${root}/a.md`,
+        `cat '${root}/a.md'`,
+        `cat -n "${root}/a.md"`,
+        `cat "$HOME/x" "${root}/a.md"`,
+        `cat "${root}/$(id)"`,
+        `cat "~/a.md"`,
+        'cat',
+        `head -8 "${root}/a.md"`,
+        `(cat "${root}/a.md")`,
+        `cat "${root}/a.md"\nls`,
+        '',
+    ];
+    for (const form of bad) assert.equal(approvesPluginRead(form, ctx), false, JSON.stringify(form));
+    assert.equal(approvesPluginRead(`cat "${root}/a.md"`, { ...ctx, pluginRoot: '' }), false);
+    assert.equal(approvesPluginRead(`cat "${root}/a.md"`, undefined), false);
+    const win = { ...ctx, pluginRoot: 'C:\\plug' };
+    assert.equal(approvesPluginRead('cat "C:\\plug\\a.md" "/c/plug/b.md"', win), true);
+    assert.equal(approvesPluginRead('cat "C:\\other\\a.md"', win), false);
+});
+
+test('decide allows a plugin-root cat with no run dir named, and only that', () =>
+{
+    const root = ctx.pluginRoot;
+    const none = { ...base, dirs: [], sessionId: '' };
+    assert.deepEqual(decide({ ...none, command: `cat "${root}/setup-plugin/references/walk.md"` }), { decision: 'allow' });
+    assert.deepEqual(decide({ ...none, command: `cat "${root}/a.md" "${root}/b.md"` }), { decision: 'allow' });
+    for (const command of ['cat "/etc/passwd"', `cat "${root}/../x"`, `cat "${root}/a.md" > "${root}/b"`, `cat "${root}/a.md" ; ls`, `cat "${root}/a.md"\0`])
+        assert.deepEqual(decide({ ...none, command }), { decision: null }, command);
 });
 
 test('approvesForms reads Windows spellings of one run dir and the same dir in MSYS form', () =>

@@ -100,8 +100,8 @@ comparable banner by banner; the content varies, the skeleton never does.
 
   A `role:` line matching `root of (\d+)` means that many projects below - a root or a middle project (the Post-check's
   note). `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
-  set once, in two calls. First `(cd "./<rel>" && node "$TMP/repo/scripts/install/stamp.js" scope .)` prints the scope word;
-  then `(cd "./<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope>
+  set once, in two calls, `<rel>` written as the `..`-shaped path the workspace line prints. First `(cd "<rel>" && node "$TMP/repo/scripts/install/stamp.js" scope .)` prints the scope word;
+  then `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope>
   --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node
   "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"` with that word as
   `<scope>`. Every `--table` call of the walk adds `--inherited

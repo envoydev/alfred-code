@@ -14,9 +14,9 @@ function main()
 {
     let payload;
     try { payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}') || {}; } catch { return; }
-    const { QUICK_REJECT, TOOL } = require(path.join(GATE, 'constants.js'));
+    const { QUICK_REJECT, PLUGIN_READ_START_RE, TOOL } = require(path.join(GATE, 'constants.js'));
     const command = payload.tool_input && payload.tool_input.command;
-    if (payload.tool_name !== TOOL || typeof command !== 'string' || !command.includes(QUICK_REJECT)) return;
+    if (payload.tool_name !== TOOL || typeof command !== 'string' || !(command.includes(QUICK_REJECT) || PLUGIN_READ_START_RE.test(command))) return;
     const prelude = require(PRELUDE);
     if (typeof prelude.pluginWalkNow !== 'function' || !prelude.pluginWalkNow(payload)) return;
     if (prelude.standDown('run-dir-gate', process.env, process.argv, { setUp: false })) return;

@@ -21,14 +21,15 @@ function canon(text, win)
     return win ? value.toLowerCase() : value;
 }
 
+const isAbsoluteWord = (word, win) => apiOf(win).isAbsolute(word) || (win && SHELL.msysDrive.test(word));
+
 const hasParentSegment = (word) => word.split(SHELL.segmentSplit).includes(SHELL.parentSegment);
 
 // The canonical absolute path a word names, resolved against `base`; null for a word with a `..` segment or a home `~`.
 function resolveWord(word, base, win)
 {
     if (hasParentSegment(word) || word.startsWith(SHELL.home)) return null;
-    const absolute = apiOf(win).isAbsolute(word) || (win && SHELL.msysDrive.test(word));
-    return canon(absolute ? word : apiOf(win).join(base, word), win);
+    return canon(isAbsoluteWord(word, win) ? word : apiOf(win).join(base, word), win);
 }
 
 function isUnder(candidate, root, win)
@@ -38,6 +39,9 @@ function isUnder(candidate, root, win)
     return candidate.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
+// The folder a `..`-only word reaches from `base`.
+const ancestorOf = (word, base, win) => canon(apiOf(win).join(base, word), win);
+
 const isStrictlyUnder = (candidate, root, win) => candidate !== root && isUnder(candidate, root, win);
 
-module.exports = { canon, resolveWord, isUnder, isStrictlyUnder, sepOf };
+module.exports = { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf };
