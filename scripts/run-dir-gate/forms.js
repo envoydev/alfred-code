@@ -36,7 +36,8 @@ function isSink(command, base, state)
     const [head, ...rest] = command.words;
     if (head.quote !== QUOTE.none) return false;
     if (head.value === WORD.tee) return rest.length === 1 && isTarget(rest[0], base, state);
-    return head.value === WORD.grep && rest.length === 2 && GREP_QUIET_FLAGS.has(rest[0].value) && isQuotedPattern(rest[1]);
+    if (head.value !== WORD.grep) return false;
+    return rest.length === 1 ? isQuotedPattern(rest[0]) : rest.length === 2 && GREP_QUIET_FLAGS.has(rest[0].value) && isQuotedPattern(rest[1]);
 }
 
 const hasLabel = (command) => command.words.some((word) => word.label) || Boolean(command.out && command.out.label);

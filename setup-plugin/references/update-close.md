@@ -14,7 +14,7 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 
 Then read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` - the whole body, never a heading
 diff (measured: a run that skipped it and diffed the `## ` headings left every improve-mode check unrun) - and follow it inline with
-`<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
+`<stack>` = the `$TMP/repo` path, written as the literal `RESOLVED` path, no shell variable, and each command in a call of its own, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), an older seed's rules list (a
 `stack-rules` row) is offered for removal, the project's own prose is never overwritten, and every change is
@@ -164,9 +164,9 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 
 ## 8. Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `$TMP/repo/setup-plugin/references/source-protocol.md`, on EVERY exit path:
+Remove `$TMP` per `$TMP/repo/setup-plugin/references/source-protocol.md`: `rm -rf "$TMP" "$MARK"`, a call of its OWN - never chained with another command - on EVERY exit path:
 after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
-user 'no'. Then confirm the project tree holds only installed artifacts by LOOKING, never with
+user 'no'. Then, as a separate call after it (read-only, naming no run dir), confirm the project tree holds only installed artifacts by LOOKING, never with
 `git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status
 over it is empty whatever is sitting there. `ls -a .claude` plus a check that no archive, extracted repo,
 `raw.json`, `selection.txt` or `install.log` was left in the project - anything stray is named in

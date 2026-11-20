@@ -1,7 +1,13 @@
 'use strict';
 // The commands the four typed walks run, read from their bodies: which files a walk reaches, and the shell commands those files
 // hold. The table generator and the body test share this one reader. Pure: the caller hands the texts in.
-const { BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, COLLECT, NOT_CALLS, SHELL_LANGS, FENCE_RE, INLINE_CODE_RE, LINE_BREAK_RE, RESOLVE_LINE } = require('./constants.js');
+const { BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, INLINE_SKILL, COLLECT, NOT_CALLS, SHELL_LANGS, FENCE_RE, INLINE_CODE_RE, LINE_BREAK_RE, RESOLVE_LINE } = require('./constants.js');
+
+// The skill files a text has the model follow inline from the snapshot, as the paths below the run dir's repo.
+const inlineSkillsIn = (text) => [...String(text).matchAll(INLINE_SKILL.namePattern)].map((match) => match[1]);
+
+// A skill's text as the walk runs it: `<stack>` is the run dir's repo.
+const stackText = (text) => String(text).replaceAll(INLINE_SKILL.stackToken, INLINE_SKILL.stackValue);
 
 // The files a walk reaches from its command file through the `references/<name>.md` names its bodies write: a Set of paths.
 // `texts` is a Map path -> text; a name with no file in it is not followed.
@@ -13,6 +19,7 @@ function reachableFiles(walk, texts)
     while (queue.length)
     {
         const file = queue.shift();
+        for (const skill of inlineSkillsIn(texts.get(file) || '')) if (texts.has(skill)) seen.add(skill);
         for (const match of String(texts.get(file) || '').matchAll(REFERENCE_NAME))
         {
             const next = `${BODY.references}/${match[1]}`;
@@ -64,4 +71,4 @@ function commandsOf(file, text, blocks)
 
 const isNotCall = (command) => NOT_CALLS.some((entry) => command.file.endsWith(entry.file) && command.text.startsWith(entry.prefix));
 
-module.exports = { reachableFiles, walkFilesOf, proseReads, commandsOf, isNotCall };
+module.exports = { inlineSkillsIn, stackText, reachableFiles, walkFilesOf, proseReads, commandsOf, isNotCall };

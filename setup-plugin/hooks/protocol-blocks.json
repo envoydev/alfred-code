@@ -12,6 +12,12 @@
           []
         ],
         "flags": {
+          "--list": [
+            true
+          ],
+          "--outline": [
+            true
+          ],
           "--root": [
             {
               "kind": "cwdPath"
@@ -516,6 +522,9 @@
               "suffix": "repo/meta/evidence.json"
             }
           ],
+          "--orientation": [
+            true
+          ],
           "--out": [
             {
               "kind": "runDir",
@@ -536,8 +545,6 @@
           ]
         },
         "required": [
-          "--catalog",
-          "--out",
           "--root"
         ]
       }

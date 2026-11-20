@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { buildTable } = require('./run-dir-gate/table.js');
 const { RESOLVE_LINE } = require('./run-dir-gate/constants.js');
+const { inlineSkillsIn, stackText } = require('./run-dir-gate/calls.js');
 
 const ROOT = path.join(__dirname, '..');
 const BODY_FILE = 'setup-plugin/commands/init.md';
@@ -26,6 +27,7 @@ function readBodies()
     };
     walk(path.join(ROOT, 'setup-plugin/commands'));
     walk(path.join(ROOT, 'setup-plugin/references'));
+    for (const skill of new Set(files.flatMap(({ text }) => inlineSkillsIn(text)))) files.push({ file: skill, text: stackText(fs.readFileSync(path.join(ROOT, skill), 'utf8')) });
     return files;
 }
 

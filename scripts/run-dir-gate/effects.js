@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BODY_DIRS, TABLE_FILE, GENERATED_BY, TABLE_NOTE, SESSION_FILE, WIN32, EFFECTS, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, VERDICT } = require('./constants.js');
 const { buildTable } = require('./table.js');
+const { inlineSkillsIn, stackText } = require('./calls.js');
 const { findRunDirs, mapRunDir } = require('./dirs.js');
 const { markerName } = require('./marker.js');
 const { accountDirOf } = require('./account.js');
@@ -26,6 +27,10 @@ function readBodies(root)
         }
     };
     for (const dir of BODY_DIRS) walk(path.join(root, dir));
+    for (const skill of new Set(files.flatMap(({ text }) => inlineSkillsIn(text))))
+    {
+        try { files.push({ file: skill, text: stackText(fs.readFileSync(path.join(root, skill), EFFECTS.textEncoding)) }); } catch { /* a skill the bodies name but the tree lacks adds no calls */ }
+    }
     return files;
 }
 

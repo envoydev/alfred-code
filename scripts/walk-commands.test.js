@@ -6,7 +6,7 @@ const path = require('node:path');
 const { fenceBlocks, buildTable, isResolve } = require('./run-dir-gate/table.js');
 const { approvesForms, approvesPluginRead } = require('./run-dir-gate/forms.js');
 const { markerName } = require('./run-dir-gate/marker.js');
-const { reachableFiles, walkFilesOf, commandsOf, isNotCall } = require('./run-dir-gate/calls.js');
+const { reachableFiles, walkFilesOf, commandsOf, isNotCall, inlineSkillsIn, stackText } = require('./run-dir-gate/calls.js');
 const { PLACEHOLDER_RE, WALKS, BODY } = require('./run-dir-gate/constants.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -99,10 +99,11 @@ const RUN_DIR_TOKEN = /\$TMP(?![A-Za-z0-9_])/;
 const assigned = (run) => `${RUN_DIR_TOKEN.test(run) ? `TMP=${RUN_DIR}; ` : ''}${run.includes('$MARK') ? `MARK=${MARKER_PATH}; ` : ''}${run}`;
 
 const bodyFiles = [...listed(BODY.commands), ...listed(BODY.references)].map((file) => ({ file, text: readText(file) }));
-const texts = new Map(bodyFiles.map(({ file, text }) => [file, text]));
+const inlineSkills = [...new Set(bodyFiles.flatMap(({ text }) => inlineSkillsIn(text)))].map((file) => ({ file, text: stackText(readText(file)) }));
+const texts = new Map([...bodyFiles, ...inlineSkills].map(({ file, text }) => [file, text]));
 const walkFiles = new Map(WALKS.map((walk) => [walk, reachableFiles(walk, texts)]));
 const allFiles = walkFilesOf(texts);
-const table = buildTable(bodyFiles);
+const table = buildTable([...bodyFiles, ...inlineSkills]);
 const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: table.scripts, markerPath: MARKER_PATH, accountDir: ACCOUNT_DIR, accountDirReal: ACCOUNT_DIR };
 
 const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), fenceBlocks(texts.get(file)))).map((command) => ({
@@ -223,4 +224,16 @@ test('the same calls with the run dir\'s tokens set first prompt exactly where t
         console.log(`EXPECTED_PROMPTS ${walk} (tokens set first): ${entries.size}`);
         assert.ok(entries.size <= MAX_PROMPTS_PER_WALK, walk);
     }
+});
+
+test('a skill a walk body has the model follow inline is read by the walks that name it, its node calls collected and approved', () =>
+{
+    const skill = 'stack/skills/habits-adjust-agents-md/SKILL.md';
+    assert.deepEqual(inlineSkills.map((entry) => entry.file), [skill]);
+    for (const walk of ['init', 'update', 'configure']) assert.ok(walkFiles.get(walk).has(skill), walk);
+    assert.ok(!walkFiles.get('validate').has(skill), 'validate does not follow it');
+    const calls = nonResolve.filter((command) => command.file === skill && command.text.startsWith('node '));
+    assert.ok(calls.length >= 5, `${calls.length} node calls collected from the skill`);
+    for (const command of calls) assert.ok(command.runs.every(isApproved), command.text);
+    assert.ok(!prompting.some((command) => command.file === skill), 'no skill call prompts');
 });

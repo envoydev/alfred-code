@@ -35,6 +35,8 @@ const WALKS = Object.freeze(['init', 'update', 'configure', 'validate']);
 // Reached by name, but a record or a handout the walk hands over, never a body the walk runs: its commands are prose.
 const SKIPPED_REFERENCES = Object.freeze(new Set(['source-protocol-powershell.md', 'update-history.md', 'post-install.md']));
 const REFERENCE_NAME = /references\/([a-z0-9-]+\.md)/g;
+// A skill a walk body has the model follow inline from the snapshot: its calls are the walk's, with `<stack>` the run dir's repo.
+const INLINE_SKILL = Object.freeze({ namePattern: /\$TMP\/repo\/(stack\/skills\/[a-z0-9-]+\/SKILL\.md)/g, stackToken: '<stack>', stackValue: '$TMP/repo' });
 const SHELL_LANGS = Object.freeze(new Set(['bash', 'sh', 'shell']));
 // A fence pairs with its own closer whatever its language, so a closer is never read as an opener.
 const FENCE_RE = /^([ \t]*)```([^`\n]*)\n([\s\S]*?)^\1```[ \t]*$/gm;
@@ -227,6 +229,12 @@ const NOT_CALLS = Object.freeze([
     { file: 'update-close.md', prefix: 'git status', why: 'the call the close forbids' },
     { file: 'source-protocol.md', prefix: 'node "$TMP/repo/scripts/install/alfred-code.js" <install|update|uninstall> [flags]', why: 'the installer call as a template; each real call is written with its own flags and its --source' },
     { file: 'init-bootstrap.md', prefix: `${COLLECT.appendBase} ; node <version> is under`, why: 'a quoted hud line the run prints, no call' },
+    { file: 'habits-adjust-agents-md/SKILL.md', prefix: 'STACK=$(for d in', why: 'the skill\'s own search for a stack folder, run only where no walk hands it <stack>' },
+    { file: 'habits-adjust-agents-md/SKILL.md', prefix: 'PN=${d%/*}', why: 'a line of that search' },
+    { file: 'habits-adjust-agents-md/SKILL.md', prefix: '[ -f "$d/scripts/agents-md-check.js"', why: 'a line of that search' },
+    { file: 'habits-adjust-agents-md/SKILL.md', prefix: 'done 2>/dev/null | sort -V', why: 'the end of that search' },
+    { file: 'habits-adjust-agents-md/SKILL.md', prefix: 'echo "stack:', why: 'the print of that search' },
+    { file: 'habits-adjust-agents-md/SKILL.md', prefix: 'git ls-files <file>', why: 'a read-only git call, left to Claude Code\'s own handling' },
     { file: 'update-close.md', prefix: 'node .claude/hooks/docs.js prune', why: 'the command the close names for the user to run' },
 ]);
 // The kinds of value a table template names, and what the generator reads off a body's spelling.
@@ -249,7 +257,7 @@ const REPO_DIR = 'repo';
 const SESSION_FILE = 'run-session';
 
 module.exports = {
-    BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, COLLECT, NOT_CALLS,
+    BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, INLINE_SKILL, COLLECT, NOT_CALLS,
     HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
     REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, PATH_VALUE_FLAGS, ACCOUNT, RUN_TOKENS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE, VALUE, TEMPLATE,
