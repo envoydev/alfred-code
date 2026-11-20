@@ -349,7 +349,7 @@ Where do the <n> optional picks install? <names>. This project only, unless you 
 - 'Global, all of them' - every project on this account loads each of them
 ```
 
-DELTA reads where each installed one lives now - `node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).scopes))' "$TMP/installed.json"` prints
+DELTA reads where each installed one lives now - `node "$TMP/repo/scripts/install/installed-scopes.js" "$TMP/installed.json"` prints
 `{"<item>": "global" | "project" | "local" | "managed"}`, the narrowest row where an item sits at several (the one
 this project loads) - names it in the question, and keeps it there by default; a newly added item starts at
 `project`. A `managed` item is the admin's: name it, never offer it a move:

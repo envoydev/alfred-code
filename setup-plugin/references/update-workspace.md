@@ -72,10 +72,10 @@ walk's template for that ask; more asks take a second call.
 Write each project's answers with ONE call per project, never a hand-written JSON:
 
 ```bash
-node "$TMP/repo/scripts/workspace.js" answer --file "$TMP/answers.json" --project <rel> -- <flag> <value> [<flag> <value> ...]
+node "$TMP/repo/scripts/workspace.js" answer --file "$TMP/answers.json" --project <rel> -- <flag> <value>
 ```
 
-A `!!` line means the flag or value was refused and the file is as it was: ask that one again. Unattended, take the
+The call takes each `<flag> <value>` pair of that project, one after the other. A `!!` line means the flag or value was refused and the file is as it was: ask that one again. Unattended, take the
 Recommended option for every ask, `update=ask-local` excepted, as the walk does.
 
 ## Projects installed below - joined, then checked - on `rescan:` rows
@@ -103,11 +103,12 @@ standalone' included - or whose own workspace switch is 0 is no row and is never
 wrote it, offers taken: every row's parent is this project, so ONE parent read serves every joined child. Validate's
 own commands (`/alfred-code:validate`, step 2 - same flags, same stack-select modes). A failed installer run
 (`step(s) reported a failure above`) skips the check and its asks: say `/alfred-code:validate` in that project
-offers the same check. First call, once - the parent's set, the detection list and the evidence scan
-of every child checked in this run - the ones joined now and the ones re-checked below - (one `scan-evidence.js` per child, `<n>` its number across both, joined ones first, each group in the plan's order, joined by ` ; `):
+offers the same check. First the scope read, once, its own call: `node "$TMP/repo/scripts/install/stamp.js" scope .` prints the scope word, written
+below as `<scope>`. Then the first call, once - the parent's set, the detection list and the evidence scan
+of every child checked in this run - the ones joined now and the ones re-checked below - (one `scan-evidence.js` per child, `<n>` its number across both, joined ones first, each group in the plan's order, joined by ` ; `), the parent read last so its `parent-read:` line closes the call:
 
 ```bash
-(node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?" ; cat "$TMP/repo/setup-plugin/references/stack-detection.md" ; node "$TMP/repo/scripts/scan-evidence.js" --root <rel> --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found-<n>.json"
+cat "$TMP/repo/setup-plugin/references/stack-detection.md" ; node "$TMP/repo/scripts/scan-evidence.js" --root <rel> --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found-<n>.json" ; (node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"
 ```
 
 `parent-read` not 0 -> no check for any child: paste its `!! inherited:` line when it printed one and say

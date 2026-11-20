@@ -68,7 +68,7 @@ run here -> start the phase now; not now -> say what is owed and end the turn. I
 the ask, re-offer it ONCE. Unattended, it is never asked: `unattended: fresh session -> run here (the recommended
 one hands the run to a person)`.
 
-**Read the stack's own files through the Bash tool (`cat "<file>"`), never the Read tool** - this
+**Read the stack's own files through the Bash tool (a Bash `cat` of the file), never the Read tool** - this
 command's phase file, the protocol, `walk.md`, a SKILL.md the plan names, every `references/` file inside one. They
 sit outside the working directory (the plugin cache, `$TMP`), where the Read tool asks before every read in default
 and acceptEdits mode, while a read-only Bash command carries the broader read access

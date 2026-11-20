@@ -95,15 +95,16 @@ comparable banner by banner; the content varies, the skeleton never does.
   `--print-plan` run writes nothing:
 
   ```bash
-  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . | grep -E '^(workspace: parent |role: )'
+  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . > "$TMP/workspace.out" 2>&1 ; grep -E '^(workspace: parent |role: )' "$TMP/workspace.out"
   ```
 
   A `role:` line matching `root of (\d+)` means that many projects below - a root or a middle project (the Post-check's
   note). `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
-  set once, `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node
-  "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" >
-  "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo
-  "parent-read: $?"`, and every `--table` call of the walk adds `--inherited
+  set once, in two calls. First `(cd "./<rel>" && node "$TMP/repo/scripts/install/stamp.js" scope .)` prints the scope word;
+  then `(cd "./<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope>
+  --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node
+  "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"` with that word as
+  `<scope>`. Every `--table` call of the walk adds `--inherited
   "$TMP/parent.json"`, so its rows read `from root` and `ignored` (`references/walk.md`). A `parent-read:` other than 0
   walks without it and says the inherited rows could not be marked.
 

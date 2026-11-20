@@ -20,8 +20,8 @@ whole turn - 'this walk is scripted: `/model sonnet`, then `/alfred-code:update`
 messages, and the user interrupted it and ran it again on Sonnet). **When the gate stops the run, that line is the
 turn: no tool call, nothing below is read or summarised, and the turn ends on it.** A second `/alfred-code:update` in
 this session goes ahead on whatever tier it finds, with no line. An unattended launch picks its model up front and
-has nobody to switch it: on the expensive tier make the first call `printf 'unattended=%s\n'
-"${ALFRED_CODE_UNATTENDED:-}"`, and on `unattended=1` log `unattended: tier -> run here` and go on instead of stopping.
+has nobody to switch it: on the expensive tier make the first call `printenv ALFRED_CODE_UNATTENDED`
+(a call of its own), and when it prints `1` log `unattended: tier -> run here` and go on instead of stopping; no output is not unattended.
 
 **This run needs NO conversation context**, so it is the cheapest thing in the stack to move -
 but only out of a session that is actually loaded, and the measuring is the hook's, never yours.

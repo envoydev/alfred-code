@@ -33,11 +33,11 @@ install owes (only the releases between its stamp and the snapshot, from `setup-
 a snapshot without the script prints an error - read nothing more for it and go on):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -qE '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: |^nested: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: |^nested: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
 ```
 
-(The last two read the workspace: with children below, their rows and `update-workspace.md`, the cascade's walk;
-standalone, nothing. Every update looks below for installed projects with no role recorded: each is a `rescan:` row. The joins run
+(The last two read the workspace: with children below, their rows (trigger rows print twice) and `update-workspace.md`,
+the cascade's walk; standalone, nothing. Every update looks below for installed projects with no role recorded: each is a `rescan:` row. The joins run
 after step 2's AskUserQuestion answers are applied - this project's own `role --answer` first - and before the installer call.) Pass
 `timeout: 600000` to this call: `plan` reads each parent back, one installer run per project with children.
 
@@ -244,7 +244,7 @@ claude-hud is installed - this run or already - and no settings file this projec
 never a second grep (a tail is ~75% static boilerplate, and two greps of one log cost two full context re-sends):
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|session status:|\.git/info/exclude: |!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy|seats:' "$TMP/install.log"
+grep -E 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|session status:|\.git/info/exclude: |!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy|seats:' "$TMP/install.log"
 ```
 
 Add a marker to the pattern when the report needs another fact; do not add a call. The RESTART row and any

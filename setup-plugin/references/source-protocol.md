@@ -62,11 +62,13 @@ printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; if ! printf '%
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)   # the archive's; a plugin-cache entry carries none
 [ -n "$VER" ] || VER=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).version||""))}catch{}' "$TMP/repo/setup-plugin/.claude-plugin/plugin.json")
-if [ "$STATE" = RESOLVED ]; then echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?}"; else echo "REUSING TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node}"; fi
+WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")   # the Windows spelling of the run dir; the dir itself where cygpath is absent
+if [ "$STATE" = RESOLVED ]; then echo "RESOLVED TMP=$TMP WIN=$WIN ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?} MARK=$MARK"; else echo "REUSING TMP=$TMP WIN=$WIN ${VER:-?} seed=${ALFRED_CODE_SEED:-node} MARK=$MARK"; fi
 ```
 
-It prints `RESOLVED TMP=<dir> <version> seed=<seed> running=<version> key=<marketplace key>` on a resolve,
-`REUSING TMP=<dir> <version> seed=<seed>` on a reuse (`<version>` the snapshot's), or one `MISSING <what>` line
+It prints `RESOLVED TMP=<dir> WIN=<windows spelling> <version> seed=<seed> running=<version> key=<marketplace key>
+MARK=<marker path>` on a resolve, `REUSING TMP=<dir> WIN=<windows spelling> <version> seed=<seed> MARK=<marker path>` on a reuse
+(`<version>` the snapshot's; `WIN=` is `cygpath -w` of the dir where `cygpath` exists, else the dir), or one `MISSING <what>` line
 and nothing else - a `MISSING` line stops the run, said with its consequence. One exception: `MISSING <tool> on the
 Bash PATH` in Git Bash on Windows means the Bash tool got a Windows-form PATH (`C:\...;C:\...`). Put this line first
 in the resolve block and in every later block of the run. Then run the block again:
@@ -74,33 +76,32 @@ in the resolve block and in every later block of the run. Then run the block aga
 asks before it runs a PATH change, so no block carries the line until that `MISSING` line asks for it. Only this
 session's marker is reused; the marker name is derived from the project root, so two projects or two worktrees never share one.
 
-## Every later call re-reads the marker
+## Every later call names the run dir
 
-Run every block on this page and the walk's pages exactly as written: add no line, merge no two calls, and fill each
-`<placeholder>` alone. The plugin approves an unchanged block inside a typed `/alfred-code:init`, `update`,
-`configure` or `validate`, unless the hook profile is `minimal`, so it runs with no approval prompt. A marker
-another user owns is never trusted: the opener says `MISSING the run marker`.
+Run the resolve block exactly as written. Every other call is a body's text with its tokens written out: add no line,
+merge no two calls, and fill each `<placeholder>` alone. The plugin approves the resolve block and the walk's own calls on
+this run's dir inside a typed `/alfred-code:init`, `update`, `configure` or `validate`, unless the hook profile is
+`minimal`, so they run with no approval prompt.
 
-Each Bash call is its own shell, so `$TMP` set in one call is gone by the next. Open every later call with:
+Each Bash call is its own shell, so no later call sets or expands a variable - no `$VAR`, `${...}` or `$(...)`. A body
+writes `$TMP`, `$TMP_WIN` and `$MARK` as TOKENS. Before a call runs, replace each with the value from the newest
+`RESOLVED` or `REUSING` line of this run: `$TMP` with its `TMP=` dir, `$TMP_WIN` with its `WIN=` spelling, `$MARK` with
+its `MARK=` path. The call you run holds the paths, never the tokens.
 
-```bash
-RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
-MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
-TMP=$(cat "$MARK" 2>/dev/null); if [ -z "$TMP" ] || [ ! -O "$MARK" ]; then echo "MISSING the run marker - run the resolve block first"; exit 1; fi
-TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
-```
-
-- **`$TMP` comes from the marker, every call, and from nowhere else** - never an `ls -dt`, a glob over
-  `alfred-code.*` or a remembered path: two temp dirs can exist at once, and one run picked the other one and
-  ran the installer with `adds=0` (audit 2026-10-20 C46, 4f2bfdee). `MISSING the run marker` means the resolve
-  block runs again, never a guess.
-- **Two spellings, one temp dir.** Every SHELL path stays `$TMP`; a path that leaves the shell (the Read tool, a
-  `pwsh -File`, a native `node` argv on Windows) is `$TMP_WIN`.
+- **The run dir comes from the newest `RESOLVED` / `REUSING` line of this run, and from nowhere else** - never an
+  `ls -dt`, a glob over `alfred-code.*`, a remembered path or a guess: two temp dirs can exist at once, and one run
+  picked the other one and ran the installer with `adds=0` (audit 2026-10-20 C46, 4f2bfdee). The plugin's run-dir gate
+  denies a call that names another session's dir, and the installer refuses another session's `--source`. After a
+  compaction, or whenever the line is not in view, run the resolve block again: it prints `REUSING` with the same dir.
+- **Two spellings, one temp dir.** Every SHELL path is the `TMP=` dir; a path that leaves the shell (the Read tool, a
+  `pwsh -File`, a native `node` argv on Windows) is the `WIN=` spelling.
 - Every artifact this run writes or reads (`raw.json`, `selection.txt`, `select.out`, `final.json`, a delta) is
   `"$TMP/<file>"`, never a bare name - a bare one resolves against whatever cwd the shell drifted to. A step's
   output that a later call reads goes to a file there, never through a process substitution (`< <(...)` hides a
   failure from `pipefail`).
+- A call that names no run dir (the OS, the git top level, an environment variable) is a call of its own, never chained
+  with a run-dir part. A value one call prints goes into the next as text: the installer's `--scope` word is what
+  `node "$TMP/repo/scripts/install/stamp.js" scope .` printed, read first.
 
 ## Check the plugin itself is current
 

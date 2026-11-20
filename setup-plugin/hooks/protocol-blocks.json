@@ -2,8 +2,8 @@
   "generatedBy": "scripts/protocol-blocks.js",
   "note": "Generated: the hash of each spelling of the resolve block, and the scripts the walk bodies run from the snapshot. Run `npm run protocol-blocks` after a block changes.",
   "resolves": [
-    "2610900ea333a3c2556480148bc2bf884d1092de3122b3d45728ebb9b5c10f5c",
-    "643533ab7ad44847e2cabb552f9d7c4b6fbbb0a8d1ff202dbe5972d870c15834"
+    "21c576e1df277fc88848519e44696cc63ec95e96fb142dfeeb58f0b4957cc4a3",
+    "9c69112117e52326960bde92c9e24fbc8bad90af512866a8277c050f53c9f2a1"
   ],
   "scripts": [
     "scripts/agents-md-check.js",
@@ -13,6 +13,7 @@
     "scripts/git-hygiene.js",
     "scripts/init-plan.js",
     "scripts/install/alfred-code.js",
+    "scripts/install/installed-scopes.js",
     "scripts/install/marketplace-autoupdate.js",
     "scripts/install/release-notes.js",
     "scripts/install/stamp.js",
