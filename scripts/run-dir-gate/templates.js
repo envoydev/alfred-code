@@ -31,19 +31,22 @@ const pathPlaceholder = (flag, word) => (flag === ACCOUNT.dirFlag && ACCOUNT.pla
 
 const product = (lists) => lists.reduce((rows, alternatives) => rows.flatMap((row) => alternatives.map((one) => [...row, one])), [[]]);
 
-// One call's arguments (the words after the script): { mode, sequences, flags } - `flags` maps a flag to the templates of its
-// value, `true` for the flag with none. The words after a `--` are the data of that flag.
+// One call's arguments (the words after the script): { mode, sequences, flags, required } - `flags` maps a flag to the templates
+// of its value, `true` for the flag with none, and `required` holds the flags this call writes outside a `[...]` part. The words
+// after a `--` are the data of that flag.
 function shapeOfCall(words)
 {
     const [first] = words;
     const hasMode = first && first.quote === QUOTE.none && !first.placeholder && ARG.modeWord.test(first.value);
     const flags = new Map();
     const positionals = [];
+    const required = new Set();
     const note = (flag, entry) => flags.set(flag, [...(flags.get(flag) || []), entry]);
     for (let at = hasMode ? 1 : 0; at < words.length; at++)
     {
         const word = words[at];
-        if (!isFlagWord(word)) { positionals.push(classify(word)); continue; }
+        if (!isFlagWord(word)) { positionals.push(classify(word).map((entry) => (word.repeat ? { ...entry, repeat: true } : entry))); continue; }
+        if (!word.optional) required.add(word.value);
         if (word.value === ARG.passthrough)
         {
             const rest = words.slice(at + 1);
@@ -61,7 +64,7 @@ function shapeOfCall(words)
         }
         else note(word.value, true);
     }
-    return { mode: hasMode ? first.value : ARG.noMode, sequences: product(positionals), flags };
+    return { mode: hasMode ? first.value : ARG.noMode, sequences: product(positionals), flags, required };
 }
 
 // Every node call of one command text, as { script, shape }.
@@ -78,13 +81,15 @@ function callsOf(text)
 
 const keyOf = (entry) => JSON.stringify(entry);
 
-// Adds one call's shape to the merged scripts Map: script -> mode -> { sequences: Map key -> sequence, flags: Map flag -> Map key -> entry }.
+// Adds one call's shape to the merged scripts Map: script -> mode -> { sequences: Map key -> sequence, flags: Map flag -> Map key
+// -> entry, required: the flags every call of the mode writes }.
 function mergeCall(scripts, { script, shape })
 {
     if (!scripts.has(script)) scripts.set(script, new Map());
     const modes = scripts.get(script);
-    if (!modes.has(shape.mode)) modes.set(shape.mode, { sequences: new Map(), flags: new Map() });
+    if (!modes.has(shape.mode)) modes.set(shape.mode, { sequences: new Map(), flags: new Map(), required: null });
     const into = modes.get(shape.mode);
+    into.required = into.required ? new Set([...into.required].filter((flag) => shape.required.has(flag))) : new Set(shape.required);
     for (const sequence of shape.sequences) into.sequences.set(keyOf(sequence), sequence);
     for (const [flag, entries] of shape.flags)
     {
@@ -104,10 +109,11 @@ function scriptsObject(scripts)
         out[name] = {};
         for (const mode of [...scripts.get(name).keys()].sort())
         {
-            const { sequences, flags } = scripts.get(name).get(mode);
+            const { sequences, flags, required } = scripts.get(name).get(mode);
             const flagObject = {};
             for (const flag of [...flags.keys()].sort()) flagObject[flag] = sorted(flags.get(flag));
             out[name][mode] = { positionals: sorted(sequences), flags: flagObject };
+            if (required.size > 0) out[name][mode].required = [...required].sort();
         }
     }
     return out;

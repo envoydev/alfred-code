@@ -308,7 +308,9 @@ test("the protocol's bash snippet keeps its run marker under $TMPDIR, and a seco
         if (process.platform !== 'win32') assert.strictEqual(printed[2], m[1], 'WIN= is the dir itself where cygpath is absent or an identity');
         assert.ok(path.basename(printed[3]).startsWith('alfred-code-run.') && path.dirname(printed[3]) === sbx, 'MARK= names the run marker under $TMPDIR');
         assert.strictEqual(fs.readFileSync(printed[3], 'utf8').trim(), m[1], 'the marker MARK= names holds the run dir');
+        assert.match(first, new RegExp(` key=\\S+ ACCOUNT=${path.join(home, '.claude').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} MARK=`), 'RESOLVED prints the account dir, so the walk writes it from the line');
         const second = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
+        assert.match(second, new RegExp(` seed=\\S+ ACCOUNT=${path.join(home, '.claude').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} MARK=`), 'REUSING prints it too');
         assert.match(second, new RegExp(` MARK=${printed[3].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'), 'REUSING prints the same MARK=');
         assert.match(second, new RegExp(`^REUSING TMP=${m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} WIN=\\S+ 0\\.10\\.0 `, 'm'), 'the next call finds the same $TMP and names its version');
         // audit 2026-10-11 (sessions a9e06780 / bca100bd): a marker another session left - its cleanup rejected -

@@ -22,6 +22,7 @@ const SAMPLE_WORD = 'item';
 const ACCOUNT_DIR = '/home/u/.claude';
 const REALISTIC_SAMPLES = [['<KEY>=<value>', 'ALFRED_CODE_AUTO_COMPACT=1'], ['--config-dir <account dir>', `--config-dir "${ACCOUNT_DIR}"`]];
 // The workspace line prints the parent folder as a `..`-shaped path; a child one level and two levels below its parent.
+const SHAPE_SAMPLES = { count: '2', scope: 'project', csv: 'web,node', phrase: 'item two' };
 const PARENT_SAMPLES = ['..', '../..'];
 const PARENT_CD = 'cd "<rel>"';
 const CHILD_FILE = 'init-child.md';
@@ -73,7 +74,19 @@ function untemplated(command)
 }
 
 const withRealistic = (command) => REALISTIC_SAMPLES.reduce((text, [placeholder, sample]) => text.replaceAll(placeholder, sample), command);
-const filled = (command, parent = PARENT_SAMPLES[0]) => untemplated(withRealistic(command.replaceAll(PARENT_CD, `cd "${parent}"`)).replace(ALL_PLACEHOLDERS, SAMPLE_WORD))
+const standIn = () => SAMPLE_WORD;
+// A placeholder filled by its shape: a csv is two names joined by a comma, a quoted one with a space is two words.
+function byShape(placeholder, at, text)
+{
+    const name = placeholder.slice(1, -1);
+    const quoted = /["']/.test(text[at - 1] || '');
+    if (name === 'n') return SHAPE_SAMPLES.count;
+    if (name === 'scope') return SHAPE_SAMPLES.scope;
+    if (/csv/i.test(name)) return SHAPE_SAMPLES.csv;
+    if (quoted && /\s/.test(name)) return SHAPE_SAMPLES.phrase;
+    return SAMPLE_WORD;
+}
+const filled = (command, parent = PARENT_SAMPLES[0], sample = standIn) => untemplated(withRealistic(command.replaceAll(PARENT_CD, `cd "${parent}"`)).replace(new RegExp(ALL_PLACEHOLDERS.source, 'g'), (placeholder, at, text) => sample(placeholder, at, text)))
     .replaceAll(PLUGIN_ROOT_TOKEN, PLUGIN_ROOT).replaceAll('$TMP_WIN', RUN_DIR_WIN).replaceAll('$TMP', RUN_DIR).replaceAll('$MARK', MARKER_PATH);
 
 const bodyFiles = [...listed(BODY.commands), ...listed(BODY.references)].map((file) => ({ file, text: readText(file) }));
@@ -86,7 +99,7 @@ const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: t
 const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), fenceBlocks(texts.get(file)))).map((command) => ({
     ...command,
     walks: WALKS.filter((walk) => walkFiles.get(walk).has(command.file)),
-    runs: [...new Set(PARENT_SAMPLES.map((parent) => filled(command.text, parent)))],
+    runs: [...new Set(PARENT_SAMPLES.flatMap((parent) => [filled(command.text, parent), filled(command.text, parent, byShape)]))],
     child: command.file.endsWith(CHILD_FILE) || command.text.includes(PARENT_CD),
 }));
 const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command) && !isConditionalPrefix(command));
@@ -159,7 +172,7 @@ test('a parent read is approved for a parent one and two folders up, and the plu
 {
     const parentReads = nonResolve.filter((command) => command.text.includes(PARENT_CD));
     assert.ok(parentReads.length >= 4, `${parentReads.length} parent reads collected`);
-    for (const command of parentReads) assert.equal(command.runs.length, PARENT_SAMPLES.length, command.text);
+    for (const command of parentReads) assert.ok(command.runs.length >= PARENT_SAMPLES.length, command.text);
     const proseCats = nonResolve.filter((command) => command.text.startsWith('cat "${CLAUDE_PLUGIN_ROOT}/'));
     assert.ok(proseCats.length >= 4, `${proseCats.length} plugin-root reads collected`);
 });

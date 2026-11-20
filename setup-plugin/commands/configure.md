@@ -517,7 +517,7 @@ writes nothing.
 ### 11a. Plugin settings - apply the step-7 answer
 
 walk.md's Plugins layer, run after the installer block and before the follow-through line: re-run
-`node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
+`node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (`<account dir>` as walk.md writes it; plus `--replace` for the
 overwrite answer) and paste the closing `applied:` line, plus the `backup:` line right after it when
 one is printed (the account `settings.json` was copied to `settings.json.bak.<time>` before this
 run's first write to it). A run that dropped the plugin asked

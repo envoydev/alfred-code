@@ -21,7 +21,14 @@ function splitMode(args, modes)
 
 const fitsAny = (templates, word, base, state, afterDashes = false) => templates.some((template) => fitsTemplate(template, word, base, state, { afterDashes }));
 
-const fitsSequence = (sequence, words, base, state) => sequence.length === words.length && sequence.every((template, at) => fitsTemplate(template, words[at], base, state));
+// Whether the words are the templates in order, a `repeat` template taking one word or more.
+function fitsSequence(sequence, words, base, state, from = 0, taken = 0)
+{
+    if (from === sequence.length) return taken === words.length;
+    const word = words[taken];
+    if (!word || !fitsTemplate(sequence[from], word, base, state)) return false;
+    return fitsSequence(sequence, words, base, state, from + 1, taken + 1) || (sequence[from].repeat === true && fitsSequence(sequence, words, base, state, from, taken + 1));
+}
 
 // Whether the words after the mode are the flags, flag values and positionals one mode's template lists. A flag takes the next
 // word as its value when a template of the flag fits it; otherwise it must be one that stands alone. After a `--` every
@@ -29,12 +36,14 @@ const fitsSequence = (sequence, words, base, state) => sequence.length === words
 function fitsMode(shape, rest, base, state)
 {
     const positionals = [];
+    const seen = new Set();
     for (let at = 0; at < rest.length; at++)
     {
         const word = rest[at];
         if (!looksLikeFlag(word)) { positionals.push(word); continue; }
         const entry = isFlagShape(word.value) || word.value === ARG.passthrough ? shape.flags.get(word.value) : null;
         if (!entry) return false;
+        seen.add(word.value);
         if (word.value === ARG.passthrough)
         {
             const data = rest.slice(at + 1);
@@ -49,7 +58,7 @@ function fitsMode(shape, rest, base, state)
         }
         else if (!entry.bare || OUTPUT_FLAGS.has(word.value)) return false;
     }
-    return shape.sequences.some((sequence) => fitsSequence(sequence, positionals, base, state));
+    return shape.required.every((flag) => seen.has(flag)) && shape.sequences.some((sequence) => fitsSequence(sequence, positionals, base, state));
 }
 
 // The mode of a call whose arguments all fit a template of the script, else null.

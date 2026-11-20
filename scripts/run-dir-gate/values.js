@@ -13,8 +13,16 @@ function segmentTest(segment)
     return new RegExp(`^${pattern}$`, 'i');
 }
 
-// The template as the gate reads it, or null for one the table spells wrongly - which then matches nothing.
+// The template as the gate reads it, or null for one the table spells wrongly - which then matches nothing. A `repeat` one
+// stands for one word or more.
 function compileTemplate(template)
+{
+    const compiled = compileKind(template);
+    if (compiled && template.repeat === true) compiled.repeat = true;
+    return compiled;
+}
+
+function compileKind(template)
 {
     if (!template || typeof template !== 'object' || !TEMPLATE.kinds.has(template.kind)) return null;
     if (template.kind === VALUE.literal) return typeof template.value === 'string' ? { kind: VALUE.literal, value: template.value } : null;
@@ -38,7 +46,7 @@ function isAccountDir(word, state)
 {
     if (word.quote !== QUOTE.double || !isAbsoluteWord(word.value, state.win)) return false;
     const resolved = resolveWord(word.value, state.cwd, state.win);
-    return Boolean(resolved) && state.accountDirs.some((dir) => sameFolded(resolved, dir));
+    return Boolean(resolved) && state.accountDirs.some((dir) => (state.foldAccount ? sameFolded(resolved, dir) : resolved === dir));
 }
 
 function isCwdPath(text)

@@ -2,8 +2,8 @@
   "generatedBy": "scripts/protocol-blocks.js",
   "note": "Generated: the hash of each spelling of the resolve block, and each script the four walks run from the snapshot with a template per mode - the positionals and the flag values the walk bodies write. Run `npm run protocol-blocks` after a block changes.",
   "resolves": [
-    "21c576e1df277fc88848519e44696cc63ec95e96fb142dfeeb58f0b4957cc4a3",
-    "9c69112117e52326960bde92c9e24fbc8bad90af512866a8277c050f53c9f2a1"
+    "0c8a4bcf063f5f8ddc209b83eb6e721cd8540dc9046b277c4ff17dad6fa75b41",
+    "9ccebcb3ebab3b506a1b10c7a28025e14c0ae6611a410f10dc28a5b70696eccf"
   ],
   "scripts": {
     "scripts/agents-md-check.js": {
@@ -17,7 +17,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       }
     },
     "scripts/analyze-usage.js": {
@@ -31,7 +34,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--turn-check-advice"
+        ]
       }
     },
     "scripts/audit-install.js": {
@@ -88,7 +94,10 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--selection"
+        ]
       }
     },
     "scripts/git-hygiene.js": {
@@ -115,7 +124,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       }
     },
     "scripts/init-plan.js": {
@@ -141,7 +153,12 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--installed",
+          "--plugin-root",
+          "--root"
+        ]
       }
     },
     "scripts/install/alfred-code.js": {
@@ -212,7 +229,12 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--scope",
+          "--selection",
+          "--source"
+        ]
       },
       "update": {
         "positionals": [
@@ -335,7 +357,11 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--installed-only",
+          "--source"
+        ]
       }
     },
     "scripts/install/installed-scopes.js": {
@@ -365,7 +391,11 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--apply",
+          "--root"
+        ]
       }
     },
     "scripts/install/release-notes.js": {
@@ -379,7 +409,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       }
     },
     "scripts/install/stamp.js": {
@@ -431,7 +464,11 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--project",
+          "--source"
+        ]
       }
     },
     "scripts/plugin-settings.js": {
@@ -459,7 +496,12 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--catalog",
+          "--config-dir",
+          "--installed"
+        ]
       }
     },
     "scripts/scan-evidence.js": {
@@ -492,7 +534,12 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--catalog",
+          "--out",
+          "--root"
+        ]
       }
     },
     "scripts/stack-select.js": {
@@ -645,7 +692,11 @@
               "value": ".claude/alfred-code.stamp"
             }
           ]
-        }
+        },
+        "required": [
+          "--snapshot",
+          "--stamp"
+        ]
       }
     },
     "scripts/stamp-docs-root.js": {
@@ -661,7 +712,10 @@
           "--seed-versioning": [
             true
           ]
-        }
+        },
+        "required": [
+          "--seed-versioning"
+        ]
       }
     },
     "scripts/update-preflight.js": {
@@ -734,13 +788,17 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       },
       "set": {
         "positionals": [
           [
             {
-              "kind": "word"
+              "kind": "word",
+              "repeat": true
             }
           ]
         ],
@@ -755,7 +813,11 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--root",
+          "--scope"
+        ]
       },
       "show": {
         "positionals": [
@@ -770,7 +832,10 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       }
     },
     "scripts/workspace.js": {
@@ -787,7 +852,11 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--apply",
+          "--root"
+        ]
       },
       "answer": {
         "positionals": [
@@ -813,7 +882,10 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--file"
+        ]
       },
       "cascade": {
         "positionals": [
@@ -837,7 +909,12 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--answers",
+          "--root",
+          "--source"
+        ]
       },
       "check-loads": {
         "positionals": [
@@ -852,7 +929,10 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       },
       "ignore": {
         "positionals": [
@@ -872,7 +952,11 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--add",
+          "--root"
+        ]
       },
       "ignore-child": {
         "positionals": [
@@ -895,7 +979,12 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--add",
+          "--root",
+          "--source"
+        ]
       },
       "join": {
         "positionals": [
@@ -913,7 +1002,11 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--answer",
+          "--root"
+        ]
       },
       "plan": {
         "positionals": [
@@ -934,7 +1027,12 @@
               "suffix": "repo"
             }
           ]
-        }
+        },
+        "required": [
+          "--rescan",
+          "--root",
+          "--source"
+        ]
       },
       "remove-nested": {
         "positionals": [
@@ -951,7 +1049,11 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--path",
+          "--root"
+        ]
       },
       "role": {
         "positionals": [
@@ -985,7 +1087,10 @@
               "value": "update"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       },
       "status": {
         "positionals": [
@@ -997,7 +1102,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--root"
+        ]
       }
     },
     "stack/hooks/guard-secret-value.js": {
@@ -1011,7 +1119,10 @@
               "kind": "word"
             }
           ]
-        }
+        },
+        "required": [
+          "--redacted"
+        ]
       }
     },
     "stack/skills/capture-preferences/scripts/tools.js": {
@@ -1038,7 +1149,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--project"
+        ]
       },
       "validate": {
         "positionals": [
@@ -1050,7 +1164,10 @@
               "kind": "cwdPath"
             }
           ]
-        }
+        },
+        "required": [
+          "--project"
+        ]
       }
     }
   }

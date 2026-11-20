@@ -205,7 +205,7 @@ test('buildTable writes a template per script and mode from the calls the four w
     const kind = (name) => ({ kind: name });
     assert.deepEqual(scripts['scripts/a.js'].show.flags, { '--add': [kind('phrase')], '--flag': [kind('word')], '--out': [{ kind: 'runDir', suffix: 'o-<n>.json' }], '--root': [kind('cwdPath'), kind('word')] });
     assert.deepEqual(scripts['scripts/a.js'].show.positionals, [[]]);
-    assert.deepEqual(scripts['scripts/b.js'][''], { positionals: [[kind('cwdPath')]], flags: { '-x': [true] } });
+    assert.deepEqual(scripts['scripts/b.js'][''], { positionals: [[kind('cwdPath')]], flags: { '-x': [true] }, required: ['-x'] });
     assert.deepEqual(scripts['scripts/c.js'][''].positionals, [[kind('word')]]);
     assert.deepEqual(scripts['scripts/c.js'][''].flags, { '--memory': [literal('default'), literal('docs')], '--scope': [kind('phrase')], '--sel': [{ kind: 'runDir', suffix: 'repo/meta/x.json' }], '--y': [true] });
     assert.deepEqual(scripts['scripts/e.js'].answer.flags, { '--': [kind('word')], '--file': [{ kind: 'runDir', suffix: 'f.json' }], '--hold': [true] });

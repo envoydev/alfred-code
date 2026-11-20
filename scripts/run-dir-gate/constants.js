@@ -167,6 +167,9 @@ const ACCOUNT = Object.freeze({
     configDirKey: 'CLAUDE_CONFIG_DIR',
     homeKey: 'HOME',
     profileKey: 'USERPROFILE',
+    driveKey: 'HOMEDRIVE',
+    pathKey: 'HOMEPATH',
+    foldsCase: Object.freeze(new Set(['darwin', 'win32'])),
     dirName: '.claude',
     absolute: /^(?:\/|[A-Za-z]:[\\/])/,
     trailingSeps: /[\\/]+$/,
@@ -179,6 +182,7 @@ const CALL = Object.freeze({
     head: /node\s+$/,
     stop: new Set([';', ')', '>', '&', '`', '\n']),
     brackets: Object.freeze({ open: /^\[+/, close: /(?:\]|\.\.\.)+$/ }),
+    repeatMark: '...',
     stderrToOut: '2>',
     continuation: '\\\n',
 });

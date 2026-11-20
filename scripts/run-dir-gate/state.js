@@ -1,7 +1,7 @@
 'use strict';
 // What the form matcher knows about one call: the run dir, the project dir, the script shapes and the marker path - and the
 // tests every form shares to place a word against them. Pure.
-const { SHELL, SESSION_FILE, REPO_DIR, ARG } = require('./constants.js');
+const { SHELL, SESSION_FILE, REPO_DIR, ARG, ACCOUNT } = require('./constants.js');
 const { compileTemplate } = require('./values.js');
 const { canon, resolveWord, isUnder, isStrictlyUnder, sepOf, fold, segmentsBelow } = require('./paths.js');
 
@@ -26,7 +26,8 @@ function modeOf(shape)
 {
     if (!shape || !Array.isArray(shape.positionals)) return null;
     const sequences = shape.positionals.filter(Array.isArray).map((sequence) => sequence.map(compileTemplate)).filter((sequence) => !sequence.includes(null));
-    return { sequences, flags: flagsOf(shape.flags) };
+    const required = Array.isArray(shape.required) ? shape.required.filter((flag) => typeof flag === 'string') : [];
+    return { sequences, flags: flagsOf(shape.flags), required };
 }
 
 function shapesOf(scripts)
@@ -59,6 +60,7 @@ function makeState(ctx)
         cwd,
         roots: [runDir, cwd],
         scripts: shapesOf(ctx.scripts),
+        foldAccount: win || ACCOUNT.foldsCase.has(ctx.platform),
         accountDirs: [ctx.accountDir, ctx.accountDirReal].filter((dir) => typeof dir === 'string' && dir !== '').map((dir) => canon(dir, win)),
         marker: ctx.markerPath ? canon(ctx.markerPath, win) : null,
     };

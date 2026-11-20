@@ -138,7 +138,7 @@ function judge(payload, env, pluginRoot)
     const table = readTable(pluginRoot);
     const account = dirs.length ? accountDirOf(env, process.platform) : null;
     const accountPath = account ? mapRunDir(account, process.platform, cygpathW) : null;
-    const ctx = { runDir: dirs.length ? dirs[0].path || '' : '', cwd, pluginRoot, scripts: table.scripts, markerPath: dirs.length ? markerPathFor(cwd, env) : null, accountDir: account, accountDirReal: accountPath ? realOf(accountPath) : null };
+    const ctx = { runDir: dirs.length ? dirs[0].path || '' : '', cwd, pluginRoot, scripts: table.scripts, markerPath: dirs.length ? markerPathFor(cwd, env) : null, platform: process.platform, accountDir: account, accountDirReal: accountPath ? realOf(accountPath) : null };
     const marker = dirs.length ? findMarker(cwd, env) : null;
     return decide({ command, table, sessionId: typeof payload.session_id === 'string' ? payload.session_id : '', dirs, marker, ctx });
 }

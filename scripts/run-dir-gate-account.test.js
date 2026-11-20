@@ -7,7 +7,7 @@ const { accountDirOf } = require('./run-dir-gate/account.js');
 const { D, shippedCtx, winShipped, WIN_RUN, atWin } = require('./run-dir-gate-fixture.js');
 
 const ACCOUNT = '/home/u/.claude';
-const accountCtx = { ...shippedCtx, accountDir: ACCOUNT, accountDirReal: ACCOUNT };
+const accountCtx = { ...shippedCtx, accountDir: ACCOUNT, accountDirReal: ACCOUNT, platform: 'darwin' };
 const settingsCall = (dir, tail = '--installed a,b --apply') => `node "${D}/repo/scripts/plugin-settings.js" --catalog "${D}/repo/meta/plugin-settings.json" --config-dir ${dir} ${tail}`;
 
 test('--config-dir passes only as one double-quoted absolute path equal to the account\'s own config dir the hook computed', () =>
@@ -23,6 +23,13 @@ test('--config-dir passes only as one double-quoted absolute path equal to the a
     const spelled = { ...accountCtx, accountDir: '/var/u/.claude', accountDirReal: '/private/var/u/.claude' };
     assert.equal(approvesForms(settingsCall('"/private/var/u/.claude"'), spelled), true, 'the real path spelling');
     assert.equal(approvesForms(settingsCall('"/var/u/.claude"'), spelled), true, 'the spelling the env gave');
+});
+
+test('--config-dir folds case on macOS and Windows only: on Linux a case variant is another folder', () =>
+{
+    for (const platform of ['linux', undefined]) assert.equal(approvesForms(settingsCall('"/HOME/U/.CLAUDE"'), { ...accountCtx, platform }), false, String(platform));
+    assert.equal(approvesForms(settingsCall(`"${ACCOUNT}"`), { ...accountCtx, platform: 'linux' }), true);
+    assert.equal(approvesForms(settingsCall('"/HOME/U/.CLAUDE"'), { ...accountCtx, platform: 'darwin' }), true);
 });
 
 test('--config-dir on Windows takes the account dir in a drive or an MSYS spelling, and refuses a drive-relative or another one', () =>
@@ -43,7 +50,10 @@ test('accountDirOf is CLAUDE_CONFIG_DIR when set and absolute, else HOME/.claude
     assert.equal(accountDirOf({ HOME: '/h' }, 'linux'), '/h/.claude');
     assert.equal(accountDirOf({ USERPROFILE: 'C:\\Users\\u' }, 'linux'), null);
     assert.equal(accountDirOf({ USERPROFILE: 'C:\\Users\\u' }, 'win32'), 'C:\\Users\\u/.claude');
-    assert.equal(accountDirOf({ HOME: '/c/Users/u', USERPROFILE: 'C:\\Users\\v' }, 'win32'), '/c/Users/u/.claude');
+    assert.equal(accountDirOf({ HOME: '/c/Users/u', USERPROFILE: 'C:\\Users\\v' }, 'win32'), 'C:\\Users\\v/.claude', 'os.homedir() on Windows: USERPROFILE first');
+    assert.equal(accountDirOf({ HOME: '/c/Users/u', HOMEDRIVE: 'C:', HOMEPATH: '\\Users\\w' }, 'win32'), 'C:\\Users\\w/.claude', 'then HOMEDRIVE + HOMEPATH');
+    assert.equal(accountDirOf({ HOME: '/c/Users/u', HOMEPATH: '\\Users\\w' }, 'win32'), '/c/Users/u/.claude', 'HOMEPATH alone is no home');
+    assert.equal(accountDirOf({ HOME: '/c/Users/u', USERPROFILE: 'C:\\Users\\v' }, 'linux'), '/c/Users/u/.claude', 'off Windows HOME only');
     assert.equal(accountDirOf({ CLAUDE_CONFIG_DIR: 'C:\\cfg' }, 'win32'), 'C:\\cfg');
     for (const env of [{}, { HOME: '' }, { HOME: 'relative' }, { CLAUDE_CONFIG_DIR: '   ' }]) assert.equal(accountDirOf(env, 'darwin'), null, JSON.stringify(env));
 });
