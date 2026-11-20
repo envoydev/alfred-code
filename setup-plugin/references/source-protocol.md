@@ -146,7 +146,7 @@ on every OS), `scripts/stack-select.js` with `meta/stack-graph.json`, the `meta/
 `stack/AGENTS.template.md`. **Read them through the Bash tool, never the Read tool, and never interpolate `$TMP`
 into a program's string literal**: a JSON file is `cat "$TMP/repo/meta/<file>.json"` or a `node -e` projection
 with the path as an ARGUMENT (never `jq`, which Git for Windows does not ship); a script takes the path as an
-argument (`node "$TMP/repo/scripts/x.js" --snapshot "$TMP/repo"`).
+argument (`node "$TMP/repo/scripts/<name>.js" --snapshot "$TMP/repo"`).
 
 ## Hand the same snapshot to the installer
 

@@ -8,7 +8,7 @@ const { findRunDirs, mapRunDir } = require('./run-dir-gate/dirs.js');
 const { gitBlobSha1, markerName } = require('./run-dir-gate/marker.js');
 const { buildTable, isResolve, fenceBlocks, withoutComments, normalize } = require('./run-dir-gate/table.js');
 const { approvesForms } = require('./run-dir-gate/forms.js');
-const { decide } = require('./run-dir-gate/verdict.js');
+const { decide, hookOutput } = require('./run-dir-gate/verdict.js');
 const { RESOLVE_LINE, OFF_SWITCH, REASON } = require('./run-dir-gate/constants.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -93,6 +93,16 @@ test('buildTable lists the resolve block spellings and the scripts the bodies ru
     assert.equal(isResolve(`${resolveBlock}\necho added`, table), false);
     assert.equal(isResolve('', table), false);
     assert.equal(isResolve(resolveBlock, null), false);
+});
+
+test('buildTable takes scripts from fenced shell blocks and inline code spans, never from prose', () =>
+{
+    const block = `\`\`\`bash\n${RESOLVE_LINE}\n\`\`\``;
+    const text = [block, 'Prose names "$TMP/repo/scripts/prose.js" in plain words.', 'An inline `node "$TMP/repo/scripts/inline.js" x` span.',
+        '```bash', 'node "<run dir>/repo/scripts/fenced.js" <arg>', '```', '```powershell', 'node "$TMP/repo/scripts/other-shell.js"', '```'].join('\n');
+    const table = buildTable([{ file: 'a.md', text }]);
+    assert.deepEqual(table.scripts, ['scripts/fenced.js', 'scripts/inline.js']);
+    assert.ok(!buildTable(readBodies()).scripts.includes('scripts/x.js'), 'the protocol\'s prose example is no allowlisted script');
 });
 
 test('buildTable refuses bodies with no resolve block or two', () =>
@@ -245,7 +255,7 @@ test('decide allows the resolve block and this session\'s forms and stays silent
 
 test('decide denies a dir of another session only on a trusted marker', () =>
 {
-    const marker = { path: MARKER, dir: D, session: 's1' };
+    const marker = { path: MARKER, dir: D, session: 's1', owned: true };
     const wrong = { ...base, command: `cat "${foreign.raw}/a"`, dirs: [foreign], marker };
     const verdict = decide(wrong);
     assert.equal(verdict.decision, 'deny');
@@ -254,24 +264,45 @@ test('decide denies a dir of another session only on a trusted marker', () =>
     assert.equal(verdict.reason, REASON.wrongDir(D));
     assert.ok(verdict.reason.includes(OFF_SWITCH));
     assert.deepEqual(decide({ ...wrong, marker: null }), { decision: null });
-    assert.deepEqual(decide({ ...wrong, marker: { ...marker, session: 's2' } }), { decision: null });
+    assert.deepEqual(decide({ ...wrong, marker: { ...marker, session: 's2', owned: true } }), { decision: null });
     assert.deepEqual(decide({ ...wrong, marker: { ...marker, session: '' } }), { decision: null });
     assert.deepEqual(decide({ ...wrong, dirs: [{ ...foreign, session: '' }] }), { decision: null });
     assert.deepEqual(decide({ ...wrong, dirs: [{ ...foreign, path: null }] }), { decision: null });
     assert.deepEqual(decide({ ...wrong, dirs: [foreign, { ...own, path: null }] }), { decision: null });
 });
 
+test('decide never denies on a marker this user does not own', () =>
+{
+    const marker = { path: MARKER, dir: D, session: 's1', owned: false };
+    const wrong = { ...base, command: `cat "${foreign.raw}/a"`, dirs: [foreign], marker };
+    assert.deepEqual(decide(wrong), { decision: null });
+    assert.deepEqual(decide({ ...wrong, marker: { ...marker, owned: undefined } }), { decision: null });
+    assert.equal(decide({ ...wrong, marker: { ...marker, owned: true } }).decision, 'deny');
+});
+
+test('hookOutput builds a fresh answer for each verdict and never touches the shared ones', () =>
+{
+    const allow = hookOutput(decide(base));
+    assert.deepEqual([allow.hookSpecificOutput.hookEventName, allow.hookSpecificOutput.permissionDecision], ['PreToolUse', 'allow']);
+    allow.hookSpecificOutput.permissionDecision = 'changed';
+    assert.equal(hookOutput(decide(base)).hookSpecificOutput.permissionDecision, 'allow');
+    assert.equal(hookOutput({ decision: null }), null);
+    assert.equal(hookOutput(undefined), null);
+    const deny = hookOutput({ decision: 'deny', reason: 'r' });
+    assert.deepEqual([deny.hookSpecificOutput.permissionDecision, deny.hookSpecificOutput.permissionDecisionReason], ['deny', 'r']);
+});
+
 test('decide denies this session\'s older dir while the marker names a newer one, and allows the marker\'s dir', () =>
 {
     const newer = '/t/alfred-code.Newer1';
-    const marker = { path: MARKER, dir: newer, session: 's1' };
+    const marker = { path: MARKER, dir: newer, session: 's1', owned: true };
     assert.equal(decide({ ...base, marker }).decision, 'deny');
     assert.equal(decide({ ...base, marker: { ...marker, dir: `${D}/` } }).decision, 'allow');
 });
 
 test('decide never denies two sessions of one project and allows this one\'s forms', () =>
 {
-    const marker = { path: MARKER, dir: foreign.raw, session: 's2' };
+    const marker = { path: MARKER, dir: foreign.raw, session: 's2', owned: true };
     assert.deepEqual(decide({ ...base, marker }), { decision: 'allow' });
     assert.deepEqual(decide({ ...base, marker, command: `cat "${foreign.raw}/a"`, dirs: [foreign] }), { decision: null });
 });

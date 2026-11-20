@@ -117,7 +117,7 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/approve-protocol-block.js"
+              "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/run-dir-gate.js"
             ],
             "timeout": 10
           }

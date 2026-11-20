@@ -127,7 +127,7 @@ test('the core carries every stack hook inline, its own two first in each event'
             assert.ok(commands(core.hooks, event).includes(c), `the core must carry ${event} ${c}`);
     const own = (event) => commands(core.hooks, event).filter((c) => c.includes('/setup-plugin/hooks/'));
     assert.deepStrictEqual(own('PreToolUse').length + own('SessionStart').length + own('PostToolUse').length, 10,
-        'the core keeps its own three hooks, the layer gate on three wirings plus its five table prints, and the protocol-block approval');
+        'the core keeps its own three hooks, the layer gate on three wirings plus its five table prints, and the run-dir gate');
     // F4 (2026-10-28): the paste check voids at PostToolUse, where the ask's own message is on disk.
     const post = core.hooks.PostToolUse.find((g) => g.matcher === 'AskUserQuestion');
     assert.match(line(post.hooks[0]), /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer gate leads PostToolUse AskUserQuestion');
@@ -136,8 +136,8 @@ test('the core carries every stack hook inline, its own two first in each event'
     const bash = core.hooks.PreToolUse.find((g) => g.matcher === 'Bash');
     assert.deepStrictEqual([bash.hooks[0].if, /guard-layer-table\.js/.test(line(bash.hooks[0]))], ['Bash(node *)', true], 'the layer gate rides Bash behind its if filter');
     assert.match(line(core.hooks.SessionStart[0].hooks[0]), /setup-plugin\/hooks\/library-stamp\.js/, 'the library-stamp line leads SessionStart');
-    // 2026-11-20: the protocol-block approval rides every Bash call, no `if` - a block opens with a loop or an assignment
-    assert.deepStrictEqual([bash.hooks[1].if, /approve-protocol-block\.js/.test(line(bash.hooks[1]))], [undefined, true], 'the approval rides Bash with no if filter');
+    // 2026-11-20: the run-dir gate rides every Bash call, no `if` - it judges each call that names a run dir
+    assert.deepStrictEqual([bash.hooks[1].if, /run-dir-gate\.js/.test(line(bash.hooks[1]))], [undefined, true], 'the run-dir gate rides Bash with no if filter');
     const total = (block) => Object.values(block).flat().reduce((n, g) => n + g.hooks.length, 0);
     assert.strictEqual(total(core.hooks), total(stack) + 10, 'nothing doubled, nothing lost');
 });

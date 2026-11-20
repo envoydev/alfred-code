@@ -4,6 +4,15 @@
 const HOOK_NAME = 'run-dir-gate';
 const OFF_SWITCH = `ALFRED_CODE_HOOKS_OFF=${HOOK_NAME}`;
 const TABLE_FILE = 'setup-plugin/hooks/protocol-blocks.json';
+const GENERATED_BY = 'scripts/protocol-blocks.js';
+const TABLE_NOTE = 'Generated: the hash of each spelling of the resolve block, and the scripts the walk bodies run from the snapshot. Run `npm run protocol-blocks` after a block changes.';
+const QUICK_REJECT = 'alfred-code.';
+const ALLOW_REASON = 'a shipped alfred-code walk call on this run\'s dir, unchanged';
+const HOOK_FILE = 'run-dir-gate.js';
+const EVENT = 'PreToolUse';
+const TOOL = 'Bash';
+const BLOCK_BRANCH = 'wrong-run-dir';
+const BLOCK_REASON_MAX = 200;
 
 // An absolute literal path with no `$` in it that ends in `alfred-code.` plus six letters or digits.
 const RUN_DIR_RE = /(?:^|[\s"'=])((?:\/|[A-Za-z]:[\\/])[^\s"'$`]*?alfred-code\.[A-Za-z0-9]{6})(?![A-Za-z0-9])/g;
@@ -30,6 +39,8 @@ const PLACEHOLDER_RE = /<[A-Za-z][^<>\n]*>/;
 const COMMENT_RE = /(^|[ \t])#.*$/gm;
 const HASH = 'sha256';
 // A script the walk runs from the snapshot: `"$TMP/repo/<path>.js"`, or the run dir written as a `<...>` placeholder.
+// An inline code span: the walk's short commands sit there, prose around it never counts.
+const INLINE_CODE_RE = /`([^`\n]+)`/g;
 const SCRIPT_RE = /"(?:\$TMP|<[^<>"\n]+>)\/repo\/([A-Za-z0-9_./-]+\.js)"/g;
 
 const OP = Object.freeze({
@@ -85,6 +96,23 @@ const MARKER = Object.freeze({
 
 const WIN32 = 'win32';
 
+const EFFECTS = Object.freeze({
+    textEncoding: 'utf8',
+    markdownSuffix: '.md',
+    tempFallback: '/tmp',
+    tempDirKey: 'TMPDIR',
+    dataPathKey: 'ALFRED_CODE_DATA_PATH',
+    dataRoot: '.alfred',
+    statisticsDir: 'statistics',
+    blocksDir: 'hook-blocks',
+    noSession: 'nosession',
+    absoluteDataPath: /^(?:\/|[A-Za-z]:\/)/,
+    unsafeSessionChar: /[^\w.-]/g,
+    toolTimeoutMs: 5000,
+    git: Object.freeze({ command: 'git', args: Object.freeze(['-c', 'core.fsmonitor=false', 'rev-parse', '--show-toplevel']), noLocksKey: 'GIT_OPTIONAL_LOCKS', noLocks: '0' }),
+    cygpath: Object.freeze({ command: 'cygpath', flag: '-w' }),
+});
+
 const VERDICT = Object.freeze({
     allow: Object.freeze({ decision: 'allow' }),
     deny: 'deny',
@@ -102,7 +130,7 @@ const REPO_DIR = 'repo';
 const SESSION_FILE = 'run-session';
 
 module.exports = {
-    HOOK_NAME, OFF_SWITCH, TABLE_FILE, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
+    HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
     REPO_DIR, SESSION_FILE,
 };

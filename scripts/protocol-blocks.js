@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// Writes setup-plugin/hooks/protocol-blocks.json, the table approve-protocol-block.js reads; `--check` only reports.
+// Writes setup-plugin/hooks/protocol-blocks.json, the table run-dir-gate.js reads; `--check` only reports.
 const path = require('node:path');
-const { writeTable } = require('./protocol-blocks/effects.js');
+const { writeTable } = require('./run-dir-gate/effects.js');
 
 const check = process.argv.includes('--check');
 const result = writeTable(path.join(__dirname, '..'), { check });

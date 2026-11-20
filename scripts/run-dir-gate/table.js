@@ -2,7 +2,7 @@
 // Pure logic of the resolve-block table: the block's hashes, the scripts the walk runs, and the check of a command against
 // them. Values in, values out.
 const crypto = require('node:crypto');
-const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, RESOLVE_LINE, CONTROL_RE, CARRIAGE_RETURN_RE, HASH, SCRIPT_RE } = require('./constants.js');
+const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, INLINE_CODE_RE, RESOLVE_LINE, CONTROL_RE, CARRIAGE_RETURN_RE, HASH, SCRIPT_RE } = require('./constants.js');
 
 // Whether a block holds a `<name>` the model fills in, comments left out.
 const hasPlaceholder = (body) => PLACEHOLDER_RE.test(body.replace(COMMENT_RE, '$1'));
@@ -51,6 +51,16 @@ function fenceBlocks(markdown)
     }));
 }
 
+// The script paths a body runs from the snapshot: in a fenced shell block or an inline code span, never in prose.
+function scriptsOf(text, blocks)
+{
+    const found = new Set();
+    const sources = blocks.filter((block) => SHELL_LANGS.has(block.lang)).map((block) => block.body);
+    sources.push(...Array.from(String(text).replace(FENCE_RE, '').matchAll(INLINE_CODE_RE), (span) => span[1]));
+    for (const source of sources) for (const match of source.matchAll(SCRIPT_RE)) found.add(match[1]);
+    return found;
+}
+
 // The table from the bodies ({ file, text } each): the sorted hashes of the resolve block's spellings, and the sorted
 // script paths the bodies name.
 function buildTable(files)
@@ -60,8 +70,9 @@ function buildTable(files)
     const scripts = new Set();
     for (const { text } of files)
     {
-        for (const found of String(text).matchAll(SCRIPT_RE)) scripts.add(found[1]);
-        for (const block of fenceBlocks(text))
+        const blocks = fenceBlocks(text);
+        for (const script of scriptsOf(text, blocks)) scripts.add(script);
+        for (const block of blocks)
         {
             if (!SHELL_LANGS.has(block.lang) || hasPlaceholder(block.body)) continue;
             const body = normalize(block.body);
