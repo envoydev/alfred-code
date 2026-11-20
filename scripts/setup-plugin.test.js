@@ -1597,8 +1597,9 @@ test(`C15: update is a ${UPDATE_ROUTER_CAP}-char router that opens on its model 
     }
     const flatRouter = flat(router);
     assert.ok(flatRouter.indexOf('## The run') > flatRouter.indexOf('**When the gate stops the run'), 'the call order comes after the gate');
-    assert.match(flatRouter, /ONE call: `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \. ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the walk rides step 1\'s call');
-    assert.match(flatRouter, /step 3's `--log` call with `; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"` appended/, 'the close rides the --log call');
+    assert.match(flatRouter, /two calls, each with no chain[^`]*first `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \.`, then `cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the stamp read and the walk read are two calls, so each passes the run-dir gate');
+    assert.doesNotMatch(flatRouter, /state \. ; cat/, 'no call chains the stamp read with a plugin-root cat');
+    assert.match(flatRouter, /step 3's `--log` call as `update-walk\.md` writes it, which also reads `update-close\.md` from `\$TMP\/repo`/, 'the close rides the --log call, read from the run dir');
     assert.match(refBody('update-walk'), /--running <RESOLVED's running=, else \?> ; cat "\$TMP\/repo\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
     const body = updateBody();
     const afterTitle = body.slice(body.indexOf('# Update Alfred Code'));

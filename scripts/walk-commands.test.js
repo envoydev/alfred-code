@@ -47,7 +47,6 @@ const EXPECTED_PROMPTS = [
     { walk: 'init', prefix: "node -e 'let v;try{v=(JSON.parse(", why: NODE_EVAL },
     { walk: 'configure', prefix: 'node .claude/hooks/docs.js status', why: PROJECT_ENGINE },
     { walk: 'configure', prefix: "node -e 'let v;try{v=(JSON.parse(", why: NODE_EVAL },
-    { walk: 'update', prefix: 'node "$TMP/repo/scripts/install/stamp.js" state . ; cat "${CLAUDE_PLUGIN_ROOT}/', why: 'the cat reads the plugin root\'s file, outside the run dir' },
     { walk: 'update', prefix: 'printenv ALFRED_CODE_UNATTENDED', why: NO_RUN_DIR },
     { walk: 'validate', prefix: 'node .claude/hooks/docs.js status', why: PROJECT_ENGINE },
 ];
