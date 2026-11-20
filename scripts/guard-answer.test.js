@@ -524,6 +524,25 @@ test('ON line: lists exactly the modes on, on the prompt that turns one on or of
     clearStamp();
     assert.doesNotMatch(prompt('e6', 'next', OFF), /auto-run: on/);
 });
+test('ON line: a plugin walk turn says auto-run does not answer its asks - the typed command and a reply typed inside it (2026-11-20)', () => {
+    clearStamp();
+    autoStamp('w1');
+    const WALK_LINE = 'auto-run: on, but not for /alfred-code:update - put each of its asks to the user and wait for the answer';
+    assert.ok(prompt('w1', '/alfred-code:update', OFF).endsWith(` ${WALK_LINE}`), 'the typed walk command');
+    const t = path.join(TMP, 'walk.jsonl');
+    // the user's own mode command first: a live stamp is proven by it (hook-prelude.js autoStampVerified)
+    fs.writeFileSync(t, [{ type: 'user', message: { role: 'user', content: '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>' } },
+        { type: 'user', message: { role: 'user', content: '<command-message>alfred-code:update</command-message>\n<command-name>/alfred-code:update</command-name>' } }]
+        .map((r) => JSON.stringify(r)).join('\n') + '\n');
+    // with a transcript the stamp is proven from it: its offset line points at the typed mode command (autoStampVerified)
+    fs.appendFileSync(APPROVAL, 'transcript-size: 0\n');
+    const mid = ctxOf(run({ hook_event_name: 'UserPromptSubmit', prompt: 'keep going', session_id: 'w1', transcript_path: t }, { ...SCORING_CFG, ...OFF }));
+    assert.ok(mid.endsWith(` ${WALK_LINE}`), 'a reply typed inside the walk');
+    const next = ctxOf(run({ hook_event_name: 'UserPromptSubmit', prompt: '/task-solve fix x', session_id: 'w1', transcript_path: t }, { ...SCORING_CFG, ...OFF }));
+    assert.ok(next.endsWith(` ${AUTO_LINE}`), 'another typed command ends the walk');
+    assert.ok(prompt('w1', 'next', OFF).endsWith(` ${AUTO_LINE}`), 'no walk in the transcript');
+    clearStamp();
+});
 test('ON line: auto-compact is listed for the variable, auto-run and a typed on; a typed off takes it out', () => {
     clearStamp();
     const COMPACT = '/alfred-code:mode:auto-compact';

@@ -383,6 +383,8 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
 // `[mode]` line - the first line of the context, since the command file tells the model to say a line starting so. A
 // seat's prompt and a missing prelude carry no line. Each other line rides after the budget with one leading space.
 const AUTO_LINE = 'auto-run: on - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it';
+// The plugin's own walks are never auto-run's (the user's ruling, 2026-11-20): the line says so for their turns.
+const walkLine = (walk) => `auto-run: on, but not for /alfred-code:${walk} - put each of its asks to the user and wait for the answer`;
 const SCORING_UNUSABLE = { absent: 'the scoring skill is not installed in this project', off: 'the scoring skill is switched off in this project' };
 function scoringPhrases(outputs) {
   const p = outputs.map((o) => pre.SCORING_PHRASES[o]);
@@ -474,7 +476,10 @@ function modesText(prompt) {
         lines.push(`scoring: stacked for this request (level ${s.level}, rounds ${s.rounds}) - grade this request's output with mode-output-scoring before releasing it`);
       }
     }
-    if (auto) lines.push(AUTO_LINE);
+    if (auto) {
+      const walk = typeof pre.pluginWalkNow === 'function' ? pre.pluginWalkNow(payload, prompt) : '';
+      lines.push(walk ? walkLine(walk) : AUTO_LINE);
+    }
     const scoring = Boolean(s && s.usable && s.on);
     // auto-compact: auto-run, or the variable - this prompt's typed on or off first, while the hook that saves it runs
     const typed = flags && flags.compact && !pre.hookDisabled('guard-fresh-session-start', process.env) ? flags.compact : '';
