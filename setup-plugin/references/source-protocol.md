@@ -71,7 +71,7 @@ MARK=<marker path>` on a resolve, `REUSING TMP=<dir> WIN=<windows spelling> <ver
 (`<version>` the snapshot's; `WIN=` is `cygpath -w` of the dir where `cygpath` exists, else the dir), or one `MISSING <what>` line
 and nothing else - a `MISSING` line stops the run, said with its consequence. One exception: `MISSING <tool> on the
 Bash PATH` in Git Bash on Windows means the Bash tool got a Windows-form PATH (`C:\...;C:\...`). Put this line first
-in the resolve block and in every later block of the run. Then run the block again:
+in the resolve block - the one call of the run that may expand a variable; no later call carries it - then run the block again:
 `PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"`. Claude Code
 asks before it runs a PATH change, so no block carries the line until that `MISSING` line asks for it. Only this
 session's marker is reused; the marker name is derived from the project root, so two projects or two worktrees never share one.
@@ -166,7 +166,7 @@ and stop. Never hand the seed a PowerShell spelling (`-Scope` is refused).
 ## Clean up the temp dir - ALWAYS
 
 `rm -rf "$TMP" "$MARK"` (PowerShell: `Remove-Item -Recurse -Force $TMP, $Mark`) on EVERY exit path, after the
-marker block - by name, never a glob (zsh aborts the whole line on one that matches nothing). Never add the
+resolve block - by name, never a glob (zsh aborts the whole line on one that matches nothing). Never add the
 plugin cache to that line: it is the CLI's own install. After cleanup a stack file is still one `cat` away in
 that cache entry - never a new download. Then confirm the project tree holds only installed artifacts - no
 archive, no extracted repo, no `raw.json` / `selection.txt`, no installer copy.

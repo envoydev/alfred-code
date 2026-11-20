@@ -47,6 +47,8 @@ const SCRIPT_PLACEHOLDER = /\/repo\/[^"\s]*<[^<>"\n]+>[^"\s]*\.js"/;
 const REFERENCE_NAME = /references\/([a-z0-9-]+\.md)/g;
 const ASSIGNMENT = /(?:^|[;&|(]\s*)[A-Za-z_][A-Za-z0-9_]*=/;
 const COMMENT_LINE = /^\s*#/;
+// Wording of the opener block, removed when the walks began to name the run dir literally.
+const RETIRED_WORDING = ['marker block', 'every later block', 're-reads the marker', 'opener block'];
 
 // Inline spans that open like a command but are text the walk hands the user or warns against; no walk call runs them.
 const NOT_CALLS = [
@@ -237,4 +239,15 @@ test('a parent read is approved for a parent one and two folders up, and the plu
     for (const command of parentReads) assert.equal(command.runs.length, PARENT_SAMPLES.length, command.text);
     const proseCats = nonResolve.filter((command) => command.text.startsWith('cat "${CLAUDE_PLUGIN_ROOT}/'));
     assert.ok(proseCats.length >= 4, `${proseCats.length} plugin-root reads collected`);
+});
+
+test('no walk body keeps the wording of the retired marker opener', () =>
+{
+    const stale = [];
+    for (const file of allFiles)
+    {
+        const text = readText(file).replace(/\s+/g, ' ');
+        for (const phrase of RETIRED_WORDING) if (text.includes(phrase)) stale.push(`${file}: ${phrase}`);
+    }
+    assert.deepEqual(stale, []);
 });

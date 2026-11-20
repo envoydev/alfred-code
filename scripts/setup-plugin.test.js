@@ -1554,7 +1554,7 @@ test('C16: validate applies with --keep-pins, cleans up by name, prints every ba
     const v = flat(cmdBody('validate'));
     assert.match(v, /--installed-only \[--add '<line>'\]\.\.\. \[--drop '<line>'\]\.\.\. --keep-pins /, 'the apply call keeps pins');
     assert.match(v, /`--keep-pins` always: a reconcile never resets a deliberate local model\/effort pin/);
-    assert.match(v, /by name, `rm -rf "\$TMP" "\$MARK"` after the marker block, never a glob/);
+    assert.match(v, /by name, `rm -rf "\$TMP" "\$MARK"` after the resolve block, never a glob/);
     assert.match(v, /a step with nothing to do prints its banner with ONE line saying why/);
     assert.match(v, /skips the ask only when it names THIS credential in THIS file/);
     assert.match(v, /Redirect the delta to `"\$TMP\/delta\.out"`/);

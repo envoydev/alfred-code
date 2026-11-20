@@ -632,7 +632,7 @@ the user sets it through `/alfred-code:configure` or by hand.
 ## Clean up the temp dir - ALWAYS
 
 Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` - by name, `rm -rf "$TMP"
-"$MARK"` after the marker block, never a glob such as `alfred-code-run.*` (zsh aborts the whole line on a glob
+"$MARK"` after the resolve block, never a glob such as `alfred-code-run.*` (zsh aborts the whole line on a glob
 that matches nothing - audit 2026-10-20 C16, 4f2bfdee) - on EVERY exit path of THIS command: after apply, after an abort, after a disputed-detection stop, and after a clean bill
 (nothing redundant or missing). Then confirm the project tree holds only installed artifacts.
 
