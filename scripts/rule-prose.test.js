@@ -584,7 +584,9 @@ test('alfred-interaction: answers follow the ASD-STE100 writing rules, the answe
     assert.match(style, /In another language, apply the same rules as plain-language principles\./);
     assert.match(style, /at most 900 characters of prose, near 150 words, and bullets count\./, 'the answer budget is exact');
     assert.match(style, /Lead with 3 sentences or fewer; the rest is bullets\./);
-    assert.match(style, /Write no process talk\. Cut an over-budget draft in this order: facts an earlier reply gave, what did not change\. Count again before you send/);
+    assert.match(style, /the rest is bullets\. A short reply too: a fourth sentence becomes a bullet\./, 'a short reply keeps the lead limit');
+    assert.match(style, /Write no process talk\. Answer the question asked\. Leave out the parts it did not ask for, such as size, risks and other ways\./, 'unasked sections stay out');
+    assert.match(style, /Cut an over-budget draft in this order\. The order: facts an earlier reply gave, parts the question did not ask for, what did not change\. Count again before you send/);
     assert.ok(style.indexOf('900 characters of prose') < style.indexOf('ASD-STE100'), 'the budget is stated first');
     assert.doesNotMatch(style, /about 900 characters of prose|3 sentences plus bullet points/, 'the old soft wording is gone');
     assert.match(style, /labels it in the first sentence, in parentheses\. The label is '\(high confidence\)', '\(medium confidence - <what is not verified>\)' or '\(low confidence - <why>\)'\./);
