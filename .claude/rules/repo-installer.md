@@ -4,6 +4,10 @@ paths:
   - "scripts/install*"
   - "scripts/source*"
   - "setup-plugin/**"
+  - "stack/skills/habits-adjust-agents-md/**"
+  - "scripts/run-dir-gate/**"
+  - "scripts/protocol-blocks*"
+  - "scripts/walk-commands*"
 ---
 
 # Installer, plugin commands and delivery
@@ -388,3 +392,23 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a skill/agent/rule is ignored; don't add one. Each run writes `alfred-code.stamp` (source commit, or
   the `v<version>` tag when the snapshot names none, + release version); configure diffs it via the GitHub compare API. A run whose source never resolved
   writes NO stamp.
+
+## The walk text is the run-dir gate's allow list
+
+- `setup-plugin/hooks/run-dir-gate.js` skips the Bash permission prompt in a typed `/alfred-code:init`, `update`,
+  `configure` or `validate` walk. What it passes is `setup-plugin/hooks/protocol-blocks.json`, which
+  `npm run protocol-blocks` generates from the walk text: every `node "$TMP/repo/..."` call in a fenced block or an
+  inline code span of the commands, the references they reach, and the stack skills they follow inline
+  (`scripts/run-dir-gate/calls.js`). Only the hand-kept `NOT_CALLS` skip list stands between the two.
+- So an edit to those files is a security change. A new call, flag or value spelling there widens what runs with no
+  prompt, and the next release ships it. Why: the user's ruling, 2026-11-20.
+- After such an edit, run `npm run protocol-blocks` and read the `protocol-blocks.json` diff before the commit. Name
+  each widened entry - script, mode, flag and value kind - in the commit message body. A table that only narrows
+  needs no note.
+- A backticked `node "$TMP/repo/..."` span in prose becomes an allow, even where the prose says never to run it.
+  Write such an example without the `$TMP/repo` path, or list it in `NOT_CALLS` (`scripts/run-dir-gate/constants.js`)
+  with its reason.
+- Never widen a value template toward the project folder to stop a prompt. A real call that prompts stays a prompt,
+  or gets a body spelling the gate already passes.
+- `scripts/walk-commands.test.js` holds every walk call to the gate, and its `EXPECTED_PROMPTS` keeps each walk at 3
+  prompts or fewer. A change that adds a prompt fails it; raise the bar only on the user's word.
