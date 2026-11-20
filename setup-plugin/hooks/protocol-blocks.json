@@ -1,32 +1,276 @@
 {
   "generatedBy": "scripts/protocol-blocks.js",
-  "note": "Generated: the hash of each spelling of the resolve block, and the scripts the walk bodies run from the snapshot. Run `npm run protocol-blocks` after a block changes.",
+  "note": "Generated: the hash of each spelling of the resolve block, and each script the walk bodies run from the snapshot with the modes and flags they call it with. Run `npm run protocol-blocks` after a block changes.",
   "resolves": [
     "21c576e1df277fc88848519e44696cc63ec95e96fb142dfeeb58f0b4957cc4a3",
     "9c69112117e52326960bde92c9e24fbc8bad90af512866a8277c050f53c9f2a1"
   ],
-  "scripts": [
-    "scripts/agents-md-check.js",
-    "scripts/analyze-usage.js",
-    "scripts/audit-install.js",
-    "scripts/derive-state.js",
-    "scripts/git-hygiene.js",
-    "scripts/init-plan.js",
-    "scripts/install/alfred-code.js",
-    "scripts/install/installed-scopes.js",
-    "scripts/install/marketplace-autoupdate.js",
-    "scripts/install/release-notes.js",
-    "scripts/install/stamp.js",
-    "scripts/library-check.js",
-    "scripts/plugin-settings.js",
-    "scripts/scan-evidence.js",
-    "scripts/stack-select.js",
-    "scripts/stamp-compare.js",
-    "scripts/stamp-docs-root.js",
-    "scripts/update-preflight.js",
-    "scripts/variables.js",
-    "scripts/workspace.js",
-    "stack/hooks/guard-secret-value.js",
-    "stack/skills/capture-preferences/scripts/tools.js"
-  ]
+  "scripts": {
+    "scripts/agents-md-check.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--root"
+      ]
+    },
+    "scripts/analyze-usage.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--turn-check-advice"
+      ]
+    },
+    "scripts/audit-install.js": {
+      "modes": [
+        ""
+      ],
+      "flags": []
+    },
+    "scripts/derive-state.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--delta",
+        "--installed",
+        "--picked",
+        "--scope",
+        "--selection",
+        "--source"
+      ]
+    },
+    "scripts/git-hygiene.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--apply",
+        "--local-child",
+        "--root"
+      ]
+    },
+    "scripts/init-plan.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--installed",
+        "--plugin-root",
+        "--root"
+      ]
+    },
+    "scripts/install/alfred-code.js": {
+      "modes": [
+        "",
+        "install",
+        "uninstall",
+        "update"
+      ],
+      "flags": [
+        "--add",
+        "--auto-compact",
+        "--docs-root-leave",
+        "--docs-root-move",
+        "--docs-versioning",
+        "--drop",
+        "--installed-only",
+        "--instructions-at",
+        "--instructions-file",
+        "--instructions-seed",
+        "--keep-pins",
+        "--memory",
+        "--memory-copy",
+        "--plan-out",
+        "--print-plan",
+        "--scope",
+        "--scope-of",
+        "--seats-route",
+        "--selection",
+        "--source"
+      ]
+    },
+    "scripts/install/installed-scopes.js": {
+      "modes": [
+        ""
+      ],
+      "flags": []
+    },
+    "scripts/install/marketplace-autoupdate.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--apply",
+        "--root"
+      ]
+    },
+    "scripts/install/release-notes.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--root"
+      ]
+    },
+    "scripts/install/stamp.js": {
+      "modes": [
+        "mark",
+        "scope",
+        "state"
+      ],
+      "flags": []
+    },
+    "scripts/library-check.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--project",
+        "--source"
+      ]
+    },
+    "scripts/plugin-settings.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--apply",
+        "--catalog",
+        "--config-dir",
+        "--installed"
+      ]
+    },
+    "scripts/scan-evidence.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--catalog",
+        "--out",
+        "--root"
+      ]
+    },
+    "scripts/stack-select.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--catalog",
+        "--check",
+        "--deal",
+        "--defer-init",
+        "--dependents",
+        "--dropped",
+        "--emit",
+        "--evidence-gaps",
+        "--found",
+        "--graph",
+        "--hooks-answered",
+        "--inherited-check",
+        "--installed",
+        "--missing",
+        "--only",
+        "--recs",
+        "--redundant",
+        "--selection",
+        "--stacks",
+        "--table"
+      ]
+    },
+    "scripts/stamp-compare.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--snapshot",
+        "--stamp"
+      ]
+    },
+    "scripts/stamp-docs-root.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--seed-versioning"
+      ]
+    },
+    "scripts/update-preflight.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--hooks",
+        "--inventory",
+        "--log",
+        "--offers",
+        "--respell",
+        "--root",
+        "--running",
+        "--snapshot"
+      ]
+    },
+    "scripts/variables.js": {
+      "modes": [
+        "recommend",
+        "set",
+        "show"
+      ],
+      "flags": [
+        "--child",
+        "--root",
+        "--scope"
+      ]
+    },
+    "scripts/workspace.js": {
+      "modes": [
+        "account-instructions",
+        "answer",
+        "cascade",
+        "check-loads",
+        "ignore",
+        "ignore-child",
+        "join",
+        "plan",
+        "remove-nested",
+        "role",
+        "status"
+      ],
+      "flags": [
+        "--",
+        "--add",
+        "--answer",
+        "--answers",
+        "--apply",
+        "--file",
+        "--hold",
+        "--path",
+        "--project",
+        "--rescan",
+        "--root",
+        "--source",
+        "--when"
+      ]
+    },
+    "stack/hooks/guard-secret-value.js": {
+      "modes": [
+        ""
+      ],
+      "flags": [
+        "--redacted"
+      ]
+    },
+    "stack/skills/capture-preferences/scripts/tools.js": {
+      "modes": [
+        "modes",
+        "validate"
+      ],
+      "flags": [
+        "--lsp",
+        "--memory",
+        "--project"
+      ]
+    }
+  }
 }

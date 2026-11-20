@@ -42,7 +42,7 @@ function writeTable(root, { check = false } = {})
 
 function readTable(root)
 {
-    try { return JSON.parse(fs.readFileSync(path.join(root, TABLE_FILE), EFFECTS.textEncoding)); } catch { return { resolves: [], scripts: [] }; }
+    try { return JSON.parse(fs.readFileSync(path.join(root, TABLE_FILE), EFFECTS.textEncoding)); } catch { return { resolves: [], scripts: {} }; }
 }
 
 const ownedBy = (stat) => process.platform === WIN32 || typeof process.getuid !== 'function' || stat.uid === process.getuid();

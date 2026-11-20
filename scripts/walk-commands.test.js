@@ -155,7 +155,7 @@ const bodyFiles = [...listed(COMMANDS_DIR), ...listed(REFERENCES_DIR)].map((file
 const walkFiles = new Map(WALKS.map((walk) => [walk, reachableFiles(walk)]));
 const allFiles = [...new Set([...walkFiles.values()].flatMap((files) => [...files]))].sort();
 const table = buildTable(bodyFiles.filter((body) => !body.file.endsWith(SKIPPED_REFERENCE)));
-const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: new Set(table.scripts), markerPath: MARKER_PATH };
+const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: table.scripts, markerPath: MARKER_PATH };
 
 const collected = allFiles.flatMap(commandsOf).map((command) => ({
     ...command,

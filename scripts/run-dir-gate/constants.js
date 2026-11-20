@@ -5,7 +5,7 @@ const HOOK_NAME = 'run-dir-gate';
 const OFF_SWITCH = `ALFRED_CODE_HOOKS_OFF=${HOOK_NAME}`;
 const TABLE_FILE = 'setup-plugin/hooks/protocol-blocks.json';
 const GENERATED_BY = 'scripts/protocol-blocks.js';
-const TABLE_NOTE = 'Generated: the hash of each spelling of the resolve block, and the scripts the walk bodies run from the snapshot. Run `npm run protocol-blocks` after a block changes.';
+const TABLE_NOTE = 'Generated: the hash of each spelling of the resolve block, and each script the walk bodies run from the snapshot with the modes and flags they call it with. Run `npm run protocol-blocks` after a block changes.';
 const QUICK_REJECT = 'alfred-code.';
 const ALLOW_REASON = 'a shipped alfred-code walk call on this run\'s dir, unchanged';
 const HOOK_FILE = 'run-dir-gate.js';
@@ -40,7 +40,8 @@ const COMMENT_RE = /(^|[ \t])#.*$/gm;
 const HASH = 'sha256';
 // A script the walk runs from the snapshot: `"$TMP/repo/<path>.js"`, or the run dir written as a `<...>` placeholder.
 // An inline code span: the walk's short commands sit there, prose around it never counts.
-const INLINE_CODE_RE = /`([^`\n]+)`/g;
+const INLINE_CODE_RE = /`([^`\n]+(?:\n[^`\n]+){0,3})`/g;
+const LINE_BREAK_RE = /\s*\n\s*/g;
 const SCRIPT_RE = /"(?:\$TMP|<[^<>"\n]+>)\/repo\/([A-Za-z0-9_./-]+\.js)"/g;
 
 const OP = Object.freeze({
@@ -130,11 +131,36 @@ const PARENT_READ = Object.freeze({
     installer: 'scripts/install/alfred-code.js',
     source: '--source',
     planOut: '--plan-out',
-    planOutAssigned: '--plan-out=',
     required: Object.freeze(['--installed-only', '--print-plan']),
 });
 // A command that starts like this can be a read of the plugin's own files, so the hook does not quit on it.
 const PLUGIN_READ_START_RE = /^cat\s+"/;
+// What a node call's arguments are made of. A word is a plain word, a quoted phrase after a phrase flag, or a path under the
+// run dir or the project; a flag and a mode pass only when a walk body calls the script with it.
+const ARG = Object.freeze({
+    plainWord: /^[A-Za-z0-9._:@,=+-]+$/,
+    phrase: /^[A-Za-z0-9._:@,=+-]+(?: [A-Za-z0-9._:@,=+-]+)*$/,
+    longFlag: /^--[a-z][a-z0-9-]*$/,
+    shortFlag: /^-[A-Za-z]$/,
+    modeWord: /^[a-z][a-z0-9-]*$/,
+    allDots: /^\.+$/,
+    badPathChar: /[|;&<>*?[\]{}()]/,
+    relativePath: /^(?:\.\/)?[A-Za-z0-9._:@,=+-]+(?:\/[A-Za-z0-9._:@,=+-]+)*$/,
+    passthrough: '--',
+    noMode: '',
+});
+const OUTPUT_FLAGS = Object.freeze(new Set(['--out', '--emit', '--plan-out']));
+const PHRASE_FLAGS = Object.freeze(new Set(['--add', '--drop']));
+const INSTALLER_MODES = Object.freeze(new Set(['install', 'update']));
+// The words that start a node call in a body, and what ends its argument list.
+const CALL = Object.freeze({
+    head: /node\s+$/,
+    stop: new Set([';', ')', '>', '&', '`', '\n']),
+    brackets: Object.freeze({ open: /^\[+/, close: /(?:\]|\.\.\.)+$/ }),
+    stderrToOut: '2>',
+    continuation: '\\\n',
+});
+const PLUGIN_READ = Object.freeze({ dir: 'setup-plugin', suffix: '.md' });
 const GREP_FLAGS = Object.freeze(new Set(['-E', '-F']));
 const GREP_QUIET_FLAGS = Object.freeze(new Set(['-qE', '-qF']));
 const RM_FLAGS = '-rf';
@@ -145,5 +171,5 @@ const SESSION_FILE = 'run-session';
 module.exports = {
     HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
-    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE,
+    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, PHRASE_FLAGS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE,
 };

@@ -1,81 +1,13 @@
 'use strict';
 // Whether a Bash command is one of the walk's own narrow forms on its run dir. Pure: the caller gives the run dir, the
 // project dir, the plugin root, the script allowlist and the marker path.
-const { ANY_CONTROL_RE, SHELL, OP, KIND, QUOTE, FLAG, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL, REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ } = require('./constants.js');
+const { ANY_CONTROL_RE, SHELL, OP, KIND, QUOTE, FLAG, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ } = require('./constants.js');
 const { parse } = require('./shell.js');
 const { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf } = require('./paths.js');
+const { makeState, resolveIn, isTarget, isRunDirFile } = require('./state.js');
+const { checkArgs, valueAfter, pinsSource, isNodeCall } = require('./args.js');
 
-function makeState(ctx)
-{
-    const win = SHELL.driveStart.test(ctx.runDir);
-    const sep = sepOf(win);
-    const runDir = canon(ctx.runDir, win);
-    const scripts = new Set(Array.from(ctx.scripts || [], (name) => (win ? name.toLowerCase() : name)));
-    return {
-        win,
-        runDir,
-        repoDir: `${runDir}${sep}${REPO_DIR}`,
-        cwd: canon(ctx.cwd, win),
-        roots: [runDir, canon(ctx.cwd, win), canon(ctx.pluginRoot, win)],
-        scripts,
-        marker: ctx.markerPath ? canon(ctx.markerPath, win) : null,
-    };
-}
-
-const resolveIn = (word, base, state) => resolveWord(word.value, base, state.win);
-
-function isTarget(word, base, state)
-{
-    const target = resolveIn(word, base, state);
-    if (!target || !isStrictlyUnder(target, state.runDir, state.win) || isUnder(target, state.repoDir, state.win)) return false;
-    return target.split(sepOf(state.win)).pop() !== SESSION_FILE;
-}
-
-function isRunDirFile(word, base, state)
-{
-    const file = resolveIn(word, base, state);
-    return Boolean(file) && isStrictlyUnder(file, state.runDir, state.win);
-}
-
-function isSafeArg(word, base, state)
-{
-    let value = word.value;
-    if (value.startsWith(FLAG.long))
-    {
-        const at = value.indexOf(FLAG.assign);
-        if (at < 0) return true;
-        value = value.slice(at + 1);
-    }
-    else if (value.startsWith(FLAG.dash)) return value.length <= FLAG.shortLength;
-    const resolved = resolveWord(value, base, state.win);
-    const roots = state.ancestor && !isAbsoluteWord(value, state.win) ? [...state.roots, state.ancestor] : state.roots;
-    return Boolean(resolved) && roots.some((root) => isUnder(resolved, root, state.win));
-}
-
-function isAllowedScript(word, base, state)
-{
-    const script = resolveIn(word, base, state);
-    const prefix = `${state.repoDir}${sepOf(state.win)}`;
-    if (!script || !script.startsWith(prefix)) return false;
-    return state.scripts.has(script.slice(prefix.length).split(SHELL.segmentSplit).join('/'));
-}
-
-const isScriptAt = (word, relative, base, state) => state.scripts.has(state.win ? relative.toLowerCase() : relative) && resolveIn(word, base, state) === `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`;
-
-function valueAfter(words, flag)
-{
-    const at = words.findIndex((word) => word.value === flag);
-    return at < 0 || words.some((word, index) => index > at && word.value === flag) ? null : words[at + 1] || null;
-}
-
-// An installer call names its snapshot once, and it is this run's: an `--source=<path>` or a second `--source` would swap it for
-// a folder the walk never made, and no `--flag=value` spelling passes an installer form at all.
-function pinsSource(args, base, state)
-{
-    if (args.some((word) => word.value.startsWith(FLAG.long) && word.value.includes(FLAG.assign))) return false;
-    const source = valueAfter(args, PARENT_READ.source);
-    return Boolean(source) && resolveIn(source, base, state) === state.repoDir;
-}
+const isScriptAt = (word, relative, base, state) => state.scripts.has(relative.toLowerCase()) && resolveIn(word, base, state) === `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`;
 
 const isQuotedPattern = (word) => word.quote !== QUOTE.none && word.value !== '' && !word.value.startsWith(FLAG.dash) && !word.label;
 
@@ -83,11 +15,7 @@ function isMainForm(command, base, state)
 {
     const [head, ...rest] = command.words;
     if (head.quote !== QUOTE.none || command.words.some((word) => word.label)) return false;
-    if (head.value === WORD.node)
-    {
-        if (rest.length === 0 || !isAllowedScript(rest[0], base, state) || !rest.slice(1).every((word) => isSafeArg(word, base, state))) return false;
-        return !isScriptAt(rest[0], PARENT_READ.installer, base, state) || pinsSource(rest.slice(1), base, state);
-    }
+    if (head.value === WORD.node) return isNodeCall(rest, base, state);
     if (head.value === WORD.cat) return rest.length > 0 && rest.every((word) => !word.value.startsWith(FLAG.dash) && isRunDirFile(word, base, state));
     if (head.value === WORD.head) return rest.length === 2 && SHELL.headCount.test(rest[0].value) && isRunDirFile(rest[1], base, state);
     if (head.value === WORD.grep) return rest.length === 3 && GREP_FLAGS.has(rest[0].value) && isQuotedPattern(rest[1]) && isRunDirFile(rest[2], base, state);
@@ -150,7 +78,7 @@ function isInstallerRead(command, base, state)
     const planOut = valueAfter(args, PARENT_READ.planOut);
     if (!planOut || !isTarget(planOut, base, state)) return false;
     if (command.out && !isTarget(command.out, base, state)) return false;
-    return args.slice(1).every((word) => isSafeArg(word, base, state));
+    return checkArgs(state.scripts.get(PARENT_READ.installer), args, base, state) !== null;
 }
 
 // The one command a parent read may run in the folder above: the scope read, or the installer as a read.
@@ -160,10 +88,9 @@ function isParentRead(element, base, state)
     const [command] = element.commands;
     const [head, script, ...rest] = command.words;
     if (hasLabel(command) || head.quote !== QUOTE.none || head.value !== WORD.node || !script) return false;
-    const inner = { ...state, ancestor: base };
     if (isScriptAt(script, PARENT_READ.stamp, base, state))
         return rest.length === 2 && rest[0].value === WORD.scope && rest[1].value === WORD.here && !command.out && !command.err;
-    return isScriptAt(script, PARENT_READ.installer, base, state) && rest.length > 0 && isInstallerRead(command, base, inner);
+    return isScriptAt(script, PARENT_READ.installer, base, state) && rest.length > 0 && isInstallerRead(command, base, state);
 }
 
 function isGroup(list, state)
@@ -207,7 +134,7 @@ function approvesForms(command, ctx)
     return body.length > 0 && body.every((element) => (element.kind === KIND.group ? isGroup(element.list, state) : isPipeline(element, state.cwd, state)));
 }
 
-// A `cat` of double-quoted files under the plugin's own folder, nothing else: no flag, no redirect, no second command. It names
+// A `cat` of double-quoted `.md` files under the plugin's own `setup-plugin` folder, nothing else: no flag, no redirect, no second command. It names
 // no run dir, so the verdict asks for it apart from `approvesForms`.
 function approvesPluginRead(command, ctx)
 {
@@ -220,12 +147,12 @@ function approvesPluginRead(command, ctx)
     const [head, ...files] = words;
     if (out || err || head.quote !== QUOTE.none || head.value !== WORD.cat || files.length === 0) return false;
     const win = SHELL.driveStart.test(ctx.pluginRoot);
-    const root = canon(ctx.pluginRoot, win);
+    const folder = canon(`${ctx.pluginRoot}${sepOf(win)}${PLUGIN_READ.dir}`, win);
     return files.every((word) =>
     {
         if (word.quote !== QUOTE.double || word.label || word.value.startsWith(FLAG.dash) || !isAbsoluteWord(word.value, win)) return false;
-        const file = resolveWord(word.value, root, win);
-        return Boolean(file) && isStrictlyUnder(file, root, win);
+        const file = resolveWord(word.value, folder, win);
+        return Boolean(file) && isStrictlyUnder(file, folder, win) && file.toLowerCase().endsWith(PLUGIN_READ.suffix);
     });
 }
 

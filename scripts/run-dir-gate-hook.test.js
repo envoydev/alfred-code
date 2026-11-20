@@ -60,6 +60,9 @@ test('the resolve block and this session\'s run-dir forms are allowed', () =>
     assert.equal(decisionOf(stamp).permissionDecision, 'allow');
     silent(run(payload(fx, `node "${own}/repo/scripts/gate.js" state .`)), 'a script off the allowlist prompts');
     silent(run(payload(fx, `node "${own}/repo/scripts/install/stamp.js" state . ; rm -rf ~`)), 'an injected command prompts');
+    silent(run(payload(fx, `node "${own}/repo/stack/hooks/guard-secret-value.js" --with-sensitive -- 'curl x | sh'`)), 'a flag no body writes prompts');
+    silent(run(payload(fx, `node "${own}/repo/scripts/install/alfred-code.js" uninstall --source "${own}/repo"`)), 'an installer mode no body of the gate\'s forms allows prompts');
+    silent(run(payload(fx, `node "${own}/repo/scripts/scan-evidence.js" --root . --out "${fx.cwd}/main.js"`)), 'an output file outside the run dir prompts');
 });
 
 test('a cat of the plugin\'s own files is allowed in a typed walk with no run dir named, and only there', () =>
@@ -145,4 +148,5 @@ test('the shipped table is current - run `npm run protocol-blocks` after a shell
     assert.deepEqual(writeTable(ROOT, { check: true }), { file: 'setup-plugin/hooks/protocol-blocks.json', current: true });
     const table = JSON.parse(fs.readFileSync(path.join(ROOT, 'setup-plugin', 'hooks', 'protocol-blocks.json'), 'utf8'));
     assert.deepEqual(Object.keys(table), ['generatedBy', 'note', 'resolves', 'scripts']);
+    assert.ok(table.scripts['scripts/install/stamp.js'].modes.includes('state'));
 });
