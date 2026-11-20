@@ -1,7 +1,7 @@
 'use strict';
 // The generator's half of the value templates: each `node "$TMP/repo/<script>" ...` call a walk body writes becomes a mode, a
 // list of positional templates and a flag -> value templates map, and the calls of one (script, mode) merge. Pure.
-const { SCRIPT_RE, CALL, ARG, QUOTE, VALUE, TEMPLATE, WORD, PATH_VALUE_FLAGS } = require('./constants.js');
+const { SCRIPT_RE, CALL, ARG, QUOTE, VALUE, TEMPLATE, WORD, PATH_VALUE_FLAGS, ACCOUNT } = require('./constants.js');
 const { readCallWords } = require('./call-words.js');
 
 const isFlagWord = (word) => word.quote === QUOTE.none && !word.placeholder
@@ -25,6 +25,9 @@ function classify(word)
     if (quote === QUOTE.none && value.includes(TEMPLATE.choiceSep)) return value.split(TEMPLATE.choiceSep).map(literal);
     return [literal(value)];
 }
+
+// A placeholder a path-valued flag takes: the account's folder where the body says so, else no template at all.
+const pathPlaceholder = (flag, word) => (flag === ACCOUNT.dirFlag && ACCOUNT.placeholder.test(word.value) ? [plain(VALUE.accountDir)] : []);
 
 const product = (lists) => lists.reduce((rows, alternatives) => rows.flatMap((row) => alternatives.map((one) => [...row, one])), [[]]);
 
@@ -52,7 +55,8 @@ function shapeOfCall(words)
         if (next && !isFlagWord(next))
         {
             if (!flags.has(word.value)) flags.set(word.value, []);
-            if (!(PATH_VALUE_FLAGS.has(word.value) && next.placeholder)) for (const entry of classify(next)) note(word.value, entry);
+            const entries = PATH_VALUE_FLAGS.has(word.value) && next.placeholder ? pathPlaceholder(word.value, next) : classify(next);
+            for (const entry of entries) note(word.value, entry);
             at++;
         }
         else note(word.value, true);

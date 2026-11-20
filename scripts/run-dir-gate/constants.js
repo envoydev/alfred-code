@@ -159,7 +159,18 @@ const ARG = Object.freeze({
     noMode: '',
 });
 // A flag whose value the walk fills with a path - a folder of the account, a file of the snapshot's meta: a placeholder there is
-// no `word`, since the real value holds a `/`, so a call with it prompts.
+// no `word`, since the real value holds a `/`. The account's folder is its own kind; any other such value prompts.
+// The account's own config dir: what the walk bodies call `<account dir>`, and how the hook works it out from its environment.
+const ACCOUNT = Object.freeze({
+    dirFlag: '--config-dir',
+    placeholder: /^<account dir>$/,
+    configDirKey: 'CLAUDE_CONFIG_DIR',
+    homeKey: 'HOME',
+    profileKey: 'USERPROFILE',
+    dirName: '.claude',
+    absolute: /^(?:\/|[A-Za-z]:[\\/])/,
+    trailingSeps: /[\\/]+$/,
+});
 const PATH_VALUE_FLAGS = Object.freeze(new Set(['--config-dir', '--recs']));
 const OUTPUT_FLAGS = Object.freeze(new Set(['--out', '--emit', '--plan-out']));
 const INSTALLER_MODES = Object.freeze(new Set(['install', 'update']));
@@ -201,7 +212,7 @@ const NOT_CALLS = Object.freeze([
     { file: 'update-close.md', prefix: 'node .claude/hooks/docs.js prune', why: 'the command the close names for the user to run' },
 ]);
 // The kinds of value a table template names, and what the generator reads off a body's spelling.
-const VALUE = Object.freeze({ literal: 'literal', word: 'word', phrase: 'phrase', runDir: 'runDir', cwdPath: 'cwdPath' });
+const VALUE = Object.freeze({ literal: 'literal', word: 'word', phrase: 'phrase', runDir: 'runDir', cwdPath: 'cwdPath', accountDir: 'accountDir' });
 const TEMPLATE = Object.freeze({
     tmpPrefix: '$TMP/',
     choiceSep: '|',
@@ -223,5 +234,5 @@ module.exports = {
     BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, COLLECT, NOT_CALLS,
     HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
-    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, PATH_VALUE_FLAGS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE, VALUE, TEMPLATE,
+    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, PATH_VALUE_FLAGS, ACCOUNT, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE, VALUE, TEMPLATE,
 };

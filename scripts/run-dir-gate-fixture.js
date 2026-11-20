@@ -68,4 +68,10 @@ const alfred = node('scripts/install/alfred-code.js');
 const own = { raw: D, path: D, real: D, inTemp: true, session: 's1', owned: true };
 const foreign = { raw: '/t/alfred-code.Other1', path: '/t/alfred-code.Other1', real: '/t/alfred-code.Other1', inTemp: true, session: 's2', owned: true };
 
-module.exports = { ROOT, BODY_FILE, D, MARKER, PLUGIN_ROOT, PROJECT, readBodies, call, bodyOf, tableOf, LINES, SHAPES, ctx, node, stamp, alfred, own, foreign };
+const SHIPPED = JSON.parse(fs.readFileSync(path.join(ROOT, 'setup-plugin/hooks/protocol-blocks.json'), 'utf8'));
+const shippedCtx = { ...ctx, scripts: SHIPPED.scripts };
+const WIN_RUN = 'C:\\Temp\\alfred-code.AbC123';
+const winShipped = { ...shippedCtx, runDir: WIN_RUN, cwd: 'C:\\p', pluginRoot: 'C:\\plug' };
+const atWin = (script) => `node "${WIN_RUN}\\repo\\${script.split('/').join('\\')}"`;
+
+module.exports = { SHIPPED, shippedCtx, WIN_RUN, winShipped, atWin, ROOT, BODY_FILE, D, MARKER, PLUGIN_ROOT, PROJECT, readBodies, call, bodyOf, tableOf, LINES, SHAPES, ctx, node, stamp, alfred, own, foreign };

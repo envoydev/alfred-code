@@ -467,6 +467,6 @@ test('decide never denies two sessions of one project and allows this one\'s for
 test('the logic files touch no file system, process, environment or clock', () =>
 {
     const banned = /require\(['"]node:(fs|child_process|os)['"]\)|process\.(env|platform|cwd)|Date\.now|new Date/;
-    for (const name of ['constants', 'dirs', 'marker', 'paths', 'shell', 'forms', 'table', 'verdict', 'call-words', 'calls', 'templates', 'values', 'state', 'args'])
+    for (const name of ['constants', 'dirs', 'marker', 'paths', 'shell', 'forms', 'table', 'verdict', 'call-words', 'calls', 'templates', 'values', 'account', 'state', 'args'])
         assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'run-dir-gate', `${name}.js`), 'utf8'), banned, name);
 });

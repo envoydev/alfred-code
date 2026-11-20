@@ -59,6 +59,7 @@ function makeState(ctx)
         cwd,
         roots: [runDir, cwd],
         scripts: shapesOf(ctx.scripts),
+        accountDirs: [ctx.accountDir, ctx.accountDirReal].filter((dir) => typeof dir === 'string' && dir !== '').map((dir) => canon(dir, win)),
         marker: ctx.markerPath ? canon(ctx.markerPath, win) : null,
     };
 }

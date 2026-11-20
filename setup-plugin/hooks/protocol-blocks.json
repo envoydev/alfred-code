@@ -449,7 +449,11 @@
               "suffix": "repo/meta/plugin-settings.json"
             }
           ],
-          "--config-dir": [],
+          "--config-dir": [
+            {
+              "kind": "accountDir"
+            }
+          ],
           "--installed": [
             {
               "kind": "word"

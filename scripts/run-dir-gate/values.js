@@ -1,8 +1,8 @@
 'use strict';
 // The gate's half of the value templates: compiles a table template and tells whether one word of a call fits it. A word is
 // { value, quote }. Pure.
-const { ARG, VALUE, TEMPLATE, FLAG, WORD } = require('./constants.js');
-const { isStrictlyUnder, segmentsBelow, resolveWord } = require('./paths.js');
+const { ARG, VALUE, TEMPLATE, FLAG, WORD, QUOTE } = require('./constants.js');
+const { isStrictlyUnder, segmentsBelow, resolveWord, isAbsoluteWord, sameFolded } = require('./paths.js');
 
 const escapeText = (text) => text.replace(TEMPLATE.regexSpecials, '\\$&');
 
@@ -33,6 +33,14 @@ function isRunDirValue(template, word, base, state)
     return below.length === template.segments.length && below.every((segment, at) => ARG.targetSegment.test(segment) && template.segments[at].test(segment));
 }
 
+// One double-quoted absolute path equal to the account's config dir, as the env spelled it or by its real path.
+function isAccountDir(word, state)
+{
+    if (word.quote !== QUOTE.double || !isAbsoluteWord(word.value, state.win)) return false;
+    const resolved = resolveWord(word.value, state.cwd, state.win);
+    return Boolean(resolved) && state.accountDirs.some((dir) => sameFolded(resolved, dir));
+}
+
 function isCwdPath(text)
 {
     if (text === WORD.here) return true;
@@ -48,6 +56,7 @@ function fitsTemplate(template, word, base, state, { afterDashes = false } = {})
     if (value === '') return false;
     if (template.kind === VALUE.runDir) return isRunDirValue(template, word, base, state);
     if (template.kind === VALUE.cwdPath) return isCwdPath(value);
+    if (template.kind === VALUE.accountDir) return isAccountDir(word, state);
     if (startsWithDash(value) && !afterDashes) return false;
     if (value === ARG.passthrough) return false;
     if (template.kind === VALUE.word) return ARG.plainWord.test(value) && !ARG.allDots.test(value) && !ARG.driveWord.test(value);

@@ -9,6 +9,7 @@ const { BODY_DIRS, TABLE_FILE, GENERATED_BY, TABLE_NOTE, SESSION_FILE, WIN32, EF
 const { buildTable } = require('./table.js');
 const { findRunDirs, mapRunDir } = require('./dirs.js');
 const { markerName } = require('./marker.js');
+const { accountDirOf } = require('./account.js');
 const { decide, hookOutput } = require('./verdict.js');
 
 // Every markdown body under the setup folders, in a stable order.
@@ -135,7 +136,9 @@ function judge(payload, env, pluginRoot)
     const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
     const dirs = findRunDirs(command).map((raw) => dirInfo(raw, env));
     const table = readTable(pluginRoot);
-    const ctx = { runDir: dirs.length ? dirs[0].path || '' : '', cwd, pluginRoot, scripts: table.scripts, markerPath: dirs.length ? markerPathFor(cwd, env) : null };
+    const account = dirs.length ? accountDirOf(env, process.platform) : null;
+    const accountPath = account ? mapRunDir(account, process.platform, cygpathW) : null;
+    const ctx = { runDir: dirs.length ? dirs[0].path || '' : '', cwd, pluginRoot, scripts: table.scripts, markerPath: dirs.length ? markerPathFor(cwd, env) : null, accountDir: account, accountDirReal: accountPath ? realOf(accountPath) : null };
     const marker = dirs.length ? findMarker(cwd, env) : null;
     return decide({ command, table, sessionId: typeof payload.session_id === 'string' ? payload.session_id : '', dirs, marker, ctx });
 }

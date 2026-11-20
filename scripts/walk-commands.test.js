@@ -19,7 +19,8 @@ const MARKER_PATH = `/t/${markerName(PROJECT)}`;
 // A stand-in word is longer than one letter: `x:x` would read as a drive, and no real category or item is one letter.
 const SAMPLE_WORD = 'item';
 // A placeholder that stands for a value of a known shape is filled with a realistic one, so a word template that misses it shows.
-const REALISTIC_SAMPLES = [['<KEY>=<value>', 'ALFRED_CODE_AUTO_COMPACT=1']];
+const ACCOUNT_DIR = '/home/u/.claude';
+const REALISTIC_SAMPLES = [['<KEY>=<value>', 'ALFRED_CODE_AUTO_COMPACT=1'], ['--config-dir <account dir>', `--config-dir "${ACCOUNT_DIR}"`]];
 // The workspace line prints the parent folder as a `..`-shaped path; a child one level and two levels below its parent.
 const PARENT_SAMPLES = ['..', '../..'];
 const PARENT_CD = 'cd "<rel>"';
@@ -49,13 +50,6 @@ const EXPECTED_PROMPTS = [
     { walk: 'update', prefix: 'printenv ALFRED_CODE_UNATTENDED', why: NO_RUN_DIR },
     { walk: 'validate', prefix: 'node .claude/hooks/docs.js status', why: PROJECT_ENGINE },
 ];
-
-// Calls that always prompt and are no part of the bar: the value a path-valued flag takes is the account's own absolute folder,
-// which the gate never approves, so the body's sample (a plain word) hid that they prompted in every real run.
-const BY_DESIGN_PROMPTS = [
-    { prefix: 'node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir>', why: 'the report and the write of the account\'s plugin settings take the account\'s own folder, an absolute path the gate never approves' },
-];
-const isByDesign = (command) => BY_DESIGN_PROMPTS.some((entry) => command.text.startsWith(entry.prefix));
 
 const readText = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const listed = (dir) => fs.readdirSync(path.join(ROOT, dir)).filter((name) => name.endsWith('.md')).map((name) => `${dir}/${name}`);
@@ -87,7 +81,7 @@ const texts = new Map(bodyFiles.map(({ file, text }) => [file, text]));
 const walkFiles = new Map(WALKS.map((walk) => [walk, reachableFiles(walk, texts)]));
 const allFiles = walkFilesOf(texts);
 const table = buildTable(bodyFiles);
-const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: table.scripts, markerPath: MARKER_PATH };
+const ctx = { runDir: RUN_DIR, cwd: PROJECT, pluginRoot: PLUGIN_ROOT, scripts: table.scripts, markerPath: MARKER_PATH, accountDir: ACCOUNT_DIR, accountDirReal: ACCOUNT_DIR };
 
 const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), fenceBlocks(texts.get(file)))).map((command) => ({
     ...command,
@@ -97,8 +91,7 @@ const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), f
 }));
 const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command) && !isConditionalPrefix(command));
 const isApproved = (run) => approvesForms(run, ctx) || approvesPluginRead(run, ctx);
-const promptingAll = nonResolve.filter((command) => !command.runs.every(isApproved));
-const prompting = promptingAll.filter((command) => !isByDesign(command));
+const prompting = nonResolve.filter((command) => !command.runs.every(isApproved));
 const entryFor = (command, walk) => EXPECTED_PROMPTS.find((entry) => entry.walk === walk && command.text.startsWith(entry.prefix));
 
 test('the walks name commands to check', () =>
@@ -135,18 +128,6 @@ test('every EXPECTED_PROMPTS entry names a command that still prompts, and a rea
         assert.ok(entry.why && entry.why.length > 0, entry.prefix);
         assert.ok(prompting.some((command) => command.walks.includes(entry.walk) && command.text.startsWith(entry.prefix)), `stale entry: ${entry.walk} | ${entry.prefix}`);
     }
-});
-
-test('every by-design prompt names a command that prompts, with a reason, and is the only kind kept out of the bar', () =>
-{
-    for (const entry of BY_DESIGN_PROMPTS)
-    {
-        assert.ok(entry.why.length > 0, entry.prefix);
-        assert.ok(promptingAll.some((command) => command.text.startsWith(entry.prefix)), `stale entry: ${entry.prefix}`);
-    }
-    const kept = promptingAll.filter(isByDesign);
-    assert.ok(kept.length >= 2, `${kept.length} by-design prompts`);
-    assert.ok(kept.every((command) => command.text.includes('--config-dir <account dir>')), 'only the account-folder calls');
 });
 
 test('no walk has more than the bar of prompting commands', () =>
