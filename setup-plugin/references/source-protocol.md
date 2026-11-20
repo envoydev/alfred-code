@@ -4,8 +4,8 @@ The five downloading commands (`/alfred-code:init` - both phases - `update`, `co
 `uninstall`; `status` never downloads) drive their whole run from ONE source snapshot: each command's steps say
 WHEN, this file says WHAT holds. The commands cite it as
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it in ONE Bash `cat`, never in ranges
-and never twice. It holds only what every run uses: a test caps it, because it rides every later message of the
-run (audit 2026-10-20 C46, b1c22192 - 17,808 chars read to learn one `RESOLVED` line). Two files beside it hold
+and never twice. A test caps it, since it rides every later message of the
+run (audit 2026-10-20 C46: 17,808 chars read to learn one `RESOLVED` line). Two files beside it hold
 the rest, each read only when its case applies: `source-protocol-powershell.md` when the Bash tool cannot run
 the bash blocks below, and `source-protocol-notes.md` for the why and the rare branches - no plugin cache, a
 failed download, a multi-release gap, a same-version re-release, old version dirs in the cache.
@@ -71,9 +71,10 @@ MARK=<marker path>` on a resolve, `REUSING TMP=<dir> WIN=<windows spelling> <ver
 (`<version>` the snapshot's; `WIN=` is `cygpath -w` of the dir where `cygpath` exists, else the dir), or one `MISSING <what>` line
 and nothing else - a `MISSING` line stops the run, said with its consequence. One exception: `MISSING <tool> on the
 Bash PATH` in Git Bash on Windows means the Bash tool got a Windows-form PATH (`C:\...;C:\...`). Put this line first
-in the resolve block - the one call of the run that may expand a variable; no later call carries it - then run the block again:
-`PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"`. Claude Code
-asks before it runs a PATH change, so no block carries the line until that `MISSING` line asks for it. Only this
+in the resolve block, then run the block again:
+`PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"`. Each Bash call
+is a new shell, so there every later call starts with it again: the one case where a later call sets a variable. Claude
+Code asks before a PATH change, so those calls prompt. This is Windows Git Bash only. Only this
 session's marker is reused; the marker name is derived from the project root, so two projects or two worktrees never share one.
 
 ## Every later call names the run dir
@@ -83,7 +84,7 @@ merge no two calls, and fill each `<placeholder>` alone. The plugin approves the
 this run's dir inside a typed `/alfred-code:init`, `update`, `configure` or `validate`, unless the hook profile is
 `minimal`, so they run with no approval prompt.
 
-Each Bash call is its own shell, so no later call sets or expands a variable - no `$VAR`, `${...}` or `$(...)`. A body
+Each Bash call is its own shell, so no later call sets or expands a variable - no `$VAR`, `${...}` or `$(...)`, bar the PATH line above. A body
 writes `$TMP`, `$TMP_WIN` and `$MARK` as TOKENS. Before a call runs, replace each with the value from the newest
 `RESOLVED` or `REUSING` line of this run: `$TMP` with its `TMP=` dir, `$TMP_WIN` with its `WIN=` spelling, `$MARK` with
 its `MARK=` path. The call you run holds the paths, never the tokens.

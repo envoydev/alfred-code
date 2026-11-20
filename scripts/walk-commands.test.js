@@ -22,6 +22,13 @@ const PARENT_SAMPLES = ['..', '../..'];
 const PARENT_CD = 'cd "<rel>"';
 const CHILD_FILE = 'init-child.md';
 // Wording of the opener block, removed when the walks began to name the run dir literally.
+// The one prefix a call may carry besides its own words: on Git Bash for Windows, after a `MISSING <tool> on the Bash PATH` line.
+// A conditional prefix, not a call: it sets a variable, so the rule above would refuse it, and it prompts.
+const CONDITIONAL_PREFIXES = [
+    { file: 'source-protocol.md', prefix: 'PATH="/usr/bin:/bin:/mingw64/bin:', why: 'the Windows PATH line: a later call carries it again only on Git Bash for Windows, and prompts' },
+];
+const PATH_LINE_STATEMENTS = ['the one case where a later call sets a variable', 'those calls prompt', 'Windows Git Bash only'];
+const isConditionalPrefix = (command) => CONDITIONAL_PREFIXES.some((entry) => command.file.endsWith(entry.file) && command.text.startsWith(entry.prefix));
 const RETIRED_WORDING = ['marker block', 'every later block', 're-reads the marker', 'opener block'];
 
 // Commands that stay behind Claude Code's own prompt: they name no run dir, or they are not a form the gate reads.
@@ -77,7 +84,7 @@ const collected = allFiles.flatMap((file) => commandsOf(file, texts.get(file), f
     runs: [...new Set(PARENT_SAMPLES.map((parent) => filled(command.text, parent)))],
     child: command.file.endsWith(CHILD_FILE) || command.text.includes(PARENT_CD),
 }));
-const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command));
+const nonResolve = collected.filter((command) => !command.resolve && !isNotCall(command) && !isConditionalPrefix(command));
 const isApproved = (run) => approvesForms(run, ctx) || approvesPluginRead(run, ctx);
 const prompting = nonResolve.filter((command) => !command.runs.every(isApproved));
 const entryFor = (command, walk) => EXPECTED_PROMPTS.find((entry) => entry.walk === walk && command.text.startsWith(entry.prefix));
@@ -161,4 +168,17 @@ test('no walk body keeps the wording of the retired marker opener', () =>
         for (const phrase of RETIRED_WORDING) if (text.includes(phrase)) stale.push(`${file}: ${phrase}`);
     }
     assert.deepEqual(stale, []);
+});
+
+test('the Windows PATH line is one named conditional prefix: stated as the one case a later call sets a variable, prompting, and Git Bash for Windows only', () =>
+{
+    const [entry] = CONDITIONAL_PREFIXES;
+    const protocol = readText(`${BODY.references}/${entry.file}`).replace(/\s+/g, ' ');
+    for (const statement of PATH_LINE_STATEMENTS) assert.ok(protocol.includes(statement), statement);
+    const holders = allFiles.filter((file) => readText(file).includes(entry.prefix));
+    assert.deepEqual(holders, [`${BODY.references}/${entry.file}`], 'the prefix is written in one body only');
+    assert.equal(readText(holders[0]).split(entry.prefix).length - 1, 1, 'and written once there');
+    assert.ok(!collected.some((command) => command.text.includes('PATH="')), 'the prefix is no collected call');
+    assert.equal(isApproved(`${entry.prefix}$(/usr/bin/cygpath -u -p "$PATH")" ; node "${RUN_DIR}/repo/scripts/install/stamp.js" state .`), false);
+    assert.equal(isApproved(`PATH=/usr/bin:/bin node "${RUN_DIR}/repo/scripts/install/stamp.js" state .`), false);
 });
