@@ -562,8 +562,8 @@ test('approvesForms reads Windows spellings of one run dir and the same dir in M
 const table = { resolves: [], scripts: [] };
 const resolveTable = buildTable([{ file: 'a.md', text: `\`\`\`bash\n${RESOLVE_LINE}\n\`\`\`` }]);
 const resolveTable2 = buildTable([{ file: 'a.md', text: `\`\`\`bash\n${resolveBlock}\n\`\`\`` }]);
-const own = { raw: D, path: D, session: 's1', owned: true };
-const foreign = { raw: '/t/alfred-code.Other1', path: '/t/alfred-code.Other1', session: 's2', owned: true };
+const own = { raw: D, path: D, real: D, inTemp: true, session: 's1', owned: true };
+const foreign = { raw: '/t/alfred-code.Other1', path: '/t/alfred-code.Other1', real: '/t/alfred-code.Other1', inTemp: true, session: 's2', owned: true };
 const form = `${stamp} state .`;
 const base = { command: form, table, sessionId: 's1', dirs: [own], marker: null, ctx };
 
@@ -628,6 +628,31 @@ test('decide denies this session\'s older dir while the marker names a newer one
     const marker = { path: MARKER, dir: newer, session: 's1', owned: true };
     assert.equal(decide({ ...base, marker }).decision, 'deny');
     assert.equal(decide({ ...base, marker: { ...marker, dir: `${D}/` } }).decision, 'allow');
+});
+
+test('decide allows a dir only on a trusted marker that names it, or with no such marker when it sits in the hook\'s temp dir', () =>
+{
+    const outside = { ...own, inTemp: false };
+    const marker = { path: MARKER, dir: D, session: 's1', owned: true };
+    assert.deepEqual(decide({ ...base, dirs: [outside], marker: null }), { decision: null }, 'no marker, not in the temp dir');
+    assert.deepEqual(decide({ ...base, dirs: [{ ...outside, inTemp: undefined }], marker: null }), { decision: null }, 'no inTemp at all');
+    assert.deepEqual(decide({ ...base, dirs: [own], marker: null }), { decision: 'allow' }, 'no marker, in the temp dir');
+    assert.deepEqual(decide({ ...base, dirs: [outside], marker }), { decision: 'allow' }, 'a trusted marker names it');
+    assert.deepEqual(decide({ ...base, dirs: [outside], marker: { ...marker, owned: false } }), { decision: null }, 'an unowned marker is no proof');
+    assert.deepEqual(decide({ ...base, dirs: [outside], marker: { ...marker, session: 's2' } }), { decision: null }, 'another session\'s marker is no proof');
+    assert.deepEqual(decide({ ...base, dirs: [own], marker: { ...marker, session: 's2', dir: foreign.raw } }), { decision: 'allow' }, 'an untrusted marker naming another dir leaves the temp rule');
+    assert.deepEqual(decide({ ...base, dirs: [outside], marker: { ...marker, session: 's2', dir: foreign.raw } }), { decision: null });
+});
+
+test('decide compares the marker\'s dir and a named dir by real path when it has one', () =>
+{
+    const marker = { path: MARKER, dir: '/var/t/alfred-code.AaAaAa', realDir: '/private/var/t/alfred-code.AaAaAa', session: 's1', owned: true };
+    const spelled = { raw: '/private/var/t/alfred-code.AaAaAa', path: '/private/var/t/alfred-code.AaAaAa', real: '/private/var/t/alfred-code.AaAaAa', inTemp: false, session: 's1', owned: true };
+    const form = `node "${spelled.raw}/repo/scripts/install/stamp.js" state .`;
+    const spelledCtx = { ...ctx, runDir: spelled.raw };
+    assert.deepEqual(decide({ ...base, command: form, dirs: [spelled], marker, ctx: spelledCtx }), { decision: 'allow' });
+    assert.equal(decide({ ...base, command: form, dirs: [spelled], marker: { ...marker, realDir: '/private/var/t/alfred-code.Other1' }, ctx: spelledCtx }).decision, 'deny');
+    assert.equal(decide({ ...base, command: form, dirs: [spelled], marker: { ...marker, realDir: undefined }, ctx: spelledCtx }).decision, 'deny', 'without a real path the text decides');
 });
 
 test('decide never denies two sessions of one project and allows this one\'s forms', () =>

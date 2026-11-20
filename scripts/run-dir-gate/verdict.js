@@ -6,10 +6,12 @@ const { sameDir } = require('./dirs.js');
 const { isResolve } = require('./table.js');
 const { approvesForms, approvesPluginRead } = require('./forms.js');
 
-// A marker proves the run dir only when this user owns it and the dir it names holds this session's id.
+// A marker proves the run dir only when this user owns it and the dir it names holds this session's id. A dir counts only when
+// such a marker names it, or - with no such marker - when it sits directly in the hook's temp dir, where the resolve block makes it.
 const isTrusted = (marker, sessionId) => Boolean(marker) && marker.owned === true && marker.session !== '' && marker.session === sessionId;
 
-const isMarkerDir = (dir, marker) => sameDir(dir.path, marker.dir) || sameDir(dir.raw, marker.dir);
+// The marker's dir and a named dir are one dir when their real paths agree; with no real path read, their text decides.
+const isMarkerDir = (dir, marker) => sameDir(dir.real || dir.path, marker.realDir || marker.dir) || sameDir(dir.raw, marker.dir);
 
 function decide({ command, table, sessionId, dirs, marker, ctx })
 {
@@ -19,8 +21,9 @@ function decide({ command, table, sessionId, dirs, marker, ctx })
     if ((!Array.isArray(dirs) || dirs.length === 0) && approvesPluginRead(command, ctx)) return VERDICT.allow;
     if (!sessionId || !Array.isArray(dirs) || dirs.length === 0) return VERDICT.silent;
     if (dirs.some((dir) => !dir.path || !dir.session)) return VERDICT.silent;
-    if (isTrusted(marker, sessionId) && dirs.some((dir) => !isMarkerDir(dir, marker))) return { decision: VERDICT.deny, reason: REASON.wrongDir(marker.dir) };
-    if (!dirs.every((dir) => dir.owned && dir.session === sessionId)) return VERDICT.silent;
+    const trusted = isTrusted(marker, sessionId);
+    if (trusted && dirs.some((dir) => !isMarkerDir(dir, marker))) return { decision: VERDICT.deny, reason: REASON.wrongDir(marker.dir) };
+    if (!dirs.every((dir) => dir.owned && dir.session === sessionId && (trusted || dir.inTemp === true))) return VERDICT.silent;
     return approvesForms(command, ctx) ? VERDICT.allow : VERDICT.silent;
 }
 

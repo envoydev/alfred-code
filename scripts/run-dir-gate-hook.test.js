@@ -9,7 +9,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { fenceBlocks } = require('./run-dir-gate/table.js');
 const { markerName } = require('./run-dir-gate/marker.js');
-const { writeTable } = require('./run-dir-gate/effects.js');
+const { writeTable, readRunDir, findMarker } = require('./run-dir-gate/effects.js');
 const { RESOLVE_LINE, OFF_SWITCH } = require('./run-dir-gate/constants.js');
 const { realLong } = require('./test-paths.js');
 const SUITE = require('./hook-test-env').isolateHookSuite({ ownTmp: true });
@@ -28,9 +28,9 @@ function fixture()
     const base = realLong(fs.mkdtempSync(path.join(SUITE.tmp, 'gate-')));
     const cwd = path.join(base, 'project');
     fs.mkdirSync(cwd);
-    const runDir = (session) =>
+    const runDir = (session, parent = SUITE.tmp) =>
     {
-        const dir = fs.mkdtempSync(path.join(base, 'alfred-code.'));
+        const dir = fs.mkdtempSync(path.join(parent, 'alfred-code.'));
         fs.mkdirSync(path.join(dir, 'repo'));
         if (session) fs.writeFileSync(path.join(dir, 'run-session'), `${session}\n`);
         return dir;
@@ -149,4 +149,61 @@ test('the shipped table is current - run `npm run protocol-blocks` after a shell
     const table = JSON.parse(fs.readFileSync(path.join(ROOT, 'setup-plugin', 'hooks', 'protocol-blocks.json'), 'utf8'));
     assert.deepEqual(Object.keys(table), ['generatedBy', 'note', 'resolves', 'scripts']);
     assert.ok(table.scripts['scripts/install/stamp.js'].modes.includes('state'));
+});
+
+test('a run dir counts only on a trusted marker that names it, or with no marker when it sits in the hook\'s temp dir', () =>
+{
+    const fx = fixture();
+    const inCwd = fx.runDir(SESSION, fx.cwd);
+    const form = (dir) => `node "${dir}/repo/scripts/install/stamp.js" state .`;
+    silent(run(payload(fx, form(inCwd))), 'an owned folder holding this session\'s id, outside the temp dir, with no marker');
+    const inTemp = fx.runDir(SESSION);
+    assert.equal(decisionOf(run(payload(fx, form(inTemp)))).permissionDecision, 'allow', 'the same under the hook\'s temp dir');
+    fx.marker(inCwd);
+    assert.equal(decisionOf(run(payload(fx, form(inCwd)))).permissionDecision, 'allow', 'a trusted marker names the folder outside the temp dir');
+    const other = fx.runDir('sess-other', fx.cwd);
+    fx.marker(other);
+    silent(run(payload(fx, form(inCwd))), 'an untrusted marker naming another session\'s dir is no proof for a folder outside the temp dir');
+});
+
+test('a marker that spells the run dir another way is no reason to deny it', (t) =>
+{
+    if (process.platform === 'win32') { t.skip('a symlink needs a privilege on Windows'); return; }
+    const fx = fixture();
+    const own = fx.runDir(SESSION);
+    const alias = path.join(fx.base, 'alias');
+    fs.symlinkSync(SUITE.tmp, alias);
+    const viaAlias = path.join(alias, path.basename(own));
+    fx.marker(viaAlias);
+    const form = (dir) => `node "${dir}/repo/scripts/install/stamp.js" state .`;
+    assert.equal(decisionOf(run(payload(fx, form(own)))).permissionDecision, 'allow', 'the marker names the alias spelling');
+    fx.marker(own);
+    assert.equal(decisionOf(run(payload(fx, form(viaAlias)))).permissionDecision, 'allow', 'the command names the alias spelling');
+    const other = fx.runDir('sess-other');
+    assert.equal(decisionOf(run(payload(fx, form(other)))).permissionDecision, 'deny', 'a truly other dir is still denied');
+});
+
+test('an allow writes no block row, even in a repo that is set up', () =>
+{
+    const fx = fixture();
+    const own = fx.runDir(SESSION);
+    fx.marker(own);
+    fs.mkdirSync(path.join(fx.cwd, '.claude'));
+    fs.writeFileSync(path.join(fx.cwd, '.claude', 'alfred-code.stamp'), 'version: 3.14.2\n');
+    const env = { CLAUDE_PROJECT_DIR: fx.cwd };
+    assert.equal(decisionOf(run(payload(fx, `node "${own}/repo/scripts/install/stamp.js" state .`), env)).permissionDecision, 'allow');
+    assert.equal(fs.existsSync(path.join(fx.cwd, '.alfred', 'statistics', 'hook-blocks')), false);
+});
+
+test('readRunDir and findMarker report owned: true for the files this user owns', () =>
+{
+    const fx = fixture();
+    const own = fx.runDir(SESSION);
+    fx.marker(own);
+    assert.deepEqual(readRunDir(own), { session: SESSION, owned: true });
+    const marker = findMarker(fx.cwd, { ...process.env, TMPDIR: SUITE.tmp });
+    assert.equal(marker.owned, true);
+    assert.equal(marker.session, SESSION);
+    assert.equal(marker.dir, own);
+    assert.equal(marker.path, path.join(SUITE.tmp, markerName(fx.cwd)));
 });

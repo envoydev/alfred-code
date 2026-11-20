@@ -2,6 +2,7 @@
 // The run-dir gate's one touch of the outside world: it reads the setup bodies and the table, the run dirs, the marker and
 // the git top, writes the table and the block row, and answers on stdout.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BODY_DIRS, TABLE_FILE, GENERATED_BY, TABLE_NOTE, SESSION_FILE, WIN32, EFFECTS, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, VERDICT } = require('./constants.js');
@@ -90,7 +91,7 @@ function markerPathFor(cwd, env)
     return `${temp}/${markerName(markerRoot(cwd, env))}`;
 }
 
-// The project's run marker: its path, the dir it names, that dir's session, and whether this user owns both. Null when the
+// The project's run marker: its path, the dir it names (and that dir's real path), that dir's session, and whether this user owns both. Null when the
 // marker is absent, empty or unreadable.
 function findMarker(cwd, env)
 {
@@ -106,14 +107,25 @@ function findMarker(cwd, env)
     if (!dir) return null;
     const mapped = mapRunDir(dir, process.platform, cygpathW);
     const info = mapped ? readRunDir(mapped) : null;
-    return { path: markerPath, dir, session: info ? info.session : '', owned: Boolean(info) && info.owned && ownedBy(stat) };
+    return { path: markerPath, dir, realDir: mapped ? realOf(mapped) : dir, session: info ? info.session : '', owned: Boolean(info) && info.owned && ownedBy(stat) };
 }
 
-const dirInfo = (raw) =>
+// The real path of a text, falling back to the text itself when it cannot be resolved.
+function realOf(text)
+{
+    try { return fs.realpathSync.native(text); } catch { return text; }
+}
+
+const foldOnWindows = (text) => (process.platform === WIN32 ? text.toLowerCase() : text);
+
+// Whether a dir's real parent is the hook's own temp dir: the real path of TMPDIR, else the OS's temp dir.
+const sitsInTemp = (mapped, env) => foldOnWindows(realOf(path.dirname(mapped))) === foldOnWindows(realOf(env[EFFECTS.tempDirKey] || os.tmpdir()));
+
+const dirInfo = (raw, env) =>
 {
     const mapped = mapRunDir(raw, process.platform, cygpathW);
     const info = mapped ? readRunDir(mapped) : null;
-    return { raw, path: mapped, session: info ? info.session : '', owned: info ? info.owned : false };
+    return { raw, path: mapped, real: mapped ? realOf(mapped) : null, inTemp: Boolean(info) && sitsInTemp(mapped, env), session: info ? info.session : '', owned: info ? info.owned : false };
 };
 
 // The verdict for one Bash payload: gathers the dirs, the marker and the table, then asks `decide`.
@@ -121,7 +133,7 @@ function judge(payload, env, pluginRoot)
 {
     const command = payload && payload.tool_input && payload.tool_input.command;
     const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
-    const dirs = findRunDirs(command).map(dirInfo);
+    const dirs = findRunDirs(command).map((raw) => dirInfo(raw, env));
     const table = readTable(pluginRoot);
     const ctx = { runDir: dirs.length ? dirs[0].path || '' : '', cwd, pluginRoot, scripts: table.scripts, markerPath: dirs.length ? markerPathFor(cwd, env) : null };
     const marker = dirs.length ? findMarker(cwd, env) : null;
