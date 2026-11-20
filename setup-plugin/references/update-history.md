@@ -1246,3 +1246,12 @@ seats now store their handoff notes as one quoted argument, not a heredoc, so a 
 asks for approval.
 
 Nothing to do in an installed project beyond the update.
+
+## after 3.14.1 - the plugin's own commands are never auto-run's
+
+The stack's auto-run (`/alfred-code:mode:auto-run on`) no longer answers the questions of `/alfred-code:init`, `update`,
+`configure` and `validate`: their asks go to you, and the per-turn line says auto-run is not for those turns. A walk runs
+from its typed command to your next slash command or to its close. The update that installs this release still runs
+on the old hook copies, so with auto-run on, that one update answers its own questions one last time.
+
+Nothing to do in an installed project beyond the update.

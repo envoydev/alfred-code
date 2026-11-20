@@ -1123,6 +1123,119 @@ function autoRunFor(input, env, flags)
     }
     catch { return false; }
 }
+// THE PLUGIN'S OWN COMMANDS ARE NEVER AUTO-RUN'S (the user's ruling, 2026-11-20): the stack's auto-run answers no ask of a
+// typed /alfred-code:init, update, configure or validate - their walk asks go to the user. A walk runs from its typed command
+// to the next typed slash command or to its close. Inside it stay: a built-in command (its output row follows it), a mode
+// command, a compaction whose summary names the walk, and a reply typed after an ask, a question or a cut-off tool call. A
+// reply typed after the assistant's last text, when that text asks nothing, is the walk's close passed. A walk older than
+// the transcript's tail is read from the whole file. Only the ask answering and guard-answer's line read it: the readers
+// of `unattended` still see auto-run as nobody at the terminal.
+const PLUGIN_WALK_RE = /(?:<command-name>|^\s*)\/alfred-code:(init|update|configure|validate)(?=<\/command-name>|\s|$)/;
+const SUMMARY_WALK_RE = /\/alfred-code:(init|update|configure|validate)\b/;
+const WALK_MODE_COMMAND_RE = /(?:<command-name>|^\s*)\/alfred-code:mode:/;
+const SLASH_PROMPT_RE = /^\s*(?:<command-(?:message|name)>|\/[A-Za-z][\w:-]*(?:\s|$))/;
+const NOT_TYPED_RE = /^\s*<(?:bash-(?:input|stdout|stderr)|local-command-(?:stdout|stderr|caveat))\b/;
+const LOCAL_OUTPUT_RE = /^\s*<local-command-(?:stdout|stderr)>/;
+const WALK_TAIL_BYTES = 2 * 1024 * 1024;
+const rowContentText = (row) => {
+    const content = row && row.message && row.message.content;
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content) || content.some((b) => b && b.type === 'tool_result')) return null;
+    const texts = content.filter((b) => b && b.type === 'text').map((b) => b.text || '');
+    return texts.length ? texts.join('\n') : null;
+};
+// The text of a row the user typed, else null: a tool result, a meta, seat or harness row is no typed turn.
+function typedPrompt(row)
+{
+    if (!row || row.type !== 'user' || row.isMeta || row.isSidechain || row.isCompactSummary || !row.message) return null;
+    const text = rowContentText(row);
+    if (text === null || !text.trim() || harnessPrompt(text) || NOT_TYPED_RE.test(text)) return null;
+    return text;
+}
+// The walk a prompt opens, '' for a slash command that ends one, 'keep' for one that leaves it as it is, null for a reply.
+function walkOfPrompt(prompt)
+{
+    const text = String(prompt || '');
+    const walk = PLUGIN_WALK_RE.exec(text);
+    if (walk) return walk[1];
+    if (WALK_MODE_COMMAND_RE.test(text)) return 'keep';
+    return SLASH_PROMPT_RE.test(text) ? '' : null;
+}
+// Whether the assistant row closes its turn on text that asks nothing - the walk's close, when a reply follows it.
+function closedOnText(row)
+{
+    const content = row && row.message && row.message.content;
+    const last = Array.isArray(content) ? content.filter((b) => b && (b.type === 'text' || b.type === 'tool_use')).pop() : null;
+    return Boolean(last && last.type === 'text' && !/\?\s*$/.test(String(last.text || '')));
+}
+// The plugin walk the rows end inside ('init', 'update', 'configure' or 'validate'), '' for none, null when no row decides
+// (no typed slash command and no compaction in the rows). `replyAfter`: a reply typed after the last row, the prompt now.
+// Pure: rows are parsed objects.
+function pluginWalkOf(rows, replyAfter = false)
+{
+    let ended = false;        // a reply typed after the walk's close
+    // the assistant row a reply at `at` answers: the newest one before it, never past an earlier typed row
+    const replyAt = (at) =>
+    {
+        for (let k = at - 1; k >= 0; k--)
+        {
+            if (typedPrompt(rows[k]) !== null) return;
+            if (rows[k] && rows[k].type === 'assistant') { if (closedOnText(rows[k])) ended = true; return; }
+        }
+    };
+    if (replyAfter) replyAt(rows.length);
+    for (let i = rows.length - 1; i >= 0; i--)
+    {
+        const row = rows[i];
+        if (row && row.type === 'user' && row.isCompactSummary)
+        {
+            const named = SUMMARY_WALK_RE.exec(String(rowContentText(row) || ''));
+            return named && !ended ? named[1] : '';
+        }
+        const prompt = typedPrompt(row);
+        const walk = walkOfPrompt(prompt);
+        if (walk === null)
+        {
+            if (prompt !== null) replyAt(i);
+            continue;
+        }
+        if (walk === 'keep') continue;
+        const next = rows[i + 1];
+        if (walk === '' && next && next.type === 'user' && LOCAL_OUTPUT_RE.test(String(rowContentText(next) || ''))) continue;
+        return walk && !ended ? walk : '';
+    }
+    return null;
+}
+// The plugin walk this payload runs inside: this prompt's own command first, then the transcript - its tail, else the whole
+// file when the tail decides nothing. A throw is ''.
+function pluginWalkNow(input, prompt = null)
+{
+    try
+    {
+        const own = prompt === null ? null : walkOfPrompt(prompt);
+        if (own !== null && own !== 'keep') return own;
+        const file = input && input.transcript_path;
+        if (!file) return '';
+        const size = fs.statSync(file).size;
+        const read = (from) =>
+        {
+            const fd = fs.openSync(file, 'r');
+            let text = '';
+            try { const buf = Buffer.alloc(size - from); fs.readSync(fd, buf, 0, buf.length, from); text = buf.toString('utf8'); }
+            finally { fs.closeSync(fd); }
+            const lines = text.split('\n');
+            if (from > 0) lines.shift();
+            const rows = [];
+            for (const line of lines) { if (!line.trim()) continue; try { rows.push(JSON.parse(line)); } catch { /* a torn row */ } }
+            return pluginWalkOf(rows, own === null && prompt !== null);
+        };
+        const from = Math.max(0, size - WALK_TAIL_BYTES);
+        let walk = read(from);
+        if (walk === null && from > 0) walk = read(0);
+        return walk || '';
+    }
+    catch { return ''; }
+}
 // Why no fresh-session ask is made for this payload, else '': the project's variable (the mode file's, as the loader set it),
 // then auto-run for this prompt - the typed line first (autoRunFor). The v1 session switch file is gone (mode commands v2).
 const COMPACT_SAID = { project: 'ALFRED_CODE_AUTO_COMPACT=1', 'auto-run': 'auto-run is on' };
@@ -1998,4 +2111,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-Object.assign(module.exports, { autoRunStanding, autoLasts, byUser });   // beside the one-line list, which a new name would push past 160
+Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow });   // beside the one-line list, which a new name would push past 160

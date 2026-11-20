@@ -433,6 +433,33 @@ test('mode banner: never for another command, a seat, a print-mode run or the mo
     assert.ok(!context(call).includes(BANNER_HEAD), 'a Skill call is a phase of a run, never a typed command');
 });
 
+// The plugin's own walks are never auto-run's (the user's ruling, 2026-11-20): inside a typed /alfred-code:init, update,
+// configure or validate the ask goes to the user; a plain reply typed mid-walk stays inside it, another slash command ends it.
+const walkRow = (content) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), message: { role: 'user', content } });
+const walkCommand = (walk) => walkRow(`<command-message>alfred-code:${walk}</command-message>\n<command-name>/alfred-code:${walk}</command-name>`);
+test('auto-mode asks: an ask inside a typed plugin walk goes to the user; another typed command ends the walk', () =>
+{
+    const p = project();
+    autoStamp(p, 'w1');
+    const one = [q('Apply the update?', ['Apply it (Recommended)', 'Not now'])];
+    for (const walk of ['init', 'update', 'configure', 'validate'])
+    {
+        const r = ask(p, 'w1', one, { transcript_path: transcript([walkCommand(walk)]) });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(answered(r), null, `/alfred-code:${walk}: the ask waits for the user`);
+    }
+    assert.ok(rows(p, 'w1').some((x) => x.kind === 'auto-walk-asks' && /alfred-code:update/.test(x.reason)), 'the wait is ledgered');
+    assert.ok(!rows(p, 'w1').some((x) => x.kind === 'auto-answer'), 'nothing was answered');
+    const midWalk = transcript([walkCommand('update'), walkRow([{ type: 'text', text: 'keep going' }]), walkRow('<bash-input>ls</bash-input>')]);
+    assert.strictEqual(answered(ask(p, 'w1', one, { transcript_path: midWalk })), null, 'a reply typed mid-walk keeps the walk');
+    const after = transcript([walkCommand('update'), walkRow('<command-message>task-solve</command-message>\n<command-name>/task-solve</command-name>')]);
+    assert.deepStrictEqual(answered(ask(p, 'w1', one, { transcript_path: after })), { 'Apply the update?': 'Apply it (Recommended)' }, 'another command ends the walk');
+    const other = transcript([walkRow('<command-message>other:update</command-message>\n<command-name>/other:update</command-name>')]);
+    assert.ok(answered(ask(p, 'w1', one, { transcript_path: other })), 'another plugin\'s update is no walk of ours');
+    const status = transcript([walkRow('<command-message>alfred-code:status</command-message>\n<command-name>/alfred-code:status</command-name>')]);
+    assert.ok(answered(ask(p, 'w1', one, { transcript_path: status })), 'the read-only status command is no walk');
+});
+
 test('auto-mode asks: every question marking one Recommended option is answered with it; anything else waits for the user', () =>
 {
     const p = project();
@@ -1957,4 +1984,53 @@ test('auto-mode asks: UTF-8, SHA-256, ISO-8601, RFC-9110 and X-1 are no ticket k
     for (const key of ['ABC-12', 'AB2-7'])
         assert.strictEqual(answered(ask(p, 'key1', [q('Next?', [`Update ${key} (Recommended)`, 'Not now'])])), null, `waits, a key: ${key}`);
     assert.strictEqual(answered(ask(p, 'key1', [q('Next?', ['Comment on ABC-12 (Recommended)', 'Not now'])])), null, 'waits: Comment on ABC-12');
+});
+
+test('pluginWalkOf: the newest typed slash command decides; a compaction, a meta row and a harness row never open a walk', () =>
+{
+    const { pluginWalkOf } = require('../stack/hooks/hook-prelude.js');
+    assert.strictEqual(pluginWalkOf([]), null, 'no row decides');
+    assert.strictEqual(pluginWalkOf([walkCommand('validate')]), 'validate');
+    assert.strictEqual(pluginWalkOf([walkRow('/alfred-code:configure skills')]), 'configure', 'the typed spelling');
+    assert.strictEqual(pluginWalkOf([walkRow('/alfred-code:updates')]), '', 'a longer name is another command');
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'summary' } }]), '', 'a compaction ends it');
+    assert.ok(!pluginWalkOf([{ ...walkCommand('init'), isMeta: true }]), 'a meta row');
+    assert.ok(!pluginWalkOf([walkRow('<task-notification>/alfred-code:update</task-notification>')]), 'a harness row');
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'Apply it' }] } }]), 'init', 'an answer stays inside');
+});
+
+// Review fixes (2026-11-20): a compaction keeps a walk its summary names; a built-in command (its stdout row after it) and a
+// mode command typed mid-walk do not end it; a reply typed after the walk's close - the assistant's last text, no question -
+// ends it, one after an ask, a question or a cut-off tool call stays inside; a seat's row is no typed turn; an image beside
+// the text still reads as typed.
+test('pluginWalkOf: the walk keeps through a compaction, a built-in command and a mode command, and ends at its close', () =>
+{
+    const { pluginWalkOf, pluginWalkNow } = require('../stack/hooks/hook-prelude.js');
+    const said = (blocks) => ({ type: 'assistant', message: { role: 'assistant', content: blocks } });
+    const text = (t) => said([{ type: 'text', text: t }]);
+    const summary = (t) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: t } });
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), summary('The user ran /alfred-code:init; the rules layer is done.')]), 'init', 'a summary naming the walk');
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), summary('The user fixed a bug.')]), '', 'a summary naming none');
+    const builtIn = [walkRow('<command-name>/context</command-name>\n<command-message>context</command-message>'), walkRow('<local-command-stdout>ctx</local-command-stdout>')];
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), ...builtIn]), 'init', 'a built-in command with its output row');
+    assert.strictEqual(pluginWalkOf([walkCommand('update'), walkRow('<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>')]), 'update', 'a mode command');
+    const reply = walkRow([{ type: 'text', text: 'now fix the parser' }]);
+    assert.strictEqual(pluginWalkOf([walkCommand('update'), text('Done: both projects are on 3.14.1.'), reply]), '', 'a reply after the close');
+    assert.strictEqual(pluginWalkOf([walkCommand('update'), text('Shall I apply it?'), reply]), 'update', 'a reply to a question');
+    assert.strictEqual(pluginWalkOf([walkCommand('update'), said([{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: {} }]), reply]), 'update', 'a reply to an ask');
+    assert.strictEqual(pluginWalkOf([walkCommand('update'), said([{ type: 'tool_use', id: 'b1', name: 'Bash', input: {} }]), reply]), 'update', 'a reply after a cut-off tool call');
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), { ...walkRow('/task-solve x'), isSidechain: true }]), 'init', 'a seat row');
+    assert.strictEqual(pluginWalkOf([walkCommand('init'), walkRow([{ type: 'text', text: '/task-solve x' }, { type: 'image', source: {} }])]), '', 'an image beside the typed command');
+    assert.ok(!pluginWalkOf([walkRow('alfred-code:update please')]), 'the bare name in prose');
+    // the prompt being typed now is judged as a reply: after the close it ends the walk
+    const t = path.join(TMP, `walk-${randomUUID()}.jsonl`);
+    fs.writeFileSync(t, [walkCommand('update'), text('Done: updated.')].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    assert.strictEqual(pluginWalkNow({ transcript_path: t }, 'now fix the parser'), '', 'the typed prompt after the close');
+    assert.strictEqual(pluginWalkNow({ transcript_path: t }), 'update', 'an ask with no prompt reads the rows alone');
+    // a walk further back than the tail is read from the whole file
+    const big = path.join(TMP, `walk-big-${randomUUID()}.jsonl`);
+    const filler = JSON.stringify(said([{ type: 'tool_use', id: 'f', name: 'Bash', input: { command: 'x'.repeat(4000) } }]));
+    fs.writeFileSync(big, [JSON.stringify(walkCommand('validate')), ...Array(700).fill(filler)].join('\n') + '\n');
+    assert.ok(fs.statSync(big).size > 2 * 1024 * 1024);
+    assert.strictEqual(pluginWalkNow({ transcript_path: big }), 'validate', 'a walk older than the tail');
 });

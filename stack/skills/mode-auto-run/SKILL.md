@@ -8,7 +8,8 @@ disable-model-invocation: true
 
 The user typed `/mode-auto-run <request>` and walked away. Typing it is the waiver: the hook has turned auto-run on for
 this session (its `AUTO` stamp) and opened this run's marker, every ask that marks a (Recommended) option is answered
-with it, and the run goes on until its close. Auto-run outlives the run: it stays on for the session until the user
+with it, and the run goes on until its close. The asks of `/alfred-code:init`, `update`, `configure` and `validate` are
+never auto-run's: they go to the user. Auto-run outlives the run: it stays on for the session until the user
 types `/alfred-code:mode:auto-run off`. The limits stay where they are - nothing outward, nothing paid. A guard's
 security ask - a credential shown, work discarded, a write outside the project, a protective guard switched off - is
 never auto-run's to allow: take its safe option and list the act for the user in the close.

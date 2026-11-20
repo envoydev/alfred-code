@@ -44,6 +44,8 @@ let autoLive = () => false;   // hook-prelude.js autoStampLive - a live AUTO wai
 let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's state, an auto-run's named session included
 // hook-prelude.js runMarkerFile - this session's auto-run marker, open while a run goes; null without the prelude (no hold)
 let runMarkerOf = () => null;
+// hook-prelude.js pluginWalkNow - the plugin walk (init, update, configure, validate) this call runs inside, else ''
+let pluginWalk = () => '';
 // hook-prelude.js modeFlags - a typed line's mode flags and request; without the prelude no line arms the solve-flow mark
 let modeFlagsOf = () => ({ request: '' });
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
@@ -66,6 +68,7 @@ if (require.main === module) {
     unattended = prelude.unattended || unattended;
     autoLive = prelude.autoStampLive || autoLive;
     stampOf = prelude.approvalStamp || stampOf;
+    pluginWalk = prelude.pluginWalkNow || pluginWalk;
     if (prelude.runMarkerFile) runMarkerOf = (input) => prelude.runMarkerFile(process.env.CLAUDE_PROJECT_DIR || input.cwd, input.session_id);
     modeFlagsOf = prelude.modeFlags || modeFlagsOf;
     houseDash = prelude.HOUSE_DASH || houseDash;
@@ -3114,7 +3117,12 @@ const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? 
 // A live auto-mode run of this session takes no fresh-session offer at all - the run's own contract says so (nobody is
 // there to paste the resume block), and demanding the option made an approval the run could have answered wait for the
 // user (2026-10-16, the user's bug report: task-solve's second cycle in one session). The shape checks below read it.
-const autoRun = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
+// The plugin's own walks are never auto-run's (the user's ruling, 2026-11-20): inside a typed /alfred-code:init, update,
+// configure or validate the ask goes to the user, the stamp live or not.
+const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
+const walkHere = autoStampHere ? pluginWalk(payload) : '';
+const autoRun = autoStampHere && !walkHere;
+if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask of /alfred-code:${walkHere} - it goes to the user` });
 if (autoRun) {
   const input = payload.tool_input || {};
   const answers = autoAnswers(input.questions);
