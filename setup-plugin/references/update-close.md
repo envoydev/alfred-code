@@ -111,8 +111,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   it.
 - **NESTED** - read only when step 2 had a `nested:` row: each `remove-nested:` line its removal printed, verbatim. A nested
   install the user kept is one follow-ups line: '`<rel>` holds an install inside this repository; the next update asks again'.
-- **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade or its hold call): append
-  `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
+- **WORKSPACE** - read only when `update-workspace.md` ran the cascade or its hold call, which write `$TMP/cascade.txt`: append
+  `; cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
   `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
   project from its `cascade: <rel><TAB><state>` line - `<rel>`; its version from step 2's plan row, for a `held` row the
   stamped version alone (the left side of its `version=` field), and `-` for a project step 2's plan printed no row for,

@@ -25,6 +25,9 @@ const SAMPLE_WORD = 'x';
 // The workspace line prints the parent folder as a `..`-shaped path; a child one level and two levels below its parent.
 const PARENT_SAMPLES = ['..', '../..'];
 const PARENT_CD = 'cd "<rel>"';
+// A span that opens with `;` or `&&` is the end of a call the prose says to append it to; it is judged on a stand-in call.
+const APPENDED = /^(?:;|&&)\s/;
+const APPEND_BASE = 'node "$TMP/repo/scripts/install/stamp.js" state .';
 const CHILD_FILE = 'init-child.md';
 // A prose read of the plugin's own files: 'in ONE Bash `cat`', after the `${CLAUDE_PLUGIN_ROOT}/...` paths it names.
 const PROSE_CAT = /in one Bash `cat`/gi;
@@ -50,6 +53,8 @@ const NOT_CALLS = [
     { file: 'update-walk.md', prefix: 'git mv <to>/<entry>', why: 'the move line the close tells the user, to move a docs entry back' },
     { file: 'update-close.md', prefix: 'git mv', why: 'names how the installer renamed a file, no call' },
     { file: 'update-close.md', prefix: 'git status', why: 'the call the close forbids' },
+    { file: 'source-protocol.md', prefix: 'node "$TMP/repo/scripts/install/alfred-code.js" <install|update|uninstall> [flags]', why: 'the installer call as a template; each real call is written with its own flags and its --source' },
+    { file: 'init-bootstrap.md', prefix: `${APPEND_BASE} ; node <version> is under`, why: 'a quoted hud line the run prints, no call' },
     { file: 'update-close.md', prefix: 'node .claude/hooks/docs.js prune', why: 'the command the close names for the user to run' },
 ];
 
@@ -105,7 +110,8 @@ function commandsOf(file)
     for (const span of text.replace(FENCE_RE, '').matchAll(WRAPPED_SPAN))
     {
         const flat = span[1].replace(/\s*\n\s*/g, ' ').trim();
-        if (COMMAND_SPAN.test(flat) && !SCRIPT_PLACEHOLDER.test(flat)) found.push({ file, text: flat, resolve: false });
+        if (APPENDED.test(flat)) found.push({ file, text: `${APPEND_BASE} ${flat}`, resolve: false });
+        else if (COMMAND_SPAN.test(flat) && !SCRIPT_PLACEHOLDER.test(flat)) found.push({ file, text: flat, resolve: false });
     }
     for (const read of proseReads(text)) found.push({ file, text: read, resolve: false });
     return found;

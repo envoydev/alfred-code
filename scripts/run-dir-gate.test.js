@@ -294,6 +294,38 @@ test('approvesForms refuses everything a `..`-only cd must not carry', () =>
     assert.equal(approvesForms(`(cd ".." && ${alfred} update ${readOnly})`, { ...ancestorCtx, scripts: new Set() }), false, 'a script off the list');
 });
 
+test('approvesForms pins every installer form\'s --source to this run dir\'s snapshot', () =>
+{
+    const pinned = `--source "${D}/repo"`;
+    const good = [
+        `${alfred} update ${pinned} --scope local`,
+        `${alfred} install --scope local ${pinned} --selection "${D}/sel.json"`,
+        `(cd "./child" && ${alfred} update ${pinned} --installed-only)`,
+        `(cd ".." && ${alfred} update ${pinned} --installed-only --print-plan --plan-out "${D}/parent.json")`,
+    ];
+    for (const form of good) assert.equal(approvesForms(form, ancestorCtx), true, form);
+    const probes = [
+        `--source=/p/child ${pinned}`,
+        `${pinned} --source=/p/child`,
+        `${pinned} --source=${D}/repo`,
+        `${pinned} --source "${D}/other"`,
+        `--source "${D}/other" ${pinned}`,
+        `${pinned} --source "/p/child"`,
+        `--source "${D}/other"`,
+        `--source=${D}/repo`,
+        `${pinned} --scope=local`,
+        `${pinned} --root=/p`,
+        '--scope local',
+    ];
+    for (const probe of probes)
+    {
+        assert.equal(approvesForms(`${alfred} update ${probe}`, ancestorCtx), false, `plain: ${probe}`);
+        assert.equal(approvesForms(`(cd "./child" && ${alfred} update ${probe})`, ancestorCtx), false, `child: ${probe}`);
+        assert.equal(approvesForms(`(cd ".." && ${alfred} update ${probe} --installed-only --print-plan --plan-out "${D}/parent.json")`, ancestorCtx), false, `ancestor: ${probe}`);
+    }
+    assert.equal(approvesForms(`${stamp} x --root=sub`, ancestorCtx), true, 'a flag with a value stays fine on another script');
+});
+
 test('approvesForms reads a `..`-only cd in Windows spellings and keeps the child form as it was', () =>
 {
     const win = { runDir: 'C:\\Temp\\alfred-code.AbC123', cwd: 'C:\\p\\child', pluginRoot: 'C:\\plug', scripts: new Set(['scripts/install/stamp.js']), markerPath: 'C:\\Temp\\m.path' };

@@ -60,13 +60,34 @@ function isAllowedScript(word, base, state)
     return state.scripts.has(script.slice(prefix.length).split(SHELL.segmentSplit).join('/'));
 }
 
+const isScriptAt = (word, relative, base, state) => state.scripts.has(state.win ? relative.toLowerCase() : relative) && resolveIn(word, base, state) === `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`;
+
+function valueAfter(words, flag)
+{
+    const at = words.findIndex((word) => word.value === flag);
+    return at < 0 || words.some((word, index) => index > at && word.value === flag) ? null : words[at + 1] || null;
+}
+
+// An installer call names its snapshot once, and it is this run's: an `--source=<path>` or a second `--source` would swap it for
+// a folder the walk never made, and no `--flag=value` spelling passes an installer form at all.
+function pinsSource(args, base, state)
+{
+    if (args.some((word) => word.value.startsWith(FLAG.long) && word.value.includes(FLAG.assign))) return false;
+    const source = valueAfter(args, PARENT_READ.source);
+    return Boolean(source) && resolveIn(source, base, state) === state.repoDir;
+}
+
 const isQuotedPattern = (word) => word.quote !== QUOTE.none && word.value !== '' && !word.value.startsWith(FLAG.dash) && !word.label;
 
 function isMainForm(command, base, state)
 {
     const [head, ...rest] = command.words;
     if (head.quote !== QUOTE.none || command.words.some((word) => word.label)) return false;
-    if (head.value === WORD.node) return rest.length > 0 && isAllowedScript(rest[0], base, state) && rest.slice(1).every((word) => isSafeArg(word, base, state));
+    if (head.value === WORD.node)
+    {
+        if (rest.length === 0 || !isAllowedScript(rest[0], base, state) || !rest.slice(1).every((word) => isSafeArg(word, base, state))) return false;
+        return !isScriptAt(rest[0], PARENT_READ.installer, base, state) || pinsSource(rest.slice(1), base, state);
+    }
     if (head.value === WORD.cat) return rest.length > 0 && rest.every((word) => !word.value.startsWith(FLAG.dash) && isRunDirFile(word, base, state));
     if (head.value === WORD.head) return rest.length === 2 && SHELL.headCount.test(rest[0].value) && isRunDirFile(rest[1], base, state);
     if (head.value === WORD.grep) return rest.length === 3 && GREP_FLAGS.has(rest[0].value) && isQuotedPattern(rest[1]) && isRunDirFile(rest[2], base, state);
@@ -119,25 +140,15 @@ function isChangeDir(element, state)
     return resolved && isUnder(resolved, state.cwd, state.win) ? { base: resolved, ancestor: false } : false;
 }
 
-const isScriptAt = (word, relative, base, state) => state.scripts.has(state.win ? relative.toLowerCase() : relative) && resolveIn(word, base, state) === `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`;
-
-function valueAfter(words, flag)
-{
-    const at = words.findIndex((word) => word.value === flag);
-    return at < 0 || words.some((word, index) => index > at && word.value === flag) ? null : words[at + 1] || null;
-}
-
 // The installer as a read of the parent: `update ... --installed-only --print-plan` over this run's snapshot, its read-back
 // written under the run dir. Nothing else of the installer passes.
 function isInstallerRead(command, base, state)
 {
     const args = command.words.slice(2);
-    if (args[0].value !== WORD.update || command.words.some((word) => word.value.startsWith(PARENT_READ.planOutAssigned))) return false;
+    if (args[0].value !== WORD.update || !pinsSource(args, base, state)) return false;
     if (!PARENT_READ.required.every((flag) => args.some((word) => word.value === flag))) return false;
-    const source = valueAfter(args, PARENT_READ.source);
     const planOut = valueAfter(args, PARENT_READ.planOut);
-    if (!source || !planOut || resolveIn(source, base, state) !== state.repoDir || !isTarget(planOut, base, state)) return false;
-    if (args.filter((word) => word.value === PARENT_READ.planOut).length !== 1) return false;
+    if (!planOut || !isTarget(planOut, base, state)) return false;
     if (command.out && !isTarget(command.out, base, state)) return false;
     return args.slice(1).every((word) => isSafeArg(word, base, state));
 }

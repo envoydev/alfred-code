@@ -1864,7 +1864,8 @@ test('the post-install grep catches the status sweep\'s exclude line and the clo
 test('update-close reads the cascade rows and runs check-loads only when cascade.txt exists', () =>
 {
     const close = flat(refBody('update-close'));
-    assert.match(close, /\[ -f "\$TMP\/cascade\.txt" \] && cat "\$TMP\/cascade\.txt"/, 'the rows are read only when the cascade ran');
+    assert.match(close, /only when `update-workspace\.md` ran the cascade or its hold call, which write `\$TMP\/cascade\.txt`: append `; cat "\$TMP\/cascade\.txt"`/, 'the rows are read only when the cascade ran, by a plain cat');
+    assert.doesNotMatch(close, /\[ -f /, 'no test command the run-dir gate refuses');
     assert.match(close, /node "\$TMP\/repo\/scripts\/workspace\.js" check-loads --root <rel>/, 'check-loads per updated child');
     assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone`/);
 });
