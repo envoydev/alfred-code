@@ -40,8 +40,8 @@ Read it at step 1, before the tier is named.
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
-- **The handoff note** (`<slug>/diagnosis/cursor` on the handoff bus, `node .claude/hooks/handoff.js put <slug>/diagnosis/cursor <<'EOF'`) is the working cursor: current
-  step, chosen mode, resume pointer, the error signature and its proven fix once found, never a dump of the log.
+- **The handoff note** (`<slug>/diagnosis/cursor` on the handoff bus, `node .claude/hooks/handoff.js put <slug>/diagnosis/cursor --text '<the note>'`) is the working cursor: current
+  step, chosen mode, resume pointer, the error signature and its proven fix once found, never a dump of the log. Write the note with no apostrophe: spell out do not, and put a name in double quotes. Open it with a word, not a path.
 
 **On invocation, resume before starting:** `node .claude/hooks/handoff.js list <slug>/diagnosis/cursor` - the newest copy is the cursor - and read the findings file's stamps. A run
 mid-flight resumes at its cursor - never re-run a step already stamped. A run between steps 2

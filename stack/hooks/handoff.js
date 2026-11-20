@@ -5,7 +5,10 @@
 // by the seat that owns it and read by the next seat of the same run; the orchestrator counts and purges a feature's
 // notes at the close. Notes live under the MAIN checkout's <data root>/state/handoff/<feature>.jsonl (layout.js
 // projectRootOf), so a seat in a linked worktree writes where the next one reads; state/ is never committed.
-//   node .claude/hooks/handoff.js put <feature>/<contract_version>/<seat>[/<task>]   the note on stdin (a heredoc)
+//   node .claude/hooks/handoff.js put <feature>/<contract_version>/<seat>[/<task>] --text '<the note>'
+//                                                                                    stdin is read where --text is absent
+// The note travels as ONE single-quoted argument: Claude Code reads a heredoc body as shell text and asks for approval
+// before running one that holds '{' and then a quote (2026-11-20); inside single quotes the '{' is never read.
 //   node .claude/hooks/handoff.js list <feature>/<contract_version>[/<seat>[/<task>]] the run's notes newest first, or one note
 //   node .claude/hooks/handoff.js left [<feature>]                                    first line: notes left, then `note <name>`
 //   node .claude/hooks/handoff.js purge <feature>                                     the feature's notes removed, named
@@ -15,6 +18,8 @@ const path = require('path');
 const layout = require('./layout.js');
 
 const NOTE_CAP = 4000;
+const TEXT_FLAG = '--text';
+const NO_TEXT = `handoff: no note text - pass it as ${TEXT_FLAG} '<the note>'`;
 // A run's whole list is cut at LIST_CAP, the oldest notes first (E-batch mcp-B-m4c: twelve full notes printed 48k).
 const LIST_CAP = 40000;
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -53,7 +58,7 @@ function put(name, text, { cwd } = {}) {
   const parts = segments(name, 3, 4);
   if (!parts) return { code: 2, err: NAME_HELP };
   let body = String(text || '').replace(/\s+$/, '');
-  if (!body.trim()) return { code: 2, err: 'handoff: no note text on stdin - pass it as a heredoc' };
+  if (!body.trim()) return { code: 2, err: NO_TEXT };
   if (body.length > NOTE_CAP) body = `${body.slice(0, NOTE_CAP)}\n[cut at ${NOTE_CAP} chars]`;
   const dir = storeDir(cwd);
   fs.mkdirSync(dir, { recursive: true });
@@ -108,7 +113,7 @@ function purge(feature, { cwd } = {}) {
 module.exports = { put, list, left, purge, storeDir, NOTE_CAP, LIST_CAP };
 
 if (require.main === module) {
-  const [cmd, arg] = process.argv.slice(2);
+  const [cmd, arg, ...rest] = process.argv.slice(2);
   const finish = ({ code, out, err }) => {
     if (out) process.stdout.write(`${out}\n`);
     if (err) process.stderr.write(`${err}\n`);
@@ -116,13 +121,17 @@ if (require.main === module) {
   };
   try {
     if (cmd === 'put') {
-      let text = '';
-      try { text = fs.readFileSync(0, 'utf8'); } catch { /* no stdin */ }
-      finish(put(arg, text));
+      if (rest.length && (rest[0] !== TEXT_FLAG || rest.length !== 2)) finish({ code: 2, err: `handoff: put takes <name> ${TEXT_FLAG} '<the note>' and nothing else` });
+      else if (rest.length) finish(put(arg, rest[1]));
+      else {
+        let text = '';
+        try { text = fs.readFileSync(0, 'utf8'); } catch { /* no stdin */ }
+        finish(put(arg, text));
+      }
     } else if (cmd === 'list') finish(list(arg));
     else if (cmd === 'left') finish(left(arg));
     else if (cmd === 'purge') finish(purge(arg));
-    else finish({ code: 2, err: 'usage: handoff.js put <name> | list <feature>/<contract_version>[/<seat>[/<task>]] | left [<feature>] | purge <feature>' });
+    else finish({ code: 2, err: `usage: handoff.js put <name> ${TEXT_FLAG} '<the note>' | list <feature>/<contract_version>[/<seat>[/<task>]] | left [<feature>] | purge <feature>` });
   } catch (err) {
     finish({ code: 1, err: `handoff: the store cannot be read or written (${err.code || err.name})` });
   }

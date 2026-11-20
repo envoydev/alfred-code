@@ -216,11 +216,9 @@ After the write, `wc -l` it against the ~300-line target above and run the spill
 `"strength: <id>"`, its covers as the globs, its ref as the section - to the engine's merge:
 
 ```bash
-node .claude/hooks/docs.js watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","COVERAGE-QUALITY.md","references/**"]}' --kinds 'weakness: ' 'strength: ' <<'EOF'
-[
+printf '%s\n' '[
   { "kind": "weakness: invoicing-reads-orders-entities", "globs": ["src/Invoicing/InvoiceBuilder.cs", "src/Orders/Order.cs"], "sections": ["ARCHITECTURE-ASSESSMENT#invoicing-reads-orders-entities"] }
-]
-EOF
+]' | node .claude/hooks/docs.js watch-merge quality --seed '{"recomputed":true,"notOwned":["CODE-ASSESSMENT.md","COVERAGE-QUALITY.md","references/**"]}' --kinds 'weakness: ' 'strength: '
 ```
 
 It replaces exactly the entries whose kind starts with one of the two prefixes and keeps every other entry and

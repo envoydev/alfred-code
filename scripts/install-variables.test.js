@@ -215,7 +215,10 @@ test('two writers at once both land through the lock (AC11)', async (t) =>
     put(varsOf(root), '# shared\n');
     const writer = (key) => new Promise((resolve) =>
     {
-        const code = `const v = require(${JSON.stringify(MOD)}); for (let i = 1; i <= 50; i++) { const r = v.set(${JSON.stringify(root)}, [\`${key}=\${i}\`], { env: ${JSON.stringify(env)}, log: () => {} }); if (r.written.length !== 1) { console.error('lost', i); process.exit(3); } }`;
+        // A set that waited out the lock's budget is refused as 'locked by another run' and changes nothing: the writer
+        // tries it again, at most 3 times - 18s of waits, under the lock's 30s stale mark, so a lock left behind still fails. Any other refusal, or a value missing at the end, still fails. On a busy
+        // Windows runner the reader's open handle stretches each rename, and one waiter in 100 ran past 6s (CI, 2026-11-19).
+        const code = `const v = require(${JSON.stringify(MOD)}); for (let i = 1; i <= 50; i++) { let r, why = ''; for (let tries = 0; tries < 3; tries++) { why = ''; r = v.set(${JSON.stringify(root)}, [\`${key}=\${i}\`], { env: ${JSON.stringify(env)}, log: (line) => { why += line; } }); if (r.written.length === 1 || !why.includes('locked by another run')) break; } if (r.written.length !== 1) { console.error('lost', i, why); process.exit(3); } }`;
         const child = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'ignore', 'pipe'] });
         let err = '';
         child.stderr.on('data', (d) => { err += d; });

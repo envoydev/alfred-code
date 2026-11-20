@@ -72,6 +72,7 @@ test('M32 the verifiers, the integration reviewer and the solve flow spell the n
 // 2026-10-13 ruling ('Serena is just for navigation, for memory it's only alfred memory') the same grammar rides an
 // alfred-memory row as its `note:<name>` tag beside `handoff:<feature>/<contract_version>`, and a seat lists by those
 // exact tags plus the project tag - never a search, never the whole store.
+const HANDOFF_QUOTING = 'Write the note with no apostrophe: spell out do not, and put a name in double quotes. Open it with a word, not a path.';
 const TRIO_COPIES = each('stack/skills', /references[\\/]domain-trio-protocol\.md$/);
 test('M39 the handoff notes keep the one grammar and are read by exact tags', () =>
 {
@@ -98,7 +99,9 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
         const reads = own ? 'the note it prints - your own earlier pass -' : 'the notes it prints (newest first; the newest note per name wins)';
         assert.ok(text.includes(`At START, \`node .claude/hooks/handoff.js list ${run}\` - read ${reads} for `), `${f}: reads ${reads}`);
         const name = /-implementer\.md$/.test(f) ? '<feature>/<contract_version>/<seat>/<task>' : '<feature>/<contract_version>/<seat>';
-        assert.ok(text.includes(`\`node .claude/hooks/handoff.js put ${name} <<'EOF'\``), `${f}: hands off as ${name}`);
+        assert.ok(text.includes(`\`node .claude/hooks/handoff.js put ${name} --text '<the note>'\``), `${f}: hands off as ${name}`);
+        assert.ok(!text.includes("<<'EOF'"), `${f}: no heredoc - Claude Code asks before one that holds '{' and then a quote`);
+        assert.ok(text.includes(HANDOFF_QUOTING), `${f}: says how to write the note inside single quotes`);
     }
     assert.strictEqual(TRIO_COPIES.length, 5);
     for (const f of TRIO_COPIES)
@@ -107,7 +110,10 @@ test('M39 the handoff notes keep the one grammar and are read by exact tags', ()
         assert.match(text, /ONE naming grammar: `<feature>\/<contract_version>\/<seat>`/, f);
         assert.ok(text.includes("read a run with `node .claude/hooks/handoff.js list <feature>/<contract_version>` - newest first, the newest note per name wins - or one note by its exact name"), f);
         assert.doesNotMatch(text, /memory_list|memory_store|memory_delete|tag_match/, f);
+        assert.ok(text.includes("--text '<the note>'") && !text.includes("<<'EOF'") && text.includes(HANDOFF_QUOTING), `${f}: stores a note as one --text argument`);
     }
+    const cursor = read('stack/skills/issue-diagnoser/SKILL.md');
+    assert.ok(cursor.includes("handoff.js put <slug>/diagnosis/cursor --text '<the note>'") && cursor.includes(HANDOFF_QUOTING), 'issue-diagnoser: the cursor note is one --text argument');
     const reuse = read('stack/skills/task-solve-cross/references/capability-reuse.md');
     assert.doesNotMatch(reuse, /prefix-matches|list_memories|memory_list/);
     assert.ok(reuse.includes("it calls `node .claude/hooks/handoff.js list <feature>/<contract_version>`, which prints that run's notes and nothing else"));

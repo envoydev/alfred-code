@@ -151,9 +151,8 @@ What grounds it: `src/Contracts/OrderCreated.cs` (this repo, publishes) and `acm
   sibling's entry. The globs are the section's covers:
 
   ```bash
-  node .claude/hooks/docs.js watch-merge awareness --kind 'seam with acme-billing-api' <<'EOF'
-  [ { "kind": "seam with acme-billing-api", "globs": ["src/Contracts/OrderCreated.cs"], "sections": ["RELATED-PROJECTS-AWARENESS#acme-billing-api"] } ]
-  EOF
+  printf '%s\n' '[ { "kind": "seam with acme-billing-api", "globs": ["src/Contracts/OrderCreated.cs"], "sections": ["RELATED-PROJECTS-AWARENESS#acme-billing-api"] } ]' |
+    node .claude/hooks/docs.js watch-merge awareness --kind 'seam with acme-billing-api'
   ```
 
   A sibling whose seam now locates no file here, or whose section was removed, is named with no stdin entry (`[]`),

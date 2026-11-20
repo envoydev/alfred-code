@@ -26,6 +26,30 @@ const run = (cwd, args, input = '', env = {}) =>
     return { status: r.status, out: r.stdout, err: r.stderr };
 };
 
+// The seats pass the note as one single-quoted argument: Claude Code reads a heredoc body as shell text and asks before
+// running one that holds '{' and then a quote (2026-11-20); inside single quotes the '{' is never read.
+test('put takes the note from --text, ahead of stdin, and refuses an empty or a stray argument', () =>
+{
+    const root = project();
+    try
+    {
+        const stored = run(root, ['put', 'checkout/v1/designer', '--text', 'retry { "id": 1 } fixed the order spec'], 'stdin loses\n');
+        assert.deepStrictEqual([stored.status, stored.out.trim()], [0, 'handoff: stored checkout/v1/designer']);
+        const note = run(root, ['list', 'checkout/v1/designer']).out;
+        assert.ok(note.includes('retry { "id": 1 } fixed the order spec') && !note.includes('stdin loses'), note);
+        const blank = run(root, ['put', 'checkout/v1/designer', '--text', '   ']);
+        assert.deepStrictEqual([blank.status, blank.err.trim()], [2, "handoff: no note text - pass it as --text '<the note>'"]);
+        const stray = /^handoff: put takes <name> --text '<the note>' and nothing else$/m;
+        for (const extra of [['--text'], ['--note', 'x'], ['--text', 'a', 'b']])
+        {
+            const r = run(root, ['put', 'checkout/v1/designer', ...extra], 'stdin note\n');
+            assert.strictEqual(r.status, 2, extra.join(' '));
+            assert.match(r.err, stray, extra.join(' '));
+        }
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('a stored note is listed for its run, the newest per name first', () =>
 {
     const root = project();
@@ -118,7 +142,7 @@ test('a bad name, an empty note and an unknown command are refused; a long note 
             assert.strictEqual(r.status, 2, name);
             assert.match(r.err, /handoff: a note name is <feature>\/<contract_version>\/<seat>\[\/<task>\]/);
         }
-        assert.match(run(root, ['put', 'checkout/v1/designer'], '  \n').err, /handoff: no note text on stdin/);
+        assert.match(run(root, ['put', 'checkout/v1/designer'], '  \n').err, /handoff: no note text - pass it as --text '<the note>'/);
         assert.strictEqual(run(root, ['nope']).status, 2);
         run(root, ['put', 'checkout/v1/designer'], `${'x'.repeat(5000)}\n`);
         const l = run(root, ['list', 'checkout/v1']).out;
