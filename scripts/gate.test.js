@@ -13,6 +13,20 @@ const SHA_B = 'b'.repeat(40);
 const ZERO = '0'.repeat(40);
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
+test('gate: the Windows leg works under C:\\Claude-MacOs\\alfred-code\\gate and passes files under the share\'s Claude-MacOs folder', () => {
+    const share = { name: 'Home', hostPath: path.join(os.tmpdir(), 'share-host'), guestPath: '\\\\Mac\\Home' };
+    const id = '20261120-101500-abcdef12';
+    const p = gate.winPaths(id, share);
+    assert.match(p.winId, /^[0-9a-f]{8}$/, 'the VM run id is 8 characters, under the 260-character path limit');
+    assert.strictEqual(p.work, `C:\\Claude-MacOs\\alfred-code\\gate\\${p.winId}`);
+    assert.strictEqual(p.sweep, 'C:\\Claude-MacOs\\alfred-code\\gate\\*', 'the sweep stays inside gate\\');
+    assert.ok(!/alfred-gate/.test(JSON.stringify(p)), 'the old C:\\alfred-gate folder is gone');
+    assert.strictEqual(p.hostDir, path.join(share.hostPath, 'Claude-MacOs', 'alfred-code', `gate-${p.winId}`));
+    assert.strictEqual(p.guestDir, `\\\\Mac\\Home\\Claude-MacOs\\alfred-code\\gate-${p.winId}`);
+    assert.strictEqual(gate.winPaths(id, share).winId, p.winId, 'one run, one id');
+    assert.notStrictEqual(gate.winPaths('20261120-101501-abcdef12', share).winId, p.winId, 'two runs of one commit stay apart');
+});
+
 test('gate-leg: the TAP summary is read from its last block, and a run without one has no counts', () => {
     const tap = [
         'TAP version 13',
