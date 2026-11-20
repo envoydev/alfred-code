@@ -1,6 +1,7 @@
 'use strict';
 // The account's config dir as Claude Code reads it: CLAUDE_CONFIG_DIR when it is set and absolute, else <home>/.claude, where
-// home is what os.homedir() gives: HOME off Windows, and on Windows USERPROFILE, then HOMEDRIVE + HOMEPATH, then HOME.
+// home is HOME off Windows. On Windows os.homedir() reads USERPROFILE, so that comes first; HOMEDRIVE + HOMEPATH and then HOME are
+// the fallbacks a shell or a profile-less environment may leave.
 // Pure: values in, a text or null out.
 const { ACCOUNT, WIN32 } = require('./constants.js');
 

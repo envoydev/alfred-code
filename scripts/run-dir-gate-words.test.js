@@ -99,3 +99,11 @@ test('the child\'s stacks, a csv, pass as one word or a spaced phrase, and a dri
     for (const stacks of ['"web,node"', '"web, node"', '"typescript,web-angular,aspnet"', 'web,node']) assert.equal(approvesForms(select(stacks), shippedCtx), true, stacks);
     for (const stacks of ['"C:web,node"', '"-x,node"', '"web;node"', '"web,$(id)"']) assert.equal(approvesForms(select(stacks), shippedCtx), false, stacks);
 });
+
+test('a repeat positional of ten thousand words returns a verdict without a stack overflow', () =>
+{
+    const pairs = Array.from({ length: 10000 }, (_, at) => `K${at}=1`);
+    const set = (...words) => `node "${D}/repo/scripts/variables.js" set --root . --scope project ${words.join(' ')}`;
+    assert.equal(approvesForms(set(...pairs), shippedCtx), true);
+    assert.equal(approvesForms(set(...pairs, '/etc/x'), shippedCtx), false);
+});

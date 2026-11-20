@@ -21,13 +21,24 @@ function splitMode(args, modes)
 
 const fitsAny = (templates, word, base, state, afterDashes = false) => templates.some((template) => fitsTemplate(template, word, base, state, { afterDashes }));
 
-// Whether the words are the templates in order, a `repeat` template taking one word or more.
-function fitsSequence(sequence, words, base, state, from = 0, taken = 0)
+// Whether the words are the templates in order, a `repeat` template taking one word or more. One pass over the words with the
+// set of template positions still possible, so a long run of words costs no stack.
+function fitsSequence(sequence, words, base, state)
 {
-    if (from === sequence.length) return taken === words.length;
-    const word = words[taken];
-    if (!word || !fitsTemplate(sequence[from], word, base, state)) return false;
-    return fitsSequence(sequence, words, base, state, from + 1, taken + 1) || (sequence[from].repeat === true && fitsSequence(sequence, words, base, state, from, taken + 1));
+    let positions = new Set([0]);
+    for (const word of words)
+    {
+        const next = new Set();
+        for (const at of positions)
+        {
+            if (at >= sequence.length || !fitsTemplate(sequence[at], word, base, state)) continue;
+            next.add(at + 1);
+            if (sequence[at].repeat === true) next.add(at);
+        }
+        if (next.size === 0) return false;
+        positions = next;
+    }
+    return positions.has(sequence.length);
 }
 
 // Whether the words after the mode are the flags, flag values and positionals one mode's template lists. A flag takes the next

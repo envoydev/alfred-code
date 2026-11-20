@@ -20,7 +20,7 @@ const MARKER_PATH = `/t/${markerName(PROJECT)}`;
 const SAMPLE_WORD = 'item';
 // A placeholder that stands for a value of a known shape is filled with a realistic one, so a word template that misses it shows.
 const ACCOUNT_DIR = '/home/u/.claude';
-const REALISTIC_SAMPLES = [['<KEY>=<value>', 'ALFRED_CODE_AUTO_COMPACT=1'], ['--config-dir <account dir>', `--config-dir "${ACCOUNT_DIR}"`]];
+const REALISTIC_SAMPLES = [['<KEY>=<value>', 'ALFRED_CODE_AUTO_COMPACT=1']];
 // The workspace line prints the parent folder as a `..`-shaped path; a child one level and two levels below its parent.
 const SHAPE_SAMPLES = { count: '2', scope: 'project', csv: 'web,node', phrase: 'item two' };
 const PARENT_SAMPLES = ['..', '../..'];
@@ -74,10 +74,12 @@ function untemplated(command)
 }
 
 const withRealistic = (command) => REALISTIC_SAMPLES.reduce((text, [placeholder, sample]) => text.replaceAll(placeholder, sample), command);
-const standIn = () => SAMPLE_WORD;
+const ACCOUNT_PLACEHOLDER = '<account dir>';
+const standIn = (placeholder) => (placeholder === ACCOUNT_PLACEHOLDER ? ACCOUNT_DIR : SAMPLE_WORD);
 // A placeholder filled by its shape: a csv is two names joined by a comma, a quoted one with a space is two words.
 function byShape(placeholder, at, text)
 {
+    if (placeholder === ACCOUNT_PLACEHOLDER) return ACCOUNT_DIR;
     const name = placeholder.slice(1, -1);
     const quoted = /["']/.test(text[at - 1] || '');
     if (name === 'n') return SHAPE_SAMPLES.count;
