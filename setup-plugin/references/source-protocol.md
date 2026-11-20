@@ -58,7 +58,7 @@ else
   curl -fsSL "$REPO_URL/releases/latest/download/alfred-code.tar.gz" -o "$TMP/alfred-code.tar.gz"
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
-printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; printf '%s\n' "$TMP" > "$MARK" || { echo "MISSING a run marker this user can write at $MARK - nothing resolved"; exit 1; }
+printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; if ! printf '%s\n' "$TMP" > "$MARK"; then echo "MISSING a run marker this user can write at $MARK - nothing resolved"; exit 1; fi
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)   # the archive's; a plugin-cache entry carries none
 [ -n "$VER" ] || VER=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).version||""))}catch{}' "$TMP/repo/setup-plugin/.claude-plugin/plugin.json")

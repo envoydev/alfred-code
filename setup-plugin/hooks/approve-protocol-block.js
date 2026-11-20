@@ -28,6 +28,7 @@ function main()
     let prelude;
     try { prelude = require(PRELUDE); } catch { return; }
     if (prelude.standDown('approve-protocol-block', process.env, process.argv, { setUp: false })) return;
+    if (prelude.cursorStandDown(input, __filename)) return;
     // only inside a typed walk: the resolve block updates plugins and may download a release (side-agent note, 2026-11-20)
     if (typeof prelude.pluginWalkNow !== 'function' || !prelude.pluginWalkNow(input)) return;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', permissionDecisionReason: REASON } }));

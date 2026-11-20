@@ -10,6 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { normalize, fenceBlocks, buildTable, approves } = require('./protocol-blocks/blocks.js');
 const { readBodies } = require('./protocol-blocks/effects.js');
+require('./hook-test-env').isolateHookSuite();
 
 const ROOT = path.join(__dirname, '..');
 const TABLE = path.join(ROOT, 'setup-plugin', 'hooks', 'protocol-blocks.json');
@@ -78,7 +79,7 @@ test('the shipped table is current - run `npm run protocol-blocks` after a shell
     const resolve = fenceBlocks(protocol).find((b) => b.lang === 'bash').body;
     assert.ok(approves(resolve, built), 'the resolve block itself is approved');
     assert.match(built.opener, /\[ ! -O "\$MARK" \]/, 'review MATERIAL: the opener trusts only a marker the user owns');
-    assert.match(resolve, /> "\$MARK" \|\| \{/, 'review MATERIAL: a failed marker write stops the resolve');
+    assert.match(resolve, /if ! printf '%s\\n' "\$TMP" > "\$MARK"; then echo "MISSING/, 'review MATERIAL: a failed marker write stops the resolve');
     assert.match(resolve, /\[ -O "\$MARK" \] && \[ -n "\$OLD" \]/, 'review MATERIAL: the reuse path trusts only a marker the user owns');
 });
 
