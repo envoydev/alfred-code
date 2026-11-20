@@ -77,7 +77,7 @@ session's marker is reused; the marker name is derived from the project root, so
 ## Every later call re-reads the marker
 
 Run every block on this page and the walk's pages exactly as written: add no line, merge no two calls, and fill each
-`<placeholder>` alone; a page is read in a call of its own. The plugin approves an unchanged block inside a typed `/alfred-code:init`, `update`,
+`<placeholder>` alone. The plugin approves an unchanged block inside a typed `/alfred-code:init`, `update`,
 `configure` or `validate`, unless the hook profile is `minimal`, so it runs with no approval prompt. A marker
 another user owns is never trusted: the opener says `MISSING the run marker`.
 

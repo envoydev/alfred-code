@@ -163,7 +163,6 @@ test('the hook allows a shipped block and is silent on everything else, a bad pa
         assert.deepStrictEqual([off.status, off.stdout], [0, ''], 'switched off by name');
         const minimal = hook({ tool_name: 'Bash', cwd, transcript_path: walk, tool_input: { command: resolve } }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
         assert.deepStrictEqual([minimal.status, minimal.stdout], [0, ''], 'the minimal hook profile stands it down, as source-protocol.md says');
-        assert.match(protocol.replace(/\s+/g, ' '), /a page is read in a call of its own/);
         assert.match(protocol.replace(/\s+/g, ' '), /approves an unchanged block inside a typed `\/alfred-code:init`, `update`, `configure` or `validate`, unless the hook profile is `minimal`/);
     }
     finally { fs.rmSync(cwd, { recursive: true, force: true }); }
