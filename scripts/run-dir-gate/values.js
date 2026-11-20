@@ -50,8 +50,8 @@ function fitsTemplate(template, word, base, state, { afterDashes = false } = {})
     if (template.kind === VALUE.cwdPath) return isCwdPath(value);
     if (startsWithDash(value) && !afterDashes) return false;
     if (value === ARG.passthrough) return false;
-    if (template.kind === VALUE.word) return ARG.plainWord.test(value) && !ARG.allDots.test(value);
-    return template.kind === VALUE.phrase && ARG.phrase.test(value);
+    if (template.kind === VALUE.word) return ARG.plainWord.test(value) && !ARG.allDots.test(value) && !ARG.driveWord.test(value);
+    return template.kind === VALUE.phrase && ARG.phrase.test(value) && value.split(' ').every((part) => !ARG.driveWord.test(part));
 }
 
 module.exports = { compileTemplate, fitsTemplate };

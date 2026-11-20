@@ -449,11 +449,7 @@
               "suffix": "repo/meta/plugin-settings.json"
             }
           ],
-          "--config-dir": [
-            {
-              "kind": "word"
-            }
-          ],
+          "--config-dir": [],
           "--installed": [
             {
               "kind": "word"
@@ -592,9 +588,6 @@
             {
               "kind": "runDir",
               "suffix": "repo/meta/recommendations.json"
-            },
-            {
-              "kind": "word"
             }
           ],
           "--redundant": [
@@ -743,8 +736,7 @@
         "positionals": [
           [
             {
-              "kind": "literal",
-              "value": "KEY=value"
+              "kind": "word"
             }
           ]
         ],

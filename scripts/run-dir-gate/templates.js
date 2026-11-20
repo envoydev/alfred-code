@@ -1,7 +1,7 @@
 'use strict';
 // The generator's half of the value templates: each `node "$TMP/repo/<script>" ...` call a walk body writes becomes a mode, a
 // list of positional templates and a flag -> value templates map, and the calls of one (script, mode) merge. Pure.
-const { SCRIPT_RE, CALL, ARG, QUOTE, VALUE, TEMPLATE, WORD } = require('./constants.js');
+const { SCRIPT_RE, CALL, ARG, QUOTE, VALUE, TEMPLATE, WORD, PATH_VALUE_FLAGS } = require('./constants.js');
 const { readCallWords } = require('./call-words.js');
 
 const isFlagWord = (word) => word.quote === QUOTE.none && !word.placeholder
@@ -51,7 +51,8 @@ function shapeOfCall(words)
         const next = words[at + 1];
         if (next && !isFlagWord(next))
         {
-            for (const entry of classify(next)) note(word.value, entry);
+            if (!flags.has(word.value)) flags.set(word.value, []);
+            if (!(PATH_VALUE_FLAGS.has(word.value) && next.placeholder)) for (const entry of classify(next)) note(word.value, entry);
             at++;
         }
         else note(word.value, true);

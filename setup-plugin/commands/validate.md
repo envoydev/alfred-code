@@ -439,7 +439,7 @@ dormancy alone is never a removal argument.
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 8's accepted environment rows
 are applied here too - MISSING and INVALID ones with ONE `node "$TMP/repo/scripts/variables.js" set --root . --scope
-<scope> KEY=value ...`, which writes each where it takes effect and names the file; an OLD NAME or RETIRED key as a
+<scope> <KEY>=<value> ...`, which writes each where it takes effect and names the file; an OLD NAME or RETIRED key as a
 merge on the settings file that holds it, touching ONLY those keys - and named in the post-check the same way an added
 artifact is. An accepted
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that

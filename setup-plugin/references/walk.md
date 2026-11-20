@@ -57,7 +57,7 @@ grep at 258k context to confirm this shape):
 2. **Show ONE numbered table of the layer's ENTIRE catalog** - every item the release ships,
    installed or not, so nothing is ever offered later or out-of-band. The TOOL renders it, never
    you, and it is **never redirected to a file** - the table comes back IN the tool result:
-   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
+   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs "$TMP/repo/meta/recommendations.json" --stacks <confirmed,csv> --found "$TMP/found.json"`
    - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --installed "$TMP/installed.json" --dropped "$TMP/dropped.json" --found "$TMP/found.json"`
      (omit `--found` when no evidence scan ran; in a child of an installed folder add `--inherited
      "$TMP/parent.json"`, the parent's read-back). A not-installed row whose reason column carries a

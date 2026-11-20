@@ -153,9 +153,14 @@ const ARG = Object.freeze({
     relativePath: /^(?:\.\/)?[A-Za-z0-9._:@,=+-]+(?:\/[A-Za-z0-9._:@,=+-]+)*$/,
     // A path segment of plain characters that does not end in a dot: Windows reads `repo.` and `repo ` as `repo`.
     targetSegment: /^[A-Za-z0-9._-]*[A-Za-z0-9_-]$/,
+    // A drive letter and a colon: on Windows `C:..` and `D:` name a folder of that drive, so no word or phrase may start so.
+    driveWord: /^[A-Za-z]:/,
     passthrough: '--',
     noMode: '',
 });
+// A flag whose value the walk fills with a path - a folder of the account, a file of the snapshot's meta: a placeholder there is
+// no `word`, since the real value holds a `/`, so a call with it prompts.
+const PATH_VALUE_FLAGS = Object.freeze(new Set(['--config-dir', '--recs']));
 const OUTPUT_FLAGS = Object.freeze(new Set(['--out', '--emit', '--plan-out']));
 const INSTALLER_MODES = Object.freeze(new Set(['install', 'update']));
 // The words that start a node call in a body, and what ends its argument list.
@@ -218,5 +223,5 @@ module.exports = {
     BODY, WALKS, SKIPPED_REFERENCES, REFERENCE_NAME, COLLECT, NOT_CALLS,
     HOOK_NAME, OFF_SWITCH, TABLE_FILE, GENERATED_BY, TABLE_NOTE, QUICK_REJECT, ALLOW_REASON, HOOK_FILE, EVENT, TOOL, BLOCK_BRANCH, BLOCK_REASON_MAX, INLINE_CODE_RE, EFFECTS, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
     FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
-    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE, VALUE, TEMPLATE,
+    REPO_DIR, SESSION_FILE, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ_START_RE, ARG, OUTPUT_FLAGS, PATH_VALUE_FLAGS, INSTALLER_MODES, CALL, PLUGIN_READ, LINE_BREAK_RE, VALUE, TEMPLATE,
 };

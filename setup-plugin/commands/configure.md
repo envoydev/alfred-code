@@ -281,7 +281,7 @@ question here: report each as a mode with its state, name its command (`/alfred-
 `/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level]`, typed alone on its line, which
 keeps it in this checkout's `.claude/settings.local.json` until its off), and write none of them - `variables.js set`
 refuses a mode key. Nothing else needs editing. Apply on consent with ONE
-`node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> KEY=value ...` naming ONLY the chosen keys - it
+`node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> <KEY>=<value> ...` naming ONLY the chosen keys - it
 writes each where it takes effect and prints the file; a refused key is named with its reason. The one EXCEPTION is a
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that one by running
 `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead, so the write re-probes at

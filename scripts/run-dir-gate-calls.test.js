@@ -131,7 +131,6 @@ test('approvesForms refuses a flag value that points at code or data in the proj
         `${workspace} cascade --root . --source "${D}/repo" --answers "${D}/answers.json" --apply`,
         `${at('scripts/variables.js')} show --root . extra`,
         `${at('scripts/variables.js')} set --root . --scope a/b KEY=value`,
-        `${at('scripts/variables.js')} set --root . --scope x OTHER=value`,
         `${at('scripts/stack-select.js')} --recs "/p/recs.json" --stacks x`,
         `${at('scripts/stack-select.js')} --selection "./raw.json"`,
         `${at('scripts/stamp-compare.js')} --snapshot "/p/evil" --stamp .claude/alfred-code.stamp`,
@@ -144,7 +143,6 @@ test('approvesForms refuses a flag value that points at code or data in the proj
     const good = [
         `${preflight} --snapshot "${D}/repo" --root .`,
         `${workspace} cascade --root . --source "${D}/repo" --answers "${D}/answers.json"`,
-        `${settings} --catalog "${D}/repo/meta/plugin-settings.json" --config-dir x --installed a,b --apply`,
         `${workspace} answer --file "${D}/answers.json" --hold`,
         `${at('scripts/variables.js')} set --root . --scope local KEY=value`,
         `${at('scripts/stamp-compare.js')} --snapshot "${D}/repo" --stamp .claude/alfred-code.stamp`,
@@ -175,8 +173,65 @@ test('a flag of another mode of the same script, a positional the template lacks
         `${alfred} update --source "${D}/repo" --add 'a"b'`,
     ];
     for (const form of forms) assert.equal(approvesForms(form, ctx), false, JSON.stringify(form));
-    assert.equal(approvesForms(`${workspace} role --root . --answer a:b,c=d+e@f_g.h-i`, ctx), true, 'every character of the word class passes');
-    assert.equal(approvesForms(`${alfred} update --source "${D}/repo" --add 'a:b c,d'`, ctx), true, 'a phrase of words of that class joined by single spaces passes');
+    assert.equal(approvesForms(`${workspace} role --root . --answer ab:c,d=e+f@g_h.i-j`, ctx), true, 'every character of the word class passes');
+    assert.equal(approvesForms(`${alfred} update --source "${D}/repo" --add 'ab:b c,d'`, ctx), true, 'a phrase of words of that class joined by single spaces passes');
+});
+
+const WIN_RUN = 'C:\\Temp\\alfred-code.AbC123';
+const winShipped = { ...shippedCtx, runDir: WIN_RUN, cwd: 'C:\\p', pluginRoot: 'C:\\plug' };
+const atWin = (script) => `node "${WIN_RUN}\\repo\\${script.split('/').join('\\')}"`;
+
+test('a `word` or a word of a `phrase` that starts with a drive letter and a colon refuses on every OS - on Windows `C:..` is the cwd\'s parent', () =>
+{
+    const forms = (at, run) => [
+        `${at('scripts/workspace.js')} join --root C:.. --answer join`,
+        `${at('scripts/workspace.js')} role --root C:.. --when update --answer child`,
+        `${at('scripts/stamp-docs-root.js')} C:.. --seed-versioning`,
+        `${at('scripts/update-preflight.js')} --offers --root C:..`,
+        `${at('scripts/workspace.js')} remove-nested --root . --path C:..`,
+        `${at('scripts/plugin-settings.js')} --catalog "${run}/repo/meta/plugin-settings.json" --config-dir x --installed C:.claude --apply`,
+        `${at('stack/hooks/guard-secret-value.js')} --redacted C:..`,
+        `${at('scripts/stack-select.js')} --selection "${run}/raw.json" --dependents C:evil`,
+        `${at('scripts/workspace.js')} ignore --root . --add 'C:evil name'`,
+        `${at('scripts/workspace.js')} ignore --root . --add 'name D:x'`,
+        `${at('scripts/workspace.js')} join --root d: --answer join`,
+        `${at('scripts/variables.js')} set --root . --scope C:x KEY=value`,
+    ];
+    for (const form of forms(atWin, 'C:/Temp/alfred-code.AbC123')) assert.equal(approvesForms(form, winShipped), false, JSON.stringify(form));
+    for (const form of forms((script) => `node "${D}/repo/${script}"`, D)) assert.equal(approvesForms(form, shippedCtx), false, JSON.stringify(form));
+    const good = [
+        `${atWin('scripts/stack-select.js')} --selection "${WIN_RUN}\\raw.json" --dependents skill:name`,
+        `${atWin('scripts/install/alfred-code.js')} install --source "${WIN_RUN}\\repo" --scope local --scope-of lsp=global`,
+        `${atWin('scripts/workspace.js')} ignore --root . --add 'skills name'`,
+    ];
+    for (const form of good) assert.equal(approvesForms(form, winShipped), true, form);
+});
+
+test('the real variables.js set call passes: the body writes the pair as placeholders, so the table holds a word', () =>
+{
+    const set = (at) => `${at('scripts/variables.js')} set --root . --scope project ALFRED_CODE_AUTO_COMPACT=1`;
+    assert.equal(approvesForms(set((script) => `node "${D}/repo/${script}"`), shippedCtx), true);
+    assert.equal(approvesForms(set(atWin), winShipped), true);
+    assert.deepEqual(SHIPPED.scripts['scripts/variables.js'].set.positionals, [[{ kind: 'word' }]]);
+    assert.equal(approvesForms(`${set((script) => `node "${D}/repo/${script}"`)} /etc/x`, shippedCtx), false);
+    assert.equal(approvesForms(`node "${D}/repo/scripts/variables.js" set --root . --scope project A=b/c`, shippedCtx), false);
+});
+
+test('a path-valued flag the walk fills from a placeholder gets no word template, so a call with one prompts', () =>
+{
+    const settings = `node "${D}/repo/scripts/plugin-settings.js"`;
+    const catalog = `--catalog "${D}/repo/meta/plugin-settings.json"`;
+    const forms = [
+        `${settings} ${catalog} --config-dir .claude --installed x --apply`,
+        `${settings} ${catalog} --config-dir x --installed x --apply`,
+        `${settings} ${catalog} --config-dir ./x --apply`,
+        `node "${D}/repo/scripts/stack-select.js" --missing --recs evil.json --stacks x`,
+        `node "${D}/repo/scripts/stack-select.js" --missing --recs ./recs.json --stacks x`,
+    ];
+    for (const form of forms) assert.equal(approvesForms(form, shippedCtx), false, form);
+    assert.equal(approvesForms(`node "${D}/repo/scripts/stack-select.js" --missing --recs "${D}/repo/meta/recommendations.json" --stacks x`, shippedCtx), true);
+    assert.deepEqual(SHIPPED.scripts['scripts/plugin-settings.js'][''].flags['--config-dir'], []);
+    assert.ok(SHIPPED.scripts['scripts/stack-select.js'][''].flags['--recs'].every((template) => template.kind === 'runDir'));
 });
 
 test('buildTable writes a template per script and mode from the calls the four walks run, and only those', () =>
