@@ -1,10 +1,17 @@
 {
   "generatedBy": "scripts/protocol-blocks.js",
   "note": "Generated: the hash of each fixed shell block in the setup bodies, and the opener every later call starts with. Run `npm run protocol-blocks` after a block changes.",
-  "opener": "RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\nTD=\"${TMPDIR:-/tmp}\"; TD=\"${TD%/}\"   # a sandboxed command writes only under $TMPDIR (and the project)\nMARK=\"$TD/alfred-code-run.$(printf '%s' \"$RUN_ROOT\" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' \"$RUN_ROOT\" | git hash-object --stdin | cut -c1-12).path\"\nTMP=$(cat \"$MARK\" 2>/dev/null); if [ -z \"$TMP\" ] || [ ! -O \"$MARK\" ]; then echo \"MISSING the run marker - run the resolve block first\"; exit 1; fi\nTMP_WIN=$(cygpath -w \"$TMP\" 2>/dev/null || printf '%s' \"$TMP\")         # Windows spelling, empty-safe",
-  "resolve": "643533ab7ad44847e2cabb552f9d7c4b6fbbb0a8d1ff202dbe5972d870c15834",
+  "openers": [
+    "RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\nTD=\"${TMPDIR:-/tmp}\"; TD=\"${TD%/}\"\nMARK=\"$TD/alfred-code-run.$(printf '%s' \"$RUN_ROOT\" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' \"$RUN_ROOT\" | git hash-object --stdin | cut -c1-12).path\"\nTMP=$(cat \"$MARK\" 2>/dev/null); if [ -z \"$TMP\" ] || [ ! -O \"$MARK\" ]; then echo \"MISSING the run marker - run the resolve block first\"; exit 1; fi\nTMP_WIN=$(cygpath -w \"$TMP\" 2>/dev/null || printf '%s' \"$TMP\")",
+    "RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\nTD=\"${TMPDIR:-/tmp}\"; TD=\"${TD%/}\"   # a sandboxed command writes only under $TMPDIR (and the project)\nMARK=\"$TD/alfred-code-run.$(printf '%s' \"$RUN_ROOT\" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' \"$RUN_ROOT\" | git hash-object --stdin | cut -c1-12).path\"\nTMP=$(cat \"$MARK\" 2>/dev/null); if [ -z \"$TMP\" ] || [ ! -O \"$MARK\" ]; then echo \"MISSING the run marker - run the resolve block first\"; exit 1; fi\nTMP_WIN=$(cygpath -w \"$TMP\" 2>/dev/null || printf '%s' \"$TMP\")         # Windows spelling, empty-safe"
+  ],
+  "resolves": [
+    "2610900ea333a3c2556480148bc2bf884d1092de3122b3d45728ebb9b5c10f5c",
+    "643533ab7ad44847e2cabb552f9d7c4b6fbbb0a8d1ff202dbe5972d870c15834"
+  ],
   "blocks": [
     "1cb0ab8c8de82886187717b335a415ba9a241ff4f27d5b3cf17a517c64f807fc",
+    "2610900ea333a3c2556480148bc2bf884d1092de3122b3d45728ebb9b5c10f5c",
     "271bf3be87289f369eae22aa6660dc1df7fcbdeefeee17d695578e9a5b289349",
     "3e76fc7b360f01c43a1a07d0b9cad258acf8814b700ed9572a817219a1768fd3",
     "462bbdd09899916054e816b20d6007c87ba3f8687f5bbd1b53c327cc72ec8fef",
@@ -17,6 +24,7 @@
     "6d9e8f0be1a32759fc61a9528224fc8dc77360224d49c682f17695f9805db569",
     "6df3553c0153af2646f05f7e94f8d54c46ffa08f26d3016a53b749d906fb95b7",
     "720e4360443132b75ac821504496dffee53a0533e75c69f3432237f9d48de3da",
+    "8983d844c4de9c9cea4c5f011f84c84cbba500b598440aebc3c57d69ad4d1d81",
     "9f4e11665d350c9648fdc4608c7cb3a6c37cda7fc754c2ad3e28c453c952f212",
     "a2b4b3595385ed545e784ba53a7054bf11e999bde76438f0fee5e7ec6c4f8178",
     "a6c8389e1f7df9dfba9a8d00be9f7c8b5c5d9ffc3db2acd6424bbb4ca9e9ddb6",

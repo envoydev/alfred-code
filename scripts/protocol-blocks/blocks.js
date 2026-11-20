@@ -14,6 +14,32 @@ function normalize(text)
         .replace(/^\n+/, '').replace(/\n+$/, '');
 }
 
+// The block with its comments taken out, the way bash reads it: a `#` that opens a word outside quotes runs to the line's
+// end, and a line left empty goes. Run on SHIPPED text only, so a second exact spelling is known - never on a command
+// the hook judges. A block with a heredoc gets no second spelling (null).
+function withoutComments(body)
+{
+    if (body.includes('<<')) return null;
+    let quote = '';
+    const lines = [];
+    for (const line of body.split('\n'))
+    {
+        let cut = line.length;
+        for (let i = 0; i < line.length; i++)
+        {
+            const ch = line[i];
+            if (quote === "'") { if (ch === "'") quote = ''; continue; }
+            if (ch === '\\') { i++; continue; }
+            if (quote === '"') { if (ch === '"') quote = ''; continue; }
+            if (ch === "'" || ch === '"') { quote = ch; continue; }
+            if (ch === '#' && (i === 0 || line[i - 1] === ' ' || line[i - 1] === '\t')) { cut = i; break; }
+        }
+        const kept = line.slice(0, cut).replace(/[ \t]+$/, '');
+        if (kept || cut === line.length) lines.push(kept);
+    }
+    return normalize(lines.join('\n'));
+}
+
 const digest = (text) => crypto.createHash(HASH).update(text).digest('hex');
 
 // Every fenced block of a markdown text, its language and its body with the fence's indent taken off.
@@ -31,19 +57,25 @@ function buildTable(files)
     const openers = new Set();
     const resolves = new Set();
     const hashes = new Set();
+    const spellings = (body) => [...new Set([body, withoutComments(body)].filter(Boolean))];
     for (const { text } of files)
         for (const block of fenceBlocks(text))
         {
             if (!SHELL_LANGS.has(block.lang) || hasPlaceholder(block.body)) continue;
             const body = normalize(block.body);
             if (!body) continue;
-            if (body.includes(OPENER_LINE)) openers.add(body);
-            if (body.includes(RESOLVE_LINE)) resolves.add(digest(body));
-            hashes.add(digest(body));
+            for (const spelling of spellings(body))
+            {
+                if (body.includes(OPENER_LINE)) openers.add(spelling);
+                if (body.includes(RESOLVE_LINE)) resolves.add(digest(spelling));
+                hashes.add(digest(spelling));
+            }
         }
-    if (openers.size !== 1) throw new Error(`protocol-blocks: exactly one opener, found ${openers.size}`);
-    if (resolves.size !== 1) throw new Error(`protocol-blocks: exactly one resolve block, found ${resolves.size}`);
-    return { opener: [...openers][0], resolve: [...resolves][0], blocks: [...hashes].sort() };
+    const shipped = (set) => files.flatMap(({ text }) => fenceBlocks(text)).filter((b) => SHELL_LANGS.has(b.lang)).map((b) => normalize(b.body))
+        .filter((body) => body.includes(set)).filter((body, i, all) => all.indexOf(body) === i).length;
+    if (shipped(OPENER_LINE) !== 1) throw new Error(`protocol-blocks: exactly one opener, found ${shipped(OPENER_LINE)}`);
+    if (shipped(RESOLVE_LINE) !== 1) throw new Error(`protocol-blocks: exactly one resolve block, found ${shipped(RESOLVE_LINE)}`);
+    return { openers: [...openers].sort(), resolves: [...resolves].sort(), blocks: [...hashes].sort() };
 }
 
 // Whether a Bash call's text is the resolve block, the opener, or the opener then a shipped fixed block on the next line.
@@ -53,12 +85,15 @@ function approves(command, table)
     if (typeof command !== 'string' || !table || !Array.isArray(table.blocks)) return false;
     const text = normalize(command);
     if (!text || CONTROL_RE.test(text)) return false;
-    const opener = String(table.opener || '');
-    if ((table.resolve && digest(text) === table.resolve) || (opener && text === opener)) return true;
+    const openers = Array.isArray(table.openers) ? table.openers.map(String).filter(Boolean) : [];
+    if ((Array.isArray(table.resolves) && table.resolves.includes(digest(text))) || openers.includes(text)) return true;
     const known = new Set(table.blocks);
-    if (!opener || !text.startsWith(`${opener}\n`)) return false;
-    const rest = normalize(text.slice(opener.length));
-    return Boolean(rest) && known.has(digest(rest));
+    return openers.some((opener) =>
+    {
+        if (!text.startsWith(`${opener}\n`)) return false;
+        const rest = normalize(text.slice(opener.length));
+        return Boolean(rest) && known.has(digest(rest));
+    });
 }
 
-module.exports = { normalize, digest, fenceBlocks, buildTable, approves };
+module.exports = { normalize, withoutComments, digest, fenceBlocks, buildTable, approves };

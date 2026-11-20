@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { normalize, fenceBlocks, buildTable, approves } = require('./protocol-blocks/blocks.js');
+const { normalize, fenceBlocks, buildTable, approves, withoutComments } = require('./protocol-blocks/blocks.js');
 const { readBodies } = require('./protocol-blocks/effects.js');
 require('./hook-test-env').isolateHookSuite();
 
@@ -25,7 +25,7 @@ const BODY = ['# t', '', '```bash', RESOLVE, '```', '', '```bash', OPENER, '```'
 test('a fixed block, or the opener then a fixed block, is approved - a filled placeholder, an added line or another shell is not', () =>
 {
     const table = buildTable([{ file: 'setup-plugin/references/t.md', text: BODY }]);
-    assert.strictEqual(table.opener, normalize(OPENER));
+    assert.deepStrictEqual(table.openers, [normalize(OPENER)]);
     assert.strictEqual(table.blocks.length, 3, 'the resolve block, the opener and the fixed block; the placeholder block and the PowerShell block are left out');
     assert.ok(approves(RESOLVE, table) && approves(OPENER, table), 'the resolve block and the opener alone');
     assert.ok(!approves(FIXED, table), 'a fixed block alone: it sets no variable, so Claude Code would not ask, and the user keeps the prompt');
@@ -39,6 +39,22 @@ test('a fixed block, or the opener then a fixed block, is approved - a filled pl
     assert.ok(!approves(`${OPENER}${FIXED}`, table), 'the opener glued to the block with no line break');
     assert.ok(!approves('Write-Output $TMP', table), 'a PowerShell block');
     assert.ok(!approves('', table) && !approves(undefined, table), 'no command');
+});
+
+test('live run 4 (2026-11-20): a block with its trailing comments dropped is approved too - both spellings come from the shipped text', () =>
+{
+    const commentedOpener = OPENER.replace('RUN_ROOT=$(pwd)', 'RUN_ROOT=$(pwd)   # the project');
+    const body = ['```bash', RESOLVE, '```', '```bash', commentedOpener, '```', '```bash', `${FIXED}   # one step`, '```',
+        '```bash', 'echo "a # b"; node y.js   # done', '```'].join('\n');
+    const table = buildTable([{ file: 't.md', text: body }]);
+    assert.ok(approves(`${OPENER}\n${FIXED}`, table), 'the opener and the block, both without their comments');
+    assert.ok(approves(`${commentedOpener}\n${FIXED}   # one step`, table), 'both as shipped');
+    assert.ok(approves(OPENER, table), 'the opener alone, without its comment');
+    assert.ok(approves(`${OPENER}\necho "a # b"; node y.js`, table), 'a # inside quotes stays');
+    assert.ok(!approves(`${OPENER}\necho "a`, table), 'never a spelling cut at a quoted #');
+    assert.strictEqual(withoutComments('echo "a # b" \'c # d\' x\\# y   # gone\nz # w'), 'echo "a # b" \'c # d\' x\\# y\nz');
+    assert.strictEqual(withoutComments('cat <<EOF\n# kept\nEOF'), null, 'a heredoc gets no second spelling');
+    assert.ok(!approves(`${OPENER}\n${FIXED}\ncat x.md`, table), 'a merged page read still prompts');
 });
 
 test('review BLOCKER: a lone carriage return or another control character is never read as a line break', () =>
@@ -66,19 +82,39 @@ test('a table needs exactly one opener', () =>
     assert.throws(() => buildTable([{ file: 'a.md', text: BODY }, { file: 'b.md', text: other }]), /exactly one opener, found 2/);
     assert.strictEqual(buildTable([{ file: 'a.md', text: BODY }, { file: 'b.md', text: BODY }]).blocks.length, 3, 'the same block twice is one entry');
     const commented = ['```bash', RESOLVE, '```', '```bash', OPENER, '```', '```bash', 'node x.js  # prints "<scope> <id>"', '```'].join('\n');
-    assert.strictEqual(buildTable([{ file: 'c.md', text: commented }]).blocks.length, 3, 'a placeholder in a comment is not filled in');
+    assert.strictEqual(buildTable([{ file: 'c.md', text: commented }]).blocks.length, 4, 'a placeholder in a comment is not filled in');
 });
 
 test('the shipped table is current - run `npm run protocol-blocks` after a shell block in setup-plugin changes', () =>
 {
     const built = buildTable(readBodies(ROOT));
     const onDisk = JSON.parse(fs.readFileSync(TABLE, 'utf8'));
-    assert.deepStrictEqual({ opener: onDisk.opener, resolve: onDisk.resolve, blocks: onDisk.blocks }, built);
+    assert.deepStrictEqual({ openers: onDisk.openers, resolves: onDisk.resolves, blocks: onDisk.blocks }, built);
     assert.ok(built.blocks.length >= 20, `the scan finds the fixed blocks (${built.blocks.length}; 23 on 2026-11-20)`);
     const protocol = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
     const resolve = fenceBlocks(protocol).find((b) => b.lang === 'bash').body;
     assert.ok(approves(resolve, built), 'the resolve block itself is approved');
-    assert.match(built.opener, /\[ ! -O "\$MARK" \]/, 'review MATERIAL: the opener trusts only a marker the user owns');
+    // every second spelling of a shipped block parses, and lost only comments: each removed piece starts with a #
+    const bodies = readBodies(ROOT).flatMap(({ text }) => fenceBlocks(text)).filter((b) => b.lang === 'bash').map((b) => normalize(b.body));
+    let checked = 0;
+    for (const body of bodies)
+    {
+        const bare = withoutComments(body);
+        if (!bare || bare === body) continue;
+        checked++;
+        const parsed = spawnSync('bash', ['-n'], { input: bare, encoding: 'utf8' });
+        assert.strictEqual(parsed.status, 0, `bash -n on the comment-free spelling of:\n${body.slice(0, 200)}\n${parsed.stderr}`);
+        const kept = bare.split('\n');
+        let k = 0;
+        for (const line of body.split('\n'))
+        {
+            if (k < kept.length && line.startsWith(kept[k]) && (line === kept[k] || /^\s+#/.test(line.slice(kept[k].length)))) { k++; continue; }
+            assert.match(line, /^\s*#/, `only a comment line is dropped: ${line}`);
+        }
+        assert.strictEqual(k, kept.length, 'every kept line maps to a shipped one');
+    }
+    assert.ok(checked >= 2, `the shipped blocks with comments: the resolve block and the opener (${checked})`);
+    assert.match(built.openers[0], /\[ ! -O "\$MARK" \]/, 'review MATERIAL: the opener trusts only a marker the user owns');
     assert.match(resolve, /if ! printf '%s\\n' "\$TMP" > "\$MARK"; then echo "MISSING/, 'review MATERIAL: a failed marker write stops the resolve');
     assert.match(resolve, /\[ -O "\$MARK" \] && \[ -n "\$OLD" \]/, 'review MATERIAL: the reuse path trusts only a marker the user owns');
 });
@@ -127,6 +163,7 @@ test('the hook allows a shipped block and is silent on everything else, a bad pa
         assert.deepStrictEqual([off.status, off.stdout], [0, ''], 'switched off by name');
         const minimal = hook({ tool_name: 'Bash', cwd, transcript_path: walk, tool_input: { command: resolve } }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
         assert.deepStrictEqual([minimal.status, minimal.stdout], [0, ''], 'the minimal hook profile stands it down, as source-protocol.md says');
+        assert.match(protocol.replace(/\s+/g, ' '), /a page is read in a call of its own/);
         assert.match(protocol.replace(/\s+/g, ' '), /approves an unchanged block inside a typed `\/alfred-code:init`, `update`, `configure` or `validate`, unless the hook profile is `minimal`/);
     }
     finally { fs.rmSync(cwd, { recursive: true, force: true }); }
