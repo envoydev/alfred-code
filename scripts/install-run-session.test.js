@@ -13,6 +13,15 @@ const INSTALLER = path.join(__dirname, 'install', 'alfred-code.js');
 const SUITE_TMP = realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'run-session-')));
 test.after(() => fs.rmSync(SUITE_TMP, { recursive: true, force: true }));
 
+const STUB_BIN = path.join(SUITE_TMP, 'bin');
+fs.mkdirSync(STUB_BIN);
+if (process.platform !== 'win32')
+{
+    const securityStub = path.join(STUB_BIN, 'security');
+    fs.writeFileSync(securityStub, '#!/bin/sh\ncase "$1" in find-*) exit 44;; esac\nexit 1\n');
+    fs.chmodSync(securityStub, 0o755);
+}
+
 test('snapshotSessionError: no file, a blank file or an unset variable goes on', () =>
 {
     assert.equal(snapshotSessionError('/d/repo', null, 's2'), null);
@@ -48,7 +57,7 @@ function setup(name, runSession)
 
 function runInstaller({ runDir, project, home }, sessionId)
 {
-    const env = { ...process.env, HOME: home, USERPROFILE: home, PATH: path.dirname(process.execPath) };
+    const env = { ...process.env, HOME: home, USERPROFILE: home, PATH: STUB_BIN };
     delete env.CLAUDE_CONFIG_DIR;
     delete env.CLAUDE_CODE_SESSION_ID;
     if (sessionId) env.CLAUDE_CODE_SESSION_ID = sessionId;
@@ -66,6 +75,7 @@ test('the installer refuses a --source whose run-session is another session\'s, 
 
 test('the installer goes past the check with no run-session file, a matching one or no session variable', () =>
 {
+    assert.deepEqual(fs.readdirSync(STUB_BIN).filter((name) => /^claude(\.|$)/.test(name)), [], 'the test PATH holds no claude');
     const marker = 'is another session\'s snapshot';
     for (const [name, text, sessionId] of [['none', null, 's2'], ['same', 's2\n', 's2'], ['unset', 's1\n', '']])
     {
