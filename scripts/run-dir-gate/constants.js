@@ -151,8 +151,8 @@ const ARG = Object.freeze({
     allDots: /^\.+$/,
     badPathChar: /[|;&<>*?[\]{}()]/,
     relativePath: /^(?:\.\/)?[A-Za-z0-9._:@,=+-]+(?:\/[A-Za-z0-9._:@,=+-]+)*$/,
-    targetSegment: /^[A-Za-z0-9._-]+$/,
-    cwdSegment: /^(?!\.+$)[A-Za-z0-9._-]+$/,
+    // A path segment of plain characters that does not end in a dot: Windows reads `repo.` and `repo ` as `repo`.
+    targetSegment: /^[A-Za-z0-9._-]*[A-Za-z0-9_-]$/,
     passthrough: '--',
     noMode: '',
 });

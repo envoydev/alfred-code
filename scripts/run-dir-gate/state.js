@@ -65,18 +65,20 @@ function makeState(ctx)
 
 const resolveIn = (word, base, state) => resolveWord(word.value, base, state.win);
 
+const isPlainBelowRunDir = (target, state) => segmentsBelow(target, state.runDir, state.win).every((segment) => ARG.targetSegment.test(segment));
+
 function isTarget(word, base, state)
 {
     const target = resolveIn(word, base, state);
     if (!target || !isStrictlyUnder(target, state.runDir, state.win) || isUnder(target, state.repoDir, state.win)) return false;
     const below = segmentsBelow(target, state.runDir, state.win);
-    return below.every((segment) => ARG.targetSegment.test(segment)) && fold(below[below.length - 1]) !== SESSION_FILE;
+    return isPlainBelowRunDir(target, state) && fold(below[below.length - 1]) !== SESSION_FILE;
 }
 
 function isRunDirFile(word, base, state)
 {
     const file = resolveIn(word, base, state);
-    return Boolean(file) && isStrictlyUnder(file, state.runDir, state.win);
+    return Boolean(file) && isStrictlyUnder(file, state.runDir, state.win) && isPlainBelowRunDir(file, state);
 }
 
 module.exports = { makeState, resolveIn, isTarget, isRunDirFile };

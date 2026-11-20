@@ -267,6 +267,45 @@ test('approvesForms refuses a write whose folded path lands in the snapshot, on 
     assert.equal(approvesForms(`${stamp} x | tee "${D}/sub/.a_b-1.log"`, ctx), true);
 });
 
+test('approvesForms refuses a target or a read whose path segment ends in a dot or a space, where Windows reads it as the name without it', () =>
+{
+    const winRun = 'C:\\Temp\\alfred-code.AbC123';
+    const win = { ...ctx, runDir: winRun, cwd: 'C:\\p', pluginRoot: 'C:\\plug' };
+    const winStamp = `node "${winRun}\\repo\\scripts\\install\\stamp.js"`;
+    const refused = [
+        `${winStamp} x --out "${winRun}\\run-session."`,
+        `${winStamp} x --out "${winRun}\\o.json."`,
+        `${winStamp} x > "${winRun}\\repo.\\scripts\\install\\stamp.js"`,
+        `${winStamp} x > "/c/Temp/alfred-code.AbC123/repo./x"`,
+        `${winStamp} x > "/c/Temp/alfred-code.AbC123/run-session."`,
+        `${winStamp} x | tee "${winRun}\\repo.\\x"`,
+        `${winStamp} x | tee "${winRun}\\repo \\x"`,
+        `${winStamp} x > "${winRun}\\a."`,
+        `${winStamp} x > "${winRun}\\sub.\\a"`,
+        `cat "${winRun}\\repo \\x"`,
+        `cat "${winRun}\\repo.\\scripts\\install\\stamp.js"`,
+        `cat "${winRun}\\x."`,
+        `head -8 "${winRun}\\repo.\\x"`,
+        `grep -E 'x' "${winRun}\\repo \\x"`,
+        `${winStamp} x --root ./sub.`,
+        `${winStamp} x --root ./sub./dir`,
+    ];
+    for (const form of refused) assert.equal(approvesForms(form, win), false, JSON.stringify(form));
+    const posix = [
+        `${stamp} x > "${D}/repo./x"`,
+        `${stamp} x > "${D}/o."`,
+        `${stamp} x | tee "${D}/sub./a"`,
+        `cat "${D}/repo /x"`,
+        `cat "${D}/repo./x"`,
+        `cat "${D}/x."`,
+        `${stamp} x --out "${D}/o."`,
+        `${stamp} x --root ./sub.`,
+    ];
+    for (const form of posix) assert.equal(approvesForms(form, ctx), false, JSON.stringify(form));
+    const allowed = [`${stamp} x > "${D}/o.json"`, `${stamp} x | tee "${D}/sub/.a_b-1.log"`, `cat "${D}/repo/scripts/x.js"`, `cat "${D}/.hidden"`, `${stamp} x --root ./sub.d/dir_1`];
+    for (const form of allowed) assert.equal(approvesForms(form, ctx), true, form);
+});
+
 test('decide allows a dir only on a trusted marker that names it, or with no such marker when it sits in the hook\'s temp dir', () =>
 {
     const outside = { ...own, inTemp: false };

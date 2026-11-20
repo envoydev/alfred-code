@@ -37,7 +37,7 @@ function isCwdPath(text)
 {
     if (text === WORD.here) return true;
     if (!text.startsWith(`${WORD.here}${TEMPLATE.segmentSep}`)) return false;
-    return text.slice(WORD.here.length + 1).split(TEMPLATE.segmentSep).every((segment) => ARG.cwdSegment.test(segment));
+    return text.slice(WORD.here.length + 1).split(TEMPLATE.segmentSep).every((segment) => ARG.targetSegment.test(segment));
 }
 
 // Whether `word` fits `template`. After a `--` the words are data, so a leading dash passes there (`afterDashes`).
