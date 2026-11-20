@@ -1,10 +1,10 @@
 'use strict';
 // Path logic for the form matcher: one canonical spelling per path, and the containment test. Pure string work.
 const path = require('node:path');
-const { SHELL } = require('./constants.js');
+const { SHELL, PATH } = require('./constants.js');
 
 const apiOf = (win) => (win ? path.win32 : path.posix);
-const sepOf = (win) => (win ? '\\' : '/');
+const sepOf = (win) => (win ? PATH.sep.win : PATH.sep.posix);
 
 // A normalised path with no trailing separator. In Windows mode `/c/x` reads as `C:\x` and the case is folded, since the
 // file system folds it.
@@ -14,19 +14,19 @@ function canon(text, win)
     if (win)
     {
         const drive = SHELL.msysDrive.exec(value);
-        if (drive) value = `${drive[1]}:\\${drive[2] || ''}`;
+        if (drive) value = `${drive[1]}:${PATH.sep.win}${drive[2] || ''}`;
     }
     value = apiOf(win).normalize(value);
-    if (value.length > 1 && /[\\/]$/.test(value) && !/^[A-Za-z]:[\\/]$/.test(value)) value = value.replace(/[\\/]+$/, '');
+    if (value.length > 1 && PATH.endsWithSep.test(value) && !PATH.driveRoot.test(value)) value = value.replace(PATH.trailingSeps, '');
     return win ? value.toLowerCase() : value;
 }
 
-const hasParentSegment = (word) => word.split(SHELL.segmentSplit).includes('..');
+const hasParentSegment = (word) => word.split(SHELL.segmentSplit).includes(SHELL.parentSegment);
 
 // The canonical absolute path a word names, resolved against `base`; null for a word with a `..` segment or a home `~`.
 function resolveWord(word, base, win)
 {
-    if (hasParentSegment(word) || word.startsWith('~')) return null;
+    if (hasParentSegment(word) || word.startsWith(SHELL.home)) return null;
     const absolute = apiOf(win).isAbsolute(word) || (win && SHELL.msysDrive.test(word));
     return canon(absolute ? word : apiOf(win).join(base, word), win);
 }

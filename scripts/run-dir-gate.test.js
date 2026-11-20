@@ -104,8 +104,9 @@ test('buildTable refuses bodies with no resolve block or two', () =>
 
 const D = '/t/alfred-code.AbC123';
 const MARKER = '/m/alfred-code-run.x.path';
-const ctx = { runDir: D, cwd: '/p', pluginRoot: '/plug', scripts: new Set(['scripts/install/stamp.js']), markerPath: MARKER };
+const ctx = { runDir: D, cwd: '/p', pluginRoot: '/plug', scripts: new Set(['scripts/install/stamp.js', 'scripts/install/alfred-code.js']), markerPath: MARKER };
 const stamp = `node "${D}/repo/scripts/install/stamp.js"`;
+const alfred = `node "${D}/repo/scripts/install/alfred-code.js"`;
 
 test('approvesForms passes each of the walk\'s forms', () =>
 {
@@ -116,7 +117,7 @@ test('approvesForms passes each of the walk\'s forms', () =>
         `grep -F 'x' "${D}/install.log"`,
         `head -8 "${D}/repo/stack/hooks/a.js"`,
         `set -o pipefail; ${stamp} scope . 2>&1 | tee "${D}/install.log"; echo "install exit: $?"`,
-        `(cd "child" && ${stamp} scope .)`,
+        `(cd "./child" && ${stamp} scope .)`,
         `(${stamp} scope .)`,
         `${stamp} x > "${D}/o.txt" 2>&1; cat "${D}/o.txt"`,
         `${stamp} x | grep -qE 'a' && cat "${D}/o.txt"`,
@@ -154,6 +155,19 @@ test('approvesForms refuses an injected command, an escape from the roots, a scr
         `${stamp} x "${other}/f"`,
         `${stamp} x 'a b' "x: $?"`,
         `cd "../x"`,
+        `(cd -P && ${alfred} --root .)`,
+        `(cd - && ${alfred} --root .)`,
+        `(cd -L && ${alfred} --root .)`,
+        `(cd -- && ${alfred} --root .)`,
+        `(cd "./child" && ${alfred} --root .) ; (cd - && ${alfred} --root .)`,
+        `(cd child && ${stamp} x)`,
+        `(cd "child" && ${stamp} x)`,
+        `(cd 'child' && ${stamp} x)`,
+        `(cd "-P" && ${stamp} x)`,
+        `(cd "./../x" && ${stamp} x)`,
+        `${stamp} -r/etc`,
+        `${stamp} x -o/tmp/x`,
+        `${stamp} x -rf`,
         `cd "child" && ${stamp} x`,
         `(cd "../x" && ${stamp} x)`,
         `(cd "/abs" && ${stamp} x)`,
@@ -207,6 +221,7 @@ test('approvesForms reads Windows spellings of one run dir and the same dir in M
 
 const table = { resolves: [], scripts: [] };
 const resolveTable = buildTable([{ file: 'a.md', text: `\`\`\`bash\n${RESOLVE_LINE}\n\`\`\`` }]);
+const resolveTable2 = buildTable([{ file: 'a.md', text: `\`\`\`bash\n${resolveBlock}\n\`\`\`` }]);
 const own = { raw: D, path: D, session: 's1', owned: true };
 const foreign = { raw: '/t/alfred-code.Other1', path: '/t/alfred-code.Other1', session: 's2', owned: true };
 const form = `${stamp} state .`;
@@ -220,6 +235,10 @@ test('decide allows the resolve block and this session\'s forms and stays silent
     assert.deepEqual(decide({ ...base, command: `rm -rf "${D}" "${MARKER}"` }), { decision: 'allow' });
     assert.deepEqual(decide({ ...base, command: `${form}; rm -rf ~` }), { decision: null });
     assert.deepEqual(decide({ ...base, command: `${form}\0` }), { decision: null });
+    const crlf = resolveBlock.replace(/\n/g, '\r\n');
+    assert.equal(isResolve(crlf, resolveTable2), false);
+    assert.deepEqual(decide({ ...base, table: resolveTable2, dirs: [], command: crlf }), { decision: null });
+    assert.deepEqual(decide({ ...base, table: resolveTable2, dirs: [], command: resolveBlock }), { decision: 'allow' });
     assert.deepEqual(decide({ ...base, dirs: [{ ...own, owned: false }] }), { decision: null });
     assert.deepEqual(decide({ ...base, sessionId: '' }), { decision: null });
 });

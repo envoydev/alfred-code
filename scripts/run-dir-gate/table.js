@@ -2,7 +2,7 @@
 // Pure logic of the resolve-block table: the block's hashes, the scripts the walk runs, and the check of a command against
 // them. Values in, values out.
 const crypto = require('node:crypto');
-const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, RESOLVE_LINE, CONTROL_RE, HASH, SCRIPT_RE } = require('./constants.js');
+const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, RESOLVE_LINE, CONTROL_RE, CARRIAGE_RETURN_RE, HASH, SCRIPT_RE } = require('./constants.js');
 
 // Whether a block holds a `<name>` the model fills in, comments left out.
 const hasPlaceholder = (body) => PLACEHOLDER_RE.test(body.replace(COMMENT_RE, '$1'));
@@ -78,6 +78,7 @@ function buildTable(files)
 function isResolve(command, table)
 {
     if (typeof command !== 'string' || !table || !Array.isArray(table.resolves)) return false;
+    if (CARRIAGE_RETURN_RE.test(command)) return false;
     const text = normalize(command);
     return Boolean(text) && !CONTROL_RE.test(text) && table.resolves.includes(digest(text));
 }

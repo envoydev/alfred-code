@@ -9,6 +9,7 @@ const TABLE_FILE = 'setup-plugin/hooks/protocol-blocks.json';
 const RUN_DIR_RE = /(?:^|[\s"'=])((?:\/|[A-Za-z]:[\\/])[^\s"'$`]*?alfred-code\.[A-Za-z0-9]{6})(?![A-Za-z0-9])/g;
 // A control character bash reads as text, never as a line break - a lone CR above all.
 const CONTROL_RE = /[\u0000-\u0008\u000b-\u001f\u007f]/;
+const CARRIAGE_RETURN_RE = /\r/;
 const ANY_CONTROL_RE = /[\u0000-\u001f\u007f]/;
 // The one line only the resolve block holds: it writes the run marker.
 const RESOLVE_LINE = 'printf \'%s\\n\' "$TMP" > "$MARK"';
@@ -31,7 +32,19 @@ const HASH = 'sha256';
 // A script the walk runs from the snapshot: `"$TMP/repo/<path>.js"`, or the run dir written as a `<...>` placeholder.
 const SCRIPT_RE = /"(?:\$TMP|<[^<>"\n]+>)\/repo\/([A-Za-z0-9_./-]+\.js)"/g;
 
+const OP = Object.freeze({
+    and: '&&', or: '||', semi: ';', pipe: '|', open: '(', close: ')', redirect: '>', background: '&', stderrToOut: '2>&1',
+});
+const LIST_OPS = Object.freeze(new Set([OP.semi, OP.and, OP.or]));
+const SINGLE_OPS = Object.freeze(new Set([OP.semi, OP.pipe, OP.open, OP.close, OP.redirect]));
+const BOUNDARY_CHARS = Object.freeze(new Set([' ', OP.semi, OP.pipe, OP.background, OP.close, OP.redirect]));
+const TOKEN = Object.freeze({ word: 'word', op: 'op' });
+const KIND = Object.freeze({ pipeline: 'pipeline', group: 'group' });
+const QUOTE = Object.freeze({ none: '', single: "'", double: '"' });
+const FLAG = Object.freeze({ dash: '-', long: '--', assign: '=', shortLength: 2 });
+
 const SHELL = Object.freeze({
+    space: ' ',
     bareChar: /[A-Za-z0-9_./:@%+=,-]/,
     unsafeInDouble: /[$`!]|\\\\|\\$/,
     echoLabel: /^[A-Za-z0-9 -]+: \$\?$/,
@@ -39,12 +52,43 @@ const SHELL = Object.freeze({
     driveStart: /^[A-Za-z]:[\\/]/,
     msysDrive: /^\/([A-Za-z])(?:\/(.*))?$/,
     segmentSplit: /[\\/]+/,
-    listOps: new Set([';', '&&', '||']),
-    stderrToOut: '2>&1',
-    redirect: '>',
-    pipe: '|',
-    open: '(',
-    close: ')',
+    trailingNewlines: /\n+$/,
+    home: '~',
+    childPrefix: './',
+    parentSegment: '..',
+});
+
+const PATH = Object.freeze({
+    sep: Object.freeze({ win: '\\', posix: '/' }),
+    backslashes: /\\/g,
+    slashes: /\//g,
+    trailingSlashes: /\/+$/,
+    trailingSeps: /[\\/]+$/,
+    endsWithSep: /[\\/]$/,
+    driveRoot: /^[A-Za-z]:[\\/]$/,
+    foldedDrive: /^([A-Za-z]):\/(.*)$/,
+    foldedMsysDrive: /^\/([A-Za-z])\/(.*)$/,
+});
+
+const MARKER = Object.freeze({
+    prefix: 'alfred-code-run.',
+    suffix: '.path',
+    sanitizedLength: 60,
+    hashLength: 12,
+    safeChar: /[A-Za-z0-9]/,
+    replacement: '-',
+    blobLabel: 'blob',
+    hashAlgorithm: 'sha1',
+    textEncoding: 'utf8',
+    digestEncoding: 'hex',
+});
+
+const WIN32 = 'win32';
+
+const VERDICT = Object.freeze({
+    allow: Object.freeze({ decision: 'allow' }),
+    deny: 'deny',
+    silent: Object.freeze({ decision: null }),
 });
 
 const WORD = Object.freeze({
@@ -58,7 +102,7 @@ const REPO_DIR = 'repo';
 const SESSION_FILE = 'run-session';
 
 module.exports = {
-    HOOK_NAME, OFF_SWITCH, TABLE_FILE, RUN_DIR_RE, CONTROL_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
-    FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, SHELL, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
+    HOOK_NAME, OFF_SWITCH, TABLE_FILE, RUN_DIR_RE, CONTROL_RE, CARRIAGE_RETURN_RE, ANY_CONTROL_RE, RESOLVE_LINE, REASON, BODY_DIRS, SHELL_LANGS,
+    FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, HASH, SCRIPT_RE, OP, LIST_OPS, SINGLE_OPS, BOUNDARY_CHARS, TOKEN, KIND, QUOTE, FLAG, SHELL, PATH, MARKER, WIN32, VERDICT, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL,
     REPO_DIR, SESSION_FILE,
 };
