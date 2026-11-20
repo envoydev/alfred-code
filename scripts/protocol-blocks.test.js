@@ -17,16 +17,18 @@ const HOOK = path.join(ROOT, 'setup-plugin', 'hooks', 'approve-protocol-block.js
 const OPENER = 'RUN_ROOT=$(pwd)\nTMP=$(cat "$MARK" 2>/dev/null); if [ -z "$TMP" ]; then echo "MISSING the run marker - run the resolve block first"; exit 1; fi';
 const FIXED = 'node "$TMP/repo/x.js" --root .';
 const FILLED = 'node "$TMP/repo/x.js" --hooks <step 2\'s changed: hooks=N>';
-const BODY = ['# t', '', '```bash', OPENER, '```', '', '```bash', FIXED, '```', '', '- a step', '', '  ```bash', '  ' + FILLED, '  ```', '',
+const RESOLVE = 'TMP=$(mktemp -d)\nprintf \'%s\\n\' "$TMP" > "$MARK" || exit 1';
+const BODY = ['# t', '', '```bash', RESOLVE, '```', '', '```bash', OPENER, '```', '', '```bash', FIXED, '```', '', '- a step', '', '  ```bash', '  ' + FILLED, '  ```', '',
     '```powershell', 'Write-Output $TMP', '```', ''].join('\n');
 
 test('a fixed block, or the opener then a fixed block, is approved - a filled placeholder, an added line or another shell is not', () =>
 {
     const table = buildTable([{ file: 'setup-plugin/references/t.md', text: BODY }]);
     assert.strictEqual(table.opener, normalize(OPENER));
-    assert.strictEqual(table.blocks.length, 2, 'the opener and the fixed block; the placeholder block and the PowerShell block are left out');
-    assert.ok(approves(FIXED, table), 'the fixed block as written');
-    assert.ok(approves(`${FIXED}  \r\n\n`, table), 'trailing spaces, a CRLF and a final newline do not count');
+    assert.strictEqual(table.blocks.length, 3, 'the resolve block, the opener and the fixed block; the placeholder block and the PowerShell block are left out');
+    assert.ok(approves(RESOLVE, table) && approves(OPENER, table), 'the resolve block and the opener alone');
+    assert.ok(!approves(FIXED, table), 'a fixed block alone: it sets no variable, so Claude Code would not ask, and the user keeps the prompt');
+    assert.ok(approves(`${OPENER}\n${FIXED}  \r\n\n`, table), 'trailing spaces, a CRLF and a final newline do not count');
     assert.ok(approves(`${OPENER}\n${FIXED}`, table), 'the opener, then the block');
     assert.ok(approves(`${OPENER}\n\n${FIXED}\n`, table), 'a blank line between them');
     assert.ok(!approves(`${FIXED}\necho "MARK=$MARK"`, table), 'a line the model added');
@@ -38,31 +40,46 @@ test('a fixed block, or the opener then a fixed block, is approved - a filled pl
     assert.ok(!approves('', table) && !approves(undefined, table), 'no command');
 });
 
+test('review BLOCKER: a lone carriage return or another control character is never read as a line break', () =>
+{
+    const table = buildTable([{ file: 'setup-plugin/references/t.md', text: BODY }]);
+    // bash reads a lone \r as a plain character, so `a # x\rb` is ONE line whose `b` is a comment
+    assert.ok(!approves(RESOLVE.replace('\n', '\r'), table), 'a lone CR that hides the next line in a comment');
+    assert.ok(!approves(`${OPENER}\r${FIXED}`, table), 'a lone CR between the opener and the block');
+    assert.ok(!approves(`${OPENER}\n${FIXED}\u0000`, table), 'a NUL');
+    assert.ok(!approves(`${OPENER}\n${FIXED}\u001b[2K`, table), 'an escape sequence');
+    assert.ok(approves(`${OPENER}\r\n${FIXED}`, table), 'a CRLF pair is a line end');
+});
+
 test('fence pairing reads an indented block and never reads a closer as an opener', () =>
 {
-    assert.deepStrictEqual(fenceBlocks(BODY).map((b) => b.lang), ['bash', 'bash', 'bash', 'powershell']);
-    assert.strictEqual(fenceBlocks(BODY)[2].body, FILLED, 'the list indent is taken off');
+    assert.deepStrictEqual(fenceBlocks(BODY).map((b) => b.lang), ['bash', 'bash', 'bash', 'bash', 'powershell']);
+    assert.strictEqual(fenceBlocks(BODY)[3].body, FILLED, 'the list indent is taken off');
 });
 
 test('a table needs exactly one opener', () =>
 {
     assert.throws(() => buildTable([{ file: 'a.md', text: '```bash\necho hi\n```\n' }]), /exactly one opener, found 0/);
+    assert.throws(() => buildTable([{ file: 'a.md', text: ['```bash', OPENER, '```'].join('\n') }]), /exactly one resolve block, found 0/);
     const other = BODY.replace('exit 1; fi', 'exit 2; fi');
     assert.throws(() => buildTable([{ file: 'a.md', text: BODY }, { file: 'b.md', text: other }]), /exactly one opener, found 2/);
-    assert.strictEqual(buildTable([{ file: 'a.md', text: BODY }, { file: 'b.md', text: BODY }]).blocks.length, 2, 'the same block twice is one entry');
-    const commented = ['```bash', OPENER, '```', '```bash', 'node x.js  # prints "<scope> <id>"', '```'].join('\n');
-    assert.strictEqual(buildTable([{ file: 'c.md', text: commented }]).blocks.length, 2, 'a placeholder in a comment is not filled in');
+    assert.strictEqual(buildTable([{ file: 'a.md', text: BODY }, { file: 'b.md', text: BODY }]).blocks.length, 3, 'the same block twice is one entry');
+    const commented = ['```bash', RESOLVE, '```', '```bash', OPENER, '```', '```bash', 'node x.js  # prints "<scope> <id>"', '```'].join('\n');
+    assert.strictEqual(buildTable([{ file: 'c.md', text: commented }]).blocks.length, 3, 'a placeholder in a comment is not filled in');
 });
 
 test('the shipped table is current - run `npm run protocol-blocks` after a shell block in setup-plugin changes', () =>
 {
     const built = buildTable(readBodies(ROOT));
     const onDisk = JSON.parse(fs.readFileSync(TABLE, 'utf8'));
-    assert.deepStrictEqual({ opener: onDisk.opener, blocks: onDisk.blocks }, built);
+    assert.deepStrictEqual({ opener: onDisk.opener, resolve: onDisk.resolve, blocks: onDisk.blocks }, built);
     assert.ok(built.blocks.length >= 20, `the scan finds the fixed blocks (${built.blocks.length}; 23 on 2026-11-20)`);
     const protocol = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
     const resolve = fenceBlocks(protocol).find((b) => b.lang === 'bash').body;
     assert.ok(approves(resolve, built), 'the resolve block itself is approved');
+    assert.match(built.opener, /\[ ! -O "\$MARK" \]/, 'review MATERIAL: the opener trusts only a marker the user owns');
+    assert.match(resolve, /> "\$MARK" \|\| \{/, 'review MATERIAL: a failed marker write stops the resolve');
+    assert.match(resolve, /\[ -O "\$MARK" \] && \[ -n "\$OLD" \]/, 'review MATERIAL: the reuse path trusts only a marker the user owns');
 });
 
 const hook = (input, env = {}) => spawnSync(process.execPath, [HOOK], {
@@ -76,16 +93,26 @@ test('the hook allows a shipped block and is silent on everything else, a bad pa
     const protocol = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
     const resolve = fenceBlocks(protocol).find((b) => b.lang === 'bash').body;
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'apb-'));
+    const typed = (text) => JSON.stringify({ type: 'user', entrypoint: 'cli', timestamp: '2026-11-20T10:00:00Z', message: { role: 'user', content: text } });
+    const transcript = (name, rows) => { const file = path.join(cwd, name); fs.writeFileSync(file, `${rows.join('\n')}\n`); return file; };
+    const walk = transcript('walk.jsonl', [typed('<command-message>alfred-code:update</command-message>\n<command-name>/alfred-code:update</command-name>')]);
     try
     {
-        const allowed = hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd, tool_input: { command: resolve } });
+        // side-agent note (2026-11-20): the resolve block updates plugins and may download a release, so it is approved
+        // only inside a typed walk - outside one, Claude Code's own prompt stays
+        for (const [label, file] of [['no transcript', undefined], ['no walk typed', transcript('none.jsonl', [typed('fix the parser')])],
+            ['another command ended the walk', transcript('ended.jsonl', [typed('<command-name>/alfred-code:update</command-name>'), typed('<command-name>/task-solve</command-name>')])]])
+        {
+            const r = hook({ tool_name: 'Bash', cwd, transcript_path: file, tool_input: { command: resolve } });
+            assert.deepStrictEqual([r.status, r.stdout], [0, ''], `outside a walk: ${label}`);
+        }
+        const allowed = hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd, transcript_path: walk, tool_input: { command: resolve } });
         assert.strictEqual(allowed.status, 0, allowed.stderr);
         const out = JSON.parse(allowed.stdout).hookSpecificOutput;
         assert.deepStrictEqual([out.hookEventName, out.permissionDecision], ['PreToolUse', 'allow']);
         assert.match(out.permissionDecisionReason, /shipped alfred-code protocol block, unchanged/);
-        assert.ok(table.blocks.length > 0);
         for (const [label, input] of [
-            ['an added line', { tool_name: 'Bash', cwd, tool_input: { command: `${resolve}\necho "MARK=$MARK"` } }],
+            ['an added line', { tool_name: 'Bash', cwd, transcript_path: walk, tool_input: { command: `${resolve}\necho "MARK=$MARK"` } }],
             ['another tool', { tool_name: 'Read', cwd, tool_input: { command: resolve } }],
             ['no command', { tool_name: 'Bash', cwd, tool_input: {} }],
             ['garbage JSON', '{not json'],
@@ -95,8 +122,11 @@ test('the hook allows a shipped block and is silent on everything else, a bad pa
             const r = hook(input);
             assert.deepStrictEqual([r.status, r.stdout], [0, ''], label);
         }
-        const off = hook({ tool_name: 'Bash', cwd, tool_input: { command: resolve } }, { ALFRED_CODE_HOOKS_OFF: 'approve-protocol-block' });
+        const off = hook({ tool_name: 'Bash', cwd, transcript_path: walk, tool_input: { command: resolve } }, { ALFRED_CODE_HOOKS_OFF: 'approve-protocol-block' });
         assert.deepStrictEqual([off.status, off.stdout], [0, ''], 'switched off by name');
+        const minimal = hook({ tool_name: 'Bash', cwd, transcript_path: walk, tool_input: { command: resolve } }, { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
+        assert.deepStrictEqual([minimal.status, minimal.stdout], [0, ''], 'the minimal hook profile stands it down, as source-protocol.md says');
+        assert.match(protocol.replace(/\s+/g, ' '), /approves an unchanged block inside a typed `\/alfred-code:init`, `update`, `configure` or `validate`, unless the hook profile is `minimal`/);
     }
     finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 });

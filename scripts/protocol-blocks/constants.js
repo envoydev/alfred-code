@@ -11,8 +11,12 @@ const PLACEHOLDER_RE = /<[A-Za-z][^<>\n]*>/;
 // A comment: from a `#` that opens a word to the line's end. A placeholder there is never run, so it is not judged.
 const COMMENT_RE = /(^|[ \t])#.*$/gm;
 const OPENER_LINE = 'TMP=$(cat "$MARK" 2>/dev/null); if [ -z "$TMP" ]';
+// The one line only the resolve block holds: it writes the run marker.
+const RESOLVE_LINE = 'printf \'%s\\n\' "$TMP" > "$MARK"';
+// A control character bash reads as text, never as a line break - a lone CR above all (review BLOCKER, 2026-11-20).
+const CONTROL_RE = /[\u0000-\u0008\u000b-\u001f\u007f]/;
 const TABLE_FILE = 'setup-plugin/hooks/protocol-blocks.json';
 const HASH = 'sha256';
 const GENERATED_BY = 'scripts/protocol-blocks.js';
 const TABLE_NOTE = 'Generated: the hash of each fixed shell block in the setup bodies, and the opener every later call starts with. Run `npm run protocol-blocks` after a block changes.';
-module.exports = { BODY_DIRS, SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, OPENER_LINE, TABLE_FILE, HASH, GENERATED_BY, TABLE_NOTE };
+module.exports = { BODY_DIRS, SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, OPENER_LINE, RESOLVE_LINE, CONTROL_RE, TABLE_FILE, HASH, GENERATED_BY, TABLE_NOTE };

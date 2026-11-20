@@ -29,7 +29,7 @@ RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 OLD=$(cat "$MARK" 2>/dev/null)
-if [ -n "$OLD" ] && [ -d "$OLD/repo" ] && [ -f "$OLD/run-session" ] && [ "$(cat "$OLD/run-session")" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+if [ -O "$MARK" ] && [ -n "$OLD" ] && [ -d "$OLD/repo" ] && [ -f "$OLD/run-session" ] && [ "$(cat "$OLD/run-session")" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then
   TMP=$OLD; STATE=REUSING   # this session's own marker; another session's, or one from before the session check, resolves fresh
 else
 STATE=RESOLVED
@@ -58,7 +58,7 @@ else
   curl -fsSL "$REPO_URL/releases/latest/download/alfred-code.tar.gz" -o "$TMP/alfred-code.tar.gz"
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
-printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; printf '%s\n' "$TMP" > "$MARK"
+printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; printf '%s\n' "$TMP" > "$MARK" || { echo "MISSING a run marker this user can write at $MARK - nothing resolved"; exit 1; }
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)   # the archive's; a plugin-cache entry carries none
 [ -n "$VER" ] || VER=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).version||""))}catch{}' "$TMP/repo/setup-plugin/.claude-plugin/plugin.json")
@@ -77,7 +77,9 @@ session's marker is reused; the marker name is derived from the project root, so
 ## Every later call re-reads the marker
 
 Run every block on this page and the walk's pages exactly as written: add no line, merge no two calls, and fill each
-`<placeholder>` alone. The plugin approves an unchanged block, so it runs with no approval prompt.
+`<placeholder>` alone. The plugin approves an unchanged block inside a typed `/alfred-code:init`, `update`,
+`configure` or `validate`, unless the hook profile is `minimal`, so it runs with no approval prompt. A marker
+another user owns is never trusted: the opener says `MISSING the run marker`.
 
 Each Bash call is its own shell, so `$TMP` set in one call is gone by the next. Open every later call with:
 
@@ -85,7 +87,7 @@ Each Bash call is its own shell, so `$TMP` set in one call is gone by the next. 
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
-TMP=$(cat "$MARK" 2>/dev/null); if [ -z "$TMP" ]; then echo "MISSING the run marker - run the resolve block first"; exit 1; fi
+TMP=$(cat "$MARK" 2>/dev/null); if [ -z "$TMP" ] || [ ! -O "$MARK" ]; then echo "MISSING the run marker - run the resolve block first"; exit 1; fi
 TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```
 

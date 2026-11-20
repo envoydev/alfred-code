@@ -2,15 +2,15 @@
 // Pure logic of the protocol-block approval: a Bash call is approved only when its text is a shipped fixed block, or the
 // shared opener followed by one. Values in, values out.
 const crypto = require('node:crypto');
-const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, OPENER_LINE, HASH } = require('./constants.js');
+const { SHELL_LANGS, FENCE_RE, PLACEHOLDER_RE, COMMENT_RE, OPENER_LINE, RESOLVE_LINE, CONTROL_RE, HASH } = require('./constants.js');
 
 // Whether a block holds a `<name>` the model fills in, comments left out.
 const hasPlaceholder = (body) => PLACEHOLDER_RE.test(body.replace(COMMENT_RE, '$1'));
 
-// One spelling for a command: LF line ends, no trailing spaces, no blank lines around it.
+// One spelling for a command: LF line ends, no trailing spaces, no blank lines around it. Only a CRLF pair is a line end.
 function normalize(text)
 {
-    return String(text).replace(/\r\n?/g, '\n').split('\n').map((line) => line.replace(/[ \t]+$/, '')).join('\n')
+    return String(text).replace(/\r\n/g, '\n').split('\n').map((line) => line.replace(/[ \t]+$/, '')).join('\n')
         .replace(/^\n+/, '').replace(/\n+$/, '');
 }
 
@@ -29,6 +29,7 @@ function fenceBlocks(markdown)
 function buildTable(files)
 {
     const openers = new Set();
+    const resolves = new Set();
     const hashes = new Set();
     for (const { text } of files)
         for (const block of fenceBlocks(text))
@@ -37,21 +38,24 @@ function buildTable(files)
             const body = normalize(block.body);
             if (!body) continue;
             if (body.includes(OPENER_LINE)) openers.add(body);
+            if (body.includes(RESOLVE_LINE)) resolves.add(digest(body));
             hashes.add(digest(body));
         }
     if (openers.size !== 1) throw new Error(`protocol-blocks: exactly one opener, found ${openers.size}`);
-    return { opener: [...openers][0], blocks: [...hashes].sort() };
+    if (resolves.size !== 1) throw new Error(`protocol-blocks: exactly one resolve block, found ${resolves.size}`);
+    return { opener: [...openers][0], resolve: [...resolves][0], blocks: [...hashes].sort() };
 }
 
-// Whether a Bash call's text is a shipped fixed block, or the opener then one on the next line.
+// Whether a Bash call's text is the resolve block, the opener, or the opener then a shipped fixed block on the next line.
+// A fixed block alone sets no variable, so Claude Code's own prompt for it is left to the user (review MATERIAL).
 function approves(command, table)
 {
     if (typeof command !== 'string' || !table || !Array.isArray(table.blocks)) return false;
     const text = normalize(command);
-    if (!text) return false;
-    const known = new Set(table.blocks);
-    if (known.has(digest(text))) return true;
+    if (!text || CONTROL_RE.test(text)) return false;
     const opener = String(table.opener || '');
+    if ((table.resolve && digest(text) === table.resolve) || (opener && text === opener)) return true;
+    const known = new Set(table.blocks);
     if (!opener || !text.startsWith(`${opener}\n`)) return false;
     const rest = normalize(text.slice(opener.length));
     return Boolean(rest) && known.has(digest(rest));
