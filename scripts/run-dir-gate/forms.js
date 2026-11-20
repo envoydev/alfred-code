@@ -3,11 +3,11 @@
 // project dir, the plugin root, the script allowlist and the marker path.
 const { ANY_CONTROL_RE, SHELL, OP, KIND, QUOTE, FLAG, WORD, GREP_FLAGS, GREP_QUIET_FLAGS, RM_FLAGS, PIPEFAIL, ANCESTOR_TARGET_RE, PARENT_READ, PLUGIN_READ } = require('./constants.js');
 const { parse } = require('./shell.js');
-const { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf } = require('./paths.js');
+const { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf, sameFolded } = require('./paths.js');
 const { makeState, resolveIn, isTarget, isRunDirFile } = require('./state.js');
 const { checkArgs, valueAfter, pinsSource, isNodeCall } = require('./args.js');
 
-const isScriptAt = (word, relative, base, state) => state.scripts.has(relative.toLowerCase()) && resolveIn(word, base, state) === `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`;
+const isScriptAt = (word, relative, base, state) => state.scripts.has(relative.toLowerCase()) && sameFolded(resolveIn(word, base, state) || '', `${state.repoDir}${sepOf(state.win)}${relative.split('/').join(sepOf(state.win))}`);
 
 const isQuotedPattern = (word) => word.quote !== QUOTE.none && word.value !== '' && !word.value.startsWith(FLAG.dash) && !word.label;
 
@@ -26,7 +26,7 @@ function isRemoval(command, base, state)
 {
     const [head, flags, dir, marker] = command.words;
     if (command.words.length !== 4 || command.out || command.err || head.quote !== QUOTE.none || head.value !== WORD.rm || flags.value !== RM_FLAGS) return false;
-    return resolveIn(dir, base, state) === state.runDir && state.marker !== null && resolveIn(marker, base, state) === state.marker;
+    return sameFolded(resolveIn(dir, base, state) || '', state.runDir) && state.marker !== null && sameFolded(resolveIn(marker, base, state) || '', state.marker);
 }
 
 function isSink(command, base, state)

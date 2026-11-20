@@ -146,6 +146,7 @@ const ARG = Object.freeze({
     allDots: /^\.+$/,
     badPathChar: /[|;&<>*?[\]{}()]/,
     relativePath: /^(?:\.\/)?[A-Za-z0-9._:@,=+-]+(?:\/[A-Za-z0-9._:@,=+-]+)*$/,
+    targetSegment: /^[A-Za-z0-9._-]+$/,
     passthrough: '--',
     noMode: '',
 });

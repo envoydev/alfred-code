@@ -343,6 +343,32 @@ test('the shipped table gives the installer, the stamp and every guard script th
     }
 });
 
+test('approvesForms refuses a write whose folded path lands in the snapshot, on run-session or off plain ASCII segments', () =>
+{
+    const scan = `node "${D}/repo/scripts/scan-evidence.js"`;
+    const forms = [
+        `${stamp} x > "${D}/Repo/x"`,
+        `${stamp} x > "${D}/REPO/scripts/install/stamp.js"`,
+        `${stamp} x > "${D}/Run-Session"`,
+        `${stamp} x > "${D}/RUN-SESSION"`,
+        `${stamp} x | tee "${D}/RUN-SESSION"`,
+        `${stamp} x | tee "${D}/Repo/y"`,
+        `${stamp} x > "${D}/é.txt"`,
+        `${stamp} x > "${D}/sub/K.txt"`,
+        `${stamp} x | tee "${D}/run-sessiön"`,
+        `${stamp} x > "${D}/a b.txt"`,
+        `${stamp} x > "${D}/REPO"`,
+        `${scan} --out "${D}/Repo/x.json"`,
+        `${scan} --out "${D}/RUN-SESSION"`,
+        `${scan} --out "${D}/é.json"`,
+        `(cd ".." && ${alfred} update --source "${D}/repo" --installed-only --print-plan --plan-out "${D}/Repo/p.json")`,
+        `(cd ".." && ${alfred} update --source "${D}/repo" --installed-only --print-plan --plan-out "${D}/RUN-SESSION")`,
+    ];
+    for (const form of forms) assert.equal(approvesForms(form, ctx), false, JSON.stringify(form));
+    assert.equal(approvesForms(`${stamp} x > "${D}/Out-1.txt"`, ctx), true, 'a mixed-case file name of plain characters stays a target');
+    assert.equal(approvesForms(`${stamp} x | tee "${D}/sub/.a_b-1.log"`, ctx), true);
+});
+
 // A child's read of its parent: the folder above, reached by a `..`-only cd, read-only forms only.
 const ancestorCtx = ctx;
 const readOnly = `--source "${D}/repo" --scope local --installed-only --print-plan --plan-out "${D}/parent.json" > "${D}/parent.out" 2>&1`;
@@ -527,6 +553,10 @@ test('approvesForms reads Windows spellings of one run dir and the same dir in M
     assert.equal(approvesForms('node "/c/Temp/alfred-code.AbC123/repo/scripts/gate.js" x', win), false);
     assert.equal(approvesForms('node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" x "/tmp/x"', win), false);
     assert.equal(approvesForms('cat "C:\\Temp\\alfred-code.AbC123\\..\\x"', win), false);
+    const stampWin = 'node "C:\\Temp\\alfred-code.AbC123\\repo\\scripts\\install\\stamp.js" x';
+    assert.equal(approvesForms(`${stampWin} > "C:\\Temp\\alfred-code.AbC123\\o.txt"`, win), true);
+    assert.equal(approvesForms(`${stampWin} > "C:\\TEMP\\ALFRED-CODE.ABC123\\REPO\\x"`, win), false);
+    assert.equal(approvesForms(`${stampWin} > "/c/Temp/alfred-code.AbC123/Run-Session"`, win), false);
 });
 
 const table = { resolves: [], scripts: [] };

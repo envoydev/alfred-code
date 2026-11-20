@@ -2,7 +2,7 @@
 // Whether the arguments of one `node "<run dir>/repo/<script>"` call are ones a walk body writes: a mode and flags the table
 // lists for the script, and values that are plain words or paths under the run dir or the project. Pure.
 const { SHELL, QUOTE, FLAG, ARG, OUTPUT_FLAGS, PHRASE_FLAGS, INSTALLER_MODES, WORD, PARENT_READ } = require('./constants.js');
-const { isAbsoluteWord, isUnder, sepOf, resolveWord } = require('./paths.js');
+const { isAbsoluteWord, isUnder, sepOf, resolveWord, sameFolded, fold } = require('./paths.js');
 const { resolveIn, isTarget } = require('./state.js');
 
 const isBare = (word) => word.quote === QUOTE.none;
@@ -78,7 +78,7 @@ function scriptNameOf(word, base, state)
 {
     const script = resolveIn(word, base, state);
     const prefix = `${state.repoDir}${sepOf(state.win)}`;
-    if (!script || !script.startsWith(prefix)) return null;
+    if (!script || !fold(script).startsWith(fold(prefix))) return null;
     return script.slice(prefix.length).split(SHELL.segmentSplit).join('/');
 }
 
@@ -94,7 +94,7 @@ function pinsSource(args, base, state)
 {
     if (args.some((word) => word.value.startsWith(FLAG.long) && word.value.includes(FLAG.assign))) return false;
     const source = valueAfter(args, PARENT_READ.source);
-    return Boolean(source) && resolveIn(source, base, state) === state.repoDir;
+    return Boolean(source) && sameFolded(resolveIn(source, base, state) || '', state.repoDir);
 }
 
 // A node call: the script is in the table, its mode and flags are ones a body calls it with, and an installer call also takes

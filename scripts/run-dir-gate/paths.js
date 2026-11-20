@@ -1,13 +1,15 @@
 'use strict';
-// Path logic for the form matcher: one canonical spelling per path, and the containment test. Pure string work.
+// Path logic for the form matcher: one canonical spelling per path, and the containment test. Pure string work. A path keeps
+// its case; every comparison folds it, since a file system can ignore case and a case variant must name the same place.
 const path = require('node:path');
 const { SHELL, PATH } = require('./constants.js');
 
 const apiOf = (win) => (win ? path.win32 : path.posix);
 const sepOf = (win) => (win ? PATH.sep.win : PATH.sep.posix);
+const fold = (text) => String(text).toLowerCase();
+const sameFolded = (first, second) => fold(first) === fold(second);
 
-// A normalised path with no trailing separator. In Windows mode `/c/x` reads as `C:\x` and the case is folded, since the
-// file system folds it.
+// A normalised path with no trailing separator. In Windows mode `/c/x` reads as `C:\x`.
 function canon(text, win)
 {
     let value = String(text);
@@ -18,7 +20,7 @@ function canon(text, win)
     }
     value = apiOf(win).normalize(value);
     if (value.length > 1 && PATH.endsWithSep.test(value) && !PATH.driveRoot.test(value)) value = value.replace(PATH.trailingSeps, '');
-    return win ? value.toLowerCase() : value;
+    return value;
 }
 
 const isAbsoluteWord = (word, win) => apiOf(win).isAbsolute(word) || (win && SHELL.msysDrive.test(word));
@@ -34,14 +36,23 @@ function resolveWord(word, base, win)
 
 function isUnder(candidate, root, win)
 {
-    if (candidate === root) return true;
+    const inside = fold(candidate);
+    const outside = fold(root);
+    if (inside === outside) return true;
     const sep = sepOf(win);
-    return candidate.startsWith(root.endsWith(sep) ? root : root + sep);
+    return inside.startsWith(outside.endsWith(sep) ? outside : outside + sep);
 }
 
 // The folder a `..`-only word reaches from `base`.
 const ancestorOf = (word, base, win) => canon(apiOf(win).join(base, word), win);
 
-const isStrictlyUnder = (candidate, root, win) => candidate !== root && isUnder(candidate, root, win);
+const isStrictlyUnder = (candidate, root, win) => !sameFolded(candidate, root) && isUnder(candidate, root, win);
 
-module.exports = { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf };
+// The segments of `candidate` below `root`, in the candidate's own case; call it for a candidate known to be under `root`.
+function segmentsBelow(candidate, root, win)
+{
+    const split = (text) => text.split(win ? SHELL.segmentSplit : PATH.sep.posix);
+    return split(candidate).slice(split(root).length);
+}
+
+module.exports = { canon, resolveWord, isAbsoluteWord, ancestorOf, isUnder, isStrictlyUnder, sepOf, fold, sameFolded, segmentsBelow };
