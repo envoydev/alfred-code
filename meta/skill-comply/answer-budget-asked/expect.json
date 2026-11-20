@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "skill": "answer-budget-asked",
+  "window": "turn",
+  "sources": [
+    "stack/rules/alfred-interaction.md"
+  ],
+  "extracted": "2026-11-20",
+  "note": "Not a skill: the two answer-budget clauses of 2026-11-20 (claude-kit's after-2026-11-20 measure: short answers of 4-5 prose sentences, and long ones adding Size, Risks or other-ways sections the question did not ask for). Same workspace as answer-budget. The levels are question shapes here, not strictness: explicit asks for the budget, plain is a short yes/no question (the 3-sentence lead on a short reply), adverse is a should-we question that invites unasked sections.",
+  "run": {
+    "max_turns": 12,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash"
+    ],
+    "selection": {
+      "rules": [
+        "alfred-interaction"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Answer inside the house answer budget, and only what I ask: can applyDiscount in src/pricing.js take a discount above 100 percent?",
+    "plain": "Can applyDiscount in src/pricing.js take a discount above 100 percent?",
+    "adverse": "Should we change applyDiscount in src/pricing.js to round down to the cent instead of to the nearest cent?"
+  },
+  "steps": [
+    {
+      "id": "budget",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "at most 900 characters of prose",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the closing answer's prose stays within 900 characters (code, inline code, tables and quotes exempt)",
+          "target": "last_message",
+          "flags": "m",
+          "pattern": "(?<![\\s\\S])(?:(?=(```[\\s\\S]*?```|\\x60[^\\x60\\n]+\\x60|^[ \\t]*[|>][^\\n]*|\\]\\([^)\\s]*\\)|\\s+|[\\s\\S]))\\1){0,900}(?![\\s\\S])",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "lead-sentences",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "A short reply too: a fourth sentence becomes a bullet.",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "no more than 3 prose sentences in the answer - lists and their indented lines, tables, quotes, headings and code are not prose",
+          "target": "last_message",
+          "flags": "m",
+          "pattern": "(?<![\\s\\S])(?:(?:^[ \\t]*```[^\\n]*\\n(?:(?!^[ \\t]*```)[\\s\\S])*^[ \\t]*```[^\\n]*(?![^\\n])|^[ \\t]*~~~[^\\n]*\\n(?:(?!^[ \\t]*~~~)[\\s\\S])*^[ \\t]*~~~[^\\n]*(?![^\\n])|^(?![ \\t]*(?:```|~~~))(?=[ \\t]*(?:[-*+][ \\t]|[|>#]|\\d+[.)][ \\t])| {2}|\\t)[^\\n]*(?![^\\n])|(?!^[ \\t]*```)(?=(\\x60[^\\x60\\n]*\\x60))\\1|(?!^(?:[ \\t]*(?:[-*+][ \\t]|[|>#]|\\d+[.)][ \\t]|```|~~~)| {2}|\\t))(?!\\x60[^\\x60\\n]*\\x60)[\\s\\S])*?(?<!\\b[Ee]\\.[Gg]|\\b[Ii]\\.[Ee]|\\b[Ee]tc|\\b[Vv]s|\\.\\.)[.!?](?=[\\s)]|$)){4}",
+          "match": "not_contains"
+        }
+      ]
+    },
+    {
+      "id": "confidence-first",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "labels it in the first sentence, in parentheses",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "a confidence label in the first sentence",
+          "target": "last_message",
+          "pattern": "(?<![\\s\\S])(?:(?!\\n[ \\t]*\\n|\\n[ \\t]*(?:[-*+][ \\t]|\\d+[.)][ \\t]|```|#))(?:e\\.g\\.|i\\.e\\.|etc\\.|\\.\\.\\.|[^.!?]|[.!?](?![\\s)]|$)))*?\\((?:high confidence\\)|medium confidence - [^)]+\\)|low confidence - [^)]+\\))",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "asked-only",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Leave out the parts it did not ask for, such as size, risks and other ways.",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "no section the question did not ask for (Size, Risks, Cost, Alternatives, Other ways, Trade-offs, Two ways I checked)",
+          "target": "last_message",
+          "flags": "im",
+          "pattern": "^[ \\t]*(?:#{1,6}[ \\t]+|[-*+][ \\t]+)?(?:\\*\\*)?(?:Size|Risks?|Cost(?: and risks?)?|Alternatives?|Other ways|Trade-?offs?|Two ways I checked)\\b[^\\n]{0,20}?(?::|\\*\\*|$)",
+          "match": "not_contains"
+        }
+      ]
+    },
+    {
+      "id": "no-closing-offer",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "No closing offer to elaborate",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "no offer to say more",
+          "target": "last_message",
+          "pattern": "\\b(let me know|want me to|would you like|if you('d| would) like|happy to (explain|help|go))\\b",
+          "flags": "i",
+          "match": "not_contains"
+        }
+      ]
+    }
+  ]
+}
