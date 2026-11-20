@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@79cd59e",
+  "kit": "claude-kit@d4f4afd",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
@@ -16,6 +16,7 @@
     ".claude/rules/skill-authoring.md": "8becdf7851bb7beac89d16444481764198de73e7a26dd34f90f5ccc4b91f5484",
     ".claude/rules/superpowers-location.md": "47fa30284af77e14ecbd93bddc6b6622d83b226ed45d645e7c7e65b6b1dd3286",
     ".claude/rules/typescript.md": "3697ea3da2f25bdd6e48178b5cb33c329adb642627c0d07a3e11e39c51735f47",
+    ".claude/rules/windows-vm.md": "67eaa5674fff479a4b7d1d3e117a93e8cfb4ed892f6973b17915c03684f0a99a",
     ".claude/skills/auto-run/SKILL.md": "d7a97a30ed936155e29c3ca9666a8d96ce546c8c63fb762f47aa133cdc5acf72",
     ".claude/skills/code-comments/SKILL.md": "c88cd1efe4f16f4b35a27fcd0cd82d5c5c4838445ae6e929ccdb1ccb68c78c37",
     ".claude/skills/javascript/SKILL.md": "a764c1dc27bc5d3cb8cb36fedc52f0bab09c5525fb4bebc03ebe092f7b2a980d",
