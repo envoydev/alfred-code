@@ -1637,7 +1637,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     through / write a plan since ruling S9 (the user's, 2026-10-20), and the rule's 'or the same ask in any language' since
     audit 2026-11-03 SYS-05, the rule staying its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
     again after a compaction, which drops that injection - only then since the deep hooks review 2026-10-16 (startup,
-    resume and clear get it from the first prompt; 256 starts paid a second copy). Its Stop half - the 1800-char prose
+    resume and clear get it from the first prompt; 256 starts paid a second copy). On a typed prompt it also adds a note
+    on the LAST reply when that reply passed the budget (`reply-budget.js`, a `HOOK_MODULES` module required inside a try: the
+    reply's prose over 900 characters or over 3 lead sentences, read from growing transcript tails of 512 KB up to 32 MB; no
+    note with a `Checks:` close, a lift phrase in the typed request, a turn still running or no request found - a ported copy
+    of claude-kit's `reply-budget.mjs`; the SessionStart route carries none). Its Stop half - the 1800-char prose
     block and the em-dash block - is gone (the user's ruling of 2026-10-20: a hard cap held mandated closes and depth
     asks in other languages and read as a hook error mid-conversation); the budget is a HARD rule in
     `alfred-interaction.md` that the model holds itself, and a Stop payload wired by hand exits 0 silently. After the third consecutive short correction following a long answer it injects

@@ -139,7 +139,7 @@ function proseOf(text) {
 // in the transcript each turn - ~22.5K chars over a 30-turn session).
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): at most ${BUDGET} characters of prose, near 150 words, bullets count; lead with 3 sentences or fewer, a short reply too, result first; answer only what was asked - no unasked size, risks or other ways; a result, cause or recommendation's first sentence carries its label: (high confidence), (medium confidence - <what is not verified>) or (low confidence - <why>); fit it before sending. ` +
-        `Code, tables and command output are exempt. Only THIS message's depth words lift it (in detail / walk me ` +
+        `Code, tables and command output are exempt. A list of items is a table, one short row each. Only THIS message's depth words lift it (in detail / walk me ` +
         `through / step by step / teach me / ELI5 / write a plan, or the same ask in any language), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 
@@ -492,6 +492,9 @@ function modesText(prompt) {
   } catch { return none; }
 }
 
+// The size note on the LAST reply (reply-budget.js), a typed prompt's only; a missing module or a failed read adds none.
+const replyNote = () => { try { const note = require('./reply-budget.js').noteFor(payload.transcript_path); return note ? ` ${note}` : ''; } catch { return ''; } };
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
   // A harness prompt is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
   // budget rode a background gate's completion notice, ~195 tokens carried on every later message; 2026-10-14 HK14: and
@@ -533,7 +536,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   // The ON line is a systemMessage beside the context: the user sees it, the model reads the context lines (spec section 3).
   process.stdout.write(JSON.stringify({
     ...(modes.message ? { systemMessage: modes.message } : {}),
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + extra + repeat + nudge + modes.context },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + replyNote() + extra + repeat + nudge + modes.context },
   }));
   // The session status file (session-status.js): this prompt's autoRun and scoring, under history-session's own gates.
   // The stand-down runs as the write's gate, only once the compare says a write is due (R137).

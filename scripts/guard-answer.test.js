@@ -52,10 +52,68 @@ test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     assert.match(ctx, /lead with 3 sentences or fewer, a short reply too, result first; answer only what was asked - no unasked size, risks or other ways;/, 'the hook line carries the short-reply and asked-only clauses');
     assert.match(ctx, /first sentence carries its label: \(high confidence\), \(medium confidence - <what is not verified>\) or \(low confidence - <why>\)/, 'the hook line names the confidence label, as the rule does');
     assert.match(ctx, /Code, tables and command output are exempt/, 'the exemption travels with the budget');
+    assert.ok(ctx.includes('Code, tables and command output are exempt. A list of items is a table, one short row each.'), 'the table sentence follows the exemption, once');
+    assert.strictEqual(ctx.split('A list of items is a table').length, 2, 'one copy');
     // Ruling S9 (the user's, 2026-10-20): 'step by step' lifts the budget like the other depth words.
     assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ teach me \/ ELI5 \/ write a plan, or the same ask in any language\)/, 'the lift list names step by step');
     // Audit 2026-11-03 SYS-05: the per-turn copy carries the rule's 'the same ask in any language' (alfred-interaction.md).
     assert.match(fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8'), /'write a plan', the same ask in any language\)/, 'the rule it copies');
+});
+
+// The last-reply note (reply-budget.js): UserPromptSubmit adds it right after the budget when the LAST reply passed it.
+const NOTE_SHAPE = /Last reply: \d+ characters of prose, lead sentences: \d+ - over the limit\. Make this one fit\./;
+const submit = (transcriptPath, extra = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?', ...(transcriptPath === undefined ? {} : { transcript_path: transcriptPath }), ...extra });
+
+test('an over-long last reply gets the note right after the budget text', () => {
+    const r = submit(transcript('note-long', 'did the build pass?', [{ type: 'text', text: WALL }]));
+    assert.strictEqual(r.status, 0);
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.match(ctx, new RegExp(`text included\\. ${NOTE_SHAPE.source}`), 'the note follows the budget text');
+});
+
+test('a short last reply gets no note', () => {
+    const r = submit(transcript('note-short', 'did the build pass?', [{ type: 'text', text: SHORT }]));
+    assert.strictEqual(r.status, 0);
+    assert.doesNotMatch(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /Last reply:/);
+});
+
+test('no transcript_path, a missing file and a directory add no note and exit 0', () => {
+    for (const target of [undefined, '', path.join(TMP, 'no-such-transcript.jsonl'), TMP]) {
+        const r = submit(target);
+        assert.strictEqual(r.status, 0, String(target));
+        assert.doesNotMatch(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /Last reply:/, String(target));
+    }
+});
+
+test('a request beyond the first 512 KB tail is found by the growing tail', () => {
+    const file = path.join(TMP, 'note-grow.jsonl');
+    const pad = { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: 'Bash', input: { pad: 'p'.repeat(100000) } }] } };
+    const rows = [{ type: 'user', message: { role: 'user', content: 'go' } }, ...Array.from({ length: 8 }, () => pad),
+        { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: WALL }] } }];
+    fs.writeFileSync(file, rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
+    assert.ok(fs.statSync(file).size > 512 * 1024 && fs.statSync(file).size < 2 * 1024 * 1024);
+    assert.match(JSON.parse(submit(file).stdout).hookSpecificOutput.additionalContext, NOTE_SHAPE);
+});
+
+test('a hooks folder without reply-budget.js still sends the budget, adds no note and exits 0', () => {
+    const dir = fs.mkdtempSync(path.join(TMP, 'no-module-'));
+    const hooks = path.dirname(HOOK);
+    for (const name of fs.readdirSync(hooks)) {
+        if (name !== 'reply-budget.js' && fs.statSync(path.join(hooks, name)).isFile()) fs.copyFileSync(path.join(hooks, name), path.join(dir, name));
+    }
+    const file = transcript('note-no-module', 'did the build pass?', [{ type: 'text', text: WALL }]);
+    const r = spawnSync(process.execPath, [path.join(dir, 'guard-answer.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?', transcript_path: file }), encoding: 'utf8', env: process.env });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(ctx.includes('Answer budget'));
+    assert.doesNotMatch(ctx, /Last reply:/);
+});
+
+test('the SessionStart compaction route carries no note, and the table sentence rides the budget', () => {
+    const file = transcript('note-start', 'did the build pass?', [{ type: 'text', text: WALL }]);
+    const start = JSON.parse(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 's', transcript_path: file }).stdout).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(start, /Last reply:/);
+    assert.ok(start.includes('A list of items is a table, one short row each.'));
 });
 
 // The user's ruling 2026-10-20: the answer budget is the interaction rule's and is injected, never enforced - the
