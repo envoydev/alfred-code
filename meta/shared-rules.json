@@ -6445,7 +6445,7 @@
       ]
     },
     "agents-md-import-keeps-both": {
-      "_note": "Audit 2026-11-19 agent-md DUP-1: the AGENTS template's fill-in block and the AGENTS.md skill's improve mode both say how an `@` import keeps a CLAUDE.md and the AGENTS.md loading together and where the import resolves from. The template owns where the file lives (the skill's opening says so); the skill restates it in the report it gives on a project holding both files. Both stay - a hand copy has no skill, and the skill's report has no template open - so the pin is what makes an edit to one visible.",
+      "_note": "Audit 2026-11-19 agent-md DUP-1: the AGENTS template's fill-in block and the AGENTS.md skill's improve mode both say how an `@` import keeps a CLAUDE.md and the AGENTS.md loading together and where the import resolves from. The template owns where the file lives (the skill's opening says so); the skill's report on a project holding both files names the import and the two forms it takes, but no longer says where it resolves from (agents-md:61, ab-g round 2), so the two markers differ. Both stay - a hand copy has no skill, and the skill's report has no template open - so the pin is what makes an edit to one visible.",
       "owner": {
         "file": "stack/AGENTS.template.md",
         "marker": "keeps both loading - it resolves from the importing file, so `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside"
@@ -6453,7 +6453,7 @@
       "sites": [
         {
           "file": "stack/skills/habits-adjust-agents-md/SKILL.md",
-          "marker": "keeps both loading - it resolves from the importing file, so `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside"
+          "marker": "(`@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside it) keeps both loading"
         }
       ]
     },

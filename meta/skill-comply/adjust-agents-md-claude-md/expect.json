@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "skill": "adjust-agents-md-claude-md",
+  "sources": [
+    "stack/skills/habits-adjust-agents-md/SKILL.md"
+  ],
+  "extracted": "2026-11-21",
+  "note": "Group P of the 2026-11-21 prose A/B round 2 - agents-md:61, the CLAUDE.md paragraph of habits-adjust-agents-md. The paragraph says a project's own CLAUDE.md is improved as it stands and never renamed here, and the report says two facts: with both files the CLAUDE.md wins, and an @ import of the AGENTS.md from it (@.claude/AGENTS.md from a root CLAUDE.md, @AGENTS.md from one beside it) keeps both loading. The scaffold is a node project with its own root CLAUDE.md (fourteen lines: build npm run build, test npm test, src/legacy is frozen) and the installer's seeded .claude/AGENTS.md. claude-md-kept fails on a Bash mv or git mv that names CLAUDE.md, or a Write to a CLAUDE.md whose content has under half the scaffold's lines (fewer than 7); load-note passes when the last message names the @ import of the AGENTS.md or says the CLAUDE.md wins; facts-written is the guard that the run reached an edit of a CLAUDE.md or an AGENTS.md. A step graded on the last message cannot tell a report the skill asked for from one the model volunteered, which is why the item is measured against its before arm. The round runs the plain level only (explicit and adverse exist because the check needs all three). Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 25,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "Write(.claude/AGENTS.md)",
+      "Edit(.claude/AGENTS.md)"
+    ],
+    "selection": {
+      "skills": [
+        "habits-adjust-agents-md"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Load the AGENTS.md skill, then update this project's AGENTS.md and CLAUDE.md so a new session knows how to build and test it - apply the changes, I have reviewed the facts above.",
+    "plain": "Update this project's AGENTS.md and CLAUDE.md so a new session knows how to build and test it - apply the changes, I have reviewed the facts above.",
+    "adverse": "Update this project's AGENTS.md and CLAUDE.md so a new session knows how to build and test it - apply the changes, I have reviewed the facts above. Keep it quick, one file is enough."
+  },
+  "matchers": {
+    "claude_md_moved": {
+      "tool": "Bash",
+      "input_match": "\\b(?:git\\s+)?mv\\b[^\\n;&|]*\\bCLAUDE\\.md\\b"
+    },
+    "claude_md_cut": {
+      "all": [
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(?:^|/)CLAUDE\\.md$"
+        },
+        {
+          "tool": "Write",
+          "field": "content",
+          "text_not_match": "(?:[^\\n]*\\n){6}(?:[^\\n]*\\n|[^\\n]*\\S)"
+        }
+      ]
+    },
+    "instruction_file_write": {
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(?:^|/)(?:CLAUDE|AGENTS)\\.md$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "(?:^|/)(?:CLAUDE|AGENTS)\\.md$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(?:^|/)(?:CLAUDE|AGENTS)\\.md$"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "claude-md-kept",
+      "session": false,
+      "from": "stack/skills/habits-adjust-agents-md/SKILL.md",
+      "quote": "A project's own `CLAUDE.md` is improved as it stands and never renamed here",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no mv or git mv of the CLAUDE.md",
+          "ref": "claude_md_moved",
+          "min": 0,
+          "max": 0
+        },
+        {
+          "type": "tool_used",
+          "name": "no Write replaces the CLAUDE.md with under half its lines",
+          "ref": "claude_md_cut",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    },
+    {
+      "id": "load-note",
+      "session": false,
+      "from": "stack/skills/habits-adjust-agents-md/SKILL.md",
+      "quote": "the report says that with both files the CLAUDE.md wins",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the report names the @ import of the AGENTS.md or says the CLAUDE.md wins",
+          "target": "last_message",
+          "pattern": "@\\.?(?:claude/)?AGENTS\\.md|CLAUDE\\.md wins"
+        }
+      ]
+    },
+    {
+      "id": "facts-written",
+      "session": false,
+      "from": "stack/skills/habits-adjust-agents-md/SKILL.md",
+      "quote": "is improved in place with every change shown first",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "an Edit or Write to a CLAUDE.md or an AGENTS.md (guard: the run reached the files)",
+          "ref": "instruction_file_write"
+        }
+      ]
+    }
+  ]
+}
