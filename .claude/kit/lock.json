@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@3d4ad63",
+  "kit": "claude-kit@dd7bc01",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
@@ -7,7 +7,7 @@
     ".claude/rules/auto-run.md": "f22ebf2cc96b8824b31bc005cf6c77e8f969ebb58d882d9016dcbcafaf01a2f7",
     ".claude/rules/cleanup.md": "f38bcfc09dc0b0250a568b5472d38714e9787320604fe6fc91b9161c4970b215",
     ".claude/rules/commits.md": "c8da61a6def2fa013c60e95b94d2367a55046e8beee2ca6dd82117a7a017017c",
-    ".claude/rules/communication.md": "cba45679843f886205934f53de72e673261ce50aca530ba7b713bb36060ba806",
+    ".claude/rules/communication.md": "4a096899bcd6842385ccb5ff6b91b6a990ceb6097910e92cec11fb0b23646a43",
     ".claude/rules/execution.md": "cd24e51e2f727d81fb801b9c342156d448abab6f99c15f005ba97b35fd4f2d47",
     ".claude/rules/javascript.md": "8f4ff96fe8839fc542bb837913d5518147b497e76eb73b05e044bd6e8fd5ffb6",
     ".claude/rules/plan-approval.md": "f2d78423a15b8f6ab289204ac2e8896e48d766645ae4de5f23385100ce157abc",

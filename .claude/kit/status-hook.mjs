@@ -22,11 +22,16 @@
 //
 // It never blocks a request: whatever goes wrong, it exits 0 and says so on stderr.
 //
-// It reads the kit's file, the committed .claude/settings.json and the three agent files of the repo it sits in, writes
+// After the status it adds the communication rule's reminder line, read from the rule each time so the rule stays its one
+// source, and a note when Claude's last reply passed the rule's limits (reply-budget.mjs). A missing rule or reminder
+// line adds nothing.
+//
+// It reads the kit's file, the communication rule, the end of the session's transcript, the committed
+// .claude/settings.json and the three agent files of the repo it sits in, writes
 // only that kit file and opens no connection. A hook a repo commits runs in a `claude -p` or SDK session with no trust
 // dialog: before scripting over a clone you did not write, read this file as you would an install script, or start the
 // run with --bare.
-import { readFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, readSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,7 +44,7 @@ function describeError(error)
 // through. Their stderr prefix lives in constants.mjs, which may be the module that failed, so it is written out here.
 async function loadSiblings()
 {
-    try { return { ...(await import('./constants.mjs')), ...(await import('./kit-settings.mjs')) }; }
+    try { return { ...(await import('./constants.mjs')), ...(await import('./kit-settings.mjs')), ...(await import('./reply-budget.mjs')) }; }
     catch (error)
     {
         console.error(`claude-kit status hook: ${describeError(error)}`);
@@ -49,7 +54,7 @@ async function loadSiblings()
 
 const siblings = await loadSiblings();
 const {
-    ARTICLE, CUT_MARK, HOOK_ERROR_PREFIX, KIT_SETTINGS_FILE, MAX_SHOWN_LENGTH, MODEL_CONNECTORS, MODEL_LEADING_VERBS, MODEL_ROLES, MODEL_WORD_PATTERN,
+    ARTICLE, COMMUNICATION_RULE_FILE, CUT_MARK, HOOK_ERROR_PREFIX, KIT_SETTINGS_FILE, TRANSCRIPT_TAIL_BYTES, reminderContextOf, MAX_SHOWN_LENGTH, MODEL_CONNECTORS, MODEL_LEADING_VERBS, MODEL_ROLES, MODEL_WORD_PATTERN,
     MODELS, NEWLINE, NOT_SAVED_PREFIX, POLITE_PREFIX, QUESTION_MARK, ROLE_JOINERS, SAVED_PREFIX, SETTING, SETTINGS_REFUSED, SPLIT_VERBS, SWITCH, SWITCH_MODES,
     SWITCH_VERBS, VALUE_END, VERB_CONNECTOR, isKitFolder, resolveKitSettings, setKitSettings,
 } = siblings ?? {};
@@ -58,6 +63,28 @@ function readStdin()
 {
     try { return readFileSync(0, 'utf8'); }
     catch { return ''; }
+}
+
+function readTextOrEmpty(file)
+{
+    try { return readFileSync(file, 'utf8'); }
+    catch { return ''; }
+}
+
+function readTail(file, byteCount)
+{
+    if (typeof file !== 'string' || file === '') return '';
+    let descriptor;
+    try
+    {
+        descriptor = openSync(file, 'r');
+        const start = Math.max(0, fstatSync(descriptor).size - byteCount);
+        const buffer = Buffer.alloc(byteCount);
+        const bytesRead = readSync(descriptor, buffer, 0, byteCount, start);
+        return buffer.subarray(0, bytesRead).toString('utf8');
+    }
+    catch { return ''; }
+    finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
 function parseHookInput(text)
@@ -171,8 +198,10 @@ function buildOutput(hookInput, env, root, folder)
         ...names.map((name) => `${name}=${settings[name].value} (${settings[name].origin});`),
         ...(savedNote === null ? [] : [savedNote]),
     ].join(' ');
+    const reminder = reminderContextOf(readTextOrEmpty(join(root, COMMUNICATION_RULE_FILE)), readTail(hookInput.transcript_path, TRANSCRIPT_TAIL_BYTES));
+    const fullContext = reminder === null ? context : [context, reminder].join(NEWLINE);
 
-    return { systemMessage: userLine, hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: context } };
+    return { systemMessage: userLine, hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: fullContext } };
 }
 
 if (siblings !== null)

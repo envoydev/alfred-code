@@ -122,6 +122,36 @@ export const NOT_SAVED_PREFIX = 'not saved -';
 // characters that a hook returns with a pointer to a file.
 export const MAX_SHOWN_LENGTH = 400;
 export const CUT_MARK = '...';
+// reply-budget.mjs: the communication rule's line the status hook sends with each request, found by its opening, and
+// the limits it checks Claude's last reply against - the rule's own numbers and lift words.
+export const COMMUNICATION_RULE_FILE = '.claude/rules/communication.md';
+export const REMINDER_OPENING = '- Each request carries this reminder:';
+export const REMINDER_HEAD = `Reply limits (${COMMUNICATION_RULE_FILE}):`;
+export const REPLY_MAX_PROSE_CHARS = 900;
+export const REPLY_MAX_LEAD_SENTENCES = 3;
+export const MIN_SENTENCE_WORDS = 3;
+export const LIFT_PATTERN = /in detail|step by step|teach me/i;
+export const CLOSE_LINE_PATTERN = /^\s*(?:[-*]\s*)?\*{0,2}Checks:/m;
+export const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
+export const INLINE_CODE_PATTERN = /`[^`]*`/g;
+export const INLINE_CODE_STAND_IN = 'X';
+export const TABLE_ROW_START = '|';
+export const HEADING_START = '#';
+export const BULLET_PATTERN = /^\s*(?:[-*]|\d+\.)\s+/;
+export const SENTENCE_BREAK = /(?<=[.!?:])\s+/;
+export const WORD_GAP = /\s+/;
+// A turn nobody typed - a task notification, another session's message, a compaction summary - opens with one of these
+// where its transcript entry records no origin.
+export const NOT_TYPED_OPENINGS = Object.freeze(['<task-notification', '<cross-session-message', 'Another Claude session sent', '[SYSTEM NOTIFICATION', 'This session is being continued']);
+export const TYPED_ORIGIN = 'human';
+export const ENTRY_TYPE = Object.freeze({ user: 'user', assistant: 'assistant' });
+export const TEXT_PART = 'text';
+// The end of the transcript the hook reads for the last reply: one reply is far smaller, and a whole transcript can
+// pass 100 MB.
+export const TRANSCRIPT_TAIL_BYTES = 512 * 1024;
+// alfred-mods ends the status line's note at its last ';', so the text after the note carries none.
+export const STATUS_ITEM_END = ';';
+export const ITEM_END_STAND_IN = ',';
 
 // check.mjs: the registry of text kept on purpose in more than one file (only the kit itself has it), the separator
 // between a sibling repo and a path in it ('alfred-code:AGENTS.md'), and the words a failure to read the registry opens with.
