@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "skill": "designer-worker-traps",
+  "sources": [
+    "stack/agents/console-solution-designer.md",
+    "stack/skills/dotnet-hosted-services/SKILL.md",
+    "stack/skills/task-design/SKILL.md",
+    "stack/skills/task-design/references/design-rules.md"
+  ],
+  "extracted": "2026-11-21",
+  "note": "Groups M and T of the 2026-11-21 prose A/B round 2. T cuts the console designer's trap list to one line per trap under a pointer to the preloaded dotnet-hosted-services (the why and the code shape live there) and cuts, in all ten designers, the restatements of task-design: the 'Challenge every piece of scope' and 'defer anything not yet proven necessary' clauses of the Design lean bullet, the clear-brief bullet's Decisions-ledger sentence and the generic Don't-game-it section. M puts the same seat on Sonnet against Opus and commits nothing. One seat measures the shared text. The brief is an order-inbox card: a 30-second poll, a producer/consumer pair and a clean shutdown, over a worker whose Program.cs registers IOrderStore as a scoped service. The dispatcher runs on Haiku and only dispatches; the seat runs on its frontmatter pin, and every step reads the seat's own rows (run.trace seat - the stream's parent_tool_use_id rows, forwarded with --forward-subagent-text), so the main session naming a trap never counts. scope-per-unit, stopping-token and bounded-channel are the trap list's steps; one-owner (Program.cs on exactly one task's files line - a files: line that names it after a NOT, never, forbidden or except is the forbid the rule asks of the other tasks and is no ownership) and decisions-ledger (a ## Decisions heading, or a Decisions: none - line) are the restatement cut's; oriented-line and status-line are guards that show the seat reached its report. Only the plain level is run. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 15,
+    "stacks": [
+      "console"
+    ],
+    "model": "haiku",
+    "trace": "seat",
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash",
+      "Skill",
+      "Agent",
+      "LSP",
+      "WebFetch"
+    ],
+    "selection": {
+      "agents": [
+        "console-solution-designer"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Dispatch the console-solution-designer seat with `.alfred/docs/work/briefs/order-inbox.md` as its whole brief; it designs against the preloaded hosted-services skill. Do not design anything yourself; when it returns, stop.",
+    "plain": "Dispatch the console-solution-designer seat with `.alfred/docs/work/briefs/order-inbox.md` as its whole brief. Do not design anything yourself; when it returns, stop.",
+    "adverse": "Dispatch the console-solution-designer seat with `.alfred/docs/work/briefs/order-inbox.md` as its whole brief - a rough plan is enough, keep it fast. Do not design anything yourself; when it returns, stop."
+  },
+  "steps": [
+    {
+      "id": "scope-per-unit",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "takes `IServiceScopeFactory` and opens a scope per unit of work",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the seat's report names a scope per unit of work (IServiceScopeFactory, CreateScope or CreateAsyncScope)",
+          "target": "last_message",
+          "pattern": "IServiceScopeFactory|CreateScope|CreateAsyncScope"
+        }
+      ]
+    },
+    {
+      "id": "stopping-token",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "every loop observes the `stoppingToken` and threads it into every await",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the seat's report names the stopping token",
+          "target": "last_message",
+          "pattern": "[Ss]topping ?[Tt]oken"
+        }
+      ]
+    },
+    {
+      "id": "bounded-channel",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "uses a bounded `Channel<T>`",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the seat's report designs a bounded channel for the producer/consumer pair (CreateBounded, BoundedChannel, or bounded within 40 characters of channel - not unbounded, a bounded Queue or SingleReader type in a report that names a channel - not unbounded, not the bounded pass)",
+          "target": "last_message",
+          "pattern": "CreateBounded|BoundedChannel|(?<![Uu]n)[Bb]ounded[^\\n]{0,40}[Cc]hannel|^(?=[\\s\\S]*[Cc]hannel)[\\s\\S]*?(?<![Uu]n)[Bb]ounded[^\\n]{0,40}(?:[Qq]ueue|SingleReader)"
+        }
+      ]
+    },
+    {
+      "id": "one-owner",
+      "session": false,
+      "from": "stack/skills/task-design/references/design-rules.md",
+      "quote": "exactly one owning task, and forbid the rest from touching it",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "Program.cs on a task's files line or entry in the report",
+          "target": "last_message",
+          "pattern": "(?:^[^\\n]*\\b[Ff]iles?(?:\\*\\*|`)?:(?:(?!\\b(?:[Nn][Oo][Tt]|[Nn]ever|[Ff]orbidden|[Ee]xcept)\\b|n't\\b)[^\\n])*?Program\\.cs|Program\\.cs`?\\s*\\((?:create|modify)\\b|^[^\\n]*\\b[Ff]iles?(?:\\*\\*|`)?:[^\\n]*\\n(?:[ \\t]+[-*][^\\n]*\\n)*?[ \\t]+[-*][ \\t]+`?(?:[\\w./-]*/)?Program\\.cs)",
+          "flags": "m"
+        },
+        {
+          "type": "regex",
+          "name": "Program.cs on exactly one task's files (a forbid on another task's line is no ownership)",
+          "target": "last_message",
+          "pattern": "(?:^[^\\n]*\\b[Ff]iles?(?:\\*\\*|`)?:(?:(?!\\b(?:[Nn][Oo][Tt]|[Nn]ever|[Ff]orbidden|[Ee]xcept)\\b|n't\\b)[^\\n])*?Program\\.cs|Program\\.cs`?\\s*\\((?:create|modify)\\b|^[^\\n]*\\b[Ff]iles?(?:\\*\\*|`)?:[^\\n]*\\n(?:[ \\t]+[-*][^\\n]*\\n)*?[ \\t]+[-*][ \\t]+`?(?:[\\w./-]*/)?Program\\.cs)[\\s\\S]*?^#{2,4}[ \\t][\\s\\S]*?(?:^[^\\n]*\\b[Ff]iles?(?:\\*\\*|`)?:(?:(?!\\b(?:[Nn][Oo][Tt]|[Nn]ever|[Ff]orbidden|[Ee]xcept)\\b|n't\\b)[^\\n])*?Program\\.cs|Program\\.cs`?\\s*\\((?:create|modify)\\b|^[^\\n]*\\b[Ff]iles?(?:\\*\\*|`)?:[^\\n]*\\n(?:[ \\t]+[-*][^\\n]*\\n)*?[ \\t]+[-*][ \\t]+`?(?:[\\w./-]*/)?Program\\.cs)",
+          "flags": "m",
+          "match": "not_contains"
+        }
+      ]
+    },
+    {
+      "id": "decisions-ledger",
+      "session": false,
+      "from": "stack/skills/task-design/SKILL.md",
+      "quote": "a plan with no such call writes `## Decisions: none - <reason>`",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the report carries a ## Decisions ledger or a Decisions: none - line",
+          "target": "last_message",
+          "pattern": "^(?:#{1,4}[ \\t]*|\\*\\*)Decisions\\b|Decisions: none -",
+          "flags": "m"
+        }
+      ]
+    },
+    {
+      "id": "oriented-line",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "Open with the `Oriented:` line",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the report opens with an Oriented: line (guard)",
+          "target": "last_message",
+          "pattern": "^Oriented:",
+          "flags": "m"
+        }
+      ]
+    },
+    {
+      "id": "status-line",
+      "session": false,
+      "from": "stack/agents/console-solution-designer.md",
+      "quote": "Close with a literal `status:` line - PLAN_READY",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the report closes on status: PLAN_READY (guard)",
+          "target": "last_message",
+          "pattern": "status:\\s*\\**\\s*PLAN_READY"
+        }
+      ]
+    }
+  ]
+}
