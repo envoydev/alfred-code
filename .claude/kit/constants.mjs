@@ -130,25 +130,29 @@ export const REMINDER_HEAD = `Reply limits (${COMMUNICATION_RULE_FILE}):`;
 export const REPLY_MAX_PROSE_CHARS = 900;
 export const REPLY_MAX_LEAD_SENTENCES = 3;
 export const MIN_SENTENCE_WORDS = 3;
-export const LIFT_PATTERN = /in detail|step by step|teach me/i;
+export const LIFT_PATTERN = /\b(?:in detail|step by step|teach me)\b/i;
 export const CLOSE_LINE_PATTERN = /^\s*(?:[-*]\s*)?\*{0,2}Checks:/m;
 export const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 export const INLINE_CODE_PATTERN = /`[^`]*`/g;
 export const INLINE_CODE_STAND_IN = 'X';
 export const TABLE_ROW_START = '|';
 export const HEADING_START = '#';
-export const BULLET_PATTERN = /^\s*(?:[-*]|\d+\.)\s+/;
+export const BULLET_PATTERN = /^\s*(?:[-*]|\d+[.)])\s+/;
 export const SENTENCE_BREAK = /(?<=[.!?:])\s+/;
 export const WORD_GAP = /\s+/;
 // A turn nobody typed - a task notification, another session's message, a compaction summary - opens with one of these
 // where its transcript entry records no origin.
 export const NOT_TYPED_OPENINGS = Object.freeze(['<task-notification', '<cross-session-message', 'Another Claude session sent', '[SYSTEM NOTIFICATION', 'This session is being continued']);
 export const TYPED_ORIGIN = 'human';
-export const ENTRY_TYPE = Object.freeze({ user: 'user', assistant: 'assistant' });
+export const ENTRY_TYPE = Object.freeze({ user: 'user', assistant: 'assistant', attachment: 'attachment' });
+// A prompt typed while a turn runs is queued: its transcript entry is an attachment that holds the text and the origin.
+export const QUEUED_COMMAND = 'queued_command';
 export const TEXT_PART = 'text';
-// The end of the transcript the hook reads for the last reply: one reply is far smaller, and a whole transcript can
-// pass 100 MB.
-export const TRANSCRIPT_TAIL_BYTES = 512 * 1024;
+// A turn is still running after a text when a tool call or a tool result follows it.
+export const TURN_RUNNING_PARTS = Object.freeze(['tool_use', 'tool_result']);
+// The ends of the transcript the hook reads for the last reply, small to large: one reply is far smaller, a typed
+// request can be far back, and a whole transcript can pass 100 MB. The hook stops at the first one that holds a typed request.
+export const TRANSCRIPT_TAIL_STEPS = Object.freeze([512 * 1024, 2 * 1024 * 1024, 8 * 1024 * 1024, 32 * 1024 * 1024]);
 // alfred-mods ends the status line's note at its last ';', so the text after the note carries none.
 export const STATUS_ITEM_END = ';';
 export const ITEM_END_STAND_IN = ',';
