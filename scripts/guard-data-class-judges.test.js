@@ -41,7 +41,8 @@ test('D3: 300 epoch-ms values in a log are no cards and no dump', () => {
 test('D3: an all-zero spaced run is no card, a Luhn number opening with 2 to 6 is', () => {
   assert.equal(piiCounts('0000 0000 0000 0000').cards, 0);
   for (const first of ['2', '3', '4', '5', '6']) assert.equal(piiCounts('card ' + luhnComplete(first + '12345678901234') + ' ok').cards, 1, first);
-  for (const first of ['0', '1', '7', '8', '9']) assert.equal(piiCounts('card ' + luhnComplete(first + '12345678901234') + ' ok').cards, 0, first);
+  for (const first of ['0', '1', '7', '9']) assert.equal(piiCounts('card ' + luhnComplete(first + '12345678901234') + ' ok').cards, 0, first);
+  assert.equal(piiCounts('card ' + luhnComplete('832345678901234') + ' ok').cards, 0, 'an 8 not followed by 1 or 2');
 });
 
 test('E1: an absolute path inside a root becomes repo-relative, one outside is dropped', () => {
@@ -115,4 +116,48 @@ test('judgeCall asks who answers only when a Read verdict needs the choice, neve
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('D3: a UnionPay or RuPay number opening with 81 or 82 is a card', () => {
+  assert.equal(piiCounts('card ' + luhnComplete('812345678901234') + ' ok').cards, 1);
+  assert.equal(piiCounts('card ' + luhnComplete('822345678901234') + ' ok').cards, 1);
+});
+
+test('D3: a status code before an epoch-ms value is no card - only card grouping joins digit groups', () => {
+  const log = Array.from({ length: 300 }, (_, i) => `GET /api/x 200 ${1700000000123 + i * 7919}`);
+  assert.equal(piiCounts(lines(log)).cards, 0);
+  const card = luhnComplete('411111111111111');
+  const grouped = [card.slice(0, 4), card.slice(4, 8), card.slice(8, 12), card.slice(12)].join(' ');
+  assert.equal(piiCounts('card ' + grouped + ' ok').cards, 1, '4-4-4-4');
+  assert.equal(piiCounts('card ' + grouped.replace(/ /g, '-') + ' ok').cards, 1, 'dashes');
+  const amex = luhnComplete('37828224631000');
+  assert.equal(piiCounts('card ' + [amex.slice(0, 4), amex.slice(4, 10), amex.slice(10)].join(' ') + ' ok').cards, 1, '4-6-5');
+  assert.equal(piiCounts('card ' + card + ' ok').cards, 1, 'no separators');
+});
+
+test('Read: the account transcripts and the data root\'s statistics and state are no dumps', () => {
+  const { sessionStore } = judges;
+  const home = path.join(os.tmpdir(), 'acct-x');
+  const root = path.join(os.tmpdir(), 'proj-x');
+  const stores = { configDir: home, root, dataRoot: '.alfred' };
+  assert.equal(sessionStore(path.join(home, 'projects', '-p', 'a.jsonl'), stores), true);
+  assert.equal(sessionStore(path.join(root, '.alfred', 'statistics', 'tools-usage', 'a.jsonl'), stores), true);
+  assert.equal(sessionStore(path.join(root, '.alfred', 'state', 'history', 'a.json'), stores), true);
+  assert.equal(sessionStore(path.join(root, 'data', 'orders.jsonl'), stores), false);
+  assert.equal(sessionStore(path.join(home, 'settings.json'), stores), false);
+  assert.equal(sessionStore(path.join(root, '.alfred', 'docs', 'x.csv'), stores), false);
+});
+
+test('D3: a card followed or led by a short group still counts, in every card grouping', () => {
+  const card = luhnComplete('411111111111111');
+  const four = [card.slice(0, 4), card.slice(4, 8), card.slice(8, 12), card.slice(12)].join(' ');
+  for (const tail of [' 123', ' 12/25', ' 12', ' 1']) assert.equal(piiCounts('card ' + four + tail).cards, 1, 'tail' + tail);
+  assert.equal(piiCounts('card ' + four.replace(/ /g, '-') + ' 123').cards, 1, 'dashes and a tail');
+  assert.equal(piiCounts('qty 2 ' + four + ' ok').cards, 1, 'a lead');
+  const visa13 = luhnComplete('422222222222');
+  assert.equal(piiCounts('card ' + [visa13.slice(0, 4), visa13.slice(4, 8), visa13.slice(8, 12), visa13.slice(12)].join(' ') + ' ok').cards, 1, '4-4-4-1');
+  const long = luhnComplete('622222222222222222');
+  assert.equal(piiCounts('card ' + [long.slice(0, 4), long.slice(4, 8), long.slice(8, 12), long.slice(12, 16), long.slice(16)].join(' ') + ' ok').cards, 1, '19 digits 4-4-4-4-3');
+  const diners = luhnComplete('3056930902590');
+  assert.equal(piiCounts('card ' + [diners.slice(0, 4), diners.slice(4, 10), diners.slice(10)].join(' ') + ' ok').cards, 1, 'Diners 4-6-4');
 });

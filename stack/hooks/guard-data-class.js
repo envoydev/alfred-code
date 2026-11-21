@@ -6,6 +6,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
@@ -28,10 +29,14 @@ const RESERVED_TLDS = new Set(['example', 'test', 'invalid', 'localhost']);
 const RESERVED_DOMAINS = ['example.com', 'example.net', 'example.org'];
 const DUMP_WORD = /(?:^|[^A-Za-z0-9])(prod|production|backup|export|dump|snapshot)(?=[^A-Za-z0-9]|$)/i;
 const MARKER = /=>|===|!==|[{};]/g;
-const CARD_RUN = /(?<![\w+])[2-6](?:[ -]?\d){12,18}(?!\w)/g;
+const CARD_RUN = /(?<![\w+])(?:[2-6]|8[12])(?:[ -]?\d){12,18}(?!\w)/g;
+// A separated run is a card only in a real card grouping: 4-4-4-1 (13), 4-4-4-4 (a fifth group of 1-3 digits for 19), Amex 4-6-5, Diners 4-6-4.
+const CARD_GROUPINGS = ['4,4,4,1', '4,4,4,4', '4,4,4,4,1', '4,4,4,4,2', '4,4,4,4,3', '4,6,5', '4,6,4'];
+const CARD_SEPARATOR = /[ -]/;
+const SESSION_STORES = Object.freeze({ accountDir: '.claude', transcripts: 'projects', statsDir: 'statistics', stateDir: 'state' });
 const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
 const NAMES_EXCLUDE_MAGIC = ':(top,exclude,glob)';
-const NAMES_EXCLUDE_GLOBS = ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/**', '**/third_party/**', '**/node_modules/**'];
+const NAMES_EXCLUDE_GLOBS = ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/build/**', '**/public/js/**', '**/third_party/**', '**/node_modules/**'];
 const SPLIT = /[\s"'`()[\]{},;]+/;
 const LIST_FILE = '.alfred/.sensitive-paths';
 const HOOK_NAME = 'guard-data-class';
@@ -98,6 +103,34 @@ function mod97(iban) {
   return rem === 1;
 }
 
+// The card number in a run, or null: the longest span of whole groups that is unseparated or in a card grouping and
+// passes Luhn, so a number before or after a card ('qty 2 4111 ...', '... 1111 123') neither makes a card nor hides one.
+// A run holds at most 19 groups, so the spans tried stay under 200.
+function cardDigits(run) {
+  const groups = run.split(CARD_SEPARATOR);
+  const isCard = (span) => {
+    const digits = span.join('');
+    const grouped = span.length === 1 || CARD_GROUPINGS.includes(span.map((g) => g.length).join(','));
+    return grouped && digits.length >= 13 && digits.length <= 19 && /^(?:[2-6]|8[12])/.test(digits) && luhn(digits) ? digits : null;
+  };
+  for (let size = groups.length; size >= 1; size--) {
+    for (let from = 0; from + size <= groups.length; from++) {
+      const digits = isCard(groups.slice(from, from + size));
+      if (digits) return digits;
+    }
+  }
+  return null;
+}
+
+// Whether a file is one of the session stores the stack and Claude Code write for themselves: the account's transcripts
+// and the data root's statistics and state. Reading them is the stack's own tooling, never a data dump.
+function sessionStore(file, { configDir, root, dataRoot }) {
+  const under = (dir) => insideRel(dir, file) !== null;
+  if (configDir && under(path.join(configDir, SESSION_STORES.transcripts))) return true;
+  const data = path.resolve(root, dataRoot);
+  return [SESSION_STORES.statsDir, SESSION_STORES.stateDir].some((d) => under(path.join(data, d)));
+}
+
 function piiCounts(text) {
   const src = String(text);
   const ibans = new Set();
@@ -124,8 +157,8 @@ function piiCounts(text) {
     return m;
   });
   for (const m of rest.matchAll(CARD_RUN)) {
-    const digits = m[0].replace(/[ -]/g, '');
-    if (digits.length >= 13 && digits.length <= 19 && luhn(digits)) cards.add(digits);
+    const digits = cardDigits(m[0]);
+    if (digits) cards.add(digits);
   }
   for (const m of rest.matchAll(/(?<![\w+])\+\d{10,15}(?!\d)/g)) phones.add(m[0]);
   const emails = emailsIn(src);
@@ -478,6 +511,17 @@ function listFileOf(root) {
   return path.resolve(root, dataRoot, '.sensitive-paths');
 }
 
+function sessionStores(root) {
+  let dataRoot = '.alfred';
+  try {
+    dataRoot = require('./layout.js').dataRoot();
+  } catch {
+    /* the default data root */
+  }
+  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), SESSION_STORES.accountDir);
+  return { configDir, root, dataRoot };
+}
+
 function readLists(listFile) {
   try {
     return parseSensitivePaths(fs.readFileSync(listFile, 'utf8'));
@@ -514,6 +558,7 @@ function readOutcome(ctx) {
   const listFile = listFileOf(ctx.root);
   const state = pathState(rel, readLists(listFile));
   if (state === 'cleared') return null;
+  if (state !== 'listed' && sessionStore(file, sessionStores(ctx.root))) return null;
   const facts = readFacts(ctx, file, stat);
   const dump = facts.dumpsOn ? dumpVerdict(facts) : null;
   const doc = facts.docsOn ? documentVerdict({ ext: facts.ext, tracked: facts.tracked, listed: state === 'listed' }) : null;
@@ -657,7 +702,7 @@ if (require.main === module) main();
 
 module.exports = {
   DUMP_MIN_BYTES, PII_MIN, HEAD_BYTES, EGRESS_DEADLINE_MS, PUBLIC_NAMES, DOC_SERVERS, DATA_EXTS, TEXT_DATA_EXTS, DOC_EXTS,
-  piiCounts, parseSensitivePaths, globMatch, pathState, relativizeTokens, judgeCall, dumpVerdict, documentVerdict, serverOf, judgedTexts,
+  piiCounts, cardDigits, sessionStore, parseSensitivePaths, globMatch, pathState, relativizeTokens, judgeCall, dumpVerdict, documentVerdict, serverOf, judgedTexts,
   tokensOf, pathCandidates, trackedArgv, pathsArgv, namesArgv, pathsFound, namesFound, egressFindings, nameCandidates,
   codeLines, rewriteBrief, askText, denyText,
 };
