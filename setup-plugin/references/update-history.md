@@ -1255,3 +1255,22 @@ from its typed command to your next slash command or to its close. The update th
 on the old hook copies, so with auto-run on, that one update answers its own questions one last time.
 
 Nothing to do in an installed project beyond the update.
+
+## after 3.14.2 - fewer walk approvals, a stricter answer budget, and the data-class guard
+
+The walks of `/alfred-code:init`, `update`, `configure` and `validate` write their run folder literally, and a new hook
+approves those calls when they match what the walk bodies write, so a walk asks for approval less often. The per-turn
+answer budget also keeps a short reply's lead to 3 sentences and leaves out what the question did not ask.
+
+A new hook, `guard-data-class`, guards what leaves the project:
+
+- a whole Read of a large data file, a dump-named file or one holding personal data, or of an untracked PDF, DOCX,
+  XLSX or PPTX, asks you first;
+- a path you list in `.alfred/.sensitive-paths` (glob lines; `!` clears a path) asks too;
+- a WebSearch, a WebFetch URL's query string or a documentation-server query that carries a tracked project path, a
+  name the project declares or code lines is refused, and Claude is told what to remove and what to keep.
+
+Switch it off with `ALFRED_CODE_HOOKS_OFF=guard-data-class`, or one part with `guard-data-class:dumps`, `:documents`
+or `:egress`. The documentation-server rows start one more `node` process per query-shaped MCP call.
+
+Nothing to do in an installed project beyond the update.
