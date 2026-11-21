@@ -296,6 +296,7 @@ function combine(results)
     const contexts = [];
     const notes = [];
     const inputs = [];
+    const asks = [];
     let decision = null;
     for (const r of results)
     {
@@ -315,6 +316,7 @@ function combine(results)
         }
         if (reason !== null) { blocks.push({ text: reason, exit: false }); continue; }
         if (hso.updatedInput && typeof hso.updatedInput === 'object' && !Array.isArray(hso.updatedInput)) inputs.push(hso.updatedInput);
+        if (hso.permissionDecision === 'ask' && hso.permissionDecisionReason) asks.push(String(hso.permissionDecisionReason));
         // two guards that both ask: the prompt names every reason, so no harm is hidden behind another (2026-11-19)
         if (decision && hso.permissionDecision === 'ask' && decision.value === 'ask' && hso.permissionDecisionReason)
             decision.reason = [decision.reason, hso.permissionDecisionReason].filter(Boolean).join('\n');
@@ -330,14 +332,18 @@ function combine(results)
         return { code, stdout: Object.keys(body).length ? JSON.stringify(body) : '', stderr };
     };
     const context = contexts.length ? { additionalContext: contexts.join('\n') } : {};
+    // A block ends the call, so an ask beside it would be lost: its reason rides after the block's (2026-11-21).
+    const withAsks = (text) => (asks.length
+        ? `${text.replace(/\s+$/, '')}\n\n${asks.map((a) => `Also: ${a}`).join('\n\n')}${/\n$/.test(text) ? '\n' : ''}`
+        : text);
     if (blocks.length)
     {
         // Every block an exit-2 guard would have raised stays an exit 2, so the model reads it the way it
         // read that guard; a set of JSON denies alone stays one JSON deny (measured on CLI 2.1.283: an
         // exit 2 beside a JSON deny shows the exit-2 text, bracketed with the command; a JSON deny, without).
         if (blocks.some((b) => b.exit))
-            return out(2, context, blocks.length === 1 ? blocks[0].text : `${joinBlocks(blocks.map((b) => b.text))}\n`);
-        return out(0, { permissionDecision: 'deny', permissionDecisionReason: joinBlocks(blocks.map((b) => b.text)), ...context });
+            return out(2, context, withAsks(blocks.length === 1 ? blocks[0].text : `${joinBlocks(blocks.map((b) => b.text))}\n`));
+        return out(0, { permissionDecision: 'deny', permissionDecisionReason: withAsks(joinBlocks(blocks.map((b) => b.text))), ...context });
     }
     const hso = {};
     if (decision)
