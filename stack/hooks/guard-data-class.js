@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// The data-class guard's judges: pure functions, no effects. A Read of a data dump or a business document asks the
-// user; an outside query that carries project code is refused with the exact tokens to remove.
+// The data-class guard. The judges are pure functions with no effects. A Read of a data dump or a business document asks
+// the user; an outside query that carries project code is refused with the exact tokens to remove. `main` holds the
+// effects: stdin, the file system, git and the ledger.
 'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
 
 const DUMP_MIN_BYTES = 102400;
 const PII_MIN = 20;
@@ -25,6 +30,16 @@ const DUMP_WORD = /(?:^|[^A-Za-z0-9])(prod|production|backup|export|dump|snapsho
 const MARKER = /=>|===|!==|[{};]/g;
 const SPLIT = /[\s"'`()[\]{},;]+/;
 const LIST_FILE = '.alfred/.sensitive-paths';
+const HOOK_NAME = 'guard-data-class';
+const PART = Object.freeze({ dumps: 'dumps', documents: 'documents', egress: 'egress' });
+const GIT_READ_TIMEOUT_MS = 2000;
+const GIT_MAX_BUFFER = 4 * 1024 * 1024;
+const GIT_FATAL_STATUS = 128;
+const DENY_EXIT = 2;
+const NO_ANSWER_MODE = 'dontAsk';
+// A test and tuning knob: a positive whole number of ms replaces EGRESS_DEADLINE_MS for route 3.
+const DEADLINE_ENV = 'ALFRED_CODE_EGRESS_DEADLINE_MS';
+const SERVERS_ENV = 'ALFRED_CODE_EGRESS_SERVERS';
 
 const isLocal = (c) => /[A-Za-z0-9._%+-]/.test(c);
 const isDomain = (c) => /[A-Za-z0-9.-]/.test(c);
@@ -353,6 +368,221 @@ function denyText(route, path, detail) {
   const what = route === 'document' ? `it is a business document (${shown})` : `it looks like a data dump (${shown})`;
   return `Blocked: Read of ${path}: ${what}, and nobody is here to clear it. Work from a synthetic sample, or leave this read to the user.`;
 }
+
+const elapsedMs = () => Math.round(process.uptime() * 1000);
+
+function deadlineMs(env) {
+  const raw = String(env[DEADLINE_ENV] || '').trim();
+  return /^[1-9]\d*$/.test(raw) ? Number(raw) : EGRESS_DEADLINE_MS;
+}
+
+function runGit(argv, cwd, timeout) {
+  let result;
+  try {
+    result = spawnSync(...require('./hook-prelude.js').gitSafe(argv, { cwd, timeout, maxBuffer: GIT_MAX_BUFFER, encoding: 'utf8' }));
+  } catch {
+    return { kind: 'fail', stdout: '' };
+  }
+  if (result.error) {
+    const kinds = { ETIMEDOUT: 'timeout', ENOENT: 'absent' };
+    return { kind: kinds[result.error.code] || 'fail', stdout: '' };
+  }
+  if (result.status === GIT_FATAL_STATUS) return { kind: 'norepo', stdout: '' };
+  return { kind: 'done', status: result.status, stdout: result.stdout || '' };
+}
+
+function isTracked(file) {
+  const result = runGit(trackedArgv(file), path.dirname(file), GIT_READ_TIMEOUT_MS);
+  return result.kind === 'done' && result.status === 0;
+}
+
+function readHead(file, size) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buffer = Buffer.alloc(Math.min(size, HEAD_BYTES));
+    const count = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, count).toString('utf8');
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+function relativeTo(root, file) {
+  const real = (p) => {
+    try {
+      return fs.realpathSync.native(p);
+    } catch {
+      return p;
+    }
+  };
+  const rel = path.relative(real(root), real(file));
+  if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
+  return rel.split(path.sep).join('/');
+}
+
+function readLists(root) {
+  try {
+    const dataRoot = require('./layout.js').dataRoot();
+    return parseSensitivePaths(fs.readFileSync(path.resolve(root, dataRoot, '.sensitive-paths'), 'utf8'));
+  } catch {
+    return parseSensitivePaths(null);
+  }
+}
+
+function readFacts(ctx, file, stat) {
+  const ext = path.extname(file).toLowerCase();
+  const dumpsOn = !ctx.prelude.partOff(HOOK_NAME, PART.dumps);
+  const docsOn = !ctx.prelude.partOff(HOOK_NAME, PART.documents);
+  const needsTracked = (dumpsOn && DATA_EXTS.includes(ext) && stat.size > DUMP_MIN_BYTES) || (docsOn && DOC_EXTS.includes(ext));
+  const head = dumpsOn && TEXT_DATA_EXTS.includes(ext) ? readHead(file, stat.size) : undefined;
+  return { ext, base: path.basename(file), bytes: stat.size, head, dumpsOn, docsOn, tracked: needsTracked ? isTracked(file) : true };
+}
+
+function readOutcome(ctx) {
+  const input = ctx.payload.tool_input;
+  if (!input || typeof input.file_path !== 'string' || !input.file_path) return null;
+  const file = path.resolve(ctx.payload.cwd || ctx.root, input.file_path);
+  let stat;
+  try {
+    stat = fs.statSync(file);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile()) return null;
+  const rel = relativeTo(ctx.root, file);
+  const state = pathState(rel, readLists(ctx.root));
+  if (state === 'cleared') return null;
+  const facts = readFacts(ctx, file, stat);
+  const dump = facts.dumpsOn ? dumpVerdict(facts) : null;
+  const doc = facts.docsOn ? documentVerdict({ ext: facts.ext, tracked: facts.tracked, listed: state === 'listed' }) : null;
+  if (!dump && !doc) return null;
+  const route = doc ? 'document' : 'dump';
+  const detail = doc ? (dump ? `${doc.kind} (${dump.why})` : doc.kind) : dump.why;
+  const shown = rel === null ? file : rel;
+  const counts = { bytes: facts.bytes, ...(dump && dump.branch === 'dump-pii' ? piiCounts(facts.head) : {}) };
+  const mode = ctx.nobodyAnswers ? 'deny' : 'ask';
+  const text = mode === 'deny' ? denyText(route, shown, detail) : askText(route, shown, detail);
+  return { mode, text, branch: (doc || dump).branch, base: facts.base, counts };
+}
+
+function searchRepo(text, cwd, budgetMs) {
+  const tokens = tokensOf(text);
+  const steps = [
+    { key: 'paths', wanted: pathCandidates(tokens), argv: pathsArgv, okStatuses: [0], read: pathsFound },
+    { key: 'names', wanted: nameCandidates(tokens), argv: namesArgv, okStatuses: [0, 1], read: namesFound },
+  ];
+  const found = { paths: [], names: [], unjudged: false };
+  for (const step of steps) {
+    if (!step.wanted.length) continue;
+    const left = budgetMs - elapsedMs();
+    if (left <= 0) {
+      found.unjudged = true;
+      break;
+    }
+    const result = runGit(step.argv(step.wanted), cwd, left);
+    if (result.kind === 'norepo' || result.kind === 'absent') break;
+    if (result.kind === 'done' && step.okStatuses.includes(result.status)) {
+      found[step.key] = step.read(result.stdout, step.wanted);
+      continue;
+    }
+    found.unjudged = true;
+    if (result.kind === 'timeout') break;
+  }
+  return found;
+}
+
+function egressOutcome(ctx) {
+  const tool = String(ctx.payload.tool_name);
+  const extra = String(process.env[SERVERS_ENV] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const texts = judgedTexts(tool, ctx.payload.tool_input, extra);
+  if (!texts || !texts.length) return null;
+  const budgetMs = deadlineMs(process.env);
+  let unjudged = false;
+  for (const text of texts) {
+    const found = searchRepo(text, ctx.payload.cwd || ctx.root, budgetMs);
+    unjudged = unjudged || found.unjudged;
+    const f = egressFindings(text, found);
+    if (!f.any) continue;
+    const counts = { paths: f.paths.length, names: f.names.length, codeLines: f.codeLines };
+    return { mode: 'deny', branch: 'egress', base: tool, counts, text: rewriteBrief({ tool, text, paths: f.paths, names: f.names, codeLines: f.codeLines }) };
+  }
+  return unjudged ? { mode: 'unjudged', branch: 'egress-unjudged', base: tool, counts: { elapsedMs: elapsedMs() } } : null;
+}
+
+function judgeCall(ctx) {
+  const tool = String(ctx.payload.tool_name || '');
+  if (tool === 'Read') return readOutcome(ctx);
+  if (!ctx.prelude.partOff(HOOK_NAME, PART.egress)) return egressOutcome(ctx);
+  return null;
+}
+
+function writeLedger(ctx, outcome) {
+  const { payload } = ctx;
+  try {
+    let dir;
+    try {
+      dir = require('./layout.js').statsPath(ctx.root, ['hook-blocks']);
+    } catch {
+      dir = path.resolve(ctx.root, '.alfred', 'statistics', 'hook-blocks');
+    }
+    fs.mkdirSync(dir, { recursive: true });
+    const row = {
+      ts: new Date().toISOString(),
+      hook: path.basename(__filename),
+      event: payload.hook_event_name || payload.tool_name || '',
+      tool: payload.tool_name || '',
+      agent: payload.agent_id || null,
+      tool_use_id: payload.tool_use_id || null,
+      reason: `data-class ${outcome.branch}`,
+      detail: { branch: outcome.branch, mode: outcome.mode, base: outcome.base, counts: outcome.counts },
+    };
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify(row) + '\n');
+  } catch {
+    /* a lost row is a lost measurement, never a changed verdict */
+  }
+}
+
+function deliver(ctx, outcome) {
+  writeLedger(ctx, outcome);
+  if (outcome.mode === 'ask') {
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: outcome.text } }));
+  } else if (outcome.mode === 'deny') {
+    process.stderr.write(outcome.text + '\n');
+    process.exit(DENY_EXIT);
+  }
+}
+
+function main() {
+  let prelude;
+  try {
+    prelude = require('./hook-prelude.js');
+  } catch {
+    return;
+  }
+  if (prelude.standDown('guard-data-class')) return;
+  let payload;
+  try {
+    payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+  } catch {
+    return;
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+  if (prelude.cursorStandDown(payload, __filename)) return;
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const ctx = { prelude, payload, root, nobodyAnswers: payload.permission_mode === NO_ANSWER_MODE || prelude.unattended(payload) };
+  let outcome;
+  try {
+    outcome = judgeCall(ctx);
+  } catch {
+    return;
+  }
+  if (outcome) deliver(ctx, outcome);
+}
+
+if (require.main === module) main();
 
 module.exports = {
   DUMP_MIN_BYTES, PII_MIN, HEAD_BYTES, EGRESS_DEADLINE_MS, PUBLIC_NAMES, DOC_SERVERS, DATA_EXTS, TEXT_DATA_EXTS, DOC_EXTS,
