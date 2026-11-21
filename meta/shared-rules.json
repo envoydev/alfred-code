@@ -56,6 +56,27 @@
         }
       ]
     },
+    "verifier-deferred-runs": {
+      "_note": "A verifier does not run an E2E or device suite in its seat: the protocol's seat-gates-are-fast ruling (a seat waiting on a minutes-long run idles and burns its cost on wake-up churn) holds for the verifier too, so it names each such run on a literal deferred_runs: line and the main session runs it once after the verifier returns (ab-g round 2, ruling A1). The data and .NET verifiers' own build and test runs are not part of it.",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+        "marker": "names each such run its gate would need on a literal `deferred_runs:` line"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "a literal `deferred_runs:` line"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "a literal `deferred_runs:` line"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "a literal `deferred_runs:` line"
+        }
+      ]
+    },
     "docs-root-resolution": {
       "_note": "The docs root is <data root>/docs and the data root is always .alfred (the fixed root, 3.11.0), so .alfred/docs; outside .claude/, the directory Claude Code protects (2.0.0). ALFRED_CODE_DOCS_PATH is retired in 2.8.0 (the user's ruling of 2026-10-20, D7): no run writes it, an update moves the stack's docs from a leftover value and removes it (scripts/install/docs.js docsMovePlan), and every reader still reads a leftover key first for the 2.x line. The always-on alfred-docs-root rule is canonical; the code-level defaults (each hook's inline docsRootEnv() fallback, the installer's resolver, the re-stamp script) must state the same value. Every other code home of the fallback (the engines, the analyzers) is held to the same shape by scripts/docs-root-default.test.js, which also fails on a NEW home spelling another default.",
       "owner": {
@@ -5106,6 +5127,10 @@
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "If you cannot run the gate at all - build environment broken, missing task context"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "If you cannot run the gate at all - build environment broken, missing task context"
         },
         {

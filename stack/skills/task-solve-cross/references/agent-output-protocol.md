@@ -69,6 +69,7 @@ checked prior notes: <names | none>
 <the habits-done-gate evidence the seat bound>
 findings: <one per gap - severity + task_owner + problem + required_fix, keyed to file + symbol>
 left_running: <what the gate started and left up | none>      # the seats whose gates start something
+deferred_runs: <each slow run the gate owes the main session - command + what it proves | none>      # the verifiers whose gates name an E2E or device suite
 status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH
 contract_version: <the one gated against | none on a direct dispatch>
 ```

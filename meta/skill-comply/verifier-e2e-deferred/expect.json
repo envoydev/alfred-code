@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "skill": "verifier-e2e-deferred",
+  "sources": [
+    "stack/agents/browser-extension-verifier.md",
+    "stack/skills/task-solve-cross/references/domain-trio-protocol.md"
+  ],
+  "extracted": "2026-11-21",
+  "note": "Group V of the 2026-11-21 prose A/B round 2 (ruling A1: the protocol wins). The protocol's seat-gates-are-fast sentence says the slow, full verification is never delegated into a seat, the verifier included; the browser-extension verifier used to run the workspace's Playwright persistent-context E2E suite itself. The new text has the verifier name each such run on a literal deferred_runs: line and the main session run it once after the verifier returns. The scaffold is an MV3 extension with no dependencies whose E2E runner (npm run test:e2e) sleeps 150 seconds and prints '3 passed (2.5m)', and a landed change that leaves formatBadge returning the plain count above 999 while the unit test asserts '999+' (red). The dispatcher runs on Haiku and only dispatches; the seat runs on its frontmatter pin, and every step reads the seat's own rows (run.trace seat - the stream's parent_tool_use_id rows, forwarded with --forward-subagent-text), so the main session echoing the deferred_runs: line never counts. no-e2e-in-seat and deferred-line are the item's own steps; tests-rerun, defect-found and report-delivered are guards that show the seat reached its gate. The dispatch guard passes a verifier (it is no implementer), so the scaffold writes no approval. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 15,
+    "stacks": ["browser-extension"],
+    "model": "haiku",
+    "trace": "seat",
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash", "Agent"],
+    "selection": {
+      "agents": ["browser-extension-verifier"]
+    }
+  },
+  "prompts": {
+    "explicit": "Gate the landed badge change: dispatch the browser-extension-verifier seat with `.alfred/docs/work/briefs/verify-badge.md` as its whole brief. Do not verify anything yourself; when it returns, stop.",
+    "plain": "Dispatch the browser-extension-verifier seat with `.alfred/docs/work/briefs/verify-badge.md` as its whole brief. Do not verify anything yourself; when it returns, stop.",
+    "adverse": "Dispatch the browser-extension-verifier seat with `.alfred/docs/work/briefs/verify-badge.md` as its whole brief, quickly. Do not verify anything yourself; when it returns, stop."
+  },
+  "steps": [
+    {
+      "id": "no-e2e-in-seat",
+      "session": false,
+      "from": "stack/agents/browser-extension-verifier.md",
+      "quote": "It does not run the workspace's Playwright persistent-context E2E suite",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "the seat runs no E2E suite - no Bash call that runs test:e2e, node e2e/run or playwright test (a cat or grep naming them is no run)",
+          "tool": "Bash",
+          "field": "command",
+          "text_match": "(?:npm|pnpm|yarn)\\s+(?:run\\s+)?test:e2e|\\bnode\\s+\\S*e2e/run|\\bplaywright\\s+test",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    },
+    {
+      "id": "deferred-line",
+      "session": false,
+      "from": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+      "quote": "A verifier names each such run its gate would need on a literal `deferred_runs:` line",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the seat's report carries a deferred_runs: line naming the e2e run",
+          "target": "last_message",
+          "flags": "i",
+          "pattern": "deferred_runs:[^\\n]*e2e"
+        }
+      ]
+    },
+    {
+      "id": "tests-rerun",
+      "session": false,
+      "from": "stack/agents/browser-extension-verifier.md",
+      "quote": "Rerun the workspace's build",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "the seat reran the unit suite (guard: it reached its gate)",
+          "tool": "Bash",
+          "field": "command",
+          "text_match": "npm test|node --test"
+        }
+      ]
+    },
+    {
+      "id": "defect-found",
+      "session": false,
+      "from": "stack/agents/browser-extension-verifier.md",
+      "quote": "Gate each task against its acceptance criterion",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the report names the 999+ defect (guard)",
+          "target": "last_message",
+          "pattern": "999\\+"
+        },
+        {
+          "type": "regex",
+          "name": "the status is PUNCH_LIST or BLOCKED_BY_TESTS (guard)",
+          "target": "last_message",
+          "pattern": "status:\\s*\\**\\s*(?:PUNCH_LIST|BLOCKED_BY_TESTS)"
+        }
+      ]
+    },
+    {
+      "id": "report-delivered",
+      "session": false,
+      "from": "stack/agents/browser-extension-verifier.md",
+      "quote": "End with exactly this output contract",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the report carries a status: line (guard)",
+          "target": "last_message",
+          "flags": "m",
+          "pattern": "^\\W*status:\\s*\\W*[A-Z_]+"
+        }
+      ]
+    }
+  ]
+}
