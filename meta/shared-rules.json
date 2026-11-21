@@ -3971,15 +3971,15 @@
       ]
     },
     "catalogue-execution-modes": {
-      "_note": "The two failure-signature catalogues' execution-mode section: loaded INSIDE a diagnoser seat the section is already satisfied; loaded in the main session it inherits the calling flow's mode or asks once. Owned by the runtime catalogue; the CI catalogue restates it.",
+      "_note": "The two failure-signature catalogues' execution-mode section: loaded INSIDE a diagnoser seat the section is skipped; loaded in the main session it runs the triage there and reads the gatherer reference before deciding on a dispatch. Owned by the runtime catalogue; the CI catalogue restates it.",
       "owner": {
         "file": "stack/skills/issue-signatures-runtime/SKILL.md",
-        "marker": "Loaded INSIDE the seat, this section is already satisfied"
+        "marker": "inside the diagnoser seat, which preloads this file, skip this section"
       },
       "sites": [
         {
           "file": "stack/skills/issue-signatures-ci/SKILL.md",
-          "marker": "Loaded INSIDE the seat, this section is already satisfied"
+          "marker": "inside the diagnoser seat, which preloads this file, skip this section"
         }
       ]
     },

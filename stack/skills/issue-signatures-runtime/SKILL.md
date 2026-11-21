@@ -27,16 +27,10 @@ Not for a CI or build/test-gate failure (the resolvers and the CI diagnoser own 
 
 ## Execution modes
 
-This catalogue is single-sourced: the issue-diagnoser-runtime seat preloads this same file, so
-the inline and seated forms never drift. Loaded INSIDE the seat, this section is already satisfied
-- the seat is the dispatched form, and the rest of this section is not read there. Loaded in the
-MAIN session, run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on
-evidence-gatherers - the inherit-or-ask rule, the four dispatch triggers, the stay-inline shapes
-and a worked fan-out are that file. Either way, dispatch is explicit-only house-wide, so the seats
-never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the
-signatures are already in context, so the seat would only duplicate them; the seat exists for the
-orchestrated issue flow and direct @agent- calls, where it runs this same file in an isolated
-context with the same gatherer fan-out.
+Loaded in the MAIN session, run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on
+evidence-gatherers; inside the diagnoser seat, which preloads this file, skip this section. Either way,
+dispatch is explicit-only house-wide, so the seats never start on your own say-so. Do NOT dispatch the
+diagnoser seat from this skill - the signatures are already in context, so the seat would only duplicate them.
 
 ## How to use it
 

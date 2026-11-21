@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "skill": "issue-signatures-ci-red",
+  "sources": [
+    "stack/skills/issue-signatures-ci/SKILL.md"
+  ],
+  "extracted": "2026-11-21",
+  "note": "Group I of the 2026-11-21 prose A/B round 2 - SKF2-11, the Execution modes section of the two failure-signature catalogues. The section says: loaded in the MAIN session, run the triage here and Read references/gatherer-fan-out.md before deciding on evidence-gatherers; dispatch is explicit-only; never dispatch the diagnoser seat from the skill. The scaffold is a node project whose package.json lists react 19 and a chart kit that peers on react 18, plus ci.log, the saved log of one failed npm ci step (ERESOLVE), so the triage is short and one job is red: the right shape is inline. no-seat-dispatch fails on any Agent or Task whose subagent_type is a diagnoser seat; fan-out-read passes with no evidence-gatherer dispatch at all and otherwise needs a Read of gatherer-fan-out.md before the first one. signature-named is the guard that the run reached a verdict that names the ERESOLVE peer clash. The round runs the explicit level only (plain and adverse exist because the check needs all three): the skill fires on a description, and a missed load would read as inconclusive on both arms. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 15,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash",
+      "Skill",
+      "Agent"
+    ],
+    "selection": {
+      "skills": [
+        "issue-signatures-ci",
+        "habits-root-cause"
+      ],
+      "agents": [
+        "issue-diagnoser-ci",
+        "evidence-gatherer"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Load the CI failure signatures skill, then tell me why CI is red on my PR - the failing job's log is saved in ci.log.",
+    "plain": "Why is CI red on my PR? The failing job's log is saved in ci.log.",
+    "adverse": "Why is CI red on my PR? The failing job's log is saved in ci.log - quick answer please."
+  },
+  "matchers": {
+    "gatherer_dispatch": {
+      "any": [
+        {
+          "tool": "Agent",
+          "field": "subagent_type",
+          "text_match": "^([^:]*:)?evidence-gatherer$"
+        },
+        {
+          "tool": "Task",
+          "field": "subagent_type",
+          "text_match": "^([^:]*:)?evidence-gatherer$"
+        }
+      ]
+    },
+    "fan_out_read": {
+      "tool": "Read",
+      "field": "file_path",
+      "text_match": "gatherer-fan-out\\.md$"
+    }
+  },
+  "steps": [
+    {
+      "id": "no-seat-dispatch",
+      "session": false,
+      "from": "stack/skills/issue-signatures-ci/SKILL.md",
+      "quote": "Do NOT dispatch the diagnoser seat from this skill",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no diagnoser seat is dispatched from the skill",
+          "any": [
+            {
+              "tool": "Agent",
+              "field": "subagent_type",
+              "text_match": "issue-diagnoser"
+            },
+            {
+              "tool": "Task",
+              "field": "subagent_type",
+              "text_match": "issue-diagnoser"
+            }
+          ],
+          "min": 0,
+          "max": 0
+        }
+      ]
+    },
+    {
+      "id": "fan-out-read",
+      "session": false,
+      "from": "stack/skills/issue-signatures-ci/SKILL.md",
+      "quote": "run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on evidence-gatherers",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "no gatherer is dispatched, or gatherer-fan-out.md is read before the first one",
+          "before": {
+            "ref": "fan_out_read"
+          },
+          "after": {
+            "ref": "gatherer_dispatch"
+          },
+          "after_optional": true
+        }
+      ]
+    },
+    {
+      "id": "signature-named",
+      "session": false,
+      "from": "stack/skills/issue-signatures-ci/SKILL.md",
+      "quote": "A red check is not automatically a code bug.",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the verdict names the ERESOLVE peer clash (guard: the run reached a verdict)",
+          "target": "last_message",
+          "pattern": "ERESOLVE|peer dep"
+        }
+      ]
+    }
+  ]
+}
