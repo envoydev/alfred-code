@@ -33,7 +33,7 @@ const CARD_RUN = /(?<![\w+])(?:[2-6]|8[12])(?:[ -]?\d){12,18}(?!\w)/g;
 // A separated run is a card only in a real card grouping: 4-4-4-1 (13), 4-4-4-4 (a fifth group of 1-3 digits for 19), Amex 4-6-5, Diners 4-6-4.
 const CARD_GROUPINGS = ['4,4,4,1', '4,4,4,4', '4,4,4,4,1', '4,4,4,4,2', '4,4,4,4,3', '4,6,5', '4,6,4'];
 const CARD_SEPARATOR = /[ -]/;
-const SESSION_STORES = Object.freeze({ accountDir: '.claude', transcripts: 'projects', dataDirs: ['statistics', 'state'] });
+const SESSION_STORES = Object.freeze({ accountDir: '.claude', transcripts: 'projects', statsDir: 'statistics', stateDir: 'state' });
 const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
 const NAMES_EXCLUDE_MAGIC = ':(top,exclude,glob)';
 const NAMES_EXCLUDE_GLOBS = ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/build/**', '**/public/js/**', '**/third_party/**', '**/node_modules/**'];
@@ -128,7 +128,7 @@ function sessionStore(file, { configDir, root, dataRoot }) {
   const under = (dir) => insideRel(dir, file) !== null;
   if (configDir && under(path.join(configDir, SESSION_STORES.transcripts))) return true;
   const data = path.resolve(root, dataRoot);
-  return SESSION_STORES.dataDirs.some((d) => under(path.join(data, d)));
+  return [SESSION_STORES.statsDir, SESSION_STORES.stateDir].some((d) => under(path.join(data, d)));
 }
 
 function piiCounts(text) {
