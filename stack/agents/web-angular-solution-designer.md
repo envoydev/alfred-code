@@ -3,7 +3,7 @@ name: web-angular-solution-designer
 description: "Use when an Angular web feature needs designing before code: a read-only pass settling routes and lazy loading, server vs client state, signals, RxJS and SSR, split into tasks for web-angular-implementer. Do NOT use to write code or for Ionic/Capacitor (ionic-angular-solution-designer)."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: high
+effort: medium
 color: cyan
 skills:
   - angular-conventions

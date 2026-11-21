@@ -3,7 +3,7 @@ name: console-solution-designer
 description: "Use when a .NET worker, bot, daemon or CLI tool needs designing before code: a read-only pass settling the host/DI seam, hosted-service lifecycle and gateway resilience, then parallel tasks. Do NOT use to write code, for a Windows Service (windows-service-solution-designer) or another C# stack."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: high
+effort: medium
 color: cyan
 skills:
   - csharp-design-patterns

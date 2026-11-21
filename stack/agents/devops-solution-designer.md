@@ -3,7 +3,7 @@ name: devops-solution-designer
 description: "Use when a devops change (a Dockerfile, compose, CI/CD, a deploy or release workflow, an env template, the Aspire AppHost) needs designing before code: a read-only pass that settles it and splits tasks. Do NOT use to write the files, to diagnose red CI (issue-diagnoser-ci), or for app code."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: high
+effort: medium
 color: cyan
 skills:
   - devops

@@ -3,7 +3,7 @@ name: data-solution-designer
 description: "Use when a .NET / EF Core persistence feature needs designing before code: a read-only pass settling schema and keys, indexing, query-plan shape and migration strategy, then splitting tasks for data-implementer and data-verifier. Do NOT use to write code, for the app EF model, or without EF Core."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: high
+effort: medium
 color: cyan
 skills:
   - database-conventions
