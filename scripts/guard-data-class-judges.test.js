@@ -147,3 +147,17 @@ test('Read: the account transcripts and the data root\'s statistics and state ar
   assert.equal(sessionStore(path.join(home, 'settings.json'), stores), false);
   assert.equal(sessionStore(path.join(root, '.alfred', 'docs', 'x.csv'), stores), false);
 });
+
+test('D3: a card followed or led by a short group still counts, in every card grouping', () => {
+  const card = luhnComplete('411111111111111');
+  const four = [card.slice(0, 4), card.slice(4, 8), card.slice(8, 12), card.slice(12)].join(' ');
+  for (const tail of [' 123', ' 12/25', ' 12', ' 1']) assert.equal(piiCounts('card ' + four + tail).cards, 1, 'tail' + tail);
+  assert.equal(piiCounts('card ' + four.replace(/ /g, '-') + ' 123').cards, 1, 'dashes and a tail');
+  assert.equal(piiCounts('qty 2 ' + four + ' ok').cards, 1, 'a lead');
+  const visa13 = luhnComplete('422222222222');
+  assert.equal(piiCounts('card ' + [visa13.slice(0, 4), visa13.slice(4, 8), visa13.slice(8, 12), visa13.slice(12)].join(' ') + ' ok').cards, 1, '4-4-4-1');
+  const long = luhnComplete('622222222222222222');
+  assert.equal(piiCounts('card ' + [long.slice(0, 4), long.slice(4, 8), long.slice(8, 12), long.slice(12, 16), long.slice(16)].join(' ') + ' ok').cards, 1, '19 digits 4-4-4-4-3');
+  const diners = luhnComplete('3056930902590');
+  assert.equal(piiCounts('card ' + [diners.slice(0, 4), diners.slice(4, 10), diners.slice(10)].join(' ') + ' ok').cards, 1, 'Diners 4-6-4');
+});

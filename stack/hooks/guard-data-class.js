@@ -30,13 +30,13 @@ const RESERVED_DOMAINS = ['example.com', 'example.net', 'example.org'];
 const DUMP_WORD = /(?:^|[^A-Za-z0-9])(prod|production|backup|export|dump|snapshot)(?=[^A-Za-z0-9]|$)/i;
 const MARKER = /=>|===|!==|[{};]/g;
 const CARD_RUN = /(?<![\w+])(?:[2-6]|8[12])(?:[ -]?\d){12,18}(?!\w)/g;
-// A separated run is a card only in a real card grouping: 4-4-4-4 (a fifth group of 1-3 digits for 19), Amex 4-6-5, Diners 4-6-4.
-const CARD_GROUPINGS = ['4,4,4,4', '4,4,4,4,1', '4,4,4,4,2', '4,4,4,4,3', '4,6,5', '4,6,4'];
+// A separated run is a card only in a real card grouping: 4-4-4-1 (13), 4-4-4-4 (a fifth group of 1-3 digits for 19), Amex 4-6-5, Diners 4-6-4.
+const CARD_GROUPINGS = ['4,4,4,1', '4,4,4,4', '4,4,4,4,1', '4,4,4,4,2', '4,4,4,4,3', '4,6,5', '4,6,4'];
 const CARD_SEPARATOR = /[ -]/;
 const SESSION_STORES = Object.freeze({ accountDir: '.claude', transcripts: 'projects', dataDirs: ['statistics', 'state'] });
 const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
 const NAMES_EXCLUDE_MAGIC = ':(top,exclude,glob)';
-const NAMES_EXCLUDE_GLOBS = ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/third_party/**', '**/node_modules/**'];
+const NAMES_EXCLUDE_GLOBS = ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/build/**', '**/public/js/**', '**/third_party/**', '**/node_modules/**'];
 const SPLIT = /[\s"'`()[\]{},;]+/;
 const LIST_FILE = '.alfred/.sensitive-paths';
 const HOOK_NAME = 'guard-data-class';
@@ -103,14 +103,23 @@ function mod97(iban) {
   return rem === 1;
 }
 
-// The card number in a run, or null: the whole run when it is unseparated or in a card grouping, else the run after its
-// first group, so a number before a card ('qty 2 4111 ...') neither makes a card nor hides one.
+// The card number in a run, or null: the longest span of whole groups that is unseparated or in a card grouping and
+// passes Luhn, so a number before or after a card ('qty 2 4111 ...', '... 1111 123') neither makes a card nor hides one.
+// A run holds at most 19 groups, so the spans tried stay under 200.
 function cardDigits(run) {
   const groups = run.split(CARD_SEPARATOR);
-  const digits = groups.join('');
-  const grouped = groups.length === 1 || CARD_GROUPINGS.includes(groups.map((g) => g.length).join(','));
-  if (grouped && digits.length >= 13 && digits.length <= 19 && /^(?:[2-6]|8[12])/.test(digits) && luhn(digits)) return digits;
-  return groups.length > 1 ? cardDigits(run.slice(groups[0].length + 1)) : null;
+  const isCard = (span) => {
+    const digits = span.join('');
+    const grouped = span.length === 1 || CARD_GROUPINGS.includes(span.map((g) => g.length).join(','));
+    return grouped && digits.length >= 13 && digits.length <= 19 && /^(?:[2-6]|8[12])/.test(digits) && luhn(digits) ? digits : null;
+  };
+  for (let size = groups.length; size >= 1; size--) {
+    for (let from = 0; from + size <= groups.length; from++) {
+      const digits = isCard(groups.slice(from, from + size));
+      if (digits) return digits;
+    }
+  }
+  return null;
 }
 
 // Whether a file is one of the session stores the stack and Claude Code write for themselves: the account's transcripts

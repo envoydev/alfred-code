@@ -234,7 +234,7 @@ test('git argv shapes', () => {
   assert.equal(argv.filter((a) => a === '-e').length, 4);
   const pathspecs = argv.slice(argv.indexOf('--'));
   assert.deepEqual(pathspecs.slice(0, 2), ['--', ':/']);
-  assert.deepEqual(pathspecs.slice(2), ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/third_party/**', '**/node_modules/**'].map((g) => ':(top,exclude,glob)' + g));
+  assert.deepEqual(pathspecs.slice(2), ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/build/**', '**/public/js/**', '**/third_party/**', '**/node_modules/**'].map((g) => ':(top,exclude,glob)' + g));
   assert.ok(argv.some((a) => a.includes('[[:space:]]+other([^[:alnum:]_$]|$)')));
   const own = argv.filter((a) => a.includes('other([[:space:]]*:'));
   assert.equal(own.length, 1);
