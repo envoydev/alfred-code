@@ -268,7 +268,7 @@ function trackedArgv(file) {
 }
 
 function pathsArgv(candidates) {
-  return ['ls-files', '-z', '--'].concat(candidates.map((c) => ':(glob)**/' + c));
+  return ['ls-files', '-z', '--'].concat(candidates.map((c) => ':(top,glob)**/' + c));
 }
 
 function namesArgv(candidates) {
@@ -278,6 +278,7 @@ function namesArgv(candidates) {
     argv.push('-e', `(function|class|def|interface|type|enum|struct|record|func|fn|module|namespace)[[:space:]]+${c}([^[:alnum:]_$]|$)`);
     argv.push('-e', `(^|[^[:alnum:]_$.])${c}[[:space:]]*[:=][[:space:]]*(async[[:space:]]+)?(function|\\()`);
   }
+  argv.push('--', ':/');
   return argv;
 }
 
@@ -356,11 +357,12 @@ function rewriteBrief({ tool, text, paths, names, codeLines: lines }) {
   ].join('\n');
 }
 
-function askText(route, path, detail) {
+function askText(route, path, detail, listFile) {
+  const clear = listFile === null ? '' : ` a '!${path}' line in ${listFile === undefined ? LIST_FILE : listFile} clears it for good.`;
   if (route === 'document') {
-    return `Read of ${path}: it is a business document (${detail}) - price lists, HR files and contracts belong only in an AI cleared for them. Allow only if this document is cleared for this AI; a '!${path}' line in ${LIST_FILE} clears it for good.`;
+    return `Read of ${path}: it is a business document (${detail}) - price lists, HR files and contracts belong only in an AI cleared for them. Allow only if this document is cleared for this AI;${clear}`.replace(/;$/, '.');
   }
-  return `Read of ${path}: it looks like a data dump (${detail}). Real personal or production records should not enter this transcript - use a synthetic or anonymized sample. Allow only if this data is cleared for this AI; a '!${path}' line in ${LIST_FILE} clears it for good.`;
+  return `Read of ${path}: it looks like a data dump (${detail}). Real personal or production records should not enter this transcript - use a synthetic or anonymized sample. Allow only if this data is cleared for this AI;${clear}`.replace(/;$/, '.');
 }
 
 function denyText(route, path, detail) {
@@ -410,23 +412,39 @@ function readHead(file, size) {
   }
 }
 
-function relativeTo(root, file) {
-  const real = (p) => {
-    try {
-      return fs.realpathSync.native(p);
-    } catch {
-      return p;
-    }
-  };
-  const rel = path.relative(real(root), real(file));
+const realOf = (p) => {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+};
+
+function insideRel(base, target) {
+  const rel = path.relative(base, target);
   if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
   return rel.split(path.sep).join('/');
 }
 
-function readLists(root) {
+function relativeTo(root, file) {
+  const realRoot = realOf(root);
+  const lexical = insideRel(root, file) || insideRel(realRoot, file);
+  return lexical !== null ? lexical : insideRel(realRoot, realOf(file));
+}
+
+function listFileOf(root) {
+  let dataRoot = '.alfred';
   try {
-    const dataRoot = require('./layout.js').dataRoot();
-    return parseSensitivePaths(fs.readFileSync(path.resolve(root, dataRoot, '.sensitive-paths'), 'utf8'));
+    dataRoot = require('./layout.js').dataRoot();
+  } catch {
+    /* the default data root */
+  }
+  return path.resolve(root, dataRoot, '.sensitive-paths');
+}
+
+function readLists(listFile) {
+  try {
+    return parseSensitivePaths(fs.readFileSync(listFile, 'utf8'));
   } catch {
     return parseSensitivePaths(null);
   }
@@ -453,7 +471,8 @@ function readOutcome(ctx) {
   }
   if (!stat.isFile()) return null;
   const rel = relativeTo(ctx.root, file);
-  const state = pathState(rel, readLists(ctx.root));
+  const listFile = listFileOf(ctx.root);
+  const state = pathState(rel, readLists(listFile));
   if (state === 'cleared') return null;
   const facts = readFacts(ctx, file, stat);
   const dump = facts.dumpsOn ? dumpVerdict(facts) : null;
@@ -464,7 +483,8 @@ function readOutcome(ctx) {
   const shown = rel === null ? file : rel;
   const counts = { bytes: facts.bytes, ...(dump && dump.branch === 'dump-pii' ? piiCounts(facts.head) : {}) };
   const mode = ctx.nobodyAnswers ? 'deny' : 'ask';
-  const text = mode === 'deny' ? denyText(route, shown, detail) : askText(route, shown, detail);
+  const listShown = insideRel(realOf(ctx.root), listFile) || insideRel(ctx.root, listFile) || listFile;
+  const text = mode === 'deny' ? denyText(route, shown, detail) : askText(route, shown, detail.split(LIST_FILE).join(listShown), rel === null ? null : listShown);
   return { mode, text, branch: (doc || dump).branch, base: facts.base, counts };
 }
 

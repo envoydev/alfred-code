@@ -224,7 +224,7 @@ test('candidates drop glob and magic pathspec shapes and odd names', () => {
 
 test('git argv shapes', () => {
   assert.deepEqual(trackedArgv('/p/q/file.pdf'), ['ls-files', '--error-unmatch', '--', 'file.pdf']);
-  assert.deepEqual(pathsArgv(['src/a.js', 'b/c.ts']), ['ls-files', '-z', '--', ':(glob)**/src/a.js', ':(glob)**/b/c.ts']);
+  assert.deepEqual(pathsArgv(['src/a.js', 'b/c.ts']), ['ls-files', '-z', '--', ':(top,glob)**/src/a.js', ':(top,glob)**/b/c.ts']);
   const argv = namesArgv(['my$Var1', 'other']);
   assert.deepEqual(argv.slice(0, 5), ['grep', '-o', '-h', '-I', '-E']);
   assert.ok(argv.some((a) => a.includes('my\\$Var1')));
@@ -232,6 +232,7 @@ test('git argv shapes', () => {
   assert.ok(!/\\s/.test(joined) && !/\\b/.test(joined));
   assert.ok(!argv.includes('-w'));
   assert.equal(argv.filter((a) => a === '-e').length, 4);
+  assert.deepEqual(argv.slice(-2), ['--', ':/']);
   assert.ok(argv.some((a) => a.includes('[[:space:]]+other([^[:alnum:]_$]|$)')));
 });
 

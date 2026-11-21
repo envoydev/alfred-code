@@ -201,6 +201,57 @@ test('a repo never set up stands the hook down, a set-up one does not', () => {
   silent(run(dir, { tool_name: 'Read', tool_input: { file_path: path.join(dir, 'data/orders.csv') } }, env));
 });
 
+function outside(files = {}) {
+  const dir = realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'data-class-out-')));
+  made.push(dir);
+  for (const [name, content] of Object.entries(files)) put(dir, name, content);
+  return dir;
+}
+
+test('a listed folder that is a symlink out of the project still asks (B2 reads the lexical path)', { skip: process.platform === 'win32' }, () => {
+  const dir = project();
+  const target = outside({ 'prices.txt': 'plain' });
+  fs.symlinkSync(target, path.join(dir, 'clients'), 'dir');
+  put(dir, '.alfred/.sensitive-paths', 'clients/**\n');
+  assert.ok(decision(read(dir, 'clients/prices.txt')).permissionDecisionReason.includes('listed in .alfred/.sensitive-paths'));
+  put(dir, '.alfred/.sensitive-paths', 'clients/**\n!clients/**\n');
+  silent(read(dir, 'clients/prices.txt'));
+});
+
+test('an absolute data root holds the list that is read, and the ask names that file', () => {
+  const dir = csvProject();
+  const data = outside({ '.sensitive-paths': '!data/**\n' });
+  const env = { ALFRED_CODE_DATA_PATH: data };
+  const payload = { tool_name: 'Read', tool_input: { file_path: path.join(dir, 'data/orders.csv') } };
+  silent(run(dir, payload, env));
+  put(data, '.sensitive-paths', 'docs/**\n');
+  const reason = decision(run(dir, { tool_name: 'Read', tool_input: { file_path: path.join(dir, 'docs/contract.pdf') } }, env)).permissionDecisionReason;
+  assert.ok(reason.includes(path.join(data, '.sensitive-paths')), reason);
+  assert.ok(!reason.includes(' .alfred/.sensitive-paths'));
+  const denied = run(dir, { ...payload, permission_mode: 'dontAsk', tool_input: { file_path: path.join(dir, 'docs/contract.pdf') } }, env);
+  assert.ok(!denied.stderr.includes('.sensitive-paths'));
+});
+
+test('a file outside the project asks without the clear-line sentence', () => {
+  const dir = project();
+  const away = outside({ 'orders.csv': Buffer.alloc(BIG, 'a') });
+  const reason = decision(run(dir, { tool_name: 'Read', tool_input: { file_path: path.join(away, 'orders.csv') } })).permissionDecisionReason;
+  assert.ok(reason.includes('200 KB .csv'));
+  assert.ok(!reason.includes('clears it') && !reason.includes('.sensitive-paths'));
+});
+
+test('a session started in a subfolder judges the whole repo for names and paths', () => {
+  const dir = codeProject();
+  put(dir, 'docs/readme.md', 'notes');
+  const cwd = path.join(dir, 'docs');
+  const named = run(dir, { tool_name: 'WebSearch', cwd, tool_input: { query: 'why does applyDiscount round wrong' } });
+  assert.equal(named.status, 2);
+  assert.ok(named.stderr.includes('Remove: applyDiscount.'));
+  const pathed = run(dir, { tool_name: 'WebSearch', cwd, tool_input: { query: 'bug in src/pricing.js today' } });
+  assert.equal(pathed.status, 2);
+  assert.ok(pathed.stderr.includes('Remove: src/pricing.js.'));
+});
+
 test('timing: p50 and max of 20 WebSearch runs', () => {
   const dir = codeProject();
   const times = [];
