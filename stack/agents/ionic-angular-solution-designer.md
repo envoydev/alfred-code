@@ -3,7 +3,7 @@ name: ionic-angular-solution-designer
 description: "Use when an Ionic/Capacitor mobile feature needs designing before code: a read-only pass that fixes the native-bridge and plugin surface, offline storage, platform parity and OTA-vs-store release, then splits tasks. Do NOT use to write code, or for web Angular (web-angular-solution-designer)."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: xhigh
+effort: high
 color: cyan
 skills:
   - ionic

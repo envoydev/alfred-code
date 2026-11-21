@@ -3,7 +3,7 @@ name: browser-extension-solution-designer
 description: "Use when a browser-extension (MV3) feature needs designing before code: a read-only pass that settles the worker, content-script and UI topology, storage, message contract, permissions and cross-browser strategy, then splits parallel tasks. Do NOT use to write code or for a web Angular app."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: xhigh
+effort: high
 color: cyan
 skills:
   - browser-extension

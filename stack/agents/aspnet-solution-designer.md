@@ -3,7 +3,7 @@ name: aspnet-solution-designer
 description: "Use when an ASP.NET Core API feature needs designing before code: a read-only pass settling endpoints, contracts and the EF Core and transaction seams, split into parallel tasks for aspnet-implementer and aspnet-verifier. Do NOT use to write code or for a schema-only change (data-solution-designer)."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: xhigh
+effort: high
 color: cyan
 skills:
   - csharp-design-patterns

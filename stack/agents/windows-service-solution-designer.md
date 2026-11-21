@@ -3,7 +3,7 @@ name: windows-service-solution-designer
 description: "Use when a .NET worker under the Windows SCM needs designing before code: a read-only pass settling recovery, SCM budgets, paths, identity, the install script and the host/DI seam, then parallel tasks. Do NOT use to write code, or for a worker with no SCM target (console-solution-designer)."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: xhigh
+effort: high
 color: cyan
 skills:
   - csharp-design-patterns

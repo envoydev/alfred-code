@@ -3,7 +3,7 @@ name: wpf-solution-designer
 description: "Use when a WPF desktop feature needs designing before code: a read-only pass that settles the strict MVVM seam, binding and validation design and the UI-thread boundary, then splits parallel tasks. Do NOT use to write code, for WinForms (winforms-solution-designer) or a companion Windows Service."
 tools: LSP, Read, Skill, Bash, Grep, Glob, WebFetch
 model: opus
-effort: xhigh
+effort: high
 color: cyan
 skills:
   - csharp-design-patterns
