@@ -285,8 +285,11 @@ test('E1: an absolute path inside the repo is refused as its repo-relative name,
   silent(search(dir, 'bug in ' + path.join(outside(), 'src', 'pricing.js') + ' today'));
 });
 
-test('E3: prose holding a lone operator or brace pair passes', () => {
-  const dir = codeProject();
-  silent(search(dir, 'javascript === vs !== strict equality explained'));
-  silent(search(dir, 'bash difference between { } and ( ) grouping'));
+test('E2: an async arrow held in an object key is a project name, a type annotation is not', () => {
+  const dir = project({ 'src/x.js': 'const handlers = { otherThing: async (y) => y };\n', 'src/p.ts': 'interface P { onChange: (e: Event) => void }\n' });
+  git(dir, 'add', '.');
+  const r = search(dir, 'why does otherThing return a promise');
+  assert.equal(r.status, 2);
+  assert.ok(r.stderr.includes('Remove: otherThing.'), r.stderr);
+  silent(search(dir, 'react onChange event typescript type'));
 });

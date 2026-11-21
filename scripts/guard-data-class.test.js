@@ -238,7 +238,7 @@ test('git argv shapes', () => {
   assert.ok(argv.some((a) => a.includes('[[:space:]]+other([^[:alnum:]_$]|$)')));
   const own = argv.filter((a) => a.includes('other([[:space:]]*:'));
   assert.equal(own.length, 1);
-  assert.ok(own[0].includes('[[:space:]]*:[[:space:]]*(async[[:space:]]+)?function') && own[0].includes('[[:space:]]*=[[:space:]]*(async[[:space:]]+)?(function|\\()'));
+  assert.ok(own[0].includes('[[:space:]]*:[[:space:]]*((async[[:space:]]+)?function|async[[:space:]]*\\()') && own[0].includes('[[:space:]]*=[[:space:]]*(async[[:space:]]+)?(function|\\()'));
   assert.ok(!own[0].includes('[:=]'));
 });
 

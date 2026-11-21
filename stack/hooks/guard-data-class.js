@@ -28,7 +28,6 @@ const RESERVED_TLDS = new Set(['example', 'test', 'invalid', 'localhost']);
 const RESERVED_DOMAINS = ['example.com', 'example.net', 'example.org'];
 const DUMP_WORD = /(?:^|[^A-Za-z0-9])(prod|production|backup|export|dump|snapshot)(?=[^A-Za-z0-9]|$)/i;
 const MARKER = /=>|===|!==|[{};]/g;
-const BARE_MARKER = /^(?:=>|===|!==|[{};])+$/;
 const CARD_RUN = /(?<![\w+])[2-6](?:[ -]?\d){12,18}(?!\w)/g;
 const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
 const NAMES_EXCLUDE_MAGIC = ':(top,exclude,glob)';
@@ -310,7 +309,7 @@ function namesArgv(candidates) {
   for (const raw of candidates) {
     const c = raw.replace(/\$/g, '\\$');
     argv.push('-e', `(function|class|def|interface|type|enum|struct|record|func|fn|module|namespace)[[:space:]]+${c}([^[:alnum:]_$]|$)`);
-    argv.push('-e', `(^|[^[:alnum:]_$.])${c}([[:space:]]*:[[:space:]]*(async[[:space:]]+)?function|[[:space:]]*=[[:space:]]*(async[[:space:]]+)?(function|\\())`);
+    argv.push('-e', `(^|[^[:alnum:]_$.])${c}([[:space:]]*:[[:space:]]*((async[[:space:]]+)?function|async[[:space:]]*\\()|[[:space:]]*=[[:space:]]*(async[[:space:]]+)?(function|\\())`);
   }
   argv.push('--', ':/');
   for (const glob of NAMES_EXCLUDE_GLOBS) argv.push(NAMES_EXCLUDE_MAGIC + glob);
@@ -332,13 +331,6 @@ function namesFound(grepOutput, candidates) {
   return candidates.filter((c) => lines.some((l) => wholeWord(l, c)));
 }
 
-function markerCount(line) {
-  const n = (line.match(MARKER) || []).length;
-  if (!n) return 0;
-  const touching = line.split(/\s+/).some((word) => word && !BARE_MARKER.test(word) && word.search(MARKER) !== -1);
-  return touching ? n : 0;
-}
-
 function codeLines(text) {
   const src = String(text);
   if (src.length < 40) return 0;
@@ -346,7 +338,7 @@ function codeLines(text) {
   let dense = false;
   let withMarker = 0;
   for (const line of src.split(/\r?\n/)) {
-    const n = markerCount(line);
+    const n = (line.match(MARKER) || []).length;
     if (n) withMarker++;
     if (n >= 2) dense = true;
     total += n;
@@ -382,7 +374,7 @@ function rewriteBrief({ tool, text, paths, names, codeLines: lines, aliases }) {
   const nameSet = new Set(names);
   const kept = String(text)
     .split(/\r?\n/)
-    .filter((l) => !(lines > 0 && markerCount(l) > 0))
+    .filter((l) => !(lines > 0 && /=>|===|!==|[{};]/.test(l)))
     .join(' ')
     .split(/\s+/)
     .filter((w) => {

@@ -64,10 +64,13 @@ test('E1: the spelling of a mapped token is kept so the brief can drop it', () =
   assert.deepEqual(relativizeTokens(['/r/src/a.js'], ['/r']).aliases, [{ token: '/r/src/a.js', rel: 'src/a.js' }]);
 });
 
-test('E3: a marker standing alone as a word is prose, not code', () => {
-  assert.equal(codeLines('javascript === vs !== strict equality explained'), 0);
-  assert.equal(codeLines('bash difference between { } and ( ) grouping'), 0);
-  assert.equal(codeLines('function computeTotal(a) { return a * 2; }'), 1);
+test('E3: spaced-out code keeps its count, as it did before the review', () => {
+  const guards = 'if (user === null) {\n  return\n}\nitems.forEach((item) => {\n  run(item)\n})';
+  const arrows = 'const add = (a, b) => a + b\nconst sub = (a, b) => a - b\nconst mul = (a, b) => a * b';
+  const props = 'public int Id { get; set; }\npublic string Name { get; set; }\npublic int Age { get; set; }';
+  assert.equal(codeLines(guards), 4);
+  assert.equal(codeLines(arrows), 3);
+  assert.equal(codeLines(props), 3);
 });
 
 test('documentVerdict: an untracked .key is no business document', () => {
