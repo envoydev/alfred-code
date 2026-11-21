@@ -205,7 +205,8 @@ test('readRunDir and findMarker report owned: true for the files this user owns'
     assert.equal(marker.owned, true);
     assert.equal(marker.session, SESSION);
     assert.equal(marker.dir, own);
-    assert.equal(marker.path, path.join(SUITE.tmp, markerName(fx.cwd)));
+    // The marker path is spelled the way the resolve block's shell writes it, `$TMPDIR/<name>`, on every OS.
+    assert.equal(marker.path, `${SUITE.tmp.replace(/\/$/, '')}/${markerName(fx.cwd)}`);
 });
 
 test('a plugin-settings --config-dir is allowed only when it is the account\'s own config dir: CLAUDE_CONFIG_DIR, else HOME/.claude', () =>
@@ -218,18 +219,19 @@ test('a plugin-settings --config-dir is allowed only when it is the account\'s o
     fs.mkdirSync(account);
     fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
     const call = (dir) => `node "${own}/repo/scripts/plugin-settings.js" --catalog "${own}/repo/meta/plugin-settings.json" --config-dir "${dir}" --installed a,b --apply`;
-    const withEnv = { CLAUDE_CONFIG_DIR: account, HOME: home };
+    // Windows reads the account's home from USERPROFILE before HOME (account.js), so both name the same folder here.
+    const withEnv = { CLAUDE_CONFIG_DIR: account, HOME: home, USERPROFILE: home };
     assert.equal(decisionOf(run(payload(fx, call(account)), withEnv)).permissionDecision, 'allow');
     silent(run(payload(fx, call(path.join(fx.cwd, '.claude'))), withEnv), 'the project\'s .claude is no account dir');
     silent(run(payload(fx, call(path.join(home, '.claude'))), withEnv), 'HOME/.claude loses to CLAUDE_CONFIG_DIR when that is set');
     silent(run(payload(fx, call('.claude')), withEnv), 'a relative dir');
-    const byHome = { CLAUDE_CONFIG_DIR: '', HOME: home };
+    const byHome = { CLAUDE_CONFIG_DIR: '', HOME: home, USERPROFILE: home };
     assert.equal(decisionOf(run(payload(fx, call(path.join(home, '.claude'))), byHome)).permissionDecision, 'allow');
     silent(run(payload(fx, call(account)), byHome), 'another dir than HOME/.claude');
     silent(run(payload(fx, call(account)), { CLAUDE_CONFIG_DIR: '', HOME: '', USERPROFILE: '' }), 'no account dir known: prompt');
     const linked = path.join(fx.base, 'linked');
     fs.symlinkSync(account, linked);
-    const byLink = { CLAUDE_CONFIG_DIR: linked, HOME: home };
+    const byLink = { CLAUDE_CONFIG_DIR: linked, HOME: home, USERPROFILE: home };
     assert.equal(decisionOf(run(payload(fx, call(linked)), byLink)).permissionDecision, 'allow', 'the spelling the env gave');
     assert.equal(decisionOf(run(payload(fx, call(account)), byLink)).permissionDecision, 'allow', 'the real path of the env\'s spelling');
 });
