@@ -55,7 +55,8 @@ function loadManifest(sourceDir)
             agents: { ...((raw.renamed || {}).agents || {}) },
             rules: { ...((raw.renamed || {}).rules || {}) },
             mcps: { ...((raw.renamed || {}).mcps || {}) },
-            // A hook by its bare name (2026-10-20: guard-answer-length -> guard-answer); its old file is retired too.
+            // A hook by its bare name (2026-10-20: guard-answer-length -> guard-answer; 2026-11-22: guard-answer -> communication-reminder, both
+            // spellings straight to the new name); its old files are retired too.
             hooks: { ...((raw.renamed || {}).hooks || {}) },
             // A MERGE's old names by the part each became (2026-10-29: the three quality captures in capture-quality) -
             // the top-level `renamedTopics` block; a skillOverrides value and a command re-spelling read it.

@@ -767,14 +767,14 @@ const doneRow = (detail) => line({ ts: '2026-07-15T07:00:05.000Z', hook: 'guard-
 const redRow = (id, extra) => line({ ts: '2026-07-15T07:00:01.000Z', hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause',
   reason: 'probe: a red npm test run - logged, nothing injected', detail: { run: 'npm test', key: 'npm test', tool_use_id: id, agent: null, agent_type: null, ...(extra || {}) } });
 
-// R3 (ECC comparison): guard-answer.js writes one `kind: correction` probe row per correction
+// R3 (ECC comparison): communication-reminder.js writes one `kind: correction` probe row per correction
 // turn, `injected` when ALFRED_CODE_CORRECTION_NUDGE=inject handed the save line back.
 test('hook-blocks: correction probe rows are counted, split by whether the save line was injected', () => {
   const dir = tmp();
   const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
   const blocks = path.join(dir, 'hook-blocks');
   fs.mkdirSync(blocks);
-  const corr = (injected, marker) => line({ ts: '2026-07-15T07:00:03.000Z', hook: 'guard-answer.js', event: 'UserPromptSubmit', tool: '', mode: 'probe', kind: 'correction',
+  const corr = (injected, marker) => line({ ts: '2026-07-15T07:00:03.000Z', hook: 'communication-reminder.js', event: 'UserPromptSubmit', tool: '', mode: 'probe', kind: 'correction',
     injected, reason: 'probe: a correction turn - logged, nothing injected', detail: { marker, chars: 20 } });
   fs.writeFileSync(path.join(blocks, 'session.jsonl'), [corr(false, 'no'), corr(false, 'I meant'), corr(true, 'shorter')].join(''));
   const { hookBlocks } = run([file, '--hook-blocks', blocks]);
@@ -786,6 +786,20 @@ test('hook-blocks: correction probe rows are counted, split by whether the save 
   assert.match(md, /\| correction nudge \| 3 \| 1 \| 2 \|/);
   const roll = JSON.parse(execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
   assert.deepStrictEqual(roll.probes.correction, { turns: 3, injected: 1 }, 'the rollup sums the corpus');
+});
+
+// 2026-11-22: the hook was guard-answer.js (guard-answer-length.js before 2026-10-20). A ledger row an older
+// session wrote under either old file name counts beside the new name's: the probe is read by its kind, never by the hook's name.
+test('hook-blocks: correction probe rows written under the old hook names still count beside the new name', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  const corr = (hook, injected) => line({ ts: '2026-07-15T07:00:03.000Z', hook, event: 'UserPromptSubmit', tool: '', mode: 'probe', kind: 'correction',
+    injected, reason: 'probe: a correction turn - logged, nothing injected', detail: { marker: 'no', chars: 20 } });
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [corr('communication-reminder.js', false), corr('guard-answer.js', true), corr('guard-answer-length.js', false)].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.correction, { turns: 3, injected: 1 });
 });
 
 // R8 (ECC comparison): guard-stop-contract.js writes one `kind: rationalization` probe row when a close
@@ -1351,7 +1365,7 @@ test('scorecard: a green claim with no check in its turn is listed, a checked or
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The single-turn test is guard-answer.js's own (the pinned copy): a short turn that follows an
+// The single-turn test is communication-reminder.js's own (the pinned copy): a short turn that follows an
 // answer of ANY length and carries a correction marker. A status question after a long answer is no
 // correction any more; a correction after a short answer now counts.
 test('scorecard: corrections are the hook\'s marker test, not a short turn after a long answer', () => {

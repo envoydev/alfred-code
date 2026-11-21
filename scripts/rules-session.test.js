@@ -50,7 +50,7 @@ function rule(name, chars)
 }
 const heading = (r) => `## ${r.name} (${r.rel})`;
 // The room a part leaves for the texts of n blocks named as the given rules.
-const ROOM = (rules) => 9500 - OPEN(1, 1).length - CLOSE(1, 1).length - 2 * (rules.length + 1) - rules.reduce((s, r) => s + heading(r).length + 1, 0);
+const ROOM = (rules) => 9900 - OPEN(1, 1).length - CLOSE(1, 1).length - 2 * (rules.length + 1) - rules.reduce((s, r) => s + heading(r).length + 1, 0);
 const shippedFiles = () => fs.readdirSync(RULES_DIR).filter((f) => f.endsWith('.md')).sort();
 const shippedPathless = () => shippedFiles().map((f) => ({ f, text: fs.readFileSync(path.join(RULES_DIR, f), 'utf8') }))
     .filter(({ text }) => !loader().pathsOf(text).length)
@@ -110,15 +110,15 @@ test('pathGlob: an unsupported character gives null', () =>
 test('parts: at PART_ROOM, one under, one over', () =>
 {
     const { parts, PART_ROOM } = loader();
-    assert.strictEqual(PART_ROOM, 9500);
+    assert.strictEqual(PART_ROOM, 9900);
     const r = rule('r1', ROOM([rule('r1', 1)]));
     assert.strictEqual(parts([r]).parts.length, 1);
-    assert.strictEqual(parts([r]).parts[0].length, 9500);
-    assert.strictEqual(parts([rule('r1', r.text.length - 1)]).parts[0].length, 9499);
+    assert.strictEqual(parts([r]).parts[0].length, 9900);
+    assert.strictEqual(parts([rule('r1', r.text.length - 1)]).parts[0].length, 9899);
     const over = parts([rule('r1', r.text.length + 1)]).parts;
     assert.strictEqual(over.length, 2);
     assert.ok(over[1].startsWith(`${OPEN(2, 2)}\n\n## r1 (.alfred/stack/rules/r1.md) - continued\n`), over[1].slice(0, 120));
-    for (const p of over) assert.ok(p.length <= 9500, String(p.length));
+    for (const p of over) assert.ok(p.length <= 9900, String(p.length));
 });
 
 test('parts: every part ends with its closing line and counts it', () =>
@@ -128,7 +128,7 @@ test('parts: every part ends with its closing line and counts it', () =>
     {
         assert.ok(p.startsWith(OPEN(i + 1, out.length)), p.slice(0, 80));
         assert.ok(p.endsWith(CLOSE(i + 1, out.length)), p.slice(-60));
-        assert.ok(p.length <= 9500, String(p.length));
+        assert.ok(p.length <= 9900, String(p.length));
     });
 });
 
@@ -166,9 +166,9 @@ test('parts: cut applies the lead room to the first chunk only', () =>
     const lead = 'y'.repeat(600);
     const out = loader().parts([r], { index: lead }).parts;
     assert.strictEqual(out.length, 3);
-    for (const p of out) assert.ok(p.length <= 9500, String(p.length));
-    assert.ok(out[0].length >= 9500 - 600 - 160 && out[0].length <= 9500, `part 1 holds the lead: ${out[0].length}`);
-    assert.ok(out[1].length > 9500 - 200, `part 2 is a full chunk, no lead taken from it: ${out[1].length}`);
+    for (const p of out) assert.ok(p.length <= 9900, String(p.length));
+    assert.ok(out[0].length >= 9900 - 600 - 160 && out[0].length <= 9900, `part 1 holds the lead: ${out[0].length}`);
+    assert.ok(out[1].length > 9900 - 200, `part 2 is a full chunk, no lead taken from it: ${out[1].length}`);
     const chunks = out.map((p) => p.split('\n\n').filter((b) => !b.startsWith('Project rules') && !b.startsWith('End of') && b !== lead).join('\n\n').replace(/^## big \([^)]*\)( - continued)?\n/, ''));
     assert.strictEqual(chunks.join('\n'), r.text);
 });
@@ -190,7 +190,7 @@ test('parts: five parts with room and a sixth rule - one unsent', () =>
     assert.strictEqual(out.length, 5);
     assert.deepStrictEqual(unsent, [rs[5].rel]);
     assert.ok(out[4].includes('## e (') && out[4].endsWith(`Not sent - past part 5: ${rs[5].rel}\n\n${CLOSE(5, 5)}`), out[4].slice(-160));
-    assert.ok(out[4].length <= 9500);
+    assert.ok(out[4].length <= 9900);
 });
 
 test('parts: no rule', () =>
@@ -745,7 +745,7 @@ test('members: the shipped rules and a thirteen-child index leave nothing unsent
     const { parts: out, unsent } = loader().parts(shippedPathless(), { index });
     assert.deepStrictEqual(unsent, []);
     assert.ok(out[0].includes(index), 'the index is whole in part 1');
-    for (const p of out) assert.ok(p.length <= 9500, String(p.length));
+    for (const p of out) assert.ok(p.length <= 9900, String(p.length));
 });
 
 test('members: an overflowing rule set keeps the index whole in part 1 and names what it cuts', () =>
@@ -758,7 +758,7 @@ test('members: an overflowing rule set keeps the index whole in part 1 and names
     assert.ok(out[0].includes(index));
     assert.ok(unsent.length > 0);
     assert.ok(out[4].includes(`Not sent - past part 5: ${unsent.join(', ')}`), out[4].slice(-200));
-    for (const p of out) assert.ok(p.length <= 9500, String(p.length));
+    for (const p of out) assert.ok(p.length <= 9900, String(p.length));
 });
 
 test('members: parts with an empty index equal parts without one', () =>
@@ -941,7 +941,7 @@ test('path rule: at most PART_ROOM per call, the rest on the next touch', () =>
     const body = (m) => `---\npaths: ["**/*.ts"]\n---\n${m}\n${'y'.repeat(3990)}`;
     const p = project({ r1: body('M-1'), r2: body('M-2'), r3: body('M-3') });
     const first = touch(p, path.join(p, 'a.ts'));
-    assert.ok(first.length <= 9500 && ['M-1', 'M-2', 'M-3'].filter((m) => first.includes(m)).length === 2, String(first.length));
+    assert.ok(first.length <= 9900 && ['M-1', 'M-2', 'M-3'].filter((m) => first.includes(m)).length === 2, String(first.length));
     const second = touch(p, path.join(p, 'b.ts'));
     assert.strictEqual(['M-1', 'M-2', 'M-3'].filter((m) => second.includes(m)).length, 1);
 });
@@ -950,8 +950,8 @@ test('path rule: a rule larger than the room is cut and marked sent', () =>
 {
     const p = project({ big: `---\npaths: ["**/*.ts"]\n---\n${rule('big', 20000).text}` });
     const text = touch(p, path.join(p, 'a.ts'));
-    assert.ok(text.length <= 9500, String(text.length));
-    assert.ok(text.endsWith('(cut at 9500 characters - read .alfred/stack/rules/big.md for the rest)'), text.slice(-120));
+    assert.ok(text.length <= 9900, String(text.length));
+    assert.ok(text.endsWith('(cut at 9900 characters - read .alfred/stack/rules/big.md for the rest)'), text.slice(-120));
     assert.strictEqual(touch(p, path.join(p, 'b.ts')), '');
 });
 
@@ -1179,7 +1179,7 @@ test('member: part 5 with a rule left names it and stays inside the room', () =>
     for (const n of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']) store(w.api, n, big(9000, `M-${n}`));
     const outs = [1, 2, 3, 4, 5, 6].map((k) => touch(w.root, path.join(w.api, `${k}.txt`)));
     assert.match(outs[4], /Not sent - past part 5: api\/\.alfred\/stack\/rules\/r\d\.md/);
-    assert.ok(outs[4].length <= 9500, String(outs[4].length));
+    assert.ok(outs[4].length <= 9900, String(outs[4].length));
     assert.ok(outs[4].endsWith(DONE('api', 5)));
     assert.strictEqual(outs[5], '');
 });
@@ -1205,8 +1205,8 @@ test('member: a rule larger than a part is cut at a line end and counts as sent'
     const one = touch(w.root, path.join(w.api, '1.txt'));
     const two = touch(w.root, path.join(w.api, '2.txt'));
     assert.ok(one.includes(LINE1('api')) && one.endsWith(MORE('api', 1)) && !one.includes('M-HUGE'), one.slice(0, 300));
-    assert.ok(two.endsWith(`(cut at 9500 characters - read api/.alfred/stack/rules/huge.md for the rest)\n\n${DONE('api', 2)}`), two.slice(-200));
-    assert.ok(two.length <= 9500);
+    assert.ok(two.endsWith(`(cut at 9900 characters - read api/.alfred/stack/rules/huge.md for the rest)\n\n${DONE('api', 2)}`), two.slice(-200));
+    assert.ok(two.length <= 9900);
     assert.strictEqual(touch(w.root, path.join(w.api, '3.txt')), '');
 });
 
@@ -1362,7 +1362,7 @@ test('member path rule: a cut rule\'s tail line names the path from the start fo
     const w = M();
     store(w.api, 'ts', scoped('src/**/*.ts', 'M-API-TS', 12000));
     touch(w.root, path.join(w.api, 'a.txt'));
-    assert.ok(touch(w.root, path.join(w.api, 'src', 'a.ts')).endsWith('(cut at 9500 characters - read api/.alfred/stack/rules/ts.md for the rest)'));
+    assert.ok(touch(w.root, path.join(w.api, 'src', 'a.ts')).endsWith('(cut at 9900 characters - read api/.alfred/stack/rules/ts.md for the rest)'));
 });
 
 test('member path rule: a rule the child ignores is not sent for its file and still sent for the root\'s', () =>
@@ -1391,7 +1391,7 @@ test('member path rule: block and path rule in one call stay inside PART_ROOM', 
     store(w.api, 'own', big(9000, 'M-OWN'));
     store(w.api, 'ts', scoped('**/*.ts', 'M-API-TS', 2000));
     const one = touch(w.root, path.join(w.api, 'a.ts'));
-    assert.ok(one.length <= 9500 && one.includes('M-OWN') && !one.includes('M-API-TS'), String(one.length));
+    assert.ok(one.length <= 9900 && one.includes('M-OWN') && !one.includes('M-API-TS'), String(one.length));
     assert.ok(touch(w.root, path.join(w.api, 'b.ts')).includes('M-API-TS'));
 });
 

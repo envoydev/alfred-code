@@ -5,7 +5,8 @@
 // did: the user re-asked for it as a BRAND NEW rule while both rule copies carried it verbatim,
 // and the memory record holds four separate 'you write too much text' / 'shorter and simpler'
 // corrections across sessions. Prose guards measured ignored 1/5-1/3 of the time; mechanisms held.
-// This hook is the mechanization.
+// This hook is the mechanization. It was guard-answer-length.js (until 2026-10-20, when it blocked long answers), then
+// guard-answer.js (until 2026-11-22): it defends nothing, it only sends the reminder, so it takes that name.
 //
 // UserPromptSubmit wiring: appends the answer budget to the turn's context, where it lands LAST -
 //   immediately before the answer is written, not 30 bullets deep in an always-on rule. It also
@@ -41,7 +42,7 @@ if (require.main === module) {
     envOf = prelude.envOf;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
     if (prelude.scoringState) pre = prelude;
-    if (prelude.standDown('guard-answer')) process.exit(0);
+    if (prelude.standDown('communication-reminder')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 // The docs root: <data root>/docs - a leftover ALFRED_CODE_DOCS_PATH (retired in 2.8.0) read first (hook-prelude.js envOf).
@@ -139,7 +140,7 @@ function proseOf(text) {
 // in the transcript each turn - ~22.5K chars over a 30-turn session).
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): at most ${BUDGET} characters of prose, near 150 words, bullets count; lead with 3 sentences or fewer, a short reply too, result first; answer only what was asked - no unasked size, risks or other ways; a result, cause or recommendation's first sentence carries its label: (high confidence), (medium confidence - <what is not verified>) or (low confidence - <why>); fit it before sending. ` +
-        `Code, tables and command output are exempt. A list of items is a table, one short row each. Only THIS message's depth words lift it (in detail / walk me ` +
+        `Code, tables and command output are exempt. A list of items is a table, one short row each. It binds replies to the user only, never code, code comments, tickets or dev-log data. Only THIS message's depth words lift it (in detail / walk me ` +
         `through / step by step / teach me / ELI5 / write a plan, or the same ask in any language), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 

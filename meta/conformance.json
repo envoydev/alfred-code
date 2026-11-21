@@ -116,7 +116,7 @@
     {
       "id": "R1", "area": "answers",
       "claim": "A turn's closing answer keeps its prose near the budget - 1,200 characters, code blocks, inline code, tables and quotes exempt - unless the turn's prompt asks for depth.",
-      "source": { "file": "stack/hooks/guard-answer.js", "marker": "Code, tables and command output are exempt." },
+      "source": { "file": "stack/hooks/communication-reminder.js", "marker": "Code, tables and command output are exempt." },
       "window": { "opens": { "turn": true, "unless": { "typed": "\\b(?:in detail|walk me through|step by step|teach me|ELI5|write a plan)\\b" } } },
       "steps": [ { "id": "near-budget", "type": "regex", "target": "last_message", "flags": "m",
         "pattern": "(?<![\\s\\S])(?:(?=(```[\\s\\S]*?```|`[^`\\n]+`|^[ \\t]*[|>][^\\n]*|[\\s\\S]))\\1){0,1200}(?![\\s\\S])" } ]
@@ -124,7 +124,7 @@
     {
       "id": "R2", "area": "answers",
       "claim": "A turn the hook handed the FORMAT ASK (a correction streak) answers it with an AskUserQuestion, not another redraft.",
-      "source": { "file": "stack/hooks/guard-answer.js", "marker": "carries the FORMAT ASK on a correction streak" },
+      "source": { "file": "stack/hooks/communication-reminder.js", "marker": "carries the FORMAT ASK on a correction streak" },
       "window": { "opens": { "turn": true, "when": { "context": "FORMAT ASK: \\d+ consecutive short turns" } } },
       "steps": [ { "id": "format-asked", "type": "tool_used", "tool": "AskUserQuestion", "min": 1 } ]
     },

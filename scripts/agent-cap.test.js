@@ -371,8 +371,8 @@ test('capGates: the one gate function both hooks call (S4 Gates)', () =>
         ['cap 0', live, { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' }],
     ]) assert.strictEqual(cap.capGates(payload, env(extra)), null, why);
     assert.strictEqual(cap.capGates(live, env(), { stop: true }).canContinue, true);
-    assert.strictEqual(cap.capGates(live, env({ ALFRED_CODE_HOOKS_OFF: 'guard-answer' }), { stop: true }).canContinue, false,
-        'guard-answer scopes .denied to its prompt, so with it off the Stop never continues');
+    assert.strictEqual(cap.capGates(live, env({ ALFRED_CODE_HOOKS_OFF: 'communication-reminder' }), { stop: true }).canContinue, false,
+        'communication-reminder scopes .denied to its prompt, so with it off the Stop never continues');
 });
 
 // ---- the deny (Task 3): the dispatch guard spawned on real payloads in a temp project ----
@@ -609,14 +609,14 @@ test('without agent-cap.js beside them the hooks run unchanged (AC16)', () =>
     const stop = callHook(path.join(dir, 'guard-stop-contract.js'), root, { hook_event_name: 'Stop', session_id: 's1', cwd: root, background_tasks: [], last_assistant_message: 'Done.' });
     assert.strictEqual(stop.status, 0, stop.stderr);
     assert.doesNotMatch(stop.stderr, CRASH);
-    const answer = callHook(path.join(dir, 'guard-answer.js'), root, { hook_event_name: 'UserPromptSubmit', session_id: 's1', cwd: root, prompt: 'hello' }, { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' });
+    const answer = callHook(path.join(dir, 'communication-reminder.js'), root, { hook_event_name: 'UserPromptSubmit', session_id: 's1', cwd: root, prompt: 'hello' }, { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' });
     assert.strictEqual(answer.status, 0);
     assert.doesNotMatch(answer.stderr, CRASH);
 });
 
 // ---- the events, the Stop half and the start line (Task 4) ----
 const STOP = path.join(HOOKS, 'guard-stop-contract.js');
-const ANSWER = path.join(HOOKS, 'guard-answer.js');
+const ANSWER = path.join(HOOKS, 'communication-reminder.js');
 const stopEnv = (root, extra = {}) => ({ ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...extra });
 const stopCall = (root, { env = {}, logEnv, ...extra } = {}) => callHook(STOP, root,
     { hook_event_name: 'Stop', session_id: 's1', cwd: root, last_assistant_message: 'Done.', background_tasks: [], ...extra },
@@ -725,8 +725,8 @@ test('still at the cap, a seat\'s Stop, the gates off: no continuation (AC15)', 
     const answerOff = project();
     const r = deniedAt(answerOff);
     put(r, 'R', 'gone', { type: 'Explore', at: Date.now(), parent: '' });
-    assert.strictEqual(stopCall(answerOff, { background_tasks: [], env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer' } }).status, 0);
-    assert.deepStrictEqual(names(r), ['AGENT-CAP-s1.denied'], 'guard-answer off: reconciled, not continued');
+    assert.strictEqual(stopCall(answerOff, { background_tasks: [], env: { ALFRED_CODE_HOOKS_OFF: 'communication-reminder' } }).status, 0);
+    assert.deepStrictEqual(names(r), ['AGENT-CAP-s1.denied'], 'communication-reminder off: reconciled, not continued');
 });
 
 test('a Stop that owes the scoring its grade does not continue for the cap (AC15)', () =>

@@ -102,11 +102,11 @@ const ROUTES = [
   // Saves the session's new model id (the user's ruling of 2026-10-21) and prints nothing - declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PostModelSwitch', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
-  { hook: 'guard-answer.js', event: 'UserPromptSubmit', deny: false, always: true },
+  { hook: 'communication-reminder.js', event: 'UserPromptSubmit', deny: false, always: true },
   // Audit 2026-10-10 C09 / C15: the post-compaction hold, the idle-gap offer and the typed-answer probe (declared below).
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: HOLD_TOOLS, deny: true, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false },
-  { hook: 'guard-answer.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
+  { hook: 'communication-reminder.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
   // The output masker (swap 1, 2026-11-11) reads what a command PRINTED, and a failed call's error text - declared below.
   { hook: 'guard-secret-value.js', event: 'PostToolUse', deny: false, noShell: true },
   { hook: 'guard-secret-value.js', event: 'PostToolUseFailure', deny: false, noShell: true },
@@ -181,9 +181,9 @@ const UNEXERCISED = {
   'guard-fresh-session-start.js::UserPromptSubmit':
     'judged against the wall clock, so a later replay reads every prompt as idle; the offer is pinned in compact-state.test.js',
   // Wired 2026-10-10 (audit C15 / C07). The replay builds a PostToolUse payload for shell calls only; the typed-answer
-  // probe is pinned in guard-answer.test.js.
-  'guard-answer.js::PostToolUse':
-    'the replay builds PostToolUse payloads for shell calls only; the typed-answer probe is pinned in guard-answer.test.js',
+  // probe is pinned in communication-reminder.test.js.
+  'communication-reminder.js::PostToolUse':
+    'the replay builds PostToolUse payloads for shell calls only; the typed-answer probe is pinned in communication-reminder.test.js',
 };
 // Wired 2026-10-10 (audit C09): the post-compaction hold denies only after a compact start wrote its marker, which a
 // per-call replay never runs; the hold is pinned in compact-state.test.js.

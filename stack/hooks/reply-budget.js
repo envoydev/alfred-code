@@ -1,5 +1,5 @@
 'use strict';
-// The last-reply check guard-answer.js uses: the size of Claude's last reply, read from the end of the transcript.
+// The last-reply check communication-reminder.js uses: the size of Claude's last reply, read from the end of the transcript.
 // `replyCheckOf(text)` is pure; `noteFor(path)` reads the file in growing tails and returns the note, or ''.
 // No dependency on hook-prelude: a missing module or a failed read adds no note.
 const fs = require('fs');
@@ -7,7 +7,7 @@ const fs = require('fs');
 const REPLY_MAX_PROSE_CHARS = 900;
 const REPLY_MAX_LEAD_SENTENCES = 3;
 const MIN_SENTENCE_WORDS = 3;
-// The lift words of the budget line itself (BUDGET_TEXT in guard-answer.js), so the note never contradicts it.
+// The lift words of the budget line itself (BUDGET_TEXT in communication-reminder.js), so the note never contradicts it.
 const LIFT_PATTERN = /\b(?:in detail|step by step|teach me|walk me through|eli5|write a plan)\b/i;
 const CLOSE_LINE_PATTERN = /^\s*(?:[-*]\s*)?\*{0,2}Checks:/m;
 const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;

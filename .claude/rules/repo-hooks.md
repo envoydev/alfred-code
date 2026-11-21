@@ -66,13 +66,13 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `env`, the launch env, then each workspace member's `.variables` - so a hook reads `process.env.ALFRED_CODE_*` as
   before, whichever file holds the value. Beside the gates,
   The csv opt-out reads a hook's OLD name too (`HOOK_RENAMED`, the manifest's `renamed.hooks` copied inline and held equal
-  by `hook-prelude.test.js`: `guard-answer-length` still switches guard-answer off - audit 2026-10-20, the hooks track's
+  by `hook-prelude.test.js`: `guard-answer-length` and `guard-answer` still switch communication-reminder off - audit 2026-10-20 and the rename of 2026-11-22, the hooks track's
   minor list). A value may name a PART (E-batch B-m6): `memory-session` -> `preferences-session:host`, where the retired
   hook's host traps live on - `partOff` reads the old name as that part, `hookDisabled` never as a whole hook, the settings
   writer re-spells a stored one, and `selection.js` keeps it out of every hook name and selection line.
   3.11.0's scoring rename leaves six old-name readers, each marked `until 4.0.0` so 4.0.0 finds them with one grep
   (the sixth, `scripts/install/workspace.js envPlan`, judges a 2.12 settings key under its new name before the rename pass):
-  `layout.js OLD_KEYS` (the four variables), the two `guard-answer:scorer` / `guard-stop-contract:scorer` rows of
+  `layout.js OLD_KEYS` (the four variables), the `guard-answer:scorer` / `guard-answer:scoring` (now `communication-reminder:scoring`) and `guard-stop-contract:scorer` rows of
   `HOOK_RENAMED`, `hook-prelude.js SCORING_SKILLS` with `STACK_RE` (a copy, a typed stack and a run under the old skill
   name), the `SETTINGS_PATH` mark in `scripts/install/stamp.js`, and `alfred-code.js dropOldScoringState` (the dead
   session state an update removes). AN ASK NOBODY ANSWERED (ruling S3, 2026-10-20): Claude Code 2.1.304 closes an AskUserQuestion left idle past
@@ -104,7 +104,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   state. After a `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*` command group every leading token shaped like a
   flag (`--mode-*` and the two older 2.x spellings, `MODE_LIKE_RE`) goes to `old` and switches NOTHING; a prose mention
   starts nothing; the expansion matcher takes every family name (audit 2026-10-14 HK06). The commands are handled at
-  `UserPromptSubmit` - `guard-fresh-session-start.js` `modePrompt` for auto-run and auto-compact, `guard-answer.js` for
+  `UserPromptSubmit` - `guard-fresh-session-start.js` `modePrompt` for auto-run and auto-compact, `communication-reminder.js` for
   scoring - each answered with one `[mode]` line that the command's body tells the model to say word for word; with
   no such line in context (hooks off, a host that runs none) the body holds the mode by the user's word for the
   conversation. Where the core plugin is absent there is no mode command: the terminal answers an unknown slash line
@@ -833,9 +833,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     telemetry one). The stop contract's main-session Stop, behind the same `capGates` as the deny, reconciles against
     `background_tasks` right after its sweep (its pendings go; running files matched by id, else the most recent N kept;
     one `agent-cap-reconciled` row) and, after the scoring backstop and never while it is owed, sends the turn back ONCE
-    per `.denied` file when the count is under the cap again (`agent-cap-continue`); guard-answer's typed prompt deletes
+    per `.denied` file when the count is under the cap again (`agent-cap-continue`); communication-reminder's typed prompt deletes
     `.denied` and its context names the number when it is not 5. Stand-downs, writing nothing: the csv or `:cap` opt-out,
-    either hook off, `minimal`, a repo never set up, a Cursor payload, cap `0`, no session id; guard-answer off stops the
+    either hook off, `minimal`, a repo never set up, a Cursor payload, cap `0`, no session id; communication-reminder off stops the
     continuation only. A lock not taken passes with one `agent-cap-unjudged` row, a started file that expired with no
     stop writes `agent-cap-expired`. Revisit (14 days of rows): continue rows past 1 in 10 denials, expired rows past 1
     in 10 transcripts, any unjudged row, or a reported stall.
@@ -1632,7 +1632,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `TURN_CHECK`, the Cursor and Stop chain gates), so either hook switched off leaves the other running, and both
     generators fold its Stop row into history-session's (`history-session.js wiringRows`, `RIDERS`), which takes its 60s;
     with history-session not picked its own row stays.
-  - `guard-answer.js` (`guard-answer-length.js` before 2026-10-20 - the user's ruling; `renamed.hooks` carries it) (`UserPromptSubmit` + `SessionStart:compact` + `PostToolUse` `AskUserQuestion`; never blocks) - injects the answer budget every turn (a
+  - `communication-reminder.js` (`guard-answer.js` before 2026-11-22 and `guard-answer-length.js` before 2026-10-20 - the user's rulings: the hook defends nothing, it only sends the reminder; `renamed.hooks` carries both straight to the new name) (`UserPromptSubmit` + `SessionStart:compact` + `PostToolUse` `AskUserQuestion`; never blocks) - injects the answer budget every turn (a
     453-char delta of the rule's section, measured 2026-11-03 - its lift list names 'step by step' beside in detail / walk me
     through / write a plan since ruling S9 (the user's, 2026-10-20), and the rule's 'or the same ask in any language' since
     audit 2026-11-03 SYS-05, the rule staying its home - audit 2026-10-14 RU06; it was 751 on every prompt), and
@@ -1668,7 +1668,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     adds `scoring: stacked for this request ...` with the switch off too, and on a `user-invocable-only` copy. All of it
     needs `scoringState` usable: either hook or its `scoring` part in `ALFRED_CODE_HOOKS_OFF`, or no loadable copy, and no
     line is injected, so nothing is graded and the backstop owes nothing (AC1-AC6, AC13, AC19, AC20, AC23-AC25;
-    `guard-answer.test.js`). A line carrying only a `--mode-*` token is no stack. While auto-run is on, the context also carries `auto-run: on
+    `communication-reminder.test.js`). A line carrying only a `--mode-*` token is no stack. While auto-run is on, the context also carries `auto-run: on
     - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it`. THE ON LINE (the stack-modes spec section 3): every typed prompt while a mode is on gets one
     user-visible `systemMessage`, `Modes ON: auto-run, scoring (level N), auto-compact`, listing only the modes on (`auto-compact` for the causes
     `auto-run` and `mode`, never for the project's variable alone) - each computed
@@ -1936,14 +1936,14 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `planField`: the plan folder the session works on, relative to the root with one trailing slash, carried by every write and
     null once its `status.json` says completed or the folder is gone; a file without the key is upgraded at its next write. The base is the root (`CLAUDE_PROJECT_DIR`, else the start cwd) - the cwd base of 2026-10-29 replaced on 2026-11-18 after the user's report of a status folder in every working folder; a session started in a linked worktree has that worktree as its root (A8). THE GATE (status-file-root design, 2026-11-18): `readerOn` writes only while `alfred-mods@*` or `session-inspector@*` is enabled in the merged `enabledPlugins` (user `<CLAUDE_CONFIG_DIR or ~/.claude>/settings.json`, project `.claude/settings.json`, local `settings.local.json`, managed settings and their `managed-settings.d` drop-ins) and nothing overrides it (a `--plugin-dir` session lists `alfred-mods@<any>: true` in the account `settings.json` or the project's `.claude/settings.json` or `settings.local.json` - a `--settings` file is never read, since Claude Code gives a hook no path to it); a settings layer that cannot be read adds nothing, and only a throw in the gate itself reads as off. The settings are re-read at every write moment (A6), so enabling the mod mid-session writes at the next Stop or prompt, and a disable stops the file's updates. The id matches
     `^[A-Za-z0-9_-]{1,128}$`, the payload is no seat's and no data-root segment is a link that leaves the project (`linkedState`, fail-closed: a link that cannot be resolved counts as outside; a refused write leaves one `status-write` row, `result: refused`).
-    The fields are fresh-session's own numbers, `autoRunFor` (one decision with guard-answer's line - stricter than
+    The fields are fresh-session's own numbers, `autoRunFor` (one decision with communication-reminder's line - stricter than
     `autoStampLive`, the stamp must name the session), `scoringState` and the newest open plan's `Resume:` text from
     `history.js openPlan` (section 2, 3; null while `ALFRED_CODE_HISTORY=0`). `fullContext` reads `compact` wherever no
     fresh session is offered - `autoRun` true, or nobody at the terminal (`hook-prelude.js unattended`, which also reads
     the hand-written `AUTO` stamp `autoRunFor` refuses) - else fresh-session's rule; a Stop whose second read finds
     `autoRun` changed rebuilds. Written at SessionStart (always), at Stop
     when a field but `updatedAt` changed (an unchanged file over 24 hours old gets its mtime moved) and at
-    guard-answer's prompt when auto-run or the scoring changed - tmp plus rename, a failure swallowed (section 4, 5). A
+    communication-reminder's prompt when auto-run or the scoring changed - tmp plus rename, a failure swallowed (section 4, 5). A
     prompt's write re-reads the file just before its rename and keeps a `handoffPrompt` a Stop wrote since its first read
     (R135); a Stop landing between that re-read and the rename (the build-and-write span) is still lost, and the next
     Stop, which recomputes the field from history, writes it back - a stated residual, no lock on every prompt (final
@@ -2033,8 +2033,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `loaded natively:` and not sent; on Cursor native files count for nothing); an `ignore rule` drops a rule held above
     unless it is one of `LOCKED_RULES` (recommendations.json `always.rules`, check 73), and a root's `member-picks:` rule
     reaches only the members whose stamps pick it. A file that is a link or over 64 KB is skipped. Pathless rules go out
-    at session and seat start, packed first fit into at most five parts of 9,500 characters (the harness caps one hook's
-    context at 10,000), a rule too long for one part cut at line ends, past part 5 named on an unsent line; `resume` and
+    at session and seat start, packed first fit into at most five parts of 9,900 characters (the harness caps one hook's
+    context at 10,000; 9,500 until 2026-11-22, the user's ruling to make room rather than cut a rule), a rule too long for one part cut at line ends, past part 5 named on an unsent line; `resume` and
     `fork` send like a startup, a root's main-session start opens part 1 with the members index (`memberIndex`: a line for each child its record lists, ignored ones out and one whose own record does not point back at this root left out too (hop rule N1), naming the child's instruction file and its rule-file count - at most 12 lines and 1,500 characters, then `- and <k> more`, which the `rules-push` row's `members` does not count; no index while `ALFRED_CODE_WORKSPACE` is 0; counted in part 1's room like the natives line, and a seat start has none), `Explore` and `Plan` seats get nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
     the first time a touched file matches one of its globs (`**/`, a trailing `/**`, `*`; a glob with `? [ { !` matches
     nothing and check 73 fails a shipped one), the file's path read from the rule's project, else from its own checkout;
@@ -2050,7 +2050,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     once; a marker found empty is another call mid-claim and prints nothing, an unwritable folder sends the part
     unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`,
     `clear`, `resume` and `fork` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
-    record as `<holder key>/<name>`, and the blocks and path rules of one call share one 9,500-character room (a rule
+    record as `<holder key>/<name>`, and the blocks and path rules of one call share one 9,900-character room (a rule
     that does not fit waits for the next touch). One `member-push` row per part (member, part, chars, unsent, tool). A
     Cursor payload gets the same text in `additional_context`; `session-surface.js` lists the members the newest session
     entered (`MEMBERS ENTERED`) from the markers' first lines. It reads its gates through the prelude

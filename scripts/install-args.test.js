@@ -313,8 +313,8 @@ test('args: --add is repeatable, takes <category> <name>, and belongs to --insta
 
 test('args: --drop mirrors --add - repeatable, <category> <name>, only with --installed-only', () =>
 {
-    const got = parseArgs(['update', '--installed-only', '--drop', 'hook guard-answer', '--drop=agent security-auditor'], {});
-    assert.deepStrictEqual(got.drop, ['hook guard-answer', 'agent security-auditor']);
+    const got = parseArgs(['update', '--installed-only', '--drop', 'hook communication-reminder', '--drop=agent security-auditor'], {});
+    assert.deepStrictEqual(got.drop, ['hook communication-reminder', 'agent security-auditor']);
     assert.throws(() => parseArgs(['update', '--drop', 'hook x'], {}), /--drop needs --installed-only/);
     assert.throws(() => parseArgs(['update', '--installed-only', '--drop', 'x'], {}), /--drop takes/);
 });

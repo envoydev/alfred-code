@@ -2424,7 +2424,7 @@ if (payload.hook_event_name === 'Stop') {
   }
   // The agent cap's one continuation: a dispatch the cap denied this prompt, and the count under the cap again - held
   // once per `.denied` file (deleted first), never while the scoring is owed its grade, before the stopHeld exit as the
-  // backstop is. guard-answer off stands it down (capGates' canContinue): that hook scopes `.denied` to its prompt.
+  // backstop is. communication-reminder off stands it down (capGates' canContinue): that hook scopes `.denied` to its prompt.
   if (agentCap && !scoringOwes) {
     const again = agentCap.stopContinue(payload, process.env);
     if (again) {

@@ -363,7 +363,7 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/communication-reminder.js"
             ],
             "timeout": 10
           }
@@ -569,7 +569,7 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/communication-reminder.js"
             ],
             "timeout": 10
           }
@@ -796,7 +796,7 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer.js"
+              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/communication-reminder.js"
             ],
             "timeout": 10
           }

@@ -51,7 +51,7 @@ test('ALFRED_CODE_HOOKS_OFF names hooks exactly, with or without the .js suffix'
 test('partOff reads <hook>:<part> from ALFRED_CODE_HOOKS_OFF, exactly, and the old key at 0', () => {
     const on = (env) => partOff('docs-session', 'gate', env);
     assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' }), true);
-    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'guard-answer, Docs-Session.js:GATE ' }), true, 'case, space and .js are not a way to miss');
+    assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'communication-reminder, Docs-Session.js:GATE ' }), true, 'case, space and .js are not a way to miss');
     assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'docs-session:ga' }), false, 'a prefix is NOT a match');
     assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'docs-session:block' }), false, 'another part');
     assert.strictEqual(on({ ALFRED_CODE_HOOKS_OFF: 'other-hook:gate' }), false, 'another hook');
@@ -193,8 +193,8 @@ test('envOf: the ALFRED_CODE_ value answers, and an empty one reads as unset', (
 
 test('the prelude reads process.env when no env is handed in', () => {
     const before = process.env.ALFRED_CODE_HOOKS_OFF;
-    process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer';
-    try { assert.strictEqual(hookDisabled('guard-answer'), true); }
+    process.env.ALFRED_CODE_HOOKS_OFF = 'communication-reminder';
+    try { assert.strictEqual(hookDisabled('communication-reminder'), true); }
     finally { if (before === undefined) delete process.env.ALFRED_CODE_HOOKS_OFF; else process.env.ALFRED_CODE_HOOKS_OFF = before; }
 });
 
@@ -493,7 +493,7 @@ test('cursorHost reads the payload only: cursor_version or a camelCase event nam
 
 test('cursorStandDown: a Cursor payload stands a non-protective hook down and never a protective one or a CLI', () => {
     const input = { cursor_version: '2.1.0', hook_event_name: 'stop' };
-    for (const hook of ['guard-stop-contract', 'guard-answer', 'docs-session', 'guard-fresh-session-start', 'preferences-session'])
+    for (const hook of ['guard-stop-contract', 'communication-reminder', 'docs-session', 'guard-fresh-session-start', 'preferences-session'])
         assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
     for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
     // The rule loader answers a Cursor payload in Cursor's own shape (CURSOR_RUNS), so it is let through.
@@ -804,7 +804,7 @@ test('sweepStale removes only its prefix\'s files past 7 days, once per dir and 
 });
 
 // A state folder inside the project that a link takes outside it was stamped and swept through the link (an end-to-end run:
-// agent-cap.js and guard-answer.js wrote `.alfred-sweep-*` into the folder a `sessions` link pointed at).
+// agent-cap.js and communication-reminder.js wrote `.alfred-sweep-*` into the folder a `sessions` link pointed at).
 test('sweepStale stands down on a folder inside the project that a link takes outside', () =>
 {
     const fresh = () => { delete require.cache[require.resolve(PRELUDE)]; return require(PRELUDE); };
@@ -1169,10 +1169,25 @@ test('HOOKS_OFF: an old hook name in the csv still switches the renamed hook off
   const prelude = require('../stack/hooks/hook-prelude.js');
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
   assert.deepStrictEqual({ ...prelude.HOOK_RENAMED }, (manifest.renamed && manifest.renamed.hooks) || {}, 'the inline map is the manifest\'s renamed.hooks');
-  assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), true, 'the old name');
-  assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length.js, history-session' }), true, 'with .js, in a list');
-  assert.strictEqual(prelude.hookDisabled('guard-answer.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer' }), true, 'the new name');
+  assert.strictEqual(prelude.hookDisabled('communication-reminder.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), true, 'the old name');
+  assert.strictEqual(prelude.hookDisabled('communication-reminder.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length.js, history-session' }), true, 'with .js, in a list');
+  assert.strictEqual(prelude.hookDisabled('communication-reminder.js', { ALFRED_CODE_HOOKS_OFF: 'communication-reminder' }), true, 'the new name');
   assert.strictEqual(prelude.hookDisabled('guard-stop-contract.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' }), false, 'no other hook');
+});
+
+// 2026-11-22: guard-answer became communication-reminder. Every older spelling a user stored still switches the hook, or its
+// scoring part, off - the whole hook by a bare name, the part by `<hook>:<part>`, never the other way round.
+test('HOOKS_OFF: every stored spelling of the communication reminder (guard-answer-length, guard-answer, :scorer, :scoring) still switches it off', () => {
+  const prelude = require('../stack/hooks/hook-prelude.js');
+  for (const stored of ['guard-answer-length', 'guard-answer-length.js', 'guard-answer', 'Guard-Answer.JS', 'communication-reminder'])
+    assert.strictEqual(prelude.hookDisabled('communication-reminder.js', { ALFRED_CODE_HOOKS_OFF: `history-session, ${stored}` }), true, stored);
+  for (const stored of ['guard-answer:scorer', 'guard-answer:scoring', 'guard-answer.js:scoring', 'GUARD-ANSWER:SCORER', 'communication-reminder:scoring'])
+    assert.strictEqual(prelude.partOff('communication-reminder', 'scoring', { ALFRED_CODE_HOOKS_OFF: `history-session, ${stored}` }), true, stored);
+  for (const stored of ['guard-answer:scorer', 'guard-answer:scoring'])
+    assert.strictEqual(prelude.hookDisabled('communication-reminder.js', { ALFRED_CODE_HOOKS_OFF: stored }), false, `${stored}: a part never stands the hook down`);
+  assert.strictEqual(prelude.partOff('communication-reminder', 'scoring', { ALFRED_CODE_HOOKS_OFF: 'guard-answer' }), false, 'a whole-hook entry is no part entry');
+  assert.strictEqual(prelude.hookDisabled('guard-stop-contract.js', { ALFRED_CODE_HOOKS_OFF: 'guard-answer, guard-answer-length' }), false, 'no other hook');
+  assert.strictEqual(prelude.partOff('guard-stop-contract', 'scoring', { ALFRED_CODE_HOOKS_OFF: 'guard-answer:scoring' }), false, 'no other hook\'s part');
 });
 
 // E-batch B-m6: memory-session.js's host traps live on as preferences-session's `host` part, and a stored `memory-session` turns
@@ -1323,7 +1338,7 @@ test('scoringState: env only - no session file, no file field, and every switch 
         assert.strictEqual(scoringState(scoringRoot, 's1', { ...scoringBase, ALFRED_CODE_SCORING: v }).on, false, `switch ${v}`);
     scoringWrite(path.join(scoringRoot, '.alfred', 'state', 'sessions', 'SCORING-s2'), 'on\nat: x\n');   // a v1 switch file left behind
     assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's2', { ...scoringBase, ALFRED_CODE_SCORING: '0' })), { usable: true, on: false, source: 'env' }, 'a v1 file is not read');
-    for (const off of ['guard-answer', 'guard-answer:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
+    for (const off of ['communication-reminder', 'communication-reminder:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
         assert.deepStrictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_HOOKS_OFF: off })), { usable: false, on: false, source: 'env' }, off);
     const s = scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_SCORING_LEVEL: '95', ALFRED_CODE_SCORING_ROUNDS: '5', ALFRED_CODE_SCORING_OUTPUTS: 'root-cause' });
     assert.deepStrictEqual([s.level, s.rounds, s.outputs], [95, 5, ['root-cause']]);
@@ -1470,7 +1485,7 @@ test('typedAutoEvent: the mode command and the typed request are events, a retir
     assert.strictEqual(typedAutoEvent(row('/alfred-code:mode:auto-run on', { isCompactSummary: true }), ''), null);
 });
 
-// Session status file (2026-10-29, plan task 1): one auto-run decision for guard-answer's prompt and the status file.
+// Session status file (2026-10-29, plan task 1): one auto-run decision for communication-reminder's prompt and the status file.
 test('autoRunFor matches autoRunNow\'s cases (T10)', () =>
 {
     const { autoRunFor, modeFlags } = require(PRELUDE);
@@ -1910,14 +1925,14 @@ test('prelude: every other hook still follows both', () =>
 
 test('until 4.0.0: a stored part switch under the old name still turns the scoring part off', () => {
   const prelude = require('../stack/hooks/hook-prelude.js');
-  for (const hook of ['guard-answer', 'guard-stop-contract']) {
-    assert.strictEqual(prelude.HOOK_RENAMED[`${hook}:scorer`], `${hook}:scoring`);
-    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `history-session, ${hook}:scorer` }), true, 'in a list');
-    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${hook.toUpperCase()}:SCORER` }), true, 'any case');
-    assert.strictEqual(prelude.hookDisabled(`${hook}.js`, { ALFRED_CODE_HOOKS_OFF: `${hook}:scorer` }), false, 'a part never stands the hook down');
-    assert.strictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_HOOKS_OFF: `${hook}:scorer` })).usable, false);
+  for (const [old, hook] of [['guard-answer', 'communication-reminder'], ['guard-stop-contract', 'guard-stop-contract']]) {
+    assert.strictEqual(prelude.HOOK_RENAMED[`${old}:scorer`], `${hook}:scoring`);
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `history-session, ${old}:scorer` }), true, 'in a list');
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${old.toUpperCase()}:SCORER` }), true, 'any case');
+    assert.strictEqual(prelude.hookDisabled(`${hook}.js`, { ALFRED_CODE_HOOKS_OFF: `${old}:scorer` }), false, 'a part never stands the hook down');
+    assert.strictEqual(pickState(scoringState(scoringRoot, 's1', { ...scoringOn, ALFRED_CODE_HOOKS_OFF: `${old}:scorer` })).usable, false);
   }
-  assert.strictEqual(prelude.partOff('guard-answer', 'scoring', { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' }), false, 'no other hook');
+  assert.strictEqual(prelude.partOff('communication-reminder', 'scoring', { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:scorer' }), false, 'no other hook');
 });
 
 test('until 4.0.0: a copy under the old folder name keeps scoring usable; the new copy decides when both exist', () => {
@@ -1942,9 +1957,9 @@ test('until 4.0.0: a copy under the old folder name keeps scoring usable; the ne
 
 test('until 4.0.0: a stored part switch spelled with .js on the hook name still turns the scoring part off (review M1)', () => {
   const prelude = require('../stack/hooks/hook-prelude.js');
-  for (const hook of ['guard-answer', 'guard-stop-contract']) {
-    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${hook}.js:scorer` }), true, `${hook}.js:scorer`);
-    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: ` ${hook.toUpperCase()}.JS:Scorer ` }), true, 'any case');
+  for (const [old, hook] of [['guard-answer', 'communication-reminder'], ['guard-stop-contract', 'guard-stop-contract']]) {
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${old}.js:scorer` }), true, `${old}.js:scorer`);
+    assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: ` ${old.toUpperCase()}.JS:Scorer ` }), true, 'any case');
     assert.strictEqual(prelude.partOff(hook, 'scoring', { ALFRED_CODE_HOOKS_OFF: `${hook}.js:scoring` }), true, 'the new part with .js');
   }
   assert.strictEqual(prelude.partOff('docs-session', 'block', { ALFRED_CODE_HOOKS_OFF: 'docs-session.js:block' }), true, 'an unrenamed part with .js');

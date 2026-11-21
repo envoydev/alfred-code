@@ -308,7 +308,7 @@ const plantWithOwn = (repo, extraEnv = {}) =>
 };
 test('install-scope: update --scope local --installed-only keeps the hooks settings.json switched off, and settings.json keeps only what is not the stack\'s (N5)', POSIX_ONLY, () =>
 {
-    const OFF = ['guard-answer', 'instrument-tool-usage'];
+    const OFF = ['communication-reminder', 'instrument-tool-usage'];
     const { loadManifest } = require('./install/manifest.js');
     const kept = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))]
         .filter((h) => !OFF.includes(h));
@@ -338,7 +338,7 @@ test('install-scope: update --scope local --installed-only keeps the hooks setti
 for (const [label, listFails] of [['a readable listing', false], ['a failing claude plugin list', true]])
     test(`install-scope: update --scope local --installed-only never hides a settings.json value behind a local default - ${label} (N6)`, POSIX_ONLY, () =>
     {
-        const OFF = ['guard-answer', 'instrument-tool-usage'];
+        const OFF = ['communication-reminder', 'instrument-tool-usage'];
         const CUSTOM = {
             ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HISTORY: '0',
             ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_DOCS_VERSIONING: 'local',
@@ -514,7 +514,7 @@ test('install-scope: after a move off local, configure reads the locally switche
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    const selection = `skill markdown-style\n${shipped.filter((h) => h !== 'guard-answer').map((h) => `hook ${h}`).join('\n')}\n`;
+    const selection = `skill markdown-style\n${shipped.filter((h) => h !== 'communication-reminder').map((h) => `hook ${h}`).join('\n')}\n`;
     const project = ['--scope', 'project', '--installed-only'];
     const { outs, steps, result } = seedRun(['install', 'update', 'update', 'update', 'update'], selection, {
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
@@ -529,13 +529,13 @@ test('install-scope: after a move off local, configure reads the locally switche
         },
         inspect: (repo) => ({ shared: JSON.parse(read(repo, SHARED_FILE) || '{}'), local: json(repo, path.join('.claude', 'settings.local.json')) }),
     });
-    assert.strictEqual(steps[0], 'guard-answer', 'the walk at local scope named the unpicked hook off in settings.local.json');
-    assert.ok(!steps[2].hooks.includes('guard-answer'), `configure's read-back lists the switched-off hook as on: ${steps[2].hooks.join(',')}`);
+    assert.strictEqual(steps[0], 'communication-reminder', 'the walk at local scope named the unpicked hook off in settings.local.json');
+    assert.ok(!steps[2].hooks.includes('communication-reminder'), `configure's read-back lists the switched-off hook as on: ${steps[2].hooks.join(',')}`);
     assert.ok(steps[2].hooks.includes('guard-secret-value'), steps[2].hooks.join(','));
     assert.strictEqual(steps[2].hooks.length, shipped.length - 1);
     const off = (env) => String((env || {}).ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort();
-    assert.deepStrictEqual(off(result.local.env), ['guard-answer', 'guard-secret-value'], 'the drop landed in the local file, where it applies');
-    assert.deepStrictEqual(off({ ...result.shared.env, ...result.local.env }), ['guard-answer', 'guard-secret-value'], 'in effect, both hooks are off');
+    assert.deepStrictEqual(off(result.local.env), ['communication-reminder', 'guard-secret-value'], 'the drop landed in the local file, where it applies');
+    assert.deepStrictEqual(off({ ...result.shared.env, ...result.local.env }), ['communication-reminder', 'guard-secret-value'], 'in effect, both hooks are off');
     assert.ok(!off(result.shared.env).includes('guard-secret-value'), 'the drop went into settings.json, shadowed');
     assert.match(outs[3], /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = /, outs[3]);
     assert.deepStrictEqual(steps[4], steps[3], 'a re-run changes neither file');

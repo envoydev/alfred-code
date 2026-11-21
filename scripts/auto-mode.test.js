@@ -1362,7 +1362,7 @@ test('final review I4/I5: the catalog and the solve flow describe the marker lif
         assert.doesNotMatch(text, /deletes the stamp|per stamp/, `${where} still tells a close to delete the stamp`);
         assert.match(text, /deletes the marker/, `${where} names the marker`);
     }
-    assert.match(row('guard-answer'), /Modes ON: /, 'the ON line is in the guard-answer row');
+    assert.match(row('communication-reminder'), /Modes ON: /, 'the ON line is in the communication-reminder row');
     const mechanics = fs.readFileSync(path.join(root, 'stack', 'skills', 'task-solve', 'references', 'step-mechanics.md'), 'utf8');
     const lifetime = mechanics.split('\n').findIndex((l) => l.includes('**Lifetime.**'));
     assert.match(mechanics.split('\n').slice(lifetime, lifetime + 3).join(' '), /hook's session stamp is never deleted/, 'step-mechanics says which stamp a close deletes');
@@ -1702,7 +1702,7 @@ test('old flag: a stamp whose only on-row is a retired flag is not live (R5)', (
     const env = { CLAUDE_PROJECT_DIR: p.root };
     const pre = require('../stack/hooks/hook-prelude.js');
     assert.strictEqual(pre.autoRunFor({ session_id: 'o6', transcript_path: t, cwd: p.root }, env, null), false);
-    const said = JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: 'o6', cwd: p.root, transcript_path: t, prompt: 'go on' }, env).stdout || '{}');
+    const said = JSON.parse(run('communication-reminder.js', { hook_event_name: 'UserPromptSubmit', session_id: 'o6', cwd: p.root, transcript_path: t, prompt: 'go on' }, env).stdout || '{}');
     assert.doesNotMatch(String(said.systemMessage || ''), /auto-run/, 'the ON line lists no auto-run');
     typedRow(t, `${AUTO_CMD} on`);
     assert.strictEqual(pre.autoRunFor({ session_id: 'o6', transcript_path: t, cwd: p.root }, env, null), true, 'the mode command\'s row proves it');
@@ -1715,7 +1715,7 @@ test('old flag: the answer hook\'s scoring switch and ON line read no retired fl
     const copy = path.join(p.root, '.claude', 'skills', 'mode-output-scoring');
     fs.mkdirSync(copy, { recursive: true });
     fs.writeFileSync(path.join(copy, 'SKILL.md'), '---\nname: mode-output-scoring\n---\n');
-    const answer = (sid, text, scoring) => JSON.parse(run('guard-answer.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: text },
+    const answer = (sid, text, scoring) => JSON.parse(run('communication-reminder.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt: text },
         { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_SCORING: scoring }).stdout || '{}');
     const said = (sid, text, scoring) => String((answer(sid, text, scoring).hookSpecificOutput || {}).additionalContext || '');
     const switches = () => (rawMode(p) === null ? [] : ['the mode file']);   // v2: a scoring switch is the mode file's
