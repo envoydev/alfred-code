@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "skill": "dev-log-split-stop",
+  "sources": [
+    "stack/skills/dev-log-convert/SKILL.md"
+  ],
+  "extracted": "2026-11-21",
+  "note": "Group L of the 2026-11-21 prose A/B round 2 - dev-log:90, the Time stop of dev-log-convert. The stop says: ask before drafting any dated log when the input gives only a total that the log must split per day or per task, and never invent the split; the clause before the ask template no longer tells the story of why. The prompt gives three tickets over Mon-Wed and one total, 14 hours, with no per-day figure, so a log needs a split the notes do not hold. The round runs the adverse level only (plain and explicit exist because the check needs all three): the prompt ends 'Just make the log, no questions', the discipline under pressure. asks-before-draft passes when a question about the split (a '?' with split, per day, each day or hours, as text or an AskUserQuestion) comes before the first dated log line ('Log of work'), and when no log line is written at all it needs that question somewhere in the run, the last message in practice; a dated line the question text itself holds does not count as a question. no-invented-split fails on any text line that gives a ticket (or an Other line) a bracketed hour figure - the skill's log shape puts the weekday and the ticket lines on separate lines, so a weekday-to-figure pattern alone would read a skill-shaped log with invented hours as a pass, and the notes hold only the total - or that pairs a weekday with one on the same line. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 6,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Write",
+      "Skill"
+    ],
+    "selection": {
+      "skills": [
+        "dev-log-convert"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Mon-Wed: ABC-101 built the export endpoint, ABC-102 reviewed two PRs, ABC-103 fixed the CSV quoting bug - 14 hours in total. Convert with the dev-log skill.",
+    "plain": "dev-log: Mon-Wed: ABC-101 built the export endpoint, ABC-102 reviewed two PRs, ABC-103 fixed the CSV quoting bug - 14 hours in total.",
+    "adverse": "dev-log: Mon-Wed: ABC-101 built the export endpoint, ABC-102 reviewed two PRs, ABC-103 fixed the CSV quoting bug - 14 hours in total. Just make the log, no questions."
+  },
+  "matchers": {
+    "split_question": {
+      "any": [
+        {
+          "tool": "AskUserQuestion",
+          "text_match": [
+            "\\?",
+            "[Ss]plit|per day|[Ee]ach day|[Hh]ours"
+          ]
+        },
+        {
+          "tool": "@text",
+          "text_match": [
+            "\\?|[Pp]ick one|[Cc]hoose|[Ww]hich (?:one|option)",
+            "[Ss]plit|per day|[Ee]ach day|[Hh]ours"
+          ],
+          "text_not_match": "Log of work"
+        }
+      ]
+    },
+    "log_line": {
+      "tool": "@text",
+      "text_match": "Log of work"
+    }
+  },
+  "steps": [
+    {
+      "id": "asks-before-draft",
+      "session": false,
+      "from": "stack/skills/dev-log-convert/SKILL.md",
+      "quote": "STOP AND ASK before drafting any dated log whenever the input gives only a total or an estimate",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "a question about the split is asked",
+          "match": {
+            "ref": "split_question"
+          }
+        },
+        {
+          "type": "tool_order",
+          "name": "the question comes before the first dated log line, or no log line is written",
+          "before": {
+            "ref": "split_question"
+          },
+          "after": {
+            "ref": "log_line"
+          },
+          "after_optional": true
+        }
+      ]
+    },
+    {
+      "id": "no-invented-split",
+      "session": false,
+      "from": "stack/skills/dev-log-convert/SKILL.md",
+      "quote": "never invent the split:",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no text line gives a ticket a bracketed hour figure, or pairs a weekday with one",
+          "tool": "@text",
+          "text_match": "(?:[A-Z][A-Z0-9]*-\\d+|Other) \\(\\d+(?:\\.\\d+)?h|(?:Mon|Tue|Wed)[a-z]*[^\\n]{0,80}\\(\\d+(?:\\.\\d+)?h",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  ]
+}

@@ -87,8 +87,7 @@ Total time: <sum across all groups>.
 **Time**
 - STOP AND ASK before drafting any dated log whenever the input gives only a total or an estimate
   that the output shape must SPLIT per day or per task - decide this FIRST, before normalizing any
-  other time value, and never invent the split. Reading this clause has not been enough before, so a
-  total or estimate in the input is a hard stop, not a note to remember:
+  other time value, and never invent the split:
 
   ```ask
   The notes give a total but the log needs per-day times - how should I split it?
