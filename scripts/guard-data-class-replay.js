@@ -9,6 +9,7 @@ function valueOf(argv, flag) {
   return at === -1 ? undefined : argv[at + 1];
 }
 
+require('../stack/hooks/hook-prelude.js').blockingStdio();
 const argv = process.argv.slice(2);
 const limit = valueOf(argv, FLAG.sampleLimit);
 run({ root: valueOf(argv, FLAG.root), samplesFile: valueOf(argv, FLAG.samples), sampleLimit: limit === undefined ? undefined : Number(limit) })
