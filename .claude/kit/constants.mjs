@@ -122,7 +122,7 @@ export const NOT_SAVED_PREFIX = 'not saved -';
 // characters that a hook returns with a pointer to a file.
 export const MAX_SHOWN_LENGTH = 400;
 export const CUT_MARK = '...';
-// reply-budget.mjs: the communication rule's line the status hook sends with each request, found by its opening, and
+// reply-budget.mjs: the communication rule's line the communication hook sends with each request, found by its opening, and
 // the limits it checks Claude's last reply against - the rule's own numbers and lift words.
 export const COMMUNICATION_RULE_FILE = '.claude/rules/communication.md';
 export const COMMUNICATION_HOOK_ERROR_PREFIX = 'claude-kit communication hook:';
@@ -154,7 +154,7 @@ export const TURN_RUNNING_PARTS = Object.freeze(['tool_use', 'tool_result']);
 // The ends of the transcript the hook reads for the last reply, small to large: one reply is far smaller, a typed
 // request can be far back, and a whole transcript can pass 100 MB. The hook stops at the first one that holds a typed request.
 export const TRANSCRIPT_TAIL_STEPS = Object.freeze([512 * 1024, 2 * 1024 * 1024, 8 * 1024 * 1024, 32 * 1024 * 1024]);
-// alfred-mods ends the status line's note at its last ';', so the text after the note carries none.
+// The status line's note ends at its last ';', so the reminder carries none, in case a reader joins the two hooks' texts.
 export const STATUS_ITEM_END = ';';
 export const ITEM_END_STAND_IN = ',';
 

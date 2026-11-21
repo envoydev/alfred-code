@@ -1,7 +1,7 @@
 // Copied into each repo as .claude/kit/reply-budget.mjs by claude-kit's sync - edit it in claude-kit, never here.
 //
-// The status hook's reply check, kept pure: from the communication rule's text it takes the reminder line, and from the
-// end of a transcript the size of Claude's last reply. The hook reads both files and passes their text in.
+// The communication hook's reply check, kept pure: from the communication rule's text it takes the reminder line, and
+// from the end of a transcript the size of Claude's last reply. The hook reads both files and passes their text in.
 import {
     BULLET_PATTERN, CLOSE_LINE_PATTERN, CODE_BLOCK_PATTERN, CONTINUATION_PATTERN, CUT_MARK, ENTRY_TYPE, HEADING_START,
     INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN, ITEM_END_STAND_IN, LIFT_PATTERN, MAX_SHOWN_LENGTH, MIN_SENTENCE_WORDS, NEWLINE,
