@@ -125,6 +125,7 @@ export const CUT_MARK = '...';
 // reply-budget.mjs: the communication rule's line the status hook sends with each request, found by its opening, and
 // the limits it checks Claude's last reply against - the rule's own numbers and lift words.
 export const COMMUNICATION_RULE_FILE = '.claude/rules/communication.md';
+export const COMMUNICATION_HOOK_ERROR_PREFIX = 'claude-kit communication hook:';
 export const REMINDER_OPENING = '- Each request carries this reminder:';
 export const REMINDER_HEAD = `Reply limits (${COMMUNICATION_RULE_FILE}):`;
 export const REPLY_MAX_PROSE_CHARS = 900;

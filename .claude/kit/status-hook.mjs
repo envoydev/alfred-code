@@ -24,16 +24,13 @@
 //
 // It never blocks a request: whatever goes wrong, it exits 0 and says so on stderr.
 //
-// After the status it adds the communication rule's reminder line, read from the rule each time so the rule stays its one
-// source, and a note when Claude's last reply passed the rule's limits (reply-budget.mjs). A missing rule or reminder
-// line adds nothing.
+// The communication rule's reminder is another hook's job (communication-hook.mjs).
 //
-// It reads the kit's file, the communication rule, the end of the session's transcript (up to 32 MB, in growing tails), the committed
-// .claude/settings.json and the three agent files of the repo it sits in, writes
+// It reads the kit's file, the committed .claude/settings.json and the three agent files of the repo it sits in, writes
 // only that kit file and opens no connection. A hook a repo commits runs in a `claude -p` or SDK session with no trust
 // dialog: before scripting over a clone you did not write, read this file as you would an install script, or start the
 // run with --bare.
-import { closeSync, fstatSync, openSync, readFileSync, readSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,7 +43,7 @@ function describeError(error)
 // through. Their stderr prefix lives in constants.mjs, which may be the module that failed, so it is written out here.
 async function loadSiblings()
 {
-    try { return { ...(await import('./constants.mjs')), ...(await import('./kit-settings.mjs')), ...(await import('./reply-budget.mjs')) }; }
+    try { return { ...(await import('./constants.mjs')), ...(await import('./kit-settings.mjs')) }; }
     catch (error)
     {
         console.error(`claude-kit status hook: ${describeError(error)}`);
@@ -56,68 +53,16 @@ async function loadSiblings()
 
 const siblings = await loadSiblings();
 const {
-    ARTICLE, COMMUNICATION_RULE_FILE, CUT_MARK, HOOK_ERROR_PREFIX, KIT_SETTINGS_FILE, MAX_SHOWN_LENGTH, MODEL_CONNECTORS,
+    ARTICLE, CUT_MARK, HOOK_ERROR_PREFIX, KIT_SETTINGS_FILE, MAX_SHOWN_LENGTH, MODEL_CONNECTORS,
     MODEL_LEADING_VERBS, MODEL_ROLES, MODEL_WORD_PATTERN, MODELS, NEWLINE, NOT_SAVED_PREFIX, POLITE_PREFIX, QUESTION_MARK,
-    ROLE_JOINERS, SAVED_PREFIX, SETTING, SETTINGS_REFUSED, SPLIT_VERBS, SWITCH, SWITCH_MODES, SWITCH_VERBS, TRANSCRIPT_TAIL_STEPS,
-    VALUE_END, VERB_CONNECTOR, completeKitSettings, isKitFolder, reminderContextOf, replyCheckOf, resolveKitSettings, setKitSettings,
+    ROLE_JOINERS, SAVED_PREFIX, SETTING, SETTINGS_REFUSED, SPLIT_VERBS, SWITCH, SWITCH_MODES, SWITCH_VERBS,
+    VALUE_END, VERB_CONNECTOR, completeKitSettings, isKitFolder, resolveKitSettings, setKitSettings,
 } = siblings ?? {};
 
 function readStdin()
 {
     try { return readFileSync(0, 'utf8'); }
     catch { return ''; }
-}
-
-// A file that is not there is normal; any other failure to read goes to stderr.
-function reportReadError(error)
-{
-    if (error?.code !== 'ENOENT') console.error(`${HOOK_ERROR_PREFIX} ${describeError(error)}`);
-}
-
-function readTextOrEmpty(file)
-{
-    try { return readFileSync(file, 'utf8'); }
-    catch (error)
-    {
-        reportReadError(error);
-        return '';
-    }
-}
-
-// The last byteCount bytes of a file, and whether they reach its start - the first line may be cut where they do not.
-function readTail(file, byteCount)
-{
-    let descriptor;
-    try
-    {
-        descriptor = openSync(file, 'r');
-        const { size } = fstatSync(descriptor);
-        const length = Math.min(byteCount, size);
-        const buffer = Buffer.alloc(length);
-        const bytesRead = readSync(descriptor, buffer, 0, length, size - length);
-        return { text: buffer.subarray(0, bytesRead).toString('utf8'), reachedStart: length === size };
-    }
-    catch (error)
-    {
-        reportReadError(error);
-        return { text: '', reachedStart: true };
-    }
-    finally { if (descriptor !== undefined) closeSync(descriptor); }
-}
-
-// The note on Claude's last reply, from growing tails of the transcript: the first tail that holds the typed request the
-// reply answered decides. With no request in the largest tail, or in the whole file, there is no note.
-function replyNoteFrom(transcriptPath)
-{
-    if (typeof transcriptPath !== 'string' || transcriptPath === '') return null;
-    for (const byteCount of TRANSCRIPT_TAIL_STEPS)
-    {
-        const { text, reachedStart } = readTail(transcriptPath, byteCount);
-        const { requestFound, note } = replyCheckOf(text);
-        if (requestFound) return note;
-        if (reachedStart) return null;
-    }
-    return null;
 }
 
 function parseHookInput(text)
@@ -242,10 +187,8 @@ function buildOutput(hookInput, env, root, folder)
         ...names.map((name) => `${name}=${settings[name].value} (${settings[name].origin});`),
         ...(savedNote === null ? [] : [savedNote]),
     ].join(' ');
-    const reminder = reminderContextOf(readTextOrEmpty(join(root, COMMUNICATION_RULE_FILE)), replyNoteFrom(hookInput.transcript_path));
-    const fullContext = reminder === null ? context : [context, reminder].join(NEWLINE);
 
-    return { systemMessage: userLine, hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: fullContext } };
+    return { systemMessage: userLine, hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: context } };
 }
 
 if (siblings !== null)

@@ -16,8 +16,8 @@ run its sync, which rewrites them in every repo.
   keeps what was set in chat - a model, the pass score, scoring, auto-run, auto-approve - until it is changed, written by the hook
   when a request's first line is only words to switch a mode or name a role's model, and by
   `node .claude/kit/settings.mjs set <name> <value>` for everything else. `status-hook.mjs` is the `UserPromptSubmit` hook this repo's `.claude/settings.json` runs: it shows the
-  same values with every request. With them it sends the communication rule's reminder line, and a note when the last
-  reply passed the rule's limits (`reply-budget.mjs`).
+  same values with every request. `communication-hook.mjs` is the second one: it sends the communication rule's
+  reminder line, and a note when the last reply passed the rule's limits (`reply-budget.mjs`).
 - `node .claude/kit/prove-plan.mjs <plan>` proves an audit plan: it reads each edited file at the plan's `Baseline`
   revision, finds every `Old` exactly once and applies its `New`, writes the results into a folder beside the plan
   (`expected/` for `plan.md`, each file named `<path>.expected` so no test runner picks it up) and prints
