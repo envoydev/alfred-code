@@ -1274,3 +1274,13 @@ Switch it off with `ALFRED_CODE_HOOKS_OFF=guard-data-class`, or one part with `g
 or `:egress`. The documentation-server rows start one more `node` process per query-shaped MCP call.
 
 Nothing to do in an installed project beyond the update.
+
+## after 3.15.0 - the data-class guard asks less often by mistake
+
+`guard-data-class` reads card numbers only in a real card grouping (4-4-4-4, Amex 4-6-5, Diners 4-6-4, 4-4-4-1), so a log
+line such as a status code beside a millisecond timestamp no longer counts as a card; UnionPay and RuPay numbers that
+open with 81 or 82 now count. A Read of your own session transcripts or of the data root's `statistics/` and `state/`
+no longer asks as a data dump. The outside-query check searches your own code under `public/` again, and still skips
+`public/vendor/`, `public/js/` and `public/build/`.
+
+Nothing to do in an installed project beyond the update.
