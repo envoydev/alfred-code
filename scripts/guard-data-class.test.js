@@ -297,3 +297,34 @@ test('askText names the clear list, denyText never does', () => {
     assert.ok(deny.startsWith('Blocked: Read of data/x.csv'));
   }
 });
+
+test('globMatch: a leading double star folder matches zero or more folders', () => {
+  assert.equal(globMatch('**/x.pdf', 'x.pdf'), true);
+  assert.equal(globMatch('**/x.pdf', 'a/b/x.pdf'), true);
+  assert.equal(globMatch('**/x.pdf', 'a/bx.pdf'), false);
+  assert.equal(globMatch('a/**/x.pdf', 'a/x.pdf'), true);
+  assert.equal(globMatch('a/**/x.pdf', 'a/b/c/x.pdf'), true);
+});
+
+test('pathState: a cleared double star line clears a root-level file', () => {
+  const lists = parseSensitivePaths('**/*.csv\n!**/x.csv');
+  assert.equal(pathState('x.csv', lists), 'cleared');
+  assert.equal(pathState('y.csv', lists), 'listed');
+});
+
+test('pathCandidates strips leading parent folders and drops an inner one', () => {
+  assert.deepEqual(pathCandidates(['../../src/pricing.js']), ['src/pricing.js']);
+  assert.deepEqual(pathCandidates(['./../src/pricing.js']), ['src/pricing.js']);
+  assert.deepEqual(pathCandidates(['src/../x.js']), []);
+  assert.deepEqual(pathCandidates(['../../src/../x.js']), []);
+});
+
+test('denyText never names the list file, even for the kind a listed document carries', () => {
+  const kind = documentVerdict({ ext: '.docx', tracked: true, listed: true }).kind;
+  assert.ok(kind.includes('.sensitive-paths'));
+  const deny = denyText('document', 'clients/a.docx', kind);
+  assert.ok(!deny.includes('.sensitive-paths'));
+  assert.ok(deny.includes('listed as sensitive'));
+  assert.ok(!denyText('dump', 'a.csv', 'see .alfred/.sensitive-paths').includes('.sensitive-paths'));
+  assert.ok(askText('document', 'clients/a.docx', kind).includes('.alfred/.sensitive-paths'));
+});

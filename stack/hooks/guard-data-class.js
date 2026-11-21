@@ -135,7 +135,10 @@ function globMatch(glob, rel) {
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i];
     if (c === '*') {
-      if (glob[i + 1] === '*') {
+      if (glob[i + 1] === '*' && glob[i + 2] === '/') {
+        re += '(?:.*/)?';
+        i += 2;
+      } else if (glob[i + 1] === '*') {
         re += '.*';
         i++;
       } else {
@@ -237,8 +240,9 @@ function pathCandidates(tokens) {
   for (const t of tokens) {
     if (!t.includes('/') || !/\.[A-Za-z0-9]+$/.test(t)) continue;
     if (/[*?[\]{}\\]|:\(/.test(t)) continue;
-    const c = t.startsWith('./') ? t.slice(2) : t;
-    if (c && !out.includes(c)) out.push(c);
+    const c = t.replace(/^(?:\.{1,2}\/)+/, '');
+    if (!c || c.split('/').includes('..')) continue;
+    if (!out.includes(c)) out.push(c);
   }
   return out;
 }
@@ -345,7 +349,8 @@ function askText(route, path, detail) {
 }
 
 function denyText(route, path, detail) {
-  const what = route === 'document' ? `it is a business document (${detail})` : `it looks like a data dump (${detail})`;
+  const shown = String(detail).replace(/listed in \S*\.sensitive-paths/g, 'listed as sensitive').replace(/\S*\.sensitive-paths/g, 'listed as sensitive');
+  const what = route === 'document' ? `it is a business document (${shown})` : `it looks like a data dump (${shown})`;
   return `Blocked: Read of ${path}: ${what}, and nobody is here to clear it. Work from a synthetic sample, or leave this read to the user.`;
 }
 
