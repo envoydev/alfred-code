@@ -97,6 +97,16 @@ test('A1: the protocol and the output block name deferred_runs', () =>
     assert.deepStrictEqual(registry.sites.map((site) => site.file), VERIFIERS);
 });
 
+// The user's ruling of 2026-11-21 on A1's integration half: the data verifier's Testcontainers run stays in its seat;
+// only the E2E and device suites move to the main session.
+test('A1 integration half: a verifier keeps its own integration suite in the seat', () =>
+{
+    const protocol = flat(read(PROTOCOL));
+    assert.ok(protocol.includes('A verifier\'s own integration suite - the Testcontainers run its gate names - is the exception and stays in its seat: only the E2E and device suites move to the main session.'));
+    for (const dir of VENDORED_IN) assert.strictEqual(read(`stack/skills/${dir}/references/domain-trio-protocol.md`), read(PROTOCOL), `${dir} carries a byte-equal copy`);
+    assert.match(flat(read('stack/agents/data-verifier.md')), /Testcontainers/, 'the data verifier still runs its suite in the seat');
+});
+
 // --- the offline proof: every step passes a trace that keeps it and fails one that breaks it ----------------------
 
 let seq = 0;
