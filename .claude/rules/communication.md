@@ -10,6 +10,7 @@ These are the user's own rulings, gathered in one rule (the user, 2026-11-19).
 - Only the user's own words lift the cap: 'in detail', 'step by step', 'teach me'.
 - A close that a rule or a skill requires is outside the cap. Keep the form its rule or skill gives; where none is given, write one-line bullets with a `Checks:` label.
 - Answer the question asked. Leave out the parts it did not ask for, such as size, risks and other ways.
+- A list of topics or items is a table, one short row each: the item, its state, and its cost or time where known.
 - Cut a draft over the cap in this order: process talk, parts the question did not ask for, facts an earlier reply gave, what did not change. Count again before you send.
 - Write to the ASD-STE100 rules: an instruction is 20 words or fewer, a description 25. Use the active voice, one instruction per sentence, one word for one meaning, and common words.
 - Tone: the result first, then the recommendation and why. No filler and no process talk. Name the source of each number.
