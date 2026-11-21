@@ -263,3 +263,30 @@ test('timing: p50 and max of 20 WebSearch runs', () => {
   times.sort((a, b) => a - b);
   console.log(`# WebSearch runs: p50 ${Math.round(times[10])} ms, max ${Math.round(times[19])} ms`);
 });
+
+test('E2: a public question passes beside a type annotation, a vendored library and docs prose', () => {
+  const dir = project({
+    'src/p.ts': 'interface P { onChange: (e: Event) => void }\n',
+    'public/vendor/react.development.js': 'function useEffect(create, deps) {}\n',
+    'docs/notes.md': 'The function forEach walks an array.\n',
+  });
+  git(dir, 'add', '.');
+  silent(search(dir, 'react onChange event typescript type'));
+  silent(search(dir, 'react useEffect cleanup function'));
+  silent(search(dir, 'javascript forEach with async await'));
+});
+
+test('E1: an absolute path inside the repo is refused as its repo-relative name, one outside passes', () => {
+  const dir = codeProject();
+  const r = search(dir, 'bug in ' + path.join(dir, 'src', 'pricing.js') + ':3:7 today');
+  assert.equal(r.status, 2);
+  assert.ok(r.stderr.includes('Remove: src/pricing.js.'), r.stderr);
+  assert.ok(!r.stderr.includes(dir), 'the absolute spelling is not repeated');
+  silent(search(dir, 'bug in ' + path.join(outside(), 'src', 'pricing.js') + ' today'));
+});
+
+test('E3: prose holding a lone operator or brace pair passes', () => {
+  const dir = codeProject();
+  silent(search(dir, 'javascript === vs !== strict equality explained'));
+  silent(search(dir, 'bash difference between { } and ( ) grouping'));
+});

@@ -773,7 +773,7 @@
       "file": "guard-data-class.js",
       "matcher": "WebSearch|WebFetch",
       "event": "",
-      "note": "the outside-query route: a WebSearch query or a WebFetch url and prompt that carries project code (an own identifier, a path, a snippet of the repo) is refused with the exact tokens to remove, so only the public question goes out; guard-data-class:egress in ALFRED_CODE_HOOKS_OFF turns it off"
+      "note": "the outside-query route: the hook judges a WebSearch query and the decoded query-string values of a WebFetch url (never its path, host or prompt), and refuses one that carries a tracked project path, a repo-declared identifier or code lines, naming the exact tokens to remove, so only the public question goes out; guard-data-class:egress in ALFRED_CODE_HOOKS_OFF turns it off"
     },
     {
       "file": "guard-data-class.js",

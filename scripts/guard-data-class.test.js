@@ -232,8 +232,14 @@ test('git argv shapes', () => {
   assert.ok(!/\\s/.test(joined) && !/\\b/.test(joined));
   assert.ok(!argv.includes('-w'));
   assert.equal(argv.filter((a) => a === '-e').length, 4);
-  assert.deepEqual(argv.slice(-2), ['--', ':/']);
+  const pathspecs = argv.slice(argv.indexOf('--'));
+  assert.deepEqual(pathspecs.slice(0, 2), ['--', ':/']);
+  assert.deepEqual(pathspecs.slice(2), ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/**', '**/third_party/**', '**/node_modules/**'].map((g) => ':(top,exclude,glob)' + g));
   assert.ok(argv.some((a) => a.includes('[[:space:]]+other([^[:alnum:]_$]|$)')));
+  const own = argv.filter((a) => a.includes('other([[:space:]]*:'));
+  assert.equal(own.length, 1);
+  assert.ok(own[0].includes('[[:space:]]*:[[:space:]]*(async[[:space:]]+)?function') && own[0].includes('[[:space:]]*=[[:space:]]*(async[[:space:]]+)?(function|\\()'));
+  assert.ok(!own[0].includes('[:=]'));
 });
 
 test('pathsFound and namesFound map output back to candidates', () => {

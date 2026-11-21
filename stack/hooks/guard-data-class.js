@@ -15,7 +15,7 @@ const HEAD_BYTES = 512 * 1024;
 const EGRESS_DEADLINE_MS = 4000;
 const DATA_EXTS = ['.sql', '.dump', '.bak', '.csv', '.tsv', '.jsonl', '.ndjson', '.parquet', '.avro', '.db', '.sqlite', '.sqlite3', '.xlsx', '.xls'];
 const TEXT_DATA_EXTS = ['.csv', '.tsv', '.json', '.jsonl', '.ndjson', '.txt', '.log', '.sql', '.xml', '.yaml', '.yml', ''];
-const DOC_EXTS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.rtf', '.pages', '.numbers', '.key'];
+const DOC_EXTS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.rtf', '.pages', '.numbers'];
 const PUBLIC_NAMES = ['getServerSideProps', 'getStaticProps', 'getStaticPaths', 'generateMetadata', 'generateStaticParams',
   'mapStateToProps', 'mapDispatchToProps', 'componentDidMount', 'componentDidUpdate', 'componentWillUnmount', 'ngOnInit', 'ngOnDestroy',
   'ngOnChanges', 'ngAfterViewInit', 'ConfigureServices', 'OnModelCreating', 'setUp', 'tearDown', 'setUpClass', 'tearDownClass', 'beforeEach',
@@ -28,6 +28,11 @@ const RESERVED_TLDS = new Set(['example', 'test', 'invalid', 'localhost']);
 const RESERVED_DOMAINS = ['example.com', 'example.net', 'example.org'];
 const DUMP_WORD = /(?:^|[^A-Za-z0-9])(prod|production|backup|export|dump|snapshot)(?=[^A-Za-z0-9]|$)/i;
 const MARKER = /=>|===|!==|[{};]/g;
+const BARE_MARKER = /^(?:=>|===|!==|[{};])+$/;
+const CARD_RUN = /(?<![\w+])[2-6](?:[ -]?\d){12,18}(?!\w)/g;
+const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
+const NAMES_EXCLUDE_MAGIC = ':(top,exclude,glob)';
+const NAMES_EXCLUDE_GLOBS = ['**/*.md', '**/*.txt', '**/*.min.*', '**/vendor/**', '**/dist/**', '**/public/**', '**/third_party/**', '**/node_modules/**'];
 const SPLIT = /[\s"'`()[\]{},;]+/;
 const LIST_FILE = '.alfred/.sensitive-paths';
 const HOOK_NAME = 'guard-data-class';
@@ -119,7 +124,7 @@ function piiCounts(text) {
     }
     return m;
   });
-  for (const m of rest.matchAll(/(?<![\w+])\d(?:[ -]?\d){12,18}(?!\w)/g)) {
+  for (const m of rest.matchAll(CARD_RUN)) {
     const digits = m[0].replace(/[ -]/g, '');
     if (digits.length >= 13 && digits.length <= 19 && luhn(digits)) cards.add(digits);
   }
@@ -146,7 +151,7 @@ function parseSensitivePaths(text) {
 }
 
 function globMatch(glob, rel) {
-  let re = '^';
+  let re = glob.includes('/') ? '^' : '^(?:.*/)?';
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i];
     if (c === '*') {
@@ -262,6 +267,35 @@ function pathCandidates(tokens) {
   return out;
 }
 
+function isAbsoluteToken(token) {
+  return token.startsWith('/') || WINDOWS_ABSOLUTE.test(token);
+}
+
+function insideRoot(token, root) {
+  const flavour = WINDOWS_ABSOLUTE.test(token) ? path.win32 : path.posix;
+  const rootIsWindows = WINDOWS_ABSOLUTE.test(root);
+  if ((flavour === path.win32) !== rootIsWindows) return null;
+  const rel = flavour.relative(root, token);
+  if (!rel || rel === '..' || rel.startsWith('..' + flavour.sep) || flavour.isAbsolute(rel)) return null;
+  return rel.split(flavour.sep).join('/');
+}
+
+function relativizeTokens(tokens, roots) {
+  const kept = [];
+  const aliases = [];
+  for (const token of tokens) {
+    if (!isAbsoluteToken(token)) {
+      kept.push(token);
+      continue;
+    }
+    const rel = roots.map((root) => insideRoot(token, root)).find((r) => r !== null);
+    if (rel === undefined) continue;
+    kept.push(rel);
+    aliases.push({ token, rel });
+  }
+  return { tokens: kept, aliases };
+}
+
 function trackedArgv(file) {
   const parts = String(file).split(/[\\/]/);
   return ['ls-files', '--error-unmatch', '--', parts[parts.length - 1]];
@@ -276,9 +310,10 @@ function namesArgv(candidates) {
   for (const raw of candidates) {
     const c = raw.replace(/\$/g, '\\$');
     argv.push('-e', `(function|class|def|interface|type|enum|struct|record|func|fn|module|namespace)[[:space:]]+${c}([^[:alnum:]_$]|$)`);
-    argv.push('-e', `(^|[^[:alnum:]_$.])${c}[[:space:]]*[:=][[:space:]]*(async[[:space:]]+)?(function|\\()`);
+    argv.push('-e', `(^|[^[:alnum:]_$.])${c}([[:space:]]*:[[:space:]]*(async[[:space:]]+)?function|[[:space:]]*=[[:space:]]*(async[[:space:]]+)?(function|\\())`);
   }
   argv.push('--', ':/');
+  for (const glob of NAMES_EXCLUDE_GLOBS) argv.push(NAMES_EXCLUDE_MAGIC + glob);
   return argv;
 }
 
@@ -297,6 +332,13 @@ function namesFound(grepOutput, candidates) {
   return candidates.filter((c) => lines.some((l) => wholeWord(l, c)));
 }
 
+function markerCount(line) {
+  const n = (line.match(MARKER) || []).length;
+  if (!n) return 0;
+  const touching = line.split(/\s+/).some((word) => word && !BARE_MARKER.test(word) && word.search(MARKER) !== -1);
+  return touching ? n : 0;
+}
+
 function codeLines(text) {
   const src = String(text);
   if (src.length < 40) return 0;
@@ -304,7 +346,7 @@ function codeLines(text) {
   let dense = false;
   let withMarker = 0;
   for (const line of src.split(/\r?\n/)) {
-    const n = (line.match(MARKER) || []).length;
+    const n = markerCount(line);
     if (n) withMarker++;
     if (n >= 2) dense = true;
     total += n;
@@ -333,14 +375,14 @@ function nameCandidates(tokens) {
   return out;
 }
 
-function rewriteBrief({ tool, text, paths, names, codeLines: lines }) {
+function rewriteBrief({ tool, text, paths, names, codeLines: lines, aliases }) {
   const removed = paths.concat(names);
   if (lines > 0) removed.push(lines === 1 ? '1 code line' : `${lines} code lines`);
-  const pathSet = new Set(paths);
+  const pathSet = new Set(paths.concat((aliases || []).filter((a) => paths.includes(a.rel)).map((a) => a.token)));
   const nameSet = new Set(names);
   const kept = String(text)
     .split(/\r?\n/)
-    .filter((l) => !(lines > 0 && /=>|===|!==|[{};]/.test(l)))
+    .filter((l) => !(lines > 0 && markerCount(l) > 0))
     .join(' ')
     .split(/\s+/)
     .filter((w) => {
@@ -427,8 +469,10 @@ function insideRel(base, target) {
 }
 
 function relativeTo(root, file) {
+  const direct = insideRel(root, file);
+  if (direct !== null) return direct;
   const realRoot = realOf(root);
-  const lexical = insideRel(root, file) || insideRel(realRoot, file);
+  const lexical = insideRel(realRoot, file);
   return lexical !== null ? lexical : insideRel(realRoot, realOf(file));
 }
 
@@ -459,6 +503,10 @@ function readFacts(ctx, file, stat) {
   return { ext, base: path.basename(file), bytes: stat.size, head, dumpsOn, docsOn, tracked: needsTracked ? isTracked(file) : true };
 }
 
+function nobodyAnswers(ctx) {
+  return ctx.payload.permission_mode === NO_ANSWER_MODE || Boolean(ctx.prelude.unattended(ctx.payload));
+}
+
 function readOutcome(ctx) {
   const input = ctx.payload.tool_input;
   if (!input || typeof input.file_path !== 'string' || !input.file_path) return null;
@@ -482,19 +530,28 @@ function readOutcome(ctx) {
   const detail = doc ? (dump ? `${doc.kind} (${dump.why})` : doc.kind) : dump.why;
   const shown = rel === null ? file : rel;
   const counts = { bytes: facts.bytes, ...(dump && dump.branch === 'dump-pii' ? piiCounts(facts.head) : {}) };
-  const mode = ctx.nobodyAnswers ? 'deny' : 'ask';
+  const mode = nobodyAnswers(ctx) ? 'deny' : 'ask';
   const listShown = insideRel(realOf(ctx.root), listFile) || insideRel(ctx.root, listFile) || listFile;
   const text = mode === 'deny' ? denyText(route, shown, detail) : askText(route, shown, detail.split(LIST_FILE).join(listShown), rel === null ? null : listShown);
   return { mode, text, branch: (doc || dump).branch, base: facts.base, counts };
 }
 
-function searchRepo(text, cwd, budgetMs) {
+function projectRoots(root, cwd, budgetMs) {
+  const roots = [root, realOf(root)];
+  const top = runGit(['rev-parse', '--show-toplevel'], cwd, Math.max(budgetMs - elapsedMs(), 1));
+  const topLevel = top.kind === 'done' && top.status === 0 ? top.stdout.trim() : '';
+  if (topLevel) roots.push(topLevel, realOf(topLevel));
+  return Array.from(new Set(roots));
+}
+
+function searchRepo(text, cwd, budgetMs, root) {
   const tokens = tokensOf(text);
+  const relative = tokens.some(isAbsoluteToken) ? relativizeTokens(tokens, projectRoots(root, cwd, budgetMs)) : { tokens, aliases: [] };
   const steps = [
-    { key: 'paths', wanted: pathCandidates(tokens), argv: pathsArgv, okStatuses: [0], read: pathsFound },
+    { key: 'paths', wanted: pathCandidates(relative.tokens), argv: pathsArgv, okStatuses: [0], read: pathsFound },
     { key: 'names', wanted: nameCandidates(tokens), argv: namesArgv, okStatuses: [0, 1], read: namesFound },
   ];
-  const found = { paths: [], names: [], unjudged: false };
+  const found = { paths: [], names: [], aliases: relative.aliases, unjudged: false };
   for (const step of steps) {
     if (!step.wanted.length) continue;
     const left = budgetMs - elapsedMs();
@@ -522,12 +579,12 @@ function egressOutcome(ctx) {
   const budgetMs = deadlineMs(process.env);
   let unjudged = false;
   for (const text of texts) {
-    const found = searchRepo(text, ctx.payload.cwd || ctx.root, budgetMs);
+    const found = searchRepo(text, ctx.payload.cwd || ctx.root, budgetMs, ctx.root);
     unjudged = unjudged || found.unjudged;
     const f = egressFindings(text, found);
     if (!f.any) continue;
     const counts = { paths: f.paths.length, names: f.names.length, codeLines: f.codeLines };
-    return { mode: 'deny', branch: 'egress', base: tool, counts, text: rewriteBrief({ tool, text, paths: f.paths, names: f.names, codeLines: f.codeLines }) };
+    return { mode: 'deny', branch: 'egress', base: tool, counts, text: rewriteBrief({ tool, text, paths: f.paths, names: f.names, codeLines: f.codeLines, aliases: found.aliases }) };
   }
   return unjudged ? { mode: 'unjudged', branch: 'egress-unjudged', base: tool, counts: { elapsedMs: elapsedMs() } } : null;
 }
@@ -594,7 +651,7 @@ function main() {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
   if (prelude.cursorStandDown(payload, __filename)) return;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const ctx = { prelude, payload, root, nobodyAnswers: payload.permission_mode === NO_ANSWER_MODE || prelude.unattended(payload) };
+  const ctx = { prelude, payload, root };
   let outcome;
   try {
     outcome = judgeCall(ctx);
@@ -608,7 +665,7 @@ if (require.main === module) main();
 
 module.exports = {
   DUMP_MIN_BYTES, PII_MIN, HEAD_BYTES, EGRESS_DEADLINE_MS, PUBLIC_NAMES, DOC_SERVERS, DATA_EXTS, TEXT_DATA_EXTS, DOC_EXTS,
-  piiCounts, parseSensitivePaths, globMatch, pathState, dumpVerdict, documentVerdict, serverOf, judgedTexts,
+  piiCounts, parseSensitivePaths, globMatch, pathState, relativizeTokens, judgeCall, dumpVerdict, documentVerdict, serverOf, judgedTexts,
   tokensOf, pathCandidates, trackedArgv, pathsArgv, namesArgv, pathsFound, namesFound, egressFindings, nameCandidates,
   codeLines, rewriteBrief, askText, denyText,
 };

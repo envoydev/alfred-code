@@ -13,7 +13,7 @@ Run time: about 3 s over 1.0 GB of local transcripts. The replay feeds each uniq
 ## Counts
 
 ```json
-{"transcripts":642,"reads":3098,"asks":{"dump-size":0,"dump-name":0,"dump-pii":0,"document-untracked":0,"document-listed":0},"queries":{"WebSearch":4,"WebFetch":292,"mcp":2},"denies":0,"judgedWithRepo":7,"judgedShapeOnly":0,"unjudged":0,"noText":291,"unreadable":0}
+{"transcripts":650,"reads":3111,"asks":{"dump-size":0,"dump-name":0,"dump-pii":0,"document-untracked":0,"document-listed":0},"queries":{"WebSearch":4,"WebFetch":292,"mcp":2},"denies":0,"judgedWithRepo":7,"judgedShapeOnly":0,"unjudged":0,"noText":291,"unreadable":0}
 ```
 
 The corpus grew by one transcript and one Read between the first run and this one, because the session that wrote this file is itself a transcript. An independent count of the first run's transcripts matched its unique-call counts (Read 3,097; WebFetch 292; context7 2; WebSearch 4).
@@ -30,7 +30,7 @@ A failed tracked check on a Read counts the file as untracked, the conservative 
 
 ## Bars
 
-- Asks under 1 in 200 Reads: met. 0 asks over 3,098 Reads, so the bar allows up to 15.
+- Asks under 1 in 200 Reads: met. 0 asks over 3,111 Reads, so the bar allows up to 15.
 - The sample of denies holds no plain public query: met. There were 0 denies, so the sample is empty. Not shown by this corpus: that a public query is passed where project code is present, because the local corpus holds 4 WebSearch calls and no deny. The unit tests (`scripts/guard-data-class.test.js`) and the replay's own test (`scripts/guard-data-class-replay.test.js`) cover that case with synthetic input.
 - A `getServerSideProps` question passes: met, by `scripts/guard-data-class-replay.test.js` (a repo declaring it, a query naming it, no deny) and by `PUBLIC_NAMES`.
 - Failed or timed-out git calls: 0 (`unjudged`). Unreadable transcripts: 0.
