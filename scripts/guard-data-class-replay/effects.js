@@ -41,7 +41,7 @@ function git(argv, cwd, okStatuses) {
     maxBuffer: GIT_MAX_BUFFER,
     encoding: 'utf8',
   });
-  if (result.error) return { kind: 'fail', stdout: '' };
+  if (result.error) return { kind: result.error.code === 'ENOENT' ? 'absent' : 'fail', stdout: '' };
   if (result.status === GIT_STATUS.notARepo) return { kind: 'norepo', stdout: '' };
   if (okStatuses.includes(result.status)) return { kind: 'ok', stdout: result.stdout || '' };
   return { kind: 'fail', stdout: '' };
@@ -101,7 +101,7 @@ function searchRepo(cwd, plan) {
   for (const step of steps) {
     if (!step.wanted.length) continue;
     const result = git(step.argv(step.wanted), cwd, step.ok);
-    if (result.kind === 'norepo') return { paths: [], names: [], state: FOUND_STATE.none };
+    if (result.kind === 'norepo' || result.kind === 'absent') return { paths: [], names: [], state: FOUND_STATE.none };
     if (result.kind === 'fail') found.state = FOUND_STATE.failed;
     else found[step.key] = step.read(result.stdout, step.wanted);
   }
@@ -126,7 +126,7 @@ function judgeQuery(name, input, cwd) {
     const findings = queryFindings(text, found);
     if (findings.any && !first) first = { text, findings };
   }
-  if (!texts.length) state = cwd && isFolder(cwd) ? FOUND_STATE.repo : FOUND_STATE.none;
+  if (!texts.length) state = FOUND_STATE.noText;
   return { group: queryGroup(name), state, denied: first !== null, first };
 }
 
@@ -163,17 +163,25 @@ function toolUses(line) {
 }
 
 async function replayTranscript(file, tally, samples, seenIds) {
-  const lines = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
-  for await (const line of lines) {
-    const row = toolUses(line);
-    if (!row) continue;
-    for (const item of row.items) {
-      if (item.id) {
-        if (seenIds.has(item.id)) continue;
-        seenIds.add(item.id);
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const lines = readline.createInterface({ input: fs.createReadStream(null, { fd, autoClose: false }), crlfDelay: Infinity });
+    for await (const line of lines) {
+      const row = toolUses(line);
+      if (!row) continue;
+      for (const item of row.items) {
+        if (item.id) {
+          if (seenIds.has(item.id)) continue;
+          seenIds.add(item.id);
+        }
+        noteTool(tally, samples, item, row.cwd);
       }
-      noteTool(tally, samples, item, row.cwd);
     }
+  } catch {
+    tally.unreadable += 1;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
   }
 }
 

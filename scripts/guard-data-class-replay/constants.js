@@ -14,7 +14,7 @@ const TOOL = Object.freeze({ read: 'Read', webSearch: 'WebSearch', webFetch: 'We
 const QUERY_GROUP = Object.freeze({ webSearch: 'WebSearch', webFetch: 'WebFetch', mcp: 'mcp' });
 const ASK_BRANCHES = Object.freeze(['dump-size', 'dump-name', 'dump-pii', 'document-untracked', 'document-listed']);
 const TRACKED_BRANCHES = Object.freeze(['dump-size', 'document-untracked']);
-const FOUND_STATE = Object.freeze({ repo: 'repo', none: 'none', failed: 'failed' });
+const FOUND_STATE = Object.freeze({ repo: 'repo', none: 'none', failed: 'failed', noText: 'noText' });
 const SAMPLE_KIND = Object.freeze({ deny: 'deny', ask: 'ask' });
 
 module.exports = {

@@ -6,14 +6,15 @@ function createTally() {
   for (const branch of ASK_BRANCHES) asks[branch] = 0;
   const queries = {};
   for (const group of Object.values(QUERY_GROUP)) queries[group] = 0;
-  return { transcripts: 0, reads: 0, asks, queries, denies: 0, judgedWithRepo: 0, judgedShapeOnly: 0, unjudged: 0 };
+  return { transcripts: 0, reads: 0, asks, queries, denies: 0, judgedWithRepo: 0, judgedShapeOnly: 0, unjudged: 0, noText: 0, unreadable: 0 };
 }
 
 function noteQuery(tally, group, outcome) {
   tally.queries[group] += 1;
   if (outcome.state === FOUND_STATE.none) tally.judgedShapeOnly += 1;
+  else if (outcome.state === FOUND_STATE.failed) tally.unjudged += 1;
+  else if (outcome.state === FOUND_STATE.noText) tally.noText += 1;
   else tally.judgedWithRepo += 1;
-  if (outcome.state === FOUND_STATE.failed) tally.unjudged += 1;
   if (outcome.denied) tally.denies += 1;
 }
 
@@ -27,6 +28,8 @@ function reportOf(tally) {
     judgedWithRepo: tally.judgedWithRepo,
     judgedShapeOnly: tally.judgedShapeOnly,
     unjudged: tally.unjudged,
+    noText: tally.noText,
+    unreadable: tally.unreadable,
   };
 }
 

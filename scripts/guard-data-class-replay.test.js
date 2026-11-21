@@ -39,10 +39,14 @@ function repoWith(file, text) {
 const toolRow = (id, name, input, cwd) => ({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', id, name, input }] } });
 
 function replay(rows, ...extra) {
+  return replayWith({}, rows, ...extra);
+}
+
+function replayWith(env, rows, ...extra) {
   const root = tempDir('replay-root-');
   fs.mkdirSync(path.join(root, 'project'));
   fs.writeFileSync(path.join(root, 'project', 'session.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  const r = spawnSync(process.execPath, [SCRIPT, '--root', root, ...extra], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [SCRIPT, '--root', root, ...extra], { encoding: 'utf8', env: { ...process.env, ...env } });
   return { status: r.status, out: r.stdout, report: r.status === 0 ? JSON.parse(r.stdout) : null, err: r.stderr };
 }
 
@@ -97,4 +101,58 @@ test('replay counts a Read of a missing file and gives it no verdict', () => {
   const { report } = replay([toolRow('m1', 'Read', { file_path: path.join(os.tmpdir(), 'replay-missing.csv') }, os.tmpdir())]);
   assert.equal(report.reads, 1);
   assert.equal(Object.values(report.asks).reduce((a, b) => a + b, 0), 0);
+});
+
+const queryTotal = (report) => Object.values(report.queries).reduce((a, b) => a + b, 0);
+const coverageTotal = (report) => report.judgedWithRepo + report.judgedShapeOnly + report.unjudged + report.noText;
+const posixOnly = process.platform === 'win32' ? { skip: 'needs a POSIX shell script as git' } : {};
+
+test('replay skips an unreadable transcript, counts it and prints no path', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () => {
+  const root = tempDir('replay-root-');
+  const lockedFile = path.join(root, 'locked.jsonl');
+  fs.writeFileSync(path.join(root, 'open.jsonl'), JSON.stringify(toolRow('u1', 'Read', { file_path: path.join(root, 'none.csv') }, root)) + '\n');
+  fs.writeFileSync(lockedFile, '{}\n');
+  fs.chmodSync(lockedFile, 0o000);
+  const r = spawnSync(process.execPath, [SCRIPT, '--root', root], { encoding: 'utf8' });
+  fs.chmodSync(lockedFile, 0o600);
+  assert.equal(r.status, 0);
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.unreadable, 1);
+  assert.equal(report.reads, 1);
+  assert.equal(report.transcripts, 2);
+  assert.ok(!r.stderr.includes(root) && !r.stdout.includes(root), 'no path is printed');
+});
+
+test('replay partitions the coverage counts over every query', () => {
+  const gone = path.join(os.tmpdir(), 'replay-gone-' + process.pid);
+  const rows = fixtureRows().concat([
+    toolRow('p1', 'WebFetch', { url: 'https://docs.example.com/page' }, gone),
+    toolRow('p2', 'WebSearch', { query: 'plain question' }, gone),
+    toolRow('p3', 'WebFetch', { url: 'https://docs.example.com/search?q=rounding' }, gone),
+  ]);
+  const { report } = replay(rows);
+  assert.equal(report.noText, 1);
+  assert.equal(report.judgedShapeOnly, 2);
+  assert.equal(coverageTotal(report), queryTotal(report));
+});
+
+test('replay counts a missing git as shape-only, in no other bucket', () => {
+  const appRepo = repoWith('cart.js', `function ${PRIVATE_NAME}(total) {}\n`);
+  const noGit = tempDir('replay-nogit-');
+  const { report } = replayWith({ PATH: noGit }, [toolRow('n1', 'WebSearch', { query: `${PRIVATE_NAME} rounding` }, appRepo)]);
+  assert.equal(report.judgedShapeOnly, 1);
+  assert.equal(report.judgedWithRepo, 0);
+  assert.equal(report.unjudged, 0);
+  assert.equal(coverageTotal(report), queryTotal(report));
+});
+
+test('replay counts a git call that fails as unjudged only', posixOnly, () => {
+  const appRepo = repoWith('cart.js', `function ${PRIVATE_NAME}(total) {}\n`);
+  const fakeGit = tempDir('replay-fakegit-');
+  fs.writeFileSync(path.join(fakeGit, 'git'), '#!/bin/sh\nexit 2\n', { mode: 0o755 });
+  const { report } = replayWith({ PATH: fakeGit }, [toolRow('f1', 'WebSearch', { query: `${PRIVATE_NAME} rounding` }, appRepo)]);
+  assert.equal(report.unjudged, 1);
+  assert.equal(report.judgedWithRepo, 0);
+  assert.equal(report.judgedShapeOnly, 0);
+  assert.equal(coverageTotal(report), queryTotal(report));
 });

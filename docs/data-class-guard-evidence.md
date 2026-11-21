@@ -13,17 +13,27 @@ Run time: about 3 s over 1.0 GB of local transcripts. The replay feeds each uniq
 ## Counts
 
 ```json
-{"transcripts":641,"reads":3097,"asks":{"dump-size":0,"dump-name":0,"dump-pii":0,"document-untracked":0,"document-listed":0},"queries":{"WebSearch":4,"WebFetch":292,"mcp":2},"denies":0,"judgedWithRepo":297,"judgedShapeOnly":1,"unjudged":0}
+{"transcripts":642,"reads":3098,"asks":{"dump-size":0,"dump-name":0,"dump-pii":0,"document-untracked":0,"document-listed":0},"queries":{"WebSearch":4,"WebFetch":292,"mcp":2},"denies":0,"judgedWithRepo":7,"judgedShapeOnly":0,"unjudged":0,"noText":291,"unreadable":0}
 ```
 
-The unique-call counts match an independent count of the same transcripts (Read 3,097; WebFetch 292; context7 2; WebSearch 4).
+The corpus grew by one transcript and one Read between the first run and this one, because the session that wrote this file is itself a transcript. An independent count of the first run's transcripts matched its unique-call counts (Read 3,097; WebFetch 292; context7 2; WebSearch 4).
+
+The four coverage fields partition the queries: `judgedWithRepo + judgedShapeOnly + unjudged + noText` equals the query total (7 + 0 + 0 + 291 = 298 = 4 + 292 + 2).
+
+- `judgedWithRepo`: the row's folder exists and every git call ran.
+- `judgedShapeOnly`: the folder is gone, is not a repo, or git is absent, so only the code-shape check (E3) ran.
+- `unjudged`: a git call timed out or failed in another way. No repo verdict is made for the query.
+- `noText`: the call holds no judged text (a WebFetch with no query string, an empty search). It is in none of the other three.
+- `unreadable`: transcripts that could not be opened or read. They are skipped and counted; no path is printed.
+
+A failed tracked check on a Read counts the file as untracked, the conservative side (an ask is more likely, never less).
 
 ## Bars
 
-- Asks under 1 in 200 Reads: met. 0 asks over 3,097 Reads, so the bar allows up to 15.
+- Asks under 1 in 200 Reads: met. 0 asks over 3,098 Reads, so the bar allows up to 15.
 - The sample of denies holds no plain public query: met. There were 0 denies, so the sample is empty. Not shown by this corpus: that a public query is passed where project code is present, because the local corpus holds 4 WebSearch calls and no deny. The unit tests (`scripts/guard-data-class.test.js`) and the replay's own test (`scripts/guard-data-class-replay.test.js`) cover that case with synthetic input.
 - A `getServerSideProps` question passes: met, by `scripts/guard-data-class-replay.test.js` (a repo declaring it, a query naming it, no deny) and by `PUBLIC_NAMES`.
-- Failed or timed-out git calls: 0 (`unjudged`).
+- Failed or timed-out git calls: 0 (`unjudged`). Unreadable transcripts: 0.
 
 ## Limits
 
