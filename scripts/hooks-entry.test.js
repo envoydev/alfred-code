@@ -26,8 +26,8 @@ test('the wirings come from the installer table, not a second list', () => {
         : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`)
         // The turn build check rides history-session's Stop process (2026-10-16): a hook, though it starts no process of its own.
         : w.file === 'history-session.js' && w.event === 'Stop' ? [w.file, ...historySession.RIDERS.map(g => `${g}.js`)] : [w.file])));
-    // Seventeen since complexity stage 1 B12 retired guard-desktop-exec; eighteen since the rule loader joined (workspace stage 4a).
-    assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
+    // Seventeen since complexity stage 1 B12 retired guard-desktop-exec; eighteen since the rule loader joined (workspace stage 4a); nineteen with guard-data-class.
+    assert.strictEqual(files.size, 19, 'nineteen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 
@@ -395,7 +395,7 @@ test('HK-21: the file dispatcher blocks on failure; a healthy cold one never fai
         const dispatchCmd = hookCommand('guard-unapproved-dispatch.js', '').command;
         const mine = { type: 'command', command: 'node my-own-read-hook.js', timeout: 5, onFailure: 'block' };
         fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [
-            { matcher: fileDispatcher.MATCHER, hooks: [{ type: 'command', command: fileCmd, timeout: 70 }] },
+            { matcher: fileDispatcher.MATCHER, hooks: [{ type: 'command', command: fileCmd, timeout: 80 }] },
             { matcher: 'Task|Agent|SendMessage', hooks: [{ type: 'command', command: dispatchCmd, timeout: 10, onFailure: 'block' }] },
             { matcher: 'Read', hooks: [mine] }] } }));
         const specs = [...fileDispatcher.GUARDS.map(([g, tools]) => ({ file: `${g}.js`, matcher: tools.join('|') })),

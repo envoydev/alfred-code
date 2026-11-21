@@ -205,7 +205,7 @@ Outside the project:
 | **Skills** | 88 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
-| **Hooks** | 18 | the guards, plus the docs, preferences, history and rules hooks |
+| **Hooks** | 19 | the guards, plus the docs, preferences, history and rules hooks |
 | **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
 The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it in a browser.
@@ -344,7 +344,7 @@ Under managed settings:
 
 - `strictKnownMarketplaces` registers nothing, and Claude Code refuses an `extraKnownMarketplaces` entry it does not admit: allow `{ "source": "github", "repo": "envoydev/plugins-marketplaces" }` (the `envoydev` marketplace), `anthropics/claude-plugins-official` (the LSP pair) and `jarrodwatts/claude-hud` if you keep it, then register the same three (`envoydev`, `claude-plugins-official`, `claude-hud`) in `extraKnownMarketplaces`.
 - Enable `alfred-code@envoydev` in `enabledPlugins`, and `claude-hud@claude-hud` if you want its status line.
-- `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
+- `allowManagedHooksOnly` silently switches off all nineteen hooks - the guards never fire.
 
 Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-settings).
 

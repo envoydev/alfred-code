@@ -146,7 +146,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js"
             ],
-            "timeout": 70,
+            "timeout": 80,
             "onFailure": "block"
           }
         ]
@@ -162,6 +162,32 @@
             ],
             "timeout": 10,
             "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-data-class.js"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.+__.*(query|search|docs|lookup|resolve).*$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-data-class.js"
+            ],
+            "timeout": 10
           }
         ]
       },

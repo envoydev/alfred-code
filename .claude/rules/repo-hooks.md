@@ -9,16 +9,16 @@ paths:
 
 # Hooks
 
-The eighteen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
+The nineteen hooks folded into the core plugin: gates, guards, engines and what each one does. Moved here verbatim from the repo `AGENTS.md` so it loads only when you edit these files.
 
-- `stack/hooks/` - eighteen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
+- `stack/hooks/` - nineteen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because the skill and seat
   bodies run `node .claude/hooks/docs.js` (and the history block points at `history.js
   rulings`); `plan-status.js` (PF1, 3.12) is copied the same way, since the plan skills write a plan folder's
   `status.json` through `node .claude/hooks/plan-status.js`. The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
-  gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 70 (10 for each guard a dispatcher runs), from the
+  gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 80 (10 for each guard a dispatcher runs), from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches in exec form - `"command": "node"`, `"args":
   ["${CLAUDE_PLUGIN_ROOT}/<file>", ...]` (`build-marketplace.js` `launch`, Claude Code 2.1.139+) - so no shell starts it: on
   Windows a shell-form hook ran Git Bash's launcher, bash and then node, three processes a hook, and the user reported bash
@@ -342,8 +342,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   A dispatcher run past 1,000ms, timed from its own process start, writes one `mode: probe`, `kind: slow` row with each
   guard's ms, its own checks' and the boot's (`slowProbe`, audit 2026-10-14 HK15: 86 runs of 1s or more in a week, max
   12,086ms, and no row named the guard) - read a week of them before any guard's budget is tuned.
-  The seven guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
-  three node processes): the read guard, the secret guard, the post-compaction hold, the config and cross-project guards,
+  The eight guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
+  three node processes): the read guard, the secret guard, the data-class guard, the post-compaction hold, the config and cross-project guards,
   docs-session and preferences-session, each
   run only for the tools its own manifest row names (its `GUARDS` table, held to the manifest by a test), the secret
   guard run first and its exit 2 answered at once; instrumentation stays its own `.*` row. Both still launch in shell form (below).

@@ -764,6 +764,24 @@
       "note": "the masker's failure path, a stated ceiling: PostToolUseFailure takes no replacement output, so a failed call's error text is only read with the same values and a find writes one `exposure` probe row (key names, a count, file basenames - never a value)"
     },
     {
+      "file": "guard-data-class.js",
+      "matcher": "Read",
+      "event": "",
+      "note": "a Read of a data dump (a database or table export, a backup, a file of 20 or more personal-data hits) or of a business document (an untracked pdf, office or spreadsheet file, or a path the project's .alfred/.sensitive-paths lists) is the host's to ASK about, the ask naming the file and why; a '!<path>' line in that list clears it for good, and it is refused where nobody can answer (dontAsk or an unattended run) - this row folds into the file-guard dispatcher, which runs the hook in-process; guard-data-class:dumps and guard-data-class:documents in ALFRED_CODE_HOOKS_OFF turn one half off"
+    },
+    {
+      "file": "guard-data-class.js",
+      "matcher": "WebSearch|WebFetch",
+      "event": "",
+      "note": "the outside-query route: a WebSearch query or a WebFetch url and prompt that carries project code (an own identifier, a path, a snippet of the repo) is refused with the exact tokens to remove, so only the public question goes out; guard-data-class:egress in ALFRED_CODE_HOOKS_OFF turns it off"
+    },
+    {
+      "file": "guard-data-class.js",
+      "matcher": "^mcp__.+__.*(query|search|docs|lookup|resolve).*$",
+      "event": "",
+      "note": "the same outside-query judgement on a documentation server (context7 by default, ALFRED_CODE_EGRESS_SERVERS adds more): the matcher starts the hook only on query-shaped tool names, and inside it only a server on the documentation list is judged - any other server's call passes untouched"
+    },
+    {
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent|SendMessage",
       "event": "",

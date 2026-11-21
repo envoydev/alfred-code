@@ -575,6 +575,8 @@ function deliver(ctx, outcome) {
   }
 }
 
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every hook. Fail-open: no
+// prelude leaves this hook silent.
 function main() {
   let prelude;
   try {

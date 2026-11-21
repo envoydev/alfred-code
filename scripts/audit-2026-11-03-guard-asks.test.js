@@ -898,6 +898,19 @@ test('4c store: a file-tool write to a store rule, the store folders or the work
     quiet(configWrite(p, path.join(p.root, other), 'x\n'), other);
 });
 
+test('4c store: a write to the data-class guard list asks with its own reason; another .alfred file does not', () => {
+  const p = project('store-sensitive').write([typed('go')]);
+  const list = '.alfred/.sensitive-paths';
+  const r = configWrite(p, path.join(p.root, list), '!docs/ok.pdf\n');
+  asks(r, 'Write to the list', list);
+  const why = JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason;
+  assert.ok(why.includes('your list of sensitive and cleared paths for the data-class guard'), `own reason\n${why}`);
+  assert.ok(why.includes("a '!' line lets a dump or document be read without asking"), why);
+  assert.ok(!why.includes('project rule source'), `not the rule-store reason\n${why}`);
+  asks(configShell(p, `echo '!x' >> ${list}`), 'a shell redirect onto the list', list);
+  quiet(configWrite(p, path.join(p.root, '.alfred', 'other.txt'), 'x\n'), '.alfred/other.txt');
+});
+
 test('4c store: the shell routes - a redirect, sed, tee, cp, mv, rm, a folder removal, PowerShell; a read passes', () => {
   const p = project('store-shell').write([typed('go')]);
   p.file(RULE, '# x\n');
