@@ -348,7 +348,7 @@ test('H2: the commit checkpoint states spec: over what the commit takes in, and 
     assert.match(body, /`spec:` proves it covered every file the commit takes in/);
     assert.match(evidence, /`spec:` - it covered every file the commit takes in/);
     assert.match(body, /at most 2 files and 15 changed lines across the session's change - this commit plus the session's earlier commits that passed without a receipt/, 'the bar is cumulative per session (review M2), over the trivial commits only (re-verify N1)');
-    assert.match(body, /never split a real change into small commits to slip under it/, 'and splitting still never walks under it');
+    assert.match(body, /Never split a real change into small commits to slip under it/, 'and splitting still never walks under it');
     assert.doesNotMatch(body, /15 changed lines (?:in what the commit takes in|across the uncommitted tree -)/, 'neither the per-commit nor the tree bar');
 });
 
