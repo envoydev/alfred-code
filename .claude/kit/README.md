@@ -8,8 +8,10 @@ run its sync, which rewrites them in every repo.
   `CLAUDE.md` hides `AGENTS.md`, and when a managed skill's description is not one line of at most 160 characters.
 - `node .claude/kit/settings.mjs` prints the values the kit's skills run on - the pass score, the plan, audit, review,
   implement and search models, whether scoring, auto-run and auto-approve are on - read from `settings.json` beside it, then the
-  `KIT_*` variables of a settings file's `env` block; the header of `kit-settings.mjs` lists them and
-  `constants.mjs` holds their names and defaults. `settings.json` here is this repo's own and is never synced: it
+  `KIT_*` variables of a settings file's `env` block, for a name the file lacks; the header of `kit-settings.mjs` lists them and
+  `constants.mjs` holds their names and defaults. `settings.json` always holds all nine names (the owner's ruling,
+  2026-11-21): the sync, the hook and every save add what is missing, so a variable counts only for an absent or incomplete
+  file. `settings.json` here is this repo's own, and the sync changes only what it lacks: it
   keeps what was set in chat - a model, the pass score, scoring, auto-run, auto-approve - until it is changed, written by the hook
   when a request's first line is only words to switch a mode or name a role's model, and by
   `node .claude/kit/settings.mjs set <name> <value>` for everything else. `status-hook.mjs` is the `UserPromptSubmit` hook this repo's `.claude/settings.json` runs: it shows the

@@ -1,4 +1,11 @@
 {
   "auto_run": "on",
-  "auto_approve": "on"
+  "auto_approve": "on",
+  "plan_model": "opus",
+  "audit_model": "opus",
+  "review_model": "opus",
+  "implement_model": "sonnet",
+  "search_model": "haiku",
+  "pass_score": 90,
+  "scoring": "on"
 }

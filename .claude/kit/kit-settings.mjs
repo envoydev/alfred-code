@@ -5,7 +5,12 @@
 // compaction - never has to remember them.
 //
 // A value comes from the first of these that holds a usable one: the kit's file .claude/kit/settings.json, the
-// KIT_* variable, the default. The file is one JSON object committed with the repo, with these names: plan_model,
+// KIT_* variable, the default. The file always holds all nine names (the owner's ruling, 2026-11-21: 'All the data must be
+// present inside .claude/kit/settings.json'): every write of it, the status hook on a request and the sync complete it, each
+// missing name taking the value the variable or the default gives. So a KIT_* variable applies only where the file lacks
+// the name - after completion, an absent or incomplete file - and the origin of a value then reads the file. To change a
+// value, run `node .claude/kit/settings.mjs set <name> <value>` or edit the file. A file that does not parse is never
+// rewritten. The file is one JSON object committed with the repo, with these names: plan_model,
 // audit_model, review_model, implement_model, search_model (a model), pass_score (a whole number from 1 to 100) and scoring,
 // auto_run and auto_approve ('on' or 'off'). It is written by `node .claude/kit/settings.mjs set <name> <value>` and by the status hook
 // when the user tells a session a model or a switch in chat: what the user says is saved until the user changes it
@@ -25,7 +30,7 @@
 //   KIT_AUTO_RUN          on or off: whether every session runs in auto-run from its first ask (off without it)
 //   KIT_AUTO_APPROVE      on or off: whether the run approves a spec, design or plan itself (off without it: the user does)
 //
-// A model is one of sonnet, opus, haiku, fable - what a dispatch accepts. Without a value it is the model the role's
+// A model is one of sonnet, opus, haiku, fable - what a dispatch accepts. Where no file names it, it is the model the role's
 // agent file names; the audit role has no agent file of its own and takes the plan model's value, and the search role
 // has no agent file, so its default is fixed. KIT_SCORING, KIT_AUTO_RUN and
 // KIT_AUTO_APPROVE switch a safeguard off, so a variable counts only from a file that is not committed: one found in .claude/settings.json is
@@ -167,12 +172,10 @@ function fromKitFile(fileSettings, name, fallback)
     return { value: fallback.value, origin: `${fallback.origin} - ${name}=${JSON.stringify(given)} in ${KIT_SETTINGS_FILE} is ${reasonFor(name)}` };
 }
 
-// `env` is the environment to read (process.env), `root` the repo whose agents, kit file and committed settings count.
-export function resolveKitSettings(env, root)
+// What each name resolves to when the kit's file holds `fileSettings`; `env` is read for the names it lacks.
+function resolveWith(env, root, fileSettings)
 {
     const committedNames = committedEnvNames(root);
-    const loaded = loadKitFile(root);
-    const fileSettings = loaded.ok ? loaded.settings : {};
     const plan = fromKitFile(fileSettings, SETTING.planModel, roleModel(env, root, VARIABLE.planModel, 'audit-planner'));
     return {
         [SETTING.passScore]: fromKitFile(fileSettings, SETTING.passScore, passScore(env)),
@@ -185,6 +188,29 @@ export function resolveKitSettings(env, root)
         [SETTING.autoRun]: fromKitFile(fileSettings, SETTING.autoRun, safeguard(env, VARIABLE.autoRun, SWITCH.off, SWITCH.on, committedNames)),
         [SETTING.autoApprove]: fromKitFile(fileSettings, SETTING.autoApprove, safeguard(env, VARIABLE.autoApprove, SWITCH.off, SWITCH.on, committedNames)),
     };
+}
+
+// `env` is the environment to read (process.env), `root` the repo whose agents, kit file and committed settings count.
+export function resolveKitSettings(env, root)
+{
+    const loaded = loadKitFile(root);
+    return resolveWith(env, root, loaded.ok ? loaded.settings : {});
+}
+
+// `fileSettings` with every name it lacks added, in the order of KIT_FILE_SETTINGS after the names it holds, each with the
+// value `resolveWith` gives it. A name whose value cannot be stored - a model of 'none', when no agent file names one -
+// is left out, so the file stays as complete as it can be and the next run adds it once a value exists.
+function completedSettings(env, root, fileSettings)
+{
+    const resolved = resolveWith(env, root, fileSettings);
+    const completed = { ...fileSettings };
+    for (const name of KIT_FILE_SETTINGS)
+    {
+        if (Object.hasOwn(completed, name)) continue;
+        const usable = usableValue(name, resolved[name].value);
+        if (usable !== null) completed[name] = usable;
+    }
+    return completed;
 }
 
 // Writes beside the file and renames over it, so a reader never sees half of it; the temporary file goes on any failure.
@@ -207,8 +233,10 @@ function writeKitFile(root, settings)
 }
 
 // The save and remove functions return { ok: true } or { ok: false, error } - the file is never overwritten when it is not a JSON
-// object. `pairs` is a list of { setting, value }: every one is checked first, and the file is written once or not at all.
-export function setKitSettings(root, pairs)
+// object. Each write holds all nine names: the ones the file lacks are added with the value `resolveKitSettings` gives them,
+// read from `env` (process.env unless the caller says otherwise).
+// `pairs` is a list of { setting, value }: every one is checked first, and the file is written once or not at all.
+export function setKitSettings(root, pairs, env = process.env)
 {
     const stored = {};
     for (const { setting, value } of pairs)
@@ -220,23 +248,44 @@ export function setKitSettings(root, pairs)
     }
     const loaded = loadKitFile(root);
     if (!loaded.ok) return loaded;
-    return writeKitFile(root, { ...loaded.settings, ...stored });
+    return writeKitFile(root, completedSettings(env, root, { ...loaded.settings, ...stored }));
 }
 
-export function setKitSetting(root, name, value)
+export function setKitSetting(root, name, value, env = process.env)
 {
-    return setKitSettings(root, [{ setting: name, value }]);
+    return setKitSettings(root, [{ setting: name, value }], env);
 }
 
-export function unsetKitSetting(root, name)
+// 'Unset' drops the user's choice: the name goes back to what it resolves to without the file - the variable or the default -
+// stored in the name's own place. The file is written only when that changes something.
+export function unsetKitSetting(root, name, env = process.env)
 {
     if (!KIT_FILE_SETTINGS.includes(name)) return { ok: false, error: `'${name}' is not a setting the file may hold: ${KIT_FILE_SETTINGS.join(', ')}` };
     const loaded = loadKitFile(root);
     if (!loaded.ok) return loaded;
-    if (!Object.hasOwn(loaded.settings, name)) return { ok: true };
     const kept = { ...loaded.settings };
     delete kept[name];
-    return writeKitFile(root, kept);
+    const refilled = completedSettings(env, root, kept);
+    const ordered = Object.fromEntries([
+        ...Object.keys(loaded.settings).filter((key) => Object.hasOwn(refilled, key)).map((key) => [key, refilled[key]]),
+        ...Object.entries(refilled).filter(([key]) => !Object.hasOwn(loaded.settings, key)),
+    ]);
+    if (JSON.stringify(ordered) === JSON.stringify(loaded.settings)) return { ok: true };
+    return writeKitFile(root, ordered);
+}
+
+// Adds the names the file lacks and writes only when it lacks one: a complete file is never rewritten. A file that cannot
+// be read or is not a JSON object comes back as { ok: false, error, skipped: true } and is left as it is. `check` writes
+// nothing and says what a run would do. Returns { ok: true, changed } or { ok: false, error }.
+export function completeKitSettings(root, env, { check = false } = {})
+{
+    const loaded = loadKitFile(root);
+    if (!loaded.ok) return { ...loaded, skipped: true };
+    const completed = completedSettings(env, root, loaded.settings);
+    const changed = Object.keys(completed).length !== Object.keys(loaded.settings).length;
+    if (!changed || check) return { ok: true, changed };
+    const written = writeKitFile(root, completed);
+    return written.ok ? { ok: true, changed } : written;
 }
 
 const formatSetting = (name, { value, origin }) => `${name}: ${value} (${origin})`;
@@ -258,7 +307,7 @@ export function runSettingsCommand(args, env, root, folder)
     const isUnset = command === SETTINGS_COMMAND.unset && args.length === 2;
     if (!isSet && !isUnset) return { exitCode: SETTINGS_EXIT.failed, stdout: '', stderr: SETTINGS_USAGE };
     if (!isKitFolder(root, folder)) return { exitCode: SETTINGS_EXIT.failed, stdout: '', stderr: SETTINGS_REFUSED };
-    const result = isSet ? setKitSetting(root, name, value) : unsetKitSetting(root, name);
+    const result = isSet ? setKitSetting(root, name, value, env) : unsetKitSetting(root, name, env);
     if (!result.ok) return { exitCode: SETTINGS_EXIT.failed, stdout: '', stderr: result.error };
     return { exitCode: SETTINGS_EXIT.ok, stdout: formatSetting(name, resolveKitSettings(env, root)[name]), stderr: '' };
 }
