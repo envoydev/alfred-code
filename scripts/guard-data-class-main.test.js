@@ -293,3 +293,15 @@ test('E2: an async arrow held in an object key is a project name, a type annotat
   assert.ok(r.stderr.includes('Remove: otherThing.'), r.stderr);
   silent(search(dir, 'react onChange event typescript type'));
 });
+
+test('E2: the project\'s own code under public/ is searched, its vendored copies are not', () => {
+  const dir = project({
+    'public/app.js': 'function applyCoupon(code) { return code; }\n',
+    'public/vendor/react.development.js': 'function useEffect(create, deps) {}\n',
+  });
+  git(dir, 'add', '.');
+  const r = search(dir, 'why does applyCoupon return undefined');
+  assert.equal(r.status, 2, r.stderr);
+  assert.ok(r.stderr.includes('Remove: applyCoupon.'), r.stderr);
+  silent(search(dir, 'react useEffect cleanup function'));
+});
