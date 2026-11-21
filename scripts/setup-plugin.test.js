@@ -213,9 +213,9 @@ test('init bootstrap phase: the order - read, plan, one machine ask, memory and 
     const init = bootstrapBody();
     // 2.10.1: no server runtime to install and no memory import - the stack ships no MCP server.
     assert.doesNotMatch(init, /\buvx?\b|memory\.js|--level/, 'no uv, no memory step');
-    // The hook count, stated once per table: the manifest ships eighteen (forge-session joined 2026-10-23, memory-session
-    // retired 2026-10-24, guard-desktop-exec retired in complexity stage 1 B12, rules-session joined in workspace stage 4a).
-    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
+    // The hook count, stated once per table: the manifest ships nineteen (forge-session joined 2026-10-23, memory-session
+    // retired 2026-10-24, guard-desktop-exec retired in complexity stage 1 B12, rules-session joined in workspace stage 4a, guard-data-class after it).
+    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all nineteen:.*\*\*None\*\* names all nineteen/);
     const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory and navigation', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     // Spec P1 + P2: the step reads tools.js modes, asks the two templates, and applies a changed memory mode in one call.
@@ -695,7 +695,7 @@ test('every command gate and the router stop in a worktree of an installed check
     }
     // M5: validate's scope comes from the same script, which reads either stamp name - never a grep.
     const validate = cmdBody('validate');
-    assert.match(flat(validate), /Every installer call below carries its scope inline, `--scope "\$\(node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.\)"`/);
+    assert.match(flat(validate), /Every installer call below carries its scope inline: its own call `node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.`\s+runs first, and the word it prints is written as the `--scope` value/);
     assert.ok(!/grep -m1 '\^scope:'/.test(validate), 'no grep of one stamp name');
     // The installer refuses the same tree, so a gate skipped by hand cannot restart the loop either.
     assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'alfred-code.js'), 'utf8'), /this is a git worktree of \$\{worktreeOf\}, which holds the install - run the installer from there/);
@@ -858,11 +858,13 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, run
     assert.match(flat(body), /\*\*Every scope\.\*\* A project, user or local install keeps its stamp, its library copies and its settings in the project's `\.claude\/`/);
     assert.match(flat(body), /Find the install with `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \.`/);
     // audit 2026-10-11, session 6288ad94: a literal `<scope>` left the value to infer - the run guessed `project`,
-    // read `user` back and re-ran the read-back. The stamp's own scope is inline now.
-    const SCOPE = '--scope "\\$\\(node "\\$TMP\\/repo\\/scripts\\/install\\/stamp\\.js" scope \\.\\)"';
+    // read `user` back and re-ran the read-back. The stamp's own scope is read in its own call first, and its printed
+    // word is written as the `--scope` value (literal-run-dir: no `$(...)` in a walk call).
+    const SCOPE = '--scope <scope>';
     assert.match(body, new RegExp(`install\\/alfred-code\\.js" update --source "\\$TMP\\/repo" ${SCOPE} --installed-only --print-plan --plan-out`), 'validate reads the install back at its own scope');
     assert.match(body, new RegExp(`install\\/alfred-code\\.js" update --source "\\$TMP\\/repo" ${SCOPE} --installed-only \\[--add`), 'validate applies the accepted adds and removes via the seed, over the read-back, at its own scope');
-    assert.doesNotMatch(body, /--scope <scope>/, 'no scope placeholder is left to infer');
+    assert.match(flat(body), /the word it prints is written as the `--scope` value/, 'the scope is the printed word, never a guess');
+    assert.doesNotMatch(body, /--scope "\$\(/, 'no command substitution is left in a scope');
     assert.ok(!/--scope project --installed-only/.test(body), 'no apply pinned to project scope');
     assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the shell switch it refuses');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
@@ -1025,7 +1027,7 @@ test('update: the post-install grep passes every retirement line the installer w
 {
     const { seedRun } = require('./seed-sandbox.js');
     const body = updateText();
-    const m = body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/);
+    const m = body.match(/grep -E '([^']+)' "\$TMP\/install\.log"/);
     assert.ok(m, 'update.md carries no post-install grep');
     const pattern = new RegExp(m[1]);
     const listing = JSON.stringify([
@@ -1061,7 +1063,7 @@ test('update: the post-install grep passes every layout: line, and the close rep
 {
     const { seedRun } = require('./seed-sandbox.js');
     const body = updateText();
-    const pattern = new RegExp(body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/)[1]);
+    const pattern = new RegExp(body.match(/grep -E '([^']+)' "\$TMP\/install\.log"/)[1]);
     const put = (repo, rel) => { const f = path.join(repo, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, `${rel}\n`); };
     const prepare = (repo) =>
     {
@@ -1124,7 +1126,7 @@ function reportOf(out)
         const warn = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'update-preflight.js'), '--log', log], { encoding: 'utf8' })
             .split('\n').filter((l) => l.startsWith('warn: ')).map((l) => l.slice('warn: '.length));
         const body = updateText();
-        const current = new RegExp(body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/)[1]);
+        const current = new RegExp(body.match(/grep -E '([^']+)' "\$TMP\/install\.log"/)[1]);
         const lines = out.split('\n');
         return { lines, first: { grep: lines.filter((l) => GREP_1X.test(l)), warn }, current: lines.filter((l) => current.test(l)) };
     }
@@ -1552,7 +1554,7 @@ test('C16: validate applies with --keep-pins, cleans up by name, prints every ba
     const v = flat(cmdBody('validate'));
     assert.match(v, /--installed-only \[--add '<line>'\]\.\.\. \[--drop '<line>'\]\.\.\. --keep-pins /, 'the apply call keeps pins');
     assert.match(v, /`--keep-pins` always: a reconcile never resets a deliberate local model\/effort pin/);
-    assert.match(v, /by name, `rm -rf "\$TMP" "\$MARK"` after the marker block, never a glob/);
+    assert.match(v, /by name, `rm -rf "\$TMP" "\$MARK"` after the resolve block, never a glob/);
     assert.match(v, /a step with nothing to do prints its banner with ONE line saying why/);
     assert.match(v, /skips the ask only when it names THIS credential in THIS file/);
     assert.match(v, /Redirect the delta to `"\$TMP\/delta\.out"`/);
@@ -1570,7 +1572,7 @@ test('C46: the protocol holds only what every run uses; the why and the rare bra
     const protocol = refBody('source-protocol');
     const notes = refBody('source-protocol-notes');
     assert.match(flat(protocol), /`source-protocol-notes\.md` for the why and the rare branches/);
-    assert.match(flat(protocol), /`\$TMP` comes from the marker, every call, and from nowhere else\*\* - never an `ls -dt`/);
+    assert.match(flat(protocol), /The run dir comes from the newest `RESOLVED` \/ `REUSING` line of this run, and from nowhere else\*\* - never an `ls -dt`/);
     assert.match(flat(protocol), /by name, never a glob/);
     for (const branch of ['## Fallbacks - no cache, or the download fails', 'A same-version re-release', 'Old version dirs in the cache'])
         assert.ok(notes.includes(branch) && !protocol.includes(branch), `${branch} is a notes-only branch`);
@@ -1595,8 +1597,9 @@ test(`C15: update is a ${UPDATE_ROUTER_CAP}-char router that opens on its model 
     }
     const flatRouter = flat(router);
     assert.ok(flatRouter.indexOf('## The run') > flatRouter.indexOf('**When the gate stops the run'), 'the call order comes after the gate');
-    assert.match(flatRouter, /ONE call: `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \. ; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the walk rides step 1\'s call');
-    assert.match(flatRouter, /step 3's `--log` call with `; cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-close\.md"` appended/, 'the close rides the --log call');
+    assert.match(flatRouter, /two calls, each with no chain[^`]*first `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \.`, then `cat "\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/update-walk\.md"`/, 'the stamp read and the walk read are two calls, so each passes the run-dir gate');
+    assert.doesNotMatch(flatRouter, /state \. ; cat/, 'no call chains the stamp read with a plugin-root cat');
+    assert.match(flatRouter, /step 3's `--log` call as `update-walk\.md` writes it, which also reads `update-close\.md` from `\$TMP\/repo`/, 'the close rides the --log call, read from the run dir');
     assert.match(refBody('update-walk'), /--running <RESOLVED's running=, else \?> ; cat "\$TMP\/repo\/setup-plugin\/references\/update-close\.md"/, 'the walk\'s --log call reads the close');
     const body = updateBody();
     const afterTitle = body.slice(body.indexOf('# Update Alfred Code'));
@@ -1715,7 +1718,7 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     const walk = flat(refBody('update-walk'));
     const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
-    assert.match(cats[0], /^ grep -qE '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child, a rescan row or a nested row');
+    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child, a rescan row or a nested row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
 });
 
@@ -1862,7 +1865,8 @@ test('the post-install grep catches the status sweep\'s exclude line and the clo
 test('update-close reads the cascade rows and runs check-loads only when cascade.txt exists', () =>
 {
     const close = flat(refBody('update-close'));
-    assert.match(close, /\[ -f "\$TMP\/cascade\.txt" \] && cat "\$TMP\/cascade\.txt"/, 'the rows are read only when the cascade ran');
+    assert.match(close, /only when `update-workspace\.md` ran the cascade or its hold call, which write `\$TMP\/cascade\.txt`: append `; cat "\$TMP\/cascade\.txt"`/, 'the rows are read only when the cascade ran, by a plain cat');
+    assert.doesNotMatch(close, /\[ -f /, 'no test command the run-dir gate refuses');
     assert.match(close, /node "\$TMP\/repo\/scripts\/workspace\.js" check-loads --root <rel>/, 'check-loads per updated child');
     assert.match(close, /`updated` \/ `unchanged` \/ `failed` \/ `skipped` \/ `gone`/);
 });
@@ -2013,7 +2017,7 @@ test('configure\'s and status\'s area asks offer the whole walk as their Recomme
 // An absent .claude/agents after an update read as a loss on the plugin route: the installer's `seats:` line says where
 // the agents come from, the walk's one grep catches it and the close reports it.
 test('update reads the installer\'s seats: line in its one grep and reports it as the SEATS item', () => {
-    const grep = /grep -aE '([^']*)' "\$TMP\/install\.log"/.exec(refBody('update-walk'));
+    const grep = /grep -E '([^']*)' "\$TMP\/install\.log"/.exec(refBody('update-walk'));
     assert.ok(grep, 'the post-install grep');
     assert.ok(grep[1].split('|').includes('seats:'), 'the grep\'s alternation names seats:');
     assert.match(flat(refBody('update-close')), /- \*\*SEATS\*\* - the grep's `seats:` line verbatim: where the agents come from on this route, so an absent `\.claude\/agents` reads as the plugin route, not a loss\./);

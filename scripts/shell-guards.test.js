@@ -104,6 +104,25 @@ test('combine: a JSON deny alone stays a JSON deny; beside an exit-2 block it jo
   assert.strictEqual(mixed.stderr, 'Blocked: a\n\nDocs not read yet\n');
 });
 
+const ask = (reason) => JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } });
+
+test('combine: a block beside an ask keeps the ask reason after it, prefixed Also', () => {
+  const exit = shell.combine([r('a.js', 0, ask('Read of data/x.csv: a data dump')), r('b.js', 2, '', 'Blocked: b\n')]);
+  assert.strictEqual(exit.code, 2);
+  assert.strictEqual(exit.stderr, 'Blocked: b\n\nAlso: Read of data/x.csv: a data dump\n');
+  const json = shell.combine([r('a.js', 0, ask('first ask')), r('d.js', 0, deny('Docs not read yet')), r('c.js', 0, ask('second ask'))]);
+  assert.strictEqual(json.code, 0);
+  assert.strictEqual(JSON.parse(json.stdout).hookSpecificOutput.permissionDecisionReason, 'Docs not read yet\n\nAlso: first ask\n\nAlso: second ask');
+});
+
+test('combine: a lone ask and two blocks read as before', () => {
+  const lone = shell.combine([r('a.js', 0, ask('only ask')), r('b.js', 0)]);
+  assert.deepStrictEqual(JSON.parse(lone.stdout).hookSpecificOutput, { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'only ask' });
+  const twoAsks = shell.combine([r('a.js', 0, ask('one')), r('b.js', 0, ask('two'))]);
+  assert.strictEqual(JSON.parse(twoAsks.stdout).hookSpecificOutput.permissionDecisionReason, 'one\ntwo');
+  assert.strictEqual(shell.combine([r('a.js', 2, '', 'Blocked: a\n'), r('c.js', 2, '', 'Blocked: c\n')]).stderr, 'Blocked: a\n\nBlocked: c\n');
+});
+
 test('combine: context concatenates with a newline and still rides beside a block', () => {
   const free = shell.combine([r('a.js', 0, ctx('one')), r('b.js', 0, ctx('two'))]);
   assert.deepStrictEqual(JSON.parse(free.stdout), { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'one\ntwo' } });

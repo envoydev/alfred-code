@@ -50,6 +50,8 @@ const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
 const runtime = require('./runtime.js');
+const { snapshotSessionError } = require('./run-session.js');
+const { RUN_SESSION_FILE, SESSION_ENV } = require('./run-session-constants.js');
 const { readJson, formatOf, stringifyLike } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
 const { BRAND, marketOf, movedCatalog } = require('./brand.js');
@@ -145,6 +147,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
     // A flag 2.10.1 retired with its server, passed by a command body an older session still runs.
     for (const line of [...args.ignored, ...(args.notes || [])]) log(line);
+    if (args.source)
+    {
+        const runSessionFile = path.join(path.dirname(path.resolve(args.source)), RUN_SESSION_FILE);
+        let recorded = null;
+        try { recorded = fs.readFileSync(runSessionFile, 'utf8'); } catch { recorded = null; }
+        const refusal = snapshotSessionError(args.source, recorded, env[SESSION_ENV]);
+        if (refusal) { err(`${refusal}\n`); return 1; }
+    }
 
     const home = env.HOME || env.USERPROFILE || '';
     // With no home and no CLAUDE_CONFIG_DIR the account dir would be a RELATIVE `.claude` - the

@@ -4,8 +4,8 @@ The five downloading commands (`/alfred-code:init` - both phases - `update`, `co
 `uninstall`; `status` never downloads) drive their whole run from ONE source snapshot: each command's steps say
 WHEN, this file says WHAT holds. The commands cite it as
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it in ONE Bash `cat`, never in ranges
-and never twice. It holds only what every run uses: a test caps it, because it rides every later message of the
-run (audit 2026-10-20 C46, b1c22192 - 17,808 chars read to learn one `RESOLVED` line). Two files beside it hold
+and never twice. A test caps it, since it rides every later message of the
+run. Two files beside it hold
 the rest, each read only when its case applies: `source-protocol-powershell.md` when the Bash tool cannot run
 the bash blocks below, and `source-protocol-notes.md` for the why and the rare branches - no plugin cache, a
 failed download, a multi-release gap, a same-version re-release, old version dirs in the cache.
@@ -29,12 +29,12 @@ RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 OLD=$(cat "$MARK" 2>/dev/null)
-if [ -n "$OLD" ] && [ -d "$OLD/repo" ] && [ -f "$OLD/run-session" ] && [ "$(cat "$OLD/run-session")" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+if [ -O "$MARK" ] && [ -n "$OLD" ] && [ -d "$OLD/repo" ] && [ -f "$OLD/run-session" ] && [ "$(cat "$OLD/run-session")" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then
   TMP=$OLD; STATE=REUSING   # this session's own marker; another session's, or one from before the session check, resolves fresh
 else
 STATE=RESOLVED
 REPO_URL=https://github.com/envoydev/alfred-code
-CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 PLUGINS="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$CFG/plugins}"   # the plugins root: the variable moves it, cache/ included
 TMP=$(mktemp -d "$TD/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 if [ -z "$TMP" ] || [ ! -d "$TMP" ]; then echo "MISSING a temp dir under $TD - nothing resolved"; exit 1; fi
@@ -58,44 +58,52 @@ else
   curl -fsSL "$REPO_URL/releases/latest/download/alfred-code.tar.gz" -o "$TMP/alfred-code.tar.gz"
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
-printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; printf '%s\n' "$TMP" > "$MARK"
+printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; if ! printf '%s\n' "$TMP" > "$MARK"; then echo "MISSING a run marker this user can write at $MARK - nothing resolved"; exit 1; fi
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)   # the archive's; a plugin-cache entry carries none
 [ -n "$VER" ] || VER=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).version||""))}catch{}' "$TMP/repo/setup-plugin/.claude-plugin/plugin.json")
-if [ "$STATE" = RESOLVED ]; then echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?}"; else echo "REUSING TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node}"; fi
+WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")   # the Windows spelling of the run dir; the dir itself where cygpath is absent
+if [ "$STATE" = RESOLVED ]; then echo "RESOLVED TMP=$TMP WIN=$WIN ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?} ACCOUNT=$CFG MARK=$MARK"; else echo "REUSING TMP=$TMP WIN=$WIN ${VER:-?} seed=${ALFRED_CODE_SEED:-node} ACCOUNT=$CFG MARK=$MARK"; fi
 ```
 
-It prints `RESOLVED TMP=<dir> <version> seed=<seed> running=<version> key=<marketplace key>` on a resolve,
-`REUSING TMP=<dir> <version> seed=<seed>` on a reuse (`<version>` the snapshot's), or one `MISSING <what>` line
+It prints `RESOLVED TMP=<dir> WIN=<windows spelling> <version> seed=<seed> running=<version> key=<marketplace key>
+ACCOUNT=<config dir> MARK=<marker path>` on a resolve, `REUSING TMP=<dir> WIN=<windows spelling> <version> seed=<seed>
+ACCOUNT=<config dir> MARK=<marker path>` on a reuse (`<version>` the snapshot's; `WIN=` is `cygpath -w` of the dir where `cygpath`
+exists, else the dir; `ACCOUNT=` is `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`), or one `MISSING <what>` line
 and nothing else - a `MISSING` line stops the run, said with its consequence. One exception: `MISSING <tool> on the
 Bash PATH` in Git Bash on Windows means the Bash tool got a Windows-form PATH (`C:\...;C:\...`). Put this line first
-in the resolve block and in every later block of the run. Then run the block again:
-`PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"`. Claude Code
-asks before it runs a PATH change, so no block carries the line until that `MISSING` line asks for it. Only this
+in the resolve block, then run the block again:
+`PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"`. Each Bash call
+is a new shell, so there every later call starts with it again: the one case where a later call sets a variable. Claude
+Code asks before a PATH change, so those calls prompt. This is Windows Git Bash only. Only this
 session's marker is reused; the marker name is derived from the project root, so two projects or two worktrees never share one.
 
-## Every later call re-reads the marker
+## Every later call names the run dir
 
-Each Bash call is its own shell, so `$TMP` set in one call is gone by the next. Open every later call with:
+Run the resolve block exactly as written. Every other call is a body's text with its tokens written out: add no line,
+merge no two calls, and fill each `<placeholder>` alone. The plugin approves the resolve block and the walk's own calls on
+this run's dir inside a typed `/alfred-code:init`, `update`, `configure` or `validate`, unless the hook profile is
+`minimal`, so they run with no approval prompt.
 
-```bash
-RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
-MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
-TMP=$(cat "$MARK" 2>/dev/null); if [ -z "$TMP" ]; then echo "MISSING the run marker - run the resolve block first"; exit 1; fi
-TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
-```
+Each Bash call is its own shell, so no later call sets or expands a variable - no `$VAR`, `${...}` or `$(...)`, bar the PATH line above. A body
+writes `$TMP`, `$TMP_WIN` and `$MARK` as TOKENS. Before a call runs, replace each with the value from the newest
+`RESOLVED` or `REUSING` line of this run: `$TMP` with its `TMP=` dir, `$TMP_WIN` with its `WIN=` spelling, `$MARK` with
+its `MARK=` path. The call you run holds the paths, never the tokens.
 
-- **`$TMP` comes from the marker, every call, and from nowhere else** - never an `ls -dt`, a glob over
-  `alfred-code.*` or a remembered path: two temp dirs can exist at once, and one run picked the other one and
-  ran the installer with `adds=0` (audit 2026-10-20 C46, 4f2bfdee). `MISSING the run marker` means the resolve
-  block runs again, never a guess.
-- **Two spellings, one temp dir.** Every SHELL path stays `$TMP`; a path that leaves the shell (the Read tool, a
-  `pwsh -File`, a native `node` argv on Windows) is `$TMP_WIN`.
+- **The run dir comes from the newest `RESOLVED` / `REUSING` line of this run, and from nowhere else** - never an
+  `ls -dt`, a glob over `alfred-code.*`, a remembered path or a guess: two temp dirs can exist at once, and one run
+  picked the other one and ran the installer with `adds=0`. The plugin's run-dir gate
+  denies a call that names another session's dir, and the installer refuses another session's `--source`. After a
+  compaction, or whenever the line is not in view, run the resolve block again: it prints `REUSING` with the same dir.
+- **Two spellings, one temp dir.** Every SHELL path is the `TMP=` dir; a path that leaves the shell (the Read tool, a
+  `pwsh -File`, a native `node` argv on Windows) is the `WIN=` spelling.
 - Every artifact this run writes or reads (`raw.json`, `selection.txt`, `select.out`, `final.json`, a delta) is
   `"$TMP/<file>"`, never a bare name - a bare one resolves against whatever cwd the shell drifted to. A step's
   output that a later call reads goes to a file there, never through a process substitution (`< <(...)` hides a
   failure from `pipefail`).
+- A call that names no run dir (the OS, the git top level, an environment variable) is a call of its own, never chained
+  with a run-dir part. A value one call prints goes into the next as text: the installer's `--scope` word is what
+  `node "$TMP/repo/scripts/install/stamp.js" scope .` printed, read first.
 
 ## Check the plugin itself is current
 
@@ -104,8 +112,8 @@ after the resolve: the RESOLVED line's version against `running=`. Hooks follow 
 and skill bodies wait for a restart - say that half waits, never that the restart loads hooks already running.
 
 - `running=?` or a snapshot version of `?`: drop the check and emit NO line about it.
-- ONE release behind: a report line, and the run CONTINUES. A MULTI-release gap: say so, recommend a restart (the
-  resolve already installed the newest), and offer to continue.
+- ONE release behind: a report line, and the run CONTINUES. A MULTI-release gap: say so, recommend a restart, and offer
+  to continue.
 - **Never read `${CLAUDE_PLUGIN_ROOT}` from the shell** - it is expanded into a command's text at injection, not
   set in the Bash tool's environment.
 - Old version dirs and a same-version re-release: `source-protocol-notes.md`.
@@ -141,7 +149,7 @@ on every OS), `scripts/stack-select.js` with `meta/stack-graph.json`, the `meta/
 `stack/AGENTS.template.md`. **Read them through the Bash tool, never the Read tool, and never interpolate `$TMP`
 into a program's string literal**: a JSON file is `cat "$TMP/repo/meta/<file>.json"` or a `node -e` projection
 with the path as an ARGUMENT (never `jq`, which Git for Windows does not ship); a script takes the path as an
-argument (`node "$TMP/repo/scripts/x.js" --snapshot "$TMP/repo"`).
+argument (`node "$TMP/repo/scripts/<name>.js" --snapshot "$TMP/repo"`).
 
 ## Hand the same snapshot to the installer
 
@@ -160,7 +168,7 @@ and stop. Never hand the seed a PowerShell spelling (`-Scope` is refused).
 ## Clean up the temp dir - ALWAYS
 
 `rm -rf "$TMP" "$MARK"` (PowerShell: `Remove-Item -Recurse -Force $TMP, $Mark`) on EVERY exit path, after the
-marker block - by name, never a glob (zsh aborts the whole line on one that matches nothing). Never add the
+resolve block - by name, never a glob (zsh aborts the whole line on one that matches nothing). Never add the
 plugin cache to that line: it is the CLI's own install. After cleanup a stack file is still one `cat` away in
 that cache entry - never a new download. Then confirm the project tree holds only installed artifacts - no
 archive, no extracted repo, no `raw.json` / `selection.txt`, no installer copy.

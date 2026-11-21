@@ -154,7 +154,7 @@ test("the protocol's bash snippet updates the core FIRST, takes the entry that l
             cwd: home, encoding: 'utf8',
             env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, STACK_ROWS(home), '0.12.0') },
         });
-        const m = out.match(/RESOLVED TMP=(\S+) (\S+) .*running=(\S+)/);
+        const m = out.match(/RESOLVED TMP=(\S+) WIN=\S+ (\S+) .*running=(\S+)/);
         assert.ok(m, `the snippet printed no RESOLVED line with running=:\n${out}`);
         tmp = m[1];
         assert.strictEqual(m[2], '0.12.0', 'it read the cache before the update landed the newer entry');
@@ -188,7 +188,7 @@ test("the protocol's bash snippet finds the plugin cache under zsh too", { skip:
         fs.writeFileSync(path.join(home, 'bin', 'curl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(curlLog)}\nexit 22\n`, { mode: 0o755 });
         fs.writeFileSync(script, protocolSnippet('bash', 0));
         const r = spawnSync('zsh', [script], { cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: bin } });
-        const m = (r.stdout || '').match(/RESOLVED TMP=(\S+) (\S+) /);
+        const m = (r.stdout || '').match(/RESOLVED TMP=(\S+) WIN=\S+ (\S+) /);
         assert.ok(m, `the snippet printed no RESOLVED line under zsh:\n${r.stdout}\n${r.stderr}`);
         tmp = m[1];
         assert.ok(!fs.existsSync(curlLog), `zsh skipped the plugin cache and downloaded: ${fs.existsSync(curlLog) && fs.readFileSync(curlLog, 'utf8')}`);
@@ -241,8 +241,9 @@ test('two roots sharing their first 80 characters get two run markers, and every
         }
         const md = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
         const markLines = [...md.matchAll(/```bash\n([\s\S]*?)```/g)].flatMap((m) => m[1].split('\n').filter((l) => /^(RUN_ROOT|MARK)=/.test(l)));
-        assert.ok(markLines.length >= 4, `expected the two bash blocks to name the marker: ${markLines.join(' | ')}`);
+        assert.ok(markLines.length >= 2, `expected the resolve block to name the marker: ${markLines.join(' | ')}`);
         assert.strictEqual(new Set(markLines.filter((l) => l.startsWith('MARK='))).size, 1, 'the bash blocks name the marker two ways');
+        assert.strictEqual([...md.matchAll(/```bash\n([\s\S]*?)```/g)].filter((m) => /^MARK=/m.test(m[1])).length, 1, 'only the resolve block names the marker: no later call re-reads it');
     }
     finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
@@ -259,7 +260,7 @@ test("the protocol's bash snippet resolves the newest valid cache entry", () => 
             cwd: home, encoding: 'utf8',
             env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]') },
         });
-        const m = out.match(/RESOLVED TMP=(\S+) (\S+)/);
+        const m = out.match(/RESOLVED TMP=(\S+) WIN=\S+ (\S+)/);
         assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
         tmp = nativePath(m[1]);
         assert.strictEqual(m[2], '0.10.0', 'it read the wrong entry - not the newest valid one');
@@ -301,8 +302,17 @@ test("the protocol's bash snippet keeps its run marker under $TMPDIR, and a seco
         // macOS's own mktemp -d picks the per-user temp dir whatever $TMPDIR says (measured), so the
         // snippet names the directory in its template.
         assert.strictEqual(path.dirname(m[1]), sbx, '$TMP itself is under $TMPDIR');
+        // literal-run-dir: the line carries the Windows spelling and the marker path, so no later call re-reads either.
+        const printed = first.match(/^RESOLVED TMP=(\S+) WIN=(\S+) .* MARK=(\S+)$/m);
+        assert.ok(printed, `the RESOLVED line carries no WIN= and MARK=:\n${first}`);
+        if (process.platform !== 'win32') assert.strictEqual(printed[2], m[1], 'WIN= is the dir itself where cygpath is absent or an identity');
+        assert.ok(path.basename(printed[3]).startsWith('alfred-code-run.') && path.dirname(printed[3]) === sbx, 'MARK= names the run marker under $TMPDIR');
+        assert.strictEqual(fs.readFileSync(printed[3], 'utf8').trim(), m[1], 'the marker MARK= names holds the run dir');
+        assert.match(first, new RegExp(` key=\\S+ ACCOUNT=${path.join(home, '.claude').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} MARK=`), 'RESOLVED prints the account dir, so the walk writes it from the line');
         const second = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
-        assert.match(second, new RegExp(`^REUSING TMP=${m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} 0\\.10\\.0 `, 'm'), 'the next call finds the same $TMP and names its version');
+        assert.match(second, new RegExp(` seed=\\S+ ACCOUNT=${path.join(home, '.claude').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} MARK=`), 'REUSING prints it too');
+        assert.match(second, new RegExp(` MARK=${printed[3].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'), 'REUSING prints the same MARK=');
+        assert.match(second, new RegExp(`^REUSING TMP=${m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} WIN=\\S+ 0\\.10\\.0 `, 'm'), 'the next call finds the same $TMP and names its version');
         // audit 2026-10-11 (sessions a9e06780 / bca100bd): a marker another session left - its cleanup rejected -
         // was reused 17 h later with a newer release installed. Only this session's own marker is reused.
         const other = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env: { ...env, CLAUDE_CODE_SESSION_ID: 'sess-b' } });
@@ -378,7 +388,7 @@ test("with the documented heal line first, the snippet heals or stops on a Windo
         }
         else
         {
-            const m = /^RESOLVED TMP=(\S+) 0\.10\.0 /m.exec(r.stdout);
+            const m = /^RESOLVED TMP=(\S+) WIN=\S+ 0\.10\.0 /m.exec(r.stdout);
             assert.ok(m, `neither a MISSING line nor a full resolve:\n${out}`);
             fs.rmSync(nativePath(m[1]), { recursive: true, force: true });
         }
@@ -524,7 +534,7 @@ function runBashSnippet(home, PATH, extra = {}) {
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH, ...extra };
     if (!('ALFRED_CODE_SEED' in extra)) delete env.ALFRED_CODE_SEED;
     const out = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
-    const m = out.match(/RESOLVED TMP=(\S+) (\S+) .*running=(\S+)/);
+    const m = out.match(/RESOLVED TMP=(\S+) WIN=\S+ (\S+) .*running=(\S+)/);
     assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
     const mark = markOf(home);
     for (const p of [nativePath(m[1]), mark]) fs.rmSync(p, { recursive: true, force: true });
@@ -705,7 +715,7 @@ test("the protocol's bash snippet reads the cache under a moved plugins root (CL
         const { env } = movedRootFixture(home);
         fs.writeFileSync(script, protocolSnippet('bash', 0));
         const r = spawnSync('bash', [script], { cwd: home, encoding: 'utf8', env });
-        const m = r.stdout.match(/RESOLVED TMP=(\S+) (\S+)/);
+        const m = r.stdout.match(/RESOLVED TMP=(\S+) WIN=\S+ (\S+)/);
         if (m) tmp = nativePath(m[1]);
         assert.ok(!fs.existsSync(path.join(home, 'curl.log')), `it fetched the archive over the moved cache:\n${r.stdout}\n${r.stderr}`);
         assert.ok(m, `the snippet printed no RESOLVED line:\n${r.stdout}\n${r.stderr}`);

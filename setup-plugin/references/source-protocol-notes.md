@@ -19,7 +19,7 @@ plugins run from: no probe, no archive.
   valid only with both `stack/skills` and `stack/agents` and no `.orphaned_at` mark. No second cache of the
   stack's own exists (`stack-source` and `STACK_SOURCE_CACHE` are retired).
 - The run works in its own `$TMP/repo` COPY: a release landing mid-run cannot pull files out from under it, and
-  cleanup stays `rm -rf "$TMP"`.
+  cleanup stays `rm -rf "$TMP" "$MARK"`.
 - The archive route stays for the two cases with no cache: no `claude` CLI, and the copy route (both
   `ALFRED_CODE_*_VIA_PLUGIN` switches off). The Node seed resolves the same cache the same way
   (`scripts/install/source.js`), so a script install and a guided walk land one revision.
@@ -40,7 +40,7 @@ plugins run from: no probe, no archive.
   the other, and its cleanup deleted a live run's files. It and `$TMP` live under `$TMPDIR`: a sandboxed command
   writes only there and in the project (code.claude.com/docs/en/sandboxing).
 - **Two spellings.** On Windows `$TMP` is a Git Bash path the Read tool, `pwsh` and a native `node` cannot open;
-  three sessions paid 209k-233k each rediscovering `cygpath -w`, so the marker block resolves `$TMP_WIN` once.
+  three sessions paid 209k-233k each rediscovering `cygpath -w`, so the resolve line prints the `WIN=` spelling once.
 - The protocol was read in ranges and twice when a 30,382-byte copy spilled past the Bash tool's output cap
   (audit 2026-10-11, sessions 37d7a42c and 902182d2): the PowerShell route moved beside it then, and this file in
   2026-10-20.

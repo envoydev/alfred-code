@@ -905,9 +905,9 @@ function guardOffDenial(off) {
 // ---- THE RULE STORE (workspace stage 4c) -------------------------------------------------------------------------------
 // The rule loader sends what <project>/.alfred/stack/rules holds, and .alfred/workspace.json decides what a child inherits,
 // so a write to a rule file, the rules or stack folder itself (an rm -r or a mv of either takes every rule out) or a workspace
-// file asks the user - the path's shape decides, as spelled and as resolved, and a removal of .alfred whole is not this
+// file, or the data-class guard's list (.alfred/.sensitive-paths, its own reason), asks the user - the path's shape decides, as spelled and as resolved, and a removal of .alfred whole is not this
 // check's (it is the data root). A read writes nothing and passes. Cursor's preToolUse does not enforce an ask: exit 2 there.
-const STORE_RE = /[\\/]\.alfred[\\/](?:stack(?:[\\/]rules(?:[\\/][^\\/]+)?)?|workspace\.json)$/i;
+const STORE_RE = /[\\/]\.alfred[\\/](?:stack(?:[\\/]rules(?:[\\/][^\\/]+)?)?|workspace\.json|\.sensitive-paths)$/i;
 function storeWrite() {
   const ti = payload.tool_input || {};
   const name = String(payload.tool_name || '');
@@ -922,10 +922,13 @@ function storeWrite() {
   let file = null;
   try { file = storeWrite(); } catch { file = null; /* fails open */ }
   if (file) {
+    const clearList = /[\\/]\.sensitive-paths$/i.test(file);
     let cursor = false;
     try { cursor = require('./hook-prelude.js').cursorHost(payload); } catch { cursor = typeof payload.cursor_version === 'string'; }
-    if (cursor) { process.stderr.write(`hand this edit to the user: ${file} is a project rule source\n`); process.exit(2); }
-    const reason = `${file} is a project rule source (or the workspace file): confirm this write, or make the change with /alfred-code:configure`;
+    if (cursor) { process.stderr.write(`hand this edit to the user: ${file} is ${clearList ? 'the data-class guard\'s list of cleared paths' : 'a project rule source'}\n`); process.exit(2); }
+    const reason = clearList
+      ? `${file} is your list of sensitive and cleared paths for the data-class guard - a '!' line lets a dump or document be read without asking. Confirm this write only if you made this change.`
+      : `${file} is a project rule source (or the workspace file): confirm this write, or make the change with /alfred-code:configure`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } }));
     process.exit(0);
   }

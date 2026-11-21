@@ -26,6 +26,7 @@ const path = require('node:path');
 const GUARDS = [
     ['guard-read-whole-file', ['Read']],
     ['guard-secret-value', ['Read', 'Grep']],
+    ['guard-data-class', ['Read']],
     ['guard-fresh-session-start', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
     ['guard-config-protection', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
     ['guard-cross-project-write', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],

@@ -35,6 +35,7 @@
    "guard-fresh-session-start",
    "guard-cross-project-write",
    "guard-config-protection",
+   "guard-data-class",
    "guard-answer",
    "instrument-tool-usage",
    "docs-session",

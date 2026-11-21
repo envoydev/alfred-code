@@ -53,8 +53,8 @@ state .`, which reads the install records the hooks read (`alfred-code.stamp`, a
 `hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
 `not-installed` -> stop and route to `/alfred-code:init`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
-`/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
-the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
+`/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline: its own call `node "$TMP/repo/scripts/install/stamp.js" scope .`
+runs first, and the word it prints is written as the `--scope` value - the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
 (`.claude/settings.local.json`, the stack's settings file at every scope, laid over `.claude/settings.json`;
 a stack row is written back to the local file). One installer on
@@ -93,7 +93,7 @@ it (a hand inventory unioned what the plugin entries carry, and the apply switch
 back on). One call from the snapshot, on every OS and seed - a `--print-plan` run writes nothing:
 
 ```bash
-node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
+node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
 ```
 
 `$TMP/installed.json` is the `--installed` input for the walk: `{rules, agents, skills, hooks,
@@ -439,7 +439,7 @@ dormancy alone is never a removal argument.
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 8's accepted environment rows
 are applied here too - MISSING and INVALID ones with ONE `node "$TMP/repo/scripts/variables.js" set --root . --scope
-<scope> KEY=value ...`, which writes each where it takes effect and names the file; an OLD NAME or RETIRED key as a
+<scope> <KEY>=<value> ...`, which writes each where it takes effect and names the file; an OLD NAME or RETIRED key as a
 merge on the settings file that holds it, touching ONLY those keys - and named in the post-check the same way an added
 artifact is. An accepted
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that
@@ -457,10 +457,10 @@ output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Redirect the delta to `"$TMP/delta.out"` and build the flags from that file
-  in the installer's own call, opened with the protocol's marker block - never a `while read ... done < <(...)`:
+  in the installer's own call - never a `while read ... done < <(...)`:
   a process substitution hides a failure from `pipefail`, and one run applied `adds=0` from a temp dir it had
   not written to (audit 2026-10-20 C46, 4f2bfdee). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... --keep-pins 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... --keep-pins 2>&1 | tee "$TMP/install.log"`
   - `--keep-pins` always: a reconcile never resets a deliberate local model/effort pin, and resetting one is
   configure's ask, not this command's (a run without it logged `keep-pins=off` and reset every pin unasked -
   audit 2026-10-20 C16, e43969a7). One `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
@@ -632,7 +632,7 @@ the user sets it through `/alfred-code:configure` or by hand.
 ## Clean up the temp dir - ALWAYS
 
 Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` - by name, `rm -rf "$TMP"
-"$MARK"` after the marker block, never a glob such as `alfred-code-run.*` (zsh aborts the whole line on a glob
+"$MARK"` after the resolve block, never a glob such as `alfred-code-run.*` (zsh aborts the whole line on a glob
 that matches nothing - audit 2026-10-20 C16, 4f2bfdee) - on EVERY exit path of THIS command: after apply, after an abort, after a disputed-detection stop, and after a clean bill
 (nothing redundant or missing). Then confirm the project tree holds only installed artifacts.
 

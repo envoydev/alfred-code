@@ -20,8 +20,8 @@ whole turn - 'this walk is scripted: `/model sonnet`, then `/alfred-code:update`
 messages, and the user interrupted it and ran it again on Sonnet). **When the gate stops the run, that line is the
 turn: no tool call, nothing below is read or summarised, and the turn ends on it.** A second `/alfred-code:update` in
 this session goes ahead on whatever tier it finds, with no line. An unattended launch picks its model up front and
-has nobody to switch it: on the expensive tier make the first call `printf 'unattended=%s\n'
-"${ALFRED_CODE_UNATTENDED:-}"`, and on `unattended=1` log `unattended: tier -> run here` and go on instead of stopping.
+has nobody to switch it: on the expensive tier make the first call `printenv ALFRED_CODE_UNATTENDED`
+(a call of its own), and when it prints `1` log `unattended: tier -> run here` and go on instead of stopping; no output is not unattended.
 
 **This run needs NO conversation context**, so it is the cheapest thing in the stack to move -
 but only out of a session that is actually loaded, and the measuring is the hook's, never yours.
@@ -75,15 +75,16 @@ call as a command the run makes anyway, so a refused run carries none of them an
 call (audit 2026-10-20 C15: a refused run carried the whole 36.5k-char walk, ~9k tokens, on every later message):
 
 1. **The protocol** - `source-protocol.md` in ONE Bash `cat`, then resolve `$TMP/repo` per it.
-2. **Preconditions, and the walk** - ONE call: `node "$TMP/repo/scripts/install/stamp.js" state . ; cat
-   "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-walk.md"`. Act on the word per the walk's step 1; the walk
+2. **Preconditions, and the walk** - two calls, each with no chain, so the plugin approves each: first
+   `node "$TMP/repo/scripts/install/stamp.js" state .`, then
+   `cat "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-walk.md"`. Act on the word per the walk's step 1; the walk
    holds steps 1-3 and the Do-not list.
 3. **The delta** - the walk's step 2: ONE preflight call, then its asks (new items, the data root, the docs root, the instruction
    file's name, whether the projects joined below update too) before the installer runs. A non-empty prune list takes `update-slow-path.md`'s steps 4-5.
 4. **The refresh** - step 3's installer call (10-minute timeout, exit code read), then its ONE post-install grep. The
    installer also moves an older project's folders onto the current layout, with no ask (`layout:` lines).
-5. **The restart verdict, and the close** - ONE call: step 3's `--log` call with `; cat
-   "${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/update-close.md"` appended. The close holds steps 6-8.
+5. **The restart verdict, and the close** - ONE call: step 3's `--log` call as `update-walk.md` writes it, which also reads
+   `update-close.md` from `$TMP/repo` in the same call. The close holds steps 6-8.
 6. **AGENTS.md** - step 6's check, the skill read, the re-spell plan and its one ask.
 7. **The post-check** - step 7's report, its one hygiene call, and the suggestion card.
 8. **Clean up `$TMP`** - step 8, on EVERY exit path; a blocker or a user 'no' before the close was read removes it

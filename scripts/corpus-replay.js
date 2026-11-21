@@ -43,6 +43,8 @@ const UPE_MATCHER = (() => {
     return row ? new RegExp(row.matcher.slice('@UserPromptExpansion:'.length)) : null;
   } catch { return null; }
 })();
+const DOC_SERVER_NAMES = ['context7', 'plugin_context7_context7'];
+const DOC_TOOL_NAMES = ['query-docs', 'resolve-library-id'];
 const HOLD_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task', 'Bash', 'PowerShell', 'Monitor'];
 const ROUTES = [
   { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
@@ -80,6 +82,12 @@ const ROUTES = [
   { hook: 'guard-config-protection.js', event: 'PreToolUse', deny: true,
     pattern: '^mcp__.+__(write_file|edit_file|move_file)$',
     tools: ['filesystem', 'plugin_filesystem_filesystem'].flatMap((s) => ['write_file', 'edit_file', 'move_file'].map((t) => `mcp__${s}__${t}`)) },
+  // The data-class guard (the data-class spec, 2026-11-21): a Read of a dump or a business document is the host's ASK (no exit
+  // 2), and an outside query naming project code is refused. Both are declared in UNEXERCISED below. A documentation
+  // server is the user's, so its names are built here.
+  { hook: 'guard-data-class.js', event: 'PreToolUse', tools: ['Read', 'WebSearch', 'WebFetch'], deny: true },
+  { hook: 'guard-data-class.js', event: 'PreToolUse', deny: true, pattern: '^mcp__.+__.*(query|search|docs|lookup|resolve).*$',
+    tools: DOC_SERVER_NAMES.flatMap((s) => DOC_TOOL_NAMES.map((t) => `mcp__${s}__${t}`)) },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
@@ -182,6 +190,15 @@ const UNEXERCISED = {
 for (const tool of HOLD_TOOLS) {
   UNEXERCISED[`guard-fresh-session-start.js::PreToolUse:${tool}`] =
     'the hold needs the marker a SessionStart compact writes, which a per-call replay never runs; pinned in compact-state.test.js';
+}
+
+// The data-class guard's routes (the data-class spec; docs/data-class-guard-evidence.md measured 0 asks over 3,111 local Reads and
+// 0 denies over its 7 judged queries): an ask is JSON, never an exit 2, and the corpus holds no query that carries project code.
+UNEXERCISED['guard-data-class.js::PreToolUse:Read'] =
+  'a Read of a dump or a document is the host\'s ask, never an exit 2, and the corpus holds none; the gate fires in guard-data-class-main.test.js and its asks are counted by guard-data-class-replay.js';
+for (const tool of ['WebSearch', 'WebFetch'].concat(DOC_SERVER_NAMES.flatMap((s) => DOC_TOOL_NAMES.map((t) => `mcp__${s}__${t}`)))) {
+  UNEXERCISED[`guard-data-class.js::PreToolUse:${tool}`] =
+    'the corpus holds no outside query that carries project code; the gate fires in guard-data-class-main.test.js';
 }
 
 const routeId = (r, tool) => `${r.hook}::${r.event}${tool ? ':' + tool : ''}`;

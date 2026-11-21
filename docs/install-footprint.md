@@ -7,7 +7,7 @@ Everything an Alfred Code run writes, starts and costs. The [README](../README.m
 Written at every scope:
 
 - **`.claude/skills/` and `.claude/rules/`** - a copy of each skill and rule the project picked.
-- **`.claude/hooks/`** - only the five engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`, `plan-status.js`) and the model-window table. The eighteen wired hooks come from the core `alfred-code` plugin.
+- **`.claude/hooks/`** - only the five engines (`docs.js`, `history.js`, `layout.js`, `handoff.js`, `plan-status.js`) and the model-window table. The nineteen wired hooks come from the core `alfred-code` plugin.
 - **`.claude/agents/`** - nothing on the default route. The seats come from the core plugin. On the copy route (`/alfred-code:configure` asks which, or `--seats-route copy`) each picked seat is a file here; an edited copy is overwritten on the next update with a line saying so, and a seat file of your own named like a core seat is kept and named.
 - **`.claude/settings.local.json`** - the stack's settings, at every scope (3.11.0). Where git ignores the file (the stack warns when it does not), none of it reaches a teammate: their own first `/alfred-code:update` writes it on their machine.
   - `permissions.deny` - one `Agent(alfred-code:<seat>)` for each seat the project did not pick (on the copy route, for every core seat - each picked one loads from its file in `.claude/agents` instead), and the secret-file rows.
@@ -51,7 +51,7 @@ At install:
 
 At every session start: the enabled plugins load, an LSP plugin starts its language server, and the hooks run. No package is downloaded or launched by the stack.
 
-Nothing else executes from the package itself. The package itself is nine command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and twenty hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the eighteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, seven by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
+Nothing else executes from the package itself. The package itself is nine command bodies, one skill (the `/alfred-code` router; none ships a script), forty-five agents, seventeen references and twenty-two hooks - the core's own three (`guard-layer-table.js`, the table-before-question gate on the walk's asks and on its next `node` call, `library-stamp.js`, the startup line saying the library copies are older than the stack, and `run-dir-gate.js`, which approves the resolve block and the walk's run-dir forms and denies another session's run dir) and the nineteen stack hooks, ten of them run in-process by one dispatcher (`shell-guards.js`) on the shell tools, eight by another (`file-guards.js`) on the file tools and the turn build check (`check-turn-build.js`) inside `history-session.js`'s Stop - with no MCP server, no `bin/` and no dependencies of its own.
 
 ## What you install by hand
 
@@ -65,6 +65,6 @@ The whole per-message floor - Claude Code's own prompt and tools, every plugin's
 
 - **`strictKnownMarketplaces`** - the allowlist registers nothing, and Claude Code refuses to register a managed marketplace whose source it does not admit (code.claude.com/docs/en/plugins/org). Allow each source the stack installs from - `{ "source": "github", "repo": "envoydev/plugins-marketplaces" }` (the `envoydev` marketplace, which lists the plugin from envoydev/alfred-code), `{ "source": "github", "repo": "anthropics/claude-plugins-official" }` for the `*-lsp` pair, and `{ "source": "github", "repo": "jarrodwatts/claude-hud" }` if you keep claude-hud (optional, recommended) - and register the same marketplaces in `extraKnownMarketplaces`: `envoydev`, `claude-plugins-official` and `claude-hud`, each with its matching `source`.
 - **`enabledPlugins`** - one key for each plugin the project keeps; `alfred-code@envoydev` always, `claude-hud@claude-hud` when you keep it.
-- **`allowManagedHooksOnly`** - silently disables all eighteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
+- **`allowManagedHooksOnly`** - silently disables all nineteen house hooks. The plugin still installs and enables, but no guard ever fires, and nothing reports it. Decide this one before rolling the stack out under a managed policy.
 
 `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off.

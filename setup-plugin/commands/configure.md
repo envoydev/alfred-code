@@ -95,15 +95,16 @@ comparable banner by banner; the content varies, the skeleton never does.
   `--print-plan` run writes nothing:
 
   ```bash
-  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . | grep -E '^(workspace: parent |role: )'
+  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1 ; node "$TMP/repo/scripts/workspace.js" status --root . > "$TMP/workspace.out" 2>&1 ; grep -E '^(workspace: parent |role: )' "$TMP/workspace.out"
   ```
 
   A `role:` line matching `root of (\d+)` means that many projects below - a root or a middle project (the Post-check's
   note). `workspace: parent none` - a standalone install, nothing more. `workspace: parent <rel>` - a child: read the parent's
-  set once, `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node
-  "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/parent.json" >
-  "$TMP/parent.out" 2>&1) && node "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo
-  "parent-read: $?"`, and every `--table` call of the walk adds `--inherited
+  set once, in two calls, `<rel>` written as the `..`-shaped path the workspace line prints. First `(cd "<rel>" && node "$TMP/repo/scripts/install/stamp.js" scope .)` prints the scope word;
+  then `(cd "<rel>" && node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope>
+  --installed-only --print-plan --plan-out "$TMP/parent.json" > "$TMP/parent.out" 2>&1) && node
+  "$TMP/repo/scripts/stack-select.js" --inherited-check "$TMP/parent.json" ; echo "parent-read: $?"` with that word as
+  `<scope>`. Every `--table` call of the walk adds `--inherited
   "$TMP/parent.json"`, so its rows read `from root` and `ignored` (`references/walk.md`). A `parent-read:` other than 0
   walks without it and says the inherited rows could not be marked.
 
@@ -280,7 +281,7 @@ question here: report each as a mode with its state, name its command (`/alfred-
 `/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level]`, typed alone on its line, which
 keeps it in this checkout's `.claude/settings.local.json` until its off), and write none of them - `variables.js set`
 refuses a mode key. Nothing else needs editing. Apply on consent with ONE
-`node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> KEY=value ...` naming ONLY the chosen keys - it
+`node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> <KEY>=<value> ...` naming ONLY the chosen keys - it
 writes each where it takes effect and prints the file; a refused key is named with its reason. The one EXCEPTION is a
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that one by running
 `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead, so the write re-probes at
@@ -516,7 +517,7 @@ writes nothing.
 ### 11a. Plugin settings - apply the step-7 answer
 
 walk.md's Plugins layer, run after the installer block and before the follow-through line: re-run
-`node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
+`node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir "<account dir>" --installed <kept plugins csv> --apply` (`<account dir>` as walk.md writes it; plus `--replace` for the
 overwrite answer) and paste the closing `applied:` line, plus the `backup:` line right after it when
 one is printed (the account `settings.json` was copied to `settings.json.bak.<time>` before this
 run's first write to it). A run that dropped the plugin asked
@@ -528,7 +529,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own AGENTS.md - `.claude/AGENTS.md` where the installer
 seeded it, or the root `AGENTS.md` where the project already had one or step 11's place answer put it; name which one you found.
 On a yes, read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline
-with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
+with `<stack>` = the `$TMP/repo` path, written as the literal `RESOLVED` path, no shell variable, and each command in a call of its own - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
 project's own prose. This run's own part is the selection-tied lines - any capability mentions - for

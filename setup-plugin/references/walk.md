@@ -57,7 +57,7 @@ grep at 258k context to confirm this shape):
 2. **Show ONE numbered table of the layer's ENTIRE catalog** - every item the release ships,
    installed or not, so nothing is ever offered later or out-of-band. The TOOL renders it, never
    you, and it is **never redirected to a file** - the table comes back IN the tool result:
-   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
+   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --recs "$TMP/repo/meta/recommendations.json" --stacks <confirmed,csv> --found "$TMP/found.json"`
    - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table <layer> --installed "$TMP/installed.json" --dropped "$TMP/dropped.json" --found "$TMP/found.json"`
      (omit `--found` when no evidence scan ran; in a child of an installed folder add `--inherited
      "$TMP/parent.json"`, the parent's read-back). A not-installed row whose reason column carries a
@@ -276,7 +276,7 @@ windows-service sets; ionic-angular, data, browser-extension, js), plus one ques
 ## Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Recommended (FRESH) = all eighteen: the eleven always-on guards, the
+cascade never reaches here. Recommended (FRESH) = all nineteen: the twelve always-on guards, the
 five session engines (`docs-session` - the docs start block and finish ask - `preferences-session` - the
 preferences docs handed over before the first edit and the first git write, the tool order and the
 host's shell lines at every start - `history-session` - what the last sessions on this branch
@@ -289,7 +289,7 @@ idle, and dropping it leaves the install unable to record a measured run without
 The whole set ships together inside the core `alfred-code` plugin, so nothing is copied and nothing
 is wired per project: the answer is written as `ALFRED_CODE_HOOKS_OFF` in the scope's settings file
 env - the rows dropped are the ones named there, re-adding a row removes its name, and **None** names
-all eighteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
+all nineteen (the emitted selection carries `hook none` for it; `--hooks-answered` at the
 prerequisite check is what writes it). It can be changed later by editing that value, no reinstall.
 An install on the hooks copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the old behaviour -
 dropping a hook removes its file and its wiring - and, while the core is on for the skills, names
@@ -349,7 +349,7 @@ Where do the <n> optional picks install? <names>. This project only, unless you 
 - 'Global, all of them' - every project on this account loads each of them
 ```
 
-DELTA reads where each installed one lives now - `node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).scopes))' "$TMP/installed.json"` prints
+DELTA reads where each installed one lives now - `node "$TMP/repo/scripts/install/installed-scopes.js" "$TMP/installed.json"` prints
 `{"<item>": "global" | "project" | "local" | "managed"}`, the narrowest row where an item sits at several (the one
 this project loads) - names it in the question, and keeps it there by default; a newly added item starts at
 `project`. A `managed` item is the admin's: name it, never offer it a move:
@@ -374,7 +374,7 @@ plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today
 kept - its config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
 here - the answer is applied after the installer runs, exactly like the environment choices:
 
-1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`.
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir "<account dir>" --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `<account dir>` is the `ACCOUNT=` path of the newest `RESOLVED` / `REUSING` line, written double-quoted in the call, as `$TMP` is.
 2. ONE AskUserQuestion carrying those counts:
 
 ```ask

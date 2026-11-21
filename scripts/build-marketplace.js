@@ -116,7 +116,10 @@ function coreEntry(options = {})
                 // walk step is a `node` call, so `if` keeps the spawn off every other shell command (code.claude.com/
                 // docs/en/hooks, 'if': each subcommand is checked); the hook leaves at once on a non-walk node call.
                 matcher: 'Bash',
-                hooks: [{ type: 'command', if: 'Bash(node *)', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
+                hooks: [{ type: 'command', if: 'Bash(node *)', ...launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 },
+                    // 2026-11-20: the run-dir gate approves the resolve block and the walk's run-dir forms, and denies another
+                    // session's run dir on proof. No `if`: it judges every Bash call that names `alfred-code.`.
+                    { type: 'command', ...launch('setup-plugin/hooks/run-dir-gate.js'), timeout: 10 }],
             }],
             // F4 (2026-10-28): the ask's own message is on disk only once the PreToolUse hooks finish, so the paste and
             // banner checks run here and void an unpasted answer through updatedToolOutput.

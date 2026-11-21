@@ -626,7 +626,7 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
-    const base = ['answer-budget', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+    const base = ['answer-budget', 'answer-budget-asked', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
         'tier4-compaction', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
@@ -1079,6 +1079,18 @@ test('PF1: the three plan-status steps grade a folder run, a hand stamp, a statu
 
 // 2026-11-19: the replay grades what the rule says now - the exact prose budget, the 3-sentence lead, the label in the
 // first sentence. Each sample's expected result is the probe of the plan (lead>3 / label / prose<=900).
+test('answer-budget-asked fixture: a section the question did not ask for fails, a plain answer passes (2026-11-20)', () => {
+    const steps = Object.fromEntries(expectOf('answer-budget-asked').steps.map((s) => [s.id, s]));
+    assert.deepStrictEqual(Object.keys(steps), ['budget', 'lead-sentences', 'confidence-first', 'asked-only', 'no-closing-offer']);
+    assert.strictEqual(steps['lead-sentences'].quote, 'A short reply too: a fourth sentence becomes a bullet.');
+    const g = steps['asked-only'].graders[0];
+    const hit = (text) => new RegExp(g.pattern, g.flags).test(text);
+    for (const unasked of ['**Size:** small', '## Risks\nnone', '- **Cost and risk:** low', 'Other ways:\n- a', 'Two ways I checked:', 'Trade-offs'])
+        assert.ok(hit(`No, it clamps to 100 (high confidence).\n${unasked}`), `'${unasked}' is an unasked section`);
+    for (const fine of ['No, it clamps to 100 (high confidence).\n- a negative percent clamps to 0', 'The size of the change is one line (high confidence).', 'It carries no risk of a negative price.'])
+        assert.ok(!hit(fine), `'${fine}' is an answer, not a section`);
+});
+
 test('answer-budget fixture: its graders check the exact budget, the lead and the label', () => {
     const steps = Object.fromEntries(expectOf('answer-budget').steps.map((s) => [s.id, s]));
     const hit = (id, text) =>

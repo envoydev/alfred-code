@@ -14,7 +14,7 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 
 Then read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` - the whole body, never a heading
 diff (measured: a run that skipped it and diffed the `## ` headings left every improve-mode check unrun) - and follow it inline with
-`<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
+`<stack>` = the `$TMP/repo` path, written as the literal `RESOLVED` path, no shell variable, and each command in a call of its own, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), an older seed's rules list (a
 `stack-rules` row) is offered for removal, the project's own prose is never overwritten, and every change is
@@ -111,8 +111,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   it.
 - **NESTED** - read only when step 2 had a `nested:` row: each `remove-nested:` line its removal printed, verbatim. A nested
   install the user kept is one follow-ups line: '`<rel>` holds an install inside this repository; the next update asks again'.
-- **WORKSPACE** - read only when `$TMP/cascade.txt` exists (`update-workspace.md` ran the cascade or its hold call): append
-  `; [ -f "$TMP/cascade.txt" ] && cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
+- **WORKSPACE** - read only when `update-workspace.md` ran the cascade or its hold call, which write `$TMP/cascade.txt`: append
+  `; cat "$TMP/cascade.txt"` to the hygiene call. A `cascade.txt` with no
   `cascade: done` line is a cascade still running: wait for its completion notice and read it again. One row per
   project from its `cascade: <rel><TAB><state>` line - `<rel>`; its version from step 2's plan row, for a `held` row the
   stamped version alone (the left side of its `version=` field), and `-` for a project step 2's plan printed no row for,
@@ -164,9 +164,9 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 
 ## 8. Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `$TMP/repo/setup-plugin/references/source-protocol.md`, on EVERY exit path:
+Remove `$TMP` per `$TMP/repo/setup-plugin/references/source-protocol.md`: `rm -rf "$TMP" "$MARK"`, a call of its OWN - never chained with another command - on EVERY exit path:
 after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
-user 'no'. Then confirm the project tree holds only installed artifacts by LOOKING, never with
+user 'no'. Then, as a separate call after it (read-only, naming no run dir), confirm the project tree holds only installed artifacts by LOOKING, never with
 `git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status
 over it is empty whatever is sitting there. `ls -a .claude` plus a check that no archive, extracted repo,
 `raw.json`, `selection.txt` or `install.log` was left in the project - anything stray is named in

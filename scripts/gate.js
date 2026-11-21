@@ -24,6 +24,7 @@
 //   node scripts/gate.js --install-hook | --uninstall-hook
 // Local config (never tracked): `git config gate.windowsVm '<Parallels VM name>'`, `git config gate.legs mac,linux`;
 // GATE_LEGS and GATE_WINDOWS_VM override them for one run.
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -37,6 +38,13 @@ const LEG_TIMEOUT_MS = 45 * 60 * 1000;
 const VM_READY_MS = 5 * 60 * 1000;
 const KEEP_LOG_RUNS = 10;
 const KEEP_PASS_STAMPS = 50;
+// The Windows VM rule (.claude/rules/windows-vm.md): a run's files live under C:\Claude-MacOs\<repo>\<run>\ on the
+// guest's own disk, and what crosses the host share under <share>\Claude-MacOs\<repo>\. The gate's runs share one
+// parent, so its sweep of dead runs never reaches another run's folder or the repo's shared\ one.
+const VM_ROOT = 'Claude-MacOs';
+const VM_REPO = 'alfred-code';
+const VM_GATE_DIR = `C:\\${VM_ROOT}\\${VM_REPO}\\gate`;
+const VM_ID_CHARS = 8; // Windows paths stop at 260 characters, and node_modules nests deep under the work dir
 
 function parseArgs(argv)
 {
@@ -141,6 +149,21 @@ function vmShare(info, home = os.homedir())
 }
 
 // How to bring a VM up for the run, and how to put it back the way it was found.
+// Where the Windows leg works and what it passes through the share - pure, so a test pins every path.
+// `winId` is the run's id cut to VM_ID_CHARS: a hash of it, so two runs of one commit stay apart.
+function winPaths(id, share)
+{
+    const winId = crypto.createHash('sha1').update(String(id)).digest('hex').slice(0, VM_ID_CHARS);
+    const shareParts = [VM_ROOT, VM_REPO, `gate-${winId}`];
+    return {
+        winId,
+        work: `${VM_GATE_DIR}\\${winId}`,
+        sweep: `${VM_GATE_DIR}\\*`,
+        hostDir: path.join(share.hostPath, ...shareParts),
+        guestDir: `${share.guestPath}\\${shareParts.join('\\')}`,
+    };
+}
+
 const WAKE = { stopped: 'start', suspended: 'resume', paused: 'resume' };
 const RESTORE = { stopped: 'stop', suspended: 'suspend', paused: 'pause' };
 
@@ -402,26 +425,23 @@ async function legWin(ctx)
     else if (state !== 'running') return { reasons: [`VM '${vm}' is ${state || 'in an unknown state'}`] };
     if (!(await waitForExec(vm)))
         return { reasons: [`'${vm}' accepted no command within ${fmtMs(VM_READY_MS)} - it needs Parallels Tools running, and isolation from the Mac turned off`] };
-    const dirName = `alfred-gate-${ctx.id}`;
+    const { winId, work, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
     // Killing prlctl on the Mac leaves the run going in the VM: a timeout or Ctrl-C ends the guest
     // tree too and removes its work dir. Encoded, because prlctl exec drops quotes inside an argument.
-    const work = `C:\\alfred-gate\\${ctx.id}`;
-    const guestKill = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${ctx.id}*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId | Out-Null }; `
+    const guestKill = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${winId}*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId | Out-Null }; `
         + `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '${work}'`;
     const onKill = () => {
         try { prl(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(guestKill, 'utf16le').toString('base64')], { timeout: 60000 }); }
         catch { /* the VM is going down anyway */ }
     };
-    const hostDir = path.join(share.hostPath, dirName);
     fs.mkdirSync(hostDir, { recursive: true });
     ctx.cleanups.push(() => fs.rmSync(hostDir, { recursive: true, force: true }));
-    const guestDir = `${share.guestPath}\\${dirName}`;
     fs.copyFileSync(ctx.bundle, path.join(hostDir, 'repo.bundle'));
     copyLeg(hostDir);
     // SYSTEM's own temp dir is the Windows one nothing cleans: the run's temp sits in its work dir
     writeLegFiles(hostDir, 'win', { ...ctx.legCfg, bundle: `${guestDir}\\repo.bundle`, work, tempDir: true });
-    // one gate per machine, so a run dir already there is a dead run's (the VM went down under it)
-    const sweep = `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'C:\\alfred-gate\\*'`;
+    // one gate per machine, so a run dir already there is a dead run's (the VM went down under it) - only inside gate\
+    const sweep = `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '${sweepGlob}'`;
     try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(sweep, 'utf16le').toString('base64')], 120000); }
     catch { /* the leg reports what matters */ }
     const bootBefore = await guestBoot(vm);
@@ -681,4 +701,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { LEGS, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };
+module.exports = { LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };

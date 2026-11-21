@@ -34,13 +34,19 @@ every run ends with it.
 
 ## 1. Install choices
 
-Detect silently first - the OS (the installer itself is one `node` command on every OS now; the OS decides the PowerShell spelling of the snippets below, and nothing else: the frozen OS twins no longer run - `ALFRED_CODE_SEED=shell` stops the run at the installer step) and the mode (a git repo -> project mode, its top level the root; anything else -> no-repo mode, the current directory the root). ONE call answers both, and this is the command - the same copy-ready shape steps 2-3 already give, because improvised probing cost one run three Bash calls where the third re-asked what the first two had already returned (36, 30 and 143 chars of answer for 36% of that run's tokens):
+Detect silently first - the OS (the installer itself is one `node` command on every OS now; the OS decides the PowerShell spelling of the snippets below, and nothing else: the frozen OS twins no longer run - `ALFRED_CODE_SEED=shell` stops the run at the installer step) and the mode (a git repo -> project mode, its top level the root; anything else -> no-repo mode, the current directory the root). Two calls answer both and read the role - copy them as written; improvised probing cost one run three Bash calls. The first names no run dir, so it stands alone:
 
 ```bash
-printf 'os=%s\n' "$(uname -s 2>/dev/null || echo Windows)"; git rev-parse --show-toplevel 2>/dev/null || echo "mode=no-repo root=$(pwd)"; node "$TMP/repo/scripts/variables.js" recommend --root .; node "$TMP/repo/scripts/workspace.js" role --root . --when init; cat "$TMP/repo/setup-plugin/references/init-role.md"
+uname -s ; git rev-parse --show-toplevel ; pwd
 ```
 
-The last two print the project's role and `init-role.md`, its ask - one call of its own before screen A.
+Read it as printed: line one is the OS (a failing `uname`, or `MINGW...` / `MSYS...`, means Windows). A `fatal: not a git repository` line means no-repo mode, the last line its root; else line two is the git top level, the project root. The second call runs the rest:
+
+```bash
+node "$TMP/repo/scripts/variables.js" recommend --root . ; node "$TMP/repo/scripts/workspace.js" role --root . --when init ; cat "$TMP/repo/setup-plugin/references/init-role.md"
+```
+
+The last two parts print the role and its ask, `init-role.md`.
 
 Denied by the permission classifier? ASK, do not re-probe. Re-issuing the same detection under different syntax reads as working around the denial. Put the two facts through one AskUserQuestion instead ('which OS?' / 'is this directory the project root?') with the likely answer marked - the user knows both without a probe. Then ask TWO AskUserQuestion screens (the tool caps four questions per call; each default marked Recommended). **Screen A - the install itself:** scope - where the PLUGINS are enabled, nothing else: `local` (default - this checkout only, out of git), `project` (`.claude/settings.json`, everyone who clones the repo) or `user` (every project of this account). In no-repo mode screen A opens with the root confirmation instead - install into this directory, or stop and run from the project's root (recommended when this directory is not the project). **The instruction file's name and place** - read `$TMP/repo/setup-plugin/references/instructions-place.md` and ask its two templates for the project's `instructions-file:` and `instructions:` lines: they ride screen A while that screen holds two questions or fewer, else they are one call of their own right after. **Screen B - the environment:** one question per `ask: true` row of the snapshot's `$TMP/repo/meta/environment.json`, in calls of at most four in catalog order - the rows past the first four in a second call, from `cat "$TMP/repo/setup-plugin/references/init-env-more.md"` read right before it - which is the ONE list of the values the install writes into `<data root>/.variables` - never a list typed from memory here, or a variable a release adds would silently stop being asked. Each question shows the row's `default` and its `what` in plain words; free text via Other. Before screen B run `node "$TMP/repo/scripts/variables.js" recommend --root . --scope <screen A's scope>` - the detection ran before the scope was known. The docs-versioning question lists this call's value first, marked Recommended, its reason as the description.
 
@@ -149,7 +155,7 @@ seeded).
 
 ## 7. Hooks
 
-walk.md's Hooks layer - recommended = all eighteen, the answer written as `ALFRED_CODE_HOOKS_OFF`
+walk.md's Hooks layer - recommended = all nineteen, the answer written as `ALFRED_CODE_HOOKS_OFF`
 in the scope's settings file env.
 
 ## 8. Plugins
@@ -206,7 +212,7 @@ an update does: report each `layout:` line it printed, verbatim; `layout: curren
 
 `--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/alfred-code.stamp` recording the revision it installed (an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of a plugin-cache copy, which carries no `RELEASE-SOURCE`) - that is what a later `/alfred-code:configure` diffs against.
 
-Then apply the step-1 environment choices where they differ from what the installer left: ONE `node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> KEY=value ...` naming ONLY the keys screen B asked (never `ALFRED_CODE_AUTO_COMPACT`, which the installer wrote from its flag); it puts each where it takes effect and names the file. The installer seeds only absent keys, so these values are the user's and survive every update. An accepted default needs no write only where `variables.js show --root .` already reads that value - compare after the install: one row's seed is DETECTED from the repo rather than constant (its `what` says so), and there the catalog default and the seeded value can differ.
+Then apply the step-1 environment choices where they differ from what the installer left: ONE `node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> <KEY>=<value> ...` naming ONLY the keys screen B asked (never `ALFRED_CODE_AUTO_COMPACT`, which the installer wrote from its flag); it puts each where it takes effect and names the file. The installer seeds only absent keys, so these values are the user's and survive every update. An accepted default needs no write only where `variables.js show --root .` already reads that value - compare after the install: one row's seed is DETECTED from the repo rather than constant (its `what` says so), and there the catalog default and the seeded value can differ.
 
 The docs root is always `<data root>/docs`, which the installer stamped into `.alfred/stack/rules/alfred-docs-root.md`; every later update re-stamps it.
 
