@@ -197,10 +197,10 @@ function saveChoices(root, folder, choices)
 // Writes the full file once, on a request that finds a name missing or the file absent; a complete file is left as it is, so a
 // request costs no git change. A file that does not parse is never rewritten, and only a hook installed in a repo's
 // .claude/kit writes.
-function completeFile(env, root, folder)
+function completeFile(root, folder)
 {
     if (!isKitFolder(root, folder)) return;
-    const result = completeKitSettings(root, env);
+    const result = completeKitSettings(root);
     if (!result.ok && result.skipped !== true) console.error(`${HOOK_ERROR_PREFIX} ${result.error}`);
 }
 
@@ -224,7 +224,7 @@ function buildOutput(hookInput, env, root, folder)
 {
     const request = typeof hookInput.prompt === 'string' ? hookInput.prompt : '';
     const savedNote = saveChoices(root, folder, choicesOf(request));
-    completeFile(env, root, folder);
+    completeFile(root, folder);
     const settings = Object.fromEntries(Object.entries(resolveKitSettings(env, root))
         .map(([name, { value, origin }]) => [name, { value: cutToShow(value), origin: cutToShow(origin) }]));
 

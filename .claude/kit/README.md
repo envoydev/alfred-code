@@ -10,8 +10,9 @@ run its sync, which rewrites them in every repo.
   implement and search models, whether scoring, auto-run and auto-approve are on - read from `settings.json` beside it, then the
   `KIT_*` variables of a settings file's `env` block, for a name the file lacks; the header of `kit-settings.mjs` lists them and
   `constants.mjs` holds their names and defaults. `settings.json` always holds all nine names (the owner's ruling,
-  2026-11-21): the sync, the hook and every save add what is missing, so a variable counts only for an absent or incomplete
-  file. `settings.json` here is this repo's own, and the sync changes only what it lacks: it
+  2026-11-21): the sync, the hook and every save add what is missing, each with its default and never a `KIT_*` variable,
+  so a variable has no effect once the file is complete. `unset` writes the name's default, and the value then no longer
+  follows its source (a later change of an agent file's model does not reach it). `settings.json` here is this repo's own, and the sync changes only what it lacks: it
   keeps what was set in chat - a model, the pass score, scoring, auto-run, auto-approve - until it is changed, written by the hook
   when a request's first line is only words to switch a mode or name a role's model, and by
   `node .claude/kit/settings.mjs set <name> <value>` for everything else. `status-hook.mjs` is the `UserPromptSubmit` hook this repo's `.claude/settings.json` runs: it shows the
