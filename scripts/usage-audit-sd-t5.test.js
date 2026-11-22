@@ -152,5 +152,6 @@ test('SKC14 + SKC13: the create-mode write ask is a marked template, and the bot
     assert.strictEqual(create.options[0], 'Write it (Recommended)');
     assert.ok(create.options.includes('Skip'));
     assert.doesNotMatch(flat(text), /puts it through the step-5 AskUserQuestion/);
-    assert.strictEqual((flat(text).match(/Project instructions to 'claude-md-and-agents-md' in `\/config`/g) || []).length, 2, 'both sites name the setting');
+    // ab-G round 2 (agents-md:61): the improve-mode report clause dropped its copy; section 6 keeps the one site.
+    assert.strictEqual((flat(text).match(/Project instructions to 'claude-md-and-agents-md' in `\/config`/g) || []).length, 1, 'section 6 names the setting');
 });

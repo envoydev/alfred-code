@@ -926,19 +926,19 @@
       "note": "same gate on a filesystem server the user registers: write_file, edit_file and create_directory judged on tool_input.path, move_file on its source and its destination, matched by the tool's name under any registration (audit 2026-11-03 SYS-02)"
     },
     {
-      "file": "guard-answer.js",
+      "file": "communication-reminder.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
       "note": "inject the answer budget (at most 900 characters of prose, near 150 words, bullets counted, 3 lead sentences or fewer) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the save line - the preferences docs or Claude Code's own memory); `/alfred-code:mode:scoring on|off` switches the scoring for the session, said as a `[mode]` line, and the `Modes ON:` line names what is on; rewrites the session-inspector status file when auto-run or the scoring changed"
     },
     {
-      "file": "guard-answer.js",
+      "file": "communication-reminder.js",
       "matcher": "@SessionStart:compact",
       "event": "",
       "note": "re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session); startup, resume and clear get it from the first prompt's UserPromptSubmit injection, so the start no longer pays for a second copy (deep hooks review 2026-10-16)"
     },
     {
-      "file": "guard-answer.js",
+      "file": "communication-reminder.js",
       "matcher": "@PostToolUse:AskUserQuestion",
       "event": "",
       "note": "an answer TYPED into an ask (matching none of the offered labels) is the user speaking: one ask-answer-typed probe row; a short one carrying a correction marker also writes the correction row (the same test and nudge mode as a typed prompt); one naming a path gets a note to open it and restate what it changes before acting (audit 2026-10-10 C15 / C07: corrections typed into asks were never counted, and a folder named in an answer was never opened). Never blocks"
@@ -1043,31 +1043,31 @@
       "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 1",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 1 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+      "note": "the project's always-on rules from .alfred/stack/rules, part 1 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
     },
     {
       "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 2",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 2 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+      "note": "the project's always-on rules from .alfred/stack/rules, part 2 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
     },
     {
       "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 3",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 3 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+      "note": "the project's always-on rules from .alfred/stack/rules, part 3 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
     },
     {
       "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 4",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 4 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+      "note": "the project's always-on rules from .alfred/stack/rules, part 4 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
     },
     {
       "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 5",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 5 of at most five (9,500 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
+      "note": "the project's always-on rules from .alfred/stack/rules, part 5 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
     },
     {
       "file": "rules-session.js",
@@ -1310,6 +1310,7 @@
       "inject-code-style.js",
       "monitor-session.js",
       "guard-answer-length.js",
+      "guard-answer.js",
       "memory-session.js",
       "guard-desktop-exec.js"
     ],
@@ -1454,9 +1455,11 @@
       "macos-desktop": "macos-control"
     },
     "hooks": {
-      "guard-answer-length": "guard-answer",
+      "guard-answer-length": "communication-reminder",
+      "guard-answer": "communication-reminder",
       "memory-session": "preferences-session:host",
-      "guard-answer:scorer": "guard-answer:scoring",
+      "guard-answer:scorer": "communication-reminder:scoring",
+      "guard-answer:scoring": "communication-reminder:scoring",
       "guard-stop-contract:scorer": "guard-stop-contract:scoring"
     }
   },

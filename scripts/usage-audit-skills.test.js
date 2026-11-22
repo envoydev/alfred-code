@@ -217,7 +217,9 @@ test('C18 229e2715#6 390aebcb#7: the security half stays inline in an explicit-o
 });
 
 test('C18 batch receipts (the pinned T3 contract): one receipt covers a reviewed batch while every later commit stays inside its review', () => {
-    assert.match(flat(checkpoint()), /One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an ancestor of HEAD and every commit since touches only files its review covered/);
+    // ab-G round 2, group K, SKC2-05a: the rule moved to the reference, and SKILL.md points at it behind a conditional
+    assert.match(flat(read('stack/skills/habits-commit-checkpoint/references/evidence.md')), /One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an ancestor of HEAD and every commit since touches only files its review covered/);
+    assert.match(flat(checkpoint()), /how one receipt covers a reviewed batch, is `references\/evidence\.md` `## What counts as a review`/);
 });
 
 test('C18 / C30: the measured stories sit in the evidence appendix, not the run-time body', () => {

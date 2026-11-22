@@ -31,10 +31,12 @@ const copiesOf = (entry) => [entry.owner, ...(entry.sites || [])].map((c) => c.f
 const part = (name) => read(`stack/skills/capture-quality/references/${name}.md`);
 
 // ---- M77: the CI signatures skill counts the gatherer triggers its reference lists ------------------------------
-test('M77: signatures-ci names four dispatch triggers, the count its fan-out reference lists', () => {
+test('M77: signatures-ci leaves the dispatch triggers to its fan-out reference, which lists four', () => {
     const text = flat(skill('issue-signatures-ci'));
     assert.doesNotMatch(text, /the three dispatch triggers/);
-    assert.match(text, /the four dispatch triggers/);
+    // ab-G round 2, group I, SKF2-11: the Execution modes section only points at the reference, so the skill no longer counts the triggers
+    assert.doesNotMatch(text, /the four dispatch triggers/);
+    assert.match(text, /Read `references\/gatherer-fan-out\.md` before deciding on evidence-gatherers/);
     const ref = flat(read('stack/skills/issue-signatures-ci/references/gatherer-fan-out.md'));
     for (const trigger of [/two or more independent sources/, /log is huge/, /the triage is a matrix/, /a local repro run/])
         assert.match(ref, trigger, `the reference still lists ${trigger}`);

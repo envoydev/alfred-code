@@ -273,7 +273,7 @@ function reconcile(reg, backgroundTasks, { now = Date.now(), probe = () => {} } 
 
 // The ONE gate both halves read, so they cannot drift: the cap stands down - writing nothing - with no session id, its
 // part or either hook switched off, `minimal`, a repo never set up, a Cursor payload or a cap of 0. `canContinue` is the
-// Stop half's extra gate: guard-answer scopes `.denied` to its prompt, so with it off a Stop never continues for the cap.
+// Stop half's extra gate: communication-reminder scopes `.denied` to its prompt, so with it off a Stop never continues for the cap.
 function capGates(payload, env = process.env, { stop = false } = {})
 {
     try
@@ -291,7 +291,7 @@ function capGates(payload, env = process.env, { stop = false } = {})
         const root = env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
         const reg = openRegistry(root, payload.session_id, env);
         if (!reg) return null;
-        return { n, reg, root, canContinue: !stop || !(pre.hookDisabled('guard-answer', env) || pre.profileOff('guard-answer', env)) };
+        return { n, reg, root, canContinue: !stop || !(pre.hookDisabled('communication-reminder', env) || pre.profileOff('communication-reminder', env)) };
     }
     catch { return null; }
 }

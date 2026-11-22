@@ -405,7 +405,7 @@ test('R116: a prompt over a file reading autoRun true and not compact rewrites i
     assert.deepStrictEqual([got.r, got.s.fullContext], ['written', 'compact']);
 });
 
-// R137 (burn-down 2026-11-04): guard-answer ran history-session's stand-down on every prompt, before the compare.
+// R137 (burn-down 2026-11-04): communication-reminder ran history-session's stand-down on every prompt, before the compare.
 test('R137: the prompt\'s stand-down runs only when a write is due', () =>
 {
     const { root, P, FILE } = sonnetSession();

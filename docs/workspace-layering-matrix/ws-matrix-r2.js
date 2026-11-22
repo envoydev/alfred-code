@@ -464,7 +464,7 @@ run('AC12', (sb) =>
     sb.initChild('api'); sb.initChild('api/tool');
     sb.vars('.', 'set', ['ALFRED_CODE_SCORER_LEVEL=90', 'ALFRED_CODE_MAXIMUM_RUN_AGENTS=3', 'ALFRED_CODE_DOCS_VERSIONING=local']);
     const tool0 = treeHash(sb.at('api/tool'));
-    const ga = sb.hook('api/tool', 'guard-answer.js', { hook_event_name: 'UserPromptSubmit', prompt: 'hello' });
+    const ga = sb.hook('api/tool', 'communication-reminder.js', { hook_event_name: 'UserPromptSubmit', prompt: 'hello' });
     const t = sb.hookEnv('api/tool', ['ALFRED_CODE_SCORER_LEVEL', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE']);
     check('AC13 the root\'s SCORER_LEVEL 90 and agent cap 3 reach a hook in ws/api/tool with no run there; DOCS_VERSIONING stays its own',
         t.ALFRED_CODE_SCORER_LEVEL === '90' && /Agents at once: 3/.test(ga.out) && t.ALFRED_CODE_DOCS_VERSIONING !== 'local' && !changed(tool0, treeHash(sb.at('api/tool'))).length, `${JSON.stringify(t)}\n${ga.out.slice(0, 600)}`);

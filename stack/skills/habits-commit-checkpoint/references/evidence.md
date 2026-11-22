@@ -1,7 +1,7 @@
 # Evidence appendix - what each receipt line was added to catch
 
-An audit appendix, not a run-time load: read it when a rule in SKILL.md looks like ceremony, never
-as part of a commit.
+An audit appendix, not a run-time load: read it when a rule in SKILL.md looks like ceremony. The one
+run-time part is `## What counts as a review`, which SKILL.md points at.
 
 ## Contents
 
@@ -9,6 +9,7 @@ as part of a commit.
 - The publish half (usage audit 2026-10-10)
 - The security half (usage audit 2026-10-10)
 - How the trivial bar counts
+- What counts as a review
 - Why the receipt is its own tool call
 - Why a sibling repo is never offered as an option
 - Why the pre-existing untracked files stay out of the change
@@ -65,6 +66,17 @@ The hook sums this commit and the session's earlier commits that passed without 
 commit, or one a pull brought in, adds nothing, and when the session's start cannot be read it counts
 the whole uncommitted tree. A receipt left behind after the batch is the stale-stamp failure the hook's
 2h age cap exists for, which is why the close clears it.
+
+## What counts as a review
+
+Any `VERIFIED` line, whatever it says, needs a review of the code
+that started in this session after the last edit to every file the commit takes in - a file whose bytes
+a review saw (its staged copy too) still passes (a stash and pop), a review pointed at paths covers
+those alone, a seat covers what its brief names (`git diff HEAD` for the whole change), a review call a
+hook refused is no review, a verifier seat counts once it has reported (a background one at its
+completed notification), and a review skill counts once its result line - `Findings:`, a loop's
+`Outcome:` - follows it in a reply of its own (one reply closes one review, so two reports printed together count once). One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an
+ancestor of HEAD and every commit since touches only files its review covered; clear it after the LAST commit of the batch.
 
 ## Why the receipt is its own tool call
 

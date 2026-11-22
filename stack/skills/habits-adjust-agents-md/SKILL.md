@@ -60,12 +60,10 @@ CLAUDE.md (the user's answer to the name ask of init, configure or update). Ever
 
 A root `AGENTS.md` is the project's own file, whoever wrote it: the installer seeds nothing beside
 it, and it is improved in place with every change shown first, never overwritten or replaced by the
-template. A project's own `CLAUDE.md` is improved as it stands and never renamed here (the name ask of configure or update renames) - say in
-the report that Claude Code (2.1.277 or later) reads an AGENTS.md itself only while no CLAUDE.md or
-CLAUDE.local.md sits beside or above it, so with both files the CLAUDE.md wins, and an
-`@` import of the AGENTS.md from it keeps both loading - it resolves from the importing file, so
-`@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside it - or the user sets Project
-instructions to 'claude-md-and-agents-md' in `/config`. Never the same facts written twice.
+template. A project's own `CLAUDE.md` is improved as it stands and never renamed here (the name ask of configure or update
+renames) - the report says that with both files the CLAUDE.md wins, and that an `@` import of the AGENTS.md from it
+(`@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside it) keeps both loading.
+Never the same facts written twice.
 
 ## 3. Gather the facts - read, never guessed
 

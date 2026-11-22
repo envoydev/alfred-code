@@ -13,7 +13,7 @@ const path = require('node:path');
 // changes the process, and scripts require this file.
 const loadPrelude = () => { try { return require(path.join(__dirname, 'hook-prelude.js')); } catch { return null; } };
 
-const PART_ROOM = 9500;   // under the 10,000-character cap on one hook's context (stage 0, P1)
+const PART_ROOM = 9900;   // under the 10,000-character cap on one hook's context (stage 0, P1: 10,000 arrive whole); 100 spare
 const RULE_PARTS = 5;
 // meta/recommendations.json `always.rules`, which the installer locks; lint holds the two lists equal.
 const LOCKED_RULES = Object.freeze(['alfred-docs-root', 'alfred-interaction', 'alfred-navigation', 'alfred-preferences',

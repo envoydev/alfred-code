@@ -1,4 +1,4 @@
-// Behavior tests for stack/hooks/guard-answer.js - the answer budget it injects, the correction streak it
+// Behavior tests for stack/hooks/communication-reminder.js - the answer budget it injects, the correction streak it
 // names, the typed-answer note after an ask, and the Stop silence the 2026-10-20 ruling left (it never blocks).
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
@@ -12,7 +12,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k]; // C19: the session's own stack env never decides a case
 
-const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer.js');
+const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'communication-reminder.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-hook-'));
 // The hook appends a block row to `<root>/<data root>/statistics/hook-blocks/`, and the root falls back to the
 // process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout wrote its
@@ -52,10 +52,69 @@ test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     assert.match(ctx, /lead with 3 sentences or fewer, a short reply too, result first; answer only what was asked - no unasked size, risks or other ways;/, 'the hook line carries the short-reply and asked-only clauses');
     assert.match(ctx, /first sentence carries its label: \(high confidence\), \(medium confidence - <what is not verified>\) or \(low confidence - <why>\)/, 'the hook line names the confidence label, as the rule does');
     assert.match(ctx, /Code, tables and command output are exempt/, 'the exemption travels with the budget');
+    assert.ok(ctx.includes('Code, tables and command output are exempt. A list of items is a table, one short row each.'), 'the table sentence follows the exemption, once');
+    assert.ok(ctx.includes('It binds replies to the user only, never code, code comments, tickets or dev-log data.'), 'the budget names what it does not bind');
+    assert.strictEqual(ctx.split('A list of items is a table').length, 2, 'one copy');
     // Ruling S9 (the user's, 2026-10-20): 'step by step' lifts the budget like the other depth words.
     assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ teach me \/ ELI5 \/ write a plan, or the same ask in any language\)/, 'the lift list names step by step');
     // Audit 2026-11-03 SYS-05: the per-turn copy carries the rule's 'the same ask in any language' (alfred-interaction.md).
     assert.match(fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8'), /'write a plan', the same ask in any language\)/, 'the rule it copies');
+});
+
+// The last-reply note (reply-budget.js): UserPromptSubmit adds it right after the budget when the LAST reply passed it.
+const NOTE_SHAPE = /Last reply: \d+ characters of prose, lead sentences: \d+ - over the limit\. Make this one fit\./;
+const submit = (transcriptPath, extra = {}) => run({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?', ...(transcriptPath === undefined ? {} : { transcript_path: transcriptPath }), ...extra });
+
+test('an over-long last reply gets the note right after the budget text', () => {
+    const r = submit(transcript('note-long', 'did the build pass?', [{ type: 'text', text: WALL }]));
+    assert.strictEqual(r.status, 0);
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.match(ctx, new RegExp(`text included\\. ${NOTE_SHAPE.source}`), 'the note follows the budget text');
+});
+
+test('a short last reply gets no note', () => {
+    const r = submit(transcript('note-short', 'did the build pass?', [{ type: 'text', text: SHORT }]));
+    assert.strictEqual(r.status, 0);
+    assert.doesNotMatch(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /Last reply:/);
+});
+
+test('no transcript_path, a missing file and a directory add no note and exit 0', () => {
+    for (const target of [undefined, '', path.join(TMP, 'no-such-transcript.jsonl'), TMP]) {
+        const r = submit(target);
+        assert.strictEqual(r.status, 0, String(target));
+        assert.doesNotMatch(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /Last reply:/, String(target));
+    }
+});
+
+test('a request beyond the first 512 KB tail is found by the growing tail', () => {
+    const file = path.join(TMP, 'note-grow.jsonl');
+    const pad = { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: 'Bash', input: { pad: 'p'.repeat(100000) } }] } };
+    const rows = [{ type: 'user', message: { role: 'user', content: 'go' } }, ...Array.from({ length: 8 }, () => pad),
+        { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: WALL }] } }];
+    fs.writeFileSync(file, rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
+    assert.ok(fs.statSync(file).size > 512 * 1024 && fs.statSync(file).size < 2 * 1024 * 1024);
+    assert.match(JSON.parse(submit(file).stdout).hookSpecificOutput.additionalContext, NOTE_SHAPE);
+});
+
+test('a hooks folder without reply-budget.js still sends the budget, adds no note and exits 0', () => {
+    const dir = fs.mkdtempSync(path.join(TMP, 'no-module-'));
+    const hooks = path.dirname(HOOK);
+    for (const name of fs.readdirSync(hooks)) {
+        if (name !== 'reply-budget.js' && fs.statSync(path.join(hooks, name)).isFile()) fs.copyFileSync(path.join(hooks, name), path.join(dir, name));
+    }
+    const file = transcript('note-no-module', 'did the build pass?', [{ type: 'text', text: WALL }]);
+    const r = spawnSync(process.execPath, [path.join(dir, 'communication-reminder.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?', transcript_path: file }), encoding: 'utf8', env: process.env });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(ctx.includes('Answer budget'));
+    assert.doesNotMatch(ctx, /Last reply:/);
+});
+
+test('the SessionStart compaction route carries no note, and the table sentence rides the budget', () => {
+    const file = transcript('note-start', 'did the build pass?', [{ type: 'text', text: WALL }]);
+    const start = JSON.parse(run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 's', transcript_path: file }).stdout).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(start, /Last reply:/);
+    assert.ok(start.includes('A list of items is a table, one short row each.'));
 });
 
 // The user's ruling 2026-10-20: the answer budget is the interaction rule's and is injected, never enforced - the
@@ -134,7 +193,7 @@ test('the correction test counts a short turn carrying a correction marker, afte
         'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed']) {
         const { rows } = prompted(prompt);
         assert.strictEqual(rows.length, 1, `a correction: ${prompt}`);
-        assert.strictEqual(rows[0].hook, 'guard-answer.js');
+        assert.strictEqual(rows[0].hook, 'communication-reminder.js');
         assert.strictEqual(rows[0].event, 'UserPromptSubmit');
         assert.ok(rows[0].detail && rows[0].detail.marker, 'the row names the marker that matched');
         assert.ok(!JSON.stringify(rows[0]).includes(prompt.slice(12)) || prompt.length < 24, 'the row carries the marker, never the prompt');
@@ -473,8 +532,8 @@ test('scoring: no skill copy, or skillOverrides off - no line, a stack included 
     assert.doesNotMatch(prompt('c5', '/mode-output-scoring x', ON), /scoring:/);
     seedSkillCopy();
 });
-test('scoring: guard-answer, guard-stop-contract, or either scoring part off - no line, a stack included (AC13, AC20)', () => {
-    for (const off of ['guard-answer', 'guard-answer:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
+test('scoring: communication-reminder, guard-stop-contract, or either scoring part off - no line, a stack included (AC13, AC20)', () => {
+    for (const off of ['communication-reminder', 'communication-reminder:scoring', 'guard-stop-contract', 'guard-stop-contract:scoring'])
         assert.ok(!said({ hook_event_name: 'UserPromptSubmit', prompt: '/mode-output-scoring x', session_id: 'c6' }, { ...ON, ALFRED_CODE_HOOKS_OFF: off }).includes('scoring:'), off);
 });
 test('scoring: a payload with agent_id, a harness prompt, and the switch at 0 - no line, no file (AC1)', () => {
@@ -567,13 +626,13 @@ test('ON line: with the start hook switched off a typed on claims no auto-run, s
 test('ON line: a prelude older than autoRunFor (a copy-route skew) still lists auto-run and carries its line', () => {
     const real = path.dirname(HOOK);
     const dir = fs.mkdtempSync(path.join(TMP, 'old-prelude-'));
-    fs.copyFileSync(HOOK, path.join(dir, 'guard-answer.js'));
+    fs.copyFileSync(HOOK, path.join(dir, 'communication-reminder.js'));
     for (const name of ['layout.js', 'agent-cap.js', 'session-status.js'])
         fs.writeFileSync(path.join(dir, name), `module.exports = require(${JSON.stringify(path.join(real, name))});\n`);
     fs.writeFileSync(path.join(dir, 'hook-prelude.js'), `const { autoRunFor, ...rest } = require(${JSON.stringify(path.join(real, 'hook-prelude.js'))});\nmodule.exports = rest;\n`);
     clearStamp();
     autoStamp('e7');
-    const r = spawnSync(process.execPath, [path.join(dir, 'guard-answer.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'next', session_id: 'e7' }), encoding: 'utf8', env: { ...process.env, ...SCORING_CFG, ...OFF } });
+    const r = spawnSync(process.execPath, [path.join(dir, 'communication-reminder.js')], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'next', session_id: 'e7' }), encoding: 'utf8', env: { ...process.env, ...SCORING_CFG, ...OFF } });
     const out = JSON.parse(r.stdout);
     assert.strictEqual(out.systemMessage, 'Modes ON: auto-run, auto-compact');
     assert.ok(out.hookSpecificOutput.additionalContext.endsWith(` ${AUTO_LINE}`));
@@ -610,7 +669,7 @@ test('ON line: the typed line beats the stored state, so the parallel start hook
     clearStamp();      // no stamp yet: the start hook's write has not landed
     assert.strictEqual(msgOf('g2', `${AUTO_CMD} on`, OFF), 'Modes ON: auto-run, auto-compact');
     assert.ok(prompt('g2b', `${AUTO_CMD} on`, OFF).endsWith(` ${AUTO_LINE}`));
-    assert.strictEqual(fs.existsSync(APPROVAL), false, 'guard-answer writes no stamp');
+    assert.strictEqual(fs.existsSync(APPROVAL), false, 'communication-reminder writes no stamp');
 });
 test('ON line: a seat or a harness prompt gets no message', () => {
     autoStamp('h2');

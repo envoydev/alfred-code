@@ -142,8 +142,9 @@ function switchOn(suffix, env)
 // user's own text, and an update never rewrites it). Old name -> new, the manifest's `renamed.hooks`, copied here so the
 // prelude stays standalone; hook-prelude.test.js holds the two equal. A value may name a PART (`<hook>:<part>`, E-batch B-m6:
 // the retired memory-session.js's host traps live on as preferences-session's `host`): it switches that part off in partOff, never a hook.
-const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'guard-answer', 'memory-session': 'preferences-session:host',
-    'guard-answer:scorer': 'guard-answer:scoring', 'guard-stop-contract:scorer': 'guard-stop-contract:scoring' });   // until 4.0.0
+const HOOK_RENAMED = Object.freeze({ 'guard-answer-length': 'communication-reminder', 'guard-answer': 'communication-reminder', 'memory-session': 'preferences-session:host',
+    'guard-answer:scorer': 'communication-reminder:scoring', 'guard-answer:scoring': 'communication-reminder:scoring',
+    'guard-stop-contract:scorer': 'guard-stop-contract:scoring' });   // until 4.0.0
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
@@ -1108,7 +1109,7 @@ function autoRunRefusal(input, env, flags)
     return '';
 }
 // Auto-run for this prompt: the family run's -off, its -on when nothing refuses it, else the root stamp live for this
-// session and opening AUTO. One decision for guard-answer's lines and the session status file; a throw is off.
+// session and opening AUTO. One decision for communication-reminder's lines and the session status file; a throw is off.
 function autoRunFor(input, env, flags)
 {
     try
@@ -1128,7 +1129,7 @@ function autoRunFor(input, env, flags)
 // to the next typed slash command or to its close. Inside it stay: a built-in command (its output row follows it), a mode
 // command, a compaction whose summary names the walk, and a reply typed after an ask, a question or a cut-off tool call. A
 // reply typed after the assistant's last text, when that text asks nothing, is the walk's close passed. A walk older than
-// the transcript's tail is read from the whole file. Only the ask answering and guard-answer's line read it: the readers
+// the transcript's tail is read from the whole file. Only the ask answering and communication-reminder's line read it: the readers
 // of `unattended` still see auto-run as nobody at the terminal.
 const PLUGIN_WALK_RE = /(?:<command-name>|^\s*)\/alfred-code:(init|update|configure|validate)(?=<\/command-name>|\s|$)/;
 const SUMMARY_WALK_RE = /\/alfred-code:(init|update|configure|validate)\b/;
@@ -1649,11 +1650,11 @@ function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
 }
 
 
-// THE SCORING'S SHARED STATE (mode-output-scoring, 2026-10-25). guard-answer reads it for the injected lines and the
+// THE SCORING'S SHARED STATE (mode-output-scoring, 2026-10-25). communication-reminder reads it for the injected lines and the
 // flags, the stop contract for the backstop and the seal, so both judge one state from one reader.
 //
 // Prose only: code blocks, tables, quotes, inline spans and link targets are dropped, so a name the user quotes is talk,
-// never a request. guard-answer.js keeps its own copy, since it runs without this file (prose-of in
+// never a request. communication-reminder.js keeps its own copy, since it runs without this file (prose-of in
 // meta/shared-rules.json holds the two bodies equal).
 function proseOf(text)
 {
@@ -1732,7 +1733,7 @@ function scoringState(root, sessionId, env = process.env)
     try
     {
         Object.assign(state, { level: scoringLevel(env), rounds: scoringRounds(env), ...scoringOutputs(env) });
-        if (standDown('guard-answer', env, []) || partOff('guard-answer', 'scoring', env)
+        if (standDown('communication-reminder', env, []) || partOff('communication-reminder', 'scoring', env)
             || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scoring', env)) return state;
         const copy = SCORING_SKILLS.map((n) => skillCopyState(root, n, env)).find((c) => c !== 'absent') || 'absent';
         state.copy = copy;   // the ON line tells a user-invocable-only copy from a switch that is off

@@ -743,7 +743,7 @@ function idleGapOffer() {
   }));
 }
 // THE MODE PROMPT (the mode-commands spec of 2026-11-12, section 3): a mode is switched by its command alone -
-// `/alfred-code:mode:<auto-run|auto-compact|scoring> on|off`, typed on its own line (scoring is guard-answer.js's to
+// `/alfred-code:mode:<auto-run|auto-compact|scoring> on|off`, typed on its own line (scoring is communication-reminder.js's to
 // write and say). Auto-run lasts the session, so no other typed prompt ends it - neither a remark mid-run nor 'stop
 // auto-mode' nor a new flow command (a stop asked in words ends the RUN, which the model does by deleting its marker).
 // A retired flag gets its pointer and switches nothing. While a run marker is open, a message that is no slash command
@@ -776,7 +776,7 @@ const AUTO_ON = '[mode] auto-run is ON until /alfred-code:mode:auto-run off, new
   + ' auto-compact is ON with it';
 function modeCommand(pre, flags, root, stamp, markerFile) {
   if (flags.extra) return '[mode] type the command alone on its line, then on or off';
-  if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: guard-answer.js saves it and says the line
+  if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: communication-reminder.js saves it and says the line
   const ms = require('./mode-settings.js');
   const [input, held, envIs] = [{ ...payload, cwd: root }, ms.autoRunHeld(root), (k) => String(pre.envOf(process.env, k) ?? '').trim()];
   const refusal = flags.autoRun === 'on' ? pre.autoRunRefusal(input, undefined, flags) : '';   // a seat: the prompt never gets here
@@ -1410,7 +1410,7 @@ function autoModeStart() {
   const liveHere = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
   if (AUTO_SELF_RE.test(skill) && !flags.request) {
     // an empty /mode-auto-run starts nothing, whatever the session's mode; under this session's live stamp it is said ON,
-    // as guard-answer's ON line says it, never as a refusal (R090)
+    // as communication-reminder's ON line says it, never as a refusal (R090)
     if (liveHere) autoAlreadyOn = true;
     else autoRefused = pre.autoRunRefusal({ ...payload, cwd: root }, undefined, flags);
     return null;

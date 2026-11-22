@@ -143,8 +143,8 @@ test('the history on-switch the stack seeded becomes the count 3; a typed value 
 const FOLD_LOG = /ALFRED_CODE_DOCS_GATE folded into ALFRED_CODE_HOOKS_OFF as docs-session:gate/;
 test('a part or hook switched off with its old key becomes an entry in ALFRED_CODE_HOOKS_OFF; an on value just goes', () =>
 {
-    const { env, lines } = run({ ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_DOCS_GATE: '0', ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_CONFIG_PROTECT: '0', OTHER: 'x' });
-    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:gate,guard-config-protection');
+    const { env, lines } = run({ ALFRED_CODE_HOOKS_OFF: 'communication-reminder', ALFRED_CODE_DOCS_GATE: '0', ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_CONFIG_PROTECT: '0', OTHER: 'x' });
+    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'communication-reminder,docs-session:gate,guard-config-protection');
     for (const k of ['ALFRED_CODE_DOCS_GATE', 'ALFRED_CODE_PUSH_GATE', 'ALFRED_CODE_CONFIG_PROTECT']) assert.ok(!(k in env), k);
     assert.equal(env.OTHER, 'x');
     assert.ok(lines.some((l) => FOLD_LOG.test(l)), lines.join('\n'));
@@ -156,8 +156,8 @@ test('the fold makes the csv when there is none, never doubles an entry, and a r
     assert.equal(run({ ALFRED_CODE_DOCS_ASK: '0' }).env.ALFRED_CODE_HOOKS_OFF, 'docs-session:ask');
     assert.equal(run({ ALFRED_CODE_HOOKS_OFF: 'docs-session:ask', ALFRED_CODE_DOCS_ASK: '0' }).env.ALFRED_CODE_HOOKS_OFF, 'docs-session:ask');
     assert.equal(run({ ALFRED_CODE_HOOKS_OFF: ' ', ALFRED_CODE_DOCS_ASK: '0' }).env.ALFRED_CODE_HOOKS_OFF, 'docs-session:ask', 'a blank csv is empty');
-    const first = run({ ALFRED_CODE_HOOKS_OFF: 'guard-answer', ALFRED_CODE_ROTATE_ASK: '0', ALFRED_CODE_DONE_GATE: '0' });
-    assert.equal(first.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,guard-stop-contract:rotate,guard-stop-contract:done');
+    const first = run({ ALFRED_CODE_HOOKS_OFF: 'communication-reminder', ALFRED_CODE_ROTATE_ASK: '0', ALFRED_CODE_DONE_GATE: '0' });
+    assert.equal(first.env.ALFRED_CODE_HOOKS_OFF, 'communication-reminder,guard-stop-contract:rotate,guard-stop-contract:done');
     const again = run({ ...first.env });
     assert.equal(again.changed, false);
     assert.deepEqual(again.lines, []);
@@ -166,10 +166,10 @@ test('the fold makes the csv when there is none, never doubles an entry, and a r
 test('the fold lands where the csv takes effect: the overlay keeps its own, and a committed key also reaches an overlay csv', () =>
 {
     const overlay = { ALFRED_CODE_DOCS_ASK: '0' };
-    const env = { ALFRED_CODE_HOOKS_OFF: 'guard-answer' };
+    const env = { ALFRED_CODE_HOOKS_OFF: 'communication-reminder' };
     run(env, { overlay });
-    assert.equal(overlay.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:ask', 'an overlay key folds into an overlay csv made from the one beneath');
-    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer', 'the committed csv is not the overlay key\'s to change');
+    assert.equal(overlay.ALFRED_CODE_HOOKS_OFF, 'communication-reminder,docs-session:ask', 'an overlay key folds into an overlay csv made from the one beneath');
+    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'communication-reminder', 'the committed csv is not the overlay key\'s to change');
     const held = { ALFRED_CODE_HOOKS_OFF: 'instrument-tool-usage' };
     const committed = { ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_DOCS_GATE: '0' };
     run(committed, { overlay: held });
@@ -180,8 +180,8 @@ test('the fold lands where the csv takes effect: the overlay keeps its own, and 
 test('a walk that answered the hooks layer rewrites the hook names and keeps every part entry', () =>
 {
     const env = { ALFRED_CODE_HOOKS_OFF: 'instrument-tool-usage,docs-session:gate,guard-ungated-commit:push' };
-    applyEnv(env, { catalog: [], migrations: envMigrations(REAL), hooksAnswered: true, hooksOff: ['guard-answer'], log: () => {} });
-    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer,docs-session:gate,guard-ungated-commit:push');
+    applyEnv(env, { catalog: [], migrations: envMigrations(REAL), hooksAnswered: true, hooksOff: ['communication-reminder'], log: () => {} });
+    assert.equal(env.ALFRED_CODE_HOOKS_OFF, 'communication-reminder,docs-session:gate,guard-ungated-commit:push');
 });
 
 test('envMigrations translates each entry kind into its flat list', () =>

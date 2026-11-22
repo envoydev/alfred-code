@@ -41,7 +41,7 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
     assert.ok(stop, 'the Stop wiring must survive');
     assert.strictEqual(stop.matcher, undefined, 'Stop takes no matcher');
 
-    const compact = wirings.find(w => w.file === 'guard-answer.js' && w.event === 'SessionStart');
+    const compact = wirings.find(w => w.file === 'communication-reminder.js' && w.event === 'SessionStart');
     assert.ok(compact, 'the SessionStart wiring must survive');
     assert.strictEqual(compact.matcher, 'compact', 'an @Event:matcher form keeps its matcher');
     // the fresh-session hook saves every start's model id (the user's ruling of 2026-10-21), so it takes the bare @Event form

@@ -64,11 +64,11 @@ test('corpus-replay: a guard that never fires is reported DEAD and exits non-zer
 });
 
 test('corpus-replay: an always-on injector is not mislabelled as noisy', () => {
-  // guard-answer injects the budget on EVERY prompt. Reading its 100% as a false-positive
+  // communication-reminder injects the budget on EVERY prompt. Reading its 100% as a false-positive
   // rate would send a maintainer to fix a hook that is working exactly as designed.
   const dir = corpus([{ type: 'user', cwd: '/tmp/some-project', message: { content: 'do the thing' } }]);
-  const { out } = run(dir, '--hook', 'guard-answer.js::UserPromptSubmit');
-  assert.match(rowFor(out, 'guard-answer.js::UserPromptSubmit'), /by design/, 'labelled by design');
+  const { out } = run(dir, '--hook', 'communication-reminder.js::UserPromptSubmit');
+  assert.match(rowFor(out, 'communication-reminder.js::UserPromptSubmit'), /by design/, 'labelled by design');
 });
 
 test('corpus-replay: a Stop route replays a real transcript prefix', () => {

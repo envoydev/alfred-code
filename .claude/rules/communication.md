@@ -10,11 +10,14 @@ These are the user's own rulings, gathered in one rule (the user, 2026-11-19).
 - Only the user's own words lift the cap: 'in detail', 'step by step', 'teach me'.
 - A close that a rule or a skill requires is outside the cap. Keep the form its rule or skill gives; where none is given, write one-line bullets with a `Checks:` label.
 - Answer the question asked. Leave out the parts it did not ask for, such as size, risks and other ways.
+- A list of topics or items is a table, one short row each: the item, its state, and its cost or time where known.
 - Cut a draft over the cap in this order: process talk, parts the question did not ask for, facts an earlier reply gave, what did not change. Count again before you send.
 - Write to the ASD-STE100 rules: an instruction is 20 words or fewer, a description 25. Use the active voice, one instruction per sentence, one word for one meaning, and common words.
 - Tone: the result first, then the recommendation and why. No filler and no process talk. Name the source of each number.
 - Confidence: a reply that gives a result, a cause or a recommendation labels it in the first sentence, in parentheses. The label is '(high confidence)', '(medium confidence - <what is not verified>)' or '(low confidence - <why>)'.
 - Format: single dashes and single quotes in prose. Never use the user's name.
+- Each request carries this reminder: at most 900 characters of prose, bullets count. Lead with 3 sentences or fewer, then bullets. Label confidence in the first sentence. Answer only what was asked. A list of items is a table. A required close is outside the limit.
+- Why the reminder: the rule loads once, and long sessions drift from it. The communication hook sends the line above with each request, and a note when the last reply went over (the user, 2026-11-21).
 
 ## 2. Asking the user
 

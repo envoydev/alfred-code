@@ -98,6 +98,6 @@ test('row 4: the answer-budget entry names the rule as owner and the analyzer as
 {
     const entry = JSON.parse(read('meta/shared-rules.json')).rules['answer-budget'];
     assert.strictEqual(entry.owner.file, 'stack/rules/alfred-interaction.md');
-    assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), ['scripts/analyze-usage.js', 'stack/hooks/guard-answer.js']);
+    assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), ['scripts/analyze-usage.js', 'stack/hooks/communication-reminder.js']);
     assert.match(entry._note, /The rule is canonical/);
 });

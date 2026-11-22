@@ -328,7 +328,8 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     const cp = squash(raw);
     const rule = squash(read('stack/rules/alfred-security.md'));
     const carve = "security review: skipped - test-only diff: <paths>";
-    assert.ok(rule.includes(`'${carve}'`), 'the security rule names the carve-out');
+    // ab-G round 2, group K, security:10: the rule points at the checkpoint for the skip, the carve-out's one home
+    assert.ok(rule.includes('a test-only skip follow `habits-commit-checkpoint`') && !rule.includes(carve), 'the security rule points at the carve-out');
     assert.ok(cp.includes('or when every path in the diff is a test file: verify that from the diff\'s file list') && cp.includes(`\`${carve}\``),
         'the checkpoint, its named home, carries it');
     const { lintAskTemplates } = require('./lint-skills.js');

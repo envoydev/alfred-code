@@ -1142,7 +1142,7 @@ test('check 15: it leaves the ask alone', () => {
 });
 
 test('guard-stop-contract: the prose written before an ask is checked for house voice', () => {
-  // guard-answer.js reads the turn's FINAL text only, so prose that ends on a tool call is
+  // communication-reminder.js reads the turn's FINAL text only, so prose that ends on a tool call is
   // never scanned: measured 5 em-dashes in a report that preceded an AskUserQuestion, plus two more
   // bundles. This is the injection-only surface that reaches it - it never denies.
   const withDash = transcript('ask-dash', [
@@ -1349,15 +1349,15 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
 });
 
 // ---------------------------------------------------------------------------------------------
-// 9 + 10. guard-answer: the verbatim re-ask, and the two Stop hooks no longer contradict
+// 9 + 10. communication-reminder: the verbatim re-ask, and the two Stop hooks no longer contradict
 // ---------------------------------------------------------------------------------------------
 const promptSubmit = (prompt, tp, env) => {
-  const r = runIn('guard-answer.js', { hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }, { env: env || logEnv() });
+  const r = runIn('communication-reminder.js', { hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }, { env: env || logEnv() });
   assert.equal(r.status, 0, 'UserPromptSubmit never denies - a denial erases the prompt');
   return ctxOf(r);
 };
 
-test('guard-answer: a verbatim-repeated prompt is an ambiguity signal, not a re-answer', () => {
+test('communication-reminder: a verbatim-repeated prompt is an ambiguity signal, not a re-answer', () => {
   // Measured in three sessions of one day: the user re-sent an identical question 2-3 times,
   // escalating /model and /effort between them, before the model asked what was meant.
   const q = 'do we need to update claude file according to alfred code?';

@@ -490,7 +490,7 @@ const standingProject = ({ history: n = 0 } = {}) => {
   return root;
 };
 const startOut = (root, extra = {}) => run(root, { hook_event_name: 'SessionStart', session_id: 'st1', cwd: root, transcript_path: path.join(root, 'absent.jsonl'), ...extra }).stdout;
-const promptOut = (root, prompt) => JSON.parse(run(root, { hook_event_name: 'UserPromptSubmit', session_id: 'st1', cwd: root, prompt, transcript_path: path.join(root, 'absent.jsonl') }, {}, path.join(HOOKS, 'guard-answer.js')).stdout || '{}');
+const promptOut = (root, prompt) => JSON.parse(run(root, { hook_event_name: 'UserPromptSubmit', session_id: 'st1', cwd: root, prompt, transcript_path: path.join(root, 'absent.jsonl') }, {}, path.join(HOOKS, 'communication-reminder.js')).stdout || '{}');
 for (const source of ['startup', 'resume', 'clear']) test(`v2 SessionStart ${source}: one JSON object with the modes line`, () => {
   const root = standingProject();
   try {

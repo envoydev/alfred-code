@@ -3,7 +3,7 @@
 // session for session-inspector at <project root>/.alfred/state/sessions/status/<session id>.json, schema 1 (the data
 // root's own .gitignore keeps it out of git; through 3.12.1 it was <root>/.claude/session-inspector/status/). A public
 // contract: a field is never renamed, dropped or retyped, only added. No stdin and no process of its own -
-// history-session.js calls it at SessionStart and Stop, guard-answer.js at UserPromptSubmit, each inside a try.
+// history-session.js calls it at SessionStart and Stop, communication-reminder.js at UserPromptSubmit, each inside a try.
 // Fail-open: nothing here throws, and a failed write leaves no half-written file.
 const fs = require('fs');
 const os = require('os');
@@ -285,7 +285,7 @@ function buildStatus(payload, fields, deps) {
   return out;
 }
 
-// One probe row in the hook-blocks ledger guard-answer's ledgerRow writes; its own failure is swallowed.
+// One probe row in the hook-blocks ledger communication-reminder's ledgerRow writes; its own failure is swallowed.
 function probeRow(payload, row, d) {
   try {
     const p = objectOf(payload) || {};
@@ -718,7 +718,7 @@ function removeStatus(root, deps, options) {
   return out;
 }
 
-// The modes a status names, in the words and order of the first prompt's ON line (guard-answer.js); '' when none is on.
+// The modes a status names, in the words and order of the first prompt's ON line (communication-reminder.js); '' when none is on.
 function modesLine(s) {
   const [sc, ac] = s && typeof s === 'object' ? [scoringOf(s), s.autoCompact || {}] : [null, {}];
   const on = [s && s.autoRun === true && 'auto-run', sc && sc.on && `scoring (level ${sc.level})`,

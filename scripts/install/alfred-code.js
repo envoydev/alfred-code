@@ -122,7 +122,7 @@ const NAV_CONTEXT = 'navigation-context.yml';
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
 // shell-guards.js and file-guards.js are the dispatchers the copy route wires for the picked shell and file guards (no catalog row).
 const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'forge-lexicon.json', 'shell-guards.js',
-    'file-guards.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'mode-settings.js', 'json-file.js'];
+    'file-guards.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'mode-settings.js', 'json-file.js', 'reply-budget.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'alfred-docs-root';
@@ -136,6 +136,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     if (envOf(env, 'SEED') === 'shell') { err(`${SHELL_SEED_RETIRED}\n`); return 1; }
     const cwd = io.cwd || process.cwd();
     const rt = io.runtime || runtime;
+    settings.beginRun();
 
     let failures = 0;
     const log = (m) => out(`==> ${m}\n`);
@@ -569,7 +570,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const locked = selection.lockedLines(always);
             for (const l of args.drop.filter((d) => locked.has(d)))
                 log(`installed-only: --drop ${l} not applied - locked, every install carries it`);
-            const drops = args.drop.filter((d) => !locked.has(d));
+            // A hook copied here that the stored ALFRED_CODE_HOOKS_OFF names whole (readBack, a copy route) is dropped like
+            // `--drop 'hook <name>'`: its copy and wiring go, and the off-list is what the route writes for a drop (the name on
+            // the hooks-only copy route; none on the full copy route, where the missing copy is off). A walk's --add of it is newer.
+            const offDrops = back.offCopies.map((n) => `hook ${n}`).filter((l) => !args.add.includes(l));
+            const drops = [...new Set([...args.drop, ...offDrops])].filter((d) => !locked.has(d));
             // A drop runs BEFORE the closure, so an item something kept still requires comes straight
             // back and is reported - the walk's own closure would have kept it, and a drop the next
             // update's closure undoes is no drop at all.
@@ -787,6 +792,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions }); }
             catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
         }
+
+        // After every settings write of the run: an update from an older release leaves the shared settings.json as `{}`.
+        settings.dropEmptySharedSettings({ file: path.join(claudeDir, 'settings.json'), tracked: (at) => gitTracks(ctx, at), log, note });
 
         summarise(ctx, failures);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal

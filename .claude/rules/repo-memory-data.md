@@ -20,7 +20,7 @@ The stores and what each holds, where the docs root and the data root live, and 
 
 - **Four stores, don't conflate:**
   - Claude Code's OWN memory (`MEMORY.md` + `memory/*.md`, per project) - the lessons and project facts that outlast
-    a session; `guard-answer.js`'s correction line names it for a lesson or a fact a correction states.
+    a session; `communication-reminder.js`'s correction line names it for a lesson or a fact a correction states.
   - The PREFERENCES docs (`<docs-path>/preferences/`, below) - how the user wants the work done; the correction line
     names them for a stated preference (`/capture-preferences`).
   - The seats' HANDOFF bus (`stack/hooks/handoff.js`, an engine copied beside `docs.js`) - one note per

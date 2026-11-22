@@ -1143,9 +1143,9 @@
     "dependencyPlugins": [],
     "hooks": [
       "check-turn-build",
+      "communication-reminder",
       "docs-session",
       "forge-session",
-      "guard-answer",
       "guard-catastrophic-rm",
       "guard-config-protection",
       "guard-cross-project-write",

@@ -118,8 +118,7 @@ security claim with no `security:` line, or one that names no categories, is the
 `alfred-security.md` rejects - the guard reads it as no review at all.
 
 **Write it with this skill's bundled `receipt.js`**, never by hand: it fills `head:`, `spec:` (the
-count and the paths) and the counts on `format:` and `security:` from git, which is where hand-written
-receipts were refused 37 times in three weeks. Resolve it from the skill's own folder (Node.js built-ins
+count and the paths) and the counts on `format:` and `security:` from git. Resolve it from the skill's own folder (Node.js built-ins
 only; run from the project):
 
 ```bash
@@ -146,14 +145,7 @@ The `guard-ungated-commit` hook blocks a non-trivial `git commit` without a fres
 judges 'trivial' mechanically - at most 2 files and 15 changed lines across the session's change - this
 commit plus the session's earlier commits that passed without a receipt - so a diff above that bar
 needs a review whatever it changes, a formatting-only sweep included (spacing inside a string, or one
-that splits a shell word, is code). Any `VERIFIED` line, whatever it says, needs a review of the code
-that started in this session after the last edit to every file the commit takes in - a file whose bytes
-a review saw (its staged copy too) still passes (a stash and pop), a review pointed at paths covers
-those alone, a seat covers what its brief names (`git diff HEAD` for the whole change), a review call a
-hook refused is no review, a verifier seat counts once it has reported (a background one at its
-completed notification), and a review skill counts once its result line - `Findings:`, a loop's
-`Outcome:` - follows it in a reply of its own (one reply closes one review, so two reports printed together count once); never split a real change into small commits to slip under it. One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an
-ancestor of HEAD and every commit since touches only files its review covered; clear it after the LAST commit of the batch. The hook's staged-diff scan (a conflict marker, a
+that splits a shell word, is code). Never split a real change into small commits to slip under it. What counts as a review of the committed files, and how one receipt covers a reviewed batch, is `references/evidence.md` `## What counts as a review` - read it before a receipt that rests on a seat's review or covers more than one commit. The hook's staged-diff scan (a conflict marker, a
 debugger, a focused test, a credential-shaped literal, a hidden character) is a fact check this receipt
 never opens: remove the hit and stage again, or, on the user's 'Commit it as is' in the denial's own
 ask, write the `<data root>/state/approvals/STAGED-SCAN-ALLOW` receipt it names.

@@ -4,7 +4,7 @@
   "window": "turn",
   "sources": ["stack/rules/alfred-interaction.md"],
   "extracted": "2026-10-14",
-  "note": "Not a skill: the answer budget and house voice the always-on interaction rule states and guard-answer.js injects each turn (audit 2026-10-14 RU06). A replay runs unattended, where the hook's Stop block stands down, so the arms differ only in the injected text and the rule. The fixture question needs no code in the answer; the replay grades the exact prose budget (900 characters, code exempt), the 3-sentence lead and the confidence label in the first sentence.",
+  "note": "Not a skill: the answer budget and house voice the always-on interaction rule states and communication-reminder.js injects each turn (audit 2026-10-14 RU06). A replay runs unattended, where the hook's Stop block stands down, so the arms differ only in the injected text and the rule. The fixture question needs no code in the answer; the replay grades the exact prose budget (900 characters, code exempt), the 3-sentence lead and the confidence label in the first sentence.",
   "run": {
     "max_turns": 12,
     "stacks": ["javascript"],

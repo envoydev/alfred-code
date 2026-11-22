@@ -275,4 +275,17 @@ function plantSharedInstall(repo)
     return file;
 }
 
-module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout, plantOlderRoot, plantSharedInstall };
+// What /alfred-code:update runs in a project a seedRun installed (call it from `inspect`): this tree's installer
+// `update --installed-only` with NO --selection file, in the same sandbox account and stub `claude`. The stack's
+// ALFRED_CODE_* names are scrubbed FIRST, then `extra` (a route switch) is added - scrubbing after would drop it.
+// Returns the run's stdout.
+function updateInstalled(repo, { env: extra = {}, source = ROOT, seed = SEED } = {})
+{
+    const work = path.dirname(repo);
+    const env = { ...scrubStackEnv({ ...process.env }), HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'),
+        PATH: path.join(work, 'bin') + path.delimiter + process.env.PATH, CLAUDE_STUB_LOG: path.join(work, 'claude-calls.log'),
+        CLAUDE_STUB_PLUGINS: path.join(work, 'plugins.json'), ALFRED_CODE_MEMORY_WARM: '0', ...extra };
+    return execFileSync(process.execPath, [seed, 'update', '--installed-only', '--source', source], { cwd: repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+module.exports = { seedRun, POSIX_ONLY, scrubStackEnv, releaseExport, skipWithout, plantOlderRoot, plantSharedInstall, updateInstalled };

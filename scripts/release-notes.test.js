@@ -132,7 +132,7 @@ test('the scoring rename: the release note names each new name beside its old on
     for (const word of ['/mode-output-scoring', 'output-scoring', '/alfred-code:update', '4.0.0']) assert.ok(note.text.includes(word), word);
     for (const k of ['', '_LEVEL', '_OUTPUTS', '_ROUNDS'])
         assert.match(note.text, new RegExp(`ALFRED_CODE_SCORER${k}\\b.*ALFRED_CODE_SCORING${k}\\b`), `ALFRED_CODE_SCORER${k} beside its new name`);
-    for (const hook of ['guard-answer', 'guard-stop-contract']) assert.match(note.text, new RegExp(`${hook}:scorer\\b.*${hook}:scoring\\b`), hook);
+    for (const hook of ['guard-answer', 'guard-stop-contract']) assert.match(note.text, new RegExp(`${hook}:scorer\\b.*${hook}:scoring\\b`), hook);   // the note of 3.11.0 keeps the names of its day
     assert.doesNotMatch(note.text, /mode-output-scorer\b|output-scorer\b/, 'the old skill and seat names live in the upgrade table only');   // legacy
     assert.deepEqual(owed(s, '3.10.1').filter((x) => x === note), [], 'a later install owes it no more');
 });

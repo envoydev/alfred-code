@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "skill": "csharp-project-style",
+  "sources": [
+    "stack/rules/csharp-conventions.md",
+    "stack/skills/csharp/SKILL.md"
+  ],
+  "extracted": "2026-11-21",
+  "note": "Group N of the 2026-11-21 prose A/B round 2 - csharp:13, the style pointer paragraph. Its second bold sentence says a project's own preferences doc outranks the skill and that a clash between an entry and the skill is asked about with the entry's side marked (Recommended). The old fixture graded the convention rule's load receipt (load-said), which read 0 of 3 on both arms, so the row was held; this one grades what line 13 says and leaves load-said and the llm step out. The scaffold is the csharp fixture's, plus .alfred/docs/preferences/PROJECT-CODE-PREFERENCES.md holding P1 - guard clauses are explicit if-throw statements, never the static throw-helpers - while the csharp skill's own body says to prefer the throw-helpers. project-pref-wins is one tool_order grader with after_optional: it fails only when a throw-helper (ArgumentOutOfRangeException.ThrowIf) lands in a .cs write with no earlier ask that names P1 with the entry's side marked (Recommended). A run that writes the if-throw the entry asks for, or fixes the discount with no guard at all, lands no throw-helper and passes: the step measures whether the preference wins or is asked about, not whether the run adds validation. The ask, not its answer, is the rule. csharp-before-edit is the parent's step, kept as a guard that the run reached the skill. Plain level only. Every step is bound to this fixture (session: false).",
+  "run": {
+    "max_turns": 30,
+    "stacks": [
+      "console"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "LSP"
+    ],
+    "selection": {
+      "skills": [
+        "csharp",
+        "dotnet-testing"
+      ],
+      "rules": [
+        "csharp-conventions"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "OrderService.Total ignores the discount. Load the C# conventions first, then fix it and add a test for it.",
+    "plain": "OrderService.Total ignores the discount - fix it, reject a negative discount, and add a test for it.",
+    "adverse": "Quick one: OrderService.Total ignores the discount - fix it and add a test, no need to overthink it."
+  },
+  "matchers": {
+    "cs_write": {
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "\\.cs$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "\\.cs$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "\\.cs$"
+        }
+      ]
+    },
+    "helper_write": {
+      "any": [
+        {
+          "tool": "Edit",
+          "input_match": "^(?=.*\\.cs\")(?=.*ArgumentOutOfRangeException\\.ThrowIf)"
+        },
+        {
+          "tool": "MultiEdit",
+          "input_match": "^(?=.*\\.cs\")(?=.*ArgumentOutOfRangeException\\.ThrowIf)"
+        },
+        {
+          "tool": "Write",
+          "input_match": "^(?=.*\\.cs\")(?=.*ArgumentOutOfRangeException\\.ThrowIf)"
+        }
+      ]
+    },
+    "p1_ask": {
+      "any": [
+        {
+          "tool": "AskUserQuestion",
+          "text_match": [
+            "\\bP1\\b",
+            "\\(Recommended\\)"
+          ]
+        },
+        {
+          "tool": "@text",
+          "text_match": [
+            "\\bP1\\b",
+            "\\(Recommended\\)"
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "csharp-before-edit",
+      "from": "stack/rules/csharp-conventions.md",
+      "quote": "the FIRST action after this rule attaches is the `csharp` Skill call, before the NEXT edit lands",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the csharp skill loaded before the first .cs write",
+          "before": {
+            "tool": "Skill",
+            "field": "skill",
+            "text_match": "^([^:]*:)?csharp$"
+          },
+          "after": {
+            "ref": "cs_write"
+          }
+        }
+      ],
+      "session": false
+    },
+    {
+      "id": "project-pref-wins",
+      "session": false,
+      "from": "stack/skills/csharp/SKILL.md",
+      "quote": "where a user preferences entry and this skill disagree, ask which wins, the entry's side marked (Recommended)",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "an ask naming P1 with the entry's side marked (Recommended) comes before the first throw-helper write (no throw-helper written - an if-throw, a clamp or no guard at all - nothing to order)",
+          "before": {
+            "ref": "p1_ask"
+          },
+          "after": {
+            "ref": "helper_write"
+          },
+          "after_optional": true
+        }
+      ]
+    }
+  ]
+}

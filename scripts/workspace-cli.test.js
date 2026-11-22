@@ -703,12 +703,12 @@ test('status says the entries are not applied with the dispatch guard in the off
 {
     const at = joined();
     putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus'), bad: seat('') } } });
-    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer, guard-unapproved-dispatch' } }));
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'communication-reminder, guard-unapproved-dispatch' } }));
     const shell = { ...ENV };
     delete shell.ALFRED_CODE_HOOKS_OFF;
     assert.deepStrictEqual(modelLines(at('ws/api'), [], shell).lines, ['models: not applied - guard-unapproved-dispatch is off (the off-list)',
         '  !! agents.json (here): claude.agents.bad: the model must be 1 to 100 characters of letters, digits and . _ : [ ] - - skipped']);
-    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer,guard-unapproved-dispatch:cap' } }));
+    fs.writeFileSync(path.join(at('ws/api'), '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'communication-reminder,guard-unapproved-dispatch:cap' } }));
     assert.strictEqual(modelLines(at('ws/api'), [], shell).lines[0], 'models: agents aspnet-verifier = opus (here)', 'a part entry stands the guard down for nothing');
 });
 
@@ -718,9 +718,9 @@ test('status reads the off-list from the environment too, spaces around a name i
     const at = joined();
     putModels(at('ws/api'), { claude: { agents: { 'aspnet-verifier': seat('opus') } } });
     const off = ['models: not applied - guard-unapproved-dispatch is off (the off-list)'];
-    for (const csv of ['guard-unapproved-dispatch', 'guard-answer , guard-unapproved-dispatch.js ', ' Guard-Unapproved-Dispatch,guard-answer'])
+    for (const csv of ['guard-unapproved-dispatch', 'communication-reminder , guard-unapproved-dispatch.js ', ' Guard-Unapproved-Dispatch,communication-reminder'])
         assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, ALFRED_CODE_HOOKS_OFF: csv }).lines, off, csv);
-    for (const csv of ['guard-answer', 'guard-unapproved-dispatch:cap', 'my-guard-unapproved-dispatch'])
+    for (const csv of ['communication-reminder', 'guard-unapproved-dispatch:cap', 'my-guard-unapproved-dispatch'])
         assert.deepStrictEqual(modelLines(at('ws/api'), [], { ...ENV, ALFRED_CODE_HOOKS_OFF: csv }).lines, ['models: agents aspnet-verifier = opus (here)'], csv);
 });
 

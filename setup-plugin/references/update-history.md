@@ -1284,3 +1284,29 @@ no longer asks as a data dump. The outside-query check searches your own code un
 `public/vendor/`, `public/js/` and `public/build/`.
 
 Nothing to do in an installed project beyond the update.
+
+## after 3.15.1 - the answer hook is now communication-reminder
+
+The hook that sends the answer budget with each typed prompt is renamed from `guard-answer` to `communication-reminder`:
+it guards nothing, it only reminds. It binds replies to the user alone, never code, code comments, tickets or dev-log
+data, and asks for a list of items as a table. When the last reply ran over the budget, it adds one line saying by how
+much. An `ALFRED_CODE_HOOKS_OFF` naming `guard-answer`, `guard-answer-length` or `guard-answer:scoring` still switches
+the hook or its part off, and the update writes the new name in its place.
+
+Nothing to do in an installed project beyond the update.
+
+## after 3.15.1 - an update keeps a hook you switched off by hand
+
+On the copy route, a hook you named in `ALFRED_CODE_HOOKS_OFF` by hand after its copy was made came back on after each
+update. The update now reads it as off: its copy and wiring go, the way a dropped hook's do, and moving to the plugin
+route keeps it in the off-list. An update from 2.8 to 3.10 no longer leaves an empty `.claude/settings.json` behind; a
+`{}` file git tracks and the update did not change stays, and the update names it.
+
+Nothing to do in an installed project beyond the update.
+
+## after 3.15.1 - designers at medium effort, end-to-end suites in the main session
+
+The ten Opus solution designers run at medium effort. A verifier runs its own integration suite in its seat and names
+an end-to-end or device suite for the main session to run, instead of starting it itself.
+
+Nothing to do in an installed project beyond the update.

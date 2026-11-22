@@ -140,7 +140,7 @@ test('DOCS_VERSIONING and WORKSPACE never come from a member', () =>
 test('HOOKS_OFF merges the root\'s guard-ungated-commit:push with the child\'s docs-session, and leaves under ignore env ALFRED_CODE_HOOKS_OFF', () =>
 {
     const at = three({
-        ws: { settings: { env: { [K('HOOKS_OFF')]: 'guard-ungated-commit:push,guard-answer' } } },
+        ws: { settings: { env: { [K('HOOKS_OFF')]: 'guard-ungated-commit:push,communication-reminder' } } },
         api: { settings: { env: { [K('HOOKS_OFF')]: 'docs-session' } } },
     });
     const parts = (rel, env = ON) => layout.hooksOffOf(at(rel), { env: { ...env } }).split(',').filter(Boolean).sort();
@@ -207,9 +207,9 @@ test('AC11: a folder named .variables is no file', () =>
 test('applyVariables: a launch HOOKS_OFF with no project settings stands; an account entry stands beside a member\'s part entry', () =>
 {
     const lone = tree({ 'p': { stamp: true } });
-    const env = { ...UNSET, [K('HOOKS_OFF')]: 'guard-answer' };
+    const env = { ...UNSET, [K('HOOKS_OFF')]: 'communication-reminder' };
     layout.applyVariables(lone('p'), env);
-    assert.strictEqual(env[K('HOOKS_OFF')], 'guard-answer');
+    assert.strictEqual(env[K('HOOKS_OFF')], 'communication-reminder');
     const at = three({ ws: { settings: { env: { [K('HOOKS_OFF')]: 'docs-session:block' } } } });
     const account = { ...ON, [K('HOOKS_OFF')]: 'forge-session' };
     assert.deepStrictEqual(layout.applyVariables(at('ws/api'), account), [K('HOOKS_OFF')]);
@@ -458,7 +458,7 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
     const readers = {
         DOCS_VERSIONING: (e) => prelude.envOf(e, 'DOCS_VERSIONING') || installDocs.docsVersioningSeed({ projectRoot: empty, docsPath: '.alfred/docs', git: { tracked: () => false, ignored: () => false } }),
         INSTRUMENT: (e) => prelude.switchOn('INSTRUMENT', e),
-        CORRECTION_NUDGE: (e) => prelude.envOf(e, 'CORRECTION_NUDGE') || /envOf\(process\.env, 'CORRECTION_NUDGE'\) \|\| '([^']*)'/.exec(source('stack/hooks/guard-answer.js'))[1],
+        CORRECTION_NUDGE: (e) => prelude.envOf(e, 'CORRECTION_NUDGE') || /envOf\(process\.env, 'CORRECTION_NUDGE'\) \|\| '([^']*)'/.exec(source('stack/hooks/communication-reminder.js'))[1],
         TURN_CHECK: (e) => prelude.switchOn('TURN_CHECK', e),
         SCORING: (e) => prelude.switchOn('SCORING', e),
         SCORING_LEVEL: (e) => prelude.scoringLevel(e),

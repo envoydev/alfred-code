@@ -56,6 +56,27 @@
         }
       ]
     },
+    "verifier-deferred-runs": {
+      "_note": "A verifier does not run an E2E or device suite in its seat: the protocol's seat-gates-are-fast ruling (a seat waiting on a minutes-long run idles and burns its cost on wake-up churn) holds for the verifier too, so it names each such run on a literal deferred_runs: line and the main session runs it once after the verifier returns (ab-g round 2, ruling A1). The data and .NET verifiers' own build and test runs are not part of it.",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+        "marker": "names each such run its gate would need on a literal `deferred_runs:` line"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "a literal `deferred_runs:` line"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "a literal `deferred_runs:` line"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "a literal `deferred_runs:` line"
+        }
+      ]
+    },
     "docs-root-resolution": {
       "_note": "The docs root is <data root>/docs and the data root is always .alfred (the fixed root, 3.11.0), so .alfred/docs; outside .claude/, the directory Claude Code protects (2.0.0). ALFRED_CODE_DOCS_PATH is retired in 2.8.0 (the user's ruling of 2026-10-20, D7): no run writes it, an update moves the stack's docs from a leftover value and removes it (scripts/install/docs.js docsMovePlan), and every reader still reads a leftover key first for the 2.x line. The always-on alfred-docs-root rule is canonical; the code-level defaults (each hook's inline docsRootEnv() fallback, the installer's resolver, the re-stamp script) must state the same value. Every other code home of the fallback (the engines, the analyzers) is held to the same shape by scripts/docs-root-default.test.js, which also fails on a NEW home spelling another default.",
       "owner": {
@@ -3603,14 +3624,14 @@
       ]
     },
     "answer-budget": {
-      "_note": "The short-answer budget - at most 900 characters of prose, near 150 words, bullets counted, 3 lead sentences or fewer, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); guard-answer's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
+      "_note": "The short-answer budget - at most 900 characters of prose, near 150 words, bullets counted, 3 lead sentences or fewer, lifted only by the user's own depth ask. The rule is canonical (alfred-interaction states it as a HARD rule no hook enforces - the hook's Stop block was removed 2026-10-20); communication-reminder's BUDGET only sizes the per-turn reminder, and analyze-usage's ANSWER_BUDGET counts the final answers over it, so a budget change starts at the rule and re-syncs both.",
       "owner": {
         "file": "stack/rules/alfred-interaction.md",
         "marker": "at most 900 characters of prose"
       },
       "sites": [
         {
-          "file": "stack/hooks/guard-answer.js",
+          "file": "stack/hooks/communication-reminder.js",
           "marker": "const BUDGET = 900;"
         },
         {
@@ -3808,7 +3829,7 @@
       },
       "sites": [
         {
-          "file": "stack/hooks/guard-answer.js",
+          "file": "stack/hooks/communication-reminder.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
@@ -3950,15 +3971,15 @@
       ]
     },
     "catalogue-execution-modes": {
-      "_note": "The two failure-signature catalogues' execution-mode section: loaded INSIDE a diagnoser seat the section is already satisfied; loaded in the main session it inherits the calling flow's mode or asks once. Owned by the runtime catalogue; the CI catalogue restates it.",
+      "_note": "The two failure-signature catalogues' execution-mode section: loaded INSIDE a diagnoser seat the section is skipped; loaded in the main session it runs the triage there and reads the gatherer reference before deciding on a dispatch. Owned by the runtime catalogue; the CI catalogue restates it.",
       "owner": {
         "file": "stack/skills/issue-signatures-runtime/SKILL.md",
-        "marker": "Loaded INSIDE the seat, this section is already satisfied"
+        "marker": "inside the diagnoser seat, which preloads this file, skip this section"
       },
       "sites": [
         {
           "file": "stack/skills/issue-signatures-ci/SKILL.md",
-          "marker": "Loaded INSIDE the seat, this section is already satisfied"
+          "marker": "inside the diagnoser seat, which preloads this file, skip this section"
         }
       ]
     },
@@ -5106,6 +5127,10 @@
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "If you cannot run the gate at all - build environment broken, missing task context"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "If you cannot run the gate at all - build environment broken, missing task context"
         },
         {
@@ -6420,7 +6445,7 @@
       ]
     },
     "agents-md-import-keeps-both": {
-      "_note": "Audit 2026-11-19 agent-md DUP-1: the AGENTS template's fill-in block and the AGENTS.md skill's improve mode both say how an `@` import keeps a CLAUDE.md and the AGENTS.md loading together and where the import resolves from. The template owns where the file lives (the skill's opening says so); the skill restates it in the report it gives on a project holding both files. Both stay - a hand copy has no skill, and the skill's report has no template open - so the pin is what makes an edit to one visible.",
+      "_note": "Audit 2026-11-19 agent-md DUP-1: the AGENTS template's fill-in block and the AGENTS.md skill's improve mode both say how an `@` import keeps a CLAUDE.md and the AGENTS.md loading together and where the import resolves from. The template owns where the file lives (the skill's opening says so); the skill's report on a project holding both files names the import and the two forms it takes, but no longer says where it resolves from (agents-md:61, ab-g round 2), so the two markers differ. Both stay - a hand copy has no skill, and the skill's report has no template open - so the pin is what makes an edit to one visible.",
       "owner": {
         "file": "stack/AGENTS.template.md",
         "marker": "keeps both loading - it resolves from the importing file, so `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside"
@@ -6428,7 +6453,7 @@
       "sites": [
         {
           "file": "stack/skills/habits-adjust-agents-md/SKILL.md",
-          "marker": "keeps both loading - it resolves from the importing file, so `@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside"
+          "marker": "(`@.claude/AGENTS.md` from a root CLAUDE.md, `@AGENTS.md` from one beside it) keeps both loading"
         }
       ]
     },
@@ -6841,9 +6866,9 @@
       ]
     },
     "correction-turn-test": {
-      "_note": "The single-turn correction test - a short typed turn that follows an answer of any length and carries a correction marker. guard-answer.js writes its correction probe row on it, and analyze-usage.js counts the corrections-saved row with it, so the probe rate and the saved share are measured over the SAME turns. The hook reads stdin on load, so the analyzer cannot require it - which is why the analyzer carries a verbatim copy.",
+      "_note": "The single-turn correction test - a short typed turn that follows an answer of any length and carries a correction marker. communication-reminder.js writes its correction probe row on it, and analyze-usage.js counts the corrections-saved row with it, so the probe rate and the saved share are measured over the SAME turns. The hook reads stdin on load, so the analyzer cannot require it - which is why the analyzer carries a verbatim copy.",
       "owner": {
-        "file": "stack/hooks/guard-answer.js",
+        "file": "stack/hooks/communication-reminder.js",
         "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|(?<!\\b(?:explain|describe|tell me|show me|clarify|walk me through)\\b[^.!?\\n]{0,40})\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|(?<!\\b(?:because|cause|coz|cuz)\\b[^.,!?\\n]{0,40})(?:\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b)|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
       },
       "sites": [
@@ -7101,7 +7126,7 @@
       ]
     },
     "auto-mode-contract": {
-      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, the stack-modes spec of 2026-10-27 section 7 and the mode commands of 2026-11-12: `/alfred-code:mode:auto-run on|off` and `/alfred-code:mode:scoring on|off` typed on their own line, each mode kept in the checkout's own settings.local.json until its off command, new sessions included (mode commands v2, 3.11.0), each auto-run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line a mode is on only on the user's word and holds for the conversation): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, guard-answer.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a `--mode-*` token (a retired flag) is dropped and never read as a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
+      "_note": "auto-run's contract in every task, capture and loop skill and issue-diagnoser (the user's rulings, 2026-10-14 to 2026-10-17, the stack-modes spec of 2026-10-27 section 7 and the mode commands of 2026-11-12: `/alfred-code:mode:auto-run on|off` and `/alfred-code:mode:scoring on|off` typed on their own line, each mode kept in the checkout's own settings.local.json until its off command, new sessions included (mode commands v2, 3.11.0), each auto-run marked by `<data root>/state/sessions/AUTO-RUN-<session>`, which only the close of the run its `skill:` line names deletes; with no hook line a mode is on only on the user's word and holds for the conversation): the hooks stamp the session, answer each ask that marks one Recommended option and keep a marked run going (guard-fresh-session-start.js injects the full contract at each run's start, communication-reminder.js the `auto-run: on` line, guard-stop-contract.js) - each skill carries the same short paragraph (a capture part reached only through its router reads the router's, audit 2026-10-30 SKC-06), so a `--mode-*` token (a retired flag) is dropped and never read as a target wherever the skill is copied; the two flows whose SKILL.md sits at its size cap carry it in the reference they read before their first stop, and task-design - preloaded into every designer seat, which never runs one - not at all. The stamp and the marker are named by the hook's contract alone, not here (2026-10-27: the paragraph kept every spec item and fits capture-usage-report's 19,000-char body cap).",
       "owner": {
         "file": "stack/skills/loop-code-quality/SKILL.md",
         "marker": "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it."
@@ -7863,7 +7888,7 @@
           "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
-          "file": "stack/hooks/guard-answer.js",
+          "file": "stack/hooks/communication-reminder.js",
           "marker": "const dataRoot = (env = process.env) => { const raw = String(envOf(env, 'DATA_PATH') || '').trim().replace(/\\\\/g, '/'); return /^(?:\\/|[A-Za-z]:\\/)/.test(raw) ? raw.replace(/\\/+$/, '') || '.alfred' : '.alfred'; };"
         },
         {
@@ -8300,14 +8325,14 @@
       ]
     },
     "prose-of": {
-      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scoring (the stack reader and the flags); guard-answer.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the mode-output-scoring plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
+      "_note": "proseOf - the prose of a message with its code blocks, tables, quotes, inline spans and link targets dropped. The prelude's copy serves the scoring (the stack reader and the flags); communication-reminder.js keeps its own because it runs fail-open without the prelude and its answer budget calls it (R32 of the mode-output-scoring plan). The marker is the whole body, so a change to either copy fails lint until the other matches.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": ".replace(/```[\\s\\S]*?```/g, '')\n.replace(/^\\s*\\|.*$/gm, '')\n.replace(/^\\s*>.*$/gm, '')\n.replace(/`[^`\\n]*`/g, '')\n.replace(/\\]\\([^)\\s]*\\)/g, ']')\n.replace(/\\s+/g, ' ')\n.trim();"
       },
       "sites": [
         {
-          "file": "stack/hooks/guard-answer.js",
+          "file": "stack/hooks/communication-reminder.js",
           "marker": ".replace(/```[\\s\\S]*?```/g, '')\n.replace(/^\\s*\\|.*$/gm, '')\n.replace(/^\\s*>.*$/gm, '')\n.replace(/`[^`\\n]*`/g, '')\n.replace(/\\]\\([^)\\s]*\\)/g, ']')\n.replace(/\\s+/g, ' ')\n.trim();"
         }
       ]
