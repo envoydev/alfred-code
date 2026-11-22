@@ -136,7 +136,7 @@ test('parts: the six shipped rules fit three parts', () =>
 {
     const rules = shippedPathless();
     assert.strictEqual(rules.length, 6, rules.map((r) => r.name).join());
-    const { parts: out, unsent } = loader().parts(rules);
+    const { parts: out, unsent } = loader().parts(rules, { natives: ['alfred-rules'] });   // an install's part 1 carries the canary's line
     assert.strictEqual(out.length, 3);
     assert.deepStrictEqual(unsent, []);
     for (const r of rules) assert.strictEqual(out.join('\n').split(`${heading(r)}\n`).length - 1, 1, r.name);
@@ -158,6 +158,22 @@ test('parts: a rule longer than one part is cut at line ends across parts of its
     const chunks = out.map((p) => p.split('\n\n').slice(1, -1).join('\n\n').replace(/^## big \([^)]*\)( - continued)?\n/, ''));
     assert.strictEqual(chunks.join('\n'), r.text);
     for (const c of chunks.slice(0, -1)) assert.strictEqual(c.length % 80, 79, 'each chunk but the last ends at a line end');
+});
+
+// 2026-11-22 (make room rather than cut a rule, the user's ruling): a cut rule's last chunk leaves room in its part, and a
+// rule that fits there joins it - a 1,352-char tail held a whole part and pushed the shipped rules from 3 parts to 4.
+test('parts: a cut rule\'s last chunk shares its part with a rule that fits beside it', () =>
+{
+    const big = rule('big', 11000);
+    const small = rule('small', 3000);
+    const out = loader().parts([big, small]).parts;
+    assert.strictEqual(out.length, 2, 'the tail and the small rule share part 2');
+    assert.ok(out[1].includes('## big (') && out[1].includes(' - continued\n') && out[1].includes('## small ('), out[1].slice(0, 300));
+    for (const p of out) assert.ok(p.length <= 9900, String(p.length));
+    const full = rule('full', 9000);
+    const three = loader().parts([big, full]).parts;
+    assert.strictEqual(three.length, 3, 'a rule with no room beside the tail opens its own part');
+    assert.ok(!three[0].includes('## full (') && !three[1].includes('## full ('), 'the first chunk\'s part stays the chunk\'s alone');
 });
 
 test('parts: cut applies the lead room to the first chunk only', () =>

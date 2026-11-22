@@ -2653,7 +2653,8 @@ function main()
         const texts = files.map((f) => [f, fs.readFileSync(path.join(CLAUDE_RULES_DIR, f), 'utf8')]);
         const always = texts.filter(([, t]) => !loader.pathsOf(t).length)
             .map(([f, t]) => ({ name: f.replace(/\.md$/, ''), rel: `.alfred/stack/rules/${f}`, text: loader.render(t) }));
-        const n = loader.parts(always).parts.length;
+        // Packed with the canary's natives line, as an install's part 1 carries it (2026-11-22: lint read 3 parts, an install 4).
+        const n = loader.parts(always, { natives: ['alfred-rules'] }).parts.length;
         if (n > 3) flag(`the shipped pathless rules take ${n} rule-loader parts, over 3 of its 5 - trim a rule (check 73)`);
         for (const [f, t] of texts)
             for (const g of loader.pathsOf(t))

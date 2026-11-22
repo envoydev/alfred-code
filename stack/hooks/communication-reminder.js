@@ -140,7 +140,7 @@ function proseOf(text) {
 // in the transcript each turn - ~22.5K chars over a 30-turn session).
 const BUDGET_TEXT =
         `Answer budget (alfred-interaction.md): at most ${BUDGET} characters of prose, near 150 words, bullets count; lead with 3 sentences or fewer, a short reply too, result first; answer only what was asked - no unasked size, risks or other ways; a result, cause or recommendation's first sentence carries its label: (high confidence), (medium confidence - <what is not verified>) or (low confidence - <why>); fit it before sending. ` +
-        `Code, tables and command output are exempt. A list of items is a table, one short row each. It binds replies to the user only, never code, code comments, tickets or dev-log data. Only THIS message's depth words lift it (in detail / walk me ` +
+        `Code, tables and command output are exempt. A list of items is a table, one short row each. A question gets an answer, not the work. It binds replies to the user only, never code, code comments, tickets or dev-log data. Only THIS message's depth words lift it (in detail / walk me ` +
         `through / step by step / teach me / ELI5 / write a plan, or the same ask in any language), and an entry of the user's personal preferences doc sets it. Single dashes and single quotes, an ` +
         `AskUserQuestion's text included.`;
 
