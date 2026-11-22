@@ -1310,3 +1310,15 @@ The ten Opus solution designers run at medium effort. A verifier runs its own in
 an end-to-end or device suite for the main session to run, instead of starting it itself.
 
 Nothing to do in an installed project beyond the update.
+
+## after 3.16.0 - a question gets an answer, not the work
+
+The interaction rule now says a question is answered and starts nothing on its matter: no edit, commit, sync or push,
+and no agent that edits; reads and read-only checks are fine. A request in question form ('can you fix X?') is still a
+request. The answer names a fix in one line at most, and work starts on your word, a command that starts work, or a pick
+on the recommendation. A how-to answer offers to run a step the session can do instead of running it, and
+`/mode-auto-run` answers a question rather than starting the solve flow. The per-prompt reminder carries the same line.
+The rule loader also lets other rules share the last part of a rule too long for one part, so a short tail no longer
+takes a whole part, which leaves more room for your project's own always-on rules.
+
+Nothing to do in an installed project beyond the update.
