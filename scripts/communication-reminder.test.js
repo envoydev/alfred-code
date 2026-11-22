@@ -55,6 +55,12 @@ test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     assert.ok(ctx.includes('Code, tables and command output are exempt. A list of items is a table, one short row each.'), 'the table sentence follows the exemption, once');
     assert.ok(ctx.includes('It binds replies to the user only, never code, code comments, tickets or dev-log data.'), 'the budget names what it does not bind');
     assert.strictEqual(ctx.split('A list of items is a table').length, 2, 'one copy');
+    // 2026-11-22 (the user's ruling): a question gets the answer, never the work; the rule holds the rest.
+    assert.ok(ctx.includes('A list of items is a table, one short row each. A question gets an answer, not the work.'), 'the question clause rides every prompt');
+    const rule = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8');
+    for (const clause of ['A question gets an answer, not the work**', 'a request in question form (\'can you fix X?\') is a request', 'Make no edit, commit, sync or push, and dispatch no agent that edits',
+        'Start work only on the user\'s word', 'Name a fix in one line at most', 'Under auto-run, answer a mid-run question as above, then go on with the work.'])
+        assert.ok(rule.includes(clause), `the rule carries: ${clause}`);
     // Ruling S9 (the user's, 2026-10-20): 'step by step' lifts the budget like the other depth words.
     assert.match(ctx, /\(in detail \/ walk me through \/ step by step \/ teach me \/ ELI5 \/ write a plan, or the same ask in any language\)/, 'the lift list names step by step');
     // Audit 2026-11-03 SYS-05: the per-turn copy carries the rule's 'the same ask in any language' (alfred-interaction.md).

@@ -145,3 +145,10 @@ Three held audit rows were settled by a live run each, a nested `claude -p` unde
 
 - guard-stop-contract.js, the stale-scope note (remote half) - a merge-order answer resting on a day-old read was discarded when the user found the branch already merged (audit 2026-10-11 SD10, 2ca8e8ee: 'wait until the earlier ticket is merged' rested on one `git status --short`).
 - guard-stop-contract.js, the stale-scope note (local half) - a fifty-minute-old read had already been overtaken by another agent while an ask was on screen, and the answer it produced was discarded whole.
+
+## 2026-11-22 - the answer budget's measurement moved here
+
+`alfred-interaction.md` gained 'A question gets an answer, not the work' (the user's ruling, 2026-11-22), and the always-on
+rules had to stay inside three rule-loader parts with the canary's natives line. The answer budget's reason left the rule
+for this file, word for word: on 2026-11-19, one stack session sent 23 final replies: 9 passed 900 characters, 11 led with
+over 3 sentences, 0 labeled confidence first.

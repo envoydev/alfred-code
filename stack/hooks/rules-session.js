@@ -122,7 +122,7 @@ function cut(r, lead)
     return chunks;
 }
 
-// The always-on rules in 1 to RULE_PARTS parts: a cut rule's chunks alone, the rest first fit, largest first, ties by
+// The always-on rules in 1 to RULE_PARTS parts: a cut rule's chunks alone but its last, the rest first fit, largest first, ties by
 // name. Part 1 opens with the natives line and the members `index`, both counted in its room. Past part 5 a rule is
 // unsent, and so is part 5's last block while the unsent line has no room beside it.
 function parts(always, { natives = [], index = '' } = {})
@@ -137,7 +137,12 @@ function parts(always, { natives = [], index = '' } = {})
     {
         const text = `${headingOf(r)}\n${r.text}`;
         if (BASE + lead + text.length + 2 <= PART_ROOM) blocks.push({ rel: r.rel, name: r.name, text });
-        else for (const chunk of cut(r, lead)) add(open(true), chunk);
+        else
+        {
+            // The last chunk's part takes other rules that fit beside it: a short tail alone wasted a part (2026-11-22).
+            const chunks = cut(r, lead);
+            chunks.forEach((chunk, i) => add(open(i < chunks.length - 1), chunk));
+        }
     }
     blocks.sort((a, b) => b.text.length - a.text.length || byName(a, b));
     for (const b of blocks) add(packed.find((q) => !q.own && q.used + b.text.length + 2 <= PART_ROOM) || open(false), b);
