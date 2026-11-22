@@ -34,7 +34,8 @@ from this skill, only named for the user.
 Say the route in one line before the work, then take it:
 
 1. **A code change** - the request will edit a file outside the docs root, the data root and `.claude/` (a feature,
-   a fix, a refactor, a failing test), whatever its size. Read the file the `Solve flow:` line names, whole, and
+   a fix, a refactor, a failing test), whatever its size. A question ('why does X fail?', 'can we add Z?') is no code
+   change: it takes route 3. Read the file the `Solve flow:` line names, whole, and
    follow it as this run's flow with the request as its task, from its first step to its close: its sizing, its plan
    file, its building in this chat or in seats as its recommended options say, its review and its commit checkpoint.
    Its `references/` and `scripts/` paths sit beside that file.
@@ -50,8 +51,9 @@ Say the route in one line before the work, then take it:
    `/loop-architecture-quality`, `/loop-test-coverage-quality`), a capture (`/capture-awareness`, `/capture-preferences`,
    `/capture-awareness project-code-style`, `/capture-usage-report`), a change across several parts (`/task-solve-cross`). Not
    run here: one `Left for you:` line, `/<that flow> <request>`, and the close.
-3. **Anything else** - a question, a doc under the docs root: do it directly. A file it writes stays uncommitted and
-   is named in the close.
+3. **Anything else** - a question: answer it, change nothing and name a fix in one line at most, as the interaction
+   rule's question bullet says. A doc under the docs root: write it directly. A file it writes stays uncommitted and is
+   named in the close.
 
 Each `Left for you:` command runs unattended when typed: auto-run stays on in this session until `/alfred-code:mode:auto-run off`, so the line says so.
 

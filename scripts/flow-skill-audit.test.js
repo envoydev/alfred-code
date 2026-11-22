@@ -533,3 +533,11 @@ test('M2: mode-auto-run says auto-run did not start because no hook ran when no 
     assert.match(t, /no `auto-run is ON` contract line is in context[^.]*no hook ran[^.]*stop/i);
     assert.doesNotMatch(t, /--auto-[a-z]/);
 });
+
+// 2026-11-22 (the user's ruling): a question gets an answer, not the work - '/mode-auto-run can we add Z?' answers it.
+test('mode-auto-run: a question takes route 3, answered with nothing changed; the rule offers a how-to step, never runs it', () => {
+    const t = flat(skill('mode-auto-run'));
+    assert.ok(t.includes("A question ('why does X fail?', 'can we add Z?') is no code change: it takes route 3."), 'route 1 sends a question to route 3');
+    assert.ok(t.includes('a question: answer it, change nothing and name a fix in one line at most'), 'route 3 answers a question and changes nothing');
+    assert.ok(read('stack/rules/alfred-interaction.md').includes('a status or how-to answer naming such a change offers to make it'), 'the rule offers a how-to step');
+});
