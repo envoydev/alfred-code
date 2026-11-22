@@ -33,6 +33,17 @@ const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
 const historySession = require('../../stack/hooks/history-session.js');
+// The settings files this process wrote, by resolved path: the end-of-run check of an emptied .claude/settings.json asks
+// whether this run changed the file (`dropEmptySharedSettings`).
+const WRITTEN = new Set();
+// Each installer run starts with an empty record: a second run in the same process is not the first one's writes.
+const beginRun = () => WRITTEN.clear();
+function putFile(file, text)
+{
+    fs.writeFileSync(file, text);
+    WRITTEN.add(path.resolve(file));
+}
+
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
 // The turn check's Stop row rides history-session's Stop process too (the user's ruling of 2026-10-16).
 const foldDispatchers = (rows, opts) => historySession.wiringRows(fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts));
@@ -170,7 +181,7 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     at.holder[at.key] = list;
     dropEmptyArray(data, arrayPath);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
+    putFile(file, stringifyLike(data, formatOf(fileText)));
     log(`  ${path.basename(file)}: ${arrayPath} - ${Object.keys(rows).length} of the stack's members`);
     return { rows, changed: true, created: !existed };
 }
@@ -1283,7 +1294,7 @@ function writeSettings(opts)
             if (keepOwn && plain(shared.permissions) && Array.isArray(shared.permissions.deny)) respell(shared.permissions.deny, sharedName);
             if (JSON.stringify(shared) !== before)
             {
-                fs.writeFileSync(sharedFile, stringifyLike(shared, formatOf(sharedText)));
+                putFile(sharedFile, stringifyLike(shared, formatOf(sharedText)));
                 log(`  ${sharedName}: the stack's stale rows removed (the stack writes ${label})`);
             }
         }
@@ -1297,7 +1308,7 @@ function writeSettings(opts)
     const variablesMoved = moved.length ? [...fromSettings].filter((k) => !(plain(data.env) && Object.hasOwn(data.env, k)) && moved.includes(renamedTo(k))) : [];
     if (!changed) return { written: false, refused: false, managed, variablesMoved };
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
+    putFile(file, stringifyLike(data, formatOf(fileText)));
     return { written: true, refused: false, managed, variablesMoved };
 }
 
@@ -1393,7 +1404,7 @@ function applyMcpDeny({ file, add = [], lift = [], why = 'picked again', log = (
     if (list.length) data.deniedMcpServers = list;
     else delete data.deniedMcpServers;
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, stringifyLike(data, formatOf(fileText)));
+    putFile(file, stringifyLike(data, formatOf(fileText)));
     return { added, lifted };
 }
 
@@ -1510,7 +1521,7 @@ function leaveLocalScope({ claudeDir, seeds = {}, renames = [], ledgerEnv: recor
         say(`${seedsGone.length} stack variable${seedsGone.length === 1 ? '' : 's'} removed - each held the stack's own seed, `
             + `so .variables' value or its seed applies from here on: ${seedsGone.join(', ')}`);
     if (!changed) return { moved: false };
-    fs.writeFileSync(localFile, stringifyLike(local, formatOf(localText)));
+    putFile(localFile, stringifyLike(local, formatOf(localText)));
     if (lifted.length)
     {
         const done = vars.write(variablesFile, Object.fromEntries(lifted.map((key) => [key, null])));
@@ -1640,12 +1651,33 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
         if (!changed) continue;
         if (named && !Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
-        else { fs.writeFileSync(file, stringifyLike(data, formatOf(fileText))); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact / memory keys removed`); }
+        else { putFile(file, stringifyLike(data, formatOf(fileText))); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact / memory keys removed`); }
     }
     if (!only) removeManagedVariables({ file: variablesFile, rows: (ledger.env || {})['.variables'] || {}, scope, log, note });
     if (keptOff.length)
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
     return removed;
+}
+
+// An update from an older release moves the stack's rows out of the shared settings.json and can leave it holding `{}`, which a
+// fresh install never writes. Once the run's settings work is done it goes, when it parses to an object with no keys and this
+// run changed it or git does not track it; a tracked `{}` this run left alone is the team's and stays, named. A file that does
+// not parse, or holds a key, is never touched, and one that cannot be removed is named through `note`. Returns whether it was removed.
+function dropEmptySharedSettings({ file, tracked, log = () => {}, note = () => {} })
+{
+    let data;
+    try { data = parseJson(fs.readFileSync(file, 'utf8')); }
+    catch { return false; }
+    if (!plain(data) || Object.keys(data).length) return false;
+    if (!WRITTEN.has(path.resolve(file)) && tracked(file))
+    {
+        log(`  ${path.basename(file)}: kept - it holds nothing, but git tracks it and this run did not change it`);
+        return false;
+    }
+    try { fs.rmSync(file); }
+    catch (err) { note(`${path.basename(file)} holds nothing but could not be removed (${err.code || err.message}) - remove it by hand`); return false; }
+    log(`  ${path.basename(file)} removed - it held nothing`);
+    return true;
 }
 
 // Mode v2 stage 2 (2.2): the rows the last run ledgered in settings.json leave it once, before the pass writes them to the
@@ -1670,6 +1702,6 @@ function moveToLocal({ claudeDir, ledger, shippedDeny = [], log = () => {}, note
     return carried;
 }
 
-module.exports = { mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal,
+module.exports = { mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
     isStackKey, writeSettings, wiringsOf, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, localUnusable, readBackSettings,
     unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

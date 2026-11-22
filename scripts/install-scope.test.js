@@ -785,7 +785,8 @@ test('install-scope: a garbage settings.json keeps every ledger row naming it, a
     assert.ok(denyRows(steps[1].stamp).length > 0, 'the deny rows naming settings.json stay in the ledger');
     assert.ok(hookRows(steps[1].stamp).length > 0, 'the hook wirings naming settings.json stay in the ledger');
     assert.match(outs[2], /settings: \d+ rows moved from settings\.json to settings\.local\.json/);
-    const shared = JSON.parse(steps[2].shared);
+    // The move leaves settings.json holding `{}`, which the run removes (an update is a fresh install's equal): absent is empty.
+    const shared = steps[2].shared === null ? {} : JSON.parse(steps[2].shared);
     assert.deepStrictEqual([shared.permissions, shared.hooks], [undefined, undefined], steps[2].shared);
     assert.doesNotMatch(steps[2].stamp, ROWS);
 });

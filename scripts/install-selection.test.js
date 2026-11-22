@@ -489,6 +489,40 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
     assert.ok(some.lines.includes(`hook ${shipped[0]}`), 'only a full None holds - a partial switch-off lets a new hook arrive');
 });
 
+// A hook the user added to ALFRED_CODE_HOOKS_OFF by hand while its copy stayed on disk is read as switched off, not picked: no
+// line for it, and on a copy route it comes back as `offCopies`, which the update applies like `--drop 'hook <name>'` (copy and
+// wiring go, the off-list as the route writes it). Measured on the copy routes and over v3.14.2: the copy was a pick, the list went empty.
+test('read-back: a copied hook the stored off-list names whole reads as off - a part entry or another hook changes nothing', () =>
+{
+    const copy = { hooks: false, skills: true, mcps: true };
+    const core = row('alfred-code@envoydev');
+    const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook '));
+    const messages = [];
+    const whole = readBackCase({ listing: [core], routes: copy, hooks: ['guard-read-whole-file', 'docs-session'], stampHooks: ['guard-read-whole-file', 'docs-session'],
+        lastHooksRoute: 'copy', settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } }, log: (m) => messages.push(m) });
+    assert.ok(!whole.lines.includes('hook guard-read-whole-file'), 'no line for the hook the off-list names');
+    assert.ok(!whole.closeFrom.includes('hook guard-read-whole-file'), 'and none to close over');
+    assert.ok(whole.lines.includes('hook docs-session'), 'a copied hook the list does not name is still a pick');
+    assert.ok(messages.includes('installed-only: hook guard-read-whole-file is copied here but ALFRED_CODE_HOOKS_OFF names it - read as switched off'), messages.join('\n'));
+    assert.deepStrictEqual(whole.offCopies, ['guard-read-whole-file'], 'a copy route hands the copied-but-off hooks back as drops');
+    assert.strictEqual(messages.filter((m) => m.includes('guard-read-whole-file')).length, 1, messages.join('\n'));
+    const silent = [];
+    const unstamped = readBackCase({ listing: [core], routes: copy, hooks: ['communication-reminder', 'docs-session'], stampHooks: [], lastHooksRoute: 'copy',
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'communication-reminder' } }, log: (m) => silent.push(m) });
+    assert.ok(!unstamped.lines.includes('hook communication-reminder'), 'a stamp that never shipped the hook does not adopt it back');
+    assert.ok(!silent.some((m) => /was dropped from this install/.test(m)), `adoption says nothing for it: ${silent.join(' | ')}`);
+    const viaPlugin = readBackCase({ listing: [core], routes: ALL, hooks: ['guard-read-whole-file', 'docs-session'], lastHooksRoute: 'copy', stampHooks: ['guard-read-whole-file', 'docs-session'],
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } } });
+    assert.deepStrictEqual(viaPlugin.offCopies, [], 'the plugin route keeps no copies, so nothing to drop');
+    const part = readBackCase({ listing: [core], routes: copy, hooks: ['guard-ungated-commit'], lastHooksRoute: 'copy',
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' } } });
+    assert.ok(part.lines.includes('hook guard-ungated-commit') && part.closeFrom.includes('hook guard-ungated-commit'), 'a part entry stands no whole hook down');
+    const renamed = readBackCase({ listing: [core], routes: copy, hooks: ['communication-reminder', 'docs-session'], lastHooksRoute: 'copy',
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+    assert.ok(!renamed.lines.includes('hook communication-reminder'), 'an old spelling reads as the new name');
+    assert.ok(hookLines(renamed).includes('hook docs-session'));
+});
+
 // Review M3: a copy-route install whose user dropped EVERY hook has none on disk, and the read-back
 // took that for 'every hook' - the update copied and wired all of them back (measured at b825638 too).
 // Ruling R55: only the stamp's `hooks-route: copy` says the None was a choice. A leftover prelude is no
@@ -949,7 +983,7 @@ test('renamed hooks: a hook line is re-spelled once, and the read-back reads the
         const claudeDir = path.join(root, '.claude');
         fs.mkdirSync(path.join(claudeDir, 'hooks'), { recursive: true });
         fs.writeFileSync(path.join(claudeDir, 'hooks', 'guard-answer-length.js'), '// v2.5.0 copy\n');
-        const back = sel.readBack({ claudeDir, settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }, routes: { hooks: false }, manifest,
+        const back = sel.readBack({ claudeDir, settings: {}, routes: { hooks: false }, manifest,
             sourceDir: path.join(__dirname, '..'), stampHooks: ['guard-answer-length'], lastHooksRoute: 'copy', log: () => {} });
         assert.ok(back.lines.includes('hook communication-reminder') && !back.lines.includes('hook guard-answer-length'), back.lines.filter((l) => l.startsWith('hook ')).join(', '));
     }

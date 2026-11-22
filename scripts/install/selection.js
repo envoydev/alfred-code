@@ -181,11 +181,12 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
 const hasInstall = (lines) => lines.some((l) => /^(skill|agent|rule|hook) /.test(l));
 
 // Hooks: adopt every shipped one, except a name the PREVIOUS stamp shipped and disk no longer has.
-function adoptHooks({ lines, catalog = [], shippedBefore = [], log = () => {} })
+function adoptHooks({ lines, catalog = [], shippedBefore = [], skip = [], log = () => {} })
 {
     // A None adopts nothing either: a hook this release added stays off with the rest.
     if (!lines.some((l) => l.startsWith('hook ')) || lines.includes('hook none')) return lines;
-    const have = new Set(lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5)));
+    // `skip`: hooks the stored off-list names whole - never adopted, and no line for them (readBack says why).
+    const have = new Set([...lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5)), ...skip]);
     const dropped = new Set(shippedBefore);
     const out = [...lines];
     for (const entry of catalog)
@@ -251,7 +252,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
         ? { ...e, ALFRED_CODE_HOOKS_OFF: String(envOf(e, 'HOOKS_OFF')).split(',').map((h) => (h.trim() ? hookNow(h) : h)).join(',') } : e);
     stampHooks = [...new Set((stampHooks || []).map(hookNow))];
     let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, agentsDir, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped.concat(Object.keys(hookRenames)), known: stackNames(manifest), foreignSkill, keptUnpicked }), renaming);
-    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false } };
+    const none = { lines, closeFrom: [], parked: [], deny: [], offCopies: [], installed: false, answered: { hooks: false, agents: false } };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
     // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
@@ -267,6 +268,19 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const names = ours.filter(rowOn).map((r) => r.name);
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = offNow(stored.env && typeof stored.env === 'object' ? stored.env : {});
+    // A copied hook the stored off-list names whole is switched off, not picked: the user added it by hand while its copy stayed
+    // on disk, and the disk read above takes every copy for a pick. It leaves `lines` and `closeFrom`. On a copy route it is also
+    // returned as `offCopies`: the caller applies those as `--drop 'hook <name>'` (copy and wiring go; the hooks-only copy route
+    // keeps the name in the off-list, the full copy route's off-state is the missing copy). The plugin route keeps no copies, so it
+    // returns none. A locked hook is no pick either way and is left as it was.
+    const storedOff = { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') };
+    const namedOff = (l) => l.startsWith('hook ') && shipped.includes(l.slice(5)) && !LOCKED_HOOKS.includes(l.slice(5)) && hookDisabled(l.slice(5), storedOff);
+    const offHooks = lines.filter(namedOff).map((l) => l.slice(5));
+    for (const name of offHooks)
+        log(`installed-only: hook ${name} is copied here but ALFRED_CODE_HOOKS_OFF names it - read as switched off`);
+    const offCopies = routes.hooks ? [] : offHooks;
+    lines = lines.filter((l) => !namedOff(l));
+    for (let i = closeFrom.length - 1; i >= 0; i--) if (namedOff(closeFrom[i])) closeFrom.splice(i, 1);
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     const parked = ours.filter((r) => !rowOn(r)).map((r) => r.name);
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
@@ -401,7 +415,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     // is the whole answer already - a hook it does not name is on, a new release's included - and
     // adopting against an older stamp would switch back on the very hooks the user named there.
     if (!(routes.hooks && names.includes(BRAND.core)))
-        lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
+        lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, skip: offHooks, log });
     const before = new Set(lines);
     lines = adoptAlways({ lines, always, log, deny, coreOn: corePluginOn(routes) });
     for (const line of lines)
@@ -410,7 +424,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     // run cannot tell a pick the user dropped from one it merely cannot see.
     // Workspace stage 3: what this root holds for its members below (the stamp's member-picks) is never its own pick.
     const own = (l) => !held.includes(l);
-    return { lines: lines.filter(own), closeFrom: closeFrom.filter(own), parked, deny, installed: true, answered, blind: !ours.length };
+    return { lines: lines.filter(own), closeFrom: closeFrom.filter(own), parked, deny, offCopies, installed: true, answered, blind: !ours.length };
 }
 
 // R109: plugins the stack once offered and no longer does, each with the release that dropped it. NOT a
