@@ -315,3 +315,11 @@ The gate at 92f0538f on the seven workspace test files: Windows 11 VM 456 tests,
 
 The two M9 rows after the release are the final review's I1: with `ignoredBy` reading only `parent`, which the release
 erases, both failed (`wide=false`); with the root kept as the record's `above`, both pass.
+
+## F4 re-measured (2026-11-23, card item 8)
+
+Claude Code 2.1.330, three headless `claude -p --model haiku` runs in a scratch folder, a PreToolUse hook on Bash that
+polls the transcript every 100 ms for its own `tool_use` id. The prompt asked for a text line, then a Bash call in the
+same message. Results, one row per run: `atStart false, foundAt 534 ms`, `false, 539 ms`, `false, 444 ms`; the text line
+was on disk each time the row was. So a call's own message lands while its PreToolUse hook still runs: the layer-table
+gate (and the stop contract's approval check, card item 10) wait up to 1.5 s for the row, then judge.
