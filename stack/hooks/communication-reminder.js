@@ -496,10 +496,10 @@ function modesText(prompt) {
 // The size note on the LAST reply (reply-budget.js), a typed prompt's only; a missing module or a failed read adds none.
 const replyNote = () => { try { const note = require('./reply-budget.js').noteFor(payload.transcript_path); return note ? ` ${note}` : ''; } catch { return ''; } };
 
-// The native rules summary (rules-session.js), one more line of the same block; a missing module or a throw adds none.
+// The native rules summary (rules-summary.js), one more line of the same block; a missing module or a throw adds none.
 const rulesSummary = () => {
   try {
-    const line = require(require('path').join(__dirname, 'rules-session.js')).summaryLine(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.session_id, process.env);
+    const line = require(require('path').join(__dirname, 'rules-summary.js')).summaryLine(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.session_id, process.env);
     return line ? `\n${line}` : '';
   } catch { return ''; }
 };

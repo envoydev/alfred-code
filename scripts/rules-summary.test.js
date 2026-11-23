@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { realLong } = require('./test-paths');
 
-const LOADER = path.join(__dirname, '..', 'stack', 'hooks', 'rules-session.js');
+const LOADER = path.join(__dirname, '..', 'stack', 'hooks', 'rules-summary.js');
 const loader = () => require(LOADER);
 const SESSION = 'sess-1';
 
@@ -118,4 +118,66 @@ test('a garbage settings file or a garbage touch record changes nothing', () =>
         assert.strictEqual(loader().summaryLine(root, SESSION, env), `${LINE_HEAD}ws-root (1 always-on, 1 by path)`);
     }
     finally { done(); }
+});
+
+test('a project reached through a symlink records the touched child', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const real = path.join(home, 'ws-real');
+        rules(real, 1, 0);
+        rules(path.join(real, 'api'), 2, 0);
+        fs.mkdirSync(path.join(real, 'api', 'src'), { recursive: true });
+        const link = path.join(home, 'ws-link');
+        fs.symlinkSync(real, link, 'dir');
+        loader().noteTouch(link, SESSION, path.join(link, 'api', 'src', 'a.cs'), env);
+        assert.deepStrictEqual(loader().touchedOf(link, SESSION, env).map(realLong), [realLong(path.join(real, 'api'))]);
+        assert.strictEqual(loader().summaryLine(link, SESSION, env), `${LINE_HEAD}ws-real (1 always-on, 0 by path) + api (2)`);
+    }
+    finally { done(); }
+});
+
+test('a file that does not exist yet still records its child through the nearest existing folder', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const root = path.join(home, 'ws-root');
+        rules(root, 1, 0);
+        rules(path.join(root, 'api'), 1, 0);
+        loader().noteTouch(root, SESSION, path.join(root, 'api', 'new', 'deep', 'a.cs'), env);
+        assert.deepStrictEqual(loader().touchedOf(root, SESSION, env).map(realLong), [realLong(path.join(root, 'api'))]);
+    }
+    finally { done(); }
+});
+
+test('a root\'s claudeMdExcludes does not apply to a session started in the child', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const root = path.join(home, 'ws-root');
+        const child = path.join(root, 'api');
+        rules(root, 3, 0);
+        rules(child, 1, 0);
+        fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ claudeMdExcludes: ['**/ws-root/.claude/rules/always-0.md'] }));
+        assert.strictEqual(loader().summaryLine(root, SESSION, env), `${LINE_HEAD}ws-root (2 always-on, 0 by path)`, 'the session folder\'s own settings apply');
+        assert.strictEqual(loader().summaryLine(child, SESSION, env), `${LINE_HEAD}ws-root (3 always-on, 0 by path) + api (1 always-on, 0 by path)`);
+    }
+    finally { done(); }
+});
+
+test('isBelow: a path counts only strictly below the project, on one drive (win32 spellings too)', () =>
+{
+    const { isBelow } = loader();
+    assert.strictEqual(isBelow('/p/proj', '/p/proj/api'), true);
+    assert.strictEqual(isBelow('/p/proj', '/p/proj'), false, 'the project itself');
+    assert.strictEqual(isBelow('/p/proj', '/p/other'), false);
+    assert.strictEqual(isBelow('/p/proj', '/p/proj-x'), false, 'a sibling sharing a prefix');
+    assert.strictEqual(isBelow('/p/proj', '/p/proj/..cache'), true, 'a name starting with two dots is no parent step');
+    assert.strictEqual(isBelow('C:\\proj', 'C:\\proj\\api', path.win32), true);
+    assert.strictEqual(isBelow('C:\\proj', 'C:\\proj', path.win32), false);
+    assert.strictEqual(isBelow('C:\\proj', 'D:\\proj\\api', path.win32), false, 'a file on another drive');
+    assert.strictEqual(isBelow('C:\\proj', 'C:\\other\\api', path.win32), false);
 });
