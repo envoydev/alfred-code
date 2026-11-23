@@ -961,6 +961,24 @@ for (const tracked of [false, true])
     });
 }
 
+test('root: a user\'s edited, unmarked file named like a rule only a member picked is kept and named once as held twice', POSIX_ONLY, () =>
+{
+    const mine = 'the root\'s own csharp rule\n';
+    const { outs, steps } = child([
+        { at: '.' },
+        { at: 'api', sel: `${KID_SEL}rule ${RULE_PICK}\n`, before: joinApi, after: kidRules },
+        { at: '.', act: 'update', before: (ws) => fs.writeFileSync(claude(ws, 'rules', `${RULE_PICK}.md`), mine), after: kidRules },
+        { at: '.', act: 'update', after: kidRules },
+    ]);
+    for (const i of [2, 3])
+    {
+        assert.strictEqual(steps[i].texts.root[RULE_PICK], mine, `the file is never touched (run ${i})`);
+        assert.ok(steps[i].rootStore.includes(RULE_PICK), 'the member\'s pick stays in the root\'s store');
+        assert.strictEqual(outs[i].split('\n').filter((l) => new RegExp(`!! rule.*${RULE_PICK}`).test(l)).length, 1, `one line names it (run ${i}): ${outs[i].split('\n').filter((l) => l.includes(RULE_PICK)).join(' | ')}`);
+        assert.match(outs[i], new RegExp(`rule ${RULE_PICK} is held in \\.claude/rules too: yours is kept and loads first`));
+    }
+});
+
 test('child: a locked root leaves the child\'s own rule pick in the child\'s store this run', POSIX_ONLY, () =>
 {
     const { outs, steps } = child([

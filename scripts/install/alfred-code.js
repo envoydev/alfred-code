@@ -449,6 +449,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const [skillsDir, agentsDir] = [homes.skills.dir, homes.agents.dir];
         // Workspace stage 4c: the library rules live in the store, sent by the loader - native this run when it fails.
         let rulesDir = links.storeOf(projectRoot, 'rules');
+        const heldTwice = [];   // stamped rules whose edited, unmarked .claude copy stays beside the store's
         if (writes)
         {
             let made = true;
@@ -457,11 +458,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const names = [...new Set([...Object.keys(stampedLib.rules || {}), ...manifest.rules.map((f) => f.replace(/\.md$/, '')).filter(claimed)])];
             if (!made || links.moveIn({ projectRoot, kind: 'rules', names, home: { store: true, dir: rulesDir }, log }).failed.length)
                 rulesDir = path.join(claudeDir, 'rules');
-            else for (const [n, h] of Object.entries(stampedLib.rules || {}))   // held twice: at its stamped hash the .claude copy goes; an edited one stays, and writeNative names it
+            else for (const [n, h] of Object.entries(stampedLib.rules || {}))   // held twice: at its stamped hash the .claude copy goes; an edited one stays - writeNativeRules names it
             {
                 const at = path.join(claudeDir, 'rules', `${n}.md`);
-                if (fs.existsSync(path.join(rulesDir, `${n}.md`)) && fs.lstatSync(at, { throwIfNoEntry: false })?.isFile() && !nativeRules.hasMarker(readText(at)) && library.hashItem(at) === h)
-                    fs.unlinkSync(at);
+                if (!fs.existsSync(path.join(rulesDir, `${n}.md`)) || !fs.lstatSync(at, { throwIfNoEntry: false })?.isFile() || nativeRules.hasMarker(readText(at))) continue;
+                if (library.hashItem(at) === h) fs.unlinkSync(at);
+                else heldTwice.push(n);
             }
         }
         else if (!fs.statSync(rulesDir, { throwIfNoEntry: false })?.isDirectory()) rulesDir = path.join(claudeDir, 'rules');
@@ -702,7 +704,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             projectRoot, claudeDir, skillsDir, agentsDir, rulesDir, homes, child, configDir, mcpFile, home, stampFile,
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed, routeKeyWrite,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, docsReseed, ledger: priorLedger, legacyUnstamped,
-            dataInfo,
+            dataInfo, heldTwice,
             // The MCP plugin and server names the renames left behind (manifest `renamed.mcps`), and the ones this run prunes.
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps), legacyMcpsDue: legacyDue,
             // What this run took out of the servers an earlier release shipped, said once at the end of the retire step.
@@ -2222,6 +2224,10 @@ function writeNativeRules(ctx)
     const { view } = workspace.readWorkspace(ctx.projectRoot, { dataRoot: ctx.dataInfo.root });
     const done = nativeRules.syncNative({ projectRoot: ctx.projectRoot, rulesDir: ctx.rulesDir, child: ctx.child, listedRules: ctx.lists.rules.map(bare),
         heldRules: ctx.held ? ctx.held.rules : [], library: ctx.library, shippedRules: ctx.manifest.rules.map(bare), hasChildren: view.children.length > 0, log: ctx.log });
+    // writeNative names a file it keeps; one it never writes (a member's pick at a root, a rule a chain root holds) is named here.
+    const heldHere = new Set([...ctx.lists.rules.map(bare), ...(ctx.held ? ctx.held.rules : [])]);
+    for (const name of ctx.heldTwice.filter((n) => heldHere.has(n) && !done.names.includes(n)))
+        ctx.log(`  !! rule ${name} is held in .claude/rules too: yours is kept and loads first`);
     if (done.written.length || done.updated.length || done.removed.length)
         ctx.log(`native rules: .claude/rules - written ${done.written.length}, updated ${done.updated.length}, removed ${done.removed.length}`);
 }

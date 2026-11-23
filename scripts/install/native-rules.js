@@ -156,7 +156,7 @@ function ensureChildWins({ projectRoot, hasChildren })
 function syncNative({ projectRoot, rulesDir, child, listedRules, heldRules, library, shippedRules, hasChildren, log = () => {} })
 {
     ensureChildWins({ projectRoot, hasChildren });
-    if (rulesDir !== links.storeOf(projectRoot, 'rules')) return { written: [], updated: [], kept: [], removed: [] };   // the store was not made: rules stay in .claude
+    if (rulesDir !== links.storeOf(projectRoot, 'rules')) return { written: [], updated: [], kept: [], removed: [], names: [] };   // the store was not made: rules stay in .claude
     const chainRoots = child ? child.holders : [];
     const inherited = new Set(child ? child.parentLines.filter((l) => l.startsWith('rule ')).map((l) => l.slice(5)) : []);
     const stores = [rulesDir, ...chainRoots.map((root) => links.storeOf(root, 'rules'))];
@@ -165,7 +165,7 @@ function syncNative({ projectRoot, rulesDir, child, listedRules, heldRules, libr
         ownPicks: listedRules.filter((name) => !inherited.has(name)).map((name) => `rule/${name}`), memberPicks: heldRules.map((name) => `rule/${name}`) });
     const wrote = writeNative({ projectRoot, names, sourceOf, log });
     const pruned = pruneNative({ projectRoot, keep: names, childName: child ? path.basename(projectRoot) : null, shipped: shippedRules, sourceOf, log });
-    return { ...wrote, removed: pruned.removed };
+    return { ...wrote, removed: pruned.removed, names };
 }
 
 module.exports = { syncNative, MARKER, CHILD_WINS_LINE, withMarker, hasMarker, nativeNames, writeNative, pruneNative, removeNative, ensureChildWins };
