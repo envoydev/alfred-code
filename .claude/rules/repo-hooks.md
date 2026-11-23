@@ -1066,7 +1066,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     phrase or 'as noted' (never a comparison - 'above zero', 'above-average', 'above or below' - nor the questions or
     options of the asks themselves) needing the 200 characters too, and the denial saying to re-send the ask unchanged (usage audit
     2026-11-03 U04: 4 of 5 measured denials were of asks shown in full; the transcript can lag the ask's own message at
-    PreToolUse, so text in that message costs one re-send); and a
+    PreToolUse, so a would-be denial first waits up to 1.5 s for the ask's own tool_use row and judges again - card item
+    10, 2026-11-23, three denials of shown approvals in eceba6a2 - and past that text in the message costs one re-send); and a
     small solve-task close whose `Result:` line has no `review:` field (session 5984019e) - a close stating no `Size:` is
     judged on the cycle's size, read from the transcript: the newest one stated, raised by a `size check: raise to
     standard`, else spec-check's `size floor:` (a trivial floor counts, since a trivial run has no stop), only after a

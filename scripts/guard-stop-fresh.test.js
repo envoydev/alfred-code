@@ -640,6 +640,31 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
     'two marks are still denied');
 });
 
+// Card item 10 (A10, eceba6a2): an approval ask was denied as 'not shown since the user's last message' while the SAME
+// message showed it - the transcript lags the message in flight. Before it denies, the hook waits for that message's rows
+// (its own tool_use id, or the file growing) and judges again; a message that shows nothing is still denied.
+test('guard-stop-contract: an approval whose own message shows it is not denied while that message is still being written (A10)', async () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const plan = [{ question: 'The staged plan is ready: 6 implementation stages. Execute it stage by stage?', options: [{ label: 'Execute (Recommended)', description: 'stage 1 first' }, { label: 'Hold', description: 'not now' }] }];
+  const stages = Array.from({ length: 6 }, (_, i) => `${i + 1}. Stage ${i + 1}: bump the packages of layer ${i + 1}, build, run its tests, rollback point tagged.`).join('\n');
+  const late = (name, lateRows) => new Promise((resolve) => {
+    const tp = transcript(name, [typed('upgrade the framework')]);
+    const c = require('child_process').spawn(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], { env: logEnv() });
+    let err = '';
+    c.stderr.on('data', (d) => { err += d; });
+    c.on('close', (status) => resolve({ status, stderr: err }));
+    c.stdin.end(JSON.stringify({ tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_use_id: 'tu-ask1', tool_input: { questions: plan } }));
+    setTimeout(() => fs.appendFileSync(tp, lateRows.map((r) => JSON.stringify(r)).join('\n') + '\n'), 400);
+  });
+  const shown = await late('lag-shown', [
+    { type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: `The staged plan:\n${stages}` }] } },
+    { type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 'tu-ask1', name: 'AskUserQuestion', input: { questions: plan } }] } },
+  ]);
+  assert.equal(shown.status, 0, `the plan its own message showed is no blind approval: ${shown.stderr}`);
+  const bare = await late('lag-bare', [{ type: 'assistant', message: { id: 'm2', content: [{ type: 'tool_use', id: 'tu-ask1', name: 'AskUserQuestion', input: { questions: plan } }] } }]);
+  assert.equal(bare.status, 2, 'a message that shows nothing is still sent back');
+});
+
 // Audit 2026-10-11, session 2ca8e8ee: 'The staged plan is ready ... Execute it stage by stage?' with no text block since the
 // prompt, and 'Post this simplified comment ... as shown' after the user's edit request - both approved unseen.
 test('guard-stop-contract: an approval ask over nothing the chat showed since the typed turn is sent back once', () => {

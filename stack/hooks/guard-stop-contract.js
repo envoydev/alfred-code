@@ -1614,8 +1614,10 @@ function pointerSubject(t) {
 // audited plan before it (and whose receipts are notes). A quote of three words or more that is no option's label and no
 // pointer is the subject shown in the ask itself (U04, ce0b76e6: the comment line quoted whole was denied as unseen).
 // Known ceiling (U04, measured on 1e53bc45 and b2aa04d4): the transcript is written asynchronously and lags the message in
-// flight (code.claude.com/docs/en/hooks, transcript_path), so text the SAME message prints before its ask is not on disk
-// here - the denial says to re-send the ask unchanged, which the once-per-text marker passes.
+// flight (code.claude.com/docs/en/hooks, transcript_path), so text the SAME message prints before its ask may not be on
+// disk here: a would-be denial waits up to ASK_ROW_WAIT_MS for the ask's own row and judges again (card item 10,
+// eceba6a2: three denials of shown approvals); past that the denial says to re-send the ask unchanged, which the
+// once-per-text marker passes.
 function approvalOverNothingShown(questions) {
   const raw = questions.map((q) => String((q && q.question) || '')).join('\n');
   const labels = new Set(questions.flatMap((q) => (q && Array.isArray(q.options) ? q.options : [])
@@ -1644,11 +1646,44 @@ function approvalOverNothingShown(questions) {
     return around.split(/\s+/).filter((w) => /\w/.test(w)).length <= 3;
   };
   if (quotes.some((m) => shows(m[0]) && (ownClause(m) || presented(m)))) return null;
-  const shown = shownSinceTyped();
-  if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
-  const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
-  if (verdict.shown < SHOWN_MIN) return verdict;
-  return !subject.noun || new RegExp(`\\b${stemOf(subject.noun)}`, 'i').test(shown) ? null : verdict;
+  const judge = (shown) => {
+    if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
+    const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
+    if (verdict.shown < SHOWN_MIN) return verdict;
+    return !subject.noun || new RegExp(`\\b${stemOf(subject.noun)}`, 'i').test(shown) ? null : verdict;
+  };
+  const verdict = judge(shownSinceTyped());
+  // card item 10 (eceba6a2): the message carrying this ask may not be on disk yet - wait for it, then judge again
+  return verdict && ownAskWritten() ? judge(shownSinceTyped()) : verdict;
+}
+// How long a would-be blind-approval denial waits for the message in flight to reach the transcript (card item 10), and
+// how often it looks.
+const ASK_ROW_WAIT_MS = 1500;
+const ASK_ROW_STEP_MS = 100;
+// True once the message carrying this ask reaches the disk: a row holding the call's own tool_use id (every PreToolUse
+// payload carries one). False when it was there already, when the payload names none, or when it does not come inside
+// ASK_ROW_WAIT_MS.
+function ownAskWritten() {
+  const p = payload.transcript_path;
+  if (!p) return false;
+  const id = typeof payload.tool_use_id === 'string' && payload.tool_use_id ? JSON.stringify(payload.tool_use_id) : '';
+  const sizeOf = () => { try { return fs.statSync(p).size; } catch { return -1; } };
+  const holdsId = () => {
+    try {
+      const size = sizeOf();
+      const from = Math.max(0, size - 256 * 1024);
+      const buf = Buffer.alloc(size - from);
+      const fd = fs.openSync(p, 'r');
+      try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+      return buf.toString('utf8').includes(`"id":${id}`);
+    } catch { return false; }
+  };
+  if (!id || holdsId()) return false;   // none to wait for, or already on disk: the first judgement read it
+  for (const until = Date.now() + ASK_ROW_WAIT_MS; Date.now() < until;) {
+    try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ASK_ROW_STEP_MS); } catch { return false; }
+    if (holdsId()) return true;
+  }
+  return false;
 }
 
 function deferAnsweredThisTurn() {
