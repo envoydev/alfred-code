@@ -1169,12 +1169,46 @@ function closedOnText(row)
     const last = Array.isArray(content) ? content.filter((b) => b && (b.type === 'text' || b.type === 'tool_use')).pop() : null;
     return Boolean(last && last.type === 'text' && !/\?\s*$/.test(String(last.text || '')));
 }
+// THE ONE FLOW-END RULE (card items 5, 7 and 12, 2026-11-23) - the compact state, the auto-run walk guard and the stop
+// guard's solve-task cycle all read it. A flow a typed slash command or a Skill call opened ends at the first prompt the user
+// types after it that is another slash command (a mode command excepted, and a built-in whose output row follows it), or a
+// reply typed after an assistant turn that closed on text asking nothing - its close was passed. An answer to an ask, a
+// reply to a question and one after a cut-off tool call stay inside. A compaction ends nothing by itself: the rows before
+// it decide (a summary that only MENTIONS a walk kept a closed one open, fecb88be).
+function promptEndsFlow(prompt, closedBefore)
+{
+    const walk = walkOfPrompt(prompt);
+    if (walk === 'keep') return false;
+    return walk !== null || Boolean(closedBefore);
+}
+// The rule for a reader that goes forward row by row and keeps `track` ({} to start; plain fields, so a reader may persist
+// it): 'end' when this row's prompt ends the open flow, 'undo' when this row shows the last end was a built-in command's
+// (its output row), else ''. A caller opening a flow on the same row applies the end first.
+function flowEndStep(track, row)
+{
+    if (!row || row.isSidechain) return '';
+    if (row.type === 'assistant')
+    {
+        const content = row.message && row.message.content;
+        if (Array.isArray(content) && content.some((b) => b && (b.type === 'text' || b.type === 'tool_use'))) track.closed = closedOnText(row);
+        return '';
+    }
+    if (row.type !== 'user') return '';
+    if (track.slash && LOCAL_OUTPUT_RE.test(String(rowContentText(row) || ''))) { track.slash = false; return 'undo'; }
+    const prompt = typedPrompt(row);
+    if (prompt === null) return '';
+    track.slash = walkOfPrompt(prompt) === '';
+    const ends = promptEndsFlow(prompt, track.closed);
+    track.closed = false;
+    return ends ? 'end' : '';
+}
 // The plugin walk the rows end inside ('init', 'update', 'configure' or 'validate'), '' for none, null when no row decides
 // (no typed slash command and no compaction in the rows). `replyAfter`: a reply typed after the last row, the prompt now.
 // Pure: rows are parsed objects.
 function pluginWalkOf(rows, replyAfter = false)
 {
     let ended = false;        // a reply typed after the walk's close
+    let summarised = '';      // the walk a compaction summary names: kept only when the rows before it say it was open
     // the assistant row a reply at `at` answers: the newest one before it, never past an earlier typed row
     const replyAt = (at) =>
     {
@@ -1191,19 +1225,21 @@ function pluginWalkOf(rows, replyAfter = false)
         if (row && row.type === 'user' && row.isCompactSummary)
         {
             const named = SUMMARY_WALK_RE.exec(String(rowContentText(row) || ''));
-            return named && !ended ? named[1] : '';
+            if (!named || ended) return '';
+            summarised = summarised || named[1];
+            continue;
         }
         const prompt = typedPrompt(row);
         const walk = walkOfPrompt(prompt);
         if (walk === null)
         {
-            if (prompt !== null) replyAt(i);
+            if (prompt !== null && promptEndsFlow(prompt, false) === false) replyAt(i);
             continue;
         }
         if (walk === 'keep') continue;
         const next = rows[i + 1];
         if (walk === '' && next && next.type === 'user' && LOCAL_OUTPUT_RE.test(String(rowContentText(next) || ''))) continue;
-        return walk && !ended ? walk : '';
+        return walk && !ended && (!summarised || walk === summarised) ? walk : '';
     }
     return null;
 }
@@ -2112,4 +2148,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow });   // beside the one-line list, which a new name would push past 160
+Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep });   // beside the one-line list, which a new name would push past 160
