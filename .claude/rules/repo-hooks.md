@@ -1764,15 +1764,16 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `<` input or a recursive `grep`, reads the folder it runs in, as the Grep tool does; so does a reader `find -exec` or
     `xargs` runs, and a `Select-String` fed by a file listing; a grep word earns the steer too - the user's answer 'Stale
     run + cheap shell cases'; a computed path `$(...)` and an inline script `node -e` stay unseen, the next visible read
-    holding instead), is denied with the next part
-    until every entry has come, so an install whose docs fit one room sees no Read held. The main session's RUN - the last
+    holding instead), gets the next part as `additionalContext` and runs (card item 13, 2026-11-23: a denied read and its
+    retry cost two calls a part - 11 in two sessions; only an edit or a git write still waits for its docs)
+    until every entry has come, so an install whose docs fit one room sees nothing handed on a Read. The main session's RUN - the last
     `capture-` / `loop-` / `task-` / `issue-` skill, `review-code` or `review-security` (or a built-in `code-review` /
     `security-review` the user types) it started, bare - is kept in its
     record: from a `Skill` call, or from `UserPromptExpansion`, since a typed command makes no Skill call
     (code.claude.com/docs/en/hooks, read 2026-10-22: typing /name bypasses PreToolUse); a skill that is no run leaves it.
     A review run (`REVIEW_RUN`: `review-code`, `review-security`, the two built-in reviews and the code and architecture quality captures and loops) is the
     main session reviewing without an edit, which no edit hold reached (the user's ruling 'Hold its first review skill'):
-    its first Skill call is denied with the code docs in parts, a typed one is handed them at its expansion, and the main
+    its first Skill call is handed the code docs as `additionalContext` and runs (card item 13), a typed one is handed them at its expansion, and the main
     session's reads then hold like a judge's until every entry has come. A design run (`DESIGN_RUN`: `task-design`, `issue-diagnoser`,
     `task-build-from-scratch`; item 4, 2026-10-25) ends in a plan and may never make a scoped edit, so its chat load - the
     Skill call or the typed expansion - is handed the code docs as `additionalContext` beside the skill's text and never
