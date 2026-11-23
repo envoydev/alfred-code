@@ -1774,7 +1774,7 @@ function ruleNotes({ projectRoot, env = process.env })
 {
     const loader = require('../../stack/hooks/rules-session.js');
     const r = loader.rulesFor(projectRoot, env);
-    const out = [...r.notes, ...loader.parts(r.always, { natives: r.natives }).unsent.map((u) => `not sent - ${u}`)];
+    const out = [...r.notes, ...loader.parts(r.always, { limit: 1 }).unsent.map((u) => `not sent - ${u}`)];
     const files = [['.claude/settings.json'], ['.claude/settings.local.json'], [path.join(accountPaths(env).configDir, 'settings.json'), true]];
     const jsonOf = (f) => { try { return parseJson(fs.readFileSync(f, 'utf8')) || {}; } catch { return {}; } };
     const read = files.map(([f, abs]) => [f, jsonOf(abs ? f : path.join(projectRoot, f))]);
