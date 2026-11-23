@@ -1160,6 +1160,27 @@ function awarenessDocs(projectRoot, docs)
 const MAP_LINE = `Architecture map: \`<docs-path>/${AWARENESS_DIR}/${MAP_DOC}\` - only pointed at, never imported: read it by section before a structural change.`;
 const mapLineOf = (projectRoot, docs) => (statOf(path.resolve(projectRoot, String(docs), AWARENESS_DIR, MAP_DOC)) ? MAP_LINE : null);
 
+// A root whose workspace record lists a child carries this line right after the rule's frontmatter, so a session inside the
+// child reads the child's own awareness rule. The installer writes the same bytes (scripts/install/native-rules.js).
+const CHILD_WINS_LINE = 'For a file under a child project\'s folder, that child\'s own .claude/rules/alfred-awareness.md wins over this one.';
+function hasChildren(projectRoot)
+{
+    try
+    {
+        const record = JSON.parse(readText(path.join(projectRoot, dataRoot(projectRoot), 'workspace.json')).replace(/^\uFEFF/, ''));
+        const ignored = Array.isArray(record.ignoredChildren) ? record.ignoredChildren : [];
+        const listed = (c) => typeof c === 'string' && c.trim() !== '' && !ignored.some((i) => c === i || c.startsWith(`${i}/`));
+        return Array.isArray(record.children) && record.children.some(listed);
+    }
+    catch { return false; }
+}
+function withChildWins(text)
+{
+    const close = /^---\n[\s\S]*?\n---\n/.exec(text);
+    const at = close ? close[0].length : 0;
+    return `${text.slice(0, at)}${CHILD_WINS_LINE}\n${text.slice(at)}`;
+}
+
 // The rule from SKILL.md's copy target: the docs root stamped in, one import line per doc, the map's line after them.
 // Neither an import nor the map, no rule. An empty slot leaves no blank lines behind it.
 function composeAwarenessRule({ projectRoot, docs, skillText } = {})
@@ -1175,7 +1196,8 @@ function composeAwarenessRule({ projectRoot, docs, skillText } = {})
     text = text.split('<docs-path>').join(String(root).replace(/\\/g, '/').replace(/\/+$/, '')).replace(/\n{3,}/g, '\n\n');
     const left = /^<the script's[^\n]*/m.exec(text);
     if (left) return { text: null, imports, mapLine: !!mapLine, error: `the copy target holds a slot this script does not fill: ${left[0].slice(0, 80)}` };
-    return { text: normalize(`${text}\n`), imports, mapLine: !!mapLine, error: null };
+    const body = normalize(`${text}\n`);
+    return { text: hasChildren(projectRoot) ? withChildWins(body) : body, imports, mapLine: !!mapLine, error: null };
 }
 
 // --rule: compose, compare, write on differs, put the notOwned entry back, remove the superseded rules whose doc is

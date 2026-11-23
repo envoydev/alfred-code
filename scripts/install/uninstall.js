@@ -186,7 +186,9 @@ function removeScopedMcp({ mcpAt = {}, readAt, cli, log = () => {}, note = () =>
 function removeGeneratedRules({ claudeDir, projectRoot, sourceDir, docsPath, log })
 {
     const { GENERATED_FILES } = require('./selection.js');
-    const norm = (text) => String(text).replace(/\r\n/g, '\n').replace(/\n+$/, '\n');
+    // The awareness rule of a root with a child carries the child-wins line; the record that says so may be gone by now.
+    const { CHILD_WINS_LINE } = require('./native-rules-constants.js');
+    const norm = (text) => String(text).replace(/\r\n/g, '\n').replace(`${CHILD_WINS_LINE}\n`, '').replace(/\n+$/, '\n');
     const generators = {
         // The retired marker's 3.3.0 text (the capture-awareness merge of 2026-10-29 took its doc-shapes section away),
         // so an unedited leftover still goes and an edited one is still named - and the text a 3.5.0 update re-spelled it

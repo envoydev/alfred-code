@@ -39,6 +39,7 @@ const library = require('./library.js');
 const { recordView, recordOf, editedSince, carriedRows } = require('./records.js');
 const skillHeadings = require('./skill-headings.js');
 const ruleOpenings = require('./rule-openings.js');
+const nativeRules = require('./native-rules.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
@@ -459,7 +460,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             else for (const [n, h] of Object.entries(stampedLib.rules || {}))   // held twice: at its stamped hash the .claude copy goes, else it is named
             {
                 const at = path.join(claudeDir, 'rules', `${n}.md`);
-                if (fs.existsSync(path.join(rulesDir, `${n}.md`)) && fs.lstatSync(at, { throwIfNoEntry: false })?.isFile())
+                if (fs.existsSync(path.join(rulesDir, `${n}.md`)) && fs.lstatSync(at, { throwIfNoEntry: false })?.isFile() && !nativeRules.hasMarker(readText(at)))
                     library.hashItem(at) === h ? fs.unlinkSync(at) : log(`  !! rule ${n} is held in .claude/rules too: yours is kept and loads first`);
             }
         }
@@ -1423,6 +1424,7 @@ function retiredKeep(ctx, kind, dir)
     const bare = (n) => n.replace(/\.md$/, '');
     return (name) =>
     {
+        if (kind === 'rule' && nativeRules.hasMarker(readText(path.join(dir, name)))) return false;   // the stack's own native file
         const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`]
             : ['skill', 'agent'].includes(kind) ? recordOf(ctx.records, kind, bare(name)) : (lib[`${kind}s`] || {})[bare(name)];
         if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
@@ -2211,6 +2213,19 @@ function sayRetiredServers(ctx)
     if (data.length) ctx.log(`  mcp data: kept where it was - ${data.join(', ')}; the stack no longer reads it, but a server added back with its line above does, and so may another project still on an older release - delete it only once neither needs it`);
 }
 
+// Layered native rules: each rule this project picks is also a marked file in `.claude/rules`, which Claude Code loads itself.
+// The store stays the source (the stamp's hashes are of it). Skipped on a plan run and on a run whose store was not made.
+function writeNativeRules(ctx)
+{
+    if (ctx.args.printPlan || ctx.args.action === 'uninstall') return;
+    const bare = (f) => f.replace(/\.md$/, '');
+    const { view } = workspace.readWorkspace(ctx.projectRoot, { dataRoot: ctx.dataInfo.root });
+    const done = nativeRules.syncNative({ projectRoot: ctx.projectRoot, rulesDir: ctx.rulesDir, child: ctx.child, listedRules: ctx.lists.rules.map(bare),
+        heldRules: ctx.held ? ctx.held.rules : [], library: ctx.library, shippedRules: ctx.manifest.rules.map(bare), hasChildren: view.children.length > 0, log: ctx.log });
+    if (done.written.length || done.updated.length || done.removed.length)
+        ctx.log(`native rules: .claude/rules - written ${done.written.length}, updated ${done.updated.length}, removed ${done.removed.length}`);
+}
+
 function installHooksAndRules(ctx)
 {
     // NM1 (fix round 3): on the PLUGIN route the prune below deletes the copies, so the route line is
@@ -2280,6 +2295,7 @@ function installHooksAndRules(ctx)
     copy.stampDocsRoot(ctx.projectRoot, { scope: ctx.args.scope, value: docsRoot, log: ctx.log, note: ctx.note });
     if (Object.hasOwn(ctx.library.rules, DOCS_ROOT_RULE))
         ctx.library.rules[DOCS_ROOT_RULE] = library.hashItem(copy.ruleAt(ctx.projectRoot, DOCS_ROOT_RULE));
+    writeNativeRules(ctx);
 
     const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
     const migrations = envMigrations(readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')));
@@ -2683,6 +2699,7 @@ function runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile
     const homeDir = (k) => links.homeOf(projectRoot, k, { write: false }).dir;
     links.removeLinks({ projectRoot, record: stampLayer.readLinks(file), log });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: homeDir('skills'), agentsDir: homeDir('agents'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
+    nativeRules.removeNative({ projectRoot, log });
     uninstallLayer.removeGeneratedRules({ claudeDir, projectRoot, sourceDir: path.join(__dirname, '..', '..'), docsPath, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     uninstallLayer.removeSessionStatus({ projectRoot, dataRoot: keptRoot, log, note });

@@ -8,6 +8,7 @@ const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const stamp = require('./install/stamp.js');
 const { hashItem } = require('./install/library.js');
+const nativeRules = require('./install/native-rules.js');
 
 const SELECTION = 'skill markdown-style\nskill javascript\nagent evidence-gatherer\n';
 const COPY = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
@@ -725,16 +726,19 @@ const ruleTree = (repo) => Object.fromEntries([...ruleNames(store(repo, 'rules')
 // The old shape: every stamped rule back in .claude/rules, as an install before this stage left it.
 const unmove = (repo) => { fs.mkdirSync(claude(repo, 'rules'), { recursive: true }); for (const n of ruleNames(store(repo, 'rules'))) fs.renameSync(store(repo, 'rules', `${n}.md`), claude(repo, 'rules', `${n}.md`)); };
 
-test('rules: a fresh install writes every library rule to .alfred/stack/rules and none to .claude/rules; a second run changes nothing', () =>
+test('rules: a fresh install writes every library rule to .alfred/stack/rules and a marked copy to .claude/rules; a second run changes nothing', () =>
 {
     const { result, steps } = seedRun(['install', 'update', 'update'], RULE_SEL, {
         each: (repo) => ({ tree: ruleTree(repo), stamp: bare(fs.readFileSync(stampOf(repo), 'utf8')) }),
         inspect: (repo) => ({ inStore: ruleNames(store(repo, 'rules')), native: ruleNames(claude(repo, 'rules')), lib: stamp.readLibrary(stampOf(repo)),
             root: fs.readFileSync(store(repo, 'rules', 'alfred-docs-root.md'), 'utf8'), rootHash: hashItem(store(repo, 'rules', 'alfred-docs-root.md')),
-            always: lineOf(fs.readFileSync(stampOf(repo), 'utf8'), 'installed-always-rules') }),
+            always: lineOf(fs.readFileSync(stampOf(repo), 'utf8'), 'installed-always-rules'),
+            marked: Object.fromEntries(ruleNames(store(repo, 'rules')).map((n) => [n, fs.readFileSync(claude(repo, 'rules', `${n}.md`), 'utf8')])),
+            stored: Object.fromEntries(ruleNames(store(repo, 'rules')).map((n) => [n, fs.readFileSync(store(repo, 'rules', `${n}.md`), 'utf8')])) }),
     });
     for (const n of ALWAYS_RULES) assert.ok(result.inStore.includes(n), `${n} in the store: ${result.inStore}`);
-    assert.deepStrictEqual(result.native.filter((n) => Object.hasOwn(result.lib.rules, n)), [], 'no stack rule in .claude/rules');
+    assert.deepStrictEqual(Object.keys(result.lib.rules).filter((n) => !result.native.includes(n)), [], 'every library rule is a native file too');
+    for (const n of Object.keys(result.lib.rules)) assert.strictEqual(result.marked[n], nativeRules.withMarker(result.stored[n]), `${n}: the store text under the marker`);
     assert.match(result.root, /This install's root: `[^`_]+`/);
     assert.strictEqual(result.lib.rules['alfred-docs-root'], result.rootHash, 'the stamp records the stamped docs-root rule');
     for (const n of ALWAYS_RULES.slice(0, 6)) assert.ok(result.always.split(',').includes(n), `installed-always-rules lists ${n}: ${result.always}`);
@@ -761,7 +765,7 @@ test('rules: an update moves the stamped rules, re-copies an edited one as today
     assert.match(outs[1], /overwriting a hand-edited copy: rule alfred-security$/m, 'the edited copy is refreshed as an update does today');
     assert.strictEqual(result.interaction, sourceRule('alfred-interaction'));
     for (const n of ALWAYS_RULES) assert.ok(result.inStore.includes(n), n);
-    assert.deepStrictEqual(result.native.sort(), ['alfred-awareness', 'alfred-rules', 'mine'], 'the canary is native too');
+    assert.deepStrictEqual(result.native.sort(), ['alfred-awareness', 'alfred-rules', 'mine', ...ALWAYS_RULES].sort(), 'the canary and the picked rules are native too');
     assert.deepStrictEqual(result.kept, [mine, mine]);
 });
 
@@ -801,9 +805,12 @@ test('rules: a rule held in both folders - the .claude copy at its stamped hash 
             return null;
         },
         inspect: (repo) => ({ native: ruleNames(claude(repo, 'rules')), store: fs.readFileSync(store(repo, 'rules', 'alfred-interaction.md'), 'utf8'),
-            edited: fs.readFileSync(claude(repo, 'rules', 'alfred-security.md'), 'utf8') }),
+            edited: fs.readFileSync(claude(repo, 'rules', 'alfred-security.md'), 'utf8'),
+            interaction: fs.readFileSync(claude(repo, 'rules', 'alfred-interaction.md'), 'utf8') }),
     });
-    assert.deepStrictEqual(result.native, ['alfred-rules', 'alfred-security']);
+    assert.strictEqual(result.interaction, nativeRules.withMarker(sourceRule('alfred-interaction')), 'the unedited copy went and the marked native one took its place');
+    assert.match(outs[1], /rule kept, yours: \.claude\/rules\/alfred-security\.md/, 'the edited one is named as the user\'s');
+    assert.deepStrictEqual(result.native.sort(), ['alfred-rules', ...ALWAYS_RULES].sort());
     assert.strictEqual(result.store, sourceRule('alfred-interaction'));
     assert.match(result.edited, /my edit/);
     assert.match(outs[1], /rule alfred-security is held in \.claude\/rules too: yours is kept and loads first/);
@@ -853,7 +860,10 @@ test('copy: ruleAt names the store file when it exists, else the .claude/rules o
 // Workspace stage 4c: a joined child holds no copy of a rule its parent holds; its own rule pick goes to the root's store.
 const RULE_PICK = 'csharp-conventions';
 const kidRules = (ws) => ({ kidStore: ruleNames(store(path.join(ws, 'api'), 'rules')).sort(), kidNative: ruleNames(claude(path.join(ws, 'api'), 'rules')).sort(),
-    rootStore: ruleNames(store(ws, 'rules')).sort(), root: fs.readFileSync(stampOf(ws), 'utf8'), rootCanary: fs.existsSync(claude(ws, 'rules', 'alfred-rules.md')) });
+    rootStore: ruleNames(store(ws, 'rules')).sort(), rootNative: ruleNames(claude(ws, 'rules')).sort(),
+    texts: Object.fromEntries([['kid', path.join(ws, 'api')], ['root', ws]].map(([who, dir]) => [who, Object.fromEntries(ruleNames(claude(dir, 'rules')).map((n) => [n, fs.readFileSync(claude(dir, 'rules', `${n}.md`), 'utf8')]))])),
+    stored: Object.fromEntries(ruleNames(store(ws, 'rules')).map((n) => [n, fs.readFileSync(store(ws, 'rules', `${n}.md`), 'utf8')])),
+    root: fs.readFileSync(stampOf(ws), 'utf8'), rootCanary: fs.existsSync(claude(ws, 'rules', 'alfred-rules.md')) });
 const trackRules = (ws) =>
 {
     gitInit(ws);
@@ -875,6 +885,23 @@ test('child: a joined child copies no rule its parent holds', POSIX_ONLY, () =>
     assert.ok(got.rootCanary, 'the root keeps its canary');
 });
 
+test('child: an update writes the root\'s picked rules to .claude/rules with the marker and the child only its own', POSIX_ONLY, () =>
+{
+    const { outs, steps } = child([
+        { at: '.' },
+        { at: 'api', sel: `${KID_SEL}rule ${RULE_PICK}\n`, before: joinApi, after: kidRules },
+        { at: '.', act: 'update', after: kidRules },
+        { at: 'api', act: 'update', after: kidRules },
+    ]);
+    const got = steps[3];
+    for (const n of ALWAYS_RULES) assert.ok(got.rootNative.includes(n), `${n} native at the root: ${outs[2]}`);
+    assert.ok(!got.rootNative.includes(RULE_PICK), 'the member\'s pick is not the root\'s');
+    assert.deepStrictEqual(got.kidNative, [RULE_PICK], outs[3]);
+    assert.strictEqual(got.texts.kid[RULE_PICK], nativeRules.withMarker(got.stored[RULE_PICK]), 'the child\'s file is the root store\'s text under the marker');
+    for (const n of ALWAYS_RULES) assert.strictEqual(got.texts.root[n], nativeRules.withMarker(got.stored[n]), n);
+    assert.ok(!/native rules:/.test(outs[3]), `the child\'s re-run changes nothing: ${outs[3]}`);
+});
+
 test('child: a rule its root still holds natively (no store copy) stays the child\'s own', POSIX_ONLY, () =>
 {
     // 4c review I2: a child in its own repository is never sent the root's .claude/rules, only a member's store.
@@ -891,7 +918,8 @@ test('child: a rule its root still holds natively (no store copy) stays the chil
     } }]);
     const got = steps[1];
     assert.ok(got.sent.includes('alfred-security'), `the child's loader sends the rule: ${outs[1]}`);
-    assert.strictEqual(got.sent.filter((n) => n === 'alfred-interaction').length, 1, outs[1]);
+    assert.strictEqual(got.sent.filter((n) => n === 'alfred-interaction').length + got.rootNative.filter((n) => n === 'alfred-interaction').length, 1,
+        `the root's rule reaches the child once - natively from the root, never sent too: ${outs[1]}`);
 });
 
 for (const tracked of [false, true])
@@ -905,7 +933,10 @@ for (const tracked of [false, true])
         ]);
         const got = steps[1];
         assert.ok(got.rootStore.includes(RULE_PICK), outs[1]);
-        assert.ok(!got.kidStore.includes(RULE_PICK) && !got.kidNative.includes(RULE_PICK), outs[1]);
+        assert.ok(!got.kidStore.includes(RULE_PICK), outs[1]);
+        assert.deepStrictEqual(got.kidNative, [RULE_PICK], 'the child holds its own pick as a marked native file, and none of the root\'s');
+        assert.ok(nativeRules.hasMarker(got.texts.kid[RULE_PICK]));
+        assert.ok(!got.rootNative.includes(RULE_PICK), 'a rule only a member picked is not native at the root');
         assert.match(lineOf(got.root, 'member-picks'), new RegExp(`(^|,)rule/${RULE_PICK}(,|$)`));
         assert.match(lineOf(got.root, 'library-rules'), new RegExp(`(^|,)${RULE_PICK}=`));
         assert.ok(steps[2].rootStore.includes(RULE_PICK), `the root's next run keeps the member's rule: ${outs[2]}`);

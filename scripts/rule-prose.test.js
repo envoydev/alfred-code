@@ -553,15 +553,11 @@ test('surface: check 33 counts the canary\'s text', () =>
     assert.strictEqual(withIt.total - without.total, withIt.rules - without.rules);
 });
 
-test('canary: the text names both block lines the loader prints', () =>
+test('canary: the text names where the rules are, the marker and the two commands that fix a missing rule', () =>
 {
     const text = squash(read('stack/alfred-rules.canary.md'));
-    const loader = read('stack/hooks/rules-session.js');
-    for (const phrase of ['Project rules, part', 'End of project rules, part'])
-    {
-        assert.ok(loader.includes(phrase), `the loader prints '${phrase}'`);
+    for (const phrase of ['.claude/rules', 'alfred-code marker', '/alfred-code:update', '/alfred-code:status'])
         assert.ok(text.includes(phrase), `the canary names '${phrase}'`);
-    }
 });
 
 test('quality gates: a line keeps its layout unless the task or the formatter changes it', () =>
