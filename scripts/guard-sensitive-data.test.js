@@ -221,7 +221,7 @@ test(`session start: a store git would commit is said - not ignored, or tracked;
     git(dir, 'init', '-q');
     assert.match(context(started(dir)), new RegExp(`WARNING: git does not ignore \\.alfred/${RE(FILE)}`));
     fs.writeFileSync(path.join(dir, '.alfred', '.gitignore'), dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs' }));
-    assert.doesNotMatch(context(started(dir)), /WARNING/, 'the root\'s own .gitignore covers it');
+    assert.doesNotMatch(context(started(dir)), /WARNING: git/, 'the root\'s own .gitignore covers it');
     git(dir, 'add', '-f', `.alfred/${FILE}`);
     assert.match(context(started(dir)), /WARNING: git does not ignore .*untrack it with git rm --cached/, 'a tracked store is said even under an ignore rule');
 });
@@ -461,10 +461,11 @@ test('workspace chain: a parent\'s store reached through its 8.3 short name is s
 
 test('SG1 D2: the key file is guarded by name - a Read, a Grep, a copy of it and, where no masker runs, any command naming it', () => {
   const KEY = ['.mcps-sec', 'rets'].join('');
+  const KEY_TOKEN = 'kf7Qz2LmW9xRt4Vb';
   const dir = fs.mkdtempSync(path.join(TMP, 'd2-'));
   const home = fs.mkdtempSync(path.join(TMP, 'd2home-'));
   for (const d of [path.join(dir, '.alfred'), path.join(dir, '.companion'), path.join(home, '.companion')]) {
-    fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, KEY), 'DB_HOST=db.internal\nCONTEXT7_API_KEY=\n');
+    fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, KEY), `DB_HOST=db.internal\nCONTEXT7_API_KEY=\nAPI_TOKEN=${KEY_TOKEN}\n`);
   }
   const env = { HOME: home, USERPROFILE: home };
   const call = (tool_name, tool_input, extra = {}) => run({ tool_name, tool_input, cwd: dir, session_id: 'suite', ...extra }, env);
@@ -477,12 +478,12 @@ test('SG1 D2: the key file is guarded by name - a Read, a Grep, a copy of it and
   const msg = call('Bash', { command: `cp .alfred/${KEY} copy.txt` }, floor).stderr;
   assert.match(msg, /key file/); assert.match(msg, /--presence/); assert.doesNotMatch(msg, /--with-sensitive/);
   // a read of it - a find handing it to a reader included - runs above the floor, and the masker reads what it printed:
-  // every value of a key file the command names or the data root holds, whatever its key
+  // a key file's credential verdicts only (card item 4: its slugs, hosts and org names were masked inside ordinary words)
   for (const c of [`cat .alfred/${KEY}`, `source .alfred/${KEY}`, `find ~/.companion -name ${KEY} -exec cat {} +`, `find . -name ${KEY} | xargs cat`, `cat $(find . -name ${KEY})`]) {
     assert.equal(call('Bash', { command: c }, floor).status, 0, c);
     const after = run({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: c }, cwd: dir, session_id: 'suite',
-      tool_response: { stdout: 'DB_HOST=db.internal\n', stderr: '', interrupted: false, isImage: false, noOutputExpected: false } }, env);
-    assert.equal(JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout, 'DB_HOST=<set (11 chars)>\n', `masked after the run: ${c}`);
+      tool_response: { stdout: `DB_HOST=db.internal\nAPI_TOKEN=${KEY_TOKEN}\n`, stderr: '', interrupted: false, isImage: false, noOutputExpected: false } }, env);
+    assert.equal(JSON.parse(after.stdout).hookSpecificOutput.updatedToolOutput.stdout, `DB_HOST=db.internal\nAPI_TOKEN=<set (${KEY_TOKEN.length} chars)>\n`, `masked after the run: ${c}`);
   }
   // where no masker runs, a command whose words name it is refused, pointed to --presence
   for (const c of [`cat .alfred/${KEY}`, `source .alfred/${KEY}`]) {

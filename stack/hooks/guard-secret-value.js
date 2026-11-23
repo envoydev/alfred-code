@@ -1044,6 +1044,11 @@ function sensitiveValues(file) {
 // The shortest value masked in a run's output: a value under 4 characters (PORT=80, DEBUG=1) would mask every match of
 // it in the output and say nothing a guess would not.
 const MASK_MIN = 4;
+// The output masker's floor (card item 4, 2026-11-23): a value under 6 characters matches ordinary words, so it is left
+// unmasked and the start line names its key instead; the --with-sensitive run keeps MASK_MIN.
+const OUTPUT_MASK_MIN = 6;
+// A character that continues a word: a value is masked only where none touches it on a side that is itself a word character.
+const WORD_CHAR = /[A-Za-z0-9_]/;
 // `node guard-secret-value.js --with-sensitive -- "<command line>"` - the command runs in this shell (sh, or cmd.exe on
 // Windows) with every KEY of the project's .sensitive-data in its environment (the file's value wins over one already
 // set: the run asked for the project's), and every value of MASK_MIN or more characters is printed as <KEY> in its
@@ -1427,6 +1432,8 @@ if (payload.hook_event_name === 'SessionStart') {
         if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
       }
     } catch { /* no git: nothing to commit it with */ }
+    const short = keys.filter((k) => String(chain.values[k]).length < OUTPUT_MASK_MIN);
+    if (short.length) exposed += ` WARNING: ${short.join(', ')} hold a value under ${OUTPUT_MASK_MIN} characters, which output masking skips (it would match ordinary words) - keep it out of output, or tell the user to make it longer.`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
       `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
   }
@@ -1536,7 +1543,8 @@ function valuesOf(file, { every = false } = {}) {
   try { text = readText(file, MAX_BYTES); } catch { return out; }
   if (kindByName(file) === 'sensitive') {
     // the store and the key file give every live value; a dotenv only when named, else its credential verdicts
-    const all = every || !DOTENV_FILE.test(baseOf(file));
+    // the companion key file mixes credentials with slugs and org names (card item 4): its credential verdicts only
+    const all = baseOf(file) === KEY_FILE ? false : every || !DOTENV_FILE.test(baseOf(file));
     for (const line of text.split(LINES)) {
       const m = COMMENT_LINE.test(line) ? null : line.match(DOTENV_LINE);
       if (!m) continue;
@@ -1580,7 +1588,7 @@ function collectValues(p, every = true) {
   const command = String((p.tool_input || {}).command || '');
   const add = (key, value, source, file, all) => {
     // an every-value read (the store, a named dotenv or config) keeps a value whatever it looks like
-    if (value.length < MASK_MIN || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
+    if (value.length < OUTPUT_MASK_MIN || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
     for (const v of new Set([value, JSON.stringify(value).slice(1, -1)])) if (!values.has(v)) values.set(v, { key, source, file: file ? baseOf(file) : null });
   };
   const take = (file, all, source) => {
@@ -1616,7 +1624,9 @@ function maskText(text, values) {
   const hits = [];
   let out = String(text);
   const list = [...values.keys()].sort((a, b) => b.length - a.length);
-  if (list.length) out = out.replace(new RegExp(list.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g'), (v) => { hits.push(values.get(v)); return `<set (${v.length} chars)>`; });
+  // a whole token only (card item 4): a mask inside a word left the letters around it, which gave the value away
+  const token = (v) => `${WORD_CHAR.test(v[0]) ? '(?<![A-Za-z0-9_])' : ''}${v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${WORD_CHAR.test(v[v.length - 1]) ? '(?![A-Za-z0-9_])' : ''}`;
+  if (list.length) out = out.replace(new RegExp(list.map(token).join('|'), 'g'), (v) => { hits.push(values.get(v)); return `<set (${v.length} chars)>`; });
   const shapes = lineRedactor();
   out = out.split('\n').map((l) => shapes.line(l)).join('\n');
   return { text: out, count: hits.length + shapes.masked(), hits };

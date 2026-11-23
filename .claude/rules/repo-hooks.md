@@ -688,8 +688,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     with a recording mask; a file `secretIn` calls no credential file gives nothing); (2) `WELL_KNOWN` - the home
     credential files, the account settings and credentials, the project's root `.env*`, `.mcp.json` and settings files -
     credential verdicts only; (3) the stores (`denyStores`) and the key file at the project, the cwd, their data roots,
-    the home and the account dir, every value; (4) variables named like a credential. A value under 4 characters
-    (`MASK_MIN`), a placeholder and - outside a store - a sample are not masked; each value is matched in its literal and
+    the home and the account dir, every value; (4) variables named like a credential. A value under 6 characters
+    (`OUTPUT_MASK_MIN`; the start line names a store key holding one), a placeholder and - outside a store - a sample are
+    not masked, and a value is masked only as a whole token, never inside a word (card item 4, 2026-11-23: a 5- and a
+    12-character value were masked inside a field name and an issue key, and the letters around the mask gave them away;
+    the `--with-sensitive` run keeps `MASK_MIN`, 4); each value is matched in its literal and
     its JSON-escaped spelling, longest first (`maskText`), and then the shape pass (`lineRedactor`, one form since Task 2: a line
     the reader leaves alone is retried past a `path:N:` prefix) reads each line, so a credential file a walk reached and nobody named is masked past its `path:N:`
     prefix. A DOTENV IS `sensitive` BY NAME since this swap (ruling 14: `.env` and `.env.*`, never a `.example` /
@@ -755,7 +758,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     left with them, and the line's 'type a KEY name in the browser' sentence after them - audit 2026-10-30 HK-20); the installer reads the store through `data-root.js` (the old credentials' clash check) and the guard
     through its own parser, `guard-sensitive-data.test.js` holding both to one fixture.
     THE KEY FILE (SG1 D2): a companion plugin's `.mcps-secrets` (`KEY_FILE`) is `sensitive` by name - every value a
-    credential - so a Read and a Grep of it are judged like the store's, the masker shows every value of it, the store
+    credential - so a Read and a Grep of it are judged like the store's, the masker shows its credential verdicts (card item 4: its slugs, hosts and org names stay readable), the store
     check refuses a copy of it and the core a command naming it (`isStoreName`); `--presence` alone reads it
     (`--with-sensitive` reads only the data-root store). THE ENGINES (`ENGINE_NAMES`: `secrets-run`, `secret-chain`):
     the refusal of a run, a move or a feed of one left with the shell judging (swap 1 ruling 1) - above the floor a
