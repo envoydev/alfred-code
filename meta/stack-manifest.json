@@ -1043,7 +1043,31 @@
       "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 1",
-      "note": "the one start part (9,900 characters): the store rules Claude Code does not load itself - one with no marked file in .claude/rules yet - with the update hint, the workspace members index, and the line saying the stack's agents moved out of the plugin; a rule over the room is named, never cut. A Cursor payload gets every rule and each member's rules here. Prints nothing when every rule is native and no member or notice applies"
+      "note": "the one start part (9,900 characters): the store rules Claude Code does not load itself - one with no same-name file in .claude/rules yet - with the update hint, the workspace members index, and the line saying the stack's agents moved out of the plugin; a rule over the room is named, never cut. A Cursor payload gets every rule and each member's rules here. Prints nothing when every rule is native and no member or notice applies"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 2",
+      "note": "Cursor only: the rules part 2 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 3",
+      "note": "Cursor only: the rules part 3 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 4",
+      "note": "Cursor only: the rules part 4 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 5",
+      "note": "Cursor only: the rules part 5 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
     },
     {
       "file": "rules-session.js",

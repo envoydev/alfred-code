@@ -12,13 +12,13 @@ const ENTRIES = path.join(ROOT, 'meta', 'plugin-entries.json');
 const LOADER = path.join(ROOT, 'stack', 'hooks', 'rules-session.js');
 
 // Layered native rules, Task 3: one --part 1 row per start event, no PostToolUse row.
-test('rows: the plugin entry carries one --part 1 row per start event and no PostToolUse row', () =>
+test('rows: the plugin entry carries --part 1 for both start events, parts 2-5 for SessionStart only (Cursor), no PostToolUse row', () =>
 {
     const core = JSON.parse(fs.readFileSync(ENTRIES, 'utf8')).entries.find((p) => p.name === 'alfred-code');
     const mine = (event) => (core.hooks[event] || []).flatMap((b) => b.hooks.map((h) => ({ matcher: b.matcher, args: h.args || [] })))
         .filter((r) => r.args[0] === '${CLAUDE_PLUGIN_ROOT}/stack/hooks/rules-session.js');
-    for (const event of ['SessionStart', 'SubagentStart'])
-        assert.deepStrictEqual(mine(event).map((r) => r.args.slice(1)), [['--part', '1']], event);
+    assert.deepStrictEqual(mine('SessionStart').map((r) => r.args.slice(1)), [1, 2, 3, 4, 5].map((k) => ['--part', String(k)]));
+    assert.deepStrictEqual(mine('SubagentStart').map((r) => r.args.slice(1)), [['--part', '1']]);
     assert.deepStrictEqual(mine('PostToolUse'), []);
 });
 
@@ -615,7 +615,7 @@ test('start: the probe row of a resume push names its source', () =>
 });
 
 // Task 6: a root's main-session start opens part 1 with the members index.
-const MEMBERS_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions and each rule file not in your context; a touch inside it sends its block.';
+const MEMBERS_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions. Its rule files load natively when the session works in that folder; a Cursor start sends them here.';
 const MEMBERS_API = '- api: instructions api/AGENTS.md; rules 1 file under api/.claude/rules';
 const MEMBERS_WEB = '- web: instructions none; rules none';
 const MEMBERS_MORE = (k) => `- and ${k} more (the workspace record lists them)`;
@@ -1128,4 +1128,57 @@ test('parts: with a limit of one part a rule too long for it is left out whole, 
     assert.ok(out.parts[0].includes(`Not sent - past part 1: ${long.rel}`) && !out.parts[0].includes(heading(long)), out.parts[0].slice(-200));
     assert.ok(out.parts[0].includes(heading(rule('a', 1))) && out.parts[0].includes(heading(rule('b', 1))));
     assert.deepStrictEqual(loader().parts([long], { limit: 5 }).unsent, [], 'five parts still cut it across parts');
+});
+
+// Fix round 1.
+const CURSOR_START = { hook_event_name: 'sessionStart', cursor_version: '1.7.0' };
+
+test('a Cursor payload gets the rest of its rules on part 2, a Claude Code payload on part 2 nothing', () =>
+{
+    const rs = [rule('r1', 6000), rule('r2', 6000)];
+    const p = project(Object.fromEntries(rs.map((r) => [r.name, r.text])));
+    const one = part(p, 1, CURSOR_START);
+    const two = part(p, 2, CURSOR_START);
+    assert.ok(one.startsWith(OPEN(1, 2)) && one.includes(heading(rs[0])) && !one.includes(heading(rs[1])), one.slice(0, 200));
+    assert.ok(two.startsWith(OPEN(2, 2)) && two.includes(heading(rs[1])) && two.endsWith(CLOSE(2, 2)), two.slice(0, 200));
+    assert.strictEqual(part(p, 3, CURSOR_START), '');
+    for (const k of [2, 3, 5]) assert.strictEqual(part(p, k, START()), '', `Claude Code part ${k}`);
+    assert.ok(part(p, 1, START()).includes(`Not sent - past part 1: ${rs[1].rel}`), 'Claude Code part 1 is one part');
+});
+
+test('a Cursor payload\'s path rule names its globs, and a member block opens with the binding line and the replaces note', () =>
+{
+    const t = W();
+    store(t.root, 'ts', TS);
+    store(t.root, 'same', 'M-ROOT-SAME');
+    store(t.api, 'same', 'M-API-SAME');
+    store(t.api, 'own', 'M-API-OWN');
+    const text = part(t.root, 1, CURSOR_START);
+    assert.ok(text.includes('## ts (.alfred/stack/rules/ts.md)\n- applies to: **/*.ts\nM-TS'), text);
+    assert.ok(!/## same \(\.alfred[^\n]*\n- applies/.test(text), 'an always-on rule names no globs');
+    const BINDING = 'Rules and data of api. Binding for work under api, in addition to the workspace\'s rules.';
+    assert.ok(text.includes(`## own (api/.alfred/stack/rules/own.md)\n${BINDING}\nM-API-OWN`), text);
+    assert.ok(text.includes(`## same (api/.alfred/stack/rules/same.md) - replaces the workspace's rule of this name for files under api\n${BINDING}\nM-API-SAME`), text);
+    assert.ok(text.includes('## same (.alfred/stack/rules/same.md)\nM-ROOT-SAME'), 'the root rule carries neither');
+});
+
+test('the members index no longer promises a block on a touch', () =>
+{
+    const head = loader().memberIndex(apiAndWeb(), ENV).split('\n')[0];
+    assert.doesNotMatch(head, /touch|sends its block/);
+    assert.match(head, /load natively when the session works in that folder/);
+    assert.match(head, /Cursor start sends them/);
+});
+
+test('part 1 at its room: at the room it fits, one over leaves the rule out whole, one under fits', () =>
+{
+    const block = (n) => [OPEN(1, 1), UPDATE_HINT, `## a (.alfred/stack/rules/a.md)\n${'x'.repeat(n)}`, CLOSE(1, 1)].join('\n\n');
+    const fit = 9900 - block(0).length;
+    for (const [n, fits] of [[fit - 1, true], [fit, true], [fit + 1, false]])
+    {
+        const text = part(project({ a: 'x'.repeat(n) }), 1);
+        if (fits) assert.strictEqual(text, block(n), `${n} characters`);
+        else assert.ok(!text.includes('xxx') && text.includes('Not sent - past part 1: .alfred/stack/rules/a.md') && text.length <= 9900, `${n}: ${text.slice(0, 200)}`);
+        assert.ok(text.length <= 9900, String(text.length));
+    }
 });

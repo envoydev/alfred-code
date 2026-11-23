@@ -2,9 +2,10 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 //
 // rules-session.js - the rule loader: the rules in `.alfred/stack/rules` (and each workspace member's) sent as context.
-// A SessionStart and a SubagentStart row (`--part 1`) send part 1 alone: the always-on rules Claude Code does not load itself
-// (a store rule with no marked file in .claude/rules yet), the members index, and the notes an update clears. A Cursor
-// payload, which reads no .claude/rules and sends no touch event, gets every rule and each member's rules there. No store: nothing.
+// A SessionStart and a SubagentStart row (`--part 1`) send part 1 alone on Claude Code: the always-on rules it does not load
+// itself (a store rule with no same-name file in .claude/rules yet), the members index, and the notes an update clears; its
+// `--part 2`-`5` rows print nothing. A Cursor payload, which reads no .claude/rules and sends no touch event, gets every rule
+// (path rules with their globs named) and each member's rules in up to five parts at SessionStart. No store: nothing.
 // The plugin copy yields to a copied twin by event and matcher only, never by `--part` (hook-prelude.js).
 'use strict';
 const fs = require('node:fs');
@@ -23,7 +24,7 @@ const NO_RULES_SEAT = /^(Explore|Plan)$/;   // the built-in types load no projec
 // The members index a root's start opens part 1 with: a line a child, at most MEMBER_LINES of them and MEMBER_CHARS in all.
 const MEMBER_LINES = 12;
 const MEMBER_CHARS = 1500;
-const MEMBER_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions and each rule file not in your context; a touch inside it sends its block.';
+const MEMBER_HEAD = 'Workspace members - before you plan or edit inside one, Read its instructions. Its rule files load natively when the session works in that folder; a Cursor start sends them here.';
 const MEMBER_MORE = (left) => `- and ${left} more (the workspace record lists them)`;
 const MEMBER_MORE_LINE = /^- and \d+ more \(/;
 const UPDATE_HINT = 'Rules not yet in .claude/rules - run /alfred-code:update so Claude Code loads them itself.';
@@ -150,7 +151,9 @@ function keyLine(text)
 const opening = (k, n) => `Project rules, part ${k} of ${n} - binding instructions for this project`;
 const closing = (k, n) => `End of project rules, part ${k} of ${n}`;
 const BASE = opening(1, 1).length + closing(1, 1).length + 2;   // k and n stay one digit, so the room never moves
-const headingOf = (r, more) => `## ${r.name} (${r.rel})${more ? ' - continued' : ''}`;
+// A rule's heading and the lines under it: a Cursor member rule's binding line, a path rule's globs.
+const headingOf = (r, more) => [`## ${r.name} (${r.rel})${more ? ' - continued' : ''}${r.note ? ` - ${r.note}` : ''}`, ...(r.lines || []),
+    ...(r.globs && r.globs.length ? [`- applies to: ${r.globs.join(', ')}`] : [])].join('\n');
 const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0);
 
 // A rule too long for one part, cut at line ends (a single longer line at the room) into chunks of a part each.
@@ -254,15 +257,18 @@ function memberIndex(project, env = process.env)
     return text(shown);
 }
 
-// Each child's own store rules, always-on and path rules both, named from the project's folder: what a Cursor start sends
-// of a member, since Cursor has no touch event to carry it.
-function memberRules(project, env = process.env)
+// Each child's own store rules, always-on and path rules both, named from the project's folder, each under the binding line
+// and, where the workspace holds a rule of the name (`held`), the replaces note: what a Cursor start sends of a member,
+// since Cursor has no touch event to carry it.
+function memberRules(project, env = process.env, held = [])
 {
     return memberChildren(project, env).flatMap((child) =>
     {
         const root = path.join(project, child);
         const own = rulesFor(root, env, { host: 'cursor' });
-        return [...own.always, ...own.scoped].filter((r) => r.root === root).map((r) => ({ ...r, rel: posix(project, r.file) }));
+        return [...own.always, ...own.scoped].filter((r) => r.root === root).map((r) => ({ ...r, rel: posix(project, r.file),
+            lines: [`Rules and data of ${child}. Binding for work under ${child}, in addition to the workspace's rules.`],
+            ...(held.includes(r.name) ? { note: `replaces the workspace's rule of this name for files under ${child}` } : {}) }));
     });
 }
 
@@ -358,8 +364,10 @@ function main(argv = process.argv, env = process.env)
     // GATE 6 (hook-prelude.js): this hook answers Cursor in its own shape, so the prelude lets it through.
     if (prelude && prelude.cursorStandDown(input, __filename)) return;
     const at = argv.indexOf('--part');
-    if (at < 0 || Number(argv[at + 1]) !== 1) return;   // older copy-route rows still name parts 2-5 and a PostToolUse call: nothing
+    const part = at < 0 ? 0 : Number(argv[at + 1]);
+    if (!Number.isInteger(part) || part < 1 || part > RULE_PARTS) return;   // a PostToolUse call, an unknown part: nothing
     const cursor = Boolean(prelude && prelude.cursorHost(input));
+    if (part > 1 && !cursor) return;   // Claude Code's rows for parts 2-5 stay wired for Cursor: nothing, before any read
     const event = String(input.hook_event_name || '');
     const kind = event.charAt(0).toUpperCase() + event.slice(1);
     if (!['SessionStart', 'SubagentStart'].includes(kind)) return;
@@ -372,15 +380,17 @@ function main(argv = process.argv, env = process.env)
     if (!rules.hasStore && !moved) return;
     // Claude Code loads a rule written to .claude/rules itself; the store text is the fallback for one not written yet.
     // Cursor reads no .claude/rules and sends no touch event, so it gets every rule, the members' included, here.
-    const fallback = cursor ? [...rules.always, ...rules.scoped, ...(sessionStart ? memberRules(rules.project, env) : [])] : rules.always;
+    const held = [...rules.always, ...rules.scoped];
+    const fallback = cursor ? [...held, ...(sessionStart ? memberRules(rules.project, env, held.map((r) => r.name)) : [])] : rules.always;
     const index = sessionStart && rules.hasStore ? memberIndex(rules.project, env) : '';
     const lead = [index, moved && SEATS_MOVED, !cursor && fallback.length > 0 && UPDATE_HINT].filter(Boolean).join('\n\n');
     if (!fallback.length && !lead) return;
-    const out = parts(fallback, { index: lead, limit: 1 });
+    const out = parts(fallback, cursor ? { index: lead } : { index: lead, limit: 1 });
+    if (!out.parts[part - 1]) return;
     const safe = (id) => (prelude ? prelude.safeSession(id) : String(id).replace(/[^\w.-]/g, '_'));
     const sid = (cursor && input.conversation_id) || input.session_id;
     const session = sid ? safe(sid) : null;
-    if (session)
+    if (session && part === 1)
         try
         {
             const dir = require(path.join(__dirname, 'layout.js')).statsPath(rules.project, ['hook-blocks'], env);
@@ -391,7 +401,7 @@ function main(argv = process.argv, env = process.env)
                 agent: safe(String(input.agent_id || 'main').replace(/^agent-/, '')) })}\n`);
         }
         catch { /* the row is a probe */ }
-    const text = out.parts[0];
+    const text = out.parts[part - 1];
     process.stdout.write(JSON.stringify(cursor ? { additional_context: text } : { hookSpecificOutput: { hookEventName: kind, additionalContext: text } }));
 }
 
