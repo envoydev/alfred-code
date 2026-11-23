@@ -813,7 +813,24 @@ test('rules: a rule held in both folders - the .claude copy at its stamped hash 
     assert.deepStrictEqual(result.native.sort(), ['alfred-rules', ...ALWAYS_RULES].sort());
     assert.strictEqual(result.store, sourceRule('alfred-interaction'));
     assert.match(result.edited, /my edit/);
-    assert.match(outs[1], /rule alfred-security is held in \.claude\/rules too: yours is kept and loads first/);
+    assert.strictEqual(outs[1].split('\n').filter((l) => /!! rule.*alfred-security/.test(l)).length, 1, 'the edited copy is named once');
+    assert.doesNotMatch(outs[1], /held in \.claude\/rules too/);
+});
+
+test('rules: a user\'s unmarked, edited rule file is named once as kept, yours on every update - never also as held twice', () =>
+{
+    const mine = 'my own security rule\n';
+    const { outs, result } = seedRun(['install', 'update', 'update', 'update'], RULE_SEL, {
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(claude(repo, 'rules', 'alfred-security.md'), mine); return null; },
+        inspect: (repo) => ({ kept: fs.readFileSync(claude(repo, 'rules', 'alfred-security.md'), 'utf8') }),
+    });
+    assert.strictEqual(result.kept, mine, 'the user\'s text is never replaced');
+    for (const out of outs.slice(1))
+    {
+        assert.strictEqual(out.split('\n').filter((l) => /alfred-security/.test(l) && /!! rule/.test(l)).length, 1, `one line names it: ${out.split('\n').filter((l) => /alfred-security/.test(l)).join(' | ')}`);
+        assert.match(out, /!! rule kept, yours: \.claude\/rules\/alfred-security\.md - it has no alfred-code marker/);
+        assert.doesNotMatch(out, /held in \.claude\/rules too/);
+    }
 });
 
 test('rules: an uninstall takes the store rules at their hash, keeps an edited one, and takes the old shape too', () =>

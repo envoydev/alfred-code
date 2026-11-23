@@ -457,11 +457,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const names = [...new Set([...Object.keys(stampedLib.rules || {}), ...manifest.rules.map((f) => f.replace(/\.md$/, '')).filter(claimed)])];
             if (!made || links.moveIn({ projectRoot, kind: 'rules', names, home: { store: true, dir: rulesDir }, log }).failed.length)
                 rulesDir = path.join(claudeDir, 'rules');
-            else for (const [n, h] of Object.entries(stampedLib.rules || {}))   // held twice: at its stamped hash the .claude copy goes, else it is named
+            else for (const [n, h] of Object.entries(stampedLib.rules || {}))   // held twice: at its stamped hash the .claude copy goes; an edited one stays, and writeNative names it
             {
                 const at = path.join(claudeDir, 'rules', `${n}.md`);
-                if (fs.existsSync(path.join(rulesDir, `${n}.md`)) && fs.lstatSync(at, { throwIfNoEntry: false })?.isFile() && !nativeRules.hasMarker(readText(at)))
-                    library.hashItem(at) === h ? fs.unlinkSync(at) : log(`  !! rule ${n} is held in .claude/rules too: yours is kept and loads first`);
+                if (fs.existsSync(path.join(rulesDir, `${n}.md`)) && fs.lstatSync(at, { throwIfNoEntry: false })?.isFile() && !nativeRules.hasMarker(readText(at)) && library.hashItem(at) === h)
+                    fs.unlinkSync(at);
             }
         }
         else if (!fs.statSync(rulesDir, { throwIfNoEntry: false })?.isDirectory()) rulesDir = path.join(claudeDir, 'rules');
