@@ -145,12 +145,35 @@ test('the valve passes the fourth void of one kind, and a banner gap only adds a
   assert.match(gap.out.hookSpecificOutput.additionalContext, /step 3 of 13 printed no banner/);
 });
 
-test('PreToolUse never waits, and judges no paste', () => {
+test('PreToolUse with no tool_use id never waits, and judges no paste', () => {
   const t0 = Date.now();
   const r = run(UNPASTED());
   assert.strictEqual(r.status, 0);
   assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0}ms`);
-  assert.ok(!fs.readFileSync(HOOK, 'utf8').includes('LAYER_GATE_WAIT_MS'));
+});
+
+// Card item 8 (A8, fecb88be): the PostToolUse void threw the user's answer away twice. Measured 2026-11-23 on Claude Code
+// 2.1.330 (three headless runs, a PreToolUse probe): a call's own message is NOT on disk when its PreToolUse hook starts
+// but lands 444-539 ms into it - F4's 'only after the PreToolUse hooks finish' no longer holds. So the paste check runs
+// before the ask is shown: the hook waits for the ask's own row, and an unpasted table holds the ask (the table printed
+// for the user) instead of voiding an answer.
+function runPre(rows, id = 'a9', input = ask, env = {}) {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: input, tool_use_id: id, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
+  return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, stderr: r.stderr };
+}
+test('PreToolUse holds an unpasted ask before the user sees it, printing the table; a pasted one and the re-ask pass (A8)', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const held = runPre([...UNPASTED(), ...own]);
+  assert.strictEqual(held.status, 0);
+  assert.strictEqual(held.out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(held.out.hookSpecificOutput.permissionDecisionReason, /^alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
+  assert.match(held.out.systemMessage, / 1 {2}x/, 'the table is printed for the user');
+  const pasted = runPre([...UNPASTED(), say('```\n 1  x\ntotal: 43 agents - if fewer\n```'), call('a9', 'AskUserQuestion', ask)]);
+  assert.strictEqual(pasted.out, null, 'a pasted table: the ask is shown');
+  const again = runPre([...UNPASTED(), ...own, result('a9', held.out.hookSpecificOutput.permissionDecisionReason, true), call('a10', 'AskUserQuestion', ask)], 'a10');
+  assert.strictEqual(again.out, null, 'the re-ask after a printed hold passes - one hold per layer');
 });
 
 test('no answers object, or an empty one, passes (Review Focus 1)', () => {

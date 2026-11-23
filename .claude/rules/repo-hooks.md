@@ -1209,7 +1209,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     PreToolUse hooks on one matcher run in parallel, and on `AskUserQuestion` the core lists the plugin's
     `guard-layer-table.js` first and this hook second - each a node start per ask, p50 28ms and 44ms on an 830KB
     transcript (measured 2026-10-20, this machine); since 2026-10-28 (F4) the layer gate's PreToolUse half judges only a
-    layer table that never ran and configure step 1's inventory, and its paste check voids at PostToolUse. So the layer
+    layer table that never ran and configure step 1's inventory, and its paste check voids at PostToolUse - since card item 8
+  (2026-11-23) it first runs at PreToolUse, after waiting up to 1.5 s for the ask's own row (measured on 2.1.330: it lands
+  444-539 ms into the hook), and holds an unpasted ask before the user sees it, the PostToolUse void the net. So the layer
     gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
     `guard-stop-askfixed-<session>.jsonl` (hook temp dir) with the call's `tool_use_id`, and this hook's next ask or Stop
     writes it once the call's result is on disk - dropped when that result is a hook's denial, written as it stands past a
