@@ -84,20 +84,63 @@ function pathsOf(text)
     return items.map((s) => s.trim().replace(/^(["'])(.*)\1$/, '$2')).filter(Boolean);
 }
 
-// A glob as an anchored RegExp (`**/` any folders, a trailing `/**` all below, `*` within a segment); null on ? [ { !
+// A glob as an anchored RegExp, the way Claude Code matches a rule's paths: `**/` any folders, a trailing `/**` all below,
+// `*` and `?` within a segment, `[...]` a class, `{a,b}` (nested too) either, a leading `/` the rule's own folder;
+// null on a negation or an unclosed brace or class.
 function pathGlob(glob)
 {
-    const g = String(glob);
-    if (/[?[{!]/.test(g)) return null;
+    const g = String(glob).replace(/^\//, '');
+    if (g.startsWith('!')) return null;
+    let depth = 0;
     let re = '';
     for (let i = 0; i < g.length;)
     {
         if (g.startsWith('**/', i)) { re += '(?:.*/)?'; i += 3; }
         else if (g.slice(i) === '/**') { re += '/.*'; i = g.length; }
+        else if (g.startsWith('**', i)) { re += '.*'; i += 2; }
         else if (g[i] === '*') { re += '[^/]*'; i += 1; }
-        else { re += g[i].replace(/[.+^$()|\\\]}]/, '\\$&'); i += 1; }
+        else if (g[i] === '?') { re += '[^/]'; i += 1; }
+        else if (g[i] === '[')
+        {
+            const end = g.indexOf(']', i + 2);
+            if (end < 0) return null;
+            re += `[${g.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`;
+            i = end + 1;
+        }
+        else if (g[i] === '{') { re += '(?:'; depth += 1; i += 1; }
+        else if (g[i] === '}' && depth) { re += ')'; depth -= 1; i += 1; }
+        else if (g[i] === ',' && depth) { re += '|'; i += 1; }
+        else { re += g[i].replace(/[.+^$()|\\\]}]/, (c) => `\\${c}`); i += 1; }
     }
-    return new RegExp(`^${re}$`);
+    return depth ? null : new RegExp(`^${re}$`);
+}
+
+// The KEY LINE of a rule (card 'Layered native rules', 2026-11-23): its first sentence once the frontmatter, every HTML
+// comment (one over several lines included), the headings and fenced blocks are gone - a sentence ends at '.', '!' or
+// '?' before whitespace or the end, never inside a code span nor before a lowercase word - cut at KEY_LINE_CHARS with ', ...'.
+const KEY_LINE_CHARS = 240;
+const KEY_LINE_TAIL = ', ...';
+function keyLine(text)
+{
+    let body = String(text).replace(/\r\n/g, '\n');
+    const fm = /^---\n[\s\S]*?\n---(?:\n|$)/.exec(body);
+    if (fm) body = body.slice(fm[0].length);
+    body = body.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*(```|~~~)[\s\S]*?^\s*\1.*$/gm, '');
+    const prose = body.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n').trim();
+    const flat = (prose.split(/\n\s*\n/)[0] || '').replace(/\s+/g, ' ').trim();
+    let inCode = false;
+    let end = flat.length;
+    for (let i = 0; i < flat.length; i++)
+    {
+        if (flat[i] === '`') inCode = !inCode;
+        else if (!inCode && /[.!?]/.test(flat[i]) && (i + 1 === flat.length || (flat[i + 1] === ' ' && !/[a-z]/.test(flat[i + 2] || ''))))
+        { end = i + 1; break; }
+    }
+    const sentence = flat.slice(0, end);
+    if (sentence.length <= KEY_LINE_CHARS) return sentence;
+    const room = KEY_LINE_CHARS - KEY_LINE_TAIL.length;
+    const cut = sentence.lastIndexOf(' ', room);
+    return `${sentence.slice(0, cut > 0 ? cut : room).replace(/[,;:\s-]+$/, '')}${KEY_LINE_TAIL}`;
 }
 
 const opening = (k, n) => `Project rules, part ${k} of ${n} - binding instructions for this project`;
@@ -423,7 +466,7 @@ function main(argv = process.argv, env = process.env)
     say(out.parts[part - 1]);
 }
 
-module.exports = { PART_ROOM, RULE_PARTS, LOCKED_RULES, NO_RULES_SEAT, render, pathsOf, pathGlob, parts, memberIndex, rulesFor, memberBlock, memberPart, main };
+module.exports = { PART_ROOM, RULE_PARTS, LOCKED_RULES, NO_RULES_SEAT, render, pathsOf, pathGlob, keyLine, parts, memberIndex, rulesFor, memberBlock, memberPart, main };
 if (require.main === module)
 {
     const prelude = loadPrelude();

@@ -102,9 +102,34 @@ test('pathGlob: every shipped rule\'s globs compile and match their own example'
         }
 });
 
-test('pathGlob: an unsupported character gives null', () =>
+// The edit reminder matches a rule's paths the way Claude Code does (card: '**/', a leading '/', braces).
+test('pathGlob: braces, a leading slash, ? and a class match; a negation gives null', () =>
 {
-    for (const glob of ['*.{ts,tsx}', '[ab].ts', 'a?.ts', '!x.ts']) assert.strictEqual(loader().pathGlob(glob), null, glob);
+    const { pathGlob } = loader();
+    const m = (glob, file) => pathGlob(glob).test(file);
+    assert.ok(m('**/*.{ts,tsx}', 'a/b.ts') && m('**/*.{ts,tsx}', 'b.tsx') && !m('**/*.{ts,tsx}', 'b.tsxx'));
+    assert.ok(m('src/{api,web}/**', 'src/web/x/y.ts') && !m('src/{api,web}/**', 'src/cli/y.ts'));
+    assert.ok(m('/src/*.cs', 'src/a.cs') && !m('/src/*.cs', 'x/src/a.cs'), 'a leading slash anchors at the rule\'s folder');
+    assert.ok(m('a?.ts', 'ab.ts') && !m('a?.ts', 'a/.ts') && !m('a?.ts', 'abc.ts'));
+    assert.ok(m('[ab].ts', 'a.ts') && !m('[ab].ts', 'c.ts'));
+    assert.ok(m('**/*.{cs,{csproj,props}}', 'x/Directory.props'), 'nested braces');
+    assert.strictEqual(pathGlob('!x.ts'), null);
+    assert.strictEqual(pathGlob('{a,b'), null, 'an unclosed brace');
+});
+
+// The key line of a rule (card: the first sentence after HTML comments, multi-line ones included, and headings, ~240 chars).
+test('keyLine: the first sentence past frontmatter, headings and multi-line HTML comments, capped', () =>
+{
+    const { keyLine } = loader();
+    const rule = '---\npaths:\n  - "**/*.cs"\n---\n<!-- a comment\nover two lines. -->\n# C# conventions\n\nEditing C# - load `csharp` first. Then the rest.\n';
+    assert.strictEqual(keyLine(rule), 'Editing C# - load `csharp` first.');
+    assert.strictEqual(keyLine('# T\n<!-- one -->text <!-- inline -->runs on\nacross lines. Next.'), 'text runs on across lines.');
+    assert.strictEqual(keyLine('Calls `node a.js` and e.g. stops here. Not this.'), 'Calls `node a.js` and e.g. stops here.', 'a dot inside code or before a letter is no end');
+    const long = `${'word '.repeat(80)}end.`;
+    const k = keyLine(long);
+    assert.ok(k.length <= 240 && k.endsWith(', ...'), k);
+    assert.strictEqual(keyLine('---\npaths: x\n---\n<!-- only -->\n# Heading\n'), '');
+    assert.strictEqual(keyLine('```\ncode. block.\n```\nAfter the fence.'), 'After the fence.', 'a fenced block is no sentence');
 });
 
 test('parts: at PART_ROOM, one under, one over', () =>
@@ -490,11 +515,11 @@ test('rulesFor: an unsupported glob is named and the rule\'s other globs still m
     const top = tree({ 'p/.git/HEAD': 'x' });
     const p = path.join(top, 'p');
     stamp(p);
-    store(p, 'g', '---\npaths: ["**/*.{a,b}", "**/*.c"]\n---\nglob rule');
+    store(p, 'g', '---\npaths: ["!**/*.a", "**/*.c"]\n---\nglob rule');
     const r = at(p);
     assert.deepStrictEqual([names(r.always), names(r.scoped)], [[], ['g']]);
-    assert.deepStrictEqual(r.scoped[0].globs, ['**/*.{a,b}', '**/*.c']);
-    assert.ok(r.notes.includes('glob not matched: **/*.{a,b} in .alfred/stack/rules/g.md'), r.notes.join('|'));
+    assert.deepStrictEqual(r.scoped[0].globs, ['!**/*.a', '**/*.c']);
+    assert.ok(r.notes.includes('glob not matched: !**/*.a in .alfred/stack/rules/g.md'), r.notes.join('|'));
 });
 
 // Task 4: the row handlers, the record and the probe row.
@@ -1032,8 +1057,8 @@ test('status: a refused ignore of a locked rule, an unmatched glob, a skipped li
     const t = W({ apiIgnore: [name] });
     store(t.root, name);
     assert.match(status(t.api), new RegExp(`^rules: ignore rule ${name} not honoured: the rule is locked$`, 'm'));
-    const g = project({ g: '---\npaths: ["**/*.{a,b}"]\n---\nglob rule' });
-    assert.match(status(g), /^rules: glob not matched: \*\*\/\*\.\{a,b\} in \.alfred\/stack\/rules\/g\.md$/m);
+    const g = project({ g: '---\npaths: ["!**/*.a"]\n---\nglob rule' });
+    assert.match(status(g), /^rules: glob not matched: !\*\*\/\*\.a in \.alfred\/stack\/rules\/g\.md$/m);
     if (process.platform !== 'win32')
     {
         const l = project();
