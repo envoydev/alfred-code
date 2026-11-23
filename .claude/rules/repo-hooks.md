@@ -81,7 +81,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   code.claude.com/docs/en/tools-reference, 'Question auto-continue timeout'). `askTimedOut` reads either, and every
   answer reader (`fresh-session.js` `answeredBlock` / `askAnsweredSince`, the stop contract's anchored answer
   wording) counts no timed-out ask; the answer hook writes the session's `askTimeoutMarker` and the dispatch guard reads it.
-  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; a live AUTO waiver of this session
+  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; a live AUTO waiver of this session once the user's newest typed prompt is `AWAY_AFTER_MS` (10 minutes) old or the transcript shows none (`userAway`, card item 11, 2026-11-23: auto-run alone read a present user as away and dropped the done-close hold 28 s after a typed prompt)
   (`<data root>/state/approvals/APPROVAL` opening `AUTO`, under 8h and not older than the transcript - the dispatch guard's
   stamp, `autoStampLive`; audit 2026-10-10 - or, for a stamp naming its session on a `session:` line, that session
   alone for up to a week, `approvalStamp`, which the dispatch guard reads too); else

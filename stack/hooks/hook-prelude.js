@@ -482,6 +482,46 @@ function transcriptField(file, key)
     return null;
 }
 
+// How long after the user's newest typed prompt a session under a live auto-run stamp counts as unattended (card item 11).
+const AWAY_AFTER_MS = 10 * 60 * 1000;
+// Whether the user is away under a live stamp: the newest row the user TYPED (typedRowText) in the transcript's tail
+// windows is AWAY_AFTER_MS old or more. No transcript, no typed row in the widest window, or one with no timestamp is
+// away - the stamp's old reading.
+function userAway(input, now = Date.now())
+{
+    const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
+    const at = file ? lastTypedAt(file) : 0;
+    return !at || now - at >= AWAY_AFTER_MS;
+}
+// The timestamp (ms) of the newest typed row in the transcript's tail windows, else 0.
+function lastTypedAt(file)
+{
+    let size;
+    try { size = fs.statSync(file).size; } catch { return 0; }
+    for (const span of TRANSCRIPT_WINDOWS)
+    {
+        const start = Math.max(0, size - span);
+        let text;
+        try
+        {
+            const fd = fs.openSync(file, 'r');
+            try { const buf = Buffer.alloc(size - start); fs.readSync(fd, buf, 0, buf.length, start); text = buf.toString('utf8'); }
+            finally { fs.closeSync(fd); }
+        }
+        catch { return 0; }
+        const lines = text.split('\n');
+        if (start > 0) lines.shift();   // cut mid-row
+        for (let i = lines.length - 1; i >= 0; i--)
+        {
+            if (!isTypedCandidate(lines[i])) continue;
+            const row = rowOf(lines[i]);
+            if (typedRowText(row)) return tsOfRow(row);
+        }
+        if (start === 0) return 0;
+    }
+    return 0;
+}
+
 // A live AUTO waiver is nobody at the terminal too (audit 2026-10-10 C08 / C09). The user's 'take every recommended
 // option' is written to <data root>/state/approvals/APPROVAL with an `AUTO - "<their words>"` first line, and the dispatch guard reads
 // it as consent for THIS session only: under 8h old and not written before the session's transcript was born (a
@@ -1465,7 +1505,9 @@ function unattended(input, env)
     {
         const source = env || process.env;
         if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return true;
-        if (autoStampLive(input, source)) return true;
+        // Auto-run alone is no absence (card item 11, 3d4c416d: three Stops judged 'nobody at the terminal' 28 s to 74 s
+        // after the user typed): a live stamp reads as away only once the user's newest typed prompt is AWAY_AFTER_MS old.
+        if (autoStampLive(input, source)) return userAway(input);
         // The CLI's own answer first (review A, M8): 2.1.283 sets CLAUDE_CODE_ENTRYPOINT to sdk-cli in print mode,
         // rewriting an inherited cli, and keeps an SDK launch's own value - one read, no torn row, and right for a
         // resumed session before its first new row. Set to anything, it decides; unset, the transcript does.
@@ -2148,4 +2190,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep });   // beside the one-line list, which a new name would push past 160
+Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep, userAway, AWAY_AFTER_MS });   // beside the one-line list, which a new name would push past 160

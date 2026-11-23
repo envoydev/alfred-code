@@ -78,6 +78,24 @@ const sub = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-sessio
 // ---------------------------------------------------------------------------------------------
 // the stamp
 // ---------------------------------------------------------------------------------------------
+// Card item 11 (A11, 3d4c416d ledger L109-L111): under auto-run the stop contract logged 'skip: nobody is at the terminal'
+// 28 s to 74 s after the user typed. A live stamp reads as away only once the newest typed prompt is 10 minutes old.
+test('unattended: a live auto-run stamp is no absence while the user typed in the last 10 minutes (A11)', () =>
+{
+    const { unattended, AWAY_AFTER_MS } = require('../stack/hooks/hook-prelude.js');
+    const p = project();
+    const env = { CLAUDE_PROJECT_DIR: p.root };
+    const typedAt = (ms) => { const t = transcript(); const rows = fs.readFileSync(t, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        for (const r of rows) r.timestamp = new Date(Date.now() - ms).toISOString();
+        fs.writeFileSync(t, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return t; };
+    autoStamp(p, 'a11');
+    assert.strictEqual(AWAY_AFTER_MS, 600000);
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(28 * 1000) }, env), false, 'typed 28 s ago: the user is there');
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(9 * 60 * 1000) }, env), false, 'typed 9 min ago: still there');
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(11 * 60 * 1000) }, env), true, 'typed 11 min ago: away');
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(28 * 1000) }, { ...env, ALFRED_CODE_UNATTENDED: '1' }), true, 'the explicit switch still wins');
+});
+
 test('auto-mode stamp: one naming its session is that session\'s for the whole run, and never another\'s', () =>
 {
     const p = project();
