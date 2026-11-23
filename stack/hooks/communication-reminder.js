@@ -496,6 +496,14 @@ function modesText(prompt) {
 // The size note on the LAST reply (reply-budget.js), a typed prompt's only; a missing module or a failed read adds none.
 const replyNote = () => { try { const note = require('./reply-budget.js').noteFor(payload.transcript_path); return note ? ` ${note}` : ''; } catch { return ''; } };
 
+// The native rules summary (rules-session.js), one more line of the same block; a missing module or a throw adds none.
+const rulesSummary = () => {
+  try {
+    const line = require(require('path').join(__dirname, 'rules-session.js')).summaryLine(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.session_id, process.env);
+    return line ? `\n${line}` : '';
+  } catch { return ''; }
+};
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
   // A harness prompt is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
   // budget rode a background gate's completion notice, ~195 tokens carried on every later message; 2026-10-14 HK14: and
@@ -537,7 +545,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   // The ON line is a systemMessage beside the context: the user sees it, the model reads the context lines (spec section 3).
   process.stdout.write(JSON.stringify({
     ...(modes.message ? { systemMessage: modes.message } : {}),
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + replyNote() + extra + repeat + nudge + modes.context },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + replyNote() + extra + repeat + nudge + modes.context + rulesSummary() },
   }));
   // The session status file (session-status.js): this prompt's autoRun and scoring, under history-session's own gates.
   // The stand-down runs as the write's gate, only once the compare says a write is due (R137).
@@ -555,7 +563,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
 // seat's report has its own shape, so no budget goes there.
 if (payload.hook_event_name === 'SessionStart' && !payload.agent_id) {
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT + modesText(null).context },
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT + modesText(null).context + rulesSummary() },
   }));
   process.exit(0);
 }
