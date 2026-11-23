@@ -1475,11 +1475,23 @@ function judgeReceipt(body, opts) {
       const why = at ? `changed after the last review of the code covering ${one ? 'it' : 'them'} started (${hhmm(at)})`
         : `${one ? 'is' : 'are'} in no review of the code this session ran (the last, at ${hhmm(last)}, was pointed at other paths, or was a seat whose brief named none of ${one ? 'it' : 'them'} and no \`git diff\` of the whole change)`;
       r.problem = `${shown} ${why} - no review saw that version; run review-code on ${one ? 'it' : 'those files'} and copy its Findings field into the receipt`;
+      r.next = `run review-code on ${shown}, then write a new receipt with scripts/receipt.js commit`;
       r.branch = 'review-stale';
       return r;
     }
   }
   return r;
+}
+
+// Whether this session's block ledger already holds this guard's row with the same first line (card item 6). Unreadable: no.
+function sameBlockSeen(head) {
+  try {
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
+    const file = path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
+    const want = head.slice(0, 200);
+    return fs.readFileSync(file, 'utf8').split('\n').some((l) => { try { const o = JSON.parse(l); return o.hook === path.basename(__filename) && o.reason === want; } catch { return false; } });
+  } catch { return false; }
 }
 
 // touchedProjects is computed only for PUSH-GATE - it drives the diff-vs-upstream git call the
@@ -2186,12 +2198,20 @@ const c = readReceipt('COMMIT-GATE', sessionStartMs());
 if ((c.waived || c.verified) && !c.problem) process.exit(0);
 // the review-proof refusals name their branch on the block row, so the after-release read can count each (Optional 2)
 if (c.problem && c.branch) global.BLOCK_DETAIL = { branch: c.branch };
+const head = c.stale
+  ? `Blocked: git commit - the gate receipt at ${c.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round or another session is not this diff's review).`
+  : c.problem ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.` : 'Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.';
+// Card item 6 (c7631764: 11 blocks in 18 minutes, the commit retried instead of the review): from this session's second
+// identical block on, the first line and the one next step - never the whole explanation again.
+if (sameBlockSeen(head)) {
+  const next = c.next || (c.stale ? 'run the checkpoint again and write a fresh receipt with scripts/receipt.js commit - the old one is ignored'
+    : c.problem ? 'fix what the receipt line above names, then write it again with scripts/receipt.js commit'
+      : 'run the checkpoint (habits-commit-checkpoint) and write the receipt with scripts/receipt.js commit');
+  process.stderr.write(`${head}\nThis is the same refusal as before - running the commit again changes nothing. The one next step: ${next}.`);
+  process.exit(2);
+}
 process.stderr.write(
-  (c.stale
-    ? `Blocked: git commit - the gate receipt at ${c.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round or another session is not this diff's review).\n`
-    : c.problem
-      ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
-      : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
+  `${head}\n` +
     `Run the checkpoint first (load habits-commit-checkpoint): the formatter, then task-verify-code or review-code, plus review-security\n` +
     `on auth, crypto, secrets, payment or data-access paths. Then write ${c.write} with the skill's scripts/receipt.js\n` +
     `(\`commit\`) - it fills head:, spec: and the counts from git:\n` +
