@@ -494,7 +494,7 @@ test('W1: an update in a joined child drops every value equal to the workspace\'
     const r = scenario([{ at: '.' }, { at: 'api', after: w1Join }, update('api', { after: w1Read }), update('api', { after: w1Read })]);
     const [before, first, again] = [r.steps[1], r.steps[2], r.steps[3]];
     assert.ok(Object.keys(before.vars).length > 2, `the standalone child held its seeds: ${before.text}`);
-    const equal = Object.keys(first.vars).filter((k) => !layoutLib.MEMBER_NEVER.has(k) && first.root[k] === first.vars[k]);
+    const equal = Object.keys(first.vars).filter((k) => !layoutLib.MEMBER_NEVER.has(k) && !layoutLib.CHAIN_PRUNE_NEVER.has(k) && first.root[k] === first.vars[k]);
     assert.deepStrictEqual(equal, [], `no value equal to the root's is left: ${first.text}\n${r.outs[2]}`);
     assert.ok(!Object.hasOwn(first.vars, W1_EQ), first.text);
     assert.strictEqual(first.vars[W1_OWN], '9');
@@ -1087,7 +1087,9 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
     const rootVars = pairs(r.steps[3].vars);
     assert.ok(Object.keys(rootVars).length, `the root seeded no .variables:\n${r.steps[3].vars}`);
     const apiVars = pairs(got.apiVars);
-    for (const [key, value] of Object.entries(rootVars)) if (!layoutLib.MEMBER_NEVER.has(key) && value !== '') assert.strictEqual(apiVars[key], value, `${key} in api after the root's uninstall:\n${got.apiVars}\n${r.outs[4]}`);
+    // The docs mode is the child's own once it holds a value (D3: CHAIN_PRUNE_NEVER) - api seeded its own at install, so it keeps it.
+    assert.ok(apiVars.ALFRED_CODE_DOCS_VERSIONING !== undefined, `api keeps its own docs versioning:\n${got.apiVars}`);
+    for (const [key, value] of Object.entries(rootVars)) if (!layoutLib.MEMBER_NEVER.has(key) && !layoutLib.CHAIN_PRUNE_NEVER.has(key) && value !== '') assert.strictEqual(apiVars[key], value, `${key} in api after the root's uninstall:\n${got.apiVars}\n${r.outs[4]}`);
     assert.match(r.outs[4], /workspace: released api - /);
     assert.match(r.outs[4], /workspace: released web - /);
     // the next update of a released child removes its stale excludes, and keeps every item

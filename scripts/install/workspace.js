@@ -640,7 +640,8 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         const rest = { ...values };
         delete rest[key];
         const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
-        if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
+        if (layout.CHAIN_PRUNE_NEVER.has(key)) own.push(key);
+        else if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
         else if (chained[key] !== value) own.push(key);
         else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
         else dropped.push(key);
@@ -1024,7 +1025,8 @@ function ownPicksAfter({ prior, final, parentLines, added = [], blind = false })
 const csv = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 // Step 5 of the loader (layout.js resolveVariables) alone: what the workspace chain hands this project, nearest member
-// first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key.
+// first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key. The docs versioning key is handed
+// on like any other (workspace versioning D1) - only `ignore env` stops it, and no prune removes it from a child (D3).
 function chainValues(projectRoot, { env = process.env } = {})
 {
     const layout = require('../../stack/hooks/layout.js');
@@ -1104,7 +1106,7 @@ function envPlan(ctx)
             for (const { key, value, rows } of held)
             {
                 const name = newOf[key] || key;
-                if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !plan.ignored.includes(name)
+                if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !layout.CHAIN_PRUNE_NEVER.has(name) && !plan.ignored.includes(name)
                     && isSeed(key, value, rows, name)) add(plan.seeds, key);
             }
         return plan;
@@ -1113,7 +1115,7 @@ function envPlan(ctx)
     for (const { key, value, rows } of held)
     {
         const name = newOf[key] || key;
-        if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name)) continue;
+        if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name) || layout.CHAIN_PRUNE_NEVER.has(name)) continue;
         if (rows[key] === stamp.valueHash(value) && chained[name] === String(value)) add(plan.copies, key);
     }
     const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
