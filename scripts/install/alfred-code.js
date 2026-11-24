@@ -53,7 +53,8 @@ const fixedRoot = require('./fixed-root.js');
 const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
-const { effectiveVersioning } = require('./versioning/effects.js');
+const { effectiveVersioning, chainValueOf } = require('./versioning/effects.js');
+const { KEY: DOCS_VERSIONING_KEY } = require('./versioning/constants.js');
 const runtime = require('./runtime.js');
 const { snapshotSessionError } = require('./run-session.js');
 const { RUN_SESSION_FILE, SESSION_ENV } = require('./run-session-constants.js');
@@ -439,7 +440,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
         const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root });
         // D2 rank 2: a linked child whose chain holds a docs versioning is not reseeded - the stack's own local seed leaves through the remover.
-        if (wsPrep.on && wsPrep.members.length && workspace.chainValues(projectRoot, { env }).ALFRED_CODE_DOCS_VERSIONING !== undefined) docsReseed = null;
+        if (wsPrep.on && wsPrep.members.length && chainValueOf(projectRoot, env) !== undefined) docsReseed = null;
         // Workspace stage 3 (links.js): each kind's home - the store where git cannot commit a link, else .claude/<kind>. A local
         // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
         const writes = !args.printPlan && args.action !== 'uninstall';
@@ -813,6 +814,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const own = variables.fileOf(projectRoot, { env: {}, dataRoot: ctx.dataInfo.root });
             if (ctx.variablesFile || (fs.existsSync(own) && variables.tracked(own)))
                 workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile) });
+            // D3: the stack's own seed of the docs versioning, once the workspace answers it - the same write rule.
+            workspace.pruneVersioningSeed(projectRoot, { env, advice: ctx.versioning.advice, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile),
+                answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile) });
         }
 
         if (args.action === 'install' || args.action === 'update') for (const l of workspace.ruleNotes({ projectRoot, env })) log(`  ${l}`);
@@ -1046,12 +1050,14 @@ const STACK_IGNORE = ['written', 'replaced', 'current'];
 function versioningStep(ctx)
 {
     const { projectRoot, args } = ctx;
+    // D3b: an answer this run is given - the flag, a carried `local` - is recorded, so no remover takes it for a seed.
+    if (args.docsVersioning || ctx.docsVersioningCarry) ctx.answeredEnv = [...new Set([...stampLayer.readAnsweredEnv(ctx.stampFile), DOCS_VERSIONING_KEY])];
     try
     {
         ctx.versioning = effectiveVersioning({
             projectRoot, scope: args.scope, docsPath: ctx.docsRoot, dataRoot: ctx.dataInfo.root, env: ctx.env,
             flag: args.docsVersioning, carry: ctx.docsVersioningCarry, reseed: ctx.docsReseed,
-            ledgerRows: ((ctx.ledger || {}).env || {})['.variables'] || {}, answeredEnv: stampLayer.readAnsweredEnv(ctx.stampFile),
+            ledgerRows: ((ctx.ledger || {}).env || {})['.variables'] || {}, answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(ctx.stampFile),
         });
     }
     catch (err)
@@ -2519,6 +2525,8 @@ function installHooksAndRules(ctx)
             why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git'
                 : ctx.docsReseed ? `the local scope's own seed, reseeded for ${ctx.args.scope} scope` : '',
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }),
+            firm: Boolean(ctx.versioning.advice && ctx.versioning.advice.firm),
+            chain: ctx.versioning.linked ? ctx.versioning.chain : undefined,
         },
         docsPath: ctx.docsPath,
         // The data root, still written until the key's writes go (the fixed root, Task 2).

@@ -2,23 +2,17 @@
 
 // The one place the ranked docs versioning answer reads the disk: the project's own value, the seed rule's advice, the
 // workspace chain and the last stamp. Computed once per installer run; every later step reads it (spec D2).
-const { KEY, VALUES } = require('./constants.js');
-const { rankVersioning, seedLeaves } = require('./rank.js');
+const { KEY } = require('./constants.js');
+const { rankVersioning, seedLeaves, normaliseValue } = require('./rank.js');
 const copy = require('../copy.js');
 const docs = require('../docs.js');
 const stamp = require('../stamp.js');
 const workspace = require('../workspace.js');
 
-const valueOf = (raw) =>
-{
-    const value = String(raw ?? '').trim().toLowerCase();
-    return value === VALUES.git || value === VALUES.local ? value : undefined;
-};
-
 // The chain's value for the key, undefined when the workspace is off, unreadable or holds none.
 function chainValueOf(projectRoot, env)
 {
-    try { return valueOf(workspace.chainValues(projectRoot, { env })[KEY]); }
+    try { return normaliseValue(workspace.chainValues(projectRoot, { env })[KEY]); }
     catch { return undefined; }
 }
 
@@ -39,4 +33,4 @@ function effectiveVersioning({ projectRoot, scope, docsPath, dataRoot, env = pro
     return { value, source, advice, linked, chain };
 }
 
-module.exports = { effectiveVersioning };
+module.exports = { effectiveVersioning, chainValueOf };

@@ -618,7 +618,10 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, autoComp
         log(`  ${lab} env: ALFRED_CODE_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
             + ` (${docsVersioning.why || '--docs-versioning'}${old === docsVersioning.value ? ', unchanged' : ''})`);
     }
-    else if (!present('ALFRED_CODE_DOCS_VERSIONING') && docsVersioning && docsVersioning.seed)
+    // D3: a linked child seeds the key only for a firm answer the workspace's value does not give (`chain` is that value);
+    // otherwise the chain answers it, and the stack's seed would only shadow a later change at the workspace.
+    else if (!present('ALFRED_CODE_DOCS_VERSIONING') && docsVersioning && docsVersioning.seed
+        && (docsVersioning.chain === undefined || (docsVersioning.firm && docsVersioning.seed !== docsVersioning.chain)))
     {
         env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.seed;
         changed = true;

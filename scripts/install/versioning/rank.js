@@ -3,6 +3,13 @@
 // The ranked docs versioning answer and the remover's test - pure: values in, values out (spec D2, D3).
 const { KEY, VALUES, RANK } = require('./constants.js');
 
+// A value as the key holds it: `git` or `local` in any case, anything else is no value.
+function normaliseValue(raw)
+{
+    const value = String(raw ?? '').trim().toLowerCase();
+    return value === VALUES.git || value === VALUES.local ? value : undefined;
+}
+
 // `firm` is the seed rule's advice, { value, firm }. In a linked child whose chain holds a value the reseed is skipped:
 // the stack's own local seed leaves through the remover, so one scope change rewrites the git files once.
 function rankVersioning({ flag, carry, reseed, own, firm, chain, linked })
@@ -27,4 +34,4 @@ function seedLeaves({ value, atLedgerHash, answeredEnv, firm, chain, linked })
     return !firm || value === chain;
 }
 
-module.exports = { rankVersioning, seedLeaves };
+module.exports = { rankVersioning, seedLeaves, normaliseValue };

@@ -373,7 +373,8 @@ test('AC15: leaving keeps every effective value; with ws deleted the child is se
     const defaults = named[2].split(', ');
     assert.strictEqual(Number(named[1]), defaults.length);
     assert.ok(defaults.length > 0 && defaults.every((k) => !held.includes(k)), `${held} / ${defaults}`);
-    assert.ok(!defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !defaults.includes('ALFRED_CODE_WORKSPACE'));
+    // A child under a valued root holds no seed of the docs versioning (D3), so with the root gone it reads the default and the next update seeds it.
+    assert.ok(defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !held.includes('ALFRED_CODE_DOCS_VERSIONING') && !defaults.includes('ALFRED_CODE_WORKSPACE'));
     assert.deepStrictEqual(gone.steps[3].ws, { role: 'standalone', above: 'none' });
     const seeded = gone.steps[4].vars;
     const fresh = Object.keys(seeded).filter((k) => !held.includes(k));
@@ -426,7 +427,7 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
 
 // AC24 in the update walk's own order: the role answer runs BEFORE the installer call, so the 2.12.0 seeds are still in
 // settings.json when the project joins - the move must drop them as the join's prune would, never carry them in as its own.
-test('AC24: answered before the update moves its values, a 2.12.0 standalone still holds only its typed key and DOCS_VERSIONING', skipWithout('v2.12.0'), () =>
+test('AC24: answered before the update moves its values, a 2.12.0 standalone still holds only its typed key, and its docs seed leaves', skipWithout('v2.12.0'), () =>
 {
     const old = releaseExport('v2.12.0');
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
@@ -446,7 +447,8 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     assert.strictEqual(joined.from[LEVEL], '..');
     // Mode v2 stage 2: the 2.12 seeds at their ledger hash move to settings.local.json, where the prune drops them; the typed
     // value is a row changed since the stack wrote it, so it stays in settings.json and is still the one read.
-    assert.deepStrictEqual(Object.keys(joined.vars).sort(), ['ALFRED_CODE_DOCS_VERSIONING'], `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
+    // The update after the join runs the remover (D3): the 2.12 child's own docs seed is no answer and the root answers it, so it leaves too.
+    assert.deepStrictEqual(Object.keys(joined.vars).sort(), [], `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
     assert.strictEqual(joined.effective[NUDGE], 'inject');
     const left = Object.keys(JSON.parse(joined.settings).env || {}).filter((k) => layoutLib.VARIABLE_KEYS.includes(k));
     assert.deepStrictEqual(left, [NUDGE], 'no stack value left in settings.json, only the typed one');
@@ -500,7 +502,9 @@ test('W1: an update in a joined child drops every value equal to the workspace\'
     assert.strictEqual(first.vars[W1_OWN], '9');
     const rows = [...first.env.matchAll(/\.variables:([A-Z0-9_]+)=/g)].map((m) => m[1]);
     assert.deepStrictEqual(rows.filter((k) => !Object.hasOwn(first.vars, k)), [], `no row for a key the file no longer holds: ${first.env}`);
-    assert.deepStrictEqual(first.effective, before.effective, r.outs[2]);
+    // The standalone's own docs seed (git) is the stack's, not an answer: the remover takes it out and the root's value is read (D3).
+    assert.ok(!Object.hasOwn(first.vars, 'ALFRED_CODE_DOCS_VERSIONING'), first.text);
+    assert.deepStrictEqual(first.effective, { ...before.effective, ALFRED_CODE_DOCS_VERSIONING: first.root.ALFRED_CODE_DOCS_VERSIONING }, r.outs[2]);
     assert.match(r.outs[2], new RegExp(`^==>\\s+workspace: \\d+ values equal to the workspace's removed from \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\) - \\d+ kept as this project's own`, 'm'), r.outs[2]);
     assert.deepStrictEqual([again.text, again.env], [first.text, first.env], r.outs[3]);
     assert.ok(!W1_PRUNED.test(r.outs[3]), r.outs[3]);
@@ -670,7 +674,11 @@ test('AC19: a launch 0 in ws/api reads a chain of one and an install there remov
     ]);
     assert.strictEqual(r.steps[1].from, '..', `unset is on: the child reads the root's value through the chain: ${r.outs[1]}`);
     assert.notStrictEqual(r.steps[2].from, '..', 'a launch 0 reads a chain of one');
-    assert.deepStrictEqual(r.steps[2].files, r.steps[1].files, `the workspace files and the .variables files are unchanged: ${r.outs[2]}`);
+    // At 0 the chain is empty, so the child seeds its docs versioning as a standalone would (D3: no chain value, as before); nothing else moves.
+    const seeded = [...r.steps[1].files];
+    seeded[3] = 'ALFRED_CODE_DOCS_VERSIONING=local\n';
+    assert.strictEqual(r.steps[1].files[3], null, 'a child under a valued root seeds no versioning line');
+    assert.deepStrictEqual(r.steps[2].files, seeded, `the workspace files are unchanged, nothing is removed, the docs versioning seeded: ${r.outs[2]}`);
 });
 
 test('a parent read-back that fails adds and drops nothing and prints one !! line', POSIX_ONLY, () =>
@@ -694,12 +702,14 @@ test('kill switch: at 0, nothing is added, dropped, re-seeded or removed and the
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: keep },
         update('.', { args: ['--add', `skill ${X}`], after: (work) => setVar(work, '.', { [SC]: '1' }) }),
         update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, after: keep }),
-        update('api', { after: (work) => effectiveOf(work, 'api')[SC] }),
+        update('api', { after: (work) => ({ level: effectiveOf(work, 'api')[SC], versioning: varsOf(work, 'api').ALFRED_CODE_DOCS_VERSIONING }) }),
     ]);
     assert.ok(r.steps[1].ex > 0);
-    assert.deepStrictEqual(Object.keys(r.steps[1].vars), ['ALFRED_CODE_DOCS_VERSIONING'], 'a child seeds no chained key');
-    assert.deepStrictEqual(r.steps[3], r.steps[1], r.outs[3]);
-    assert.strictEqual(r.steps[4], '1', 'switched back on, the root\'s value reaches the child - nothing seeded at 0 shadows it');
+    assert.deepStrictEqual(Object.keys(r.steps[1].vars), [], 'a child under a valued root seeds no chained key and no versioning line');
+    // At 0 the chain is empty: the child seeds its docs versioning as a standalone would (D3), and nothing else is added or removed.
+    assert.deepStrictEqual(r.steps[3], { ...r.steps[1], vars: { ALFRED_CODE_DOCS_VERSIONING: 'local' } }, r.outs[3]);
+    assert.strictEqual(r.steps[4].level, '1', 'switched back on, the root\'s value reaches the child - nothing seeded at 0 shadows it');
+    assert.strictEqual(r.steps[4].versioning, undefined, 'the seed made at 0 leaves once the workspace answers again');
     assert.doesNotMatch(r.outs[3], /workspace: from/);
 });
 
@@ -1063,7 +1073,7 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => join(work, 'api/tool', { parent: 'api' }) },
         { at: 'api/tool' },
-        { at: 'web', after: (work) => ({ tool: tree(work, 'api/tool'), vars: readOr(path.join(at(work), '.alfred', '.variables')) }) },
+        { at: 'web', after: (work) => ({ tool: tree(work, 'api/tool'), vars: readOr(path.join(at(work), '.alfred', '.variables')), apiReads: effectiveOf(work, 'api').ALFRED_CODE_DOCS_VERSIONING }) },
         { at: '.', act: 'uninstall', after: (work) => ({
             apiVars: readOr(path.join(at(work, 'api'), '.alfred', '.variables')),
             api: readWorkspaceValues(at(work, 'api')), web: readWorkspaceValues(at(work, 'web')),
@@ -1087,8 +1097,9 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
     const rootVars = pairs(r.steps[3].vars);
     assert.ok(Object.keys(rootVars).length, `the root seeded no .variables:\n${r.steps[3].vars}`);
     const apiVars = pairs(got.apiVars);
-    // The docs mode is the child's own once it holds a value (D3: CHAIN_PRUNE_NEVER) - api seeded its own at install, so it keeps it.
-    assert.ok(apiVars.ALFRED_CODE_DOCS_VERSIONING !== undefined, `api keeps its own docs versioning:\n${got.apiVars}`);
+    // The child holds no seed of the docs mode under a valued root (D3), so leaving writes the value it read through the chain.
+    assert.ok(r.steps[3].apiReads !== undefined, 'api read a docs versioning before the uninstall');
+    assert.strictEqual(apiVars.ALFRED_CODE_DOCS_VERSIONING, r.steps[3].apiReads, `api keeps the docs versioning it read:\n${got.apiVars}`);
     for (const [key, value] of Object.entries(rootVars)) if (!layoutLib.MEMBER_NEVER.has(key) && !layoutLib.CHAIN_PRUNE_NEVER.has(key) && value !== '') assert.strictEqual(apiVars[key], value, `${key} in api after the root's uninstall:\n${got.apiVars}\n${r.outs[4]}`);
     assert.match(r.outs[4], /workspace: released api - /);
     assert.match(r.outs[4], /workspace: released web - /);
@@ -1644,7 +1655,9 @@ test('the run\'s own garbage record freezes the workspace part of an update', PO
     assert.strictEqual(after.json, '{"children": ["api"],', 'the garbage record is left byte for byte');
     assert.strictEqual(after.x, false, `nothing inherited is added:\n${r.outs[3]}`);
     assert.deepStrictEqual(after.env, before.env, r.outs[3]);
-    assert.strictEqual(after.vars, before.vars, r.outs[3]);
+    // A frozen workspace reads no chain, so the child seeds its docs versioning as a standalone would (D3); the file held no line before.
+    assert.strictEqual(before.vars, null);
+    assert.strictEqual(after.vars, 'ALFRED_CODE_DOCS_VERSIONING=local\n', r.outs[3]);
     assert.strictEqual(after.own, before.own, r.outs[3]);
     assert.strictEqual(after.ownEnv, before.ownEnv, r.outs[3]);
     assert.strictEqual(r.outs[3].split('\n').filter((l) => l.replace(/^==>\s*/, '').trim() === GARBAGE_LINE('.alfred/workspace.json')).length, 1, r.outs[3]);

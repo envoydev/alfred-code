@@ -11,6 +11,8 @@
 const path = require('node:path');
 const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
+const stamp = require('./install/stamp.js');
+const { KEY: DOCS_VERSIONING_KEY } = require('./install/versioning/constants.js');
 
 const USAGE = [
     'usage: node scripts/variables.js set --root <dir> [--scope project|user|local] KEY=value ...',
@@ -73,7 +75,21 @@ function main(env = process.env)
     for (const key of modes) console.error(`${key} is a mode - type /alfred-code:mode:${MODES[key]}`);
     if (modes.length) return 1;
     const got = variables.set(args.root, args.pairs, { scope: args.scope || undefined, env });
+    recordAnswer(args, got);
     return got.refused.length ? 1 : 0;
+}
+
+// D3b: a docs versioning typed here is an answer the installer's remover never takes for a seed - read-merge-write of the
+// stamp's `answered-env:` line (markLine replaces the whole line); the key set to nothing leaves it. No stamp, no write.
+function recordAnswer(args, got)
+{
+    const pair = args.pairs.find((p) => p.startsWith(`${DOCS_VERSIONING_KEY}=`));
+    if (!pair || got.refused.includes(DOCS_VERSIONING_KEY)) return;
+    const file = stamp.stampFiles({ projectRoot: args.root }).read;
+    if (!file) return;
+    const held = stamp.readAnsweredEnv(file).filter((k) => k !== DOCS_VERSIONING_KEY);
+    const next = pair.length > DOCS_VERSIONING_KEY.length + 1 ? [...held, DOCS_VERSIONING_KEY] : held;
+    stamp.markLine(file, 'answered-env', next.length ? [...new Set(next)].sort().join(',') : null);
 }
 
 if (require.main === module)

@@ -668,6 +668,36 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
     return { dropped, own };
 }
 
+// D3's one remover: the stack's own seed of the docs versioning leaves a linked child's `.variables` once the workspace
+// answers it - the value at its ledger hash, no recorded answer, and either the seed rule's answer is not firm or the
+// chain holds the same value (versioning/rank.js seedLeaves decides). `write: false` (a tracked file the run may not
+// write) names the line and removes nothing. Returns { dropped, kept }: `kept` is the value still in the file.
+function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, answeredEnv = [], log = () => {}, write = true } = {})
+{
+    const variables = require('./variables.js');
+    const { KEY } = require('./versioning/constants.js');
+    const { seedLeaves, normaliseValue } = require('./versioning/rank.js');
+    const file = variables.fileOf(projectRoot, { env });
+    const value = variables.read(file).values[KEY];
+    if (value === undefined) return { dropped: false, kept: null };
+    const chain = normaliseValue(chainValues(projectRoot, { env })[KEY]);
+    const stampFile = stamp.stampFiles({ projectRoot }).read;
+    const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
+    const leaves = seedLeaves({ value, atLedgerHash: rows[KEY] === stamp.valueHash(value), answeredEnv, firm: Boolean(advice && advice.firm), chain, linked: chain !== undefined });
+    if (!leaves) return { dropped: false, kept: value };
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+    if (!write)
+    {
+        log(`workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - git tracks the file, so this run leaves it as it is; a project-scope update removes it`);
+        return { dropped: false, kept: value };
+    }
+    const done = variables.write(file, { [KEY]: null });
+    if (done.why) { log(`!! workspace: ${rel} could not be written (${done.why}) - ${KEY} stays`); return { dropped: false, kept: value }; }
+    editVariablesLedger(projectRoot, (r) => { delete r[KEY]; return r; });
+    log(`workspace: ${KEY} '${value}' removed from ${rel} - the stack's seed; the workspace answers '${chain}'`);
+    return { dropped: true, kept: null };
+}
+
 // Leaving a tree (D5): every value the project reads through the chain is written into its own `.variables` first, so
 // nothing changes - a member's seed (its value at the member's ledger hash) keeps a seed's ledger row here. With the
 // parent gone there is no chain to read: the keys the project does not hold read the stack's defaults now, named, and
@@ -2207,7 +2237,7 @@ module.exports = {
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan, nestedInstalls,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, keepOnLeave, chain, subtree, rescan, nestedInstalls,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
