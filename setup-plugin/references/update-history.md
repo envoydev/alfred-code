@@ -1332,7 +1332,7 @@ start hook now sends only a rule with no native file yet, and the prompt reminde
 native rules in context. An edit of a file also gets the key line of each path rule that matches it.
 
 The agents left the plugin. Each agent you pick is a folder in `.alfred/stack/agents`, linked into `.claude/agents`
-like a skill, and its name is the bare one (`security-auditor`, not `alfred-code:security-auditor`). The
+like a skill (a junction on Windows; an older copy you did not edit becomes one), and its name is the bare one (`security-auditor`, not `alfred-code:security-auditor`). The
 update removes every `Agent(alfred-code:<name>)` row that names a stack seat, whoever wrote it; a row for another name stays. An agent
 file of yours in `.claude/agents` is kept and named.
 

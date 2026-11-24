@@ -18,7 +18,7 @@ Result words: `PASS`, `NOT RUN - <reason>`.
 | Check | Case | Result |
 |---|---|---|
 | 1 | macOS: a child session follows a symlink in `.claude/agents` | PASS |
-| 1 | Windows: the same through a junction | NOT RUN - the Parallels VM had no signed-in `claude` (the first look: all VMs stopped; the second: VM `claude` 2.1.309 answered 'Failed to authenticate: OAuth session expired'). The junction itself was created (`LinkType Junction`) |
+| 1 | Windows: the same through a junction | PASS (2026-11-24, after a sign-in in the VM; two earlier tries were NOT RUN - no signed-in `claude`) |
 | 2 | the alfred-mods band names a path rule loaded by file type | NOT RUN - the band belongs to alfred-mods, out of scope here. A plain hook did see every load, below |
 | 3 | a subagent loads the native rule files itself | PASS |
 
@@ -36,8 +36,11 @@ Result words: `PASS`, `NOT RUN - <reason>`.
   - `subagent_stats`: 2 spawned, 2 completed, 0 failed.
 - Reading: the agent was listed by its frontmatter `name` and dispatched, with the link in place of a real folder.
   The installer links one agent folder per pick on macOS and Linux on this result.
-- Not shown: Windows. Until a run there passes, `links.AGENT_JUNCTION_ON_WIN32` stays false and a Windows seat is a
-  folder copy.
+- Windows (2026-11-24, Windows 11 VM, Claude Code 2.1.309, model `haiku`): in `C:\Claude-MacOs\alfred-code\<run>\proj`, an
+  agent folder `.alfred\stack\agents\probe-seat` linked by `mklink /J` as `.claude\agents\probe-seat` (`LinkType
+  Junction`). One headless `claude -p` replied `LISTED: claude, Explore, general-purpose, Plan, probe-seat,
+  statusline-setup, web-fetch` and `REPLY: JUNCTION-OK`. So `links.AGENT_JUNCTION_ON_WIN32` is on: a Windows seat is a
+  junction like a skill, and an older copy at its recorded hash is replaced by one.
 
 ## Check 3 - a subagent loads the native rule files itself
 
@@ -78,8 +81,8 @@ Result words: `PASS`, `NOT RUN - <reason>`.
 
 ## Where the code rests on it
 
-- `repo-installer.md`, the Agents row of the delivery table: seats are linked library items, a folder copy on Windows
-  (check 1, Windows leg NOT RUN).
+- `repo-installer.md`, the Agents row of the delivery table: seats are linked library items, a junction on Windows
+  (check 1, both legs).
 - `repo-hooks.md`, the `rules-session.js` passage: `SubagentStart` sends part 1 only (check 3).
-- The Windows leg is the one open item: run one headless `claude -p` over a junction in a child's `.claude\agents`
-  in the VM, under `C:\Claude-MacOs\<repo>\<run>\`, then set `links.AGENT_JUNCTION_ON_WIN32` with its test.
+- `scripts/install/links.js`, `AGENT_JUNCTION_ON_WIN32` (true) and the copy-to-junction step in `syncLinks`, pinned in
+  `scripts/links.test.js` (check 1, Windows leg).

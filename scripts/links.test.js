@@ -126,10 +126,10 @@ test('links: switched off (keep), a listed agent copy at its hash stays though n
     fs.mkdirSync(at(kid, 'agents/x'), { recursive: true });
     fs.writeFileSync(at(kid, 'agents/x/x.md'), '# x\n');
     const prior = [{ path: 'agents/x', kind: 'copy', hash: hashItem(at(kid, 'agents/x')) }];
-    const { record } = sync(kid, { want: want([], ['x']), prior, keep: true, platform: 'win32' });
+    const { record } = sync(kid, { want: want([], ['x']), prior, keep: true, platform: 'win32', agentJunction: false });
     assert.deepStrictEqual(record, prior);
     assert.ok(fs.existsSync(at(kid, 'agents/x/x.md')));
-    const gone = sync(kid, { want: want([], ['x']), prior, platform: 'win32' });
+    const gone = sync(kid, { want: want([], ['x']), prior, platform: 'win32', agentJunction: false });
     assert.ok(gone.log.includes('copy removed: .claude/agents/x - its target is gone'), gone.log.join('\n'));
 });
 
@@ -183,13 +183,13 @@ test('links: a .claude that is itself a link (a dotfiles folder) gets links that
     assert.deepStrictEqual(links.checkLinks({ projectRoot: p, record }).map((c) => c.state), ['ok', 'ok']);
 });
 
-test('links: on win32 a skill is a junction and an agent a folder copy at its hash while AGENT_JUNCTION_ON_WIN32 is false, and a junction when it is true', () =>
+test('links: on win32 a skill is a junction and an agent a folder copy at its hash when agentJunction is off, and a junction when it is on (AGENT_JUNCTION_ON_WIN32, proven in the VM 2026-11-24)', () =>
 {
-    assert.strictEqual(links.AGENT_JUNCTION_ON_WIN32, false);
+    assert.strictEqual(links.AGENT_JUNCTION_ON_WIN32, true);
     const p = store(fresh(), { skills: ['a'], agents: ['x'] });
     const types = [];
     const symlink = (target, linkPath, type) => { types.push(type); fs.symlinkSync(target, linkPath, process.platform === 'win32' ? type : 'dir'); };
-    const { record, log } = sync(p, { want: want(['a'], ['x']), platform: 'win32', symlink });
+    const { record, log } = sync(p, { want: want(['a'], ['x']), platform: 'win32', symlink, agentJunction: false });
     const agent = record.find((e) => e.path === 'agents/x');
     assert.strictEqual(record.find((e) => e.path === 'skills/a').kind, 'junction');
     assert.deepStrictEqual(types, ['junction'], 'the skill alone is linked');
@@ -198,14 +198,14 @@ test('links: on win32 a skill is a junction and an agent a folder copy at its ha
     assert.ok(!fs.lstatSync(at(p, 'agents/x')).isSymbolicLink() && fs.lstatSync(at(p, 'agents/x')).isDirectory());
     assert.ok(log.includes('agent copy: .claude/agents/x - a link cannot be made here'), log.join('\n'));
     // Whole: kept. The store moved on: written again, the new hash recorded.
-    assert.deepStrictEqual(sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32' }).record, record);
+    assert.deepStrictEqual(sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32', agentJunction: false }).record, record);
     fs.writeFileSync(path.join(p, '.alfred', 'stack', 'agents', 'x', 'x.md'), '# x v2\n');
-    const moved = sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32' }).record;
+    const moved = sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32', agentJunction: false }).record;
     assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x v2\n');
     assert.strictEqual(moved.find((e) => e.path === 'agents/x').hash, hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x')));
     // Edited: kept, named, off the record.
     fs.writeFileSync(at(p, 'agents/x/x.md'), '# mine\n');
-    const edited = sync(p, { want: want(['a'], ['x']), prior: moved, platform: 'win32' });
+    const edited = sync(p, { want: want(['a'], ['x']), prior: moved, platform: 'win32', agentJunction: false });
     assert.ok(!edited.record.some((e) => e.path === 'agents/x'));
     assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# mine\n');
     assert.ok(edited.log.includes('  agent kept: .claude/agents/x - edited since it was copied from the store, so it is yours'), edited.log.join('\n'));
@@ -216,6 +216,24 @@ test('links: on win32 a skill is a junction and an agent a folder copy at its ha
     const on = sync(q, { want: want([], ['x']), platform: 'win32', symlink: asJunction, agentJunction: true });
     assert.deepStrictEqual(on.record, [{ path: 'agents/x', kind: 'junction', hash: '' }]);
     assert.deepStrictEqual(junctioned, ['junction']);
+});
+
+test('links: on win32 an agent copy at its recorded hash becomes a junction once agent junctions are on, and an edited one stays yours', () =>
+{
+    const p = store(fresh(), { agents: ['x', 'y'] });
+    const asJunction = (target, linkPath, type) => fs.symlinkSync(target, linkPath, process.platform === 'win32' ? type : 'dir');
+    const copies = sync(p, { want: want([], ['x', 'y']), platform: 'win32', symlink: asJunction, agentJunction: false }).record;
+    assert.deepStrictEqual(copies.map((e) => e.kind), ['copy', 'copy']);
+    fs.writeFileSync(at(p, 'agents/y/y.md'), '# mine\n');
+    const { record, log } = sync(p, { want: want([], ['x', 'y']), prior: copies, platform: 'win32', symlink: asJunction, agentJunction: true });
+    assert.deepStrictEqual(record, [{ path: 'agents/x', kind: 'junction', hash: '' }]);
+    assert.ok(fs.lstatSync(at(p, 'agents/x')).isSymbolicLink(), 'the unedited copy is a link now');
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x\n');
+    assert.ok(log.includes('agent copy replaced by a junction: .claude/agents/x'), log.join('\n'));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/y/y.md'), 'utf8'), '# mine\n', 'the edited copy is the user\'s');
+    assert.ok(!fs.lstatSync(at(p, 'agents/y')).isSymbolicLink());
+    // a second run changes nothing
+    assert.deepStrictEqual(sync(p, { want: want([], ['x', 'y']), prior: record, platform: 'win32', symlink: asJunction, agentJunction: true }).record, record);
 });
 
 test('links: an agent is linked as a folder and removed when unpicked', { skip: process.platform === 'win32' && 'a posix link shape' }, () =>
@@ -336,7 +354,7 @@ test('links: a moved target is re-pointed; a missing target is removed and named
 test('links: removeLinks takes a copy only at its hash', () =>
 {
     const p = store(fresh(), { agents: ['x', 'y'] });
-    const record = sync(p, { want: want([], ['x', 'y']), platform: 'win32' }).record;
+    const record = sync(p, { want: want([], ['x', 'y']), platform: 'win32', agentJunction: false }).record;
     fs.writeFileSync(at(p, 'agents/y/y.md'), 'mine');
     const log = lines();
     links.removeLinks({ projectRoot: p, record, log });
@@ -392,7 +410,7 @@ test('links: a path with a space and a non-ASCII letter', () =>
 test('links: checkLinks names every state', () =>
 {
     const p = store(fresh(), { skills: ['a', 'b'], agents: ['x', 'y', 'z'] });
-    const record = [...sync(p, { want: want(['a', 'b']) }).record, ...sync(p, { want: want([], ['x', 'y', 'z']), platform: 'win32' }).record];
+    const record = [...sync(p, { want: want(['a', 'b']) }).record, ...sync(p, { want: want([], ['x', 'y', 'z']), platform: 'win32', agentJunction: false }).record];
     fs.rmSync(path.join(p, '.alfred', 'stack', 'skills', 'b'), { recursive: true });
     fs.writeFileSync(at(p, 'agents/y/y.md'), 'mine');
     fs.writeFileSync(path.join(p, '.alfred', 'stack', 'agents', 'z', 'z.md'), '# z v2\n');

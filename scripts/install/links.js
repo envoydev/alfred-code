@@ -2,14 +2,15 @@
 // Workspace stage 3: a library skill - on the copy route a library agent too - lives once in `.alfred/stack/<kind>` of the
 // workspace root (or a project in no workspace), linked from each project's `.claude/<kind>` where git cannot commit a
 // link; both kinds are folders (an agent `<name>/<name>.md`). On Windows a skill is a junction and an agent a folder copy
-// with its hash until AGENT_JUNCTION_ON_WIN32 turns on: every save breaks a hard link (P11).
+// with its hash only while AGENT_JUNCTION_ON_WIN32 is off (no hard link: every save breaks one, P11).
 const fs = require('node:fs');
 const path = require('node:path');
 const { hashItem } = require('./library.js');
 const { validItemName } = require('./stamp.js');
 const KINDS = ['skills', 'agents'];
-// Whether an agent folder is a junction on Windows, like a skill. Off: Claude Code following one is proven in a later step.
-const AGENT_JUNCTION_ON_WIN32 = false;
+// Whether an agent folder is a junction on Windows, like a skill. On since 2026-11-24: a headless claude -p in the VM listed and
+// dispatched an agent through a junction (docs/layered-native-rules-evidence.md, check 1).
+const AGENT_JUNCTION_ON_WIN32 = true;
 const fileOf = (kind, name) => (kind === 'rules' ? `${name}.md` : name);
 const lstat = (p) => { try { return fs.lstatSync(p); } catch { return null; } };
 const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
@@ -156,6 +157,12 @@ function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = fa
             }
             else if (link) out.push(was);
             else if (copy && hashItem(at) !== was.hash) { tell(log, said, kept(p)); keepPath(report, p); }
+            else if (copy && kind === 'agents' && platform === 'win32' && agentJunction)
+            {
+                fs.rmSync(at, { recursive: true, force: true });
+                const made = make({ projectRoot, kind, p, at, holder, platform, symlink, agentJunction, log });
+                if (made) { out.push(made); log(`agent copy replaced by a junction: .claude/${p}`); report.update('agent', name); }
+            }
             else if (copy) { const h = hashItem(holder); if (h !== was.hash) copyItem(holder, at); out.push({ path: p, kind: 'copy', hash: h }); }
             else { keepPath(report, p); log(`  !! link skipped: .claude/${p} - ${st.isSymbolicLink() ? 'a link the stamp does not list, so it is yours' : 'a real folder or file of that name is yours'}`); }
         }
