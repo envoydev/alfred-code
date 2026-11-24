@@ -85,6 +85,13 @@ test('links: a skill and an agent are each a directory link resolving to the sto
     assert.deepStrictEqual(again.log.filter((l) => /link/.test(l)), []);
 });
 
+test('links: inherited - a link or a copy that is not on disk is not a link from above', () =>
+{
+    const p = store(fresh(), { skills: ['a'], agents: ['x'] });
+    const record = [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x', kind: 'copy', hash: 'f'.repeat(64) }];
+    assert.deepStrictEqual(links.inherited(p, record), [], 'nothing at either path');
+});
+
 test('links: inherited - a copy its store holds and a dangling link into its store are its own; a link elsewhere, dangling or not, is not', () =>
 {
     const p = store(fresh(), { skills: ['own', 'gone'], agents: ['x'] });

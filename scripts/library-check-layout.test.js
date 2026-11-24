@@ -23,9 +23,9 @@ const NEW_ROWS = /^(native-rule-\w+|link-\w+|seat-deny-left|exclude-drift|agents
 const at = (repo, ...parts) => path.join(repo, ...parts);
 const stampOf = (repo) => at(repo, '.claude', 'alfred-code.stamp');
 // The sandbox's own account folder, and the workspace switch on, as the installs ran.
-function check(repo, extra = [], acct = path.join(path.dirname(repo), 'acct'))
+function check(repo, extra = [], acct = path.join(path.dirname(repo), 'acct'), workspaceSwitch = '1')
 {
-    const env = { ...process.env, ALFRED_CODE_WORKSPACE: '1' };
+    const env = { ...process.env, ALFRED_CODE_WORKSPACE: workspaceSwitch };
     try { return { out: execFileSync(process.execPath, [SCRIPT, '--project', repo, '--source', REPO, '--config-dir', acct, ...extra], { encoding: 'utf8', env }), code: 0 }; }
     catch (e) { return { out: String(e.stdout || ''), code: e.status }; }
 }
@@ -115,17 +115,56 @@ test('link-dangling: a link into the store whose target is gone fails; one to an
     assert.equal(r.code, 1);
 });
 
-test('link-unpicked: a link into the store for an item this level does not pick fails', POSIX_ONLY, () =>
+const addStoreLink = (repo, name, { record = false } = {}) =>
 {
-    const r = broken((repo) =>
-    {
-        fs.mkdirSync(at(repo, '.alfred', 'stack', 'skills', 'extra'));
-        fs.writeFileSync(at(repo, '.alfred', 'stack', 'skills', 'extra', 'SKILL.md'), '---\nname: extra\ndescription: d\n---\nx\n');
-        fs.symlinkSync('../../.alfred/stack/skills/extra', at(repo, '.claude', 'skills', 'extra'), 'dir');
-    });
+    fs.mkdirSync(at(repo, '.alfred', 'stack', 'skills', name));
+    fs.writeFileSync(at(repo, '.alfred', 'stack', 'skills', name, 'SKILL.md'), `---\nname: ${name}\ndescription: d\n---\nx\n`);
+    fs.symlinkSync(`../../.alfred/stack/skills/${name}`, at(repo, '.claude', 'skills', name), 'dir');
+    if (!record) return;
+    const entries = [...stampLib.readLinks(stampOf(repo)), { path: `skills/${name}`, kind: 'symlink', hash: '' }];
+    stampLib.markLine(stampOf(repo), 'links', entries.map((e) => `${e.path}=${e.kind}${e.hash ? `@${e.hash}` : ''}`).join(','));
+};
+
+test('link-unpicked: a link the stamp records, into the store, for an item this level does not pick fails', POSIX_ONLY, () =>
+{
+    const r = broken((repo) => addStoreLink(repo, 'extra', { record: true }));
     assert.match(r.out, /^link-unpicked: \.claude\/skills\/extra - /m, r.out);
     assert.equal(r.code, 1);
     assert.equal(rowsOf(r.out).length, 1, r.out);
+});
+
+test('link-yours: a link into the store the stamp does not record is kept, yours - a note, never a failure', POSIX_ONLY, () =>
+{
+    const r = broken((repo) => addStoreLink(repo, 'extra'));
+    assert.match(r.out, /^link-yours: \.claude\/skills\/extra - kept, yours - update leaves it/m, r.out);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /link-unpicked/);
+    assert.match(r.out, /library: clean .*1 note\(s\) that fail nothing/);
+});
+
+test('with the workspace switch off, a deleted skill link is one link-missing row - no rule reads as unpicked', POSIX_ONLY, () =>
+{
+    const r = seedRun('install', SELECTION, { ...OPTIONS, inspect: (repo) =>
+    {
+        fs.unlinkSync(at(repo, '.claude', 'skills', 'markdown-style'));
+        return check(repo, [], undefined, '0');
+    } }).result;
+    assert.deepEqual(rowsOf(r.out).map((l) => l.split(' - ')[0]), ['link-missing: .claude/skills/markdown-style'], r.out);
+    assert.equal(r.code, 1);
+});
+
+test('an update with the switch off over a deleted picked link makes the link again and prunes nothing as linked from above', POSIX_ONLY, () =>
+{
+    const copyRoute = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
+    const link = (repo) => at(repo, '.claude', 'skills', 'markdown-style');
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        env: [copyRoute, { ...copyRoute, ALFRED_CODE_WORKSPACE: '0' }],
+        args: [['--scope', 'local'], (repo) => { fs.unlinkSync(link(repo)); return ['--installed-only', '--scope', 'local']; }],
+        inspect: (repo) => ({ isLink: Boolean(fs.lstatSync(link(repo), { throwIfNoEntry: false })?.isSymbolicLink()), check: check(repo, [], undefined, '0') }),
+    });
+    assert.doesNotMatch(outs[1], /linked from above/, outs[1]);
+    assert.equal(result.isLink, true, outs[1]);
+    assert.deepEqual(rowsOf(result.check.out), [], result.check.out);
 });
 
 test('seat-deny-left: an Agent(alfred-code:<seat>) row of a shipped seat fails, in settings.json and at local scope; another row stays', POSIX_ONLY, () =>

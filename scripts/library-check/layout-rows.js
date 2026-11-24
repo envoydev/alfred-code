@@ -36,7 +36,8 @@ function linkRows(kind, links)
     {
         if (!entry.link || (!entry.intoStore && !entry.listed)) continue;
         if (!entry.live) rows.push(row(ROW.linkDangling, linkPath(kind, name), WHY.linkDangling));
-        else if (entry.intoStore && !picked.has(name)) rows.push(row(ROW.linkUnpicked, linkPath(kind, name), WHY.linkUnpicked));
+        else if (entry.intoStore && !picked.has(name))
+            rows.push(entry.listed ? row(ROW.linkUnpicked, linkPath(kind, name), WHY.linkUnpicked) : row(ROW.linkYours, linkPath(kind, name), WHY.linkYours));
     }
     return rows;
 }

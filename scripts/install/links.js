@@ -168,8 +168,9 @@ function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = fa
     }
     return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
-// What a project links from a chain: each listed link pointing (dangling or not) outside its own store, and a copy its store lacks.
-const inherited = (projectRoot, record) => record.filter((e) => { const own = real(storeOf(projectRoot, e.path.split('/')[0])) || storeOf(real(projectRoot) || projectRoot, e.path.split('/')[0]), at = path.join(projectRoot, '.claude', e.path); if (e.kind === 'copy') return !fs.existsSync(path.join(own, e.path.split('/')[1])); return !(real(at) || path.resolve(real(path.dirname(at)) || '', (() => { try { return fs.readlinkSync(at); } catch { return ''; } })())).startsWith(own + path.sep); });
+// What a project links from a chain: each listed link pointing (dangling or not) outside its own store, and a copy its store lacks -
+// one that is on disk: a link or copy the user deleted is missing here, not inherited.
+const inherited = (projectRoot, record) => record.filter((e) => { const own = real(storeOf(projectRoot, e.path.split('/')[0])) || storeOf(real(projectRoot) || projectRoot, e.path.split('/')[0]), at = path.join(projectRoot, '.claude', e.path); if (!lstat(at)) return false; if (e.kind === 'copy') return !fs.existsSync(path.join(own, e.path.split('/')[1])); return !(real(at) || path.resolve(real(path.dirname(at)) || '', (() => { try { return fs.readlinkSync(at); } catch { return ''; } })())).startsWith(own + path.sep); });
 const removeLinks = ({ projectRoot, record = [], log = () => {} }) => record.forEach((e) => { const at = path.join(projectRoot, '.claude', e.path); if (!drop(at, e) && e.kind === 'copy' && lstat(at)) log(kept(e.path)); });
 // Each entry's state: ok, dangling, missing, edited (a copy changed here) or stale (a copy at its recorded text while the
 // store's file moved on).
