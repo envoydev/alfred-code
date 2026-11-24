@@ -114,9 +114,25 @@ The stores and what each holds, where the docs root and the data root live, and 
   doc the install seeds casts no vote either - `docs.docsVersioningSeed`), and the file re-includes itself so it is
   committed and a teammate's clone has it - except at `local` scope with nothing under it committed (workspace stage 1,
   2026-11-12), where the text is `/*` alone, the run also writes `.claude/.gitignore` holding `*` (`data-root.js
-  CLAUDE_IGNORE`, `alfred-code.js claudeIgnoreStep`: never over a file of the user's, never where git tracks a file
+  CLAUDE_IGNORE`, `agent-folders/effects.js apply`: never over a file of the user's, never where git tracks a file
   under `.claude`, ledgered as the `managed-files` row `.gitignore`, taken back at another scope and by uninstall) and
-  the stack's own line leaves `.git/info/exclude` (`git-hygiene.js rewriteOwnLine`, `drop`). The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE
+  the stack's own line leaves `.git/info/exclude` (`git-hygiene.js rewriteOwnLine`, `drop`). WORKSPACE VERSIONING (D1-D7,
+  `scripts/install/versioning/`, `agent-folders/`): `ALFRED_CODE_DOCS_VERSIONING` is read through the workspace chain,
+  so a linked child with no value of its own inherits the nearest member's (`stack/hooks/layout.js`: it left
+  `MEMBER_NEVER`; `CHAIN_PRUNE_NEVER` keeps every join and W1 prune off a child's own value). Every installer step reads
+  ONE ranked answer, `versioning/effectiveVersioning`: `--docs-versioning`, the carry and the leaving-`local` reseed, the
+  project's own value, a FIRM seed (no repository, `local` scope, docs a rule of the repository's own keeps out, a docs
+  domain git tracks, or `.branches/` overlays held), the chain, then `git`. A linked child is seeded only a firm answer
+  that differs from the chain (never a non-firm one: R-T6-1, only a CHOSEN value chains, so a project outside any git
+  repository gets no seed of the key and an existing stack seed there leaves); the one remover removes a stack seed at its
+  ledger hash that is off the new stamp line `answered-env:` (`--docs-versioning`, `variables.js set`, a
+  carry), and a typed value stays. Under versioning `local` the same pass (`agent-folders/effects.js`, run twice: early
+  and after `ignoreStep`) writes `.claude/.gitignore` = `CLAUDE_VERSIONING_IGNORE` and `.cursor/.gitignore` =
+  `CURSOR_VERSIONING_IGNORE` (`*` under a head line; `.cursor` at `project` / `user` scope only) inside a git repository only, and takes each back at `git`. A file of
+  the project's own stays, and a folder git tracks files in gets one `!!` line (stamp `told-tracked:`); a `.cursor` the
+  run made is on `created-dirs:` and goes with its file. A moved link home follows at the next run. `.alfred` is as
+  before: at `project` / `user` scope `/.gitignore` and `/.variables` stay committed (D6), and a linked child's `git`
+  text also ignores `/<docs>/.branches/` (D5, `linkedChild`). A root's update names each lagging child (D7). The installer keeps it current (`docs.ensureDataIgnore`). THE MOVE
   (`scripts/install/fixed-root.js`, deleted whole at the support floor): every installer run but `--print-plan` and
   `uninstall` plans from what the reader found and moves the stack's own entries of such a folder - `ROOT_ENTRIES`,
   plus a `.gitignore` carrying the stack's header - into `.alfred` before the run's first write. Entry by entry,
