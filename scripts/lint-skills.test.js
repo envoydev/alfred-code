@@ -727,8 +727,15 @@ test('check 44: a second plugin, a double home and a lost item are all findings'
     assert.ok(lintPluginPlacement(doubled).some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
 
     const lost = placement();
-    lost.plugins['alfred-code'].agents = lost.plugins['alfred-code'].agents.filter(a => a !== 'angular-test-resolver');
+    lost.library.agents = lost.library.agents.filter(a => a !== 'angular-test-resolver');
     assert.ok(lintPluginPlacement(lost).some(f => /agent angular-test-resolver is in no plugin/.test(f)), 'a lost item is caught');
+
+    const seated = placement();
+    seated.plugins['alfred-code'].agents.push('angular-test-resolver');
+    assert.ok(lintPluginPlacement(seated).some(f => /carries agent angular-test-resolver - it carries no skill and no seat/.test(f)), 'a seat in the core is caught');
+    assert.ok(lintPluginPlacement(seated).some(f => /agent:angular-test-resolver has two homes/.test(f)), 'and it is a double home');
+
+    assert.deepStrictEqual(lintPluginPlacement(placement()), [], 'the live placement is clean');
 });
 
 test('check 46: the repo root reserves every name a shared-source entry auto-discovers', () => {

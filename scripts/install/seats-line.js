@@ -2,33 +2,18 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { stackSeat } = require('../derive-state.js');
 
-const BACK_TO_PLUGIN = ' - /alfred-code:configure (Environment) moves them back into the plugin';
-
-// The one log line that says where the agents come from on this route (the plugin carries them, or
-// they were copied), so an absent .claude/agents after an update reads as the route, not as a loss. On the copy route the
-// seat files of an earlier, wider pick stay on disk, so the line counts the picked ones and names the rest.
-function seatsLine({ viaPlugin, coreSeats, switchedOff, picked, earlier })
+// The one log line that says where the agents come from on this route. Every seat is a copy now: on the plugin routes a
+// picked seat sits in the store and is linked from `.claude/agents`, like a skill; on the full copy route it is a folder
+// in `.claude/agents` itself. The copy route's seat files of an earlier, wider pick stay on disk, so its line counts
+// the picked ones and names the rest.
+function seatsLine({ viaPlugin, picked, earlier })
 {
-    if (!viaPlugin)
-    {
-        const head = `seats: copy route - ${picked} picked in .claude/agents`;
-        const line = earlier > 0
-            ? `${head}; ${earlier} earlier copies not picked stay there - the stack no longer updates them; delete a file to drop its seat`
-            : head;
-        return `${line}${BACK_TO_PLUGIN}`;
-    }
-    return `seats: ${coreSeats - switchedOff} on from the alfred-code plugin, ${switchedOff} switched off in permissions.deny`
-        + ' - no .claude/agents on this route (/alfred-code:status lists them)';
-}
-
-// How many of the core's seats the deny rows of the settings files switch off: each seat once, however many rows or files
-// name it and whoever wrote them; a row for a seat the core does not ship, or one that is no seat row, counts for nothing.
-function countSwitchedOff(denyRows, coreSeatNames)
-{
-    const shipped = new Set(coreSeatNames);
-    return new Set((Array.isArray(denyRows) ? denyRows : []).map(stackSeat).filter((seat) => seat && shipped.has(seat))).size;
+    if (viaPlugin) return `seats: ${picked} picked, copied per project and linked in .claude/agents - the plugin carries none (/alfred-code:status lists them)`;
+    const head = `seats: copy route - ${picked} picked in .claude/agents`;
+    return earlier > 0
+        ? `${head}; ${earlier} earlier copies not picked stay there - the stack no longer updates them; delete a file to drop its seat`
+        : head;
 }
 
 // The seats in the agents folder - a folder `<seat>`, or an older flat `<seat>.md` - each counted once per real path (a link and
@@ -55,4 +40,4 @@ function countSeatFiles({ agentsDir, seatNames, pickedFiles })
     return { picked, earlier };
 }
 
-module.exports = { seatsLine, countSwitchedOff, countSeatFiles };
+module.exports = { seatsLine, countSeatFiles };

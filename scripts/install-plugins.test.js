@@ -1140,8 +1140,8 @@ test('seed update: a project under another key loses the cut plugins under ITS k
 });
 
 // The configure / validate read-back on an install under another key: `--installed-only` under the key
-// the stack was registered with keeps the stamp's picks, the seat deny and the hooks switched off.
-test('seed update --installed-only: an install under another key keeps its picks, its deny and its hooks-off', POSIX_ONLY, () =>
+// the stack was registered with keeps the stamp's picks and the hooks switched off; a seat deny row is taken out (no seat is denied now).
+test('seed update --installed-only: an install under another key keeps its picks and its hooks-off, and drops the seat row an older release wrote', POSIX_ONLY, () =>
 {
     const row = (id) => ({ id, version: '2.0.0', scope: 'user', enabled: true });
     const listing = JSON.stringify([row(`alfred-code@${KEY}`)]);
@@ -1164,14 +1164,14 @@ test('seed update --installed-only: an install under another key keeps its picks
             const settings = JSON.parse(fs.readFileSync(path.join(claude, 'settings.json'), 'utf8'));
             return {
                 picks: [(/^picked-skills: (.*)$/m.exec(stamp) || [])[1], (/^picked-agents: (.*)$/m.exec(stamp) || [])[1]],
-                deny: settings.permissions.deny.filter((d) => d.includes('code-style-analyzer')),
+                deny: ((settings.permissions || {}).deny || []).filter((d) => d.includes('code-style-analyzer')),
                 env: settings.env,
             };
         } });
     assert.ok(new RegExp(`marketplace: ${KEY}`).test(out), out);
     assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style'), `skills (a copy since 2.1.0, no plugin home): ${result.picks[0]}`);
-    assert.ok(result.picks[1] && result.picks[1].split(',').includes('security-auditor@alfred-code'), `agents: ${result.picks[1]}`);
-    assert.deepStrictEqual(result.deny, ['Agent(alfred-code:code-style-analyzer)'], 'the deny in one spelling');
+    assert.ok(result.picks[1] && result.picks[1].split(',').includes('security-auditor'), `agents (bare names - a seat is a copy): ${result.picks[1]}`);
+    assert.deepStrictEqual(result.deny, [], 'the row an older release wrote for a shipped seat is gone'); 
     assert.strictEqual(result.env.ALFRED_CODE_HOOKS_OFF, 'communication-reminder', 'the hooks the user switched off stay off');
 });
 

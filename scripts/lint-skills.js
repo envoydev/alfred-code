@@ -2798,7 +2798,11 @@ function lintPluginPlacement(placeIn)
     }
 
     if (Object.keys(place.plugins).length !== 1 || !place.plugins[placeMod.CORE])
-        out.push(`the placement ships plugins other than ${placeMod.CORE} - every skill is library, copied per pick, and every seat rides the core.`);
+        out.push(`the placement ships plugins other than ${placeMod.CORE} - every skill and every seat is library, copied per pick, and the core carries none.`);
+
+    const core = place.plugins[placeMod.CORE];
+    if (core && ((core.agents || []).length || (core.skills || []).length))
+        out.push(`the ${placeMod.CORE} entry carries ${[...(core.skills || []).map((x) => `skill ${x}`), ...(core.agents || []).map((x) => `agent ${x}`)].join(', ')} - it carries no skill and no seat; each is library, copied per pick.`);
 
     const seen = new Map();
     const note = (key, where) =>

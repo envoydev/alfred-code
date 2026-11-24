@@ -33,7 +33,7 @@ const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../deri
 const { placement, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
-const { seatsLine, countSwitchedOff, countSeatFiles } = require('./seats-line.js');
+const { seatsLine, countSeatFiles } = require('./seats-line.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const { recordView, recordOf, editedSince, carriedRows } = require('./records.js');
@@ -510,7 +510,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const back = selection.readBack({
                 claudeDir, skillsDir, agentsDir, linked: recorded.map(lineOfLink),
                 foreignSkill: skillCheck.foreign,
-                keptUnpicked: unpickedKeep({ picked: lastPicked, records, skillsDir, agentsDir, renamed: manifest.renamed, seat: { records, agentsDir, sourceDir: resolved.dir, render: copyRender({ routes }, 'agent') } }),
+                keptUnpicked: unpickedKeep({ picked: lastPicked, records, skillsDir, agentsDir, renamed: manifest.renamed, seat: { records, agentsDir, sourceDir: resolved.dir, render: copyRender({ routes }, 'agent'), coreSeats: stampLayer.readSeatsRoute(stampFile) === 'plugin' } }),
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -525,7 +525,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 seatsRoute: stampLayer.readSeatsRoute(stampFile),
                 ledgerSeats: [...new Set(ledgerDeny.map((d) => stackSeat(d.entry)).filter(Boolean))],
                 // A member's own pick held here is never the root's - a fresh walk too, for an add its last stamp write lost.
-                held: [...((stampFile && stampLayer.readMemberPicks(stampFile)) || []), ...(wsPrep.on && !wsPrep.parent ? workspace.memberPicks(projectRoot, { seatsRoute: stampLayer.readSeatsRoute(stampFile) || 'plugin' }).lines
+                held: [...((stampFile && stampLayer.readMemberPicks(stampFile)) || []), ...(wsPrep.on && !wsPrep.parent ? workspace.memberPicks(projectRoot, { seatsRoute: stampLayer.readSeatsRoute(stampFile) || 'library' }).lines
                     .filter((l) => !((lastPicked || {})[`${l.split(' ')[0]}s`] || []).some((e) => e.split('@')[0] === l.split(' ')[1])) : [])],
                 always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
@@ -586,7 +586,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // back and is reported - the walk's own closure would have kept it, and a drop the next
             // update's closure undoes is no drop at all.
             const withDrops = selection.dropLines(withAdds, drops, log);
-            // Every seat rides the core (2.1.0), so a deny also stands for 'never picked' - a seat an --add
+            // A deny row an older install left stands for 'never picked' until this run removes it - a seat an --add
             // REQUIRES is taken with it (the add is the user's newest word); the closure over the kept
             // picks still leaves a denied seat out.
             const addSeats = new Set(graph.catalog && args.add.length ? require('../stack-select.js').computeClosure(graph, {
@@ -600,7 +600,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // A layer the closure brought in is carried now, so the locked set joins it in THIS run - adopted only by the
             // next update, one update was not the fixed point.
             // An always seat this run's --drop switched off is not adopted back (its deny lands only now).
-            const adopted = selection.adoptAlways({ lines: closed, always, log, deny: back.deny, coreOn: plugins.corePluginOn(routes) })
+            const adopted = selection.adoptAlways({ lines: closed, always, log, deny: back.deny, coreOn: plugins.corePluginOn(routes) && [null, 'plugin'].includes(stampLayer.readSeatsRoute(stampFile)) })
                 .filter((l) => closed.includes(l) || !drops.includes(l));
             if (adopted.length > closed.length)
                 closed = close(adopted, [...from, ...adopted.filter((l) => !closed.includes(l))], log);
@@ -775,7 +775,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const linkRecord = links.syncLinks({ projectRoot, members: child ? wsPrep.members : [], want, prior: recorded, keep: !wsPrep.on, rt, log });
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot,
-            hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
+            hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'library' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
             picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills),
             stoodDown: stoodDownRecord(ctx),
@@ -983,7 +983,7 @@ function runLayers(ctx)
         log: ctx.log, note: ctx.note,
     });
     if (plugins.corePluginOn(ctx.routes))
-        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, docsPath, log: ctx.log, note: ctx.note });
+        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().library.agents, docsPath, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
     // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
     // skips nothing of it (final review M8): every run checks - after the data root layer, so an older root's leftovers
@@ -1367,12 +1367,12 @@ function keepEdited(ctx, kind, dir)
 // A seat file in `.claude/agents` named like a core seat that neither stamp line records, on a stamp that holds a ledger (a
 // stamp from before the ledger refreshes as it always did) whose text is not the stack's render: the project's own seat. The
 // plugin route's prune keeps it; one that is the stack's text is the stack's and goes as any carried copy.
-function ownSeatKeep(ctx, route = 'plugin')
+function ownSeatKeep(ctx)
 {
     return (file) =>
     {
         const name = file.replace(/\.md$/, '');
-        return projectSeat(ctx, file) ? { say: ownSeatLine[route](name) } : false;
+        return projectSeat(ctx, file) ? { say: ownSeatLine.copy(name) } : false;
     };
 }
 
@@ -1399,7 +1399,7 @@ function droppedKeep(ctx, category, name)
     if (category === 'skill' && foreignSkill(ctx, name)) return true;
     const route = ctx.routes.skills ? 'plugin' : 'copy';
     const kept = category === 'skill' ? keepEdited(ctx, 'skill', ctx.skillsDir)(name)
-        : category === 'agent' ? keepEdited(ctx, 'agent', ctx.agentsDir)(`${name}.md`) || ownSeatKeep(ctx, route)(`${name}.md`)
+        : category === 'agent' ? keepEdited(ctx, 'agent', ctx.agentsDir)(`${name}.md`) || ownSeatKeep(ctx)(`${name}.md`)
             : false;
     if (!kept || route === 'copy') return kept;
     // A seat's prune below always names it; a skill's may not (a member below still holds it), so the drop names it and the prune says nothing twice.
@@ -1416,12 +1416,57 @@ function flatSeatRecords({ stampFile, priorLedger, sourceDir })
     const view = recordView(stampFile, priorLedger);
     const hashes = Object.fromEntries(Object.entries(view.agents).map(([n, h]) => [n, [h]]));
     for (const e of stampFile ? stampLayer.readLinks(stampFile) : []) if (e.kind === 'copy' && e.path.startsWith('agents/')) (hashes[e.path.slice(7).replace(/\.md$/, '')] ||= []).push(e.hash);
-    const isStackText = (name, file) =>
+    return { hashes, ledgerHeld: view.ledgerHeld, isStackText: (name, file) => isStackSeatText(sourceDir, name, file) };
+}
+
+// The file holds the stack's own text for the seat, raw or with the copy route's respelled preloads.
+function isStackSeatText(sourceDir, name, file)
+{
+    const [mine, stack] = [readOrNull(file), readOrNull(path.join(sourceDir, 'stack', 'agents', `${name}.md`))];
+    return mine !== null && stack !== null && (mine === stack || mine === copy.respellPreloads(stack, CORE));
+}
+
+// A flat `<name>.md` in the agents folder beside no `<name>` folder is a file an older install left that nothing moved into
+// a folder - the project's own: no folder is written beside it (one definition per seat), and a home git sees names it.
+function flatSeatKept(ctx, name)
+{
+    const at = (rel) => fs.lstatSync(path.join(ctx.agentsDir, rel), { throwIfNoEntry: false });
+    if (at(name) || !at(`${name}.md`)?.isFile()) return false;
+    if (path.relative(ctx.projectRoot, ctx.agentsDir) === path.join('.claude', 'agents')) ctx.log(links.kept(`agents/${name}.md`));
+    return true;
+}
+
+// On the plugin routes a project's own flat `.claude/agents/<name>.md` that no stamp line records and no migration moved is the
+// seat's definition: no store folder and no link is written beside it (one definition per seat), and each run names it.
+function projectFlatSeat(ctx, name)
+{
+    const dir = path.join(ctx.projectRoot, '.claude', 'agents');
+    if (fs.lstatSync(path.join(dir, name), { throwIfNoEntry: false }) || !fs.lstatSync(path.join(dir, `${name}.md`), { throwIfNoEntry: false })?.isFile()) return false;
+    if (dir !== ctx.agentsDir) ctx.log(links.kept(`agents/${name}.md`));
+    return true;
+}
+
+// A picked seat whose folder in the agents home holds the project's own text (no record on either stamp line, text other than the
+// stack's): kept, named once, never taken over by the library copy.
+function projectOwnSeat(ctx, name)
+{
+    if (!projectSeat(ctx, `${name}.md`)) return false;
+    ctx.log(ownSeatLine.copy(name));
+    ctx.foreignSeats.add(name);
+    return true;
+}
+
+// The prune of a seat this run did not pick: what the stamp records goes unless edited since; a copy nothing records goes only
+// when it holds the stack's own text. Anything else in that place is the project's, kept and named.
+function unpickedSeatKeep(ctx, dir)
+{
+    return (file) =>
     {
-        const [mine, stack] = [readOrNull(file), readOrNull(path.join(sourceDir, 'stack', 'agents', `${name}.md`))];
-        return mine !== null && stack !== null && (mine === stack || mine === copy.respellPreloads(stack, CORE));
+        const name = file.replace(/\.md$/, '');
+        const edited = keepEdited(ctx, 'agent', dir)(file);
+        if (edited || recordOf(ctx.records, 'agent', name) !== null || isStackSeatText(ctx.source.dir, name, links.agentFile(dir, name))) return edited;
+        return { say: ownSeatLine.copy(name) };
     };
-    return { hashes, ledgerHeld: view.ledgerHeld, isStackText };
 }
 
 // The copy route's twin: a picked seat whose file sits in `.claude/agents` with no record and text other than the render.
@@ -1430,11 +1475,12 @@ function projectSeat(ctx, file)
     return ownSeatFile({ records: ctx.records, agentsDir: ctx.agentsDir, sourceDir: ctx.source.dir, render: copyRender(ctx, 'agent') }, file);
 }
 
-// The project's own seat file: no record on either stamp line (on a stamp that holds a ledger) and text other than the stack's render.
-function ownSeatFile({ records, agentsDir, sourceDir, render }, file)
+// The project's own seat file: no record on either stamp line (on a stamp that holds a ledger, or one whose core carried the
+// seats - then no stack copy of a seat was ever on disk) and text other than the stack's render.
+function ownSeatFile({ records, agentsDir, sourceDir, render, coreSeats = false }, file)
 {
     const name = file.replace(/\.md$/, '');
-    if (!records.ledgerHeld || recordOf(records, 'agent', name) !== null) return false;
+    if (!(records.ledgerHeld || coreSeats) || recordOf(records, 'agent', name) !== null) return false;
     const mine = readOrNull(links.agentFile(agentsDir, file));
     if (mine === null) return false;
     const stack = readOrNull(path.join(sourceDir, 'stack', 'agents', file));
@@ -1499,7 +1545,6 @@ const skillClaim = (ctx) => skillTestOf(ctx).claims;
 const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
 const keptEditedLine = (kind, file) => `  ${kind} kept: ${file} - edited in the project since the stack copied it, so it is yours - delete it to drop it`;
 const ownSeatLine = {
-    plugin: (name) => `  !! agent kept: ${name}.md - a project seat of that name the stamp does not record, so it is yours; it lists beside the core's ${CORE}:${name} - rename or remove it`,
     copy: (name) => `  !! agent kept: ${name}.md - a project seat of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours to take it`,
 };
 const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
@@ -1626,16 +1671,16 @@ function pruneAway(ctx, away)
 }
 
 // The items the joined members below picked themselves that this root's own selection does not name (`locked` null: no
-// root here). A seat on the plugin route is held by leaving it un-denied; a kind git sees holds none (ruling 8).
+// root here). A kind git sees holds none (ruling 8).
 function membersHeld(ctx, locked)
 {
-    const held = { skills: [], agents: [], seats: [], rules: [], lines: [] };
+    const held = { skills: [], agents: [], rules: [], lines: [] };
     if (locked === null) return held;
     let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
     if (locked === false) ctx.log('  !! workspace: the store is locked - member picks are read at the next run');
     else if (locked === true)
     {
-        const got = workspace.memberPicks(ctx.projectRoot, { seatsRoute: ctx.routes.skills ? 'plugin' : 'copy' });
+        const got = workspace.memberPicks(ctx.projectRoot, { seatsRoute: ctx.routes.skills ? 'library' : 'copy' });
         for (const n of got.notes) ctx.log(`  ${n}`);
         lines = got.lines;
     }
@@ -1648,8 +1693,7 @@ function membersHeld(ctx, locked)
     {
         const [cat, name] = l.split(' ');
         if (!shipped[cat].includes(name)) continue;
-        if (cat === 'agent' && ctx.routes.skills) held.seats.push(name);
-        else if (cat === 'rule' || ctx.homes[`${cat}s`].store) held[`${cat}s`].push(name);
+        if (cat === 'rule' || ctx.homes[`${cat}s`].store) held[`${cat}s`].push(name);
         else { ctx.log(`  member pick ${cat}s/${name} not held: .claude/${cat}s is not ignored here`); continue; }
         held.lines.push(l);
     }
@@ -1659,64 +1703,39 @@ function membersHeld(ctx, locked)
 
 function copyKinds(ctx, closure)
 {
-    // On the plugin route every skill travels by copy and every seat rides the core (2.1.0). A seat's
-    // leftover copy - a 2.0.x library seat, or the copy route's - lists BESIDE the core's own under
-    // another name, so it goes BEFORE the enable. What a release retired goes on either route.
+    // On the plugin route every skill and every seat travels by copy into the store, linked from `.claude` (the core
+    // carries neither). What a release retired goes on either route.
     const agentsDir = ctx.agentsDir;
     closure.extraSkills = [...new Set([...(closure.extraSkills || []), ...ctx.held.skills])];
+    closure.extraAgents = [...new Set([...(closure.extraAgents || []), ...ctx.held.agents])];
     const plugin = ctx.routes.skills;
     const skillAt = (n, dir) => (plugin ? library.copyLibrary({ sourceDir: ctx.source.dir, skillsDir: dir, agentsDir: dir, skills: [n], agents: [], stamped: null, claims: () => true, log: () => {}, note: ctx.note })
         : copy.syncTree({ src: path.join(ctx.source.dir, 'stack', 'skills', n), dest: path.join(dir, n), render: copyRender(ctx, 'skill') }));
-    const agentAt = (n, dir) => copy.installFromSource({ sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent', destDir: dir, files: [`${n}.md`], folder: true, render: copyRender(ctx, 'agent'), log: () => {}, note: ctx.note });
-    const away = { skills: childAway(ctx, 'skills', plugin ? closure.extraSkills : ctx.lists.skills.map((e) => e.split('|').pop()), skillAt), agents: childAway(ctx, 'agents', ctx.lists.agents.map((a) => a.replace(/\.md$/, '')), agentAt) };
+    const agentAt = (n, dir) => (plugin ? library.copyLibrary({ sourceDir: ctx.source.dir, skillsDir: dir, agentsDir: dir, skills: [], agents: [n], stamped: null, claims: () => true, log: () => {}, note: ctx.note })
+        : copy.installFromSource({ sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent', destDir: dir, files: [`${n}.md`], folder: true, render: copyRender(ctx, 'agent'), log: () => {}, note: ctx.note }));
+    const away = { skills: childAway(ctx, 'skills', plugin ? closure.extraSkills : ctx.lists.skills.map((e) => e.split('|').pop()), skillAt), agents: childAway(ctx, 'agents', plugin ? closure.extraAgents : ctx.lists.agents.map((a) => a.replace(/\.md$/, '')), agentAt) };
     const skillNames = [...new Set([...ctx.lists.skills.map((e) => e.split('|').pop()), ...ctx.held.skills])].filter((n) => !away.skills.has(n));
     pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'skill', ctx.skillsDir) });
     pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'agent', agentsDir) });
     if (ctx.routes.skills)
     {
-        // A library item this run did not pick is switched off, and its absence is how; a seat the core
-        // carries is pruned as a copy - unless the project edited it since the stack wrote it (its hash
-        // no longer the stamp's): kept, said, and its recorded hash carried, so library-check reports it
-        // as edited and no later run deletes it either.
-        const core = placement().plugins[CORE];
+        // Every skill and every seat is a library copy on this route: a library item this run did not pick is
+        // switched off, and its absence is how. A seat file the project wrote under a stack seat's name, one no stamp
+        // line records, is the project's own and stays - named once (`keepEdited`, `ownSeatKeep`).
         // The record of a copy is read from either stamp line, so a copy a copy-route run recorded counts as recorded here too.
         const stamped = { ...stampLayer.readLibrary(ctx.stampFile), skills: ctx.records.skills, agents: ctx.records.agents };
         const unpicked = (names, picked) => names.filter((n) => !picked.includes(n));
         const skills = unpicked(ctx.manifest.skills.map((e) => e.split('|').pop()), closure.extraSkills);
         const agents = unpicked(ctx.manifest.agents.map((f) => f.replace(/\.md$/, '')), closure.extraAgents);
-        const edited = (n) => editedSince(ctx.records, 'agent', n, links.agentAt(agentsDir, n));
-        // I4: a copy whose model / effort differ from the stack's is the user's tuning, whatever its hash says -
-        // 2.0.0's --keep-pins re-hashed a copy after restoring its pins, so a tuned copy reads as unedited. No
-        // setting overrides a plugin seat's own frontmatter (code.claude.com/docs/en/sub-agents, 'Choose a
-        // model': the dispatch's model, then the definition's, then CLAUDE_CODE_SUBAGENT_MODEL for all), so the
-        // tuning survives only as the project copy, dispatched by its bare name.
-        const tuning = (n) =>
-        {
-            const pairs = (file) => pinsLayer.KEYS.map((k) => [k, pinsLayer.readPin(file, k)]).filter(([, v]) => v);
-            const mine = pairs(links.agentFile(agentsDir, n));
-            const stack = Object.fromEntries(pairs(path.join(ctx.source.dir, 'stack', 'agents', `${n}.md`)));
-            if (!mine.length || mine.every(([k, v]) => stack[k] === v)) return null;
-            const say = (list) => list.map(([k, v]) => `${k}=${v}`).join(', ');
-            return `its model/effort (${say(mine)}) differ from the stack's (${say(pinsLayer.KEYS.map((k) => [k, stack[k]]).filter(([, v]) => v))})`;
-        };
-        const keptSeats = agents.filter((n) => core.agents.includes(n) && (edited(n) || tuning(n)));
-        for (const n of keptSeats)
-        {
-            const why = [edited(n) ? 'edited in the project since the stack copied it' : '', tuning(n) || ''].filter(Boolean).join(' - ');
-            ctx.log(`  agent kept: ${n}.md - ${why}, so it is yours; dispatched as '${n}' (the project copy) - the capabilities rule names it that way, so a flow runs it and never ${CORE}:${n}, which still lists beside it; delete the copy to use the plugin's seat`);
-        }
         const keepSkill = (n) => foreignSkill(ctx, n) || keepEdited(ctx, 'skill', ctx.skillsDir)(n);
-        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin', { keep: keepSkill });
-        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked', { keep: keepSkill });
-        pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n) && !keptSeats.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin', { keep: ownSeatKeep(ctx) });
-        pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked', { keep: keepEdited(ctx, 'agent', agentsDir) });
+        pruneCopies(ctx, ctx.skillsDir, skills, 'skill', 'library item not picked', { keep: keepSkill });
+        pruneCopies(ctx, agentsDir, agents.map((n) => `${n}.md`), 'agent', 'library item not picked', { keep: unpickedSeatKeep(ctx, agentsDir) });
         ctx.library = library.copyLibrary({
             sourceDir: ctx.source.dir, skillsDir: ctx.skillsDir, agentsDir,
-            skills: closure.extraSkills.filter((n) => !away.skills.has(n)), agents: closure.extraAgents,
+            skills: closure.extraSkills.filter((n) => !away.skills.has(n)), agents: closure.extraAgents.filter((n) => !away.agents.has(n) && !flatSeatKept(ctx, n) && !projectFlatSeat(ctx, n) && !projectOwnSeat(ctx, n)),
             stamped, claims: (kind, name) => kind !== 'skills' || skillClaim(ctx)(name), log: ctx.log, note: ctx.note,
         });
         for (const n of ctx.library.foreign) ctx.foreignSkills.add(n);
-        for (const n of keptSeats) if (recordOf(ctx.records, 'agent', n)) ctx.library.agents[n] = recordOf(ctx.records, 'agent', n);
         pruneAway(ctx, away);
         return;
     }
@@ -1743,7 +1762,7 @@ function copyKinds(ctx, closure)
     {
         const name = f.replace(/\.md$/, '');
         // a flat file of an older install beside no folder is one the project edited (the stack's own moved, migrateFlatAgents): kept, and no folder is written beside it
-        if (!fs.lstatSync(path.join(agentsDir, name), { throwIfNoEntry: false }) && fs.lstatSync(path.join(agentsDir, `${name}.md`), { throwIfNoEntry: false })?.isFile()) { if (path.relative(ctx.projectRoot, agentsDir) === path.join('.claude', 'agents')) ctx.log(links.kept(`agents/${name}.md`)); return false; }
+        if (flatSeatKept(ctx, name)) return false;
         if (!projectSeat(ctx, f)) return true;
         ctx.log(ownSeatLine.copy(name));
         ctx.foreignSeats.add(name);
@@ -2346,14 +2365,14 @@ function installHooksAndRules(ctx)
     // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
-    const { hooksOff, hooksAnswered, agentDeny: denied, agentAllow } = writable(state, {
+    const { hooksOff, hooksAnswered } = writable(state, {
         routes: ctx.routes, answered: ctx.answered,
         wired: ctx.routes.hooks ? null : [...new Set(ctx.lists.hooks.map(hookName))],
         shipped: [...new Set(ctx.manifest.catalogs.hooks.map(hookName))],
     });
-    // Workspace stage 3: a seat a member below picked is not denied at its root.
-    const agentHeld = ctx.held ? ctx.held.seats : [];
-    const agentDeny = denied.filter((r) => !agentHeld.includes(stackSeat(r)));
+    // No seat is denied: every seat is a copy. The rows an older install wrote for a seat this release ships, retired or renamed go.
+    const seatNames = [...new Set([...ctx.manifest.agents.map((f) => f.replace(/\.md$/, '')), ...ctx.manifest.retired.agents.map((f) => f.replace(/\.md$/, '')),
+        ...Object.keys((ctx.manifest.renamed && ctx.manifest.renamed.agents) || {})])];
     // Mode v2 stage 2: at every scope the stack's settings rows are this machine's - settings.local.json, never the shared
     // settings.json. The rows an older install ledgered there move first, so every read of it below sees it without them.
     const localSettings = path.join(ctx.claudeDir, 'settings.local.json');
@@ -2372,7 +2391,7 @@ function installHooksAndRules(ctx)
         // The stack's stale wiring, 1.x keys and renamed skillOverrides keys in settings.json are taken out or re-keyed there.
         sharedFile: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,
-        denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow, agentHeld,
+        denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, seatNames,
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
@@ -2419,23 +2438,12 @@ function installHooksAndRules(ctx)
     });
     if (!written.refused)
     {
-        // What the files hold after this run, not this run's own set: an update with no selection writes no deny and leaves
-        // every earlier row in force. The copy route counts the seats that are in the agents folder.
-        const coreSeats = placement().plugins[CORE].agents;
-        const denyRows = ((settings.readBackSettings(ctx.claudeDir, 'local').permissions || {}).deny) || [];
-        let picked = 0;
-        let earlier = 0;
-        if (!ctx.routes.skills)
-        {
-            const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
-                .filter((file) => fs.existsSync(links.agentDir(ctx.agentsDir, file)));
-            const seatNames = fs.readdirSync(path.join(ctx.source.dir, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
-            ({ picked, earlier } = countSeatFiles({ agentsDir: ctx.agentsDir, seatNames, pickedFiles: copiedSeats }));
-        }
-        ctx.log(seatsLine({
-            viaPlugin: ctx.routes.skills, coreSeats: coreSeats.length,
-            switchedOff: countSwitchedOff(denyRows, coreSeats), picked, earlier,
-        }));
+        // The seats this run left in the agents folder (the store, linked, on the plugin routes), counted by real path.
+        const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
+            .filter((file) => fs.existsSync(links.agentDir(ctx.agentsDir, file)));
+        const seatNames = fs.readdirSync(path.join(ctx.source.dir, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+        const { picked, earlier } = countSeatFiles({ agentsDir: ctx.agentsDir, seatNames, pickedFiles: copiedSeats });
+        ctx.log(seatsLine({ viaPlugin: ctx.routes.skills, picked, earlier }));
     }
     ctx.managedSettings = written.managed || null;
     ctx.variablesMoved = (written.variablesMoved || []).length;

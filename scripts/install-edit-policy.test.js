@@ -247,10 +247,7 @@ test('plugin route after the copy route: an edited picked library skill is refre
 });
 
 const OWN_TEXT = '---\nname: evidence-gatherer\ndescription: the project\'s own seat\n---\nmy own text\n';
-const OWN_LINE = {
-    plugin: `  !! agent kept: ${SEAT_A}.md - a project seat of that name the stamp does not record, so it is yours; it lists beside the core's alfred-code:${SEAT_A} - rename or remove it`,
-    copy: `  !! agent kept: ${SEAT_A}.md - a project seat of that name the stamp does not record, so it is yours; the stack's ${SEAT_A} is not installed here - rename or remove yours to take it`,
-};
+const OWN_LINE = `  !! agent kept: ${SEAT_A}.md - a project seat of that name the stamp does not record, so it is yours; the stack's ${SEAT_A} is not installed here - rename or remove yours to take it`;
 
 for (const order of [['copy', 'plugin'], ['plugin', 'copy']])
 {
@@ -264,7 +261,7 @@ for (const order of [['copy', 'plugin'], ['plugin', 'copy']])
         });
         for (const [i, route] of routes.entries())
         {
-            assert.ok(outs[i].includes(OWN_LINE[route]), `run ${i + 1} (${route}):\n${outs[i]}`);
+            assert.ok(outs[i].includes(OWN_LINE), `run ${i + 1} (${route}):\n${outs[i]}`);
             assert.equal(steps[i].bytes, OWN_TEXT, `run ${i + 1}: the file is as the project wrote it`);
             assert.deepEqual([steps[i].row, steps[i].lib], [null, null], `run ${i + 1}: no record names it`);
         }

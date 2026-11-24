@@ -3,7 +3,7 @@
 // THE ONE DERIVATION - what a selection means for a project, decided once.
 //
 //   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope <scope>]
-//   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--settings <file>]...
+//   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--agents-dir <.claude/agents>] [--settings <file>]...
 //
 // Before this script, four readers answered the same question in their own words: the three guided
 // walks described what the install would write, and the seed computed it again in code. That is how
@@ -35,7 +35,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./selection-plugins.js');
-const { placement, formerCore, descriptionChars, CORE } = require('./plugin-placement.js');
+const { placement, formerCore, formerSeats, descriptionChars, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 const { committedRoutesAt, ledgerEnvOf, corePluginOn } = require('./install/plugins.js');
@@ -90,13 +90,8 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     const enabled = plugins.map((p) => `${p}@${marketplace}`);
 
     const carried = itemsOf(plugins, { placement: place });
-    const homes = agentHomes(place);
-
-    const off = carried.agents.filter((a) => !picked.agents.has(a));
-    // The seats an enabled plugin carries AND the selection kept, plus the library seats it copies.
-    // Their specs exist for one job: clearing a deny a PREVIOUS run wrote, so a seat added back
-    // through configure actually comes back; clearing a seat clears every spelling of it.
-    const kept = carried.agents.filter((a) => picked.agents.has(a)).concat(copy.agents);
+    // No plugin carries a seat, so no seat is switched off by a deny row: an unpicked seat has no copy, and
+    // the writer only removes the rows an older install left (settings.js `removeSeatDenies`).
     const shipped = [...new Set(loadManifest(sourceDir).catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
     // No hook line at all means every hook, exactly as the installer's copy filter reads it - a
     // selection that never reached the hooks layer answers nothing about hooks.
@@ -115,9 +110,9 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
         },
         agents: {
             on: [...picked.agents].sort(),
-            off,
-            deny: off.map((a) => denySpec(a, homes.get(a) || CORE)),
-            allow: kept.map((a) => denySpec(a, homes.get(a) || CORE)),
+            off: [],
+            deny: [],
+            allow: [],
             library: copy.agents,
         },
         rules: { copy: [...flat.rules].sort() },
@@ -150,7 +145,8 @@ const HOOKS_HOME = BRAND.core;
 //     closure (`formerCore`), and every other seat was a library copy the disk read finds - read as
 //     'every seat minus the denied', all 44 came back picked and no deny was written (the 2.1.0
 //     migration BLOCKER), while the always skills, carried by nothing now, dropped out.
-//   - 'none' - the last run copied the seats (`seats-route: copy`): the disk decides.
+//   - 'none' - the last run copied the seats (`seats-route: copy` or `library`): the disk decides, and
+//     the core carries no seat now (a stamp is read this way once seats left the core).
 function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO, core = 'current', picks = null, managedSeats = [] } = {})
 {
     const names = [...new Set(plugins.map((p) => String(p).split('@')[0]))];
@@ -158,7 +154,8 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
     if (routes.skills)
     {
         const place = placement();
-        const coreItems = core === 'former' ? formerCore() : core === 'none' ? { skills: [], agents: [] } : place.plugins[CORE];
+        // A `plugin` stamp's core carried every seat (formerSeats); the current placement carries none.
+        const coreItems = core === 'former' ? formerCore() : core === 'none' ? { skills: [], agents: [] } : { ...place.plugins[CORE], agents: formerSeats() };
         const read = { ...place, plugins: { ...place.plugins, [CORE]: { ...place.plugins[CORE], ...coreItems } } };
         const carried = itemsOf(names.filter((n) => read.plugins[n]), { placement: read });
         // By SEAT, under any stack entry's spelling: a release that moves a seat to another entry
@@ -214,7 +211,10 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
             // Homed in the core, still enabled here, library now: carried as a pick - the release moved
             // it into the project (2.1.0 moved every core skill so).
             // A core-homed SEAT with no home now is no seat this release ships (every seat rides the core).
-            const movedOutOfCore = was === CORE && kind === 'skills' && place.library.skills.includes(name);
+            // A seat is a library copy now too: one an entry other than the core carried is carried as a pick (a core seat is
+            // read back by `readInstalled`, gated by the same stamp).
+            const movedOutOfCore = (was === CORE && kind === 'skills' && place.library.skills.includes(name))
+                || (was !== CORE && kind === 'agents' && place.library.agents.includes(name));
             if (was && movedOutOfCore && on.has(was) && !home)
             {
                 if (!(kind === 'agents' && denied.has(name))) lines.push(`${line} ${name}`);
@@ -306,9 +306,6 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         else
         {
             row.entry = routes.skills ? homeOf(place, `${category}s`, name) : null;
-            // Every seat rides the core (2.1.0), and one nobody picked is denied: a new seat arrives on
-            // only when it is an always seat, adopted unless the user denied it - any other is offered,
-            // and taking it copies the skills it preloads.
             const adopted = category !== 'agent' || alwaysClosed.agents.includes(name);
             if (row.entry)
             {
@@ -316,6 +313,10 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
                 else if (off.has(row.entry) || (category === 'agent' && denied.has(name))) row.verdict = 'off';
                 else if (enabled.has(row.entry) && adopted) row.verdict = 'arrives';
             }
+            // A seat is a library copy, carried by no entry, so a new one is always offered (absence on disk is its off-state,
+            // and an update adopts none) - except where a deny row an older install left still names it: the update drops
+            // that row and the seat stays off.
+            else if (category === 'agent' && denied.has(name)) row.verdict = 'off';
         }
         if (from)
         {
@@ -328,6 +329,8 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
             // what says the install carries it.
             if (row.verdict === 'offer' && category === 'agent' && picked && picked.agent && picked.agent.has(from)) row.verdict = 'renamed';
             if ((category === 'agent' && denied.has(from)) || (category === 'hook' && hookOff(from))) row.wasOff = true;
+            // A seat denied under its old name by a row an older install left stays off under the new one.
+            if (category === 'agent' && denied.has(from) && row.verdict === 'offer') row.verdict = 'off';
         }
         if (row.verdict === 'offer')
         {
@@ -341,19 +344,13 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
 
 // What of a derived state this run may WRITE. A walk's selection answers both surfaces; a read-back
 // answers only what it found evidence of (`answered`), so a failed `claude plugin list` writes
-// nothing instead of switching every hook and seat off. The off-lists exist only on the routes
+// nothing instead of switching every hook off. The off-lists exist only on the routes
 // that load through a plugin: on the copy routes absence from disk is the off-state.
 // `wired` / `shipped`: the hook names this run copies and wires, and every hook the release ships -
 // the installer passes both on the hooks copy route.
 function writable(state, { routes = {}, answered = { hooks: true, agents: true }, wired = null, shipped = [] } = {})
 {
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
-    // Whenever the CORE loads - it carries every seat (2.1.0), so on the skills copy route with the
-    // core on, EVERY core seat is switched off: a picked seat is copied into .claude/agents, and the
-    // bare copy is a different listing entry from <core>:<seat>, so denying the namespaced name leaves
-    // the copy as the one listing (install-placement.test.js pins it).
-    const agents = Boolean(state && answered.agents && corePluginOn(routes));
-    const copied = agents && !routes.skills;
     // The hooks copy route with the core on: the core carries every hook, and a hook the project does
     // not wire has no twin to stand down for, so this name is its only off-switch. The list is the
     // complement of what the run WIRES, whatever the read-back answered - a pre-11b install never
@@ -364,8 +361,9 @@ function writable(state, { routes = {}, answered = { hooks: true, agents: true }
         // absence is off.
         hooksOff: besideCore ? shipped.filter((h) => !wired.includes(h)) : hooks && corePluginOn(routes) ? state.hooks.off : [],
         hooksAnswered: besideCore || hooks,
-        agentDeny: copied ? placement().plugins[CORE].agents.map((a) => denySpec(a, CORE)) : agents ? state.agents.deny : [],
-        agentAllow: agents && !copied ? state.agents.allow : [],
+        // No seat is denied or allowed by a row any more: the seats are copies (kept in the shape for the CLI's JSON).
+        agentDeny: [],
+        agentAllow: [],
     };
 }
 
@@ -407,7 +405,30 @@ function copiedSkills(skillsDir, overrides = {})
     return out;
 }
 
-function floor({ plugins = [], deny = [], skillsDir = null, overrides = {} } = {})
+// The project's own seat COPIES - `agentsDir`, the project's `.claude/agents`: a folder `<name>/<name>.md` (a link to one too) or
+// an older flat `<name>.md`, named for a seat the stack ships. Every one lists its description in the dispatcher's roster, read from
+// the copy's frontmatter. The core carries no seat, so these are the whole seat bill.
+function copiedSeats(agentsDir)
+{
+    if (!agentsDir) return [];
+    let graph = {};
+    try { graph = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'stack-graph.json'), 'utf8')).agents || {}; } catch { graph = {}; }
+    const out = [];
+    for (const name of Object.keys(graph).sort())
+    {
+        let text = null;
+        for (const file of [path.join(agentsDir, name, `${name}.md`), path.join(agentsDir, `${name}.md`)])
+        {
+            try { text = fs.readFileSync(file, 'utf8'); break; } catch { text = null; }
+        }
+        if (text === null) continue;
+        const fm = (/^---\r?\n([\s\S]*?)\r?\n---/.exec(text) || [])[1] || '';
+        out.push({ name, chars: ((/^description:\s*(.*)$/m.exec(fm) || [])[1] || '').length });
+    }
+    return out;
+}
+
+function floor({ plugins = [], deny = [], skillsDir = null, agentsDir = null, overrides = {} } = {})
 {
     const place = placement();
     const named = [...new Set(plugins.map((p) => String(p).split('@')[0]).filter(Boolean))];
@@ -421,6 +442,7 @@ function floor({ plugins = [], deny = [], skillsDir = null, overrides = {} } = {
     const skills = carried.skills.filter((s) => !manualOnly(s));
     const copies = copiedSkills(skillsDir, overrides);
     const seats = carried.agents.filter((a) => !denied.has(a));
+    const seatCopies = copiedSeats(agentsDir);
     const sum = (kind, names) => names.reduce((n, name) => n + descriptionChars(kind, name), 0);
     // `skipped`: the entries this count does not cover - the MCP entries, and any other plugin. The
     // caller counts them as any other plugin; a name dropped here without a word is how a floor
@@ -430,7 +452,7 @@ function floor({ plugins = [], deny = [], skillsDir = null, overrides = {} } = {
         entries,
         skipped: named.filter((n) => !place.plugins[n]).sort(),
         skills: { count: skills.length + copies.length, chars: sum('skill', skills) + copies.reduce((n, c) => n + c.chars, 0) },
-        agents: { count: seats.length, denied: carried.agents.filter((a) => denied.has(a)), chars: sum('agent', seats) },
+        agents: { count: seats.length + seatCopies.length, denied: carried.agents.filter((a) => denied.has(a)), chars: sum('agent', seats) + seatCopies.reduce((n, c) => n + c.chars, 0) },
     };
     out.chars = out.skills.chars + out.agents.chars;
     return out;
@@ -469,13 +491,16 @@ function main(argv)
             if (stored && stored.skillOverrides && typeof stored.skillOverrides === 'object' && !Array.isArray(stored.skillOverrides)) Object.assign(overrides, stored.skillOverrides);
         });
         const plugins = String(arg('--plugins') || '').split(',').map((p) => p.trim()).filter(Boolean);
-        console.log(JSON.stringify(floor({ plugins, deny, skillsDir: arg('--skills-dir') ? path.resolve(arg('--skills-dir')) : null, overrides }), null, 2));
+        const skillsDir = arg('--skills-dir') ? path.resolve(arg('--skills-dir')) : null;
+        // The seat copies sit beside the skill copies unless `--agents-dir` says otherwise.
+        const agentsDir = arg('--agents-dir') ? path.resolve(arg('--agents-dir')) : skillsDir ? path.join(path.dirname(skillsDir), 'agents') : null;
+        console.log(JSON.stringify(floor({ plugins, deny, skillsDir, agentsDir, overrides }), null, 2));
         return 0;
     }
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local] [--inherited <parent plan json> [--ignores <file>]]\n       derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local] [--inherited <parent plan json> [--ignores <file>]]\n       derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--agents-dir <.claude/agents>] [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
         return 1;
     }
     if (argv.includes('--delta'))

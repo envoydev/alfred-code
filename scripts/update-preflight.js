@@ -196,7 +196,7 @@ function changedHere(compareLines, { claudeDir, stampFile, settings, routes })
     const { stackSeat } = require('./derive-state.js');
     const denied = new Set((s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : []).map(stackSeat).filter(Boolean));
     const stamp = require('./install/stamp.js');
-    const seatsOnCore = stamp.readSeatsRoute(stampFile) !== 'copy';
+    const seatsOnCore = [null, 'plugin'].includes(stamp.readSeatsRoute(stampFile));
     const hooksRoute = stamp.readHooksRoute(stampFile);
     const hooksOnPlugin = hooksRoute ? hooksRoute === 'plugin' : Boolean(routes && routes.hooks);
     const { hookDisabled } = require('../stack/hooks/hook-prelude.js');

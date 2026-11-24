@@ -20,10 +20,12 @@
 // leaves the same empty folder - so the None is read back from this line alone. A stamp without it (1.x,
 // or 2.0.0 before it) is an unknown route, never a None.
 //
-// `seats-route` is `plugin` or `copy`: how THIS run delivered the seats (2.1.0: every seat rides the
-// core on the plugin route, each unpicked one denied; the copy route copies the picked ones). The next
-// `--installed-only` reads the seats back by it - off the core minus the denied on `plugin`, off the
-// disk on `copy` - and a stamp WITHOUT the line is from before 2.1.0, when the core carried only the
+// `seats-route` is `library`, `copy` or `plugin`: how THIS run delivered the seats. `library` (the plugin
+// routes since seats left the core) copies each picked seat into the store and links it, like a skill, with
+// no deny row; `copy` is the full copy route's own copies; `plugin` is what a stamp from a release whose core
+// carried every seat reads (each unpicked one denied). The next `--installed-only` reads the seats back by it -
+// off the disk on `library` and `copy`, off the core minus the denied on `plugin` (a stamp this release never
+// writes) - and a stamp WITHOUT the line is from before 2.1.0, when the core carried only the
 // always closure and every other seat was a library copy (derive-state readInstalled's `core`).
 //
 // `picked-skills` / `picked-agents` are the skills and seats this run installed. The next
@@ -506,14 +508,14 @@ function readHooksRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
-// The route the last run delivered the SEATS by - `plugin` or `copy` - else null: no stamp, or one from
+// The route the last run delivered the SEATS by - `library`, `copy` or `plugin` - else null: no stamp, or one from
 // before 2.1.0 (its core carried the always closure).
 function readSeatsRoute(file)
 {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
     const route = ((/^seats-route: (.*)$/m.exec(text) || [])[1] || '').trim();
-    return route === 'copy' || route === 'plugin' ? route : null;
+    return route === 'copy' || route === 'plugin' || route === 'library' ? route : null;
 }
 
 // The `stood-down` record - [] with no stamp or no line. An entry of any other shape is not ours and is

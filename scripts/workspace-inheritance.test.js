@@ -16,8 +16,8 @@ const { realLong } = require('./test-paths.js');
 
 const REPO = path.resolve(__dirname, '..');
 const CORE = 'alfred-code@envoydev';
-const SEAT_KEPT = 'Agent(alfred-code:code-quality-analyzer)';
-const SEAT_DENIED = 'Agent(alfred-code:security-auditor)';
+const SEAT_KEPT = 'code-quality-analyzer';
+const SEAT_ABSENT = 'security-auditor';
 const VARIABLE_KEY = 'ALFRED_CODE_MAXIMUM_RUN_AGENTS';
 const ROOT_SELECTION = 'skill javascript\nagent code-quality-analyzer\nrule alfred-security\nrule javascript-conventions\n';
 const CHILD_SELECTION = 'skill javascript\nskill typescript\nagent code-quality-analyzer\nrule alfred-security\nrule javascript-conventions\n';
@@ -185,11 +185,13 @@ test('a child whose .claude/skills is committed in git gets copies, never links'
     assert.ok(fs.lstatSync(path.join(skills, 'own')).isDirectory(), 'the committed own skill is intact');
 });
 
-test('seats: the root pick stays un-denied in the child and the rest are denied', POSIX_ONLY, () =>
+test('seats: a seat the child picked is a linked store copy, no seat is denied, and an unpicked seat has no copy', POSIX_ONLY, () =>
 {
-    const deny = denyOf('api');
-    assert.ok(!deny.includes(SEAT_KEPT), `${SEAT_KEPT} is not denied`);
-    assert.ok(deny.includes(SEAT_DENIED), `${SEAT_DENIED} is denied`);
+    const agents = path.join(at('api'), '.claude', 'agents');
+    assert.ok(fs.lstatSync(path.join(agents, SEAT_KEPT)).isSymbolicLink(), `${SEAT_KEPT} is a link`);
+    assert.ok(realLong(path.join(agents, SEAT_KEPT)).startsWith(path.join(realLong(at('api')), '.alfred', 'stack', 'agents')), 'into the child\'s own store - it picked the seat too');
+    assert.ok(!fs.existsSync(path.join(agents, SEAT_ABSENT)), `${SEAT_ABSENT} is not copied`);
+    for (const rel of ['.', 'api', 'web', 'tracked']) assert.deepStrictEqual(denyOf(rel).filter((d) => /^Agent\(/.test(d)), [], `${rel}: no seat deny`);
 });
 
 test('hooks: the core rides the user-scope row, so a child run never switches it off', POSIX_ONLY, () =>

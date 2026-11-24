@@ -202,11 +202,11 @@ for (const scope of ['project', 'user', 'local'])
         if (scope !== 'local')
         {
             // Mode v2 stage 2: v2.12.0 wrote the stack's rows into settings.json; the update moves them to settings.local.json,
-            // and settings.json keeps only the user's (the export wrote none). 3.11.0's scoring rename re-spells one seat deny.
-            const respell = (r) => r.replace(/^Agent\(alfred-code:output-scorer\)$/, 'Agent(alfred-code:output-scoring)');    // legacy
+            // and settings.json keeps only the user's (the export wrote none). the update drops the seat deny rows (a seat is a copy now).
+            const isSeatRow = (r) => /^Agent\(alfred-code:/.test(r);    // a seat is a copy now: the update takes the rows out, it does not move them
             assert.deepStrictEqual(after.shared || {}, {}, `a stack row stayed in settings.json: ${JSON.stringify(after.shared)}`);
             assert.strictEqual(after.local.env[OFF], before.shared.env[OFF], 'the off-list moved to settings.local.json');
-            assert.deepStrictEqual(after.local.permissions.deny, before.shared.permissions.deny.map(respell));
+            assert.deepStrictEqual(after.local.permissions.deny, before.shared.permissions.deny.filter((r) => !isSeatRow(r)));
             assert.deepStrictEqual([after.local.attribution, after.local.worktree], [before.shared.attribution, before.shared.worktree]);
             assert.ok(Object.hasOwn(after.ledger['settings.local.json'] || {}, OFF), 'the off-list\'s ledger row names settings.local.json');
         }
@@ -255,8 +255,8 @@ test('AC8: an update over a v2.12.0 export whose own .gitignore line .alfred/ ig
     for (const [key, onlyWhen] of RETIRED) if (onlyWhen == null || raw[key] === onlyWhen) delete before.env[key];
     // and the modes: a stack seed of one is never carried into the mode file (it equals the default the loader reads)
     for (const key of MODES) delete before.env[key];
-    // and 3.11.0's scoring rename: the seat deny re-spelled in place
-    before.permissions.deny = before.permissions.deny.map((r) => r.replace(/^Agent\(alfred-code:output-scorer\)$/, 'Agent(alfred-code:output-scoring)'));    // legacy
+    // and the seat deny rows: a seat is a copy now, so the update takes them out
+    before.permissions.deny = before.permissions.deny.filter((r) => !/^Agent\(alfred-code:/.test(r));
     // the move writes the rows in its own order, so the top-level and env keys are compared in order of name; the layout byte for byte
     const byName = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
     const sorted = (o) => byName({ ...o, env: byName(o.env) });

@@ -103,7 +103,7 @@ function coreEntry(options = {})
         },
         commands,
         skills: ['./setup-plugin/skills/alfred-code'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
-        agents: plug.agents.map(a => `./stack/agents/${a}.md`),
+        ...(plug.agents.length ? { agents: plug.agents.map(a => `./stack/agents/${a}.md`) } : {}),
         // The layer-table guard used to be auto-discovered from setup-plugin/hooks/hooks.json. At
         // the root it is not, so it is declared inline - the shape Phase 2 proved for the
         // stack hooks, which follow it in the same block.

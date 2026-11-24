@@ -7,6 +7,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { buildEntries, coreEntry, hooksBlock, parseHookWirings, mergeHooks, MANIFEST } = require('./build-marketplace.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
+const { placement } = require('./plugin-placement.js');
 
 const SCRIPT = path.join(__dirname, 'build-marketplace.js');
 const run = (args, opts = {}) => execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts });
@@ -38,7 +39,7 @@ test('the core entry carries the commands, the router skill, the inline hook, an
     assert.strictEqual(core.commands.length, setup.commands.length, 'every guided-walk command ships');
     for (const c of core.commands) assert.ok(fs.existsSync(path.join(__dirname, '..', c)), `command path: ${c}`);
     assert.ok(core.skills.includes('./setup-plugin/skills/alfred-code'), 'the router skill ships');
-    assert.ok(core.agents.length > 0, 'the core carries its placed agents');
+    assert.strictEqual(core.agents, undefined, 'the core carries no seat');
     const wired = JSON.stringify(core.hooks);
     assert.ok(wired.includes('setup-plugin/hooks/guard-layer-table.js'), 'the layer-table guard is declared inline');
     assert.ok(wired.includes('${CLAUDE_PLUGIN_ROOT}'), 'and resolved through the plugin root');
@@ -49,13 +50,11 @@ test('the core entry carries the commands, the router skill, the inline hook, an
     assert.strictEqual(setup.dependencies, undefined, 'and plugin.json keeps none for a generator to carry back in');
 });
 
-test('the core is the only generated entry, listing skill FOLDERS and agent FILES that exist', () => {
+test('the core is the only generated entry, listing skill FOLDERS that exist', () => {
     assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every skill is library, listed by no entry');
     const core = byName['alfred-code'];
     assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code'], '2.1.0: the router is the one skill the core carries - every stack skill is a project copy');
-    assert.strictEqual(core.agents.length, 45, 'every seat rides the core');
-    assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md') && core.agents.includes('./stack/agents/aspnet-implementer.md'));
-    for (const p of [...core.skills, ...core.agents])
+    for (const p of core.skills)
         assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} must exist in the tree`);
 });
 
@@ -301,7 +300,7 @@ test('the README trust surface counts what the core entry carries', () =>
     m[3] = [...String(m[3] || '').matchAll(/`([^`]+)`/g)].map((x) => x[1]).join(); // the skills that ship a script, as a list
     assert.deepStrictEqual(core.commands, ['./setup-plugin/commands/'], 'the core entry lists the commands folder');
     const commandCount = require('./lint-skills.js').commandFiles(path.join(__dirname, '..', 'setup-plugin', 'commands')).length;
-    assert.deepStrictEqual(m.slice(1), [word(commandCount), word(core.skills.length), scripted.join(), word(core.agents.length),
+    assert.deepStrictEqual(m.slice(1), [word(commandCount), word(core.skills.length), scripted.join(), word((core.agents || []).length),
         word(references), word(files.size), word(own), word(files.size - own)]);
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
     if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');
@@ -339,4 +338,11 @@ test('O2: the filesystem read row names read_media_file', () => {
   assert.ok(re.test('mcp__x__read_media_file'), 'read_media_file'); // mcp-fixture
   assert.ok(re.test('mcp__x__read_text_file'), 'read_text_file still'); // mcp-fixture
   assert.ok(!re.test('mcp__x__read_media_file_x'), 'anchored'); // mcp-fixture
+});
+
+test('the core entry ships no agents', () => {
+    assert.ok(!('agents' in byName['alfred-code']), 'no agents key: every seat is a project copy');
+    const root = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'plugin.json'), 'utf8'));
+    assert.ok(!('agents' in root), 'the root manifest lists none either');
+    assert.deepStrictEqual(placement().library.agents, Object.keys(require('../meta/stack-graph.json').agents).sort(), 'every seat is library');
 });

@@ -556,10 +556,9 @@ test('seed install + re-run (full copy route): copies hold no server and bare pr
     assert.deepStrictEqual(touched, [], `a re-run rewrote unchanged copies:\n${outs[1]}`);
 });
 
-// 2.1.0: every seat rides the core and every skill is a copy - a fresh selection copies its skills,
-// copies no seat, and denies each seat it did not pick, so a seat whose preloads were not copied never
-// reaches a dispatch; the stamp records how the seats came (`seats-route: plugin`).
-test('seed install (plugin route): the skills are copied, no seat is, and every seat the selection did not pick is denied', POSIX_ONLY, () =>
+// Every skill and every seat is a copy - a fresh selection copies its skills and its seats, denies none, so an unpicked
+// seat has no copy and no row; the stamp records how the seats came (`seats-route: library`).
+test('seed install (plugin route): the skills and the picked seat are copies, and no seat is denied', POSIX_ONLY, () =>
 {
     const { computeClosure } = require('./stack-select.js');
     const graph = require('../meta/stack-graph.json');
@@ -577,14 +576,12 @@ test('seed install (plugin route): the skills are copied, no seat is, and every 
     // Burn-down Task 5's finding: the install adopts the locked always-on skills, as its first update would.
     const always = require('../meta/recommendations.json').always.skills;
     assert.deepStrictEqual(result.skills, [...new Set([...closed.skills, ...always])].sort(), 'every picked skill, the seat\'s preloads and the always-on set included, is a copy');
-    assert.deepStrictEqual(result.agents, [], 'no seat is copied - the core carries them');
-    const seats = Object.keys(graph.agents);
-    const denied = result.deny.filter((d) => d.startsWith('Agent('));
-    assert.deepStrictEqual(denied.sort(), seats.filter((a) => a !== 'angular-test-resolver').map((a) => `Agent(alfred-code:${a})`).sort(), 'a deny per seat not picked, none for the one picked');
-    assert.match(result.stamp, /^seats-route: plugin$/m);
-    assert.match(result.stamp, /^picked-agents: angular-test-resolver@alfred-code$/m);
+    assert.deepStrictEqual(result.agents, ['angular-test-resolver'], 'the picked seat is a copy, and no other seat is');
+    assert.deepStrictEqual(result.deny.filter((d) => d.startsWith('Agent(')), [], 'no seat is denied');
+    assert.match(result.stamp, /^seats-route: library$/m);
+    assert.match(result.stamp, /^picked-agents: angular-test-resolver$/m);
     assert.match(result.stamp, /^picked-skills: (?!.*@)/m, 'a skill has no plugin home - plain names');
-    assert.match(result.stamp, /^library-agents: $/m);
+    assert.match(result.stamp, /^library-agents: angular-test-resolver=[0-9a-f]{64}$/m);
 });
 
 // --- R10 THE LEDGER -----------------------------------------------------------------------------

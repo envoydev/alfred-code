@@ -109,7 +109,7 @@ test('an update renames the four variables in every file that holds them', POSIX
     for (const t of after.texts) assert.doesNotMatch(t, OLD, t);
 });
 
-test('skillOverrides and the seat deny follow', POSIX_ONLY, () =>
+test('skillOverrides follow, and the seat deny a renamed seat left goes', POSIX_ONLY, () =>
 {
     const { steps, outs } = seedRun(['install', 'update'], SEL, {
         plugins: PLUGINS,
@@ -134,8 +134,7 @@ test('skillOverrides and the seat deny follow', POSIX_ONLY, () =>
     assert.strictEqual(s.skillOverrides['mode-output-scoring'], 'off', outs[1]);
     assert.strictEqual(s.skillOverrides['markdown-style'], 'off');
     assert.ok(!Object.hasOwn(s.skillOverrides, 'mode-output-scorer'));   // legacy
-    assert.ok(local.permissions.deny.includes('Agent(alfred-code:output-scoring)'), JSON.stringify(local.permissions.deny));
-    assert.ok(!local.permissions.deny.some((r) => /output-scorer\)/.test(r)), JSON.stringify(local.permissions.deny));   // legacy
+    for (const file of [s, local]) assert.ok(!((file.permissions || {}).deny || []).some((r) => /^Agent\(alfred-code:output-scor/.test(r)), JSON.stringify(file.permissions));   // legacy and new spelling: no seat row
 });
 
 test('a local-scope update over a tracked .variables leaves the file alone', POSIX_ONLY, () =>

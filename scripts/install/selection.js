@@ -207,9 +207,9 @@ function adoptHooks({ lines, catalog = [], shippedBefore = [], skip = [], log = 
 // The always-on baseline, with NO drop exception - the set is locked. An install that carries no rule
 // line AT ALL stays without one. The always skills are
 // adopted into any install that carries skills or rules (2.1.0: no plugin carries them, so a copy is
-// the only way an install has them). An always SEAT rides the core and its off-switch is the deny,
-// so it is adopted only while the core loads it (`coreOn`) and only when `deny` does not name it -
-// on the full copy route absence on disk is its off-state, and adopting there would undo a drop. `label` heads each
+// the only way an install has them). An always SEAT is adopted only on a stamp whose core carried it (`coreOn`: a
+// plugin-route stamp, or one from before 2.1.0) and only when `deny` does not name it - on a library stamp, and on
+// the full copy route, absence on disk is its off-state, and adopting there would undo a drop. `label` heads each
 // log line: `installed-only` on the update's read-back, `selection` on an install's --selection.
 function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = false, label = 'installed-only' })
 {
@@ -235,7 +235,8 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
-// carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
+// carried when the last install ran (derive-state readInstalled's `core`); `library` and `copy` stamps
+// carried no seat, so their seats are the ones on disk. `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
 function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, keptUnpicked = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
     stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
@@ -299,7 +300,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const picks = ours.length && stampPicked
         ? new Set(['skill', 'agent'].flatMap((k) => (stampPicked[`${k}s`] || []).map((e) => `${k} ${splitPick(e).name}`)))
         : null;
-    const core = seatsRoute === 'plugin' ? 'current' : seatsRoute === 'copy' ? 'none' : 'former';
+    const core = seatsRoute === 'plugin' ? 'current' : seatsRoute === 'copy' || seatsRoute === 'library' ? 'none' : 'former';
     // The same holds for a switch onto the skills copy route with the core still on: the seats the core
     // carried last run (2.1.0 - none of them on disk) are what the project runs, and are copied now.
     const copying = leaving || (!routes.skills && corePluginOn(routes) && seatsRoute === 'plugin');
@@ -362,7 +363,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     {
         const carried = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
         closeFrom.push(...carried);
-        log(`installed-only: the stamp predates 2.1.0 - its core is read as the always closure it carried: those skills become copies, and every seat this install never ran is denied${carried.length ? ` (${carried.length} carried items recorded as picked)` : ''}`);
+        log(`installed-only: the stamp predates 2.1.0 - its core is read as the always closure it carried: those skills become copies, and the seats it ran become copies too - no seat is denied${carried.length ? ` (${carried.length} carried items recorded as picked)` : ''}`);
     }
 
     // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
@@ -420,7 +421,8 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     if (!(routes.hooks && names.includes(BRAND.core)))
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, skip: offHooks, log });
     const before = new Set(lines);
-    lines = adoptAlways({ lines, always, log, deny, coreOn: corePluginOn(routes) });
+    // A library or copy stamp's seats are the disk's word: a seat that is not there was dropped, so no always seat is adopted back.
+    lines = adoptAlways({ lines, always, log, deny, coreOn: corePluginOn(routes) && (seatsRoute === 'plugin' || seatsRoute === null) });
     for (const line of lines)
         if ((/^(rule|mcp|plugin|hook) /.test(line) || (/^(skill|agent) /.test(line) && !before.has(line))) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this

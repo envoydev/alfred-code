@@ -1241,8 +1241,10 @@ function excludeGlobs(paths, platform = process.platform)
 // Workspace stage 3: the `skill` and `agent` lines each joined member below `root` picked itself (its stamp's `own-picks`),
 // walked `maxDepth` folders deep - an `agent` line only from a member on the root's seats route (ruling 7). A member whose
 // stamp holds no such line adds nothing and is named; a stamped folder whose chain does not end at `root` is passed over.
-function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
+function memberPicks(root, { seatsRoute = 'library', maxDepth = 8 } = {})
 {
+    // A `plugin` stamp (seats the core carried) reads as the `library` route it moves to on its next update.
+    const routeOf = (route) => (route === 'plugin' ? 'library' : route);
     const top = realOf(root);
     const lines = new Set();
     const notes = [];
@@ -1253,7 +1255,7 @@ function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
         const file = path.join(dir, '.claude', brand.BRAND.stamp);
         const picks = stamp.readOwnPicks(file);
         if (!picks) { notes.push(`member ${relPosix(top, dir)} not counted: its stamp holds no own-picks line`); return; }
-        for (const l of picks) if (/^(skill|rule) /.test(l) || (l.startsWith('agent ') && stamp.readSeatsRoute(file) === seatsRoute)) lines.add(l);
+        for (const l of picks) if (/^(skill|rule) /.test(l) || (l.startsWith('agent ') && routeOf(stamp.readSeatsRoute(file)) === routeOf(seatsRoute))) lines.add(l);
     };
     const walk = (dir, depth) =>
     {

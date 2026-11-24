@@ -3,10 +3,13 @@
 // hand-written, so `stack/` stays the one home per piece and a new skill or seat lands by the same
 // rule as every other.
 //
-// The rule, whole (2.1.0):
-//   1. Every SEAT rides the CORE plugin, enabled in every install. A seat the selection did not pick
-//      is switched off per project by `permissions.deny: ["Agent(alfred-code:<seat>)"]` - spike S3
-//      measured the seat leave the listing and its description leave the bill (-434 tokens).
+// The rule, whole (seats left the core after 3.17):
+//   1. Every SEAT is LIBRARY: a folder the installer copies into the project's store per pick and links
+//      from `.claude/agents`, like a skill. The core carries no seat, so a seat the selection did not
+//      pick has no copy and no listing, and the installer writes no `Agent(...)` deny row for one.
+//      Through 3.17 every seat rode the core and an unpicked one was switched off by
+//      `permissions.deny: ["Agent(alfred-code:<seat>)"]` (spike S3: -434 tokens); `formerSeats` below is
+//      that placement, read only to bring such an install across.
 //   2. Every SKILL is LIBRARY: shipped in this repo, listed by no marketplace entry, copied into a
 //      project per pick by the installer.
 //
@@ -55,9 +58,17 @@ function placement(options = {})
     const graph = options.graph || readJson('meta/stack-graph.json');
     const recs = options.recs || readJson('meta/recommendations.json');
     const stacks = Object.keys(recs.stacks);
-    const plugins = { [CORE]: { skills: [], agents: Object.keys(graph.agents).sort(), dependencies: [] } };
-    const library = { skills: Object.keys(graph.skills).sort(), agents: [] };
+    const plugins = { [CORE]: { skills: [], agents: [], dependencies: [] } };
+    const library = { skills: Object.keys(graph.skills).sort(), agents: Object.keys(graph.agents).sort() };
     return { plugins, library, stacks };
+}
+
+// Every seat the release ships. Before 3.18 the core carried all of them (the stamp's `seats-route: plugin`), which is how a
+// plugin-route install is read back: the seats that ran are these minus the denied.
+function formerSeats(options = {})
+{
+    const graph = options.graph || readJson('meta/stack-graph.json');
+    return Object.keys(graph.agents).sort();
 }
 
 // The current always closure, a superset of what 2.0.x carried (harmless while the always skills stay
@@ -101,4 +112,4 @@ function readRetiredPlugins(repo = REPO)
     catch { return []; }
 }
 
-module.exports = { placement, formerCore, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredPlugins, CORE, LIBRARY };
+module.exports = { placement, formerCore, formerSeats, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredPlugins, CORE, LIBRARY };

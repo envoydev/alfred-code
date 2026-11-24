@@ -409,26 +409,25 @@ test('root: a member that drops its pick drops the item; a root that picks it it
     assert.match(lineOf(steps[3].stamp, 'picked-skills'), /(^|,)devops(,|$)/);
 });
 
-test('root: a seat a member picked leaves the root\'s deny rows; a hand-written row for it stays and is named', POSIX_ONLY, () =>
+test('root: a seat a member picked is held in the root\'s store and linked; a deny row for it, hand-written or not, goes', POSIX_ONLY, () =>
 {
-    const deny = (repo) => (JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).permissions || {}).deny || [];
+    const rows = (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).permissions || {}).deny || []).filter((r) => /^Agent\(/.test(r));
     const ROW = 'Agent(alfred-code:evidence-gatherer)';
     const { outs, steps } = seedRun(['install', 'update', 'update'], ROOT_ONLY, {
         args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']],
         each: (repo, i) =>
         {
-            const now = deny(repo);
             if (i === 0) member(repo, 'api', 'agent/evidence-gatherer');
-            if (i === 1) { const f = path.join(repo, '.claude', 'settings.local.json'); const d = JSON.parse(fs.readFileSync(f, 'utf8')); d.permissions.deny.push(ROW); fs.writeFileSync(f, JSON.stringify(d, null, 2)); }
-            return now;
+            if (i === 1) { const f = path.join(repo, '.claude', 'settings.local.json'); const d = JSON.parse(fs.readFileSync(f, 'utf8')); d.permissions = { ...d.permissions, deny: [...(d.permissions?.deny || []), ROW] }; fs.writeFileSync(f, JSON.stringify(d, null, 2)); }
+            return { rows: rows(repo), held: fs.existsSync(store(repo, 'agents', 'evidence-gatherer', 'evidence-gatherer.md')), line: lineOf(fs.readFileSync(stampOf(repo), 'utf8'), 'member-picks') };
         },
     });
-    assert.ok(steps[0].includes(ROW), 'denied while no member picks it');
-    assert.ok(!steps[1].includes(ROW), outs[1]);
-    assert.ok(steps[1].some((r) => /^Agent\(alfred-code:/.test(r)), 'the root still denies the seats nobody picked');
+    assert.deepStrictEqual(steps[0].rows, [], 'no seat is denied');
+    assert.strictEqual(steps[1].held, true, outs[1]);
+    assert.strictEqual(steps[1].line, 'agent/evidence-gatherer');
     assert.match(outs[1], /kept for members below: evidence-gatherer/);
-    assert.ok(steps[2].includes(ROW), 'the user\'s own row stays');
-    assert.match(outs[2], /seat evidence-gatherer stays off here: your own deny row/);
+    assert.deepStrictEqual(steps[2].rows, [], 'the row put back by hand names a shipped seat: the update takes it out');
+    assert.match(outs[2], /settings\.local\.json: agent deny rows removed .*evidence-gatherer/);
 });
 
 test('root: a root whose .claude/skills git sees holds no member-only skill and says so', POSIX_ONLY, () =>
@@ -1143,4 +1142,136 @@ test('canary: not written on a run whose rules stayed in .claude, and an untouch
         inspect: (repo) => ({ canary: fs.existsSync(claude(repo, 'rules', 'alfred-rules.md')), row: (stamp.readLedger(stampOf(repo)).files || {})['rules/alfred-rules.md'] }),
     });
     assert.deepStrictEqual(result, { canary: false, row: undefined });
+});
+
+
+// --- Seats leave the core: every picked seat is a store folder and a link, and no Agent deny row is written. ---
+const SEAT_PICKS = 'skill markdown-style\nagent evidence-gatherer\nagent security-auditor\n';
+const CORE_LISTING = JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.17.0', scope: 'local', enabled: true }]);
+const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
+const jsonOf = (repo, name) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', name), 'utf8')); } catch { return null; } };
+const denyOf = (repo, name) => (((jsonOf(repo, name) || {}).permissions || {}).deny || []);
+const agentDenies = (repo) => ['settings.json', 'settings.local.json'].flatMap((name) => denyOf(repo, name).filter((d) => d.startsWith('Agent(')));
+const stampText = (repo) => fs.readFileSync(stampOf(repo), 'utf8').replace(/^(#.*|action: .*|installed: .*|installed-ms: .*|sha: .*)$/gm, '');
+const stampLine = (repo, key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(fs.readFileSync(stampOf(repo), 'utf8')) || [])[1] || '');
+const seatState = (repo, name) => ({
+    link: lstat(claude(repo, 'agents', name)) && (lstat(claude(repo, 'agents', name)).isSymbolicLink() ? fs.readlinkSync(claude(repo, 'agents', name)) : 'real'),
+    stored: fs.existsSync(store(repo, 'agents', `${name}/${name}.md`)),
+    flat: lstat(claude(repo, 'agents', `${name}.md`)) && fs.readFileSync(claude(repo, 'agents', `${name}.md`), 'utf8'),
+});
+
+test('a fresh install writes no Agent deny', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', SEAT_PICKS, {
+        args: ['--scope', 'local'],
+        inspect: (repo) => ({ denies: agentDenies(repo), route: stamp.readSeatsRoute(stampOf(repo)), picked: stampLine(repo, 'picked-agents'),
+            seats: ['evidence-gatherer', 'security-auditor', 'wpf-verifier'].map((n) => seatState(repo, n)) }),
+    });
+    assert.deepStrictEqual(result.denies, [], 'no seat is denied: an unpicked seat has no copy');
+    assert.strictEqual(result.route, 'library');
+    assert.deepStrictEqual(result.picked.split(',').sort(), ['evidence-gatherer', 'security-auditor'], 'bare names, no @alfred-code home');
+    assert.deepStrictEqual(result.seats.map((s) => [s.link, s.stored]), [
+        ['../../.alfred/stack/agents/evidence-gatherer', true], ['../../.alfred/stack/agents/security-auditor', true], [null, false]]);
+});
+
+test('readSeatsRoute reads library back, and a second update over a library stamp changes nothing', POSIX_ONLY, () =>
+{
+    const { steps } = seedRun(['install', 'update', 'update'], SEAT_PICKS, {
+        args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']], plugins: CORE_LISTING,
+        each: (repo) => ({ route: stamp.readSeatsRoute(stampOf(repo)), stamp: stampText(repo), tree: tree(repo), local: jsonOf(repo, 'settings.local.json') }),
+    });
+    const [first, again, third] = steps;
+    assert.deepStrictEqual([first.route, again.route, third.route], ['library', 'library', 'library']);
+    assert.deepStrictEqual([third.stamp, third.tree, third.local], [again.stamp, again.tree, again.local], 'the second update changes nothing');
+    assert.deepStrictEqual([again.stamp, again.tree], [first.stamp, first.tree], 'and the first one kept what the install wrote');
+});
+
+// A copy-route install as 3.17.0 wrote it: each picked seat a flat `.claude/agents/<name>.md`, recorded in the ledger at its hash.
+const planFlatCopyInstall = (repo, edited) =>
+{
+    const links = stamp.readLinks(stampOf(repo)).filter((e) => !e.path.startsWith('agents/'));
+    for (const n of ['evidence-gatherer', 'security-auditor'])
+    {
+        const text = fs.readFileSync(store(repo, 'agents', `${n}/${n}.md`), 'utf8');
+        fs.rmSync(store(repo, 'agents', n), { recursive: true });
+        fs.unlinkSync(claude(repo, 'agents', n));
+        fs.writeFileSync(claude(repo, 'agents', `${n}.md`), n === edited ? `${text}\nMY EDIT\n` : text);
+    }
+    stamp.markLine(stampOf(repo), 'links', stamp.linksValue(links));
+};
+
+test('an update from a copy-route stamp moves each copy at its ledger hash into the store and keeps an edited copy as the user\'s', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SEAT_PICKS, {
+        env: [COPY, {}, {}], args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']], plugins: CORE_LISTING,
+        each: (repo, i) =>
+        {
+            if (i === 0) { planFlatCopyInstall(repo, 'security-auditor'); return null; }
+            return { route: stamp.readSeatsRoute(stampOf(repo)), unedited: seatState(repo, 'evidence-gatherer'), edited: seatState(repo, 'security-auditor'), tree: tree(repo) };
+        },
+    });
+    const [, first, again] = steps;
+    assert.strictEqual(first.route, 'library');
+    assert.deepStrictEqual([first.unedited.link, first.unedited.stored, first.unedited.flat], ['../../.alfred/stack/agents/evidence-gatherer', true, null], 'the unedited copy moved into the store as a folder and is linked');
+    assert.match(first.edited.flat, /MY EDIT/, 'the edited copy stays the user\'s, untouched');
+    assert.strictEqual(first.edited.link, null, 'and nothing is linked over it');
+    assert.match(outs[1], /agent moved to a folder: evidence-gatherer$/m);
+    assert.ok(!/agent moved to a folder: security-auditor/.test(outs[1]), outs[1]);
+    assert.deepStrictEqual(again.tree, first.tree, 'a second update changes nothing');
+});
+
+// A plugin-route install as 3.17.0 wrote it: the core carried every seat, one seat picked, another switched off by a deny row.
+const planPluginInstall = (repo, { deny = [], ledgerDeny = [], scope = 'local' } = {}) =>
+{
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.writeFileSync(stampOf(repo), ['version: 3.17.0', 'sha: b5164e63', `scope: ${scope}`, 'hooks-route: plugin', 'seats-route: plugin',
+        'picked-skills: ', 'picked-agents: wpf-implementer@alfred-code', 'library-skills: ', 'library-agents: ', 'library-rules: ',
+        ...(ledgerDeny.length ? [`managed-deny: ${ledgerDeny.map((r) => `settings.local.json:${r}`).join(',')}`] : []), ''].join('\n'));
+    if (scope === 'local') fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ permissions: { deny } }, null, 2)}\n`);
+};
+
+test('an update from a plugin-route stamp keeps every seat that ran and writes it as a linked folder', POSIX_ONLY, () =>
+{
+    const rows = ['Agent(alfred-code:aspnet-verifier)'];
+    const { out, result } = seedRun('update', '', {
+        args: ['--installed-only', '--scope', 'local'], plugins: CORE_LISTING, prepare: (repo) => planPluginInstall(repo, { deny: [...rows, 'Bash(rm -rf:*)'], ledgerDeny: rows }),
+        inspect: (repo) => ({ ran: seatState(repo, 'wpf-implementer'), denied: seatState(repo, 'aspnet-verifier'), denies: agentDenies(repo), other: denyOf(repo, 'settings.local.json').filter((d) => !d.startsWith('Agent(')),
+            route: stamp.readSeatsRoute(stampOf(repo)), picked: stampLine(repo, 'picked-agents') }),
+    });
+    assert.deepStrictEqual([result.ran.link, result.ran.stored], ['../../.alfred/stack/agents/wpf-implementer', true], out);
+    assert.deepStrictEqual([result.denied.link, result.denied.stored, result.denied.flat], [null, false, null], 'the seat the user switched off is absent');
+    assert.deepStrictEqual(result.denies, [], 'no Agent deny is left');
+    assert.ok(result.other.includes('Bash(rm -rf:*)'), 'the user\'s other rows stay');
+    assert.strictEqual(result.route, 'library');
+    assert.ok(result.picked.split(',').includes('wpf-implementer') && !result.picked.includes('aspnet-verifier'), `picks = the seats that ran: ${result.picked}`);
+    assert.match(out, /settings\.local\.json: agent deny rows removed[^\n]*aspnet-verifier/);
+});
+
+test('a deny row naming no shipped or retired seat stays', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('update', '', {
+        args: ['--installed-only', '--scope', 'local'], plugins: CORE_LISTING,
+        prepare: (repo) => planPluginInstall(repo, { deny: ['Agent(alfred-code:my-own)', 'Agent(alfred-code:aspnet-verifier)', 'Agent(alfred-code:angular-verifier)', 'Agent(other-plugin:aspnet-verifier)'], ledgerDeny: ['Agent(alfred-code:aspnet-verifier)'] }),
+        inspect: (repo) => agentDenies(repo),
+    });
+    assert.deepStrictEqual(result.sort(), ['Agent(alfred-code:my-own)', 'Agent(other-plugin:aspnet-verifier)'], 'a shipped and a retired seat\'s rows go, ledgered or not; another seat\'s and another plugin\'s stay');
+});
+
+test('a user\'s own flat seat file the stamp does not record is kept by an update, not pruned as carried by a plugin', POSIX_ONLY, () =>
+{
+    const OWN = '---\nname: aspnet-verifier\ndescription: mine\n---\nMY OWN SEAT\n';
+    const { out, result } = seedRun('update', '', {
+        args: ['--installed-only', '--scope', 'project'], plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.17.0', scope: 'project', enabled: true }]),
+        prepare: (repo) =>
+        {
+            planPluginInstall(repo, { scope: 'project' });
+            fs.mkdirSync(claude(repo, 'agents'), { recursive: true });
+            fs.writeFileSync(claude(repo, 'agents', 'aspnet-verifier.md'), OWN);
+        },
+        inspect: (repo) => ({ mine: readText(claude(repo, 'agents', 'aspnet-verifier.md')), ran: fs.existsSync(claude(repo, 'agents', 'wpf-implementer', 'wpf-implementer.md')) }),
+    });
+    assert.strictEqual(result.mine, OWN, `the user's file stays on disk:\n${out}`);
+    assert.ok(!/agent pruned[^\n]*aspnet-verifier/.test(out), out);
+    assert.ok(result.ran, 'the seat that ran is copied beside it');
 });

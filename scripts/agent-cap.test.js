@@ -380,7 +380,7 @@ const { spawnSync, spawn } = require('node:child_process');
 const GUARD = path.join(HOOKS, 'guard-unapproved-dispatch.js');
 const project = () => fs.mkdtempSync(path.join(TMP, 'hook-'));
 const hookEnv = (root, extra = {}) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, ...extra });
-const agentPayload = (root, { sid = 's1', id = 'toolu_x', seat = 'alfred-code:aspnet-verifier', agent, agentType = 'Explore', extra = {} } = {}) => ({
+const agentPayload = (root, { sid = 's1', id = 'toolu_x', seat = 'aspnet-verifier', agent, agentType = 'Explore', extra = {} } = {}) => ({
     hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_use_id: id, session_id: sid, cwd: root,
     tool_input: { subagent_type: seat, prompt: 'review the change', description: 'review' },
     ...(agent ? { agent_id: agent, agent_type: agentType } : {}), ...extra,
@@ -445,7 +445,7 @@ test('8 dispatches at once at cap 5 on an empty registry: 5 pass, 3 are denied (
 test('a dispatch another rule denies holds no slot (AC5)', () =>
 {
     const root = project();
-    const r = callHook(GUARD, root, agentPayload(root, { seat: 'alfred-code:aspnet-implementer' }));
+    const r = callHook(GUARD, root, agentPayload(root, { seat: 'aspnet-implementer' }));
     assert.strictEqual(r.status, 2);
     assert.match(r.stderr, /without an approval gate/);
     assert.deepStrictEqual(pendings(regOf(root)), []);
@@ -518,7 +518,7 @@ test('SubagentStart and SubagentStop through the guard record the agent (AC3)', 
 
 test('nested: a seat\'s own dispatch is capped like the main session\'s (AC14)', () =>
 {
-    const seatCall = (root) => agentPayload(root, { seat: 'alfred-code:evidence-gatherer', agent: 'seat1', agentType: 'alfred-code:issue-diagnoser-ci' });
+    const seatCall = (root) => agentPayload(root, { seat: 'evidence-gatherer', agent: 'seat1', agentType: 'issue-diagnoser-ci' });
     const two = project();
     runningFiles(regOf(two), ['alfred-code:issue-diagnoser-ci']);
     fs.renameSync(path.join(regOf(two).dir, 'AGENT-CAP-s1-R-run0'), path.join(regOf(two).dir, 'AGENT-CAP-s1-R-seat1'));
@@ -600,7 +600,7 @@ test('without agent-cap.js beside them the hooks run unchanged (AC16)', () =>
     const CRASH = /Cannot find module|TypeError|ReferenceError|SyntaxError/;
     const root = project();
     const guard = path.join(dir, 'guard-unapproved-dispatch.js');
-    const denied = callHook(guard, root, agentPayload(root, { seat: 'alfred-code:aspnet-implementer' }));
+    const denied = callHook(guard, root, agentPayload(root, { seat: 'aspnet-implementer' }));
     assert.strictEqual(denied.status, 2);
     assert.match(denied.stderr, /without an approval gate/);
     const other = callHook(guard, root, agentPayload(root));

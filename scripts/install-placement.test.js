@@ -1,12 +1,11 @@
 'use strict';
-// 2.1.0 - EVERY SKILL A PROJECT COPY, EVERY SEAT ON THE CORE, end to end through the Node seed.
+// EVERY SKILL AND EVERY SEAT A PROJECT COPY, end to end through the Node seed.
 //
-// The flip moves two things at once: the always skills leave the core for `.claude/skills`, and the
-// stack seats leave `.claude/agents` for the core, each one the project did not pick denied as
-// `Agent(alfred-code:<seat>)`. The unit tests hold each layer; these hold the seed to the migration a
-// real 2.0.0 install takes on its first update (the BLOCKER: read as 'every seat the core carries minus
-// the denied', all 44 seats came back picked and the always skills were carried by nothing), to a
-// re-run that changes nothing, and to the two routes a seat can move between.
+// 2.1.0 moved the always skills off the core into `.claude/skills`; seats followed (the core carries none, and no
+// `Agent(alfred-code:<seat>)` row is written - an unpicked seat has no copy). The unit tests hold each layer; these hold
+// the seed to the migration a real 2.0.0 install takes on its first update (the BLOCKER: read as 'every seat the core
+// carries minus the denied', all 44 seats came back picked and the always skills were carried by nothing), to a re-run
+// that changes nothing, and to the two routes a seat can move between.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -77,29 +76,30 @@ function v200(repo)
     }, null, 2)}\n`);
 }
 
-test('update over a 2.0.0 install (the 2.1.0 BLOCKER): picks kept, always skills copied, seat copies pruned, every unpicked seat denied - and a re-run changes nothing', POSIX_ONLY, () =>
+test('update over a 2.0.0 install (the 2.1.0 BLOCKER): picks kept, always skills and seats copied, a hand-tuned seat kept, no seat denied - and a re-run changes nothing', POSIX_ONLY, () =>
 {
     const former = formerCore();
     const { steps, outs } = seedRun(['update', 'update'], '', { plugins: LISTING, args: ['--installed-only'], prepare: v200, each: read });
     const [first, second] = steps;
     for (const s of [...former.skills, 'csharp']) assert.ok(first.skills.includes(s), `${s} is a copy now:\n${outs[0]}`);
-    assert.ok(!first.agents.includes('aspnet-implementer.md'), 'the library seat copy is pruned - the core carries the seat');
-    assert.ok(first.agents.includes('aspnet-verifier.md'), 'the seat copy edited by hand is kept');
-    assert.match(outs[0], /agent kept: aspnet-verifier\.md - edited in the project/);
-    const want = SEATS.filter((a) => !['aspnet-implementer', 'aspnet-verifier'].includes(a) && !(former.agents.includes(a) && a !== 'code-style-analyzer'));
-    assert.deepStrictEqual(first.seatDeny, want.map((a) => `Agent(alfred-code:${a})`).sort(), 'a deny per seat 2.0.0 never ran, and the one the user switched off');
-    assert.deepStrictEqual(first.sharedSeatDeny, [], 'the ledgered seat deny left settings.json for settings.local.json');
+    for (const a of former.agents.filter((x) => x !== 'code-style-analyzer')) assert.ok(first.agents.includes(a), `${a} ran on the core, so it is a copy now:\n${outs[0]}`);
+    assert.ok(first.agents.includes('aspnet-implementer') && !first.agents.includes('aspnet-implementer.md'), 'the library seat copy moved into a folder');
+    assert.ok(first.agents.includes('aspnet-verifier.md'), 'the seat copy edited by hand is kept where it was');
+    assert.match(outs[0], /agent kept: \.claude\/agents\/aspnet-verifier\.md - edited since it was copied/);
+    assert.ok(!first.agents.includes('code-style-analyzer'), 'the always seat the user switched off is not copied');
+    assert.deepStrictEqual(first.seatDeny, [], 'no seat is denied - the row 2.0.0 wrote for the switched off seat is gone');
+    assert.deepStrictEqual(first.sharedSeatDeny, [], 'and settings.json holds none');
     assert.ok(first.settings.permissions.deny.includes('Bash(rm -rf:*)') && first.settings.env.MY_OWN_KEY === 'mine', 'the user\'s own entries stay');
-    assert.strictEqual(first.seatsRoute, 'plugin');
-    assert.ok(first.pickedAgents.includes('aspnet-implementer@alfred-code') && first.pickedAgents.includes('security-auditor@alfred-code'), first.pickedAgents.join(','));
-    assert.ok(!first.pickedAgents.some((e) => /code-style-analyzer|web-angular/.test(e)), first.pickedAgents.join(','));
+    assert.strictEqual(first.seatsRoute, 'library');
+    assert.ok(first.pickedAgents.includes('aspnet-implementer') && first.pickedAgents.includes('security-auditor'), first.pickedAgents.join(','));
+    assert.ok(!first.pickedAgents.some((e) => /code-style-analyzer|web-angular|@/.test(e)), first.pickedAgents.join(','));
     assert.ok(first.pickedSkills.includes('csharp') && first.pickedSkills.includes('habits-done-gate') && !first.pickedSkills.some((e) => e.includes('@')), first.pickedSkills.join(','));
     assert.ok(first.libraryAgents.some((e) => e.startsWith('aspnet-verifier=')), 'the kept copy keeps its recorded hash, so it reads as edited');
     assert.deepStrictEqual([second.stamp.replace(/^sha: .*$/m, ''), second.settings, second.local, second.skills, second.agents],
         [first.stamp.replace(/^sha: .*$/m, ''), first.settings, first.local, first.skills, first.agents], 'the re-run changes nothing');
 });
 
-test('a fresh install then its update: the seat state holds, and an --add of a rule takes the denied seats it requires', POSIX_ONLY, () =>
+test('a fresh install then its update: no seat is denied, and an --add of a rule copies the seats it requires', POSIX_ONLY, () =>
 {
     const { computeClosure } = require('./stack-select.js');
     // A walk's selection: the always skills and rules, and no seat at all.
@@ -110,34 +110,33 @@ test('a fresh install then its update: the seat state holds, and an --add of a r
         plugins: LISTING, args: [[], ['--installed-only'], ['--installed-only', '--add', 'rule dotnet-repair-agents']], each: read,
     });
     const [fresh, again, added] = steps;
-    assert.deepStrictEqual(fresh.seatDeny, SEATS.map((a) => `Agent(alfred-code:${a})`), 'nothing picked: every seat denied');
-    assert.deepStrictEqual([again.seatDeny, again.pickedAgents, again.skills], [fresh.seatDeny, fresh.pickedAgents, fresh.skills], 'the update writes the state back as it found it');
+    assert.deepStrictEqual([fresh.seatDeny, fresh.agents], [[], []], 'nothing picked: no seat copied, no row written');
+    assert.deepStrictEqual([again.seatDeny, again.pickedAgents, again.skills, again.agents], [fresh.seatDeny, fresh.pickedAgents, fresh.skills, fresh.agents], 'the update writes the state back as it found it');
     const resolvers = computeClosure(GRAPH, { rules: ['dotnet-repair-agents'] });
-    for (const a of resolvers.agents) assert.ok(!added.seatDeny.includes(`Agent(alfred-code:${a})`), `${a} is required by the rule added - allowed`);
+    for (const a of resolvers.agents) assert.ok(added.agents.includes(a), `${a} is required by the rule added - copied`);
     for (const s of resolvers.skills) assert.ok(added.skills.includes(s), `${s} - a preload of the seat taken - is copied`);
-    assert.ok(added.seatDeny.includes('Agent(alfred-code:web-angular-implementer)'), 'every other seat stays denied');
+    assert.ok(!added.agents.includes('web-angular-implementer'), 'every other seat stays absent');
+    assert.deepStrictEqual(added.seatDeny, [], 'and no row is written for any');
 });
 
-test('a switch to the skills copy route copies the seats the core carried, and back again prunes them - the picks hold both ways', POSIX_ONLY, () =>
+test('a switch to the skills copy route keeps the seat copied, and back again changes none - the picks hold both ways', POSIX_ONLY, () =>
 {
     const COPY = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
     const { steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nagent aspnet-implementer\n', {
         plugins: LISTING, env: [{}, COPY, {}], args: [[], ['--installed-only'], ['--installed-only']], each: read,
     });
     const [plugin, copied, back] = steps;
-    assert.deepStrictEqual([plugin.agents, plugin.seatsRoute], [[], 'plugin']);
-    assert.deepStrictEqual([copied.agents, copied.seatsRoute], [['aspnet-implementer'], 'copy'], 'the seat picked on the plugin route is copied');
-    assert.deepStrictEqual(copied.seatDeny, SEATS.map((a) => `Agent(alfred-code:${a})`), 'the core still loads beside the copies - it is denied for every seat, so a copied seat lists once');
-    assert.ok(copied.seatDeny.includes('Agent(alfred-code:aspnet-implementer)'), 'the picked, copied seat has no second listing under the core');
-    assert.deepStrictEqual([back.agents, back.seatsRoute, back.seatDeny], [[], 'plugin', plugin.seatDeny], 'and back: the copy goes, the seat stays picked');
-    assert.ok(back.pickedAgents.includes('aspnet-implementer@alfred-code'), back.pickedAgents.join(','));
+    assert.deepStrictEqual([plugin.agents, plugin.seatsRoute], [['aspnet-implementer'], 'library'], 'the plugin route copies the seat too');
+    assert.deepStrictEqual([copied.agents, copied.seatsRoute], [['aspnet-implementer'], 'copy'], 'the seat picked on the plugin route stays a copy');
+    for (const [name, step] of Object.entries({ plugin, copied, back })) assert.deepStrictEqual(step.seatDeny, [], `${name}: no seat is denied on any route`);
+    assert.deepStrictEqual([back.agents, back.seatsRoute], [['aspnet-implementer'], 'library'], 'and back: the seat stays picked and copied');
+    assert.ok(back.pickedAgents.includes('aspnet-implementer'), back.pickedAgents.join(','));
 });
 
 // I4: 2.0.0's --keep-pins re-hashed a seat copy after restoring its tuned pins, so the stamp's hash IS the tuned
-// file's and the copy reads as unedited - the migration pruned it and the seat ran the core's pins. A copy whose
-// model / effort differ from the stack's is the user's tuning: kept, said, with how it is dispatched. M6: the
-// roster a 2.0.0 run generated names library seats bare, which the core answers only as alfred-code:<seat> - it is
-// re-spelled, except for a seat whose project copy is kept (the bare name reaches that copy).
+// file's. The copy is the seat now: it moves into its folder at that hash and `--keep-pins` holds its pins. M6: the
+// roster a 2.0.0 run generated names library seats bare, and a seat copied into the project answers to its bare name -
+// each such name is kept bare, and a namespaced one becomes bare.
 function v200Tuned(repo)
 {
     v200(repo);
@@ -158,7 +157,7 @@ function v200Tuned(repo)
     ].join('\n'));
 }
 
-test('I4 update over a 2.0.0 install with a tuned seat copy: the pins are kept, the copy reachable by its bare name, and the roster re-spelled (M6)', POSIX_ONLY, () =>
+test('I4 update over a 2.0.0 install with a tuned seat copy: the pins are kept in the moved copy, and the roster names every copied seat bare (M6)', POSIX_ONLY, () =>
 {
     const { steps, outs } = seedRun(['update', 'update'], '', {
         plugins: LISTING, args: ['--installed-only', '--keep-pins'], prepare: v200Tuned,
@@ -168,11 +167,10 @@ test('I4 update over a 2.0.0 install with a tuned seat copy: the pins are kept, 
     const [first, second] = steps;
     assert.match(first.implementer, /^model: opus$/m, `the tuned copy is kept:\n${outs[0]}`);
     assert.match(first.implementer, /^effort: high$/m);
-    assert.match(outs[0], /agent kept: aspnet-implementer\.md - its model\/effort \(model=opus, effort=high\) differ from the stack's \(model=sonnet, effort=medium\)/, outs[0]);
-    assert.match(outs[0], /dispatched as 'aspnet-implementer'/, outs[0]);
-    assert.ok(!first.agents.includes('aspnet-solution-designer.md'), 'an untouched library copy is still pruned');
+    assert.doesNotMatch(outs[0], /agent kept: aspnet-implementer/, 'the tuned copy at its recorded hash is the stack\'s own, moved: nothing says it is kept');
+    assert.ok(first.agents.includes('aspnet-solution-designer') && !first.agents.includes('aspnet-solution-designer.md'), 'an untouched library copy moves into its folder');
     const seats = (/## Subagent seats\n(.*)\n/.exec(first.roster) || [])[1];
-    assert.strictEqual(seats, 'aspnet-implementer, alfred-code:aspnet-solution-designer, aspnet-verifier, alfred-code:security-auditor, my-own-seat', first.roster);
+    assert.strictEqual(seats, 'aspnet-implementer, aspnet-solution-designer, aspnet-verifier, security-auditor, my-own-seat', first.roster);
     assert.match(first.roster, /dispatch aspnet-solution-designer never; prose here is left alone/, 'only the seats line is re-spelled');
     assert.deepStrictEqual([second.agents, second.roster, second.implementer], [first.agents, first.roster, first.implementer], 'a re-run changes nothing');
 });

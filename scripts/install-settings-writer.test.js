@@ -503,63 +503,52 @@ test('B-m6: a stored memory-session switch-off maps to preferences-session:host'
 // secret-file blocks, so the two must not fight: a re-added seat clears only its own entry, and the
 // project's own rules are never touched by either.
 
-test('settings-writer: a dropped seat is denied, and the project keeps its own deny rules', () =>
+test('settings-writer: no seat is denied, and the rows an older install wrote for a shipped seat go - the project keeps its own', () =>
 {
-    const file = settingsFile({ permissions: { deny: ['Agent(my-own-seat)', 'Read(./private)'] } });
-    const { data } = write(file, {
-        denySpecs: ['Read(./.env)'],
-        agentDeny: ['Agent(alfred-code:evidence-gatherer)', 'Agent(alfred-code-aspnet:aspnet-verifier)'],
+    const file = settingsFile({ permissions: { deny: ['Agent(my-own-seat)', 'Read(./private)', 'Agent(alfred-code:evidence-gatherer)', 'Agent(alfred-code:aspnet-verifier)'] } });
+    const { data, logs } = write(file, { denySpecs: ['Read(./.env)'], seatNames: ['evidence-gatherer', 'aspnet-verifier', 'security-auditor'] });
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own-seat)', 'Read(./private)', 'Read(./.env)'], 'the project\'s own rows stay, the secret blocks land beside them');
+    assert.strictEqual(logs.filter((m) => /agent deny rows removed/.test(m)).length, 1, 'one line for the file');
+    assert.match(logs.join('\n'), /settings\.json: agent deny rows removed .*: evidence-gatherer, aspnet-verifier/);
+});
+
+test('settings-writer: a deny row naming no shipped or retired seat stays', () =>
+{
+    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code:my-own)', 'Agent(other-plugin:evidence-gatherer)', 'Agent(alfred-code:evidence-gatherer)'] } });
+    const { data } = write(file, { seatNames: ['evidence-gatherer'] });
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:my-own)', 'Agent(other-plugin:evidence-gatherer)']);
+    const again = write(file, { seatNames: ['evidence-gatherer'] });
+    assert.strictEqual(again.result.written, false, 'a re-run changes nothing');
+});
+
+test('settings-writer: a seat row goes whether or not the ledger holds it, and a run with no seat list leaves every row', () =>
+{
+    const row = 'Agent(alfred-code:evidence-gatherer)';
+    const ledgered = write(settingsFile({ permissions: { deny: [row, 'Bash(rm:*)'] } }), {
+        seatNames: ['evidence-gatherer'], ledger: { prior: { deny: [{ file: 'settings.json', entry: row }] } },
     });
-    assert.ok(data.permissions.deny.includes('Agent(alfred-code:evidence-gatherer)'));
-    assert.ok(data.permissions.deny.includes('Agent(alfred-code-aspnet:aspnet-verifier)'));
-    assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), "the project's own Agent rule was dropped");
-    assert.ok(data.permissions.deny.includes('Read(./private)'), "the project's own Read rule was dropped");
-    assert.ok(data.permissions.deny.includes('Read(./.env)'), 'the secret blocks still land beside them');
+    assert.deepStrictEqual(ledgered.data.permissions.deny, ['Bash(rm:*)']);
+    assert.deepStrictEqual(ledgered.result.managed.deny, [], 'nothing is recorded for the row that left');
+    const unseen = write(settingsFile({ permissions: { deny: [row] } }), { denySpecs: ['Read(./.env)'] });
+    assert.deepStrictEqual(unseen.data.permissions.deny, [row, 'Read(./.env)'], 'a run that names no seat takes none out');
 });
 
-test('settings-writer: a seat the selection now KEEPS has its deny cleared', () =>
+test('settings-writer: at project scope the team file loses the seat rows too, and an emptied permissions block goes with them', () =>
 {
-    // The failure this prevents: a user adds a seat back through configure, the install enables its
-    // plugin, and a stale deny from the previous run silently drops the seat they just asked for.
-    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code-aspnet:aspnet-verifier)', 'Agent(my-own-seat)'] } });
-    const { data, logs } = write(file, { agentAllow: ['Agent(alfred-code-aspnet:aspnet-verifier)'] });
-    assert.ok(!data.permissions.deny.includes('Agent(alfred-code-aspnet:aspnet-verifier)'));
-    assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), 'clearing one entry cleared another');
-    assert.ok(logs.some((m) => /aspnet-verifier/.test(m)), 'a silent clear is unauditable');
+    const p = pair({ permissions: { deny: ['Agent(alfred-code:evidence-gatherer)'] }, env: { MINE: '1' } }, {});
+    write(p.localFile, { keepOwn: true, sharedFile: p.sharedFile, seatNames: ['evidence-gatherer'] });
+    assert.deepStrictEqual(p.shared(), { env: { MINE: '1' } });
+    const q = pair({ permissions: { deny: ['Agent(alfred-code:evidence-gatherer)', 'Read(mine)'] } }, {});
+    write(q.localFile, { keepOwn: true, sharedFile: q.sharedFile, seatNames: ['evidence-gatherer'] });
+    assert.deepStrictEqual(q.shared(), { permissions: { deny: ['Read(mine)'] } });
 });
 
-test('settings-writer: deny and allow for the same seat is a KEPT seat - the allow wins', () =>
+test('settings-writer: a retired seat and the old name of a renamed one lose their rows too', () =>
 {
-    // Both lists come from one derivation, so this can only happen through a caller bug or a
-    // hand-edited selection. Resolving it toward the seat WORKING is the safe direction: the other
-    // way silently disables a seat the run just installed.
-    const file = settingsFile({});
-    const { data } = write(file, {
-        agentDeny: ['Agent(alfred-code:evidence-gatherer)'],
-        agentAllow: ['Agent(alfred-code:evidence-gatherer)'],
-    });
-    assert.deepStrictEqual(data.permissions.deny, []);
-});
-
-test('settings-writer: no agent lists means the deny array is left exactly as it was', () =>
-{
-    // A run holding no selection passes no agent lists, so it may not rewrite the seat state a user
-    // chose - the same rule ALFRED_CODE_HOOKS_OFF follows.
-    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code:evidence-gatherer)'] } });
-    const { data } = write(file, { denySpecs: ['Read(./.env)'] });
-    assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:evidence-gatherer)', 'Read(./.env)']);
-});
-
-test('settings-writer: a seat that moved home loses its OLD stack spelling, whichever way it goes', () =>
-{
-    // The deny names the carrying plugin; a release that moves the seat changes the spelling. The
-    // old entry then addresses nothing and would sit in the file forever.
-    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code-old:security-auditor)', 'Agent(alfred-code-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } });
-    const { data } = write(file, {
-        agentDeny: ['Agent(alfred-code:security-auditor)'],
-        agentAllow: ['Agent(alfred-code:evidence-gatherer)'],
-    });
-    assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own:security-auditor)', 'Agent(alfred-code:security-auditor)']);
+    const renamed = { agents: { 'old-gatherer': 'evidence-gatherer' } };
+    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code:old-gatherer)', 'Agent(alfred-code:long-gone)', 'Agent(alfred-code:other)'] } });
+    const { data } = write(file, { renamed, seatNames: ['long-gone'] });
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:other)']);
 });
 
 // I1/I2 (R47, fix round 1): settingsTarget is the one place that decides which file a run WRITES.
@@ -839,18 +828,18 @@ function pair(shared, local)
 
 // C4 (R133 N1), rewritten for mode v2 stage 2: `--add agent X` for a seat denied in settings.local.json takes it out of
 // that file - the run's own now - with a line; a deny in settings.json is the team's and is left.
-test('settings-writer: an allowed seat leaves settings.local.json\'s deny list, with a line, and settings.json is left (C4, mode v2 stage 2)', () =>
+test('settings-writer: the seat rows leave settings.local.json with a line, and settings.json is left (C4, mode v2 stage 2)', () =>
 {
     const seat = 'Agent(alfred-code:evidence-gatherer)';
     const p = pair({ permissions: { deny: ['Read(secret)'] } }, { permissions: { deny: [seat, 'Bash(rm:*)'], allow: ['Bash(ls)'] } });
     const sharedBefore = fs.readFileSync(p.sharedFile, 'utf8');
     const logs = [];
-    const opts = { file: p.localFile, sharedFile: p.sharedFile, catalog: CATALOG, migrations: MIGRATIONS, agentAllow: [seat] };
+    const opts = { file: p.localFile, sharedFile: p.sharedFile, catalog: CATALOG, migrations: MIGRATIONS, seatNames: ['evidence-gatherer'] };
     writeSettings({ ...opts, log: (m) => logs.push(m) });
-    assert.deepStrictEqual(p.local().permissions.deny, ['Bash(rm:*)'], 'the local deny no longer keeps the seat off');
+    assert.deepStrictEqual(p.local().permissions.deny, ['Bash(rm:*)'], 'the seat row is gone');
     assert.deepStrictEqual(p.local().permissions.allow, ['Bash(ls)']);
     assert.strictEqual(fs.readFileSync(p.sharedFile, 'utf8'), sharedBefore);
-    assert.match(logs.join('\n'), /settings\.local\.json: agent allowed again Agent\(alfred-code:evidence-gatherer\)/);
+    assert.match(logs.join('\n'), /settings\.local\.json: agent deny rows removed .*: evidence-gatherer/);
     // A re-run writes nothing.
     const before = fs.readFileSync(p.localFile, 'utf8');
     assert.strictEqual(writeSettings(opts).written, false);
@@ -1015,8 +1004,8 @@ test('settings-ledger: a stamp with no ledger adopts what the stack itself shipp
     assert.strictEqual(env.ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, valueHash('180000'), 'reseeded this run: written by the stack');
     assert.ok(!('MY_KEY' in env));
     // Review finding 6: with no ledger a secret-file deny already there may be the team's, so it is never
-    // claimed - a leftover after uninstall is harmless, a removed one is not. A stack seat still is.
-    assert.deepStrictEqual(result.managed.deny.map((d) => d.entry).sort(), ['Agent(alfred-code:angular-verifier)']);
+    // claimed - a leftover after uninstall is harmless, a removed one is not. A seat row is no stack row since seats left the core.
+    assert.deepStrictEqual(result.managed.deny.map((d) => d.entry).sort(), []);
     assert.deepStrictEqual(result.managed.hooks.map((h) => h.id), [idOf('PreToolUse', 'Bash', 'guard-a.js')]);
 });
 
@@ -2045,17 +2034,18 @@ test('settings-writer: the stale-row pass re-keys a renamed skillOverrides key i
 
 // Task 5's stops (A, B and the seat spelling): what the stale-row pass on settings.json still takes at project and user scope -
 // a docs key the docs step cleared, a retired server's approval, a renamed seat's deny - and leaves at local scope.
-test('settings-writer: at project scope the stale-row pass drops a cleared docs key and a retired approval, and re-spells a renamed seat\'s deny', () =>
+test('settings-writer: at project scope the stale-row pass drops a cleared docs key and a retired approval, and drops a seat row an older install left, old name of a renamed seat included', () =>
 {
     const renamed = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed;
     const [oldSeat, newSeat] = Object.entries(renamed.agents)[0];
     const shared = { env: { ALFRED_CODE_DOCS_PATH: 'docs-x', MINE: '1' }, enabledMcpjsonServers: ['alfred-memory', 'mine'],
         permissions: { deny: [`Agent(alfred-code:${oldSeat})`, 'Read(mine)'] } };
+    assert.ok(newSeat, 'the manifest names a renamed seat');
     const opts = (p, keepOwn) => ({ keepOwn, sharedFile: p.sharedFile, renamed, mcpOff: ['alfred-memory'], docsPath: { remove: true, why: 'the docs moved' } });
     const p = pair(shared, {});
     const r = write(p.localFile, opts(p, true));
     assert.deepStrictEqual(p.shared(), { env: { MINE: '1' }, enabledMcpjsonServers: ['mine'],
-        permissions: { deny: [`Agent(alfred-code:${newSeat})`, 'Read(mine)'] } });
+        permissions: { deny: ['Read(mine)'] } });
     assert.ok(r.logs.some((l) => l.includes('settings.json env: ALFRED_CODE_DOCS_PATH \'docs-x\' removed (the docs moved)')), r.logs.join('\n'));
     const q = pair(shared, {});
     const bytes = fs.readFileSync(q.sharedFile, 'utf8');

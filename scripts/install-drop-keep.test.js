@@ -151,7 +151,7 @@ for (const route of Object.keys(ROUTES))
             assert.ok(!steps[i].picked.skills.includes(SKILL) && !steps[i].picked.agents.includes(SEAT), `run ${i + 1}: neither name is picked again`);
             assert.doesNotMatch(outs[i], /overwriting a hand-edited copy/, `run ${i + 1}`);
             assert.doesNotMatch(outs[i], /agent allowed again/, `run ${i + 1}`);
-            if (route === 'plugin') assert.ok(steps[i].deny.includes(DENY_ROW), `run ${i + 1}: the unpick's deny row stays`);
+            if (route === 'plugin') assert.ok(!steps[i].deny.includes(DENY_ROW), `run ${i + 1}: no deny row is written for the unpick`);
         }
     });
 
@@ -253,7 +253,7 @@ for (const route of Object.keys(ROUTES))
                 each: (repo, i) => (i === 0 ? lay(text)(repo) : { picked: pickedNames(repo), deny: denyRows(repo) }),
             });
             assert.equal(steps[1].picked.agents.includes(SEAT), picked, text ? 'own seat stays unpicked' : 'the stack\'s text adopts');
-            if (text && route === 'plugin') assert.ok(steps[1].deny.includes(DENY_ROW), 'the deny stays');
+            if (text && route === 'plugin') assert.ok(!steps[1].deny.includes(DENY_ROW), 'no deny row is written for the unpicked seat');
         }
     });
 }
