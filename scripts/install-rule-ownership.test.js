@@ -74,6 +74,54 @@ test('a stamp that predates library rules still lets the stack take over its own
     assert.doesNotMatch(out, KEPT_LINE);
 });
 
+// the stamp as a release that recorded rules wrote it when none was picked: the `library-rules:` line is there and empty
+const emptyRuleLine = (repo) => stampLib.markLine(stampOf(repo), 'library-rules', '');
+const stackText = (name) => fs.readFileSync(path.join(SOURCE, 'stack', 'rules', `${name}.md`), 'utf8');
+const EDIT = '\nMY EDIT BELOW THE STACK\'S FIRST LINE\n';
+const editedCopy = (name) => `${stackText(name)}${EDIT}`;
+
+test('a stamp with an empty library-rules line records rules, so an unmarked alfred- file stays the user\'s', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        each: (repo, i) =>
+        {
+            if (i === 0) { clear(repo); emptyRuleLine(repo); fs.writeFileSync(claudeRule(repo), MINE); }
+            return { text: readOr(claudeRule(repo)) };
+        },
+    });
+    for (const i of [1, 2])
+    {
+        assert.strictEqual(steps[i].text, MINE, `update ${i}: the user's bytes stay`);
+        assert.doesNotMatch(outs[i], /taking over a copy the stamp did not record: rule alfred-security/);
+        assert.strictEqual(named(outs[i], RULE).length, 1, `update ${i}: named once:\n${named(outs[i], RULE).join('\n')}`);
+    }
+});
+
+test('an edited copy that keeps a stack rule\'s first line is the user\'s on a fresh install and under a stamp that records rules', POSIX_ONLY, () =>
+{
+    const NAMES = [RULE, 'typescript-conventions'];
+    const sel = `${SELECTION}rule typescript-conventions\n`;
+    const fresh = seedRun(['install', 'update'], sel, {
+        prepare: (repo) => { fs.mkdirSync(path.dirname(claudeRule(repo)), { recursive: true }); for (const n of NAMES) fs.writeFileSync(claudeRule(repo, n), editedCopy(n)); },
+        each: (repo) => Object.fromEntries(NAMES.map((n) => [n, readOr(claudeRule(repo, n))])),
+    });
+    const recorded = seedRun(['install', 'update', 'update'], sel, {
+        each: (repo, i) =>
+        {
+            if (i === 0) for (const n of NAMES) { fs.rmSync(storeRule(repo, n), { force: true }); fs.rmSync(claudeRule(repo, n), { force: true }); forget(repo, n); fs.writeFileSync(claudeRule(repo, n), editedCopy(n)); }
+            return Object.fromEntries(NAMES.map((n) => [n, readOr(claudeRule(repo, n))]));
+        },
+    });
+    for (const [label, run, from] of [['fresh', fresh, 0], ['recorded', recorded, 1]])
+        for (const n of NAMES)
+            for (let i = from; i < run.steps.length; i++)
+            {
+                assert.strictEqual(run.steps[i][n], editedCopy(n), `${label} step ${i}: ${n} keeps the user's edits`);
+                assert.strictEqual(named(run.outs[i], n).length, 1, `${label} step ${i}: ${n} named once:\n${named(run.outs[i], n).join('\n')}`);
+                assert.doesNotMatch(run.outs[i], new RegExp(`taking over a copy the stamp did not record: rule ${n}`));
+            }
+});
+
 // ---- a joined child that lost its root ----
 const PICK = 'wpf-conventions';
 const SEL = { [TOP]: `skill markdown-style\nrule ${RULE}\n`, [CHILD]: `skill markdown-style\nrule ${RULE}\nrule ${PICK}\n` };

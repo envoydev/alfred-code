@@ -1605,15 +1605,16 @@ const ruleHome = (ctx, name) =>
     const inStore = path.join(ctx.rulesDir, `${name}.md`);
     return fs.existsSync(inStore) || !fs.existsSync(native) || nativeRules.hasMarker(readText(native)) ? inStore : native;
 };
-// A stamp that records no rule - none at all, or a legacy install with no stamp - is the only record a bare `alfred-` NAME can
-// stand in for. Under a stamp that records rules, or on a fresh install, an unmarked file it does not list is the user's
-// whatever its name; only an opening line the stack shipped still marks it as an older copy of the stack's text.
+// Only a copy made before any stamp recorded rules can be claimed without a record: a legacy install with no stamp, or a stamp
+// with no `library-rules:` line at all (an empty line is a record - no rule was picked then). Under a stamp that records rules, or
+// on a fresh install, an unmarked file the stamp does not list is the user's - whatever its name or its first line.
 const noRuleRecord = (ctx) => Boolean(ctx.legacyUnstamped)
-    || (Boolean(ctx.stampFile) && !Object.keys((stampLayer.readLibrary(ctx.stampFile) || {}).rules || {}).length);
+    || (Boolean(ctx.stampFile) && !/^library-rules:/m.test(readText(ctx.stampFile) || ''));
 const ruleClaim = (ctx) => (name) =>
 {
     if (nativeRules.hasMarker(readText(path.join(ctx.claudeDir, 'rules', `${name}.md`)))) return true;
-    if (noRuleRecord(ctx) && stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
+    if (!noRuleRecord(ctx)) return false;
+    if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
     const past = (ctx.ruleOpenings ||= ruleOpenings.pastOpenings(ctx.source.dir));
     return ruleOpenings.stackOpening(name, readText(ruleHome(ctx, name)),
         readText(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`)), past);

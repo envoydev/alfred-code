@@ -813,8 +813,8 @@ test('seed update: an unrecorded rule copy under an OLDER stack opening is taken
     const { openingOf, openingHash, pastOpenings } = require('./install/rule-openings.js');
     assert.ok(pastOpenings(ROOT).get('markdown-docs').has(openingHash(openingOf(OLD_MARKDOWN_DOCS))), 'the old opening is in meta/rule-openings.json');
     const own = '---\npaths: ["**/Dockerfile"]\n---\n\nOur own container notes: pin every base image by digest.\n';
-    const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^(library-rules): (.*)$/gm,
-        (_, k, v) => `${k}: ${v.split(',').filter((e) => !/^(markdown-docs|devops-conventions)\b/.test(e)).join(',')}`));
+    // The state this case protects: a stamp from before library rules, which has no `library-rules:` line at all.
+    const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^library-rules: .*\r?\n/m, ''));
     const rule = (repo, name) => { try { return fs.readFileSync(require('./install/copy.js').ruleAt(repo, name), 'utf8'); } catch { return null; } };
     const libraryRules = (repo) => ((/^library-rules: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '').split(',').map((e) => e.split('=')[0]);
     const each = (repo, i) =>
