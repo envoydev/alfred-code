@@ -74,3 +74,47 @@ test('an esac inside a pattern opened by ( ends no case, so a substitution keeps
   assert.deepStrictEqual(subs('echo `case "esac" in (esac) git reset --hard;; esac`'), ['reset']);
   assert.deepStrictEqual(subs('case x in esac; git status'), ['status'], 'esac right after in still ends the case');
 });
+
+// The sibling-repo report of 2026-11-24, command for command: nvm.sh sourced from `~`, then `nvm use`, in a dirty
+// checkout. The fixture carries nvm.sh's shapes that broke the read - a case pattern holding a `/`, and `nvm` as a
+// shell function whose `use` arm runs no git.
+test('the rm guard passes the nvm commands of the 2026-11-24 report in a dirty checkout, and still blocks a real discard', () =>
+{
+    const home = path.join(TMP, 'home');
+    const repo = path.join(TMP, 'nvm-repo');
+    fs.mkdirSync(path.join(home, '.nvm'), { recursive: true });
+    fs.mkdirSync(repo);
+    fs.writeFileSync(path.join(home, '.nvm', 'nvm.sh'), [
+        'nvm_strip_path() {',
+        '  case "$1" in',
+        '    *[!/]*/) echo "${1%"${1##*[!/]}"}" ;;',
+        '    /) echo / ;;',
+        '  esac',
+        '}',
+        'nvm() {',
+        '  case "$1" in',
+        '    use) nvm_strip_path "$NVM_DIR/versions/node/$2/bin" >/dev/null ;;',
+        '    *) return 0 ;;',
+        '  esac',
+        '}',
+        '',
+    ].join('\n'));
+    const git = (...args) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: repo, encoding: 'utf8' });
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'a\n');
+    git('init', '-q');
+    git('add', 'f.txt');
+    git('commit', '-qm', 'i');
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'b\n');
+    const guard = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+        { input: JSON.stringify({ session_id: 'nvm-test', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, HOME: home } }).status;
+    for (const command of [
+        'source ~/.nvm/nvm.sh >/dev/null && nvm use >/dev/null && npm run validate && npm test',
+        'source ~/.nvm/nvm.sh >/dev/null; nvm use >/dev/null; npm test 2>&1 | grep -E "fail|pass"',
+        'export PATH=$HOME/.nvm/versions/node/v26.13.1/bin:$PATH; npm test',
+        'nvm use 26 && npm test',
+    ]) assert.strictEqual(guard(command), 0, command);
+    for (const command of [
+        'source ~/.nvm/nvm.sh >/dev/null && nvm use >/dev/null && git checkout -- .',
+        'source ~/.nvm/nvm.sh; nvm use 26; git restore f.txt',
+    ]) assert.strictEqual(guard(command), 2, command);
+});
