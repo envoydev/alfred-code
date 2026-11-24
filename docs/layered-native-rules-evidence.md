@@ -55,6 +55,27 @@ Result words: `PASS`, `NOT RUN - <reason>`.
 - Reading: a subagent gets the native rules by itself, so `SubagentStart` sends part 1 only (the rules index and the
   fallback rules) and no rule text. The hook is `rules-session.js`, `@SubagentStart --part 1`.
 
+## The built layout, live (2026-11-24)
+
+- Build: this tree's installer (`--source <repo>`, local scope, `ALFRED_CODE_WORKSPACE=1`) made a root `ws` with seven
+  picks and a joined git child `ws/api` picking `skill javascript`, `rule csharp-conventions` and
+  `agent evidence-gatherer`. The workspace sat under the OS temp folder, with a plain `InstructionsLoaded` hook in each
+  level's `settings.local.json` that logs `load_reason`, the file and `agent_id`. macOS, Claude Code 2.1.331, model
+  `haiku`.
+- A workspace inside a Claude Code session scratchpad loads no rule file: the debug log says `[CLAUDE.md] not loading
+  <ws>/.claude/rules: it, or what it links to, is in a session's scratchpad`. A probe of rule loading runs outside one.
+- Child session (`claude -p` in `ws/api`, asked to list its agents, read `Program.cs` and dispatch
+  `evidence-gatherer`):
+  - `session_start` for the root's seven always-on native files (`ws/.claude/rules/alfred-*.md`).
+  - `path_glob_match` for the child's own `ws/api/.claude/rules/csharp-conventions.md` after the read, once in the
+    main session and once with the subagent's `agent_id`.
+  - The custom agents listed were `evidence-gatherer` and `security-auditor` (the child's pick and the root's, both
+    linked store folders); `evidence-gatherer` dispatched and replied `GATHER-OK`. No `Agent(...)` deny row exists.
+- Root session (`claude -p` in `ws`, asked to read `api/Program.cs`): `session_start` for the same seven files, then
+  `path_glob_match` for `ws/api/.claude/rules/csharp-conventions.md` - the root sees a child's rule on the first touch.
+- Not shown here: the account this ran under had the released 3.17.0 core installed, so its 45 `alfred-code:` seats were
+  listed beside these; a project on this release with that core updated lists none.
+
 ## Where the code rests on it
 
 - `repo-installer.md`, the Agents row of the delivery table: seats are linked library items, a folder copy on Windows
