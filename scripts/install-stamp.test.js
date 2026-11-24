@@ -53,6 +53,7 @@ function write(p, opts = {})
         ledger: opts.ledger,
         hooksRoute: opts.hooksRoute,
         ownPicks: opts.ownPicks, ownEnv: opts.ownEnv, instructionsBoth: opts.instructionsBoth,
+        answeredEnv: opts.answeredEnv, toldTracked: opts.toldTracked, createdDirs: opts.createdDirs,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -869,4 +870,45 @@ test('install-stamp: markLine adds, replaces and removes one line and leaves the
     stampMod.markLine(dest, 'managed-account', null);
     assert.strictEqual(fs.readFileSync(dest, 'utf8'), original);
     assert.strictEqual(stampMod.markLine(path.join(TMP, 'no-such.stamp'), 'x', 'y'), false);
+});
+
+const RECORD_LINES = [
+    { field: 'answeredEnv', key: 'answered-env', read: 'readAnsweredEnv', raw: ['ALFRED_CODE_Z', 'ALFRED_CODE_A', 'ALFRED_CODE_A'], line: 'answered-env: ALFRED_CODE_A,ALFRED_CODE_Z' },
+    { field: 'toldTracked', key: 'told-tracked', read: 'readToldTracked', raw: ['.cursor', '.claude', '.claude'], line: 'told-tracked: .claude,.cursor' },
+    { field: 'createdDirs', key: 'created-dirs', read: 'readCreatedDirs', raw: ['.cursor', '.claude', '.claude'], line: 'created-dirs: .claude,.cursor' },
+];
+
+test('install-stamp: the three lines render sorted and deduped, none when empty', () =>
+{
+    const base = { repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'abc', version: '1.0.0', installed: 'now', action: 'update', scope: 'project', hooks: [], alwaysRules: [] };
+    for (const { field, key, raw, line } of RECORD_LINES)
+    {
+        assert.ok(stampMod.renderStamp({ ...base, [field]: raw }).split('\n').includes(line), `${key}: sorted and unique`);
+        assert.doesNotMatch(stampMod.renderStamp({ ...base, [field]: [] }), new RegExp(`^${key}:`, 'm'), `${key}: no line when empty`);
+        assert.doesNotMatch(stampMod.renderStamp(base), new RegExp(`^${key}:`, 'm'), `${key}: no line when absent`);
+    }
+});
+
+test('install-stamp: each reader returns [] with no line', () =>
+{
+    const p = project();
+    const { dest } = write(p);
+    for (const { read } of RECORD_LINES)
+    {
+        assert.deepStrictEqual(stampMod[read](dest), [], `${read}: a stamp with no line`);
+        assert.deepStrictEqual(stampMod[read](path.join(TMP, 'no-such.stamp')), [], `${read}: no stamp file`);
+    }
+});
+
+test('install-stamp: a second writeStamp with no new values keeps the lines', () =>
+{
+    const p = project();
+    const first = write(p, { answeredEnv: RECORD_LINES[0].raw, toldTracked: RECORD_LINES[1].raw, createdDirs: RECORD_LINES[2].raw });
+    for (const { line } of RECORD_LINES) assert.ok(first.text.split('\n').includes(line), line);
+    const carried = Object.fromEntries(RECORD_LINES.map(({ field, read }) => [field, stampMod[read](first.dest)]));
+    assert.deepStrictEqual(carried.answeredEnv, ['ALFRED_CODE_A', 'ALFRED_CODE_Z']);
+    assert.deepStrictEqual(carried.toldTracked, ['.claude', '.cursor']);
+    assert.deepStrictEqual(carried.createdDirs, ['.claude', '.cursor']);
+    const second = write(p, carried);
+    assert.strictEqual(second.text, first.text, 'the text is byte for byte the same');
 });

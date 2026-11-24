@@ -798,6 +798,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
+            answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile),
+            toldTracked: Array.isArray(ctx.toldTracked) ? ctx.toldTracked : stampLayer.readToldTracked(stampFile),
+            createdDirs: Array.isArray(ctx.createdDirs) ? ctx.createdDirs : stampLayer.readCreatedDirs(stampFile),
         });
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
         // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
