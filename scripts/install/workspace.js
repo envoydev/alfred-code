@@ -723,13 +723,14 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     return { dropped: true, kept: null };
 }
 
-// D6b: the lines a linked child's run says about an inherited or pulled docs versioning, as strings. `before` / `after` are
+// D6b: the lines a linked child's run says about an inherited or pulled docs versioning, as strings. `dataRoot` is the run's own
+// (the installer hands it in; none: the reader's). `before` / `after` are
 // the data root's `.gitignore` texts around the ignore step; `said` is the stamp's told-tracked record, and a line said now
 // adds its key to it (an array handed in is appended to), so the next run stays silent. Git is asked whether it tracks the file.
-function versioningNotices(projectRoot, { scope, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said = [], exec = runtime.execCommand } = {})
+function versioningNotices(projectRoot, { scope, dataRoot = dataRootMod.dataRootOf({ projectDir: projectRoot }).root, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said = [], exec = runtime.execCommand } = {})
 {
     const { noticeRows } = require('./versioning/notices.js');
-    const file = `${dataRootMod.dataRootOf({ projectDir: projectRoot }).root}/.gitignore`;
+    const file = `${dataRoot}/.gitignore`;
     let tracked = false;
     try { tracked = String(exec('git', ['ls-files', '--', file], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
     catch { tracked = false; }
@@ -745,11 +746,12 @@ function laggingLine(child, rel, childEnv)
     const { effectiveVersioning } = require('./versioning/effects.js');
     const { lagLine } = require('./versioning/notices.js');
     const copy = require('./copy.js');
+    const dataRoot = dataRootMod.dataRootOf({ projectDir: child }).root;
     let text;
-    try { text = fs.readFileSync(path.join(child, ...dataRootMod.dataRootOf({ projectDir: child }).root.split('/'), '.gitignore'), 'utf8'); }
+    try { text = fs.readFileSync(path.join(child, ...dataRoot.split('/'), '.gitignore'), 'utf8'); }
     catch { return null; }
     const scope = stamp.readStampScope(stamp.stampFiles({ projectRoot: child }).read || '');
-    const { value } = effectiveVersioning({ projectRoot: child, scope, docsPath: copy.resolveDocsRoot(child, scope), dataRoot: dataRootMod.dataRootOf({ projectDir: child }).root, env: childEnv });
+    const { value } = effectiveVersioning({ projectRoot: child, scope, docsPath: copy.resolveDocsRoot(child, scope), dataRoot, env: childEnv });
     return lagLine({ rel, text, value });
 }
 
@@ -761,9 +763,9 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
 {
     const variables = require('./variables.js');
     const layout = require('../../stack/hooks/layout.js');
+    const { KEY: VERSIONING_KEY } = require('./versioning/constants.js');
     const root = realOf(projectRoot);
     const view = readWorkspace(root, { env }).view;
-    const { KEY: VERSIONING_KEY } = require('./versioning/constants.js');
     const members = chain(root, { env }).members;
     const file = variables.fileOf(root, { env });
     if (!members.length)
@@ -782,10 +784,10 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
     {
         const member = byRel.get(from[key]);
         if (!member || values[key] === undefined) continue;
-        updates[key] = values[key];
-        const memberStamp = stamp.stampFiles({ projectRoot: member.root }).read;
         // A stale stack seed in a member outside any git repository hands nothing on (holdsStaleSeed), here too.
         if (key === VERSIONING_KEY && holdsStaleSeed(member, values[key])) continue;
+        updates[key] = values[key];
+        const memberStamp = stamp.stampFiles({ projectRoot: member.root }).read;
         const rows = ((memberStamp && stamp.readLedger(memberStamp)) || { env: {} }).env?.['.variables'] || {};
         if (rows[key] === stamp.valueHash(values[key])) seeds[key] = rows[key];
     }

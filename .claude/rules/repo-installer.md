@@ -276,18 +276,21 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the child's own seeds a member answers, and every installer run in a joined child that writes `.variables` (and the
   join) removes each value equal to the one the chain hands it (`pruneChained`: after the stamp, since the run
   rewrites the ledger; a line stays, named, where the project's `settings.json`, the account's or the launch
-  environment holds another value; never a `MEMBER_NEVER`, `CHAIN_PRUNE_NEVER` (`ALFRED_CODE_DOCS_VERSIONING`: it reaches members, and no join or W1 prune removes a child's own value) or `ignore env` key; a run that does not write a `.variables`
-  git tracks - a local-scope one - removes nothing and names each equal key in one line, `write: false`, 3.12); leaving - configure's leave, or the parent's uninstall
+  environment holds another value; never a `MEMBER_NEVER`, `CHAIN_PRUNE_NEVER` (`ALFRED_CODE_DOCS_VERSIONING`: it
+  reaches members, and no join or W1 prune removes a child's own value) or `ignore env` key; a run that does not write a
+  `.variables` git tracks - a local-scope one - removes nothing and names each equal key in one line, `write: false`,
+  3.12); leaving - configure's leave, or the parent's uninstall
   (`releaseChildren`) - first writes every value the child read through the chain into its own `.variables`
-  (`keepOnLeave`, which now also copies the docs versioning), so nothing it reads changes. DOCS VERSIONING in a child (the
-  mechanism is in `repo-memory-data.md`): `settings.js childSeeds` seeds the key only for a FIRM answer that differs from the
-  chain, `workspace.js pruneVersioningSeed` is the one remover (`versioning/rank.js seedLeaves`: a stack seed at its ledger hash, off `answered-env:`; at `local` scope it is
-  named, not removed), and a project outside any git repository gets no stack seed of it (a seed there leaves). The root's
-  `refreshBelow` writes nothing into a child's git files: it names each child whose `.gitignore` head marker lags the
-  effective versioning (`workspace: <rel> reads versioning <v> from here - ...`). The child's own run prints the D6b notices
-  (a tracked `.alfred/.gitignore` changed by an inherited value; a pulled line that outranks the workspace's). The walks pass
-  `--docs-versioning` only for an answer that differs from the parent's value, and `variables.js recommend --child` and
-  `stamp-docs-root.js --seed-versioning` read the same ranked answer (a key the chain answers is no MISSING row). A child's
+  (`keepOnLeave`, which now also copies the docs versioning), so nothing it reads changes. DOCS VERSIONING in a child
+  (the mechanism is in `repo-memory-data.md`): `settings.js childSeeds` seeds the key only for a FIRM answer that
+  differs from the chain, `workspace.js pruneVersioningSeed` is the one remover (`versioning/rank.js seedLeaves`: a
+  stack seed at its ledger hash, off `answered-env:`; at `local` scope it is named, not removed), and a project outside
+  any git repository gets no stack seed of it (a seed there leaves). The root's `refreshBelow` writes nothing into a
+  child's git files: it names each child whose `.gitignore` head marker lags the effective versioning (`workspace: <rel>
+  reads versioning <v> from here - ...`). The child's own run prints the D6b notices (a tracked `.alfred/.gitignore`
+  changed by an inherited value; a pulled line that outranks the workspace's). The walks pass `--docs-versioning` only
+  for an answer that differs from the parent's value, and `variables.js recommend --child` and `stamp-docs-root.js
+  --seed-versioning` read the same ranked answer (a key the chain answers is no MISSING row). A child's
   `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it
   (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; a whole hook the child's own
   `ALFRED_CODE_HOOKS_OFF` names by hand is never added back from the parent's set (3.12, stage 6 M6) unless this run's

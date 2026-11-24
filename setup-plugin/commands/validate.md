@@ -447,7 +447,7 @@ artifact is. An accepted
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that
 `variables.js set` - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
-table's preview a step stale, and report its printed line (a child whose workspace answers the key gets `docs versioning: <v> from the workspace - nothing seeded` and no write). Every other accepted row still goes
+table's preview a step stale, and report its printed line. Every other accepted row still goes
 through `variables.js set` or that merge. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check`,
 output to `$TMP/select.out` - then:

@@ -824,7 +824,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
         // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
         // value is named, none removed (3.12).
-        const linkedChild = Boolean(ctx.childEnv && ctx.childEnv.linked);
+        const linkedChild = isLinkedChild(ctx);
         const noRepo = Boolean(ctx.versioning.advice && ctx.versioning.advice.noRepo);
         if (linkedChild || noRepo)
         {
@@ -1097,14 +1097,17 @@ function versioningStep(ctx)
     }
 }
 
+// This run's project is a child joined to a workspace (workspace.envPlan, set by variablesStep).
+const isLinkedChild = (ctx) => Boolean(ctx.childEnv && ctx.childEnv.linked);
+
 // D6b: a linked child says what an inherited or pulled docs versioning changed; each value once, on the told-tracked record.
 function versioningNoticeStep(ctx, dataIgnoreBefore)
 {
-    if (!(ctx.childEnv && ctx.childEnv.linked) || !ctx.versioning.advice) return;
+    if (!isLinkedChild(ctx) || !ctx.versioning.advice) return;
     const { projectRoot, versioning } = ctx;
     const told = [...ctx.agentRecord.toldTracked];
     const lines = workspace.versioningNotices(projectRoot, {
-        scope: ctx.args.scope, before: dataIgnoreBefore, after: readOrNull(path.join(projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore')),
+        scope: ctx.args.scope, dataRoot: ctx.dataInfo.root, before: dataIgnoreBefore, after: readOrNull(path.join(projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore')),
         value: versioning.value, source: versioning.source, seed: versioning.advice.value, chain: versioning.chain,
         ownLine: ownVersioningLine({ projectRoot, dataRoot: ctx.dataInfo.root }), ledgerRow: (((ctx.ledger || {}).env || {})['.variables'] || {})[DOCS_VERSIONING_KEY],
         answered: (Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(ctx.stampFile)).includes(DOCS_VERSIONING_KEY), said: told,
@@ -1121,7 +1124,7 @@ function ignoreStep(ctx, docsPath)
     // The docs memory's union-merge attributes follow the versioning (memory-dir.js, R10).
     ctx.docsVersioningMode = mode;
     let data = null;
-    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, linkedChild: Boolean(ctx.childEnv && ctx.childEnv.linked), log }); }
+    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, linkedChild: isLinkedChild(ctx), log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
     ctx.dataIgnoreOk = data !== null;
     const dataCovered = STACK_IGNORE.includes(data);
