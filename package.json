@@ -40,6 +40,7 @@
     "kit:check": "node .claude/kit/check.mjs"
   },
   "devDependencies": {
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "typescript": "^6.0.3"
   }
 }
