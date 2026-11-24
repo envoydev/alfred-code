@@ -128,7 +128,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   ledger hash that is off the new stamp line `answered-env:` (`--docs-versioning`, `variables.js set`, a
   carry), and a typed value stays. Under versioning `local` the same pass (`agent-folders/effects.js`, run twice: early
   and after `ignoreStep`) writes `.claude/.gitignore` = `CLAUDE_VERSIONING_IGNORE` and `.cursor/.gitignore` =
-  `CURSOR_VERSIONING_IGNORE` (`*` under a head line; `.cursor` at `project` / `user` scope only) inside a git repository only, and takes each back at `git`. A file of
+  `CURSOR_VERSIONING_IGNORE` (`*` under a head line; `.cursor` at every scope) inside a git repository only, and takes each back at `git`. A file of
   the project's own stays, and a folder git tracks files in gets one `!!` line (stamp `told-tracked:`); a `.cursor` the
   run made is on `created-dirs:` and goes with its file. A moved link home follows at the next run. `.alfred` is as
   before: at `project` / `user` scope `/.gitignore` and `/.variables` stay committed (D6), and a linked child's `git`

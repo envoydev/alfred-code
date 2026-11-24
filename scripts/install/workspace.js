@@ -709,8 +709,8 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     }
     if (!write)
     {
-        log(input.noRepo ? `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and this folder is no git repository - git tracks the file, so this run leaves it as it is; a project-scope update removes it`
-            : `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - git tracks the file, so this run leaves it as it is; a project-scope update removes it`);
+        log(input.noRepo ? `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and this folder is no git repository - this run does not write that file, so it leaves it as it is; a project-scope update removes it`
+            : `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - this run does not write that file, so it leaves it as it is; a project-scope update removes it`);
         return { dropped: false, kept: value };
     }
     const done = variables.write(file, { [KEY]: null });
@@ -1107,11 +1107,27 @@ function ownPicksAfter({ prior, final, parentLines, added = [], blind = false })
 
 const csv = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
+// A member outside any git repository whose value of the docs versioning key is still the stack's seed - at its ledger hash
+// and on no `answered-env:` line (workspace versioning A1). An older release seeded it there; the member's own update
+// removes it, and until then it is no chosen value to hand on.
+function holdsStaleSeed(member, value)
+{
+    const { KEY } = require('./versioning/constants.js');
+    if (!require('./docs.js').outsideRepo(member.root)) return false;
+    const file = stamp.stampFiles({ projectRoot: member.root }).read;
+    if (!file) return false;
+    const rows = (((stamp.readLedger(file) || {}).env || {})['.variables']) || {};
+    return rows[KEY] === stamp.valueHash(value) && !stamp.readAnsweredEnv(file).includes(KEY);
+}
+
 // Step 5 of the loader (layout.js resolveVariables) alone: what the workspace chain hands this project, nearest member
 // first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key. The docs versioning key is handed
-// on like any other (workspace versioning D1) - only `ignore env` stops it, and no prune removes it from a child (D3).
-function chainValues(projectRoot, { env = process.env } = {})
+// on like any other (workspace versioning D1) - only `ignore env` stops it, and no prune removes it from a child (D3). A
+// stale seed in a member outside any git repository (holdsStaleSeed) hands nothing on; `stale`, an array, collects that
+// member's `rel` for the run's one line.
+function chainValues(projectRoot, { env = process.env, stale } = {})
 {
+    const { KEY: VERSIONING_KEY } = require('./versioning/constants.js');
     const layout = require('../../stack/hooks/layout.js');
     const out = {};
     if (!layout.workspaceOn({ env, projectRoot })) return out;
@@ -1126,7 +1142,13 @@ function chainValues(projectRoot, { env = process.env } = {})
         {
             if (!read || layout.MEMBER_NEVER.has(key) || skip.has(key) || Object.hasOwn(out, key)) continue;
             const value = layout.valueIn(read.values, key);
-            if (value !== undefined) out[key] = value;
+            if (value === undefined) continue;
+            if (key === VERSIONING_KEY && holdsStaleSeed(member, value))
+            {
+                if (stale && !stale.includes(member.rel)) stale.push(member.rel);
+                continue;
+            }
+            out[key] = value;
         }
         for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
     }

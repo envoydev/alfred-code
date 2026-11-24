@@ -90,7 +90,8 @@ function main(env = process.env)
 }
 
 // D3b: a docs versioning typed here is an answer the installer's remover never takes for a seed - read-merge-write of the
-// stamp's `answered-env:` line (markLine replaces the whole line); the key set to nothing leaves it. No stamp, no write.
+// stamp's `answered-env:` line (markLine replaces the whole line); the key set to nothing leaves it. No stamp, no write. A stamp
+// that cannot be written is one `!!` line - the value already stands in `.variables`.
 function recordAnswer(args, got)
 {
     const pair = args.pairs.find((p) => p.startsWith(`${DOCS_VERSIONING_KEY}=`));
@@ -99,7 +100,12 @@ function recordAnswer(args, got)
     if (!file) return;
     const held = stamp.readAnsweredEnv(file).filter((k) => k !== DOCS_VERSIONING_KEY);
     const next = pair.length > DOCS_VERSIONING_KEY.length + 1 ? [...held, DOCS_VERSIONING_KEY] : held;
-    stamp.markLine(file, 'answered-env', next.length ? [...new Set(next)].sort().join(',') : null);
+    try { stamp.markLine(file, 'answered-env', next.length ? [...new Set(next)].sort().join(',') : null); }
+    catch (err)
+    {
+        const rel = path.relative(path.resolve(args.root), file).split(path.sep).join('/');
+        console.error(`!! ${rel} could not be written (${err.code || err.message}) - the value is set, but its answer is not recorded, so an update may take it for a seed`);
+    }
 }
 
 if (require.main === module)

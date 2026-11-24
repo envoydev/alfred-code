@@ -67,6 +67,9 @@ const realGit = (projectRoot) => ({
     },
 });
 
+// True where no git repository holds the folder (the seed rule's own no-repo test).
+const outsideRepo = (projectRoot) => !realGit(projectRoot).inRepo();
+
 // A domain whose watch.json says `"recomputed": true` (quality/: rewritten whole by its capture) casts no versioning
 // vote, as in docs.js keptOutOfGit (the docs-watch-every-domain spec, AC13); a watch.json that does not parse votes.
 function recomputedDomain(dir)
@@ -2124,7 +2127,7 @@ function pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered = false, 
 
 module.exports = {
     migrateArchitecture, KEY_RENAMES, respellTargets, nameForeignRefs, ownFileRef, completedKeys, respellKeys,
-    docsVersioningAdvice, docsVersioningOnLeavingLocal,
+    docsVersioningAdvice, docsVersioningOnLeavingLocal, outsideRepo,
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, assessmentWatchLine, ensureQualityNotOwned, revertRecomputed, lspCoverageLines, migrateAwareness, inventoryToDoc, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneNestedIgnores, migrateLayout,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD, OS_LITTER, STACK_DOCS,

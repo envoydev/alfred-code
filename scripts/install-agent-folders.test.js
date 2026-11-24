@@ -45,7 +45,8 @@ const PLAN_TABLE = [
     ['project + local writes the versioning text on .claude', {}, { action: 'write', text: CLAUDE_VERSIONING_IGNORE }],
     ['project + local writes the versioning text on .cursor', { folder: '.cursor' }, { action: 'write', text: CURSOR_VERSIONING_IGNORE }],
     ['user scope + local writes both too', { scope: 'user', folder: '.cursor' }, { action: 'write', text: CURSOR_VERSIONING_IGNORE }],
-    ['local scope never makes .cursor', { scope: 'local', folder: '.cursor' }, { action: 'keep' }],
+    ['local scope + local writes the versioning text on .cursor too', { scope: 'local', folder: '.cursor' }, { action: 'write', text: CURSOR_VERSIONING_IGNORE }],
+    ['local scope + git writes nothing on .cursor', { scope: 'local', versioning: 'git', folder: '.cursor' }, { action: 'keep' }],
     ['project + git removes the stack text', { versioning: 'git', have: CLAUDE_VERSIONING_IGNORE }, { action: 'remove', dir: false }],
     ['project + git removes the old local scope text', { versioning: 'git', have: CLAUDE_IGNORE }, { action: 'remove', dir: false }],
     ['project + git with no file does nothing', { versioning: 'git' }, { action: 'keep' }],
@@ -74,6 +75,15 @@ test('folderPlan: the notice is the one the brief names, per folder', () =>
     assert.strictEqual(trackedNotice('.cursor'), '!! .cursor: git tracks files under it - versioning local cannot hide it; untrack them (git rm -r --cached .cursor) to keep it out');
 });
 
+test('folderPlan: at local scope a notice on .claude names the local install, not versioning local', () =>
+{
+    const tracked = folderPlan({ ...PLAN, scope: 'local', versioning: 'git', tracked: true });
+    assert.strictEqual(tracked.line, '!! .claude: git tracks files under it - a local install cannot hide it; untrack them (git rm -r --cached .claude) to keep it out');
+    const own = folderPlan({ ...PLAN, scope: 'local', versioning: 'git', have: '*.log\n' });
+    assert.strictEqual(own.line, '!! .claude/.gitignore: not the stack\'s text, so it is yours and stays - a local install does not hide .claude until its rule is in that file');
+    assert.match(folderPlan({ ...PLAN, scope: 'project', have: '*.log\n' }).line, /versioning local does not hide \.claude/, 'at project scope versioning is the cause');
+});
+
 test('apply: versioning local at project scope writes both files, makes .cursor and records it', () =>
 {
     const root = project();
@@ -100,7 +110,7 @@ test('apply: a second run writes nothing and says nothing', () =>
     const second = run(root, { told: first.toldTracked, created: first.createdDirs });
     assert.deepStrictEqual(second.lines, []);
     assert.deepStrictEqual([read(root, '.claude', '.gitignore'), read(root, '.cursor', '.gitignore')], before);
-    assert.deepStrictEqual(second, { lines: [], toldTracked: first.toldTracked, createdDirs: first.createdDirs });
+    assert.deepStrictEqual(second, { lines: [], toldTracked: first.toldTracked, createdDirs: first.createdDirs, failed: [] });
 });
 
 test('apply: a .cursor that already existed is not recorded, and never removed', () =>
@@ -192,7 +202,7 @@ test('apply: not in a git repository writes no agent-folder file', () =>
 {
     const root = project({ repo: false });
     const result = run(root);
-    assert.deepStrictEqual(result, { lines: [], toldTracked: [], createdDirs: [] });
+    assert.deepStrictEqual(result, { lines: [], toldTracked: [], createdDirs: [], failed: [] });
     assert.strictEqual(fs.existsSync(path.join(root, '.claude')), false);
     assert.strictEqual(fs.existsSync(path.join(root, '.cursor')), false);
 });
@@ -214,6 +224,26 @@ test('apply: a failed write is one !! line naming the file and records nothing',
     finally { fs.chmodSync(root, 0o755); }
     const retry = run(root);
     assert.deepStrictEqual(retry.createdDirs, ['.cursor'], 'the next run tries again');
+});
+
+test('apply: an unwritable .claude keeps the stack text on local -> git, with one !! line and no record change', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
+{
+    const root = project();
+    const on = run(root);
+    const folder = path.join(root, '.claude');
+    fs.chmodSync(folder, 0o555);
+    try
+    {
+        const back = run(root, { versioning: 'git', told: on.toldTracked, created: on.createdDirs });
+        const bang = back.lines.filter((l) => l.includes('!!'));
+        assert.strictEqual(bang.length, 1, back.lines.join('\n'));
+        assert.match(bang[0], /^ {2}!! \.claude\/\.gitignore could not be removed/);
+        assert.strictEqual(read(root, '.claude', '.gitignore'), CLAUDE_VERSIONING_IGNORE, 'the file stays');
+        assert.deepStrictEqual([back.toldTracked, back.failed], [on.toldTracked, ['.claude']]);
+    }
+    finally { fs.chmodSync(folder, 0o755); }
+    assert.strictEqual(run(root, { versioning: 'git', created: on.createdDirs }).lines.filter((l) => l.includes('!!')).length, 0, 'the next run takes the file back');
+    assert.strictEqual(read(root, '.claude', '.gitignore'), null);
 });
 
 test('apply: a second pass that changes the answer says the link homes move at the next run', () =>
@@ -259,6 +289,21 @@ test('install: versioning local at project scope writes both files, records .cur
     assert.match(outs[0], /^==> {3}\.cursor\/\.gitignore written - versioning local keeps \.cursor out of git$/m);
     assert.deepStrictEqual(steps[1], steps[0], 'every file and the stamp, byte for byte');
     assert.doesNotMatch(outs[1], /\.(claude|cursor)\/\.gitignore (written|rewritten|removed)/);
+});
+
+// R17a / R17b: a `.cursor` that cannot be made (a file holds its name) is said once per run, and the next run tries again.
+test('install: an unwritable .cursor prints its !! line once per run, and the next run still retries', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'install'], SEL, {
+        args: [LOCAL_VERSIONING, LOCAL_VERSIONING], env: COPY,
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.cursor'), 'a file, not a folder\n'),
+        each: (repo, i) => { const row = { cursor: read(repo, '.cursor', '.gitignore'), stamp: stampLines(repo) }; if (i === 0) fs.rmSync(path.join(repo, '.cursor')); return row; },
+    });
+    const said = (out) => (out.match(/^==> {3}!! \.cursor\/\.gitignore could not be written/gm) || []).length;
+    assert.strictEqual(said(outs[0]), 1, outs[0]);
+    assert.strictEqual(steps[0].cursor, null);
+    assert.strictEqual(said(outs[1]), 0, outs[1]);
+    assert.strictEqual(steps[1].cursor, CURSOR_VERSIONING_IGNORE, 'the next run tries again');
 });
 
 test('install: versioning local then git at project scope turns the links into copies and takes the files back', POSIX_ONLY, () =>

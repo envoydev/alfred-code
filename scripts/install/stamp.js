@@ -271,7 +271,11 @@ function readLedger(file)
 // null is this run, named by its session id where the caller had one, else by its install time.
 const secretsLine = (by, ms) => { const who = by === null ? `run-${ms}` : by; return who ? `secrets: dual ${who}` : 'secrets: dual'; };
 // A record line that survives a run (`untrack-told:`, `answered-env:`, `told-tracked:`, `created-dirs:`): sorted, deduped, none when empty.
-const recordLine = (key, values) => (Array.isArray(values) && values.length ? [`${key}: ${[...new Set(values)].filter((v) => v && !/[,\r\n]/.test(v)).sort().join(',')}`] : []);
+const recordLine = (key, values) =>
+{
+    const kept = Array.isArray(values) ? [...new Set(values)].filter((v) => v && !/[,\r\n]/.test(v)).sort() : [];
+    return kept.length ? [`${key}: ${kept.join(',')}`] : [];
+};
 function renderStamp(fields)
 {
     const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], answeredEnv = [], toldTracked = [], createdDirs = [], links = [], memberPicks = [] } = fields;

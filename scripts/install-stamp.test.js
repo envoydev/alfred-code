@@ -889,6 +889,14 @@ test('install-stamp: the three lines render sorted and deduped, none when empty'
     }
 });
 
+test('install-stamp: a set holding only unwritable values writes no line, not an empty one', () =>
+{
+    const base = { repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'abc', version: '1.0.0', installed: 'now', action: 'update', scope: 'project', hooks: [], alwaysRules: [] };
+    for (const { field, key } of RECORD_LINES)
+        for (const values of [[''], [null, ''], ['a,b'], ['a\nb']])
+            assert.doesNotMatch(stampMod.renderStamp({ ...base, [field]: values }), new RegExp(`^${key}:`, 'm'), `${key}: ${JSON.stringify(values)}`);
+});
+
 test('install-stamp: each reader returns [] with no line', () =>
 {
     const p = project();

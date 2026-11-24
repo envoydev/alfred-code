@@ -12,6 +12,7 @@ const stampLib = require('./install/stamp.js');
 const { rankVersioning, seedLeaves } = require('./install/versioning/rank.js');
 const { effectiveVersioning } = require('./install/versioning/effects.js');
 const { putWorkspace } = require('./workspace-fixture.js');
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const KEY = 'ALFRED_CODE_DOCS_VERSIONING';
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-versioning-'));
@@ -220,10 +221,12 @@ test('copy.resolveDocsVersioning ranked falls back to the chain; unranked still 
     {
         assert.strictEqual(copy.resolveDocsVersioning(at.child, 'project'), null);
         assert.strictEqual(copy.resolveDocsVersioning(at.child, 'project', { ranked: true }), 'local');
+        assert.deepStrictEqual(copy.resolveDocsVersioning(at.child, 'project', { ranked: true, withSource: true }), { value: 'local', source: 'chain' });
     }
     finally { delete process.env.ALFRED_CODE_WORKSPACE; }
     const typed = joined({ child: `${KEY}=git\n` });
     assert.strictEqual(copy.resolveDocsVersioning(typed.child, 'project', { ranked: true }), 'git');
+    assert.deepStrictEqual(copy.resolveDocsVersioning(typed.child, 'project', { ranked: true, withSource: true }), { value: 'git', source: 'own' });
 });
 
 test('a seed another layer answers stays the child\'s own, in the ranking and in the remover', () =>
@@ -252,4 +255,20 @@ test('layerHolding names the first layer between .variables and the members that
     fs.writeFileSync(path.join(at.child, '.claude', 'settings.json'), '{ not json');
     assert.strictEqual(ws.layerHolding(at.child, KEY, { env: ON })[0], 'account settings', 'a garbage file reads as empty, as the loader reads it');
     fs.rmSync(acct, { recursive: true, force: true });
+});
+
+// One read per run: the settings pass seeds from the ranked advice the run already holds, never from a second
+// docsVersioningSeed read. A preloaded spy counts the calls in the installer process.
+test('an install reads the docs versioning seed rule once, through the ranked advice', POSIX_ONLY, () =>
+{
+    const spy = path.join(TMP, 'seed-spy.js');
+    const log = path.join(TMP, 'seed-spy.log');
+    fs.writeFileSync(spy, `const fs = require('node:fs');\nconst docs = require(${JSON.stringify(path.join(__dirname, 'install', 'docs.js'))});\n`
+        + `const real = docs.docsVersioningSeed;\ndocs.docsVersioningSeed = (...args) => { fs.appendFileSync(${JSON.stringify(log)}, 'x'); return real(...args); };\n`);
+    const { steps } = seedRun(['install'], 'skill javascript\n', {
+        env: { NODE_OPTIONS: `--require ${spy}` },
+        each: (repo) => fs.readFileSync(path.join(repo, '.alfred', '.variables'), 'utf8'),
+    });
+    assert.match(steps[0], /^ALFRED_CODE_DOCS_VERSIONING=git$/m, 'the seed still lands');
+    assert.strictEqual(fs.existsSync(log) ? fs.readFileSync(log, 'utf8').length : 0, 0, 'no second read of the seed rule');
 });

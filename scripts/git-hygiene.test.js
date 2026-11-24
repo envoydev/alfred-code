@@ -56,6 +56,28 @@ test('none: committed docs, tracked files, an ignored root or no repository', ()
     assert.match(dataRootOffer({ projectRoot: repo({ init: false }) }).why, /not a git repository/);
 });
 
+// A project that inherits `local` from its workspace root has no choice to act on: the offer's yes writes a repository
+// rule that pins it firm `local` and hides `.variables`, which a workspace child keeps committed.
+test('none: an inheriting local child gets no data-root offer; a child local by its own value still does', () =>
+{
+    const top = path.join(TMP, `ws-${n += 1}`);
+    const root = path.join(top, 'root');
+    const kid = repo({ files: { '.alfred/docs/a.md': 'x', '.alfred/.gitignore': DATA_IGNORE }, workspace: { parent: '..' } });
+    const inherit = path.join(root, 'api');
+    fs.mkdirSync(path.dirname(inherit), { recursive: true });
+    fs.renameSync(kid, inherit);
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(root, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: x\nmanaged-env: \n');
+    fs.writeFileSync(path.join(root, '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=local\n');
+    putWorkspace(root, { children: ['api'] });
+    const got = dataRootOffer({ projectRoot: inherit });
+    assert.strictEqual(got.state, 'none', JSON.stringify(got));
+    assert.match(got.why, /comes from the workspace/);
+    fs.writeFileSync(path.join(inherit, '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=local\n');
+    assert.strictEqual(dataRootOffer({ projectRoot: inherit }).state, 'offer', 'a value of its own is its choice');
+});
+
 test('apply: .gitignore gets one anchored line with its comment, kept EOL, and a re-run is current', () =>
 {
     const root = repo({ env: { ALFRED_CODE_DOCS_VERSIONING: 'local' }, files: { '.gitignore': 'node_modules\r\n', '.alfred/.gitignore': DATA_IGNORE } });

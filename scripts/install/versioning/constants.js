@@ -22,6 +22,7 @@ const TOLD = Object.freeze({ chained: 'versioning:', pulled: 'versioning-pulled:
 
 const chainedNotice = (value, seed) => `docs versioning ${value} comes from the workspace and changed .alfred/.gitignore, which git tracks - teammates without the workspace read ${seed}; set ${KEY} here to share it`;
 const pulledNotice = (value, chain) => `docs versioning ${value} in .variables came from another machine and outranks the workspace's ${chain} - remove the line to inherit, or keep it to share ${value}`;
+const staleSeedNotice = (rel) => `workspace: ${rel} holds a docs versioning seed from an older release, so it hands none on - update ${rel} first`;
 const lagNotice = (rel, value) => `workspace: ${rel} reads versioning ${value} from here - its .gitignore files follow at its next update`;
 
-module.exports = { KEY, VALUES, RANK, MARKER_PATTERN, SHARED_SCOPES, TOLD, chainedNotice, pulledNotice, lagNotice };
+module.exports = { KEY, VALUES, RANK, MARKER_PATTERN, SHARED_SCOPES, TOLD, chainedNotice, pulledNotice, lagNotice, staleSeedNotice };

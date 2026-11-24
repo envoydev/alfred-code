@@ -16,11 +16,14 @@ const ACTION = Object.freeze({ write: 'write', remove: 'remove', keep: 'keep', t
 const SCOPE_LOCAL = 'local';
 const VERSIONING_LOCAL = 'local';
 
-const trackedNotice = (folder) => `!! ${folder}: git tracks files under it - versioning local cannot hide it; untrack them (git rm -r --cached ${folder}) to keep it out`;
+// What asks the pass to hide a folder: a local-scope install for `.claude`'s own text, else docs versioning `local`.
+const causeOf = (text) => (text === CLAUDE_IGNORE ? 'a local install' : 'versioning local');
+
+const trackedNotice = (folder, text) => `!! ${folder}: git tracks files under it - ${causeOf(text)} cannot hide it; untrack them (git rm -r --cached ${folder}) to keep it out`;
 
 // The `told-tracked:` entry for a `.gitignore` of the project's own that blocks the stack's text: said once.
 const ownEntry = (folder) => `own:${folder}`;
-const ownNotice = (folder) => `!! ${folder}/.gitignore: not the stack's text, so it is yours and stays - versioning local does not hide ${folder} until its rule is in that file`;
+const ownNotice = (folder, text) => `!! ${folder}/.gitignore: not the stack's text, so it is yours and stays - ${causeOf(text)} does not hide ${folder} until its rule is in that file`;
 
 module.exports = {
     ownEntry, ownNotice, FOLDER, FOLDERS, IGNORE_FILE, STACK_TEXTS, ACTION, SCOPE_LOCAL, VERSIONING_LOCAL, trackedNotice,

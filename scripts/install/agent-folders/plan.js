@@ -9,7 +9,7 @@ const {
 const isStackText = (text) => typeof text === 'string' && STACK_TEXTS.includes(text);
 
 // The text this folder should hold, or null. `.claude`: a local install keeps its own text, else versioning `local`
-// writes the versioning one. `.cursor`: versioning `local` at a scope other than `local`.
+// writes the versioning one. `.cursor`: versioning `local`, at any scope.
 function wantedText({ folder, scope, versioning })
 {
     if (folder === FOLDER.claude)
@@ -17,7 +17,7 @@ function wantedText({ folder, scope, versioning })
         if (scope === SCOPE_LOCAL) return CLAUDE_IGNORE;
         return versioning === VERSIONING_LOCAL ? CLAUDE_VERSIONING_IGNORE : null;
     }
-    if (folder === FOLDER.cursor) return versioning === VERSIONING_LOCAL && scope !== SCOPE_LOCAL ? CURSOR_VERSIONING_IGNORE : null;
+    if (folder === FOLDER.cursor) return versioning === VERSIONING_LOCAL ? CURSOR_VERSIONING_IGNORE : null;
     return null;
 }
 
@@ -33,10 +33,10 @@ function folderPlan({ folder, scope, versioning, have = null, tracked = false, i
     // An unread docs versioning (null) changes nothing the answer decides; a local install's own `.claude` text does not depend on it.
     if (versioning == null && !(folder === FOLDER.claude && scope === SCOPE_LOCAL)) return { action: ACTION.keep };
     if (have !== null && !isStackText(have))
-        return text !== null && (inRepo || text === CLAUDE_IGNORE) && !told.includes(ownEntry(folder)) ? { action: ACTION.tell, line: ownNotice(folder), entry: ownEntry(folder) } : { action: ACTION.keep };
+        return text !== null && (inRepo || text === CLAUDE_IGNORE) && !told.includes(ownEntry(folder)) ? { action: ACTION.tell, line: ownNotice(folder, text), entry: ownEntry(folder) } : { action: ACTION.keep };
     if (text === null) return have === null ? { action: ACTION.keep } : { action: ACTION.remove, dir: created.includes(folder) };
     if (have === text || (!inRepo && text !== CLAUDE_IGNORE)) return { action: ACTION.keep };
-    if (have === null && tracked) return told.includes(folder) ? { action: ACTION.keep } : { action: ACTION.tell, line: trackedNotice(folder), entry: folder };
+    if (have === null && tracked) return told.includes(folder) ? { action: ACTION.keep } : { action: ACTION.tell, line: trackedNotice(folder, text), entry: folder };
     return { action: ACTION.write, text };
 }
 

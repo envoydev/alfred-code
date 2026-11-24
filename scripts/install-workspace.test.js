@@ -732,6 +732,22 @@ test('plain-folder root: an older root\'s stack seed leaves on update, and the c
     assert.deepStrictEqual({ ...r.steps[3], vars: null }, { gitignore: null, cursor: false, copy: true, vars: null }, r.outs[3]);
 });
 
+test('plain-folder root: a child run before its older root updates takes no stale seed, keeps its own seed and files, and is told to update the root', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { plantRootSeed(work); join(work, 'api'); } },
+        { at: 'api', after: kidAgentFolders },
+        update('api', { after: kidAgentFolders }),
+        update('.', { after: (work) => varsOf(work, '.')[DV] }),
+        update('api', { after: kidAgentFolders }),
+    ], { rootRepo: false });
+    for (const i of [1, 2]) assert.deepStrictEqual(r.steps[i], { gitignore: null, cursor: false, copy: true, vars: 'git' }, `the child keeps its own seed and its files: ${r.outs[i]}`);
+    assert.match(r.outs[1], /workspace: .* update \.\. first/, r.outs[1]);
+    assert.strictEqual(r.steps[3], undefined, `the root's own run removes the seed: ${r.outs[3]}`);
+    assert.deepStrictEqual(r.steps[4], { gitignore: null, cursor: false, copy: true, vars: r.steps[4].vars }, r.outs[4]);
+    assert.doesNotMatch(r.outs[4], /update \.\. first/, r.outs[4]);
+});
+
 test('plain-folder root: a value the user typed local still hands it on, and the child hides .claude and .cursor', POSIX_ONLY, () =>
 {
     const r = scenario([

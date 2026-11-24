@@ -56,7 +56,7 @@ const memoryDir = require('./memory-dir.js');
 const { effectiveVersioning, chainValueOf, ownVersioningLine } = require('./versioning/effects.js');
 const agentFolders = require('./agent-folders/effects.js');
 const { isStackText } = require('./agent-folders/plan.js');
-const { KEY: DOCS_VERSIONING_KEY } = require('./versioning/constants.js');
+const { KEY: DOCS_VERSIONING_KEY, staleSeedNotice } = require('./versioning/constants.js');
 const runtime = require('./runtime.js');
 const { snapshotSessionError } = require('./run-session.js');
 const { RUN_SESSION_FILE, SESSION_ENV } = require('./run-session-constants.js');
@@ -447,7 +447,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
         const writes = !args.printPlan && args.action !== 'uninstall';
         // D4: the agent-folder pass, with the docs versioning every rank but the carry gives (the carry exists after docsRootStep).
-        let agentRecord = { toldTracked: [], createdDirs: [] };
+        let agentRecord = { toldTracked: [], createdDirs: [], failed: [] };
         if (writes)
         {
             let early = null;
@@ -906,7 +906,7 @@ function runLayers(ctx)
     ignoreStep(ctx, docsPath);
     // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
     if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
-        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true });
+        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true, skip: ctx.agentRecord.failed });
     if (!ctx.args.printPlan)
     {
         try { versioningNoticeStep(ctx, dataIgnoreBefore); }
@@ -1086,6 +1086,7 @@ function versioningStep(ctx)
             flag: args.docsVersioning, carry: ctx.docsVersioningCarry, reseed: ctx.docsReseed,
             ledgerRows: ((ctx.ledger || {}).env || {})['.variables'] || {}, answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(ctx.stampFile),
         });
+        for (const rel of ctx.versioning.stale) ctx.log(`  ${staleSeedNotice(rel)}`);
     }
     catch (err)
     {
@@ -2556,7 +2557,7 @@ function installHooksAndRules(ctx)
             value: ctx.args.docsVersioning || ctx.docsVersioningCarry || ctx.docsReseed || '',
             why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git'
                 : ctx.docsReseed ? `the local scope's own seed, reseeded for ${ctx.args.scope} scope` : '',
-            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }),
+            seed: ctx.versioning.advice ? ctx.versioning.advice.value : undefined,
             firm: Boolean(ctx.versioning.advice && ctx.versioning.advice.firm),
             chain: ctx.versioning.linked ? ctx.versioning.chain : undefined,
             noRepo: Boolean(ctx.versioning.advice && ctx.versioning.advice.noRepo),

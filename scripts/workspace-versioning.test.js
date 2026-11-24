@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const ws = require('./install/workspace.js');
 const stampLib = require('./install/stamp.js');
 const layout = require('../stack/hooks/layout.js');
@@ -281,6 +281,36 @@ test('variables.js set records the answer', POSIX_ONLY, () =>
     execFileSync('git', ['init', '-q'], { cwd: bare });
     execFileSync(process.execPath, [path.join(__dirname, 'variables.js'), 'set', '--root', bare, `${KEY}=git`], { env: { ...process.env, ...ON }, stdio: 'ignore' });
     assert.deepStrictEqual(fs.readdirSync(path.join(bare, '.claude')), [], 'no stamp, nothing written to one');
+});
+
+test('variables.js set with a read-only stamp still writes the value and prints one !! line', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
+{
+    const bare = fs.mkdtempSync(path.join(TMP, 'ro-'));
+    fs.mkdirSync(path.join(bare, '.claude'));
+    execFileSync('git', ['init', '-q'], { cwd: bare });
+    const stamp = path.join(bare, '.claude', 'alfred-code.stamp');
+    fs.writeFileSync(stamp, 'sha: x\nmanaged-env: \n');
+    fs.chmodSync(stamp, 0o444);
+    const run = spawnSync(process.execPath, [path.join(__dirname, 'variables.js'), 'set', '--root', bare, `${KEY}=git`], { env: { ...process.env, ...ON }, encoding: 'utf8' });
+    assert.strictEqual(run.status, 0, run.stderr);
+    assert.match(run.stderr, /^!! \.claude\/alfred-code\.stamp could not be written \(EACCES\)/m);
+    assert.strictEqual(varsText(bare), `${KEY}=git\n`);
+    assert.deepStrictEqual(stampLib.readAnsweredEnv(stamp), []);
+});
+
+test('the remover that may not write names the true cause, never "git tracks the file", outside a repository', () =>
+{
+    const plain = fs.mkdtempSync(path.join(TMP, 'noway-'));
+    fs.mkdirSync(path.join(plain, '.claude'));
+    fs.mkdirSync(path.join(plain, '.alfred'));
+    fs.writeFileSync(path.join(plain, '.claude', 'alfred-code.stamp'), `sha: x\nmanaged-env: .variables:${KEY}=${hashOf('local')}\n`);
+    fs.writeFileSync(path.join(plain, '.alfred', '.variables'), `${KEY}=local\n`);
+    const lines = [];
+    const got = ws.pruneVersioningSeed(plain, { env: ON, advice: { value: 'local', firm: true, noRepo: true }, answeredEnv: [], log: (l) => lines.push(l), write: false });
+    assert.deepStrictEqual([got.dropped, got.kept], [false, 'local']);
+    assert.strictEqual(lines.length, 1, lines.join('\n'));
+    assert.match(lines[0], /this folder is no git repository - this run does not write that file, so it leaves it as it is/);
+    assert.doesNotMatch(lines[0], /git tracks/);
 });
 
 test('local scope names the seed and removes nothing', POSIX_ONLY, () =>
