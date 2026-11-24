@@ -13,6 +13,7 @@ const layout = require('../stack/hooks/layout.js');
 const { putWorkspace } = require('./workspace-fixture.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const variablesLib = require('./install/variables.js');
+const { GENERATED_FILES } = require('./install/selection.js');
 
 const KEY = 'ALFRED_CODE_DOCS_VERSIONING';
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-versioning-'));
@@ -376,7 +377,7 @@ test('refreshBelow names none when current, for the .branches line alone, or wit
     assert.deepStrictEqual(lagging(null), [], 'no file');
 });
 
-test('refreshBelow writes nothing in the child and a firm child is never named', () =>
+test('refreshBelow writes nothing in the child and names none whose own line is its answer', () =>
 {
     const at = joined({ child: `${KEY}=git\n` });
     const file = path.join(at.child, '.alfred', '.gitignore');
@@ -419,4 +420,49 @@ test('a pulled versioning line says D6b\'s second line once and stays', POSIX_ON
     assert.deepStrictEqual(r.steps[1], { told: ['versioning-pulled:git'], line: 'git' });
     assert.ok(!r.outs[2].includes(PULLED_LINE), r.outs[2]);
     assert.deepStrictEqual(r.steps[2], r.steps[1], 'the line and the record stay');
+});
+
+test('refreshBelow names no lag for a child it skips: no ledger, or a held lock', () =>
+{
+    const run = (at) =>
+    {
+        const lines = [];
+        ws.refreshBelow({ projectRoot: at.root, env: ON, log: (l) => lines.push(l), retryMs: 1 });
+        return lines;
+    };
+    const noLedger = joined({ childStamp: 'sha: x\n' });
+    fs.writeFileSync(path.join(noLedger.child, '.alfred', '.gitignore'), TRACKED_HEAD('git'));
+    const skipped = run(noLedger);
+    assert.ok(skipped.some((l) => /holds no ledger/.test(l)), skipped.join('\n'));
+    assert.ok(!skipped.some((l) => /reads versioning/.test(l)), 'no ledger: the child\'s own run decides');
+    const locked = joined();
+    fs.mkdirSync(path.join(locked.root, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(locked.root, '.claude', 'rules', `${[...GENERATED_FILES][0]}.md`), '# generated\n');
+    fs.writeFileSync(path.join(locked.child, '.alfred', '.gitignore'), TRACKED_HEAD('git'));
+    fs.writeFileSync(ws.locate(locked.child).lock, '');
+    const held = run(locked);
+    assert.ok(held.some((l) => /is locked/.test(l)), held.join('\n'));
+    assert.ok(!held.some((l) => /reads versioning/.test(l)), 'locked: skipped');
+});
+
+test('refreshBelow names a failed versioning read and goes on', () =>
+{
+    const effects = require('./install/versioning/effects.js');
+    const real = effects.effectiveVersioning;
+    effects.effectiveVersioning = () => { throw new Error('boom'); };
+    const at = joined();
+    fs.writeFileSync(path.join(at.child, '.alfred', '.gitignore'), TRACKED_HEAD('git'));
+    const lines = [];
+    try { ws.refreshBelow({ projectRoot: at.root, env: ON, log: (l) => lines.push(l) }); }
+    finally { effects.effectiveVersioning = real; }
+    assert.ok(lines.some((l) => /!! workspace: api - its versioning could not be read \(boom\)/.test(l)), lines.join('\n'));
+});
+
+test('ownVersioningLine throws a defect instead of hiding it', () =>
+{
+    const effects = require('./install/versioning/effects.js');
+    const real = variablesLib.read;
+    variablesLib.read = () => { throw new Error('boom'); };
+    try { assert.throws(() => effects.ownVersioningLine({ projectRoot: joined().child, dataRoot: '.alfred' }), /boom/); }
+    finally { variablesLib.read = real; }
 });

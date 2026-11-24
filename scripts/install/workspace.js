@@ -1466,9 +1466,6 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
         relink(child, top, rel, ownRead.view.ignores || [], log);
-        // D7: read-only; a child whose data root file lags its versioning is named, whatever else happens to its excludes below.
-        try { const lag = laggingLine(child, rel, childEnv); if (lag) log(lag); }
-        catch { /* the lag line is a courtesy, never a stop */ }
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -1522,6 +1519,12 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
             log(`workspace: ${rel} - excludes refreshed (${Object.keys(r.rows).length} rules)`);
         }
         finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+    }
+    // D7: read-only, once per child this run did not skip (a skipped child's own run decides its files); a failed read is named, never a stop.
+    for (const rel of [...out.refreshed, ...out.current].sort())
+    {
+        try { const lag = laggingLine(path.join(top, ...rel.split('/')), rel, childEnv); if (lag) log(lag); }
+        catch (e) { log(`  !! workspace: ${rel} - its versioning could not be read (${e.message}); no lag line`); }
     }
     return out;
 }

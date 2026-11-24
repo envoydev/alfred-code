@@ -34,12 +34,12 @@ function effectiveVersioning({ projectRoot, scope, docsPath, dataRoot, env = pro
     return { value, source, advice, linked, chain };
 }
 
-// The project's own `.variables` line for the key, as a value (undefined: no file, no line or a garbage one).
+// The project's own `.variables` line for the key, as a value (undefined: no file, no line or a garbage one). The reader
+// answers a missing or unreadable file itself; any other failure is a defect and is thrown to the caller.
 function ownVersioningLine({ projectRoot, dataRoot })
 {
     const variables = require('../variables.js');
-    try { return normaliseValue(variables.read(variables.fileOf(projectRoot, { env: {}, dataRoot })).values[KEY]); }
-    catch { return undefined; }
+    return normaliseValue(variables.read(variables.fileOf(projectRoot, { env: {}, dataRoot })).values[KEY]);
 }
 
 module.exports = { effectiveVersioning, chainValueOf, ownVersioningLine };

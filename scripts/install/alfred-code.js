@@ -907,7 +907,11 @@ function runLayers(ctx)
     // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
     if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
         told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true });
-    if (!ctx.args.printPlan) versioningNoticeStep(ctx, dataIgnoreBefore);
+    if (!ctx.args.printPlan)
+    {
+        try { versioningNoticeStep(ctx, dataIgnoreBefore); }
+        catch (err) { ctx.note(`the docs versioning notices could not be worked out (${err.message}) - none is said this run`); }
+    }
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
     try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal: (c, file) => warnUnignoredLocal(c.projectRoot, file, c) }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
