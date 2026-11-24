@@ -372,31 +372,44 @@ async function guestBoot(vm)
 const sleepSync = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const SETTLED = ['running', 'stopped', 'suspended', 'paused'];
 const TARGET = { stop: 'stopped', suspend: 'suspended', pause: 'paused' };
+const VM_POLL_MS = 3000;
+// How long one in-guest shutdown is given before it is sent again.
+const VM_STOP_WAIT_MS = 90 * 1000;
 
 // Puts the VM back; '' when it got there, else what is wrong. Synchronous, since it also runs from
 // the Ctrl-C handler. A stop is a shutdown started INSIDE Windows: `prlctl stop` logged an unexpected
 // shutdown, and `--acpi` was cancelled after 30s on a VM fresh from an update restart (both measured).
-// A VM mid-restart is let settle first.
-function restoreVm(vm, action, { timeoutMs = 5 * 60 * 1000 } = {})
+// A VM mid-restart is let settle first. One failed shutdown exec left the VM running on 2026-11-24 (no shutdown
+// reached Windows), so the shutdown is sent again until the VM stops or the time runs out.
+function restoreVm(vm, action, { timeoutMs = 5 * 60 * 1000, run = prl, info = vmInfo, sleep = sleepSync, now = Date.now } = {})
 {
-    const until = Date.now() + timeoutMs;
-    const state = () => { try { return String(vmInfo(vm).State || '').toLowerCase(); } catch { return ''; } };
-    while (!SETTLED.includes(state()) && Date.now() < until) sleepSync(3000);
+    const until = now() + timeoutMs;
+    const state = () => { try { return String(info(vm).State || '').toLowerCase(); } catch { return ''; } };
+    const firstLine = err => String(err.stderr || err.message).trim().split('\n')[0];
+    const waitFor = (target, ms) => { const end = Math.min(until, now() + ms); while (state() !== target && now() < end) sleep(VM_POLL_MS); };
+    while (!SETTLED.includes(state()) && now() < until) sleep(VM_POLL_MS);
     if (state() === TARGET[action]) return '';
-    try
+    let lastError = '';
+    if (action === 'stop')
     {
-        if (action === 'stop')
+        const ready = () => { try { return /ready/.test(run(['exec', vm, 'cmd', '/c', 'echo ready'], { timeout: 30000 })); } catch { return false; } };
+        while (state() !== TARGET.stop && now() < until)
         {
-            const ready = () => { try { return /ready/.test(prl(['exec', vm, 'cmd', '/c', 'echo ready'], { timeout: 30000 })); } catch { return false; } };
-            while (!ready() && Date.now() < until) sleepSync(3000);
-            prl(['exec', vm, 'shutdown', '/s', '/t', '0'], { timeout: 60000 });
+            while (!ready() && now() < until) sleep(VM_POLL_MS);
+            try { run(['exec', vm, 'shutdown', '/s', '/t', '0'], { timeout: 60000 }); lastError = ''; }
+            catch (err) { lastError = firstLine(err); }
+            waitFor(TARGET.stop, VM_STOP_WAIT_MS);
         }
-        else prl([action, vm], { timeout: 300000 });
     }
-    catch (err) { return `could not ${action} '${vm}': ${String(err.stderr || err.message).trim().split('\n')[0]}`; }
-    while (state() !== TARGET[action] && Date.now() < until) sleepSync(3000);
-    const now = state();
-    return now === TARGET[action] ? '' : `'${vm}' is ${now || 'unreadable'}, not ${TARGET[action]}, after ${Math.round(timeoutMs / 60000)} min - put it back by hand`;
+    else
+    {
+        try { run([action, vm], { timeout: 300000 }); }
+        catch (err) { return `could not ${action} '${vm}': ${firstLine(err)}`; }
+        waitFor(TARGET[action], timeoutMs);
+    }
+    const reached = state();
+    if (reached === TARGET[action]) return '';
+    return `'${vm}' is ${reached || 'unreadable'}, not ${TARGET[action]}, after ${Math.round(timeoutMs / 60000)} min${lastError ? ` (last shutdown: ${lastError})` : ''} - put it back by hand`;
 }
 
 async function waitForExec(vm)
@@ -720,4 +733,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };
+module.exports = { restoreVm, LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };

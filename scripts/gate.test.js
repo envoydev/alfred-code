@@ -434,3 +434,36 @@ test('--tests names only committed test files: a bare name, a missing file or a 
     assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/gone.test.js'], committed), ['scripts/gone.test.js']);
     assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/gate.js'], committed), ['scripts/gate.js'], 'not a test file');
 });
+
+test('the VM stop retries the in-guest shutdown when one exec fails, and never forces it', () =>
+{
+    const calls = [];
+    let state = 'running';
+    let shutdowns = 0;
+    const run = (args) =>
+    {
+        calls.push(args.join(' '));
+        if (args.includes('echo ready')) return 'ready';
+        if (args.includes('shutdown'))
+        {
+            shutdowns += 1;
+            if (shutdowns === 1) throw Object.assign(new Error('exec failed'), { stderr: 'PRL_ERR_VM_EXEC_PROGRAM_NOT_FOUND' });
+            state = 'stopped';
+        }
+        return '';
+    };
+    let clock = 0;
+    const problem = gate.restoreVm('vm', 'stop', { timeoutMs: 600000, run, info: () => ({ State: state }), sleep: (ms) => { clock += ms; }, now: () => clock });
+    assert.strictEqual(problem, '');
+    assert.strictEqual(shutdowns, 2, 'a failed exec is retried, not reported as the end');
+    assert.ok(calls.every((c) => !/\/f\b|--kill|^stop /.test(c)), calls.join('\n'));
+});
+
+test('the VM stop names the last exec error when the VM never stops', () =>
+{
+    let clock = 0;
+    const run = (args) => { if (args.includes('shutdown')) throw Object.assign(new Error('x'), { stderr: 'exec timed out' }); return 'ready'; };
+    const problem = gate.restoreVm('vm', 'stop', { timeoutMs: 60000, run, info: () => ({ State: 'running' }), sleep: (ms) => { clock += ms; }, now: () => clock });
+    assert.match(problem, /is running, not stopped/);
+    assert.match(problem, /exec timed out/);
+});
