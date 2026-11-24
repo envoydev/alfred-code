@@ -42,7 +42,7 @@ const CI_TOOLS = ['bash', 'pwsh'];
 // friends set, and a child git would act on the caller's repo), npm's run-script variables, a
 // Claude Code session's variables, the stack's own switches. Everything else passes through
 // (PATH, proxies, certificates).
-function runnerEnv(env, { tmp, platform = process.platform, exists = fs.existsSync } = {})
+function runnerEnv(env, { tmp, platform = process.platform, exists = fs.existsSync, nodeDir } = {})
 {
     const out = {};
     for (const [k, v] of Object.entries(env))
@@ -52,8 +52,18 @@ function runnerEnv(env, { tmp, platform = process.platform, exists = fs.existsSy
     }
     setEnv(out, 'CI', 'true');
     if (tmp) for (const k of ['TMPDIR', 'TEMP', 'TMP']) setEnv(out, k, tmp);
+    if (platform === 'win32' && nodeDir) firstOnPath(out, nodeDir);
     if (platform === 'win32') gitUnixTools(out, { exists });
     return out;
+}
+
+// The win leg's node may sit off SYSTEM's PATH (a user's nvm for Windows): its folder goes first, so npm.cmd beside it
+// resolves as the node that runs the leg.
+function firstOnPath(env, dir)
+{
+    const key = envKey(env, 'PATH');
+    const dirs = String(env[key] || '').split(';').filter(Boolean);
+    if (dirs[0] !== dir) env[key] = [dir, ...dirs].join(';');
 }
 
 // Windows keeps one variable under any letter case ('Path'); a second spelling would make two.
@@ -179,7 +189,7 @@ async function main(cfgPath)
     {
         process.stdout.write(`${STEP}checkout\n`);
         const t0 = Date.now();
-        const env = runnerEnv(process.env, { tmp });
+        const env = runnerEnv(process.env, { tmp, nodeDir: path.dirname(process.execPath) });
         result.missing = missingTools(env);
         try
         {

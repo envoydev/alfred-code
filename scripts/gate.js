@@ -30,6 +30,8 @@ const os = require('node:os');
 const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { RESULT, STEP, runnerEnv } = require('./gate-leg.js');
+const { WIN_NODE } = require('./gate/constants.js');
+const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
@@ -318,6 +320,13 @@ function prl(args, opts = {})
     return rt.execCommand('prlctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 }
 
+// The VM's node.exe of CI's major, or null. Encoded, because prlctl exec drops quotes inside an argument.
+async function findWinNode(vm, major)
+{
+    try { return pickNode(await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(nodeProbeScript(), 'utf16le').toString('base64')], 120000), major); }
+    catch { return null; }
+}
+
 // The calls made while the other legs run are async, so their output keeps draining while the VM boots.
 function prlAsync(args, timeout)
 {
@@ -425,6 +434,8 @@ async function legWin(ctx)
     else if (state !== 'running') return { reasons: [`VM '${vm}' is ${state || 'in an unknown state'}`] };
     if (!(await waitForExec(vm)))
         return { reasons: [`'${vm}' accepted no command within ${fmtMs(VM_READY_MS)} - it needs Parallels Tools running, and isolation from the Mac turned off`] };
+    const winNode = process.env[WIN_NODE.env] || tryGit(ctx.root, ['config', '--get', WIN_NODE.config]) || (await findWinNode(vm, ctx.nodeMajor));
+    if (!winNode) return { reasons: [`no Node ${ctx.nodeMajor || ''} found in '${vm}' (SYSTEM's PATH, Program Files, each signed-in user's nvm) - install it, or git config ${WIN_NODE.config} '<path to node.exe>'`] };
     const { winId, work, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
     // Killing prlctl on the Mac leaves the run going in the VM: a timeout or Ctrl-C ends the guest
     // tree too and removes its work dir. Encoded, because prlctl exec drops quotes inside an argument.
@@ -445,7 +456,7 @@ async function legWin(ctx)
     try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(sweep, 'utf16le').toString('base64')], 120000); }
     catch { /* the leg reports what matters */ }
     const bootBefore = await guestBoot(vm);
-    const r = await runProcess('win', 'prlctl', ['exec', vm, 'node', `${guestDir}\\gate-leg.js`, `${guestDir}\\win.json`],
+    const r = await runProcess('win', 'prlctl', ['exec', vm, winNode, `${guestDir}\\gate-leg.js`, `${guestDir}\\win.json`],
         { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
     // A run cut off with no result: the VM went down under it - Windows Update restarts a VM that sat
     // off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from

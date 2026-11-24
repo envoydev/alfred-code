@@ -370,3 +370,39 @@ test('gate: --tests runs only the named test files, never skips on a stamp and n
     assert.strictEqual(gate.skipsOnStamp({ force: false, tests: ['scripts/a.test.js'] }), false);
     assert.strictEqual(gate.skipsOnStamp({ force: true, tests: null }), false);
 });
+
+// 2026-11-24: Node 26 in the VM sat in the signed-in user's nvm for Windows, off SYSTEM's PATH, so `prlctl exec <vm> node`
+// found none and the win leg 'printed no result'. The gate now lists the VM's node.exe files and picks CI's major.
+const winNode = require('./gate/win-node.js');
+
+test('pickNode takes the newest node.exe of the asked major from the VM probe', () =>
+{
+    const out = [
+        'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v22.14.0\\node.exe|v22.23.3',
+        'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1\\node.exe|v26.13.1',
+        'C:\\Program Files\\nodejs\\node.exe|v26.2.0',
+        'garbage line',
+        '',
+    ].join('\r\n');
+    assert.strictEqual(winNode.pickNode(out, 26), 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1\\node.exe');
+    assert.strictEqual(winNode.pickNode(out, 22), 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v22.14.0\\node.exe');
+    assert.strictEqual(winNode.pickNode(out, 24), null);
+    assert.strictEqual(winNode.pickNode('', 26), null);
+    assert.strictEqual(winNode.pickNode(out, undefined), 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1\\node.exe', 'no major asked: the newest');
+});
+
+test('the VM probe looks on SYSTEM\'s PATH, in Program Files and in every signed-in user\'s nvm for Windows', () =>
+{
+    const script = winNode.nodeProbeScript();
+    for (const part of ['Get-Command node', 'Program Files\\nodejs\\node.exe', 'HKEY_USERS', 'NVM_HOME', 'installs\\v*\\node.exe', '--version'])
+        assert.ok(script.includes(part), part);
+});
+
+test('the leg puts its own node folder first on a Windows PATH, so npm.cmd beside it resolves', () =>
+{
+    const dir = 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1';
+    const env = leg.runnerEnv({ Path: 'C:\\Windows' }, { platform: 'win32', exists: () => false, nodeDir: dir });
+    assert.strictEqual(env.Path, `${dir};C:\\Windows`);
+    assert.strictEqual(leg.runnerEnv({ Path: `${dir};C:\\Windows` }, { platform: 'win32', exists: () => false, nodeDir: dir }).Path, `${dir};C:\\Windows`, 'already first: unchanged');
+    assert.strictEqual(leg.runnerEnv({ PATH: '/bin' }, { platform: 'linux', nodeDir: '/opt/node/bin' }).PATH, '/bin', 'POSIX legs keep their PATH');
+});
