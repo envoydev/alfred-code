@@ -117,7 +117,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names. Each plugin carries the SCOPE the listing printed,
   because an uninstall is scope-addressed. A plugin the listing marks disabled sits in
   `plugins_disabled` (`parked_plugins` is its catalog part): parked, never proposed for install or
-  removal. `left_out` lists what the user switched off - an item of a parked retired entry, or on a stamp still on the old core route a denied seat -
+  removal. `left_out` lists what the user switched off - an item of a parked retired entry (and, on a stamp still on the old core route, a denied seat) -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
   there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy> hooks=<plugin|copy> skills-from=<flag|shared|ledgered|env> seats-switch=<open|shared|local|workspace>`
@@ -321,7 +321,7 @@ A memory answer other than the current mode rides step 11's ONE installer call a
 ```ask
 Where your agents come from? (now: linked from the stack's library)
 - 'Keep them linked (Recommended)' - each picked agent is a folder in .alfred/stack/agents, linked into .claude/agents like a skill; the plugin carries none; nothing changes.
-- 'Files in .claude/agents' - each picked agent is a folder copied into .claude/agents with no link; /alfred-code:update refreshes it, and an edit of yours is kept and named; this machine's choice.
+- 'Files in .claude/agents' - each picked agent is a folder copied into .claude/agents with no link; /alfred-code:update refreshes it, and an edit of yours is overwritten with a line saying so; this machine's choice.
 ```
 
 ```ask

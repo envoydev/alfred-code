@@ -143,7 +143,7 @@ seat is never `denied`; only a seat of ANOTHER plugin named in `permissions.deny
 still ships it and configure can bring it back. `model` / `effort` are the frontmatter pins read from the agent
 file (the folder `<name>/<name>.md` for a library seat).
 
-**Rules** - `.alfred/stack/rules/*.md` (the library, sent by the plugin) and `.claude/rules/*.md` (the generated ones):
+**Rules** - `.alfred/stack/rules/*.md` (the library), `.claude/rules/*.md` (the generated ones, and one marked native copy of each picked rule, which Claude Code loads itself - the same rule, so list it once):
 
 | rule | scope | origin |
 |---|---|---|
@@ -152,7 +152,7 @@ file (the folder `<name>/<name>.md` for a library seat).
 | alfred-architecture | always-on | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rule (`alfred-awareness.md`), `stack` otherwise,
+capture-written rule (`alfred-awareness.md`), `stack` otherwise (a library rule and its marked native copy are one row),
 `user-authored` when clearly neither.
 
 Under the table, paste every `rules:` line the `workspace` call of section 2 printed, as printed - a refused
@@ -160,9 +160,9 @@ ignore of a locked rule, an unmatched glob, a skipped rule file, a rule past the
 named in the off-list, and each settings file whose `disableAllHooks` is true (then no rule is sent).
 
 In a workspace, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/session-surface.js" . | sed -n '/^MEMBERS ENTERED/,$p'` and
-paste the `MEMBERS ENTERED` section it prints, as printed - each joined project the newest session entered (its rules
-sent on the first file touch under it), per actor, with its parts and characters and any rule past part 5. It prints
-nothing when the session entered none.
+paste the `MEMBERS ENTERED` section it prints, as printed - each joined project an older install's session entered (no
+marker is written now: a child's rules load natively, so a current session prints none), per actor, with its parts and
+characters and any rule past part 5. It prints nothing when no marker is left.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by

@@ -106,7 +106,7 @@ printed). **A plugin the listing marks `disabled` is a THIRD state, not an absen
 disk nor removing what the user parked (measured: two stack plugins sat disabled through an update
 and a validate run four minutes apart, and both runs reported nothing to do); `parked_plugins` is
 its catalog part. `left_out` lists what the user switched off - an item of a parked
-retired entry - as selection lines, which `--missing` counts as present: never proposed back. Three
+retired entry (and, on a stamp still on the old core route, a denied seat) - as selection lines, which `--missing` counts as present: never proposed back. Three
 signals in `$TMP/plan.out`, never printed to the user: `error: --installed-only found nothing
 installed` means there is no install - route to `/alfred-code:init`; `plan routes:
 skills=<plugin|copy> hooks=<plugin|copy>` names the routes; `plan answered:
