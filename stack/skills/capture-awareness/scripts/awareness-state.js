@@ -63,6 +63,7 @@ const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-awareness', 'capture-quality
 // The record registers the browser server once per engine (`playwright-chrome`, ...), the upstream docs once as
 // `playwright`: every name maps to the one routing row.
 const PLAYWRIGHT_SERVER = /^playwright(?:-(?:chrome|msedge|firefox|webkit))?$/;
+const CORE_PLUGIN = 'alfred-code';
 const SEAT_ROLES = ['-solution-designer', '-implementer', '-verifier'];
 const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## MCP routing'];
 
@@ -155,13 +156,14 @@ function scanSkills(dir)
     return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// A seat is a flat `<name>.md` or a folder `<name>/<name>.md` (the store layout; a link to one reads as the folder).
 const scanAgents = (dir) => readDir(dir)
-    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .filter((e) => (e.isFile() && e.name.endsWith('.md')) || (e.isDirectory() && readText(path.join(dir, e.name, `${e.name}.md`)) !== null))
     .map((e) => e.name.replace(/\.md$/, ''))
     .sort((a, b) => a.localeCompare(b));
 
-// A seat from a plugin is addressable ONLY as `<plugin>:<agent>` - the bare name returns 'Agent
-// type not found'. The family is the bare part, so the prefix comes off first.
+// A seat from another plugin is addressable ONLY as `<plugin>:<agent>`; the core's seats are linked bare. The
+// family is the bare part, so the prefix comes off first.
 const bareSeat = (s) => String(s).replace(/^[A-Za-z0-9_-]+:/, '');
 
 function seatFamilies(seats)
@@ -260,9 +262,9 @@ function pluginCoveredLayers(pluginRows)
         const a = listed ? listed.agents : [...scanAgents(path.join(p.installPath, 'agents')), ...scanAgents(path.join(p.installPath, 'stack', 'agents'))];
         if (s.length || a.length) from.push(p.name);
         skills.push(...s);
-        // The DISPATCH name, which is the only one that resolves - the rule this generates is read
-        // at dispatch time, so a bare seat name in it is an instruction that fails.
-        seats.push(...a.map((name) => `${p.name}:${name}`));
+        // The DISPATCH name, which is the only one that resolves - the rule this generates is read at dispatch
+        // time. The core's seats are linked under their bare names, so only another plugin's seat is prefixed.
+        seats.push(...a.map((name) => (p.name === CORE_PLUGIN ? name : `${p.name}:${name}`)));
     }
     const seen = new Set();
     return {
@@ -825,8 +827,10 @@ function inventory(projectRoot)
     for (const s of skills.filter((s) => s.unreadable)) sub(`UNREADABLE ${s.name}: ${s.unreadable} - report it as unreadable, never fill it from memory`);
 
     const denied = deniedSeats(projectRoot);
-    const offSeats = seats.filter((s) => denied.has(s));
-    seats = seats.filter((s) => !denied.has(s));
+    // A core seat is named bare, and a deny row an earlier release wrote spells it `alfred-code:<seat>`: both switch it off here.
+    const isDenied = (s) => denied.has(s) || denied.has(`${CORE_PLUGIN}:${s}`);
+    const offSeats = seats.filter(isDenied);
+    seats = seats.filter((s) => !isDenied(s));
     say('SEATS', `${seats.length} total${offSeats.length ? ` (${offSeats.length} denied in permissions.deny, left out)` : ''}`);
     facts.seatsLine = seats.join(', ') || 'none';
     sub(facts.seatsLine);

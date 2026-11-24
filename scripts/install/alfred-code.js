@@ -984,7 +984,7 @@ function runLayers(ctx)
         log: ctx.log, note: ctx.note,
     });
     if (plugins.corePluginOn(ctx.routes))
-        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().library.agents, docsPath, log: ctx.log, note: ctx.note });
+        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, docsPath, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
     // The language-server check writes into the data root, never the docs root, so a docs root still waiting on update's ask
     // skips nothing of it (final review M8): every run checks - after the data root layer, so an older root's leftovers

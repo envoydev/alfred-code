@@ -118,8 +118,8 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    no such catalogue - say so and proceed on the method alone. **A red pipeline is the one route that leaves this skill:** CI
    needs the `gh` log pull and the CI-versus-local environment delta, which is
    issue-diagnoser-ci's specialty - offer that dispatch as the recommended option at this
-   stop rather than re-deriving it here, the seat dispatched exactly as the roster spells it
-   (`alfred-code:issue-diagnoser-ci` on the plugin route). Write the findings file with the observable and
+   stop rather than re-deriving it here, the seat dispatched exactly as the roster spells it.
+   Write the findings file with the observable and
    `Tier: <n>`. *Stop.*
 2. **GATHER** - per the mode: dispatch one evidence-gatherer per source (reproduce this path,
    pull and grep that log window, capture that screen) exactly as the roster spells it (`alfred-code:<seat>` on the plugin route), several in parallel, up to `ALFRED_CODE_MAXIMUM_RUN_AGENTS` at once (default 5), when several

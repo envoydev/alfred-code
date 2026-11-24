@@ -309,9 +309,9 @@ test('inventory: a seat permissions.deny names is left out of the SEATS line - a
     {
         const { out } = run([], { cwd: root, bin });
         assert.match(out, /SEATS:\s+1 total \(3 denied in permissions\.deny, left out\)/, out);
-        assert.match(out, /^\s+alfred-code:aspnet-implementer$/m, out);
+        assert.match(out, /^\s+aspnet-implementer$/m, out);
         for (const seat of ['web-angular-implementer', 'evidence-gatherer', 'security-auditor'])
-            assert.doesNotMatch(out, new RegExp(`alfred-code:${seat}(,|$)`, 'm'), `${seat} is denied`);
+            assert.doesNotMatch(out, new RegExp(`(^|\\s|,)${seat}(,|$)`, 'm'), `${seat} is denied`);
     }
     finally { fs.rmSync(path.join(TMP, '.claude'), { recursive: true, force: true }); }
 });
@@ -331,8 +331,43 @@ test('inventory: a project seat copy wins its name over the core\'s twin, as a c
     ] }));
     const bin = stubCli(path.join(TMP, 'kept-cli'), { plugins: JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, installPath: cache }]) });
     const { out } = run([], { cwd: root, bin });
-    assert.match(out, /^\s+alfred-code:aspnet-verifier, aspnet-implementer$/m, out);
-    assert.doesNotMatch(out, /alfred-code:aspnet-implementer/, out);
+    assert.match(out, /^\s+aspnet-implementer, aspnet-verifier$/m, out);
+    assert.doesNotMatch(out, /alfred-code:aspnet/, out);
+});
+
+// Seats left the core plugin: a picked seat is a folder in the store linked as `.claude/agents/<name>`, so the
+// roster names it bare - from the link alone, with no plugin carrying anything.
+test('inventory: the capabilities rule names each picked seat bare', { skip: posixOnly }, () =>
+{
+    const root = project('linked-seats', { rule: false });
+    fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
+    for (const seat of ['aspnet-implementer', 'aspnet-verifier'])
+    {
+        write(path.join(root, '.alfred', 'stack', 'agents', seat, `${seat}.md`), `---\nname: ${seat}\n---\n`, -100);
+        fs.mkdirSync(path.join(root, '.claude', 'agents'), { recursive: true });
+        fs.symlinkSync(path.join('..', '..', '.alfred', 'stack', 'agents', seat), path.join(root, '.claude', 'agents', seat), 'dir');
+    }
+    const { out } = run([], { cwd: root });
+    assert.match(out, /SEATS:\s+2 total/, out);
+    assert.match(out, /^\s+aspnet-implementer, aspnet-verifier$/m, out);
+    assert.doesNotMatch(out, /alfred-code:aspnet/, out);
+});
+
+// A leftover cache of an older core still lists its seats; the core's seat is named bare all the same, while another
+// plugin's seat keeps the prefix it answers to.
+test('inventory: an older core cache lists its seats bare, another plugin\'s seat keeps its prefix', { skip: posixOnly }, () =>
+{
+    const root = project('old-core', { rule: false });
+    fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
+    const cache = path.join(TMP, 'old-core-cache');
+    write(path.join(cache, 'stack', 'agents', 'aspnet-verifier.md'), '---\nname: aspnet-verifier\n---\n');
+    write(path.join(cache, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [
+        { name: 'alfred-code', source: './', skills: [], agents: ['./stack/agents/aspnet-verifier.md'] },
+    ] }));
+    const bin = stubCli(path.join(TMP, 'old-core-cli'), { plugins: JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, installPath: cache }]) });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /^\s+aspnet-verifier$/m, out);
+    assert.doesNotMatch(out, /alfred-code:aspnet-verifier/, out);
 });
 
 test('inventory: no local dirs and no plugin carrying them is a STOP, not an empty rule', { skip: posixOnly }, () =>

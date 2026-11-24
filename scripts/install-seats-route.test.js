@@ -231,7 +231,7 @@ const rosterSeats = (repo) =>
     return lines[lines.indexOf('## Subagent seats') + 1].split(', ');
 };
 
-test('after the switch to copy the roster names every copied seat bare, and after the switch back namespaced', POSIX_ONLY, () =>
+test('after the switch to copy the roster names every seat bare, and after the switch back it stays bare', POSIX_ONLY, () =>
 {
     const { steps } = switchRun(['install', 'update', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin, ROUTE.plain],
         (repo, i) =>
@@ -239,8 +239,8 @@ test('after the switch to copy the roster names every copied seat bare, and afte
             if (i === 0) layOutRoster(repo, [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`]);
             return i === 0 ? null : { roster: rosterSeats(repo), copied: fs.existsSync(seatPath(repo)) };
         });
-    const bareCopy = { roster: [SEAT, `${CORE}:${UNPICKED_SEAT}`], copied: true };
-    assert.deepEqual(steps[1], bareCopy, 'copy: the copied seat is bare, the unpicked one stays namespaced');
+    const bareCopy = { roster: [SEAT, UNPICKED_SEAT], copied: true };
+    assert.deepEqual(steps[1], bareCopy, 'copy: every seat is bare - the plugin carries none');
     assert.deepEqual(steps[2], bareCopy, 'plugin again: the seat is still a copy, so it is still named bare');
     assert.deepEqual(steps[3], bareCopy, 'a plain update changes nothing');
 });

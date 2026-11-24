@@ -46,7 +46,7 @@ This change is <n> changed lines over <stacks> - review it in a seat to keep thi
 - 'Review it here' - the method runs in this chat; its reads land in this context
 ```
 
-The seat is security-auditor, dispatched exactly as the roster spells it (`alfred-code:security-auditor` on the plugin route), with a diff brief naming the target's read commands, this skill's method and `references/not-a-finding.md`, and the report shape below. Under the bar, run inline without asking. Inside the solve flows dispatch stays explicit-only: inline unless the stop that led here offered the seat and the user picked it.
+The seat is security-auditor, dispatched exactly as the roster spells it, with a diff brief naming the target's read commands, this skill's method and `references/not-a-finding.md`, and the report shape below. Under the bar, run inline without asking. Inside the solve flows dispatch stays explicit-only: inline unless the stop that led here offered the seat and the user picked it.
 
 ## Run
 

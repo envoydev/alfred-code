@@ -1096,3 +1096,23 @@ test('a partial --selection on install takes the locked always-on rules and skil
     assert.doesNotMatch(outs[1], /adopting (?:rule|skill) /, 'the first update adopts nothing more');
     assert.deepStrictEqual(steps[1], []);
 });
+
+// Seats left the core plugin: every picked seat is linked under its bare name, so a roster written while the core
+// carried them (`alfred-code:<seat>`) is re-spelled bare - whether or not a project copy sits beside it.
+test('respellRosterSeats: a core-prefixed seat in the roster becomes bare, other plugins and prose stay', () =>
+{
+    const projectRoot = path.join(TMP, `roster-${seq++}`);
+    const rule = path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
+    fs.mkdirSync(path.dirname(rule), { recursive: true });
+    fs.writeFileSync(rule, [
+        '# caps', '', '## Subagent seats',
+        'alfred-code:aspnet-verifier, aspnet-implementer, house-wpf:wpf-implementer, my-own-seat', '',
+        '## MCP routing', 'dispatch alfred-code:aspnet-verifier never; prose is left alone', '',
+    ].join('\n'));
+    const first = sel.respellRosterSeats({ projectRoot, core: 'alfred-code' });
+    const text = fs.readFileSync(rule, 'utf8');
+    assert.equal(first, 1);
+    assert.match(text, /^aspnet-verifier, aspnet-implementer, house-wpf:wpf-implementer, my-own-seat$/m, text);
+    assert.match(text, /dispatch alfred-code:aspnet-verifier never/, 'only the seats line is re-spelled');
+    assert.equal(sel.respellRosterSeats({ projectRoot, core: 'alfred-code' }), 0, 'a re-run changes nothing');
+});

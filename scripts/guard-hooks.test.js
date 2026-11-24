@@ -2236,6 +2236,21 @@ test('guard-unapproved-dispatch: a diagnoser dispatches the evidence gatherer an
     'the gatherer\'s locate-a-symbol task is its job, not a grep-shaped seat\'s');
 });
 
+// The denial tells the model which seat to dispatch, so it names the bare seat - the plugin carries none. The
+// matching keeps both spellings: an old transcript or session still sends the prefixed names.
+test('guard-unapproved-dispatch: the diagnoser denial names the bare evidence-gatherer, and both spellings are judged alike', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (caller, seat) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', agent_type: caller, agent_id: 'a1', tool_input: { subagent_type: seat, prompt: 'pull the failing job log and grep it to the first error' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  for (const [caller, seat] of [['issue-diagnoser-ci', 'general-purpose'], ['alfred-code:issue-diagnoser-ci', 'general-purpose']]) {
+    const r = disp(caller, seat);
+    assert.equal(r.status, 2, `${caller} -> ${seat}: refused`);
+    assert.match(r.stderr, /the evidence-gatherer seat|`evidence-gatherer`/, `${caller}: the denial names the bare seat`);
+    assert.doesNotMatch(r.stderr, /alfred-code:evidence-gatherer/, `${caller}: the denial never tells the model to use the prefix`);
+  }
+});
+
 test('guard-stop-contract: the fresh-session offer lands at turn end, once per cost step', () => {
   const logDir = fs.mkdtempSync(path.join(TMP, 'freshstop-'));
   const at = (name, ctx, text) => transcript(name, ctxRows(name, ctx, text || 'Applied the change; tests pass.'));

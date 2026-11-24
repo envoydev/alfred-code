@@ -748,22 +748,18 @@ function respellRenamed({ projectRoot, renamed, docsPath = '', owned = () => fal
     return total;
 }
 
-// THE ROSTER'S SEAT SPELLING (M6). The generated capabilities rule names each seat as it resolves, and flows
-// dispatch a seat exactly as that roster spells it. A plugin seat answers only to `<core>:<seat>` (a bare name
-// is 'Agent type not found'), so a roster written before the seats moved onto the core - a 2.0.0 library seat,
-// listed bare - sends every flow to a seat that does not resolve. Its `## Subagent seats` list is re-spelled:
-// a bare core seat with no project copy takes the core's name; a seat whose project copy is kept (a tuned or
-// edited seat, `.claude/agents/<seat>.md`) is named bare, the copy's own name - the one a flow should run. A
-// name the core does not carry, and every line that is not a plain name list, is left as written.
-function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log = () => {}, note = () => {} })
+// THE ROSTER'S SEAT SPELLING. The generated capabilities rule names each seat as it resolves, and flows dispatch a
+// seat exactly as that roster spells it. The seats left the core plugin: each picked seat is a library copy linked as
+// `.claude/agents/<name>`, so its name is bare and `<core>:<seat>` resolves to nothing. A roster written while the
+// core carried the seats - `<core>:<seat>` in its `## Subagent seats` list - is re-spelled bare; another plugin's
+// seat keeps the prefix it answers to, and every line that is not a plain name list is left as written.
+function respellRosterSeats({ projectRoot, core, docsPath = '', log = () => {}, note = () => {} })
 {
     // The inventory doc since 2026-10-16; the rule it replaced while an update has not moved it yet.
     const file = awarenessDocs(projectRoot, docsPath, { agentsOnly: true })[0] || path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
     const shown = path.relative(projectRoot, file).split(path.sep).join('/');
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
-    const carried = new Set(seats);
-    const copied = (seat) => [`${seat}.md`, path.join(seat, `${seat}.md`)].some((f) => fs.existsSync(path.join(projectRoot, '.claude', 'agents', f)));
     const lines = text.split('\n');
     let inSeats = false;
     let changed = 0;
@@ -773,13 +769,7 @@ function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log 
         if (!inSeats || !lines[i].trim()) continue;
         const names = lines[i].split(',').map((t) => t.trim());
         if (!names.every((t) => /^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)?$/.test(t))) continue;
-        const spelled = names.map((t) =>
-        {
-            const bare = t.startsWith(`${core}:`) ? t.slice(core.length + 1) : t;
-            if (t.includes(':') && bare === t) return t;   // another plugin's seat
-            if (!carried.has(bare)) return t;
-            return copied(bare) ? bare : `${core}:${bare}`;
-        });
+        const spelled = names.map((t) => (t.startsWith(`${core}:`) ? t.slice(core.length + 1) : t));
         const out = [...new Set(spelled)].join(', ');
         if (out === names.join(', ')) continue;
         changed += spelled.filter((t, n) => t !== names[n]).length || 1;
@@ -787,8 +777,8 @@ function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log 
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`${shown} names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-awareness`); return 0; }
-    log(`  roster: ${shown} - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
+    catch (err) { note(`${shown} names ${changed} seat(s) under the old ${core}:<seat> spelling and could not be re-spelled (${err.message}) - re-run /capture-awareness`); return 0; }
+    log(`  roster: ${shown} - ${changed} seat name(s) re-spelled bare, as the linked seats resolve`);
     return changed;
 }
 
