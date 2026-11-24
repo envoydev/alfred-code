@@ -623,13 +623,12 @@ function heldLayers(projectRoot, env)
         envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
 }
 
-// The first of those layers that holds `key`, as [name, value], else undefined. A settings file that cannot be read counts
-// as holding it - the line it may answer with stays. The one read both the installer's ranking and the remover use.
+// The first of those layers that holds `key`, as [name, value], else undefined. A settings file that cannot be read reads
+// as empty, as the loader reads it. The one read both the installer's ranking and the remover use.
 function layerHolding(projectRoot, key, { env = process.env } = {})
 {
     const layout = require('../../stack/hooks/layout.js');
-    try { return heldLayers(projectRoot, env).map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined); }
-    catch { return ['a settings file that cannot be read', undefined]; }
+    return heldLayers(projectRoot, env).map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
 }
 
 // `write: false` (3.12 - a run that does not write a file git tracks, a local-scope one) removes nothing and names each

@@ -354,6 +354,16 @@ test('uninstall: a .cursor/.gitignore the user wrote stays', POSIX_ONLY, () =>
     assert.strictEqual(result, `${CURSOR_VERSIONING_IGNORE}!keep\n`);
 });
 
+test('uninstall: a .claude/.gitignore the user wrote stays', POSIX_ONLY, () =>
+{
+    const { result } = seedRun(['install', 'uninstall'], SEL, {
+        args: [LOCAL_VERSIONING, []], env: COPY,
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(repo, '.claude', '.gitignore'), `${CLAUDE_VERSIONING_IGNORE}!keep\n`); },
+        inspect: (repo) => read(repo, '.claude', '.gitignore'),
+    });
+    assert.strictEqual(result, `${CLAUDE_VERSIONING_IGNORE}!keep\n`);
+});
+
 test('ignoreVerdict: the stack\'s own .claude/.gitignore is the stack\'s rule, a user file is not', () =>
 {
     const root = project();

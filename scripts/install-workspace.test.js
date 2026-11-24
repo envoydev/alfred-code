@@ -774,7 +774,7 @@ test('a parent read-back that fails adds and drops nothing and prints one !! lin
     assert.match(r.outs[3], /nothing inherited is added or dropped this run/);
 });
 
-test('kill switch: at 0, nothing is added, dropped, re-seeded or removed and the own lines are carried (AC16)', POSIX_ONLY, () =>
+test('kill switch: at 0, nothing is added or dropped, the own lines are carried and the child seeds its docs versioning as a standalone would (AC16)', POSIX_ONLY, () =>
 {
     const keep = (work) => ({ own: lineOf(stampOf(work, 'api'), 'own-picks'), ex: excludesOf(work, 'api').length, vars: varsOf(work, 'api'), x: hasSkill(work, 'api', X) });
     const r = scenario([

@@ -179,8 +179,7 @@ test('a garbage workspace.json gives no chain value', () =>
     const at = joined();
     fs.writeFileSync(path.join(at.child, '.alfred', 'workspace.json'), '{ not json');
     const got = rank(at);
-    assert.notStrictEqual(got.source, 'chain');
-    assert.strictEqual(got.linked, false);
+    assert.deepStrictEqual([got.value, got.source, got.linked, got.chain], ['git', 'seed', false, undefined]);
 });
 
 test('a typed value in the child outranks the chain', () =>
@@ -216,6 +215,7 @@ test('the ledger and the answers come from the project\'s own stamp when the cal
 test('copy.resolveDocsVersioning ranked falls back to the chain; unranked still reads the own value only', () =>
 {
     const at = joined();
+    const before = process.env.ALFRED_CODE_WORKSPACE;
     process.env.ALFRED_CODE_WORKSPACE = '1';
     try
     {
@@ -223,7 +223,7 @@ test('copy.resolveDocsVersioning ranked falls back to the chain; unranked still 
         assert.strictEqual(copy.resolveDocsVersioning(at.child, 'project', { ranked: true }), 'local');
         assert.deepStrictEqual(copy.resolveDocsVersioning(at.child, 'project', { ranked: true, withSource: true }), { value: 'local', source: 'chain' });
     }
-    finally { delete process.env.ALFRED_CODE_WORKSPACE; }
+    finally { if (before === undefined) delete process.env.ALFRED_CODE_WORKSPACE; else process.env.ALFRED_CODE_WORKSPACE = before; }
     const typed = joined({ child: `${KEY}=git\n` });
     assert.strictEqual(copy.resolveDocsVersioning(typed.child, 'project', { ranked: true }), 'git');
     assert.deepStrictEqual(copy.resolveDocsVersioning(typed.child, 'project', { ranked: true, withSource: true }), { value: 'git', source: 'own' });

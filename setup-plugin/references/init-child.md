@@ -53,9 +53,9 @@ say `the install at <rel> (<name>) could not be read - installing standalone; /a
   this project's own from then on. The data root is never inherited - every project's is its own `.alfred`.
   `ALFRED_CODE_DOCS_VERSIONING` follows its own line: `docs-versioning: from root <v>` makes the parent's value the
   default, and an answer equal to it passes no `--docs-versioning` (the child inherits); a different answer passes the
-  flag and is this project's own. A line reading `recommend <v>` while the parent holds a value is the default instead,
-  since the child's layout outranks the workspace (a local-scope child, say): an answer equal to the parent's value
-  then passes `--docs-versioning` too, or `<v>` wins silently.
+  flag and is this project's own. A line reading `recommend <v>` while the parent holds a value makes `<v>` the default
+  instead, since the child's layout outranks the workspace (a local-scope child, say): an answer equal to the parent's
+  value then passes `--docs-versioning` too, or `<v>` wins silently.
 
 ## Before the install call - the join, then the ignores
 

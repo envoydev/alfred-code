@@ -12,7 +12,9 @@ function markerOf(text)
 }
 
 // D6b: [{ key, line }] for a linked child. `tracked`: git tracks `<data root>/.gitignore`. `said`: the told entries so far.
-// The first line needs a shared scope, a tracked file whose marker became the chain's value this run, The second, at any scope (a local-scope `.variables` is pulled only where git tracks it), needs a `.variables` line no ledger row or answer owns that the ranking took over a different chain value.
+// The first line needs a shared scope and a tracked file whose marker became the chain's value this run. The second, at any
+// scope (a local-scope `.variables` is pulled only where git tracks it), needs a `.variables` line no ledger row or answer
+// owns that the ranking took over a different chain value.
 function noticeRows({ scope, tracked, before, after, value, source, seed, ownLine, ledgerRow, answered, chain, said = [] })
 {
     const rows = [];

@@ -189,7 +189,7 @@ const CURSOR_VERSIONING_IGNORE = '# alfred-code: versioning local - nothing unde
 // (temp-project matrix, 2026-10-21). A history record is `<session>.json`, so a team's own docs/history/ notes stay in git.
 // The two personal preferences docs are one user's answer style and code taste, never the team's (audit 2026-10-21 Q-1, the
 // user's standing ruling to take the Recommended option); the preferences hook reads a linked worktree's from the main
-// checkout. `.branches/` is never written under `git`, and `local` keeps the root out.
+// checkout. `.branches/` holds the overlays of `local` alone; a linked child's `git` text ignores it too (dataIgnoreText), so a leftover overlay is never committed, and `local` keeps the root out.
 const DOCS_STATE_IGNORE = [
     "# the hooks' state before 2.8.0, which a session started before the update still writes",
     '/flow/', '/hook-blocks/', '/history/*.json', '/tools-usage/', '/docs-log.jsonl', '/usage-report/**/*.jsonl',

@@ -54,11 +54,10 @@ test('the layout sets: only the switch is never taken from a member, and the key
     assert.deepStrictEqual([...layout.CHAIN_PRUNE_NEVER], [KEY]);
 });
 
-test('chainValues hands the key on', () =>
+test('chainValues hands the key on, and never the switch the root holds', () =>
 {
-    const at = joined();
-    assert.strictEqual(ws.chainValues(at.child, { env: ON })[KEY], 'local');
-    assert.ok(!Object.hasOwn(ws.chainValues(at.child, { env: ON }), 'ALFRED_CODE_WORKSPACE'));
+    const at = joined({ root: `${KEY}=local\nALFRED_CODE_WORKSPACE=1\n` });
+    assert.deepStrictEqual(ws.chainValues(at.child, { env: ON }), { [KEY]: 'local' });
 });
 
 test('W1 keeps a typed local equal to the root\'s', () =>
@@ -186,7 +185,8 @@ test('an older child\'s git seed leaves after the stamp and the same run already
     const shape = (work) => ({ ...look(work), ignore: fs.readFileSync(path.join(childAt(work), '.alfred', '.gitignore'), 'utf8') });
     const r = scenario([{}, { at: API, after: shape }, { at: API, act: 'update', before: join, after: shape }]);
     assert.strictEqual(r.steps[2].row, undefined, 'the stamp the run wrote holds no row for the removed line');
-    assert.notStrictEqual(r.steps[2].ignore, r.steps[1].ignore, 'the .gitignore follows the workspace\'s local');
+    const { markerOf } = require('./install/versioning/notices.js');
+    assert.deepStrictEqual([markerOf(r.steps[1].ignore), markerOf(r.steps[2].ignore)], ['git', 'local'], 'the .gitignore follows the workspace\'s local');
     assert.match(r.outs[2], /workspace: .*ALFRED_CODE_DOCS_VERSIONING.*removed/);
 });
 

@@ -902,7 +902,7 @@ function runLayers(ctx)
     for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(ctx.source.dir), compare: compareVersions, env: ctx.env })) ctx.log(`  ${line}`);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     const dataIgnoreBefore = readOrNull(path.join(ctx.projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore'));
-    // After the settings pass, so the versioning is the decision this run just wrote.
+    // After the settings pass, so `docsPath` is the docs root that pass wrote; the versioning is the run's one ranked answer (`ctx.versioning`).
     ignoreStep(ctx, docsPath);
     // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
     if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
