@@ -472,7 +472,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             {
                 const at = path.join(claudeDir, 'rules', `${n}.md`);
                 if (!fs.existsSync(path.join(rulesDir, `${n}.md`)) || !fs.lstatSync(at, { throwIfNoEntry: false })?.isFile() || nativeRules.hasMarker(readText(at))) continue;
-                if (library.hashItem(at) === h) fs.unlinkSync(at);
+                if (library.hashItem(at) === h) { fs.unlinkSync(at); report.remove('rule', n); }
                 else heldTwice.push(n);
             }
         }
@@ -2701,7 +2701,7 @@ function pruneDroppedCopies(ctx)
             const user = navContextUser(ctx);
             if (now !== h) ctx.log(`  ${rel}: kept - the stack copied it for a navigation registration no release writes now, but it was changed since, so it is yours`);
             else if (user) ctx.log(`  ${rel}: kept - ${user} still launches with it; it goes on the first update after that registration does`);
-            else { fs.rmSync(at, { force: true }); ctx.log(`  ${rel} removed - no navigation registration names it now`); }
+            else { fs.rmSync(at, { force: true }); ctx.report.remove('file', rel); ctx.log(`  ${rel} removed - no navigation registration names it now`); }
             continue;
         }
         const [fileKind, ...fileRest] = rel.split('/');

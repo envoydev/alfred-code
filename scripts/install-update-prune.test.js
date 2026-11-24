@@ -21,6 +21,9 @@ const PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, sco
 const SEL = 'skill markdown-style\nrule alfred-security\nagent evidence-gatherer\n';
 const RETIRED_SKILL = 'data-security';
 const ADDED_RULE = 'alfred-security';
+const CHILD_RULE = `api.${ADDED_RULE}.md`;
+const TWICE_RULE = 'alfred-interaction';
+const NAV_FILE = 'navigation-context.yml';
 const OLD_SEAT = 'security-auditor';
 const PICKED_SEAT = 'evidence-gatherer';
 const STRANGER = 'my-own';
@@ -93,6 +96,22 @@ function plant(work, rel)
     write(claudeOf(work, rel, 'skills', 'my-skill', 'SKILL.md'), MINE_SKILL);
     write(claudeOf(work, rel, 'agents', 'my-agent.md'), MINE_AGENT);
     write(claudeOf(work, rel, 'rules', 'my-rule.md'), MINE_RULE);
+    // a joined child's copy of the root's rule at the stack's text, as the 3.17.0 delivery wrote it: this update removes it
+    if (rel === CHILD)
+    {
+        const store = path.join(at(work, '.'), '.alfred', 'stack', 'rules', `${ADDED_RULE}.md`);
+        const text = fs.existsSync(store) ? fs.readFileSync(store, 'utf8') : fs.readFileSync(path.join(SOURCE, 'stack', 'rules', `${ADDED_RULE}.md`), 'utf8');
+        write(claudeOf(work, rel, 'rules', CHILD_RULE), text);
+    }
+    if (rel === '.')
+    {
+        // a rule copy the stamp records, still in `.claude/rules` beside the store's (held twice): at its hash it goes
+        const store = path.join(at(work, '.'), '.alfred', 'stack', 'rules', `${TWICE_RULE}.md`);
+        write(claudeOf(work, rel, 'rules', `${TWICE_RULE}.md`), fs.readFileSync(store, 'utf8'));
+        // the navigation context an older release copied, recorded in the ledger at its hash: no release names it now
+        write(claudeOf(work, rel, NAV_FILE), 'context: planted\n');
+        setLine(file, 'managed-files', (l) => append(l, `${NAV_FILE}=${hashItem(claudeOf(work, rel, NAV_FILE))}`));
+    }
     // a picked native rule the old delivery never wrote: this update adds it
     fs.rmSync(claudeOf(work, rel, 'rules', `${ADDED_RULE}.md`), { force: true });
 }
@@ -158,7 +177,7 @@ function theWorld()
     return world;
 }
 const excludesOf = (work, rel) => (json(claudeOf(work, rel, 'settings.local.json')) || {}).claudeMdExcludes || [];
-const reportsOf = (out, rel) => [...out.matchAll(/^(?:==> )?report: (\S+): added (\d+)(?: \(([^)]*)\))?, updated (\d+), removed (\d+)(?: \(([^)]*)\))?, kept, yours (\d+)(?: \(([^)]*)\))?$/gm)]
+const reportsOf = (out, rel) => [...out.matchAll(/^(?:==> )?report: (\S+): added (\d+)(?: \((.*?)\))?, updated (\d+), removed (\d+)(?: \((.*?)\))?, kept, yours (\d+)(?: \((.*)\))?$/gm)]
     .filter((m) => m[1] === rel).map((m) => ({ added: +m[2], addedNames: m[3] || '', updated: +m[4], removed: +m[5], removedNames: m[6] || '', kept: +m[7], keptNames: m[8] || '' }));
 const names = (text) => text.split(', ').filter((n) => n && n !== '...');
 
@@ -174,7 +193,7 @@ test('update removes every stack-owned item the new set does not pick, at the ro
         assert.ok(!tree.includes('ghost-skill') && !tree.includes('ghost-agent'), `${level}: a link into the store whose target is gone is removed:\n${tree}`);
         assert.ok(tree.includes('theirs -> ../../vendor/theirs'), `${level}: a dangling link to anywhere else is the user's and stays`);
     }
-    assert.ok(!child.includes(`${CHILD}.alfred-security.md`), 'the child\'s copy of the root rule at the stack\'s text is gone');
+    assert.ok(!child.includes(CHILD_RULE), `the child's copy of the root rule at the stack's text is gone:\n${child}`);
     for (const deny of [r.steps[2].rootDeny, r.steps[3].childDeny])
     {
         assert.ok(!deny.includes(`Agent(alfred-code:${OLD_SEAT})`), `the shipped seat's deny row is removed: ${deny}`);
@@ -189,13 +208,14 @@ test('update keeps every user-made skill, agent and rule and names it kept, your
     const r = theWorld();
     for (const [rel, out, tree] of [['.', r.outs[2], r.steps[2].root], [CHILD, r.outs[3], r.steps[3].child]])
     {
-        assert.ok(tree.includes('.claude/skills/my-skill/SKILL.md'), `${rel}: skill kept`);
-        assert.ok(tree.includes('.claude/agents/my-agent.md'), `${rel}: agent kept`);
-        assert.ok(tree.includes('.claude/rules/my-rule.md'), `${rel}: rule kept`);
+        // each row of the tree ends in the file's sha: a kept file keeps its bytes
+        assert.ok(tree.includes(`.claude/skills/my-skill/SKILL.md ${sha(MINE_SKILL)}`), `${rel}: skill kept with its bytes`);
+        assert.ok(tree.includes(`.claude/agents/my-agent.md ${sha(MINE_AGENT)}`), `${rel}: agent kept with its bytes`);
+        assert.ok(tree.includes(`.claude/rules/my-rule.md ${sha(MINE_RULE)}`), `${rel}: rule kept with its bytes`);
         const [line] = reportsOf(out, '.');
         assert.ok(line, `${rel}: a report line:\n${out}`);
         const kept = names(line.keptNames);
-        for (const own of ['skill my-skill', 'agent my-agent', 'rule my-rule']) assert.ok(kept.includes(own) || line.kept > 8, `${rel}: ${own} named in kept, yours (${line.keptNames})`);
+        for (const own of ['skill my-skill', 'agent my-agent', 'rule my-rule']) assert.ok(kept.includes(own), `${rel}: ${own} named in kept, yours (${line.keptNames})`);
         assert.strictEqual(new Set(kept).size, kept.length, 'each kept item is named once');
     }
 });
@@ -210,8 +230,14 @@ test('the report line counts added, updated, removed and kept per level, and the
         assert.ok(line, `a report line:\n${out}`);
         assert.ok(line.updated >= 1 && line.removed >= 3 && line.kept >= 3, JSON.stringify(line));
         if (level === 'root') assert.ok(names(line.addedNames).includes(`rule ${ADDED_RULE}`), `the rule this update wrote is added: ${line.addedNames}`);
-        for (const gone of [`skill ${RETIRED_SKILL}`, `link skills/ghost-skill`]) assert.ok(names(line.removedNames).includes(gone) || line.removed > 8, `${gone} in removed: ${line.removedNames}`);
+        for (const gone of [`skill ${RETIRED_SKILL}`, `link skills/ghost-skill`]) assert.ok(names(line.removedNames).includes(gone), `${gone} in removed: ${line.removedNames}`);
         assert.strictEqual(names(line.removedNames).length, Math.min(line.removed, 8));
+        // the seat deny rows are ONE item, so the files behind them are named
+        assert.ok(line.removed <= 8, `the fixture stays under the name cap: ${line.removedNames}`);
+        assert.strictEqual(names(line.removedNames).filter((n) => n.startsWith('deny ')).length, 1, line.removedNames);
+        assert.ok(/^deny rows \(\d+\)$/.test(names(line.removedNames).at(-1)), `deny rows come last: ${line.removedNames}`);
+        if (level === 'root') for (const gone of [`rule ${TWICE_RULE}`, `file ${NAV_FILE}`]) assert.ok(names(line.removedNames).includes(gone), `${gone} in removed: ${line.removedNames}`);
+        if (level === 'child') assert.ok(names(line.removedNames).includes(`rule ${CHILD}.${ADDED_RULE}`), `the child's rule copy is in removed: ${line.removedNames}`);
         assert.ok(out.includes(SESSION), `the new-session line is printed:\n${out}`);
         const lines = out.split('\n');
         assert.ok(lines.findIndex((l) => REPORT_START.test(l)) < lines.indexOf(SESSION), 'the report comes before the new-session line');
@@ -339,4 +365,13 @@ test('the report line cuts a name list at 8 with ", ..." and leaves out the brac
     report.update('rule', 'r');
     assert.strictEqual(report.line('api'),
         'report: api: added 0, updated 1, removed 9 (skill s1, skill s2, skill s3, skill s4, skill s5, skill s6, skill s7, skill s8, ...), kept, yours 1 (agent mine)');
+});
+
+test('the seat deny rows are one report item, listed after the others', () =>
+{
+    const { createReport } = require('./install/report.js');
+    const report = createReport();
+    for (const seat of ['a', 'b', 'c']) report.remove('deny', seat);
+    report.remove('skill', 'old');
+    assert.strictEqual(report.line('.'), 'report: .: added 0, updated 0, removed 2 (skill old, deny rows (3)), kept, yours 0');
 });

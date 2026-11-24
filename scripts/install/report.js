@@ -1,7 +1,7 @@
 'use strict';
 // One run's report: the items the run's writers added, updated, removed or kept as the user's own. The writers feed one
 // collector; `line` renders it. Nothing here reads the disk.
-const { EVENT, NAME_CAP, NAME_JOIN, NAME_OVERFLOW, REPORT_PREFIX } = require('./report-constants.js');
+const { EVENT, NAME_CAP, NAME_JOIN, NAME_OVERFLOW, DENY_KIND, DENY_ITEM, REPORT_PREFIX } = require('./report-constants.js');
 
 // A seat is named without its `.md`; any other name is as the writer gave it (an exclude glob ends in `.md` and keeps it).
 const itemName = (kind, name) => `${kind} ${kind === 'agent' ? String(name).replace(/\.md$/, '') : name}`;
@@ -9,8 +9,10 @@ const itemName = (kind, name) => `${kind} ${kind === 'agent' ? String(name).repl
 function createReport()
 {
     const events = Object.fromEntries(Object.values(EVENT).map((event) => [event, new Set()]));
-    const feed = (event) => (kind, name) => { events[event].add(itemName(kind, name)); };
-    const names = (event) => [...events[event]];
+    const denies = Object.fromEntries(Object.values(EVENT).map((event) => [event, new Set()]));
+    const feed = (event) => (kind, name) => { (kind === DENY_KIND ? denies : events)[event].add(kind === DENY_KIND ? name : itemName(kind, name)); };
+    // The deny rows count as one item, listed after the others.
+    const names = (event) => [...events[event], ...(denies[event].size ? [DENY_ITEM(denies[event].size)] : [])];
     const listed = (event) =>
     {
         const all = names(event);
