@@ -4,8 +4,11 @@
 // rules-session.js - the rule loader: the rules in `.alfred/stack/rules` (and each workspace member's) sent as context.
 // A SessionStart and a SubagentStart row (`--part 1`) send part 1 alone on Claude Code: the always-on rules it does not load
 // itself (a store rule with no same-name file in .claude/rules yet), the members index, and the notes an update clears; its
-// `--part 2`-`5` rows print nothing. A Cursor payload, which reads no .claude/rules and sends no touch event, gets every rule
-// (path rules with their globs named) and each member's rules in up to five parts at SessionStart. No store: nothing.
+// `--part 2`-`5` SessionStart rows print nothing there, and SubagentStart has none. A Cursor payload, which reads no .claude/rules and sends no touch event, gets every rule
+// (path rules with their globs named) and each member's rules in up to five parts at SessionStart; two members sharing a
+// rule name get no note about each other. No store: nothing. Its PreToolUse branch (folded into file-guards, Claude Code only)
+// calls rules-summary.js: the touch record behind the prompt reminder's summary line, and on an edit tool the key lines of the
+// path rules matching the file.
 // The plugin copy yields to a copied twin by event and matcher only, never by `--part` (hook-prelude.js).
 'use strict';
 const fs = require('node:fs');

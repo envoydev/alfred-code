@@ -1754,9 +1754,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `docs.js show` of each of its sections; a `sed -n a,bp`, `head` or `tail` range marks each section it covers from
     heading to last line, every line the whole doc, and a partial, piped or redirected range nothing (usage audit
     2026-11-03 U18: a section read by range was held again and a 21.4k plan Write discarded). A judge (`JUDGE`: an `agent_type` ending `solution-designer` or `-verifier`, or
-    one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scoring` (the grader is handed the code docs it grades a plan against, AC27) - `alfred-code:<seat>`
-    always, a BARE name only where the install stamp's `library-agents:` line records its copy (`copiedSeats`: the copy
-    route; none on the plugin route), so another plugin's or the project's own `security-auditor` is no judge: side notes
+    one of the four finding seats `code-quality-analyzer`, `security-auditor`, `integration-reviewer`, `output-scoring` (the grader is handed the code docs it grades a plan against, AC27) - a BARE name where the install
+    stamp's `library-agents:` line records its copy (`copiedSeats`: every route since 2026-11-23, when the seats left the core), and
+    `alfred-code:<seat>` still, for an older session's spelling, so another plugin's or the project's own `security-auditor` is no judge: side notes
     of 2026-10-22, the user's rulings 'Alfred's own, all judges' and 'drop the names') holds no edit tool (checked against `meta/seat-tools.json`), so no edit hold reaches it: `SubagentStart` hands it the code
     docs, every project-doc section the room fits, and marks them in its record; the entries one room could not hold come
     with its first reads (the user's ruling of 2026-10-22) - each Read, Grep (`path`) or LSP call (`filePath`) outside the preferences folder - a held Grep's denial adds
@@ -1835,7 +1835,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     one that cannot be written says it again). A doc that is a link or not a regular file (a FIFO would block the read) is
     never read and named in the line's source and by `tools.js lint` (R042); a `Job:` is read in any case (R041). Every SubagentStart but Claude Code's two guides
     (`claude-code-guide`, `statusline-setup`) gets the seat's own order after any doc push: a seat whose definition the hook
-    finds - the core's `stack/agents/<seat>.md` for `alfred-code:<seat>`, else the project's `.claude/agents/<name>.md`;
+    finds - the project's copy (`.claude/agents/<name>/<name>.md`, then a flat `<name>.md`), or the core's `stack/agents/<seat>.md` for an old `alfred-code:<seat>`;
     another plugin's `<plugin>:<seat>` from `agents/<seat>.md` under the install record in `installed_plugins.json` that
     reaches this project, narrowest scope first (`pluginAgentFile`, R040) -
     only the ranks its `tools:` / `disallowedTools:` grant, with no load line when it has a `tools:` line; any other seat
@@ -2031,41 +2031,23 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     older install still wires answers exit 0 with no output, and no migration unwires it. `ALFRED_CODE_FORGE_WATCH` and
     `forge-session:watch` are read by nothing; the `forge-watch-retired` migration takes the key out of an install. The
     verified routes the classifier is tested against are `scripts/fixtures/forge-corpus.js`.
-  - `rules-session.js` (workspace stage 4a; five `SessionStart` and five `SubagentStart` rows, `--part 1` to `--part 5`,
-    and one PostToolUse row on Read/Edit/Write/MultiEdit/NotebookEdit) - the rule loader: a project's own rules from
-    `.alfred/stack/rules/*.md`, and each linked workspace member's, sent as context. The project is the first checkout of
+  - `rules-session.js` (workspace stage 4a, layered native rules 2026-11-23; five `SessionStart` rows, `--part 1` to `--part 5`, ONE `SubagentStart` row, `--part 1`, and one `PreToolUse` row on Read/Edit/Write/MultiEdit/NotebookEdit folded into `file-guards.js`) - the rule loader. Claude Code loads `.claude/rules` itself, so the installer writes each picked stack rule there as a marked native file (a member's too, in the member's own `.claude/rules`) and this hook sends only what the native files do not carry. A project's own rules come from `.alfred/stack/rules/*.md`, and each linked workspace member's. The project is the first checkout of
     the start folder (`CLAUDE_PROJECT_DIR`, else the payload's `cwd`) holding `.alfred`; a repository never set up below a
     stamped folder is served from that folder (`setUp: false`, the owner's answer 4). The nearest holder wins a name, a
-    native `.claude/rules` file at one holder first (Claude Code only - it loads that file itself, so the name is listed as
-    `loaded natively:` and not sent; on Cursor native files count for nothing); an `ignore rule` drops a rule held above
+    native `.claude/rules` file at one holder first (Claude Code only - the name is listed as `loaded natively:` and not
+    sent; on Cursor native files count for nothing); an `ignore rule` drops a rule held above
     unless it is one of `LOCKED_RULES` (recommendations.json `always.rules`, check 73), and a root's `member-picks:` rule
-    reaches only the members whose stamps pick it. A file that is a link or over 64 KB is skipped. Pathless rules go out
-    at session and seat start, packed first fit into at most five parts of 9,900 characters (the harness caps one hook's
-    context at 10,000; 9,500 until 2026-11-22, the user's ruling to make room rather than cut a rule), a rule too long for one part cut at line ends, its last chunk sharing its part with rules that fit (2026-11-22: a 1,352-char tail of a cut alfred-interaction held a whole part), past part 5 named on an unsent line; `resume` and
-    `fork` send like a startup, a root's main-session start opens part 1 with the members index (`memberIndex`: a line for each child its record lists, ignored ones out and one whose own record does not point back at this root left out too (hop rule N1), naming the child's instruction file and its rule-file count - at most 12 lines and 1,500 characters, then `- and <k> more`, which the `rules-push` row's `members` does not count; no index while `ALFRED_CODE_WORKSPACE` is 0; counted in part 1's room like the natives line, and a seat start has none), `Explore` and `Plan` seats get nothing, a Cursor `subagentStart` nothing. A `paths:` rule goes out
-    the first time a touched file matches one of its globs (`**/`, a trailing `/**`, `*`; a glob with `? [ { !` matches
-    nothing and check 73 fails a shipped one), the file's path read from the rule's project, else from its own checkout;
-    once per session and actor, recorded in `<data root>/state/sessions/rules-<session>-<actor>.json` (temp file and
-    rename; `compact`, `clear`, `resume` and `fork` delete it, so the rules go out again). `--part 1` appends one `rules-push` probe row
-    (`mode: probe`, chars, parts, unsent, source, members - the index's line count) to the session's `hook-blocks` ledger. A JOINED MEMBER (workspace stage 5): the
-    first touch of a file under a member outside the start's chain (`layout.memberOf`; a grandchild brings its parent
-    first) sends that member's block - `Project <T>, part <k>`, a head naming its AGENTS.md (else CLAUDE.md), its
-    `.claude/rules` files, docs root, preferences and the start's always-on rules it leaves out, then its own always-on
-    rules, largest first, a same-named one headed as replacing the workspace's - one part per touch, at most five. Each
-    part is claimed by the exclusive marker `rules-<session>-<actor>-m-<sha256(rel) 12>-<k>` beside the record (first line
-    `/ <T> <chars> <session> <actor>`, an optional `/ not sent:` line, then the item names), so parallel calls send it
-    once; a marker found empty is another call mid-claim and prints nothing, an unwritable folder sends the part
-    unrecorded, a payload with no session id sends part 1 every touch. Creating one sweeps the `rules-` prefix; `compact`,
-    `clear`, `resume` and `fork` delete the actor's markers with the record. The file's path rules are the member's own set, keyed in the
-    record as `<holder key>/<name>`, and the blocks and path rules of one call share one 9,900-character room (a rule
-    that does not fit waits for the next touch). One `member-push` row per part (member, part, chars, unsent, tool). A
-    Cursor payload gets the same text in `additional_context`; `session-surface.js` lists the members the newest session
-    entered (`MEMBERS ENTERED`) from the markers' first lines. It reads its gates through the prelude
+    reaches only the members whose stamps pick it. A file that is a link or over 64 KB is skipped.
+    - CLAUDE CODE, part 1 only (`SessionStart` and `SubagentStart`): the always-on store rules that have no same-name file in `.claude/rules` yet, with the line 'run /alfred-code:update so Claude Code loads them itself', the members index of a root's main-session start (`memberIndex`: a line for each child its record lists, ignored ones out and one whose own record does not point back at this root left out too (hop rule N1), naming the child's instruction file and its rule-file count - at most 12 lines and 1,500 characters, then `- and <k> more`, which the `rules-push` row's `members` does not count; no index while `ALFRED_CODE_WORKSPACE` is 0; none at a seat start), and, at a session start, the line that the stack's agents moved out of the plugin while the stamp still says `seats-route: plugin` and no seat is linked. Part 1 is one part of at most 9,900 characters (the harness caps one hook's context at 10,000); a rule that does not fit is named on an unsent line, never cut. `--part 2` to `--part 5` print nothing, and no `SubagentStart` row wires them: no path rule and no member block is sent on a touch any more, since the native files hold them. `Explore` and `Plan` seats get nothing. `resume` and `fork` send like a startup. Part 1 appends one `rules-push` probe row (`mode: probe`, chars, parts, unsent, source, members - the index's line count) to the session's `hook-blocks` ledger.
+    - CURSOR (judged from the payload): it reads no `.claude/rules` and sends no touch event, so a `SessionStart` sends it every rule - path rules with their globs named - and each member's rules in up to five parts of 9,900 characters (a rule too long for one part cut at line ends, its last chunk sharing its part with rules that fit; past part 5 named on an unsent line); a member rule named like one the workspace holds is headed as replacing it, and two members sharing a rule name get no note about each other. A Cursor `subagentStart` gets nothing.
+    - THE FILE-TOOL ROW (Claude Code only, `rules-summary.js`, a module the hook calls, never wired): every file tool records which child folder holding its own `.claude/rules` the file sits in (`<data root>/state/sessions/rules-touched-<session>.json`, real-pathed, a record past 7 days swept), and an Edit, Write, MultiEdit or NotebookEdit gets the key line (`keyLine`, 240 characters) of each path-scoped native rule whose `paths:` match its file, walked up from the file's folder and kept inside the session folder, plus the child's `alfred-awareness` line, once per session, actor and file (`rules-edit-<session>-<actor>.json`); a Read prints nothing. A glob matches the way Claude Code reads it (`**/`, a trailing `/**`, `*`; a glob with `? [ { !` matches nothing and check 73 fails a shipped one).
+    - THE SUMMARY LINE: `communication-reminder.js` adds `Native rules, full text in context - follow them: <level> (<a> always-on, <p> by path) + <child> (<n>)` to each prompt reminder - a count pair for each level from the topmost ancestor below the home folder down to the session folder (after the session folder's `claudeMdExcludes`), then each touched child's total. Nothing when no level holds a rule.
+    It reads its gates through the prelude
     (since stage 4c it is not switchable: `hook-prelude.js UNSWITCHABLE` keeps it on under the off-list and `minimal`, and
     `selection.LOCKED_HOOKS` holds it and the config guard on in every answered selection - a None turns every other hook
     off, and the read-back still says `hook none`) and two itself: no `.alfred/stack/rules` in the
     chain prints and writes nothing, and a `--part` argument is never read as a CLI call. Limits: a seat's own compaction
-    is unmeasured, and the Cursor live cells are NOT RUN. `always-on-surface.js` counts check 33 with its `render`.
+    is unmeasured, and the Cursor live cells are NOT RUN. `always-on-surface.js` counts check 33 with its `render`. `session-surface.js` still reads the member markers older installs left (`membersEntered`); nothing writes a marker any more.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.

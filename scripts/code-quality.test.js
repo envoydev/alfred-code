@@ -443,7 +443,7 @@ test('the CLAUDE.md seat counts match the agents on disk', () =>
     const n = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).length;
     const doc = readClaudeDocs();
     assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
-    assert.match(doc, new RegExp(`all ${n} in the core plugin`));
+    assert.match(doc, /library items like skills/);
 });
 
 test('the shared-rules registry pins the new homes of the loop and capture rules', () =>

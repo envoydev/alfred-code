@@ -25,8 +25,8 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
     `npm run graph` (lint fails when stale).
   - `plugin-entries.json` - the GENERATED core entry, computed by `scripts/build-marketplace.js` from
-    the placement rule in `scripts/plugin-placement.js`: the core is the router skill, every seat and
-    every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run plugin-manifest` (which writes the root `.claude-plugin/plugin.json` too); lint
+    the placement rule in `scripts/plugin-placement.js`: the core is the router skill and
+    every stack hook; every stack skill and every seat is library (seats left the core on 2026-11-23). Regenerate with `npm run plugin-manifest` (which writes the root `.claude-plugin/plugin.json` too); lint
     checks 44 and 45 fail when the file is stale, a second plugin appears, or an item has no home or
     two. The 2.0.0 and 2.2.0 renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1 (the user's
     ruling of 2026-10-06) none is (the MCP prune drops each from the live file, lint 49 names one still there), and

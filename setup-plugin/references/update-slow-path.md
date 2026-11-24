@@ -37,10 +37,10 @@ what the migrations name. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
 read-back exists for exactly that). The first update past 2.1.0 is the one that moves an install
-across: its stamp has no `seats-route:` line, so the read-back goes by what the 2.0.x core carried -
-the always skills become copies, a library seat copy is pruned (an edited one is kept and named, and so
-is a tuned one - a `model` / `effort` other than the stack's, which no setting can give the core's seat), and
-every seat the install never ran is denied; the installer says it in one `installed-only: the stamp
+across (history, from 2.0.x; since 2026-11-23 no core carries a seat, and every route links or copies the picked ones):
+its stamp has no `seats-route:` line, so the read-back goes by what the 2.0.x core carried -
+the always skills become copies and the seats it ran become copies too, with no seat denied (an edited seat copy is kept and named, and so
+is a tuned one - a `model` / `effort` other than the stack's); the installer says it in one `installed-only: the stamp
 predates 2.1.0` line (and one `agent kept:` line per kept seat copy, naming its pins and that it is
 dispatched by its bare name - the capabilities rule's seats line is re-spelled to match, and every seat is named
 bare, as each picked seat is a linked copy). Quote each `agent kept:` line in the report: deleting the copy is how the

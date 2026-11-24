@@ -17,10 +17,10 @@
 // skill's `skillOverrides` value to 'on' before any setting is read, and a `Skill(...)` deny removes
 // nothing from the listing - both measured in the 2026-09-24 library test on 2.1.281. A project COPY
 // can be switched off - deleted, set to 'off' / 'name-only' in `skillOverrides`, or hidden by a
-// `paths:` line until a matching file is touched. A seat has its lever in the deny list, so it can
-// ride the plugin, and a seat's bare `skills:` preload resolves the project copy (plugin-migration
-// evidence S6). Before 2.1.0 the core carried the always closure instead (`formerCore` below), and
-// every other seat was a library copy too.
+// `paths:` line until a matching file is touched. A seat's lever was the deny list, which let it ride the
+// plugin through 3.17; it is a library copy now like a skill, so an unpicked seat has no copy at all, and a seat's
+// bare `skills:` preload resolves the project copy (plugin-migration evidence S6). Before 2.1.0 the core carried
+// the always closure instead (`formerCore` below), and every other seat was a library copy too.
 const fs = require('node:fs');
 const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');

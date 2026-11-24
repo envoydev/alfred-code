@@ -2029,7 +2029,7 @@ test('update reads the installer\'s seats: line in its one grep and reports it a
 test('configure: the agents-route ask is a template per current route, each marking its own route first', () =>
 {
     const configure = cmdBody('configure');
-    assert.strictEqual(firstOption(configure, 'Where your agents come from'), 'Keep them in the plugin (Recommended)', 'the plugin-route variant');
+    assert.strictEqual(firstOption(configure, 'Where your agents come from'), 'Keep them linked (Recommended)', 'the plugin-route variant');
     assert.ok(configure.includes("- 'Keep them as files in .claude/agents (Recommended)' - "), 'the copy-route variant');
     const variants = askBlocks(configure).filter((b) => b[0].startsWith('Where your agents come from'));
     assert.strictEqual(variants.length, 2, 'one template per route');
@@ -2041,7 +2041,7 @@ test('configure: the agents-route ask is a template per current route, each mark
         assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
     }
     assert.ok(variants[0].some((l) => l.startsWith("- 'Files in .claude/agents' - ")), 'plugin variant: the other route');
-    assert.ok(variants[1].some((l) => l.startsWith("- 'Back to the plugin' - ")), 'copy variant: the other route');
+    assert.ok(variants[1].some((l) => l.startsWith("- 'Back to linked' - ")), 'copy variant: the other route');
 });
 
 test('configure: the route is read from the plan routes line, the ask is skipped on seats-switch, and the flag rides step 11 on a change only', () =>
@@ -2051,7 +2051,7 @@ test('configure: the route is read from the plan routes line, the ask is skipped
     assert.match(configure, /`local` - `agents: your \.claude\/settings\.local\.json cannot be written - not switched here`/);
     assert.match(configure, /`seats-switch=` other than `open` puts no ask and says why in one line/);
     assert.match(configure, /never from a settings file by hand/);
-    assert.match(configure, /`--seats-route copy` \('Files in \.claude\/agents'\) or `--seats-route plugin` \('Back to the plugin'\)/);
+    assert.match(configure, /`--seats-route copy` \('Files in \.claude\/agents'\) or `--seats-route plugin` \('Back to linked'\)/);
     assert.match(configure, /\[--seats-route plugin\|copy\]/, 'step 11\'s installer call carries the flag');
     assert.match(configure, /plugin-settings or seats route change was chosen/, 'a route change is a change that runs the installer');
 });
