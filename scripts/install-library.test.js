@@ -83,11 +83,11 @@ test('a hand-edited copy is overwritten, and the log says so', () =>
     const f = fixture();
     const opts = { sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, skills: [], agents: ['seat'], log: () => {}, note: () => {} };
     const first = copyLibrary({ ...opts, stamped: null });
-    fs.appendFileSync(path.join(f.agentsDir, 'seat.md'), 'local edit\n');
+    fs.appendFileSync(path.join(f.agentsDir, 'seat', 'seat.md'), 'local edit\n');
     const logs = [];
     copyLibrary({ ...opts, stamped: first, log: (l) => logs.push(l) });
     assert.ok(logs.some((l) => l.includes('overwriting a hand-edited copy: agent seat')));
-    assert.equal(fs.readFileSync(path.join(f.agentsDir, 'seat.md'), 'utf8'), fs.readFileSync(path.join(f.src, 'stack/agents/seat.md'), 'utf8'));
+    assert.equal(fs.readFileSync(path.join(f.agentsDir, 'seat', 'seat.md'), 'utf8'), fs.readFileSync(path.join(f.src, 'stack/agents/seat.md'), 'utf8'));
     fs.rmSync(f.root, { recursive: true, force: true });
 });
 
@@ -212,14 +212,14 @@ test('--keep-pins: the stamp records the hash AFTER the restore, never the stale
             each: (repo, i) =>
             {
                 if (i !== 0) return null;
-                const agentFile = path.join(repo, '.claude', 'agents', 'related-project-analyzer.md');
+                const agentFile = path.join(repo, '.claude', 'agents', 'related-project-analyzer', 'related-project-analyzer.md');
                 assert.match(fs.readFileSync(agentFile, 'utf8'), /^effort: medium$/m, 'the fresh install carries the catalog pin');
                 fs.writeFileSync(agentFile, fs.readFileSync(agentFile, 'utf8').replace(/^effort: medium$/m, 'effort: xhigh'));
                 return null;
             },
             inspect: (repo) =>
             {
-                const agentFile = path.join(repo, '.claude', 'agents', 'related-project-analyzer.md');
+                const agentFile = path.join(repo, '.claude', 'agents', 'related-project-analyzer', 'related-project-analyzer.md');
                 const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
                 return {
                     agent: fs.readFileSync(agentFile, 'utf8'),

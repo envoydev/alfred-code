@@ -58,9 +58,9 @@ function seededLoops()
 const bashBlocks = (text) => [...text.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]);
 const runBash = (script, cwd) => spawnSync('bash', ['-c', script], { cwd, encoding: 'utf8' });
 
-test('the capture is a copy and its seat rides the core, placed by the rule that places the architecture-quality pair', () =>
+test('the capture and its seat are copies, placed by the rule that places the architecture-quality pair', () =>
 {
-    // 2.1.0: every skill is a project copy, every seat rides the core.
+    // Every skill and every seat is a project copy; the core carries neither.
     const p = placement();
     const core = p.plugins[CORE];
     for (const s of ['capture-quality', 'loop-architecture-quality', 'loop-code-quality'])
@@ -70,8 +70,8 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
     }
     for (const a of ['architecture-analyzer', 'code-quality-analyzer'])
     {
-        assert.ok(core.agents.includes(a), `${a} rides the core`);
-        assert.ok(!p.library.agents.includes(a), `${a} is never a library copy`);
+        assert.ok(p.library.agents.includes(a), `${a} is a project copy`);
+        assert.ok(!core.agents.includes(a), `${a} rides no plugin`);
     }
 
     const recs = JSON.parse(read('meta/recommendations.json'));
@@ -89,7 +89,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
 
     const entries = JSON.stringify(JSON.parse(read('meta/plugin-entries.json')));
     assert.ok(!entries.includes('./stack/skills/capture-quality"'), 'the skill is a project copy - no entry lists it');
-    assert.ok(entries.includes('./stack/agents/code-quality-analyzer.md"'), 'the generated core entry lists the seat');
+    assert.ok(!entries.includes('./stack/agents/code-quality-analyzer.md"'), 'the seat is a project copy - no entry lists it either');
 
     // The loop invokes the capture as a Skill call, so it carries no disable-model-invocation - and the
     // generated usage policy lists it with the orchestration skills, marked as the by-design exception.
@@ -443,7 +443,7 @@ test('the CLAUDE.md seat counts match the agents on disk', () =>
     const n = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).length;
     const doc = readClaudeDocs();
     assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
-    assert.match(doc, new RegExp(`all ${n} in the core plugin`));
+    assert.match(doc, /library items like skills/);
 });
 
 test('the shared-rules registry pins the new homes of the loop and capture rules', () =>

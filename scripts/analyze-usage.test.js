@@ -3362,6 +3362,10 @@ const putSeat = (dir, preload) => {
   fs.mkdirSync(path.join(dir, '.claude', 'agents'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude', 'agents', 'fixer.md'), `---\nname: fixer\ndescription: x\n${preload ? 'skills:\n  - habits-root-cause\n' : ''}---\nbody\n`);
 };
+const putFolderSeat = (dir, preload) => {
+  fs.mkdirSync(path.join(dir, '.claude', 'agents', 'fixer'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'agents', 'fixer', 'fixer.md'), `---\nname: fixer\ndescription: x\n${preload ? 'skills:\n  - habits-root-cause\n' : ''}---\nbody\n`);
+};
 const putLedger = (dir, sid, rows) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, `${sid}.jsonl`), rows.join('')); };
 const statsOf = (root) => path.join(root, '.alfred', 'statistics', 'hook-blocks');
 
@@ -3371,6 +3375,16 @@ test('seat file: a child\'s session read from the root is scored against the chi
   const f = redSession(t, 'ws/api', 's-red');
   const blocks = path.join(t.home, 'blocks');
   putLedger(blocks, 's-red', [redRow('r-s-red', { agent_type: 'fixer' })]);
+  const json = JSON.parse(rollupCli(t, t('ws'), [f, '--hook-blocks', blocks, '--json']));
+  assert.strictEqual(json.hookBlocks.rootCause.preloaded, 1, JSON.stringify(json.hookBlocks.rootCause));
+});
+
+test('seat file: a seat held as a folder <name>/<name>.md is read for its preloads', () => {
+  const t = scopeTree();
+  putFolderSeat(t('ws/api'), true);
+  const f = redSession(t, 'ws/api', 's-folder');
+  const blocks = path.join(t.home, 'blocks');
+  putLedger(blocks, 's-folder', [redRow('r-s-folder', { agent_type: 'fixer' })]);
   const json = JSON.parse(rollupCli(t, t('ws'), [f, '--hook-blocks', blocks, '--json']));
   assert.strictEqual(json.hookBlocks.rootCause.preloaded, 1, JSON.stringify(json.hookBlocks.rootCause));
 });

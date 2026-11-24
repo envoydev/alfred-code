@@ -12,21 +12,21 @@ const graph = JSON.parse(fs.readFileSync(path.join(REPO, 'meta/stack-graph.json'
 const recs = JSON.parse(fs.readFileSync(path.join(REPO, 'meta/recommendations.json'), 'utf8'));
 
 // 2.1.0: a skill needs a per-project off-switch (a copy can be deleted or set `off` in skillOverrides;
-// a plugin skill is locked on, the 2026-09-24 library test), and a seat already has one in
-// `permissions.deny` (spike S3). So every skill is a project copy and every seat rides the core.
-test('the core carries every seat and no skill', () => {
+// a plugin skill is locked on, the 2026-09-24 library test). Seats left the core after it: a seat is a
+// folder in the store, linked like a skill, so an unpicked one has no copy and no deny row.
+test('the core carries no seat and no skill', () => {
     const core = p.plugins[CORE];
     assert.ok(core, 'the core plugin must exist');
     assert.deepStrictEqual(core.skills, [], 'no skill rides the core - every one is a project copy');
-    assert.deepStrictEqual(core.agents, Object.keys(graph.agents).sort(), 'every seat rides the core');
+    assert.deepStrictEqual(core.agents, [], 'no seat rides the core - every one is a project copy');
     for (const a of ['integration-reviewer', 'security-auditor'])
-        assert.ok(core.agents.includes(a), `${a} rides the core`);
+        assert.ok(p.library.agents.includes(a), `${a} is a project copy`);
     assert.deepStrictEqual(core.dependencies, [], 'the core depends on nothing');
 });
 
-test('every skill is a library copy, every habit included; no seat is', () => {
+test('every skill and every seat is a library copy, every habit included', () => {
     assert.deepStrictEqual(p.library.skills, Object.keys(graph.skills).sort());
-    assert.deepStrictEqual(p.library.agents, []);
+    assert.deepStrictEqual(p.library.agents, Object.keys(graph.agents).sort());
     for (const s of ['habits-root-cause', 'habits-done-gate', 'habits-test-first', 'habits-plan-writing',
         'habits-clarify', 'habits-execution-strategy', 'habits-code-comments', 'habits-commit-checkpoint',
         'habits-adjust-agents-md', 'habits-create-ticket', 'habits-explain-topic'])
@@ -42,7 +42,7 @@ test('the core is the only plugin; every item has exactly one home', () => {
     for (const a of Object.keys(graph.agents))
         assert.ok(core.agents.includes(a) !== p.library.agents.includes(a), `agent ${a} has exactly one home`);
     assert.ok(p.library.skills.includes('angular-conventions'));
-    assert.ok(core.agents.includes('angular-test-resolver') && core.agents.includes('related-project-analyzer'));
+    assert.ok(p.library.agents.includes('angular-test-resolver') && p.library.agents.includes('related-project-analyzer'));
     assert.ok(!(LIBRARY in p.plugins), 'the library is a set of files, never a plugin entry');
 });
 
@@ -50,7 +50,7 @@ test('the opt-in skills and the opt-in agent are placed like every stack item', 
     for (const s of ['postgres', 'capture-usage-report', 'dotnet-web-backend'])
         assert.ok(p.library.skills.includes(s), `${s} is library`);
     assert.ok(!p.library.skills.includes('plugin-authoring') && !p.plugins[CORE].skills.includes('plugin-authoring'), 'plugin-authoring left the shipped catalog (2.1.0)');
-    assert.ok(p.plugins[CORE].agents.includes('related-project-analyzer'), 'the opt-in seat rides the core, denied until picked');
+    assert.ok(p.library.agents.includes('related-project-analyzer') && !p.plugins[CORE].agents.includes('related-project-analyzer'), 'the opt-in seat is library, absent until picked');
 });
 
 // What the core carried BEFORE 2.1.0 - the always closure - is what a 2.0.x install's read-back and

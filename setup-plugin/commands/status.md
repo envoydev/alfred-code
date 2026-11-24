@@ -123,10 +123,9 @@ listed though it is not installed, since the parent holds it - and `from root` f
 **Skills and agents** - the ROUTE decides the set. With the core `alfred-code` entry enabled in
 the plugins listing, the installed set is what those plugins CARRY - `node
 "${CLAUDE_PLUGIN_ROOT}/scripts/selection-plugins.js" --items <their names, comma-separated>` prints
-one `skill <name>` / `agent <name>` line each (the core: every seat, no skill) - minus every seat
-`permissions.deny` names (`Agent(alfred-code:<seat>)`, each seat the project did not pick), UNIONED
-with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied per pick;
-`.claude/agents/<name>.md` on the copy route). Without any such entry the disk is the whole set.
+one `skill <name>` / `agent <name>` line each (the core carries neither a skill nor a seat) - UNIONED
+with the LIBRARY copies on disk (`.claude/skills/<name>/` and `.claude/agents/<name>/`: every pick, copied
+per project and linked, a seat under its bare name). Without any such entry the disk is the whole set.
 
 | skill | origin |
 |---|---|
@@ -135,16 +134,16 @@ with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied p
 
 | agent | origin | model | effort |
 |---|---|---|---|
-| web-angular-solution-designer | plugin | opus | xhigh |
+| web-angular-solution-designer | library | opus | xhigh |
 
-`origin`: `plugin` for a carried row, `library` for a copy the stamp's `library-skills` /
-`library-agents` names, `user-authored` for a copy it does not name. A carried seat named in
-`permissions.deny` (either settings file) as `Agent(<entry>:<name>)` is switched OFF - it stays in
-the table with `denied` as its origin, since the plugin still ships it and configure can bring it
-back. `model` / `effort` are the frontmatter pins read from the agent file (the plugin's own copy
-for a carried seat).
+`origin`: `plugin` for a row another plugin carries, `library` for a copy the stamp's `library-skills` /
+`library-agents` names, `user-authored` for a copy it does not name. The core carries no seat, so a stack
+seat is never `denied`; only a seat of ANOTHER plugin named in `permissions.deny` (either settings file) as
+`Agent(<entry>:<name>)` is switched OFF - it stays in the table with `denied` as its origin, since that plugin
+still ships it and configure can bring it back. `model` / `effort` are the frontmatter pins read from the agent
+file (the folder `<name>/<name>.md` for a library seat).
 
-**Rules** - `.alfred/stack/rules/*.md` (the library, sent by the plugin) and `.claude/rules/*.md` (the generated ones):
+**Rules** - `.alfred/stack/rules/*.md` (the library), `.claude/rules/*.md` (the generated ones, and one marked native copy of each picked rule, which Claude Code loads itself - the same rule, so list it once):
 
 | rule | scope | origin |
 |---|---|---|
@@ -153,7 +152,7 @@ for a carried seat).
 | alfred-architecture | always-on | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rule (`alfred-awareness.md`), `stack` otherwise,
+capture-written rule (`alfred-awareness.md`), `stack` otherwise (a library rule and its marked native copy are one row),
 `user-authored` when clearly neither.
 
 Under the table, paste every `rules:` line the `workspace` call of section 2 printed, as printed - a refused
@@ -161,9 +160,9 @@ ignore of a locked rule, an unmatched glob, a skipped rule file, a rule past the
 named in the off-list, and each settings file whose `disableAllHooks` is true (then no rule is sent).
 
 In a workspace, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/session-surface.js" . | sed -n '/^MEMBERS ENTERED/,$p'` and
-paste the `MEMBERS ENTERED` section it prints, as printed - each joined project the newest session entered (its rules
-sent on the first file touch under it), per actor, with its parts and characters and any rule past part 5. It prints
-nothing when the session entered none.
+paste the `MEMBERS ENTERED` section it prints, as printed - each joined project an older install's session entered (no
+marker is written now: a child's rules load natively, so a current session prints none), per actor, with its parts and
+characters and any rule past part 5. It prints nothing when no marker is left.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
@@ -179,15 +178,15 @@ text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matc
 Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
 can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
 machine). `<key>` is the marketplace key from the general table. The stack's OWN share is
-counted by one script, never by hand: `node "${CLAUDE_PLUGIN_ROOT}/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries, comma-separated> --skills-dir .claude/skills --settings <account settings.json> --settings .claude/settings.json --settings .claude/settings.local.json`
+counted by one script, never by hand: `node "${CLAUDE_PLUGIN_ROOT}/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries, comma-separated> --skills-dir .claude/skills --agents-dir .claude/agents --settings <account settings.json> --settings .claude/settings.json --settings .claude/settings.local.json`
 (deny rules and `skillOverrides` merge across scopes, so pass every one that exists, in that order)
 prints the descriptions of the stack skills copied into the project (2.1.0: no plugin carries a
 skill; a `disable-model-invocation` copy, or one `skillOverrides` sets to anything but `on`, costs
 nothing, which is why this number sits below the repo lint's always-on budget, which counts every
-description) plus the SEATS' descriptions minus every seat `permissions.deny` switches off - take its
+description) plus the descriptions of the seats linked or copied into `.claude/agents` (the core carries none) - take its
 `chars`. The entries it lists under `skipped`
 are OTHER plugins for the next sentence, and the core joins them for its HOOKS
-alone - the stack hooks ride the core, and `--floor` counts only its skills and seats. For each
+alone - the stack hooks ride the core, and `--floor` counts only the skill and seat copies. For each
 OTHER enabled plugin, total its skill, command and agent DESCRIPTION frontmatter (skipping a
 `disable-model-invocation` one) plus the static text any `SessionStart` or `SubagentStart` hook
 injects, and render `plugin floor: <N> chars (~<N/4000>k tokens) across <n> enabled plugins - <m>
@@ -197,7 +196,7 @@ matters because a SessionStart injection is invisible everywhere else - `claude 
 does not show it, and one measured install paid 8,337 injected chars a session for two plugins on
 top of their descriptions.
 
-The library copies - every skill, a seat on its copy route, AND every rule, since no plugin ever
+The library copies - every skill, every seat, AND every rule, since no plugin ever
 carries a rule - get one more table, from the stamp's hashes, checked against the running plugin:
 
 ```bash

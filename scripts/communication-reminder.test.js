@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { realLong } = require('./test-paths');
 for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k]; // C19: the session's own stack env never decides a case
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'communication-reminder.js');
@@ -37,6 +38,36 @@ function run(payload, env = {}) {
 
 const WALL = 'This sentence exists only to burn prose characters against the cap. '.repeat(40); // ~2600 chars
 const SHORT = 'Done - the build is green and the two failing tests now pass.';
+
+test('the prompt reminder carries the summary line in its one block', () => {
+    const home = realLong(fs.mkdtempSync(path.join(TMP, 'home-')));
+    const project = path.join(home, 'ws-root');
+    fs.mkdirSync(path.join(project, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'rules', 'one.md'), '# One\n\nBe plain.\n');
+    const r = run({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?', session_id: 'sum-1' }, { HOME: home, CLAUDE_PROJECT_DIR: project });
+    assert.strictEqual(r.status, 0);
+    const out = JSON.parse(r.stdout);
+    assert.match(out.hookSpecificOutput.additionalContext, /Native rules, full text in context - follow them: ws-root \(1 always-on, 0 by path\)/);
+    assert.match(out.hookSpecificOutput.additionalContext, /900 characters/, 'the budget stays in the same block');
+    const bare = run({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?', session_id: 'sum-2' }, { HOME: home, CLAUDE_PROJECT_DIR: path.join(home, 'none') });
+    assert.doesNotMatch(JSON.parse(bare.stdout).hookSpecificOutput.additionalContext, /Native rules/, 'no rule, no line');
+});
+
+test('the compact SessionStart output carries the summary line, and a seat start none', () => {
+    const home = realLong(fs.mkdtempSync(path.join(TMP, 'home-')));
+    const project = path.join(home, 'ws-root');
+    fs.mkdirSync(path.join(project, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'rules', 'one.md'), '# One\n\nBe plain.\n');
+    const env = { HOME: home, CLAUDE_PROJECT_DIR: project };
+    const r = run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'sum-3' }, env);
+    assert.strictEqual(r.status, 0);
+    const out = JSON.parse(r.stdout);
+    assert.strictEqual(out.hookSpecificOutput.hookEventName, 'SessionStart');
+    assert.match(out.hookSpecificOutput.additionalContext, /900 characters/, 'the budget is in the same block');
+    assert.match(out.hookSpecificOutput.additionalContext, /Native rules, full text in context - follow them: ws-root \(1 always-on, 0 by path\)$/);
+    const seat = run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'sum-4', agent_id: 'agent-x' }, env);
+    assert.strictEqual(seat.stdout, '', 'a seat gets no reminder block');
+});
 
 test('UserPromptSubmit injects the answer budget as additionalContext', () => {
     const r = run({ hook_event_name: 'UserPromptSubmit', prompt: 'what changed?' });

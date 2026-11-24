@@ -7,9 +7,9 @@
 //
 // Library items are project copies, listed by no marketplace entry, so the eval CLI - which loads a
 // plugin into an isolated session - cannot see them any other way. The bundle is named
-// `alfred-code`, the core's own name, so a core agent's `alfred-code:<skill>` preload resolves as
-// it does in a project; a library agent's BARE preload (a project copy resolves it by name) is
-// rewritten to that spelling here, in the copy, never in the source. `meta/evals/library/*` travel
+// `alfred-code`, the core's own name, so a bundled agent's `alfred-code:<skill>` preload resolves;
+// every agent is a library item (the core carries none since 2026-11-23), and its BARE preload (a project copy
+// resolves it by name) is rewritten to that spelling here, in the copy, never in the source. `meta/evals/library/*` travel
 // as the bundle's `evals/`: one case per stack profile, each graded on both arms so the
 // with/without-plugin delta is measured, not assumed, plus the size-first cases of task-solve
 // (a library skill since 2.1.0, so only the bundle carries it).
@@ -25,7 +25,7 @@ const { coreEntry } = require('./build-marketplace.js');
 
 const REPO = path.resolve(__dirname, '..');
 const BUNDLE_DESCRIPTION = 'Eval bundle: the alfred-code core plus the full library, for claude plugin eval only.';
-// `--core` (D7, 2026-11-03, the user's design): the core ALONE - its commands, router, seats and the trees they name - with
+// `--core` (D7, 2026-11-03, the user's design): the core ALONE - its commands, router and the trees they name, no seat - with
 // setup-plugin/evals/ as its evals/. `claude plugin eval alfred-code@envoydev` resolved setup-plugin/ on 2.1.317, where
 // `${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js` does not exist; a path target to this folder loads what an install loads.
 const CORE_DESCRIPTION = 'Eval bundle: the alfred-code core alone with its own eval cases, for claude plugin eval only.';

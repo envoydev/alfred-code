@@ -65,6 +65,29 @@ const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
 const FILES_NAMED = 4;
 const READ = 'node .claude/hooks/docs.js';
+// THE TIME BUDGET (card items 1, 2 and 9, 2026-11-23): Claude Code cancels this hook at its 10s timeout and drops all it
+// would have said. On the events it runs as its own process, git work stops at HOOK_BUDGET_MS from the process start -
+// node's own start included - and the start block goes out without the git-derived lines. A run past SLOW_MS, or one the
+// budget cut, writes one probe row naming this script, the event and where the time went, since a cancelled hook leaves
+// only 'command hook N' in the transcript.
+const HOOK_BUDGET_MS = 6000;
+const SLOW_MS = 3000;
+// The work a start does with git once the snapshot is taken - repairing and promoting branch versions - starts only with
+// this much of the budget left, so a git answer cut short never decides a promotion.
+const PROMOTE_FLOOR_MS = 2500;
+// A start the budget cut leaves no snapshot, and with none the Stop docs check never asks (the side review of
+// 2026-11-23: a checkout that starts slow every time would never be asked). The main session's first tool calls take it
+// again while nothing has written yet - each try cut at DEFERRED_SNAPSHOT_MS, at most DEFERRED_SNAPSHOT_TRIES of them.
+const DEFERRED_SNAPSHOT_MS = 4000;
+const DEFERRED_SNAPSHOT_TRIES = 2;
+const BUDGETED_EVENTS = new Set(['SessionStart', 'Stop', 'SubagentStart', 'SubagentStop']);
+const PROCESS_START = Date.now() - Math.round(process.uptime() * 1000);
+let DEADLINE = null;
+const PHASES = {};
+const budgetLeft = () => (DEADLINE === null ? Infinity : DEADLINE - Date.now());
+const gitTimeout = (own = 5000) => Math.max(0, Math.min(own, budgetLeft()));
+const phase = (name, run) => { const at = Date.now(); try { return run(); } finally { PHASES[name] = (PHASES[name] || 0) + Date.now() - at; } };
+const OUT_OF_TIME_LINE = `The docs hook ran out of its time on this start (a slow checkout): branch versions, conflicts and staleness were left out - \`${READ} status\` lists them.`;
 
 const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
 // ONE spelling for every path this hook records, compares or matches against a source root: git answers in forward
@@ -385,8 +408,12 @@ function orientation(root, docs, cap = 4096) {
   ];
 }
 
+const ranOutOfTime = (docs) => typeof docs.outOfTime === 'function' && docs.outOfTime();
 function sessionStart(input, root, docs, state) {
-  if (!state.snapshot) { try { state.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, state); }
+  // A snapshot the budget cut short is none (docs.js snapshot): the next start - a compaction or resume, on a cache
+  // warmed by this one - takes it again, where a cancelled hook used to leave nothing and every later start was
+  // cancelled the same way (A2).
+  if (!state.snapshot) { try { state.snapshot = phase('snapshot', () => docs.snapshot()); } catch {} saveState(input.session_id, state); }
   // A compaction or a /clear dropped the sections this actor read: its gate holds again (a seat's own compaction runs
   // this hook inside the seat, with its agent_id - only that seat's gate re-arms).
   if (input.source === 'compact' || input.source === 'clear') {
@@ -395,16 +422,19 @@ function sessionStart(input, root, docs, state) {
   }
   // Repair the branch snapshots BEFORE looking for merged branches, so a snapshot repaired here is promotable in
   // this session and not only the next one.
-  try { docs.refreshBaseMeta(); } catch {}
+  const promoting = budgetLeft() >= PROMOTE_FLOOR_MS && !ranOutOfTime(docs);
+  if (promoting) try { phase('refresh', () => docs.refreshBaseMeta()); } catch {}
   let promoted = [];
-  try { promoted = docs.autoPromote(); } catch {}
+  if (promoting) try { promoted = phase('promote', () => docs.autoPromote()); } catch {}
   // A row with changed=false is a standing, already-reported conflict - skip it, or it would be re-logged and
   // re-announced at every session start.
   const landed = promoted.filter((p) => p.changed);
   for (const p of landed) log(root, input, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
   if (docsOff('block')) return;
   let st = null;
-  try { st = docs.status(); } catch {}
+  if (!ranOutOfTime(docs)) try { st = phase('status', () => docs.status()); } catch {}
+  // A status read past the budget is a guess: its branch and conflict lines are dropped, and the session told why.
+  if (ranOutOfTime(docs)) st = null;
   const lines = orientation(root, docs);
   const extra = workspaceDocsLines(input, root, docs);
   for (const p of landed) {
@@ -429,6 +459,7 @@ function sessionStart(input, root, docs, state) {
   if (st && st.stranded && st.stranded.length) extra.push(`Doc versions stranded by this install's git versioning: ${st.stranded.slice(0, 6).join(', ')}${st.stranded.length > 6 ? ` (+${st.stranded.length - 6} more)` : ''} - nothing reads or promotes .branches/ any more, and this line returns every session until they are gone: re-apply what is still wanted with \`${READ} set <file>#<id>\`, then end it with \`${READ} prune ${st.stranded[0]}\`${st.stranded.length > 1 ? ' (one prune per name)' : ''}.`);
   const repair = integrityLine(docs);
   if (repair) extra.push(repair);
+  if (ranOutOfTime(docs) || !promoting) extra.push(OUT_OF_TIME_LINE);
   if (st && st.overrides.length) extra.push(`You are on branch ${st.branch}. ${st.overrides.length} doc section(s) hold this branch's own decisions and replace mainline's in every read: ${st.overrides.slice(0, 6).join(', ')}${st.overrides.length > 6 ? ` ... (\`${READ} status\`)` : ''}.`);
   // Each list is cut at six names with a count and the command that lists the rest (audit 2026-10-20, the hooks track's
   // minor list: three lists here had no cap, so a long-lived branch could push the read lines past the start cap).
@@ -463,6 +494,8 @@ function main() {
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
   if (cursorOff) return;
   let root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  if (BUDGETED_EVENTS.has(event)) DEADLINE = PROCESS_START + HOOK_BUDGET_MS;
+  RUN = { root, input };
   const start = root;
   process.env.CLAUDE_PROJECT_DIR = root;
   // before the domain gate: a plan file lives under the docs root whether or not a domain does
@@ -472,7 +505,7 @@ function main() {
   if (event === 'SessionStart') {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
-    startNote = [recordUntracked(input, root), ...garbageRecordLines(input, root)].filter(Boolean).join('\n');
+    startNote = [phase('untracked', () => recordUntracked(input, root)), ...garbageRecordLines(input, root)].filter(Boolean).join('\n');
     if (input.source === 'compact' || input.source === 'clear') rearmMembers(input);
   }
   // Stage 6: a call whose file sits in a joined member is judged by that member's docs and gate (preferences-session.js
@@ -487,7 +520,7 @@ function main() {
   const bind = (m) => {
     root = m ? m.root : start; MEMBER = m ? m.key : ''; HOME = m ? start : null; MEMBER_REL = m ? rel : '';
     if (!m) { OWNER = null; PATH_LINE = ''; }
-    process.env.CLAUDE_PROJECT_DIR = root; delete require.cache[require.resolve('./docs.js')]; return require('./docs.js');
+    process.env.CLAUDE_PROJECT_DIR = root; delete require.cache[require.resolve('./docs.js')]; return budgeted(require('./docs.js'));
   };
   // On the PLUGIN route this hook runs from the marketplace clone, where docs.js and
   // history.js are both tracked - so a never-set-up project under a user-scope core never reaches
@@ -497,7 +530,7 @@ function main() {
   // like every other fail-open path here; a syntax error or any other load failure in a PRESENT
   // engine is a genuine bug and must surface on stderr, not be swallowed.
   let docs;
-  try { docs = member ? bind(member) : require('./docs.js'); if (member && !durableOf(docs).length) { undo(); docs = bind(null); } }
+  try { docs = member ? bind(member) : budgeted(require('./docs.js')); if (member && !durableOf(docs).length) { undo(); docs = bind(null); } }
   catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
   if (MEMBER && input.tool_name !== HANDBACK_TOOL && !docsOff('block')) ENTRY = entryOf(input, root, docs);
   // before the domain gate: a first capture writes architecture/ before any domain exists
@@ -520,7 +553,26 @@ function main() {
   if (event === 'SubagentStop') return subagentStop(input, root, docs);
   if (event === 'PreToolUse' && input.tool_name === HANDBACK_TOOL) return handback(input, root, docs);
   if (event === 'PreToolUse') return preToolUse(input, root, docs, state);
-  if (event === 'Stop') return stop(input, root, docs, state);
+  if (event === 'Stop') return phase('stop', () => stop(input, root, docs, state));
+}
+
+// The engine cut to this run's deadline; an older engine with no budget runs as before.
+function budgeted(docs) {
+  if (DEADLINE !== null && typeof docs.setDeadline === 'function') docs.setDeadline(DEADLINE);
+  DOCS = docs;
+  return docs;
+}
+
+// One probe row for a run past SLOW_MS or cut by the budget: the script, the event and each phase's ms.
+let RUN = null;
+let DOCS = null;
+function slowRow() {
+  if (DEADLINE === null || !RUN) return;
+  const totalMs = Date.now() - PROCESS_START;
+  const cut = Boolean(DOCS && ranOutOfTime(DOCS));
+  if (totalMs < SLOW_MS && !cut) return;
+  blockRow(RUN.root, RUN.input, `probe: slow - docs-session.js ran ${totalMs}ms on ${RUN.input.hook_event_name}${cut ? ', its git work cut by the time budget' : ''}`,
+    { mode: 'probe', kind: 'slow', detail: { total_ms: totalMs, budget_ms: HOOK_BUDGET_MS, cut, phases: PHASES } });
 }
 
 // What was untracked before the session began is not the session's change (pilot 3: ~150 files the harness left
@@ -559,7 +611,7 @@ function sweepStrandedRoot(root) {
   const state = (e) => (e.isDirectory() && STATE_DIRS.has(e.name)) || (e.isFile() && (STATE_FILES.has(e.name) || OS_LITTER.has(e.name)));
   if (!entries.every(state)) return null;
   try {
-    const tracked = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }));
+    const tracked = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: gitTimeout() || 1, stdio: ['ignore', 'pipe', 'ignore'] }));
     if (tracked.length) return null;
   } catch { /* no repo: nothing is tracked */ }
   let files = 0;
@@ -624,14 +676,14 @@ function recordUntracked(input, root) {
     }
     if (!file) {
       let head = '';
-      try { head = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+      try { head = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: gitTimeout() || 1, stdio: ['ignore', 'pipe', 'ignore'] })).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
       file = find(`untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
     }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     else if (later) return '';
     else {
       const out = require('child_process').execFileSync(...require('./hook-prelude.js').gitSafe(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
-        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
+        { cwd: root, timeout: gitTimeout() || 1, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })).toString('utf8');
       // The stack's own files are never the change: the docs root, and the data root's state/ and statistics/.
       const own = [docsRootEnv(), ...(layout ? ['state', 'statistics'].map((d) => path.join(layout.dataRoot(), d)) : [])]
         .map((d) => toPosix(path.relative(root, path.resolve(root, d)))).filter((d) => d && !d.startsWith('..'));
@@ -1556,7 +1608,22 @@ const deny = (reason) => {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: text } }));
 };
 
+// Before this call runs, the tree is still the one the session found when the main session has written nothing and run
+// no command that may write: a snapshot taken now is the start's. A seat keeps its own.
+function deferredSnapshot(input, root, docs, state) {
+  if (state.snapshot || input.agent_id || typeof docs.setDeadline !== 'function') return;
+  if ((state.snapshotTries || 0) >= DEFERRED_SNAPSHOT_TRIES) return;
+  const main = loadAgent(input.session_id, MAIN_ACTOR);
+  if ((main.wrote || []).length || main.ran) return;
+  state.snapshotTries = (state.snapshotTries || 0) + 1;
+  docs.setDeadline(Date.now() + DEFERRED_SNAPSHOT_MS);
+  try { state.snapshot = docs.snapshot(); } catch { state.snapshot = null; } finally { docs.setDeadline(null); }
+  saveState(input.session_id, state);
+  log(root, input, { event: 'snapshot-deferred', taken: Boolean(state.snapshot), try: state.snapshotTries });
+}
+
 function preToolUse(input, root, docs, state) {
+  deferredSnapshot(input, root, docs, state);
   const home = HOME || root;
   const paths = OWNER && OWNER.file && !isShellTool(input.tool_name || '') ? [toPosix(path.relative(root, OWNER.file))] : toolPaths(input, root);
   // One root per domain, not one hardcoded architecture/ - a project documented only in preferences/ must still
@@ -1983,6 +2050,6 @@ function stop(input, root, docs, state) {
 
 module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, pathsUnder, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
-  try { main(); entryTail(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } }
+  try { main(); entryTail(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } slowRow(); }
   catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

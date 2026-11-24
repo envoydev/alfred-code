@@ -71,7 +71,7 @@ for (const route of Object.keys(ROUTES))
         // the pick, its closure and (burn-down Task 5's finding) the locked always-on skills the install adopts - plain names
         const picked = (/^picked-skills: (.*)$/m.exec(result.stamp) || [])[1] || '';
         assert.deepStrictEqual(picked.split(',').sort(), [...new Set(['markdown-style', 'docs-as-code', ...require('../meta/recommendations.json').always.skills])].sort(), 'the stamp records the pick, its closure and the always-on skills - a copy, no plugin home (2.1.0)');
-        assert.match(result.stamp, route === 'plugin' ? /^seats-route: plugin$/m : /^seats-route: copy$/m, 'how the seats came');
+        assert.match(result.stamp, route === 'plugin' ? /^seats-route: library$/m : /^seats-route: copy$/m, 'how the seats came');
         assert.strictEqual(typeof result.settings.env.ALFRED_CODE_HOOKS_OFF, 'string', 'the settings env is seeded');
         for (const key of ['ALFRED_CODE_DATA_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.strictEqual(result.settings.env[key], undefined, `${key}: no path key is ever written`);
         if (route === 'plugin')

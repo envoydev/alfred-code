@@ -2382,6 +2382,22 @@ test('review proof 3.12: no receipt file inside the call\'s window is no proof',
     /without the pre-commit gate receipt/, 'A8 no receipt file');
 });
 
+// Card item 6 (A6, c7631764): 11 blocks in 18 minutes, the same commit retried after the same refusal - the model re-ran
+// the commit instead of the review. From the second identical block of a session on, the text is the refusal's first line
+// and the one next step, never the whole explanation again.
+test('commit gate: a second identical block says the one next step and stops repeating the explanation (A6)', () => {
+  const dir = scratchRepo();
+  const tp = writeTranscript(dir, 'loop-a6', []);
+  const first = rpCommit(dir, tp, { session_id: 'loop-a6' });
+  rpRefused(first, /without the pre-commit gate receipt/, 'the first block');
+  assert.match(first.stderr, /Run the checkpoint first/, 'the first block explains');
+  const second = rpCommit(dir, tp, { session_id: 'loop-a6' });
+  rpRefused(second, /without the pre-commit gate receipt/, 'the second block');
+  assert.match(second.stderr, /the same refusal as before - running the commit again changes nothing\. The one next step: /);
+  assert.doesNotMatch(second.stderr, /Run the checkpoint first/, 'no second explanation');
+  assert.match(rpCommit(dir, tp, { session_id: 'loop-a6-other' }).stderr, /Run the checkpoint first/, 'another session gets it in full');
+});
+
 test('review proof 3.12: of two receipt calls the file proves the one that wrote it', () => {
   const M = rpTime();
   const one = scratchRepo();

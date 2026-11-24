@@ -28,11 +28,11 @@ function repo(ignore = '.claude/\n')
     if (ignore !== null) fs.writeFileSync(path.join(d, '.gitignore'), ignore);
     return d;
 }
-// A project's store holding a skill folder and an agent file; its own items in the store are the holders.
+// A project's store holding a skill folder and an agent folder; its own items in the store are the holders.
 function store(root, { skills = [], agents = [] } = {})
 {
     for (const s of skills) { fs.mkdirSync(path.join(root, '.alfred', 'stack', 'skills', s), { recursive: true }); fs.writeFileSync(path.join(root, '.alfred', 'stack', 'skills', s, 'SKILL.md'), `# ${s}\n`); }
-    for (const a of agents) { fs.mkdirSync(path.join(root, '.alfred', 'stack', 'agents'), { recursive: true }); fs.writeFileSync(path.join(root, '.alfred', 'stack', 'agents', `${a}.md`), `# ${a}\n`); }
+    for (const a of agents) { fs.mkdirSync(path.join(root, '.alfred', 'stack', 'agents', a), { recursive: true }); fs.writeFileSync(path.join(root, '.alfred', 'stack', 'agents', a, `${a}.md`), `# ${a}\n`); }
     return root;
 }
 const lines = () => { const out = []; return Object.assign((l) => out.push(l), { out }); };
@@ -65,23 +65,31 @@ test('links: homeOf - the store where the kind is linkable, .claude where git se
     assert.strictEqual(links.homeOf(p, 'skills', { rt, write: false }).store, true);
     const v = repo('');
     assert.deepStrictEqual(links.homeOf(v, 'agents', { rt }), { dir: path.join(v, '.claude', 'agents'), store: false, state: 'visible' });
-    assert.strictEqual(links.fileOf('agents', 'x'), 'x.md');
+    assert.strictEqual(links.fileOf('agents', 'x'), 'x');
     assert.strictEqual(links.fileOf('skills', 'x'), 'x');
 });
 
-test('links: a skill is a directory link and an agent a file link, each resolving to the store; a second run changes nothing', { skip: process.platform === 'win32' && 'the win32 shape (a junction and a copy) is the next test' }, () =>
+test('links: a skill and an agent are each a directory link resolving to the store; a second run changes nothing', { skip: process.platform === 'win32' && 'the win32 shape (a junction and a copy) is the next test' }, () =>
 {
     const p = store(fresh(), { skills: ['a'], agents: ['x'] });
     const { record, log } = sync(p, { want: want(['a'], ['x']) });
-    assert.deepStrictEqual(record, [{ path: 'agents/x.md', kind: 'symlink', hash: '' }, { path: 'skills/a', kind: 'symlink', hash: '' }]);
+    assert.deepStrictEqual(record, [{ path: 'agents/x', kind: 'symlink', hash: '' }, { path: 'skills/a', kind: 'symlink', hash: '' }]);
     assert.ok(fs.lstatSync(at(p, 'skills/a')).isSymbolicLink());
     assert.ok(samePath(fs.realpathSync.native(at(p, 'skills/a')), path.join(p, '.alfred', 'stack', 'skills', 'a')));
-    assert.strictEqual(fs.readFileSync(at(p, 'agents/x.md'), 'utf8'), '# x\n');
+    assert.ok(fs.lstatSync(at(p, 'agents/x')).isSymbolicLink());
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x\n');
     assert.ok(!path.isAbsolute(fs.readlinkSync(at(p, 'skills/a'))), 'a relative target off Windows');
     assert.ok(log.includes('link: .claude/skills/a -> .alfred/stack/skills/a'), log.join('\n'));
     const again = sync(p, { want: want(['a'], ['x']), prior: record });
     assert.deepStrictEqual(again.record, record);
     assert.deepStrictEqual(again.log.filter((l) => /link/.test(l)), []);
+});
+
+test('links: inherited - a link or a copy that is not on disk is not a link from above', () =>
+{
+    const p = store(fresh(), { skills: ['a'], agents: ['x'] });
+    const record = [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x', kind: 'copy', hash: 'f'.repeat(64) }];
+    assert.deepStrictEqual(links.inherited(p, record), [], 'nothing at either path');
 });
 
 test('links: inherited - a copy its store holds and a dangling link into its store are its own; a link elsewhere, dangling or not, is not', () =>
@@ -93,12 +101,10 @@ test('links: inherited - a copy its store holds and a dangling link into its sto
     for (const [n, d] of [['own', p], ['gone', p], ['up', away], ['lost', away]]) link(n, d);
     fs.rmSync(path.join(p, '.alfred', 'stack', 'skills', 'gone'), { recursive: true });
     fs.rmSync(path.join(away, '.alfred', 'stack', 'skills', 'lost'), { recursive: true });
-    fs.mkdirSync(at(p, 'agents'), { recursive: true });
-    fs.writeFileSync(at(p, 'agents/x.md'), '# x\n');
-    fs.writeFileSync(at(p, 'agents/y.md'), '# y\n');
+    for (const a of ['x', 'y']) { fs.mkdirSync(at(p, `agents/${a}`), { recursive: true }); fs.writeFileSync(at(p, `agents/${a}/${a}.md`), `# ${a}\n`); }
     const record = ['skills/own', 'skills/gone', 'skills/up', 'skills/lost'].map((q) => ({ path: q, kind: 'symlink', hash: '' }))
-        .concat(['agents/x.md', 'agents/y.md'].map((q) => ({ path: q, kind: 'copy', hash: hashItem(at(p, q)) })));
-    assert.deepStrictEqual(links.inherited(p, record).map((e) => e.path), ['skills/up', 'skills/lost', 'agents/y.md']);
+        .concat(['agents/x', 'agents/y'].map((q) => ({ path: q, kind: 'copy', hash: hashItem(at(p, q)) })));
+    assert.deepStrictEqual(links.inherited(p, record).map((e) => e.path), ['skills/up', 'skills/lost', 'agents/y']);
 });
 
 test('links: a link whose target is no holder any more is removed and says so', () =>
@@ -117,14 +123,14 @@ test('links: a link whose target is no holder any more is removed and says so', 
 test('links: switched off (keep), a listed agent copy at its hash stays though no holder is found', () =>
 {
     const kid = fresh();
-    fs.mkdirSync(at(kid, 'agents'), { recursive: true });
-    fs.writeFileSync(at(kid, 'agents/x.md'), '# x\n');
-    const prior = [{ path: 'agents/x.md', kind: 'copy', hash: hashItem(at(kid, 'agents/x.md')) }];
-    const { record } = sync(kid, { want: want([], ['x']), prior, keep: true, platform: 'win32' });
+    fs.mkdirSync(at(kid, 'agents/x'), { recursive: true });
+    fs.writeFileSync(at(kid, 'agents/x/x.md'), '# x\n');
+    const prior = [{ path: 'agents/x', kind: 'copy', hash: hashItem(at(kid, 'agents/x')) }];
+    const { record } = sync(kid, { want: want([], ['x']), prior, keep: true, platform: 'win32', agentJunction: false });
     assert.deepStrictEqual(record, prior);
-    assert.ok(fs.existsSync(at(kid, 'agents/x.md')));
-    const gone = sync(kid, { want: want([], ['x']), prior, platform: 'win32' });
-    assert.ok(gone.log.includes('copy removed: .claude/agents/x.md - its target is gone'), gone.log.join('\n'));
+    assert.ok(fs.existsSync(at(kid, 'agents/x/x.md')));
+    const gone = sync(kid, { want: want([], ['x']), prior, platform: 'win32', agentJunction: false });
+    assert.ok(gone.log.includes('copy removed: .claude/agents/x - its target is gone'), gone.log.join('\n'));
 });
 
 test('links: a visible kind with no .claude folder yet says why without throwing', () =>
@@ -145,12 +151,12 @@ test('links: inherited reads a dangling link into a store removed whole as its o
 test('links: a released child keeps an agent the stamp lists as a copy (Windows, or a link refused), now held in its own store', () =>
 {
     const kid = fresh();
-    fs.mkdirSync(at(kid, 'agents'), { recursive: true });
-    fs.writeFileSync(at(kid, 'agents/x.md'), '# x\n');
-    fs.writeFileSync(at(kid, 'alfred-code.stamp'), `links: agents/x.md=copy@${hashItem(at(kid, 'agents/x.md'))}\n`);
+    fs.mkdirSync(at(kid, 'agents/x'), { recursive: true });
+    fs.writeFileSync(at(kid, 'agents/x/x.md'), '# x\n');
+    fs.writeFileSync(at(kid, 'alfred-code.stamp'), `links: agents/x=copy@${hashItem(at(kid, 'agents/x'))}\n`);
     require('./install/workspace.js').copyIn(kid);
-    assert.strictEqual(fs.readFileSync(at(kid, 'agents/x.md'), 'utf8'), '# x\n');
-    assert.strictEqual(fs.readFileSync(path.join(kid, '.alfred', 'stack', 'agents', 'x.md'), 'utf8'), '# x\n');
+    assert.strictEqual(fs.readFileSync(at(kid, 'agents/x/x.md'), 'utf8'), '# x\n');
+    assert.strictEqual(fs.readFileSync(path.join(kid, '.alfred', 'stack', 'agents', 'x', 'x.md'), 'utf8'), '# x\n');
     assert.strictEqual(stamp.readLinks(at(kid, 'alfred-code.stamp')).length, 1);
 });
 
@@ -170,35 +176,124 @@ test('links: a .claude that is itself a link (a dotfiles folder) gets links that
     fs.symlinkSync(dot, path.join(p, '.claude'), process.platform === 'win32' ? 'junction' : 'dir');
     const { record } = sync(p, { want: want(['a'], ['x']) });
     assert.strictEqual(fs.readFileSync(at(p, 'skills/a/SKILL.md'), 'utf8'), '# a\n');
-    assert.strictEqual(fs.readFileSync(at(p, 'agents/x.md'), 'utf8'), '# x\n');
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x\n');
     const again = sync(p, { want: want(['a'], ['x']), prior: record });
     assert.deepStrictEqual(again.record, record);
     assert.deepStrictEqual(again.log, []);
     assert.deepStrictEqual(links.checkLinks({ projectRoot: p, record }).map((c) => c.state), ['ok', 'ok']);
 });
 
-test('links: on win32 a skill is a junction and an agent a copy with its hash, written again when the store moves on, kept once edited', () =>
+test('links: on win32 a skill is a junction and an agent a folder copy at its hash when agentJunction is off, and a junction when it is on (AGENT_JUNCTION_ON_WIN32, proven in the VM 2026-11-24)', () =>
 {
+    assert.strictEqual(links.AGENT_JUNCTION_ON_WIN32, true);
     const p = store(fresh(), { skills: ['a'], agents: ['x'] });
-    const { record, log } = sync(p, { want: want(['a'], ['x']), platform: 'win32' });
-    const agent = record.find((e) => e.path === 'agents/x.md');
+    const types = [];
+    const symlink = (target, linkPath, type) => { types.push(type); fs.symlinkSync(target, linkPath, process.platform === 'win32' ? type : 'dir'); };
+    const { record, log } = sync(p, { want: want(['a'], ['x']), platform: 'win32', symlink, agentJunction: false });
+    const agent = record.find((e) => e.path === 'agents/x');
     assert.strictEqual(record.find((e) => e.path === 'skills/a').kind, 'junction');
+    assert.deepStrictEqual(types, ['junction'], 'the skill alone is linked');
     if (process.platform === 'win32') assert.ok(path.isAbsolute(fs.readlinkSync(at(p, 'skills/a'))));
-    assert.deepStrictEqual(agent, { path: 'agents/x.md', kind: 'copy', hash: hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x.md')) });
-    assert.ok(!fs.lstatSync(at(p, 'agents/x.md')).isSymbolicLink());
-    assert.ok(log.includes('agent copy: .claude/agents/x.md - a link cannot be made here'), log.join('\n'));
+    assert.deepStrictEqual(agent, { path: 'agents/x', kind: 'copy', hash: hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x')) });
+    assert.ok(!fs.lstatSync(at(p, 'agents/x')).isSymbolicLink() && fs.lstatSync(at(p, 'agents/x')).isDirectory());
+    assert.ok(log.includes('agent copy: .claude/agents/x - a link cannot be made here'), log.join('\n'));
     // Whole: kept. The store moved on: written again, the new hash recorded.
-    assert.deepStrictEqual(sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32' }).record, record);
-    fs.writeFileSync(path.join(p, '.alfred', 'stack', 'agents', 'x.md'), '# x v2\n');
-    const moved = sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32' }).record;
-    assert.strictEqual(fs.readFileSync(at(p, 'agents/x.md'), 'utf8'), '# x v2\n');
-    assert.strictEqual(moved.find((e) => e.path === 'agents/x.md').hash, hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x.md')));
+    assert.deepStrictEqual(sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32', agentJunction: false }).record, record);
+    fs.writeFileSync(path.join(p, '.alfred', 'stack', 'agents', 'x', 'x.md'), '# x v2\n');
+    const moved = sync(p, { want: want(['a'], ['x']), prior: record, platform: 'win32', agentJunction: false }).record;
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x v2\n');
+    assert.strictEqual(moved.find((e) => e.path === 'agents/x').hash, hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x')));
     // Edited: kept, named, off the record.
-    fs.writeFileSync(at(p, 'agents/x.md'), '# mine\n');
-    const edited = sync(p, { want: want(['a'], ['x']), prior: moved, platform: 'win32' });
-    assert.ok(!edited.record.some((e) => e.path === 'agents/x.md'));
-    assert.strictEqual(fs.readFileSync(at(p, 'agents/x.md'), 'utf8'), '# mine\n');
-    assert.ok(edited.log.includes('  agent kept: .claude/agents/x.md - edited since it was copied from the store, so it is yours'), edited.log.join('\n'));
+    fs.writeFileSync(at(p, 'agents/x/x.md'), '# mine\n');
+    const edited = sync(p, { want: want(['a'], ['x']), prior: moved, platform: 'win32', agentJunction: false });
+    assert.ok(!edited.record.some((e) => e.path === 'agents/x'));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# mine\n');
+    assert.ok(edited.log.includes('  agent kept: .claude/agents/x - edited since it was copied from the store, so it is yours'), edited.log.join('\n'));
+    // The constant true: the agent is a junction like the skill.
+    const q = store(fresh(), { agents: ['x'] });
+    const junctioned = [];
+    const asJunction = (target, linkPath, type) => { junctioned.push(type); fs.symlinkSync(target, linkPath, process.platform === 'win32' ? type : 'dir'); };
+    const on = sync(q, { want: want([], ['x']), platform: 'win32', symlink: asJunction, agentJunction: true });
+    assert.deepStrictEqual(on.record, [{ path: 'agents/x', kind: 'junction', hash: '' }]);
+    assert.deepStrictEqual(junctioned, ['junction']);
+});
+
+test('links: on win32 an agent copy at its recorded hash becomes a junction once agent junctions are on, and an edited one stays yours', () =>
+{
+    const p = store(fresh(), { agents: ['x', 'y'] });
+    const asJunction = (target, linkPath, type) => fs.symlinkSync(target, linkPath, process.platform === 'win32' ? type : 'dir');
+    const copies = sync(p, { want: want([], ['x', 'y']), platform: 'win32', symlink: asJunction, agentJunction: false }).record;
+    assert.deepStrictEqual(copies.map((e) => e.kind), ['copy', 'copy']);
+    fs.writeFileSync(at(p, 'agents/y/y.md'), '# mine\n');
+    const { record, log } = sync(p, { want: want([], ['x', 'y']), prior: copies, platform: 'win32', symlink: asJunction, agentJunction: true });
+    assert.deepStrictEqual(record, [{ path: 'agents/x', kind: 'junction', hash: '' }]);
+    assert.ok(fs.lstatSync(at(p, 'agents/x')).isSymbolicLink(), 'the unedited copy is a link now');
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x\n');
+    assert.ok(log.includes('agent copy replaced by a junction: .claude/agents/x'), log.join('\n'));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/y/y.md'), 'utf8'), '# mine\n', 'the edited copy is the user\'s');
+    assert.ok(!fs.lstatSync(at(p, 'agents/y')).isSymbolicLink());
+    // a second run changes nothing
+    assert.deepStrictEqual(sync(p, { want: want([], ['x', 'y']), prior: record, platform: 'win32', symlink: asJunction, agentJunction: true }).record, record);
+});
+
+test('links: an agent is linked as a folder and removed when unpicked', { skip: process.platform === 'win32' && 'a posix link shape' }, () =>
+{
+    const p = store(fresh(), { agents: ['x'] });
+    const first = sync(p, { want: want([], ['x']) });
+    assert.deepStrictEqual(first.record, [{ path: 'agents/x', kind: 'symlink', hash: '' }]);
+    assert.strictEqual(fs.readlinkSync(at(p, 'agents/x')), path.join('..', '..', '.alfred', 'stack', 'agents', 'x'));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), '# x\n');
+    const second = sync(p, { want: [], prior: first.record });
+    assert.deepStrictEqual(second.record, []);
+    assert.ok(!fs.existsSync(at(p, 'agents/x')) && !fs.lstatSync(at(p, 'agents'), { throwIfNoEntry: false })?.isSymbolicLink());
+    assert.ok(fs.existsSync(path.join(p, '.alfred', 'stack', 'agents', 'x', 'x.md')), 'the store keeps the agent');
+});
+
+test('links: an agent of the user\'s at a link path is kept', () =>
+{
+    const p = store(fresh(), { agents: ['x'] });
+    fs.mkdirSync(at(p, 'agents/x'), { recursive: true });
+    fs.writeFileSync(at(p, 'agents/x/x.md'), 'mine');
+    const { record, log } = sync(p, { want: want([], ['x']) });
+    assert.deepStrictEqual(record, []);
+    assert.ok(log.includes('  !! link skipped: .claude/agents/x - a real folder or file of that name is yours'), log.join('\n'));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x/x.md'), 'utf8'), 'mine');
+});
+
+test('links: a flat agent file of the user\'s beside the store folder is kept, named, and no link is made over it', () =>
+{
+    const p = store(fresh(), { agents: ['x'] });
+    fs.mkdirSync(at(p, 'agents'), { recursive: true });
+    fs.writeFileSync(at(p, 'agents/x.md'), 'mine');
+    const { record, log } = sync(p, { want: want([], ['x']) });
+    assert.deepStrictEqual(record, []);
+    assert.ok(log.includes('  agent kept: .claude/agents/x.md - edited since it was copied from the store, so it is yours'), log.join('\n'));
+    assert.ok(!fs.existsSync(at(p, 'agents/x')));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/x.md'), 'utf8'), 'mine');
+});
+
+test('links: a flat agent copy at a stamped hash moves into a folder, one at another hash stays', () =>
+{
+    const p = repo();
+    const store1 = path.join(p, '.alfred', 'stack', 'agents');
+    fs.mkdirSync(store1, { recursive: true });
+    fs.mkdirSync(at(p, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(store1, 'old.md'), '# old\n');
+    fs.writeFileSync(path.join(store1, 'edited.md'), '# edited\n');
+    fs.writeFileSync(at(p, 'agents/lone.md'), '# lone\n');
+    const hashes = { old: [hashItem(path.join(store1, 'old.md'))], edited: ['0'.repeat(64)], lone: [hashItem(at(p, 'agents/lone.md'))] };
+    const log = lines();
+    links.migrateFlatAgents({ projectRoot: p, home: links.homeOf(p, 'agents', { rt }), hashes, log });
+    assert.strictEqual(fs.readFileSync(path.join(store1, 'old', 'old.md'), 'utf8'), '# old\n');
+    assert.ok(!fs.existsSync(path.join(store1, 'old.md')));
+    assert.strictEqual(fs.readFileSync(path.join(store1, 'lone', 'lone.md'), 'utf8'), '# lone\n');
+    assert.ok(!fs.existsSync(at(p, 'agents/lone.md')));
+    assert.ok(fs.existsSync(path.join(store1, 'edited.md')), 'an edited flat copy stays');
+    assert.deepStrictEqual(log.out.filter((l) => /moved to a folder/.test(l)), ['agent moved to a folder: old', 'agent moved to a folder: lone']);
+    assert.ok(log.out.includes('  agent kept: .alfred/stack/agents/edited.md - edited since it was copied from the store, so it is yours'), log.out.join('\n'));
+    const again = lines();
+    links.migrateFlatAgents({ projectRoot: p, home: links.homeOf(p, 'agents', { rt }), hashes, log: again });
+    assert.deepStrictEqual(again.out.filter((l) => /moved/.test(l)), [], 'a second run changes nothing');
 });
 
 test('links: a link that cannot be made - the agent a copy with its hash, the skill named and left out', () =>
@@ -206,7 +301,7 @@ test('links: a link that cannot be made - the agent a copy with its hash, the sk
     const p = store(fresh(), { skills: ['a'], agents: ['x'] });
     const symlink = () => { throw Object.assign(new Error('no links here'), { code: 'EPERM' }); };
     const { record, log } = sync(p, { want: want(['a'], ['x']), symlink });
-    assert.deepStrictEqual(record, [{ path: 'agents/x.md', kind: 'copy', hash: hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x.md')) }]);
+    assert.deepStrictEqual(record, [{ path: 'agents/x', kind: 'copy', hash: hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x')) }]);
     assert.ok(log.includes('  !! link not made: .claude/skills/a - EPERM'), log.join('\n'));
     assert.ok(!fs.existsSync(at(p, 'skills/a')));
 });
@@ -216,13 +311,13 @@ test('links: a real folder, a real file and an unlisted link at the path are the
     const p = store(fresh(), { skills: ['a', 'b'], agents: ['x'] });
     fs.mkdirSync(at(p, 'skills/a'), { recursive: true });
     fs.writeFileSync(at(p, 'skills/a/SKILL.md'), 'mine');
-    fs.mkdirSync(at(p, 'agents'), { recursive: true });
-    fs.writeFileSync(at(p, 'agents/x.md'), 'mine');
+    fs.mkdirSync(at(p, 'agents/x'), { recursive: true });
+    fs.writeFileSync(at(p, 'agents/x/x.md'), 'mine');
     fs.symlinkSync(path.join(p, '.alfred', 'stack', 'skills', 'b'), at(p, 'skills/b'), 'dir');
     const { record, log } = sync(p, { want: want(['a', 'b'], ['x']) });
     assert.deepStrictEqual(record, []);
     assert.ok(log.includes('  !! link skipped: .claude/skills/a - a real folder or file of that name is yours'), log.join('\n'));
-    assert.ok(log.includes('  !! link skipped: .claude/agents/x.md - a real folder or file of that name is yours'), log.join('\n'));
+    assert.ok(log.includes('  !! link skipped: .claude/agents/x - a real folder or file of that name is yours'), log.join('\n'));
     assert.ok(log.includes('  !! link skipped: .claude/skills/b - a link the stamp does not list, so it is yours'), log.join('\n'));
     assert.strictEqual(fs.readFileSync(at(p, 'skills/a/SKILL.md'), 'utf8'), 'mine');
 });
@@ -259,13 +354,13 @@ test('links: a moved target is re-pointed; a missing target is removed and named
 test('links: removeLinks takes a copy only at its hash', () =>
 {
     const p = store(fresh(), { agents: ['x', 'y'] });
-    const record = sync(p, { want: want([], ['x', 'y']), platform: 'win32' }).record;
-    fs.writeFileSync(at(p, 'agents/y.md'), 'mine');
+    const record = sync(p, { want: want([], ['x', 'y']), platform: 'win32', agentJunction: false }).record;
+    fs.writeFileSync(at(p, 'agents/y/y.md'), 'mine');
     const log = lines();
     links.removeLinks({ projectRoot: p, record, log });
-    assert.ok(!fs.existsSync(at(p, 'agents/x.md')));
-    assert.strictEqual(fs.readFileSync(at(p, 'agents/y.md'), 'utf8'), 'mine');
-    assert.ok(log.out.includes('  agent kept: .claude/agents/y.md - edited since it was copied from the store, so it is yours'), log.out.join('\n'));
+    assert.ok(!fs.existsSync(at(p, 'agents/x')));
+    assert.strictEqual(fs.readFileSync(at(p, 'agents/y/y.md'), 'utf8'), 'mine');
+    assert.ok(log.out.includes('  agent kept: .claude/agents/y - edited since it was copied from the store, so it is yours'), log.out.join('\n'));
 });
 
 test('links: three levels - the nearest holder wins, a member\'s link is never a target, a visible member holds from .claude', () =>
@@ -290,12 +385,12 @@ test('links: three levels - the nearest holder wins, a member\'s link is never a
 test('links: a project whose kind git sees gets no link, one line, and no entry; git that could not run keeps them', () =>
 {
     const v = repo('');
-    fs.mkdirSync(at(v, 'agents'), { recursive: true });
-    fs.writeFileSync(at(v, 'agents/x.md'), '# x\n');
-    const prior = [{ path: 'agents/x.md', kind: 'copy', hash: hashItem(at(v, 'agents/x.md')) }, { path: 'skills/old', kind: 'symlink', hash: '' }];
+    fs.mkdirSync(at(v, 'agents/x'), { recursive: true });
+    fs.writeFileSync(at(v, 'agents/x/x.md'), '# x\n');
+    const prior = [{ path: 'agents/x', kind: 'copy', hash: hashItem(at(v, 'agents/x')) }, { path: 'skills/old', kind: 'symlink', hash: '' }];
     const { record, log } = sync(v, { want: want(['a'], ['x']), prior });
     assert.deepStrictEqual(record, []);
-    assert.strictEqual(fs.readFileSync(at(v, 'agents/x.md'), 'utf8'), '# x\n', 'the copy stays, a plain library copy now');
+    assert.strictEqual(fs.readFileSync(at(v, 'agents/x/x.md'), 'utf8'), '# x\n', 'the copy stays, a plain library copy now');
     assert.deepStrictEqual(sync(fresh(), { want: want(['a']), prior, rt: noGit }).record, prior);
     assert.ok(log.includes("  skills stay as copies in .claude/skills: git does not ignore that folder here - the store needs the local scope, or an ignore line for it and 'git rm -r --cached .claude/skills'"), log.join('\n'));
     const u = sync(fresh(), { want: want(['a']), rt: noGit });
@@ -315,14 +410,14 @@ test('links: a path with a space and a non-ASCII letter', () =>
 test('links: checkLinks names every state', () =>
 {
     const p = store(fresh(), { skills: ['a', 'b'], agents: ['x', 'y', 'z'] });
-    const record = [...sync(p, { want: want(['a', 'b']) }).record, ...sync(p, { want: want([], ['x', 'y', 'z']), platform: 'win32' }).record];
+    const record = [...sync(p, { want: want(['a', 'b']) }).record, ...sync(p, { want: want([], ['x', 'y', 'z']), platform: 'win32', agentJunction: false }).record];
     fs.rmSync(path.join(p, '.alfred', 'stack', 'skills', 'b'), { recursive: true });
-    fs.writeFileSync(at(p, 'agents/y.md'), 'mine');
-    fs.writeFileSync(path.join(p, '.alfred', 'stack', 'agents', 'z.md'), '# z v2\n');
+    fs.writeFileSync(at(p, 'agents/y/y.md'), 'mine');
+    fs.writeFileSync(path.join(p, '.alfred', 'stack', 'agents', 'z', 'z.md'), '# z v2\n');
     const gone = [...record, { path: 'skills/c', kind: 'symlink', hash: '' }];
     assert.deepStrictEqual(links.checkLinks({ projectRoot: p, record: gone, rt }), [
         { path: 'skills/a', state: 'ok' }, { path: 'skills/b', state: 'dangling' },
-        { path: 'agents/x.md', state: 'ok' }, { path: 'agents/y.md', state: 'edited' }, { path: 'agents/z.md', state: 'stale' },
+        { path: 'agents/x', state: 'ok' }, { path: 'agents/y', state: 'edited' }, { path: 'agents/z', state: 'stale' },
         { path: 'skills/c', state: 'missing' },
     ]);
 });
@@ -399,12 +494,12 @@ test('stamp: links and member-picks round trip; a bad path, kind or name is drop
     const file = path.join(p, 'alfred-code.stamp');
     const h = 'a'.repeat(64);
     fs.writeFileSync(file, stamp.renderStamp({ repoUrl: 'u', ref: 'r', sha: 's', version: '1', installed: 'i', action: 'install', scope: 'local', hooks: [], alwaysRules: [],
-        links: [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x.md', kind: 'copy', hash: h }], memberPicks: ['skill b', 'agent y', 'skill b'] }));
+        links: [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x', kind: 'copy', hash: h }, { path: 'agents/old.md', kind: 'symlink', hash: '' }], memberPicks: ['skill b', 'agent y', 'skill b'] }));
     const text = fs.readFileSync(file, 'utf8');
-    assert.match(text, new RegExp(`^links: skills/a=symlink,agents/x\\.md=copy@${h}\\nmember-picks: agent/y,skill/b\\nlibrary-skills:`, 'm'));
-    assert.deepStrictEqual(stamp.readLinks(file), [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x.md', kind: 'copy', hash: h }]);
+    assert.match(text, new RegExp(`^links: skills/a=symlink,agents/x=copy@${h},agents/old\\.md=symlink\\nmember-picks: agent/y,skill/b\\nlibrary-skills:`, 'm'));
+    assert.deepStrictEqual(stamp.readLinks(file), [{ path: 'skills/a', kind: 'symlink', hash: '' }, { path: 'agents/x', kind: 'copy', hash: h }, { path: 'agents/old.md', kind: 'symlink', hash: '' }]);
     assert.deepStrictEqual(stamp.readMemberPicks(file), ['agent y', 'skill b']);
-    stamp.markLine(file, 'links', `skills/a=symlink,skills/../x=symlink,agents/y=symlink,skills/b=hard,agents/z.md=copy,skills/C=junction,skills/d=junction@${h}`);
+    stamp.markLine(file, 'links', `skills/a=symlink,skills/../x=symlink,agents/y/q=symlink,skills/b=hard,agents/z.md=copy,agents/z=copy,skills/C=junction,skills/d=junction@${h}`);
     stamp.markLine(file, 'member-picks', 'skill/ok,rule/r,hook/h,skill/../x,agent/Bad,skill');
     assert.deepStrictEqual(stamp.readLinks(file), [{ path: 'skills/a', kind: 'symlink', hash: '' }]);
     assert.deepStrictEqual(stamp.readMemberPicks(file), ['skill ok', 'rule r'], 'a rule a member picked is held at the root too (4c); a hook is no store item');
@@ -412,5 +507,5 @@ test('stamp: links and member-picks round trip; a bad path, kind or name is drop
     stamp.markLine(file, 'links', null);
     assert.strictEqual(stamp.readMemberPicks(file), null);
     assert.deepStrictEqual(stamp.readLinks(file), []);
-    assert.strictEqual(stamp.linksValue([{ path: 'skills/a', kind: 'junction', hash: '' }, { path: 'agents/x.md', kind: 'copy', hash: h }]), `skills/a=junction,agents/x.md=copy@${h}`);
+    assert.strictEqual(stamp.linksValue([{ path: 'skills/a', kind: 'junction', hash: '' }, { path: 'agents/x', kind: 'copy', hash: h }]), `skills/a=junction,agents/x=copy@${h}`);
 });

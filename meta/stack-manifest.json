@@ -1041,69 +1041,45 @@
     },
     {
       "file": "rules-session.js",
-      "matcher": "@SessionStart",
-      "event": "--part 1",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 1 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SessionStart",
-      "event": "--part 2",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 2 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SessionStart",
-      "event": "--part 3",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 3 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SessionStart",
-      "event": "--part 4",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 4 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SessionStart",
-      "event": "--part 5",
-      "note": "the project's always-on rules from .alfred/stack/rules, part 5 of at most five (9,900 characters each), on startup, clear and compact - nothing on resume or fork; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SubagentStart",
-      "event": "--part 1",
-      "note": "the same always-on rules, part 1, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SubagentStart",
-      "event": "--part 2",
-      "note": "the same always-on rules, part 2, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SubagentStart",
-      "event": "--part 3",
-      "note": "the same always-on rules, part 3, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SubagentStart",
-      "event": "--part 4",
-      "note": "the same always-on rules, part 4, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@SubagentStart",
-      "event": "--part 5",
-      "note": "the same always-on rules, part 5, for a dispatched subagent - project rules reach no seat natively; nothing for Explore and Plan, which load none; prints nothing until a chain member holds .alfred/stack/rules"
-    },
-    {
-      "file": "rules-session.js",
-      "matcher": "@PostToolUse:Read|Edit|Write|MultiEdit|NotebookEdit",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "a path rule (its paths: globs) the first time a touched file matches it, once per session and actor; prints nothing until a chain member holds .alfred/stack/rules"
+      "note": "folded into file-guards: every file tool records which child folder holding its own .claude/rules the file sits in (the prompt reminder's summary line names it), and an Edit, Write, MultiEdit or NotebookEdit gets the key line of each path-scoped native rule matching its file, walked up from the file's folder, plus the child's alfred-awareness line, once per session, actor and file; a Read prints nothing; a Cursor payload gets nothing here"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 1",
+      "note": "the one start part (9,900 characters): the store rules Claude Code does not load itself - one with no same-name file in .claude/rules yet - with the update hint, the workspace members index, and the line saying the stack's agents moved out of the plugin; a rule over the room is named, never cut. A Cursor payload gets every rule and each member's rules here. Prints nothing when every rule is native and no member or notice applies"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 2",
+      "note": "Cursor only: the rules part 2 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 3",
+      "note": "Cursor only: the rules part 3 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 4",
+      "note": "Cursor only: the rules part 4 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SessionStart",
+      "event": "--part 5",
+      "note": "Cursor only: the rules part 5 of at most five (9,900 characters each), as the Cursor start's rules do not fit part 1; a Claude Code start exits at once and prints nothing - it loads its rules natively"
+    },
+    {
+      "file": "rules-session.js",
+      "matcher": "@SubagentStart",
+      "event": "--part 1",
+      "note": "the same fallback rules, part 1, for a dispatched subagent - a project rule written to .claude/rules is loaded by Claude Code and is not sent; no members index; nothing for Explore and Plan, which load none"
     },
     {
       "file": "check-turn-build.js",

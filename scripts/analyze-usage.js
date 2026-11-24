@@ -3880,7 +3880,7 @@ function seatPreloads(agentType, skillRe = ROOT_CAUSE_SKILL_RE, root = process.c
   const key = `${name}\0${skillRe.source}\0${root}`;
   if (!preloadCache.has(key)) {
     let hit = false;
-    for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(root, '.claude', 'agents', `${name}.md`)]) {
+    for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(root, '.claude', 'agents', name, `${name}.md`), path.join(root, '.claude', 'agents', `${name}.md`)]) {
       try {
         const fm = (fs.readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
         const skills = (fm.match(/^skills:\s*\n((?:\s+-\s+.*\n?)+)/m) || [])[1] || '';

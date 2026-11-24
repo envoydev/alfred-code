@@ -52,12 +52,15 @@ let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
 // hook-prelude.js harnessPrompt - a prompt the harness wrote (a task notice, a command's output, a seat's hand-back).
 let harnessPrompt = (prompt) => /^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(String(prompt || ''));
+// hook-prelude.js flowEndStep - the one flow-end rule (card items 5, 7, 12); without the prelude a flow never ends, as before
+let flowEndStep = () => '';
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
+    flowEndStep = prelude.flowEndStep || flowEndStep;
     if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -1088,6 +1091,12 @@ function activeFlow() {
     let found = null;
     let chain = [];
     let skillCalls = 0;
+    // The one flow-end rule (hook-prelude.js flowEndStep): a run the user's later prompt closed is no open flow (card item 5,
+    // fecb88be: a validate run that closed hours before was named open). The newest assistant row is parsed only when a
+    // typed row needs it, so the whole-transcript read stays cheap.
+    const track = {};
+    let lastAssistant = null;
+    let ended = null;
     try {
       const CHUNK = 4 * 1024 * 1024;
       let carry = '';
@@ -1097,6 +1106,15 @@ function activeFlow() {
         const lines = (carry + buf.toString('utf8')).split('\n');
         carry = at + buf.length < size ? lines.pop() : '';
         for (const line of lines) {
+          if (line.includes('"type":"assistant"')) lastAssistant = line;
+          else if (line.includes('"type":"user"') && !line.includes('"tool_result"')) {
+            if (lastAssistant) { try { flowEndStep(track, JSON.parse(lastAssistant)); } catch { /* a cut row */ } lastAssistant = null; }
+            let row = null;
+            try { row = JSON.parse(line); } catch { /* a cut row */ }
+            const step = row ? flowEndStep(track, row) : '';
+            if (step === 'end') { ended = found ? { found, chain } : null; found = null; chain = []; }
+            else if (step === 'undo' && ended && !found) { ({ found, chain } = ended); ended = null; }
+          }
           if (line.includes('<command-name>') && line.includes('"type":"user"') && !line.includes('"tool_result"') && isHumanTurn(line)) {
             const c = (JSON.parse(line).message || {}).content;
             const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : '';

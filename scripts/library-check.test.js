@@ -9,6 +9,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { copyLibrary } = require('./install/library.js');
 const { renderStamp } = require('./install/stamp.js');
+const { withMarker } = require('./install/native-rules.js');
 
 const SCRIPT = path.join(__dirname, 'library-check.js');
 const roots = [];
@@ -92,7 +93,7 @@ test('a hand edit is drift', () =>
 test('a deleted copy is missing', () =>
 {
     const f = fx();
-    fs.rmSync(path.join(f.agents, 'seat.md'));
+    fs.rmSync(path.join(f.agents, 'seat'), { recursive: true });
     const r = run(f);
     assert.equal(r.code, 1);
     assert.match(r.out, /missing: agent seat/);
@@ -106,12 +107,12 @@ test('a newer source is behind and the stamp stale', () =>
     assert.doesNotMatch(out, /behind: agent seat/, 'an unchanged source item is not behind');
 });
 
-// 2.1.0 moved every skill into the project and every seat into the core: a stamp from before it (no
+// 2.1.0 moved every skill into the project and the seats became linked library copies: a stamp from before it (no
 // `seats-route:`) under a source at or past it is the skew window, and the stale line names the move.
 test('a stamp from before 2.1.0 under a 2.1 source names the move in the stale line', () =>
 {
     const out = run(fx({ sourceVersion: '2.1.0' })).out;
-    assert.match(out, /stale stamp: the project copies are from 1\.3\.0, the stack is 2\.1\.0 - run \/alfred-code:update \(2\.1\.0 moved every skill into the project and every seat into the core/);
+    assert.match(out, /stale stamp: the project copies are from 1\.3\.0, the stack is 2\.1\.0 - run \/alfred-code:update \(2\.1\.0 moved every skill into the project, and every seat is now a library copy linked per pick, the core carries none/);
     const f = fx({ sourceVersion: '2.2.0' });
     const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
     fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^version: .*$/m, 'version: 2.1.0\nseats-route: plugin'));
@@ -385,6 +386,9 @@ test('a rule in the store (workspace stage 4c) is read, changed and missing each
     const store = path.join(f.project, '.alfred', 'stack', 'rules');
     fs.mkdirSync(path.dirname(store), { recursive: true });
     fs.renameSync(f.rules, store);
+    // The store's rules are native files too, as the installer writes them (marked).
+    fs.mkdirSync(f.rules);
+    for (const name of fs.readdirSync(store)) fs.writeFileSync(path.join(f.rules, name), withMarker(fs.readFileSync(path.join(store, name), 'utf8')));
     let r = run(f);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /library: clean \(4 copies\)/);
@@ -392,6 +396,7 @@ test('a rule in the store (workspace stage 4c) is read, changed and missing each
     r = run(f);
     assert.match(r.out, /drift: rule alfred-git/);
     fs.rmSync(path.join(store, 'alfred-git.md'));
+    fs.rmSync(path.join(f.rules, 'alfred-git.md'));   // ruleAt reads the native file when the store has none
     r = run(f);
     assert.match(r.out, /missing: rule alfred-git/);
 });

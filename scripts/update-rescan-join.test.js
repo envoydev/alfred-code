@@ -50,7 +50,7 @@ function walkEnv(work)
     return { ...env, ...COPY_ROUTE, ALFRED_CODE_WORKSPACE: '1', ALFRED_CODE_MEMORY_WARM: '0' };
 }
 
-const agentCopy = (project, name) => path.join(project, '.claude', 'agents', `${name}.md`);
+const agentCopy = (project, name) => path.join(project, '.claude', 'agents', name, `${name}.md`);
 
 test('update joins the project it finds below, checks its fit and ignores what it inherits and does not need', POSIX_ONLY, () =>
 {

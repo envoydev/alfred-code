@@ -1,5 +1,1 @@
-This project's rules are loaded by the alfred-code plugin at the start of the session, in blocks that open "Project
-rules, part k of n" and close "End of project rules, part k of n". If no such block is in your context, or a part is
-missing or has no closing line, say so once: the plugin is off, its hooks are disabled, a part was cut, or this folder
-was never set up or not yet updated. Tell the user to run /alfred-code:status, or /alfred-code:init in a folder never
-set up.
+This project's rules are files in .claude/rules here and in the folders above, loaded by Claude Code at the start of the session (a rule with paths: when a matching file is touched). A file there carrying the alfred-code marker comes from the stack. If a rule the stack should send is missing from your context, say so once and tell the user to run /alfred-code:update, or /alfred-code:status.

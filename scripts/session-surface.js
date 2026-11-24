@@ -49,6 +49,16 @@ function readJson(file)
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 const realOr = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const listMd = (dir) => { try { return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort(); } catch { return []; } };
+// An agents folder's definitions as paths under it: a seat held as a folder `<name>/<name>.md` first, else a flat `<name>.md`.
+function listAgents(dir)
+{
+    const out = new Map();
+    for (const f of listMd(dir)) out.set(f.slice(0, -3), f);
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => !n.endsWith('.md')); } catch { /* no folder */ }
+    for (const n of names) if (fs.existsSync(path.join(dir, n, `${n}.md`))) out.set(n, path.join(n, `${n}.md`));
+    return [...out.values()].sort();
+}
 const bodyOf = (text) => String(text).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
 // The MCP servers a seat's `tools:` grants, each as its tool prefix (`mcp__<server>`, `mcp__plugin_<plugin>_<server>`):
 // a whole-server grant is the prefix itself, a one-tool grant the prefix plus `__<tool>`.
@@ -469,8 +479,8 @@ function surface(projectRoot, options = {})
         const name = frontmatterValue(fm, 'name') || path.basename(file, '.md');
         agentEntries.push({ file, owner, name, listed: prefix ? `${prefix}:${name}` : name, fm, body: bodyOf(text) });
     };
-    for (const f of listMd(path.join(projectRoot, '.claude', 'agents'))) pushAgent(path.join(projectRoot, '.claude', 'agents', f), 'project', '');
-    if (options.withUser) for (const f of listMd(path.join(account.dir, 'agents'))) pushAgent(path.join(account.dir, 'agents', f), 'user', '');
+    for (const f of listAgents(path.join(projectRoot, '.claude', 'agents'))) pushAgent(path.join(projectRoot, '.claude', 'agents', f), 'project', '');
+    if (options.withUser) for (const f of listAgents(path.join(account.dir, 'agents'))) pushAgent(path.join(account.dir, 'agents', f), 'user', '');
 
     const hookSources = [];
     for (const l of layers)

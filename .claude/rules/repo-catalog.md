@@ -34,10 +34,9 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   before then. The core's SessionStart line
   (`setup-plugin/hooks/library-stamp.js`, at a startup, a `/clear`, a resume and a fork - never a compaction, loading audit 2026-10-21 G12; the fork, audit 2026-10-30 HK-24) says when the copies
   are older than the stack - and, for a stamp from before 2.1.0 (no `seats-route:`) under a core at or
-  past it, that the skills and seat denies wait for `/alfred-code:update` (the skew window: the core
+  past it, that the skills and seat copies wait for `/alfred-code:update` (the skew window: the core
   updates itself, the copies do not). `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy
-  route, which since 2.1.0 moves only the SEATS (copied into `.claude/agents`); with the core still on
-  there, the seats it lists beside the copies are denied the same way.
+  route: the skills and the seats are copied into `.claude/skills` and `.claude/agents`.
 
 - `stack/AGENTS.template.md` - the stack-neutral per-project skeleton a consuming project's
   `AGENTS.md` is filled in from (seeded to `.claude/AGENTS.md`, only when the project has no AGENTS.md or CLAUDE.md - the root
@@ -63,17 +62,18 @@ How the skills, the 45 agents, the shipped rules and the per-project AGENTS temp
   target the run confirmed on disk is a verified fix, not a check row, and joins the recommended option (usage audit
   2026-10-10).
 
-- `stack/agents/` - 45 subagents, all in the core plugin (2.1.0), each one the selection did not pick
-  denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
+- `stack/agents/` - 45 subagents, library items like skills (they left the core plugin on 2026-11-23): each picked seat
+  is a folder `<seat>/<seat>.md` in the project's `.alfred/stack/agents`, linked into `.claude/agents`, and no
+  `Agent(alfred-code:<seat>)` deny row is written (a seat whose preloaded skills were not copied is never picked);
   each seat's `tools:` / `disallowedTools:` lines are GENERATED from its row in `meta/seat-tools.json` by
   `node scripts/seat-tools.js --write` (lint check 63; 2026-10-14), because the dispatcher lists the `tools:` value
   verbatim in every session's first call. Since 2.10.1 no row grants an MCP server - the stack ships none - so every
   seat holds built-in tools only (`LSP`, `Read`, `Grep`, `Glob`, `Bash`, `WebFetch` where it checks outside-world
   claims); the generator's whole-server grant form (`<server>:*`, one `mcp__plugin_<n>_<n>` with the rest removed)
   stays for a row that names one;
-  their `skills:` preloads are BARE - the project copy (`npm run scope-preloads`, lint check 50;
-  plugin-migration-evidence S6 measured a plugin seat's bare preload load the project copy). A plugin
-  seat answers only to `alfred-code:<seat>` (spike S1: a bare name is 'Agent type not found'), so every
+  their `skills:` preloads are BARE - the project copy (`npm run scope-preloads`, lint check 50).
+  A linked seat answers to its bare name (the frontmatter `name`; `alfred-code:<seat>` was the plugin seat's spelling
+  until 2026-11-23, spike S1), so every
   body that dispatches a named seat says to dispatch it exactly as the roster spells it (pinned as
   `seat-dispatch-spelling`; `scripts/seat-dispatch-spelling.test.js` fails a new site without it):
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,

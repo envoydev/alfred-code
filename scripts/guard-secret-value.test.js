@@ -1172,6 +1172,25 @@ const said = (stdout) => ({ stdout, stderr: '', interrupted: false, isImage: fal
 const answer = (r) => JSON.parse(r.out).hookSpecificOutput;
 const preload = (name, body) => { const p = path.join(TMP, name); fs.writeFileSync(p, body); return p; };
 
+// Card item 4 (A4, fecb88be / eceba6a2): a 5-char and a 12-char value - neither a .secrets value - were masked INSIDE
+// ordinary words (a transcript field name, an issueIdOrKey), and the letters around the mask gave the value away. A value is
+// masked only as a whole token, a value under 6 characters is not masked (the start line warns), and the companion key file
+// gives its credentials, never its slugs and org names.
+test('masker: whole tokens only, nothing under 6 characters, and the key file\'s slugs stay readable (A4)', () => {
+  const fx = maskFixture();
+  const TOKEN = 'kq9ZtW3vLm8RxP2s';
+  fx.w('.mcps-secrets', `JIRA_PROJECT=SPDIR\nJIRA_SITE=speechdirect\nJIRA_API_TOKEN=${TOKEN}\n`);
+  try {
+    const text = `field SPDIRECTORY and isSPDIR; site speechdirect; token ${TOKEN}; glued x${TOKEN}y\n`;
+    const r = masked('echo hi', { response: said(text) });
+    const got = r.out ? answer(r).updatedToolOutput.stdout : text;
+    assert.ok(got.includes('SPDIRECTORY') && got.includes('isSPDIR'), 'a value inside a word is never masked');
+    assert.ok(got.includes('site speechdirect;'), 'a slug of the key file is no credential');
+    assert.ok(got.includes(`token ${SET(TOKEN)};`), 'the key file\'s token is masked as a whole token');
+    assert.ok(got.includes(`x${TOKEN}y`), 'and only as one');
+  } finally { fs.rmSync(path.join(fx.project, '.mcps-secrets'), { force: true }); }
+});
+
 test('swap 1 canary: cat, node -e, python3 -c, git diff and grep -rn of a planted file come back masked in the measured shape', () => {
   const READ = "process.stdout.write(require('fs').readFileSync('.env','utf8'))";
   const CANARY = [
@@ -1237,12 +1256,12 @@ test('swap 1: clean output gets no answer and no row', () => {
   }
 });
 
-test('swap 1: MASK_MIN boundary - 3 characters stay, 4 and 5 are masked', () => {
+test('swap 1: the output floor (card item 4) - 5 characters stay, 6 and 7 are masked, and only as whole tokens', () => {
   const fx = maskFixture();
   // keys of no credential shape: the exact-value pass alone decides (the shape pass masks a credential-named pair of any length)
-  fx.w('edge/.env', 'A_WORD=abc\nB_WORD=abcd\nC_WORD=abcde\n');
-  const r = masked('cat edge/.env', { response: said('A_WORD=abc\nB_WORD=abcd\nC_WORD=abcde\nplain abc here, abcd there, abcde last\n') });
-  assert.strictEqual(answer(r).updatedToolOutput.stdout, `A_WORD=abc\nB_WORD=${SET('abcd')}\nC_WORD=${SET('abcde')}\nplain abc here, ${SET('abcd')} there, ${SET('abcde')} last\n`);
+  fx.w('edge/.env', 'A_WORD=abcde\nB_WORD=abcdef\nC_WORD=abcdefg\n');
+  const r = masked('cat edge/.env', { response: said('A_WORD=abcde\nB_WORD=abcdef\nC_WORD=abcdefg\nplain abcde here, abcdef there, abcdefg last, xabcdefx kept\n') });
+  assert.strictEqual(answer(r).updatedToolOutput.stdout, `A_WORD=abcde\nB_WORD=${SET('abcdef')}\nC_WORD=${SET('abcdefg')}\nplain abcde here, ${SET('abcdef')} there, ${SET('abcdefg')} last, xabcdefx kept\n`);
 });
 
 test('swap 1: a wrong shape passes and writes one mask-shape row', () => {
@@ -1284,7 +1303,7 @@ test('swap 1 masker: every value of a named dotenv and every env / headers strin
   const fx = maskFixture();
   const text = (rel) => fs.readFileSync(path.join(fx.project, ...rel.split('/')), 'utf8');
   const out = (command, stdout) => answer(masked(command, { response: said(stdout) })).updatedToolOutput.stdout;
-  assert.strictEqual(out('cat .env.local', text('.env.local')), `NODE_ENV=${SET('production')}\nPORT=${SET('3000')}\n`, 'every value of a named dotenv');
+  assert.strictEqual(out('cat .env.local', text('.env.local')), `NODE_ENV=${SET('production')}\nPORT=3000\n`, 'every value of a named dotenv of 6 characters or more');
   const mcp = out('cat .mcp.json', text('.mcp.json'));
   assert.ok(mcp.includes(`"REGION": "${SET('eu-west-7')}"`) && mcp.includes(`"X-Trace": "${SET('trace-on-77')}"`) && mcp.includes('"command": "npx"'), 'env and headers strings of .mcp.json, its command kept');
   const settings = out('cat .claude/settings.json', text('.claude/settings.json'));
@@ -1313,7 +1332,7 @@ test('swap 1 review fix: a named dotenv value holding spaces, a flag word and a 
   const out = (command, stdout) => { const r = masked(command, { response: said(stdout) }); return r.out ? answer(r).updatedToolOutput.stdout : stdout; };
   const env = out('cat cfg/.env.spaced', dotenv);
   assert.ok(!env.includes(phrase), 'the passphrase is masked');
-  assert.ok(env === `DB_PASSWORD="${SET(phrase)}"\nDEBUG=${SET('true')}\n`, 'every value of the named dotenv, whatever it looks like');
+  assert.ok(env === `DB_PASSWORD="${SET(phrase)}"\nDEBUG=true\n`, 'every value of the named dotenv past the floor, whatever it looks like');
   const mcp = out('cat cfg/.mcp.json', config);
   assert.ok(!mcp.includes(basic), 'the Basic header is masked');
   assert.ok(mcp.includes(`"Authorization": "${SET(basic)}"`) && mcp.includes('"command": "npx"'), 'its command kept');
@@ -1353,7 +1372,7 @@ test('swap 1 masker: the 200-fragment cap', () => {
 
 test('swap 1: a dotenv reached through a cd is masked whole', () => {
   const r = masked('cd sub && cat .env', { response: said(`PORT=3000\nSUB_TOKEN=${SUB_VAL}\n`) });
-  assert.strictEqual(answer(r).updatedToolOutput.stdout, `PORT=${SET('3000')}\nSUB_TOKEN=${SET(SUB_VAL)}\n`);
+  assert.strictEqual(answer(r).updatedToolOutput.stdout, `PORT=3000\nSUB_TOKEN=${SET(SUB_VAL)}\n`);
   // a value only the cd reaches: no credential key, no file of that name at the cwd's own level holds it
   maskFixture().w('deep/.env', 'LEVEL=deep-level-7\n');
   for (const command of ['cd deep && cat .env', 'pushd deep; cat .env; popd'])

@@ -449,7 +449,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
 // settings.local.json laid over settings.json (the N6 merge) - so a docs path set only in the local file
 // reaches alfred-docs-root.md; and the seat denies a local run writes land in the local file, the
 // scope rule's own target, never in the shared settings.json.
-test('install-scope: at local scope a local docs path is the root the rule stamps, and the seat denies land in settings.local.json (R83 b)', POSIX_ONLY, () =>
+test('install-scope: at local scope a local docs path is the root the rule stamps, and no seat deny is written anywhere (R83 b)', POSIX_ONLY, () =>
 {
     const { result } = seedRun('install', 'skill csharp\nrule alfred-docs-root\n', {
         args: ['--scope', 'local'],
@@ -467,7 +467,7 @@ test('install-scope: at local scope a local docs path is the root the rule stamp
         }),
     });
     assert.match(result.rule, /This install's root: `docs\/mine`/, 'the local docs path never reached the rule');
-    assert.ok(seats(result.local).length > 0, 'a local run denies the unpicked core seats in settings.local.json');
+    assert.deepStrictEqual(seats(result.local), [], 'a local run denies no seat: an unpicked seat has no copy');
     assert.deepStrictEqual(seats(result.shared), [], 'no seat deny reaches the shared settings.json at local scope');
     assert.deepStrictEqual(result.shared, { env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }, 'settings.json is left exactly as it was');
 });
@@ -494,7 +494,7 @@ test('install-scope: a local install moved to project scope keeps its rows in se
     const [, after, again] = steps;
     assert.strictEqual(after.shared, null, `settings.json was written: ${after.shared}`);
     const local = JSON.parse(after.local);
-    assert.ok(local.permissions.deny.some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies left the local file');
+    assert.deepStrictEqual(seats(local), [], 'no seat deny is written');
     assert.ok(local.permissions.deny.includes('Read(.env)'));
     assert.ok(local.attribution && typeof local.attribution === 'object');
     assert.strictEqual(local.worktree.baseRef, 'head');
@@ -609,73 +609,78 @@ test('install-entry: no home and no CLAUDE_CONFIG_DIR is refused with one line, 
     assert.deepStrictEqual(run.result, { claude: false, mcp: false }, 'the project was written');
 });
 
-// C4 (R133 N1) end to end, rewritten for mode v2 stage 2 (the two-file overlay write C4 is gone): the
-// seat denies are the stack's own rows in settings.local.json at project scope, so configure's
-// `--add agent` takes the seat's deny out of that one file, with a line, and settings.json is never written.
-test('install-scope: --add agent at project scope drops the seat\'s deny from settings.local.json, the one file the stack writes (C4, mode v2 stage 2)', POSIX_ONLY, () =>
+// C4 (R133 N1) end to end, rewritten for the library seats: an unpicked seat has no copy and no deny row, so configure's
+// `--add agent` copies the seat and writes no row; settings.json is never written.
+test('install-scope: --add agent at project scope copies the seat and writes no deny row anywhere (C4)', POSIX_ONLY, () =>
 {
-    const seat = 'Agent(alfred-code:evidence-gatherer)';
-    const { outs, steps, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+    const { steps, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]),
         args: [[], ['--installed-only', '--add', 'agent evidence-gatherer']],
-        each: (repo, i) => (i === 0 ? ((json(repo, path.join('.claude', 'settings.local.json')).permissions || {}).deny || []) : null),
-        inspect: (repo) => ({ shared: exists(repo, '.claude', 'settings.json'), local: json(repo, path.join('.claude', 'settings.local.json')) }),
+        each: (repo, i) => (i === 0 ? fs.existsSync(path.join(repo, '.claude', 'agents', 'evidence-gatherer')) : null),
+        inspect: (repo) => ({
+            shared: exists(repo, '.claude', 'settings.json'),
+            local: json(repo, path.join('.claude', 'settings.local.json')),
+            agents: fs.readdirSync(path.join(repo, '.claude', 'agents')),
+        }),
     });
-    assert.ok(steps[0].includes(seat), 'setup: the install denied the unpicked seat in settings.local.json');
-    assert.ok(!((result.local.permissions || {}).deny || []).includes(seat), 'the seat stays off through the local deny');
+    assert.strictEqual(steps[0], false, 'setup: the install did not copy the unpicked seat');
+    assert.ok(result.agents.includes('evidence-gatherer'), `the seat is copied: ${result.agents.join(' ')}`);
+    assert.deepStrictEqual(seats(result.local), [], 'no seat row in settings.local.json');
     assert.strictEqual(result.shared, false, 'settings.json is never written');
-    assert.match(outs[1], /settings\.local\.json: agent allowed again Agent\(alfred-code:evidence-gatherer\)/, outs[1]);
 });
 
-// A9 (mode v2 stage 2, O1): a ledgered seat deny the file no longer holds reads as the user's hand-allow only while that
-// file still holds one of the ledger's deny rows - a clone's local file (absent, or Claude Code's own allow rows) holds none.
+// A9 (mode v2 stage 2, O1) kept for the rows that are left: a hand-written seat deny row is no stack row, so no run reads it
+// as the stack's or removes it, whatever the local file holds - and a clone's local file (absent, or Claude Code's own allow
+// rows) leaves the seats as they were, copies and no rows.
 const LOCAL_PLUGINS = JSON.stringify([{ id: 'alfred-code@envoydev', version: '3.10.0', scope: 'local', enabled: true }]);
 const LOCAL_FILE = path.join('.claude', 'settings.local.json');
+const SEAT_SELECTION = `${SELECTION}agent evidence-gatherer\n`;
+const agentsOf = (repo) => fs.readdirSync(path.join(repo, '.claude', 'agents')).sort();
 
-test('install-scope: an update over an install whose settings.local.json is gone denies the unpicked seats again (a clone, A9)', POSIX_ONLY, () =>
+test('install-scope: an update over an install whose settings.local.json is gone writes no seat deny and keeps the seat copies (a clone, A9)', POSIX_ONLY, () =>
 {
     let before = null;
-    const { result } = seedRun(['install', 'update'], SELECTION, {
+    const { result } = seedRun(['install', 'update'], SEAT_SELECTION, {
         args: [['--scope', 'local'], ['--installed-only']],
         plugins: LOCAL_PLUGINS,
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            before = seats(json(repo, LOCAL_FILE));
+            before = agentsOf(repo);
             fs.rmSync(path.join(repo, LOCAL_FILE));
             return null;
         },
-        inspect: (repo) => seats(json(repo, LOCAL_FILE)),
+        inspect: (repo) => ({ rows: seats(json(repo, LOCAL_FILE)), agents: agentsOf(repo) }),
     });
-    assert.ok(before.length > 0, 'setup: the install denied no unpicked seat');
-    assert.deepStrictEqual([...result].sort(), [...before].sort());
+    assert.ok(before.length > 0, 'setup: the install copied no seat');
+    assert.deepStrictEqual(result, { rows: [], agents: before });
 });
 
-test('install-scope: a clone whose settings.local.json holds only an allow row of Claude Code\'s denies the unpicked seats again (A9)', POSIX_ONLY, () =>
+test('install-scope: a clone whose settings.local.json holds only an allow row of Claude Code\'s gets no seat deny, and the row stays (A9)', POSIX_ONLY, () =>
 {
     const OWN = { permissions: { allow: ['Bash(ls)'] } };
     let before = null;
-    const { result } = seedRun(['install', 'update'], SELECTION, {
+    const { result } = seedRun(['install', 'update'], SEAT_SELECTION, {
         args: [['--scope', 'local'], ['--installed-only']],
         plugins: LOCAL_PLUGINS,
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            before = seats(json(repo, LOCAL_FILE));
+            before = agentsOf(repo);
             fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(OWN));
             return null;
         },
-        inspect: (repo) => json(repo, LOCAL_FILE),
+        inspect: (repo) => ({ local: json(repo, LOCAL_FILE), agents: agentsOf(repo) }),
     });
-    assert.ok(before.length > 0, 'setup: the install denied no unpicked seat');
-    assert.deepStrictEqual(seats(result).sort(), [...before].sort());
-    assert.deepStrictEqual(result.permissions.allow, OWN.permissions.allow, 'the row Claude Code wrote stays');
+    assert.ok(before.length > 0, 'setup: the install copied no seat');
+    assert.deepStrictEqual(seats(result.local), []);
+    assert.deepStrictEqual(result.agents, before, 'the seat copies stay');
+    assert.deepStrictEqual(result.local.permissions.allow, OWN.permissions.allow, 'the row Claude Code wrote stays');
 });
 
-test('install-scope: a seat deny taken out of a file that still holds the stack\'s other deny rows stays out (a hand-allow)', POSIX_ONLY, () =>
+test('install-scope: a hand-written seat deny row of the project\'s own stays through an update, and no stack row joins it', POSIX_ONLY, () =>
 {
-    let before = null;
-    let gone = null;
+    const MINE = 'Agent(my-own-seat)';
     const { result } = seedRun(['install', 'update'], SELECTION, {
         args: [['--scope', 'local'], ['--installed-only']],
         plugins: LOCAL_PLUGINS,
@@ -683,38 +688,33 @@ test('install-scope: a seat deny taken out of a file that still holds the stack\
         {
             if (i !== 0) return null;
             const data = json(repo, LOCAL_FILE);
-            before = seats(data);
-            gone = before[0];
-            data.permissions.deny = data.permissions.deny.filter((d) => d !== gone);
+            data.permissions.deny = [...data.permissions.deny, MINE];
             fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(data, null, 2));
             return null;
         },
-        inspect: (repo) => seats(json(repo, LOCAL_FILE)),
+        inspect: (repo) => json(repo, LOCAL_FILE).permissions.deny.filter((d) => /^Agent\(/.test(d)),
     });
-    assert.ok(before.length > 1, 'setup: the install denied fewer than two unpicked seats');
-    assert.ok(!result.includes(gone), `${gone} stays allowed`);
-    assert.deepStrictEqual([...result].sort(), before.filter((d) => d !== gone).sort());
+    assert.deepStrictEqual(result, [MINE]);
 });
 
-test('install-scope: a file left with one of the ledger\'s deny rows and no seat deny keeps every seat allowed', POSIX_ONLY, () =>
+test('install-scope: an old stack seat deny row an earlier release wrote is taken out at the next update, the user\'s own rows stay', POSIX_ONLY, () =>
 {
-    let before = null;
-    const { result } = seedRun(['install', 'update'], SELECTION, {
+    const OLD = 'Agent(alfred-code:evidence-gatherer)';
+    const { result, out } = seedRun(['install', 'update'], SELECTION, {
         args: [['--scope', 'local'], ['--installed-only']],
         plugins: LOCAL_PLUGINS,
         each: (repo, i) =>
         {
             if (i !== 0) return null;
             const data = json(repo, LOCAL_FILE);
-            before = seats(data);
-            data.permissions.deny = ['Read(.env)'];
+            data.permissions.deny = ['Read(.env)', OLD];
             fs.writeFileSync(path.join(repo, LOCAL_FILE), JSON.stringify(data, null, 2));
             return null;
         },
-        inspect: (repo) => seats(json(repo, LOCAL_FILE)),
+        inspect: (repo) => json(repo, LOCAL_FILE).permissions.deny,
     });
-    assert.ok(before.length > 0, 'setup: the install denied no unpicked seat');
-    assert.deepStrictEqual(result, []);
+    assert.deepStrictEqual(result.filter((d) => /^Agent\(/.test(d)), [], 'the row is gone');
+    assert.ok(result.includes('Read(.env)'), 'the other rows stay');
 });
 
 // Mode v2 stage 2, Task 2: an unusable local file gets no settings row, the ledger stands, one !! line says why.

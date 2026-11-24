@@ -26,7 +26,7 @@ const SOURCE_AGENTS = path.join(__dirname, '..', 'stack', 'agents');
 
 const stampOf = (repo) => path.join(repo, '.claude', 'alfred-code.stamp');
 const skillFile = (repo) => path.join(repo, '.claude', 'skills', SKILL, 'SKILL.md');
-const seatFile = (repo) => path.join(repo, '.claude', 'agents', `${SEAT}.md`);
+const seatFile = (repo) => path.join(repo, '.claude', 'agents', SEAT, `${SEAT}.md`);
 const append = (file) => fs.appendFileSync(file, EDIT);
 const keptSkillLine = `  skill kept: ${SKILL} - edited in the project since the stack copied it, so it is yours - delete it to drop it`;
 const keptSeatLine = `  agent kept: ${SEAT}.md - edited in the project since the stack copied it, so it is yours`;
@@ -151,7 +151,7 @@ for (const route of Object.keys(ROUTES))
             assert.ok(!steps[i].picked.skills.includes(SKILL) && !steps[i].picked.agents.includes(SEAT), `run ${i + 1}: neither name is picked again`);
             assert.doesNotMatch(outs[i], /overwriting a hand-edited copy/, `run ${i + 1}`);
             assert.doesNotMatch(outs[i], /agent allowed again/, `run ${i + 1}`);
-            if (route === 'plugin') assert.ok(steps[i].deny.includes(DENY_ROW), `run ${i + 1}: the unpick's deny row stays`);
+            if (route === 'plugin') assert.ok(!steps[i].deny.includes(DENY_ROW), `run ${i + 1}: no deny row is written for the unpick`);
         }
     });
 
@@ -185,7 +185,7 @@ test('drop-keep: a stamp with no picks line still adopts a copy on disk as a pic
 // A copy under a name a release renamed: the stamp's picks line holds the OLD name, which the read-back maps to the new one.
 const RENAMES = {
     skill: { old: 'create-ticket', now: 'habits-create-ticket', oldPath: (repo, name) => path.join(repo, '.claude', 'skills', name), file: (repo, name) => path.join(repo, '.claude', 'skills', name, 'SKILL.md'), pickLine: 'picked-skills', pick: (name) => `skill ${name}\n` }, // legacy: the old name is the point of the case
-    agent: { old: 'ci-failure-diagnoser', now: 'issue-diagnoser-ci', oldPath: (repo, name) => path.join(repo, '.claude', 'agents', `${name}.md`), file: (repo, name) => path.join(repo, '.claude', 'agents', `${name}.md`), pickLine: 'picked-agents', pick: (name) => `agent ${name}\n` }, // legacy: the old name is the point of the case
+    agent: { old: 'ci-failure-diagnoser', now: 'issue-diagnoser-ci', oldPath: (repo, name) => path.join(repo, '.claude', 'agents', `${name}.md`), file: (repo, name) => path.join(repo, '.claude', 'agents', name, `${name}.md`), oldFile: (repo, name) => path.join(repo, '.claude', 'agents', `${name}.md`), pickLine: 'picked-agents', pick: (name) => `agent ${name}\n` }, // legacy: the old name is the point of the case
 };
 const setStampLine = (repo, key, value) =>
 {
@@ -214,8 +214,8 @@ for (const kind of Object.keys(RENAMES))
                         fs.cpSync(fresh, r.oldPath(repo, r.old), { recursive: true });
                         fs.rmSync(fresh, { recursive: true, force: true });
                         const hash = hashItem(r.oldPath(repo, r.old));
-                        fs.appendFileSync(r.file(repo, r.old), EDIT);
-                        edited = fs.readFileSync(r.file(repo, r.old), 'utf8');
+                        fs.appendFileSync((r.oldFile || r.file)(repo, r.old), EDIT);
+                        edited = fs.readFileSync((r.oldFile || r.file)(repo, r.old), 'utf8');
                         setStampLine(repo, r.pickLine, r.old);
                         const lib = kind === 'skill' ? 'library-skills' : 'library-agents';
                         const row = kind === 'skill' ? `skills/${r.old}` : `agents/${r.old}.md`;
@@ -223,7 +223,7 @@ for (const kind of Object.keys(RENAMES))
                         else setStampLine(repo, 'managed-files', `${row}=${hash}`);
                         return null;
                     }
-                    return { old: fs.readFileSync(r.file(repo, r.old), 'utf8'), now: fs.existsSync(r.file(repo, r.now)), picked: pickedNames(repo) };
+                    return { old: fs.readFileSync((r.oldFile || r.file)(repo, r.old), 'utf8'), now: fs.existsSync(r.file(repo, r.now)), picked: pickedNames(repo) };
                 },
             });
             assert.equal(steps[1].old, edited, 'the old copy keeps its edit');
@@ -253,7 +253,7 @@ for (const route of Object.keys(ROUTES))
                 each: (repo, i) => (i === 0 ? lay(text)(repo) : { picked: pickedNames(repo), deny: denyRows(repo) }),
             });
             assert.equal(steps[1].picked.agents.includes(SEAT), picked, text ? 'own seat stays unpicked' : 'the stack\'s text adopts');
-            if (text && route === 'plugin') assert.ok(steps[1].deny.includes(DENY_ROW), 'the deny stays');
+            if (text && route === 'plugin') assert.ok(!steps[1].deny.includes(DENY_ROW), 'no deny row is written for the unpicked seat');
         }
     });
 }

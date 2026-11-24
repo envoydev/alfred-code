@@ -117,7 +117,7 @@ function keptPath(nested, kind, name)
 {
     const candidates = {
         skill: [`.claude/skills/${name}`, `.alfred/stack/skills/${name}`],
-        agent: [`.claude/agents/${name}.md`, `.claude/agents/${name}`, `.alfred/stack/agents/${name}.md`],
+        agent: [`.claude/agents/${name}.md`, `.claude/agents/${name}`, `.alfred/stack/agents/${name}`, `.alfred/stack/agents/${name}.md`],
         rule: [`.alfred/stack/rules/${name}.md`, `.claude/rules/${name}.md`],
         hook: [`.claude/hooks/${name}`],
         mcp: ['.mcp.json'],

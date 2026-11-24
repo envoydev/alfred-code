@@ -48,6 +48,8 @@ let runMarkerOf = () => null;
 let pluginWalk = () => '';
 // hook-prelude.js modeFlags - a typed line's mode flags and request; without the prelude no line arms the solve-flow mark
 let modeFlagsOf = () => ({ request: '' });
+// hook-prelude.js flowEndStep - the one flow-end rule (card items 5, 7, 12); without the prelude a run ends only at its stamp
+let flowEndStep = () => '';
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
@@ -71,6 +73,7 @@ if (require.main === module) {
     pluginWalk = prelude.pluginWalkNow || pluginWalk;
     if (prelude.runMarkerFile) runMarkerOf = (input) => prelude.runMarkerFile(process.env.CLAUDE_PROJECT_DIR || input.cwd, input.session_id);
     modeFlagsOf = prelude.modeFlags || modeFlagsOf;
+    flowEndStep = prelude.flowEndStep || flowEndStep;
     houseDash = prelude.HOUSE_DASH || houseDash;
     withoutShortLived = prelude.withoutShortLived || withoutShortLived;
     harnessPrompt = prelude.harnessPrompt || harnessPrompt;
@@ -1611,8 +1614,10 @@ function pointerSubject(t) {
 // audited plan before it (and whose receipts are notes). A quote of three words or more that is no option's label and no
 // pointer is the subject shown in the ask itself (U04, ce0b76e6: the comment line quoted whole was denied as unseen).
 // Known ceiling (U04, measured on 1e53bc45 and b2aa04d4): the transcript is written asynchronously and lags the message in
-// flight (code.claude.com/docs/en/hooks, transcript_path), so text the SAME message prints before its ask is not on disk
-// here - the denial says to re-send the ask unchanged, which the once-per-text marker passes.
+// flight (code.claude.com/docs/en/hooks, transcript_path), so text the SAME message prints before its ask may not be on
+// disk here: a would-be denial waits up to ASK_ROW_WAIT_MS for the ask's own row and judges again (card item 10,
+// eceba6a2: three denials of shown approvals); past that the denial says to re-send the ask unchanged, which the
+// once-per-text marker passes.
 function approvalOverNothingShown(questions) {
   const raw = questions.map((q) => String((q && q.question) || '')).join('\n');
   const labels = new Set(questions.flatMap((q) => (q && Array.isArray(q.options) ? q.options : [])
@@ -1641,11 +1646,44 @@ function approvalOverNothingShown(questions) {
     return around.split(/\s+/).filter((w) => /\w/.test(w)).length <= 3;
   };
   if (quotes.some((m) => shows(m[0]) && (ownClause(m) || presented(m)))) return null;
-  const shown = shownSinceTyped();
-  if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
-  const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
-  if (verdict.shown < SHOWN_MIN) return verdict;
-  return !subject.noun || new RegExp(`\\b${stemOf(subject.noun)}`, 'i').test(shown) ? null : verdict;
+  const judge = (shown) => {
+    if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
+    const verdict = { noun: subject.noun || null, shown: shown.trim().length, pointer: !!subject.pointer };
+    if (verdict.shown < SHOWN_MIN) return verdict;
+    return !subject.noun || new RegExp(`\\b${stemOf(subject.noun)}`, 'i').test(shown) ? null : verdict;
+  };
+  const verdict = judge(shownSinceTyped());
+  // card item 10 (eceba6a2): the message carrying this ask may not be on disk yet - wait for it, then judge again
+  return verdict && ownAskWritten() ? judge(shownSinceTyped()) : verdict;
+}
+// How long a would-be blind-approval denial waits for the message in flight to reach the transcript (card item 10), and
+// how often it looks.
+const ASK_ROW_WAIT_MS = 1500;
+const ASK_ROW_STEP_MS = 100;
+// True once the message carrying this ask reaches the disk: a row holding the call's own tool_use id (every PreToolUse
+// payload carries one). False when it was there already, when the payload names none, or when it does not come inside
+// ASK_ROW_WAIT_MS.
+function ownAskWritten() {
+  const p = payload.transcript_path;
+  if (!p) return false;
+  const id = typeof payload.tool_use_id === 'string' && payload.tool_use_id ? JSON.stringify(payload.tool_use_id) : '';
+  const sizeOf = () => { try { return fs.statSync(p).size; } catch { return -1; } };
+  const holdsId = () => {
+    try {
+      const size = sizeOf();
+      const from = Math.max(0, size - 256 * 1024);
+      const buf = Buffer.alloc(size - from);
+      const fd = fs.openSync(p, 'r');
+      try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+      return buf.toString('utf8').includes(`"id":${id}`);
+    } catch { return false; }
+  };
+  if (!id || holdsId()) return false;   // none to wait for, or already on disk: the first judgement read it
+  for (const until = Date.now() + ASK_ROW_WAIT_MS; Date.now() < until;) {
+    try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ASK_ROW_STEP_MS); } catch { return false; }
+    if (holdsId()) return true;
+  }
+  return false;
 }
 
 function deferAnsweredThisTurn() {
@@ -2702,7 +2740,8 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write('This solve-task close went out under the AUTO waiver without its THREE named fields. A waived stop still\n'
       + 'prints them, because the morning reader has nothing else: restate the close with `Result:` (one line plus the\n'
       + 'artifact path), `Progress:` (<N> of <M> steps) and `Leftovers:` (what this run started and did not finish, or\n'
-      + '`none`) - and a headline that agrees with the leftovers. Nothing else changes.');
+      + '`none`) - and a headline that agrees with the leftovers. Nothing else changes. missing: '
+      + missingFields(prose).map((n) => `\`${n}:\``).join(', '));
     process.exit(2);
   }
   // AUTO-RUN (stack-modes spec section 2, 2026-10-27; auto-mode, the user's ruling of 2026-10-14): the session's AUTO stamp
@@ -3654,9 +3693,13 @@ function turnProseBeforeAsk() {
 
 // The three stop fields a solve-task stop names: Result / Progress / Leftovers - at a line start, bold or bulleted, or
 // opening a sentence inside a one-line question (audit 2026-10-10 C01, 516e653d: 5 of 5 compliant asks wrote them inline).
-function fieldsStamped(t) {
+// The three solve-task close fields, in order (a declaration, so the module-scope Stop code above can call it).
+function missingFields(t) {
   const field = (name) => new RegExp(`(?:^|\\n|[.;!?)]\\s+|\\s[-|]\\s+)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
-  return field('Result').test(t) && field('Progress').test(t) && field('Leftovers').test(t);
+  return ['Result', 'Progress', 'Leftovers'].filter((name) => !field(name).test(t));
+}
+function fieldsStamped(t) {
+  return missingFields(t).length === 0;
 }
 
 // FLOW STOP FIELDS, the ask branch's check 6: a solve-task stop names three fields before its ask. Bold counts - it is
@@ -3811,6 +3854,14 @@ function flowLine(line, at, state) {
   const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/;
   const isUser = /"type"\s*:\s*"user"/.test(line);
   const isAssistant = !isUser && /"type"\s*:\s*"assistant"/.test(line);
+  // The one flow-end rule (hook-prelude.js flowEndStep), before this row can open a run: a prompt typed after the run's close
+  // ends it, so a later reply owes no solve-task fields (card item 7, 3d4c416d: four holds on answers to plain questions).
+  if (isAssistant || (isUser && !line.includes('"tool_result"'))) {
+    const row = lineRow(line);
+    const step = row ? flowEndStep(state.endTrack, row) : '';
+    if (step === 'end') { state.flowEndPrev = state.flowEndedAt; state.flowEndedAt = at; }
+    else if (step === 'undo') state.flowEndedAt = state.flowEndPrev;
+  }
   const m = FLOW_MARK_RE.exec(line);
   // A marker quoted in a tool result (a `sed` over a test file, a transcript dump) is not a run.
   if (m && (m[0].startsWith('<') ? isUser && !line.includes('"tool_result"') : isAssistant && line.includes('"tool_use"'))) {
@@ -4068,20 +4119,20 @@ function flowState() {
     firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false, approvedReadAt: -1, verifyPlanAt: -1,
     sizeSaid: null, sizeFloor: null, sizeRaisedAt: -1, bugSaid: null, reproPlanAt: -1, standardAt: -1, planAt: -1, editAt: -1,
     autoCmd: false, stepAt: -1, rejectAt: -1, lastAskId: '', planWriteAt: -1, agentAt: -1,
-    completeCall: '', closedPlans: [], planTouched: '' };
+    completeCall: '', closedPlans: [], planTouched: '', endTrack: {}, flowEndedAt: -1, flowEndPrev: -1 };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 11, upTo: 0, ...none, editFiles: [], closedPlans: [] };
+    let state = { v: 12, upTo: 0, ...none, editFiles: [], closedPlans: [], endTrack: {} };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
       // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts, v5 counts
       // only source edits and the approved plan read (audit 2026-10-20 C08), v6 the cycle's size and bug facts (C37), v7
       // the /mode-auto-run read mark, v8 that mark armed only by a request and disarmed by the next typed prompt (M1), v9
       // where a flow step's Skill call sits (the review of 2026-11-03), v10 the newest rejected ask and a closed plan's Repro,
-      // v11 the script's close, the closed plans and the plan last touched (PF1)
-      if (kept && kept.v === 11 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // v11 the script's close, the closed plans and the plan last touched (PF1), v12 the one flow-end rule's track (card item 7)
+      if (kept && kept.v === 12 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {
@@ -4114,6 +4165,7 @@ function flowState() {
 // without it (usage audit 2026-11-19, bcb7d392: three holds after the run's close).
 function solveTaskCycle() {
   const flow = flowState();
+  if (flow.flow && flow.flowEndedAt > flow.flowAt) return false;   // the one flow-end rule (card item 7)
   return flow.flow && !(flow.completed !== null && flow.typedAfter && !(flow.flowAt > flow.completed) && !(flow.stepAt > flow.typedAfterAt));
 }
 

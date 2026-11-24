@@ -14,6 +14,9 @@
 // audit (`audit-install.js`) without `--json`. Fires only when
 // the LATEST such call has no proof in the assistant text after it. The measured skills turn announced 'pasted below'
 // three times running with no table, and once in the ask's preview panel, which the user never saw.
+// Card item 8 (2026-11-23) moved the paste check FIRST to PreToolUse (holdUnpasted, below): on Claude Code 2.1.330 the
+// ask's own message lands 444-539 ms into its PreToolUse hook, so an unpasted ask is held before the user sees it; the
+// PostToolUse void described next stays as the net for a row that comes late.
 // F4 (the 2026-10-28 workspace run, docs/workspace-layering-evidence.md 'Fix run'): the ask's OWN message - the pasted
 // text rows sharing message.id with the AskUserQuestion tool_use - reaches the transcript only after the PreToolUse hooks
 // finish, so a paste check there could never see the paste. It runs at PostToolUse, where the message is on disk, and a
@@ -620,6 +623,41 @@ if (EVENT === 'PostToolUse') {
   try { voidAsk(); } catch { /* fail-open */ }
   process.exit(0);
 }
+// Card item 8 (2026-11-23): the PostToolUse void threw the user's answer away (fecb88be, twice). Measured on Claude Code
+// 2.1.330 - a PreToolUse probe in three headless runs - a call's own message is not on disk when its PreToolUse hook starts
+// but lands 444-539 ms into it, so F4's reading no longer holds: the paste check runs here first, after waiting for the
+// ask's own row, and holds an unpasted ask before the user sees it. A row that does not come in time leaves the ask to
+// the PostToolUse void, the net.
+const ASK_ROW_WAIT_MS = 1500;
+const ASK_ROW_STEP_MS = 100;
+function ownAskOnDisk() {
+  if (!ownId || !payload.transcript_path) return false;
+  const needle = `"id":${JSON.stringify(ownId)}`;
+  const holds = () => { try { return fs.readFileSync(payload.transcript_path, 'utf8').includes(needle); } catch { return false; } };
+  for (const until = Date.now() + ASK_ROW_WAIT_MS; ;) {
+    if (holds()) return true;
+    if (Date.now() >= until) return false;
+    try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ASK_ROW_STEP_MS); } catch { return false; }
+  }
+}
+function holdUnpasted() {
+  let off = false;
+  try { off = (prelude || require(PRELUDE)).partOff('guard-layer-table', 'void', process.env); } catch { /* no prelude: the hold runs */ }
+  // an ask with no decision table in the tail - nearly every ask - waits for nothing
+  if (off || !tailHasTable(readRows()) || !ownAskOnDisk()) return;
+  const rows = readRows();
+  const found = unpasted(rows);
+  if (!found || found.printed) return;
+  const name = found.branch.replace(/^void /, '');
+  const line = `${MARKER}: the ${name} ran but its output is not in your message - this ask was held before the user saw it; ` + (found.shown
+    ? `${PRINTED}; send this same ask again, unchanged - do not re-run or paste the table.`
+    : 'send ONE message: the step banner, the output byte-for-byte in a fenced block, then this same ask - your thinking is never on screen. Do not re-run the table - its output is already in your context.');
+  process.stdout.write(JSON.stringify({ ...(found.shown ? { systemMessage: `Alfred - the ${name}:\n${found.shown}` } : {}),
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: line } }));
+  blockRow(line, found.branch);
+  process.exit(0);
+}
+try { holdUnpasted(); } catch { /* fail-open: the PostToolUse void is the net */ }
 try {
   const rows = readRows();
   probeUnapplied(rows);

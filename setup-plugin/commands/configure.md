@@ -89,9 +89,9 @@ comparable banner by banner; the content varies, the skeleton never does.
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
-  or from memory. It is the SAME read an `update` writes back, so a seat or hook the user switched
-  off stays out of it; a hand inventory unioned what the plugin entries carry, and the next apply
-  switched every one of those seats back on. One call from the snapshot, on every OS and seed - a
+  or from memory. It is the SAME read an `update` writes back, so an item the user switched
+  off stays out of it; a hand inventory misses what the stamp's picks and the links record, and the next apply
+  would undo what the user chose. One call from the snapshot, on every OS and seed - a
   `--print-plan` run writes nothing:
 
   ```bash
@@ -117,7 +117,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names. Each plugin carries the SCOPE the listing printed,
   because an uninstall is scope-addressed. A plugin the listing marks disabled sits in
   `plugins_disabled` (`parked_plugins` is its catalog part): parked, never proposed for install or
-  removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
+  removal. `left_out` lists what the user switched off - an item of a parked retired entry (and, on a stamp still on the old core route, a denied seat) -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
   there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy> hooks=<plugin|copy> skills-from=<flag|shared|ledgered|env> seats-switch=<open|shared|local|workspace>`
@@ -319,18 +319,18 @@ A memory answer other than the current mode rides step 11's ONE installer call a
 **Where the agents come from** rides this area too. The current route is `skills=` of step 1's `plan routes:` line in `$TMP/plan.out` - never from a settings file by hand. `seats-switch=` other than `open` puts no ask and says why in one line: `shared` - `agents: settings.json decides where they come from - change it there`; `local` - `agents: your .claude/settings.local.json cannot be written - not switched here`; `workspace` - `agents: a workspace's top and members share one route - not switched here`. On `open`, ask the template for the current route in the same call as the memory and navigation asks (an unattended run takes its Recommended option, so it keeps the route and writes nothing):
 
 ```ask
-Where your agents come from? (now: the plugin)
-- 'Keep them in the plugin (Recommended)' - one plugin carries every agent and the project holds no agent files; nothing changes.
-- 'Files in .claude/agents' - each picked agent as a file you can read; /alfred-code:update refreshes it, and an edit of yours is overwritten with a line saying so; this machine's choice.
+Where your agents come from? (now: linked from the stack's library)
+- 'Keep them linked (Recommended)' - each picked agent is a folder in .alfred/stack/agents, linked into .claude/agents like a skill; the plugin carries none; nothing changes.
+- 'Files in .claude/agents' - each picked agent is a folder copied into .claude/agents with no link; /alfred-code:update refreshes it, and an edit of yours is overwritten with a line saying so; this machine's choice.
 ```
 
 ```ask
 Where your agents come from? (now: files in .claude/agents)
 - 'Keep them as files in .claude/agents (Recommended)' - nothing changes.
-- 'Back to the plugin' - one plugin carries every agent and the project holds no agent files; your edited copies stay.
+- 'Back to linked' - each picked agent is a folder in .alfred/stack/agents, linked into .claude/agents like a skill; your edited copies stay.
 ```
 
-An answer that keeps the route passes nothing. The other route adds `--seats-route copy` ('Files in .claude/agents') or `--seats-route plugin` ('Back to the plugin') to step 11's ONE installer call - a change on its own, so that call runs - and the installer's `seats:` line and its `!!` lines are reported as they are. The switch is this machine's: the installer writes it into `.claude/settings.local.json` and never into the shared file.
+An answer that keeps the route passes nothing. The other route adds `--seats-route copy` ('Files in .claude/agents') or `--seats-route plugin` ('Back to linked') to step 11's ONE installer call - a change on its own, so that call runs - and the installer's `seats:` line and its `!!` lines are reported as they are. The switch is this machine's: the installer writes it into `.claude/settings.local.json` and never into the shared file.
 
 **The workspace role** rides this area too. `node "$TMP/repo/scripts/workspace.js" role --root .` prints `role:
 <current>` and one `ask: <label><TAB><answer>` line per option; ask the template for the current role, its `Join <rel> (<name>)`
@@ -477,10 +477,9 @@ rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on di
 that calls it 'untouched' is wrong (measured: four layers reported untouched while all 88 selected
 items had just been refreshed). On the Node seed a `--drop` is applied BY the installer:
 
-- a seat is denied (`Agent(alfred-code:<name>)` in `permissions.deny` - the core carries every one
-  since 2.1.0); a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent,
-  rule or hook (every skill is a copy, a seat or hook only on its copy route) has its file deleted, a
-  copied hook its wiring too;
+- a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent, rule or hook
+  (every skill and every seat is a library copy, linked under its bare name - the link and the copy
+  both go; a hook only on its copy route) has its file deleted, a copied hook its wiring too;
 - a drop of an always-on skill logs `not applied - locked`, like a locked rule: every install
   carries it (its own per-project lever is `skillOverrides`, which leaves the copy in place);
 - a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,

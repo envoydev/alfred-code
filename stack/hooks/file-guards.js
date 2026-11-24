@@ -34,6 +34,8 @@ const GUARDS = [
     // (deep hooks review 2026-10-16)
     ['docs-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
     ['preferences-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
+    // the rule loader's touch record and edit-time reminder (layered native rules, 2026-11-24)
+    ['rules-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']],
 ];
 const NAMES = GUARDS.map(([g]) => g);
 const TOOLS = new Map(GUARDS);

@@ -63,6 +63,7 @@ const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-awareness', 'capture-quality
 // The record registers the browser server once per engine (`playwright-chrome`, ...), the upstream docs once as
 // `playwright`: every name maps to the one routing row.
 const PLAYWRIGHT_SERVER = /^playwright(?:-(?:chrome|msedge|firefox|webkit))?$/;
+const CORE_PLUGIN = 'alfred-code';
 const SEAT_ROLES = ['-solution-designer', '-implementer', '-verifier'];
 const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## MCP routing'];
 
@@ -155,13 +156,14 @@ function scanSkills(dir)
     return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// A seat is a flat `<name>.md` or a folder `<name>/<name>.md` (the store layout; a link to one reads as the folder).
 const scanAgents = (dir) => readDir(dir)
-    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .filter((e) => (e.isFile() && e.name.endsWith('.md')) || (e.isDirectory() && readText(path.join(dir, e.name, `${e.name}.md`)) !== null))
     .map((e) => e.name.replace(/\.md$/, ''))
     .sort((a, b) => a.localeCompare(b));
 
-// A seat from a plugin is addressable ONLY as `<plugin>:<agent>` - the bare name returns 'Agent
-// type not found'. The family is the bare part, so the prefix comes off first.
+// A seat from another plugin is addressable ONLY as `<plugin>:<agent>`; the core's seats are linked bare. The
+// family is the bare part, so the prefix comes off first.
 const bareSeat = (s) => String(s).replace(/^[A-Za-z0-9_-]+:/, '');
 
 function seatFamilies(seats)
@@ -260,9 +262,9 @@ function pluginCoveredLayers(pluginRows)
         const a = listed ? listed.agents : [...scanAgents(path.join(p.installPath, 'agents')), ...scanAgents(path.join(p.installPath, 'stack', 'agents'))];
         if (s.length || a.length) from.push(p.name);
         skills.push(...s);
-        // The DISPATCH name, which is the only one that resolves - the rule this generates is read
-        // at dispatch time, so a bare seat name in it is an instruction that fails.
-        seats.push(...a.map((name) => `${p.name}:${name}`));
+        // The DISPATCH name, which is the only one that resolves - the rule this generates is read at dispatch
+        // time. The core's seats are linked under their bare names, so only another plugin's seat is prefixed.
+        seats.push(...a.map((name) => (p.name === CORE_PLUGIN ? name : `${p.name}:${name}`)));
     }
     const seen = new Set();
     return {
@@ -825,6 +827,8 @@ function inventory(projectRoot)
     for (const s of skills.filter((s) => s.unreadable)) sub(`UNREADABLE ${s.name}: ${s.unreadable} - report it as unreadable, never fill it from memory`);
 
     const denied = deniedSeats(projectRoot);
+    // A linked seat is dispatched bare, and Claude Code matches the name dispatched: an `Agent(alfred-code:<seat>)` row an
+    // earlier release wrote is inert, so only the bare row switches a seat off here.
     const offSeats = seats.filter((s) => denied.has(s));
     seats = seats.filter((s) => !denied.has(s));
     say('SEATS', `${seats.length} total${offSeats.length ? ` (${offSeats.length} denied in permissions.deny, left out)` : ''}`);
@@ -1160,6 +1164,27 @@ function awarenessDocs(projectRoot, docs)
 const MAP_LINE = `Architecture map: \`<docs-path>/${AWARENESS_DIR}/${MAP_DOC}\` - only pointed at, never imported: read it by section before a structural change.`;
 const mapLineOf = (projectRoot, docs) => (statOf(path.resolve(projectRoot, String(docs), AWARENESS_DIR, MAP_DOC)) ? MAP_LINE : null);
 
+// A root whose workspace record lists a child carries this line right after the rule's frontmatter, so a session inside the
+// child reads the child's own awareness rule. The installer writes the same bytes (scripts/install/native-rules.js).
+const CHILD_WINS_LINE = 'For a file under a child project\'s folder, that child\'s own .claude/rules/alfred-awareness.md wins over this one.';
+function hasChildren(projectRoot)
+{
+    try
+    {
+        const record = JSON.parse(readText(path.join(projectRoot, dataRoot(projectRoot), 'workspace.json')).replace(/^\uFEFF/, ''));
+        const ignored = Array.isArray(record.ignoredChildren) ? record.ignoredChildren : [];
+        const listed = (c) => typeof c === 'string' && c.trim() !== '' && !ignored.some((i) => c === i || c.startsWith(`${i}/`));
+        return Array.isArray(record.children) && record.children.some(listed);
+    }
+    catch { return false; }
+}
+function withChildWins(text)
+{
+    const close = /^---\n[\s\S]*?\n---\n/.exec(text);
+    const at = close ? close[0].length : 0;
+    return `${text.slice(0, at)}${CHILD_WINS_LINE}\n${text.slice(at)}`;
+}
+
 // The rule from SKILL.md's copy target: the docs root stamped in, one import line per doc, the map's line after them.
 // Neither an import nor the map, no rule. An empty slot leaves no blank lines behind it.
 function composeAwarenessRule({ projectRoot, docs, skillText } = {})
@@ -1175,7 +1200,8 @@ function composeAwarenessRule({ projectRoot, docs, skillText } = {})
     text = text.split('<docs-path>').join(String(root).replace(/\\/g, '/').replace(/\/+$/, '')).replace(/\n{3,}/g, '\n\n');
     const left = /^<the script's[^\n]*/m.exec(text);
     if (left) return { text: null, imports, mapLine: !!mapLine, error: `the copy target holds a slot this script does not fill: ${left[0].slice(0, 80)}` };
-    return { text: normalize(`${text}\n`), imports, mapLine: !!mapLine, error: null };
+    const body = normalize(`${text}\n`);
+    return { text: hasChildren(projectRoot) ? withChildWins(body) : body, imports, mapLine: !!mapLine, error: null };
 }
 
 // --rule: compose, compare, write on differs, put the notOwned entry back, remove the superseded rules whose doc is

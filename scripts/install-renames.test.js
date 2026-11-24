@@ -322,7 +322,7 @@ test('respellRenamed (I2): no CLAUDE.md and no rules folder is nothing to do', (
 
 // ---------- the writer ----------
 
-test('settings writer: a renamed seat deny is re-spelled in the file, a skillOverrides key moves to the new name, the user\'s own entries stay', () =>
+test('settings writer: a renamed seat\'s deny row goes, a skillOverrides key moves to the new name, the user\'s own entries stay', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
     try
@@ -340,13 +340,10 @@ test('settings writer: a renamed seat deny is re-spelled in the file, a skillOve
         const run = () => writeSettings({ file, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-        assert.deepStrictEqual(data.permissions.deny.slice().sort(), [
-            'Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)',
-            'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)',
-        ].sort());
+        assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)']);
         assert.deepStrictEqual(data.skillOverrides, { 'capture-usage-report': 'off', 'my-own-skill': 'name-only' });
         assert.strictEqual(data.env.MY_OWN_KEY, 'mine', "the user's own settings key survives");
-        assert.ok(logs.some((m) => /ci-failure-diagnoser\).*issue-diagnoser-ci/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /agent deny rows removed .*ci-failure-diagnoser, runtime-failure-diagnoser/.test(m)), logs.join('\n'));
         assert.ok(logs.some((m) => /skillOverrides project-stack-usage-analyzer .*capture-usage-report/.test(m)), logs.join('\n'));
         const again = JSON.stringify(data);
         const second = run();
@@ -395,10 +392,10 @@ test('settings writer: a personal skillOverrides switch-off in settings.local.js
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// I1 (fix round 1): a seat the user switched off for themselves - a deny in settings.local.json - is
-// re-spelled where it is, never moved into the shared file, and the read-back sees it off.
+// I1 (fix round 1): a seat the user switched off for themselves - a deny in settings.local.json - went with the
+// rename where it sat, never moved into the shared file; now no seat is denied, so the row is taken out there.
 const LOCAL_DENY = ['Agent(alfred-code:ci-failure-diagnoser)', 'Agent(alfred-code:runtime-failure-diagnoser)', 'Bash(my-own:*)'];
-test('settings writer (I1): a seat deny in settings.local.json is re-spelled there, and the shared file gains none of it', () =>
+test('settings writer (I1): a seat deny in settings.local.json is taken out there, and the shared file gains none of it', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
     try
@@ -408,18 +405,16 @@ test('settings writer (I1): a seat deny in settings.local.json is re-spelled the
         fs.writeFileSync(file, JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }));
         fs.writeFileSync(localFile, JSON.stringify({ permissions: { deny: LOCAL_DENY }, MY_LOCAL_KEY: 1 }));
         const logs = [];
-        // The read-back sees both seats off, so the run's agent off-list names them under the new name.
-        const agentDeny = ['Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)'];
         // Mode v2 stage 2: the run writes settings.local.json at every scope; settings.json is the shared file.
-        const run = () => writeSettings({ file: localFile, sharedFile: file, renamed: RENAMED, agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const run = () => writeSettings({ file: localFile, sharedFile: file, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
-        assert.deepStrictEqual(local.permissions.deny.slice().sort(), [...agentDeny, 'Bash(my-own:*)'].sort(), local.permissions.deny.join('\n'));
+        assert.deepStrictEqual(local.permissions.deny, ['Bash(my-own:*)'], local.permissions.deny.join('\n'));
         assert.strictEqual(local.MY_LOCAL_KEY, 1);
         const shared = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.ok(!((shared.permissions || {}).deny || []).some((d) => /diagnoser/.test(d)), `a personal switch-off moved into the shared file: ${JSON.stringify(shared.permissions)}`);
         assert.strictEqual(shared.env.MY_OWN_KEY, 'mine');
-        assert.ok(logs.some((m) => /^ {2}settings\.local\.json: .*ci-failure-diagnoser\).*issue-diagnoser-ci/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /^ {2}settings\.local\.json: agent deny rows removed .*ci-failure-diagnoser/.test(m)), logs.join('\n'));
         const before = [fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')];
         run();
         assert.deepStrictEqual([fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')], before, 'a second run changes nothing');
@@ -455,7 +450,7 @@ test('seed update --installed-only over a 1.3.0 stamp: every old pick is carried
     assert.ok(first.pickedSkills.includes('task-solve'), first.pickedSkills.join(','));
     assert.ok(first.pickedSkills.includes('habits-commit-checkpoint'), first.pickedSkills.join(','));
     assert.ok(first.pickedSkills.includes('capture-usage-report'), `the library pick is carried: ${first.pickedSkills.join(',')}`);
-    assert.ok(first.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), first.pickedAgents.join(','));
+    assert.ok(first.pickedAgents.includes('issue-diagnoser-ci'), first.pickedAgents.join(','));
     const old = new Set([...Object.keys(RENAMED.skills), ...Object.keys(RENAMED.agents)]);
     const named = (list) => list.map((e) => e.split('@')[0]).filter((n) => old.has(n));
     assert.deepStrictEqual(named([...first.pickedSkills, ...first.pickedAgents, ...first.librarySkills]), [], 'the new stamp names no old item');
@@ -474,7 +469,7 @@ test('seed update --installed-only over a 1.3.0 stamp: every old pick is carried
 
 // Shape 2: a seat the user switched off under its old name stays off under its new name, and a
 // skillOverrides switch-off follows its skill.
-test('seed update --installed-only: a seat denied under its old name stays denied under the new one, and nothing else of the user\'s moves', POSIX_ONLY, () =>
+test('seed update --installed-only: a seat denied under its old name stays off under the new one (not picked, not copied), its row goes, and nothing else of the user\'s moves', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const prepare = (repo) =>
@@ -491,10 +486,10 @@ test('seed update --installed-only: a seat denied under its old name stays denie
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare, inspect });
     // Mode v2 stage 2: the run's seat denies land in settings.local.json; the user's own entries stay in settings.json.
     const deny = r.local.permissions.deny;
-    assert.ok(deny.includes('Agent(alfred-code:issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:issue-diagnoser-runtime)'), deny.join('\n'));
-    assert.ok(!deny.some((d) => /^Agent\(alfred-code[a-z0-9-]*:(ci|runtime)-failure-diagnoser\)$/.test(d)), `no stack deny keeps an old seat name:\n${deny.join('\n')}`);
+    assert.deepStrictEqual(deny.filter((d) => /^Agent\(/.test(d)), [], `no seat is denied:\n${deny.join('\n')}`);
     const shared = r.settings.permissions.deny;
-    assert.ok(shared.includes('Agent(someone-else:ci-failure-diagnoser)') && shared.includes('Bash(rm -rf:*)'), "the user's own entries stay");
+    assert.deepStrictEqual(shared, ['Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)'], "the stack's rows leave, the user's own entries stay");
+    assert.ok(!r.agents.some((a) => /diagnoser/.test(a)), `the switched off seat is not copied: ${r.agents.join(' ')}`);
     assert.ok(!r.pickedAgents.some((e) => /diagnoser/.test(e)), `a denied seat is no pick: ${r.pickedAgents.join(',')}`);
     assert.deepStrictEqual(r.settings.skillOverrides, { 'capture-usage-report': 'off' }, 'the skill switch-off follows the skill');
     assert.ok(r.skills.includes('capture-usage-report') && !r.skills.includes('project-stack-usage-analyzer'), r.skills.join(' '));
@@ -506,7 +501,7 @@ test('seed update --installed-only: a seat denied under its old name stays denie
 // under its new name, in that file, and a re-run changes nothing.
 for (const scope of ['project', 'user', 'local'])
 {
-    test(`seed update --installed-only --scope ${scope} (I1): a seat denied in settings.local.json stays off there under its new name, and a re-run is quiet`, POSIX_ONLY, () =>
+    test(`seed update --installed-only --scope ${scope} (I1): a seat denied in settings.local.json stays off (not copied) and its row goes, and a re-run is quiet`, POSIX_ONLY, () =>
     {
         const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope, enabled: true })));
         const shared = JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }, null, 2);
@@ -525,8 +520,8 @@ for (const scope of ['project', 'user', 'local'])
         const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--scope', scope], prepare, each });
         const [first, second] = steps;
         const deny = first.local.permissions.deny;
-        assert.ok(deny.includes('Agent(alfred-code:issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:issue-diagnoser-runtime)'), `${scope}: ${deny.join(' | ')}\n${outs[0]}`);
-        assert.ok(!deny.some((d) => /:(ci|runtime)-failure-diagnoser\)$/.test(d)), `${scope}: an old seat spelling is left in settings.local.json: ${deny.join(' | ')}`);
+        assert.deepStrictEqual(deny.filter((d) => /^Agent\(/.test(d)), [], `${scope}: no seat row is left in settings.local.json: ${deny.join(' | ')}\n${outs[0]}`);
+        assert.ok(!first.agents.some((a) => /diagnoser/.test(a)), `${scope}: the switched off seat is not copied: ${first.agents.join(' ')}`);
         assert.ok(deny.includes('Bash(my-own:*)') && first.local.MY_LOCAL_KEY === 1, `${scope}: the user's own local entries stay`);
         if (scope === 'local') assert.strictEqual(first.sharedRaw, shared, 'a local-scope run never writes the shared file');
         else assert.ok(!((first.settings.permissions || {}).deny || []).some((d) => /diagnoser/.test(d)), `${scope}: a personal switch-off moved into settings.json: ${first.sharedRaw}`);
@@ -671,7 +666,7 @@ test('seed --instructions-at: a root seed stays owned through a refresh and a mo
 
 // M1: at local scope the shared settings.json is a file the run never writes - an old seat name only
 // it holds is no rename this run made, so it gets a note on every run, never a `renamed:` line.
-test('seed update --installed-only --scope local (M1): an old seat deny only settings.json holds is noted, never reported as renamed, and the seat stays off', POSIX_ONLY, () =>
+test('seed update --installed-only --scope local (M1): an old seat deny only settings.json holds is noted, never reported as renamed, and the seat stays off (not copied)', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })));
     const shared = JSON.stringify({ permissions: { deny: ['Agent(alfred-code:ci-failure-diagnoser)'] } }, null, 2);
@@ -691,7 +686,7 @@ test('seed update --installed-only --scope local (M1): an old seat deny only set
         assert.deepStrictEqual(renamedLines(out), [], `run ${i + 1}: nothing this run wrote was renamed\n${out}`);
         assert.match(out, /settings\.json still names Agent\(alfred-code:ci-failure-diagnoser\) - read as issue-diagnoser-ci/, `run ${i + 1}`);
         assert.strictEqual(steps[i].sharedRaw, shared, 'a local-scope run never writes the shared file');
-        assert.ok(steps[i].local.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `run ${i + 1}: the seat stays off for this user: ${JSON.stringify(steps[i].local.permissions)}`);
+        assert.deepStrictEqual((steps[i].local.permissions.deny || []).filter((d) => /^Agent\(/.test(d)), [], `run ${i + 1}: the run writes no seat row: ${JSON.stringify(steps[i].local.permissions)}`);
     }
 });
 
@@ -707,7 +702,7 @@ test('seed update --installed-only on the copy route: the old copies become new 
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { env: COPY_ROUTE, args: ['--installed-only'], prepare, inspect });
     for (const n of ['task-solve', 'task-verify-code', 'markdown-style']) assert.ok(r.skills.includes(n), `${n} is copied: ${r.skills.join(' ')}`);
-    assert.ok(r.agents.includes('issue-diagnoser-ci.md') && r.agents.includes('security-auditor.md'), r.agents.join(' '));
+    assert.ok(r.agents.includes('issue-diagnoser-ci') && r.agents.includes('security-auditor'), r.agents.join(' '));
     assert.ok(!r.skills.includes('project-solve-task') && !r.skills.includes('project-verify-code'), `an old skill copy survived: ${r.skills.join(' ')}`);
     assert.ok(!r.agents.includes('ci-failure-diagnoser.md'), `an old seat copy survived: ${r.agents.join(' ')}`);
     const names = (list) => list.map((e) => e.split('@')[0]);
@@ -818,8 +813,8 @@ test('seed update: an unrecorded rule copy under an OLDER stack opening is taken
     const { openingOf, openingHash, pastOpenings } = require('./install/rule-openings.js');
     assert.ok(pastOpenings(ROOT).get('markdown-docs').has(openingHash(openingOf(OLD_MARKDOWN_DOCS))), 'the old opening is in meta/rule-openings.json');
     const own = '---\npaths: ["**/Dockerfile"]\n---\n\nOur own container notes: pin every base image by digest.\n';
-    const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^(library-rules): (.*)$/gm,
-        (_, k, v) => `${k}: ${v.split(',').filter((e) => !/^(markdown-docs|devops-conventions)\b/.test(e)).join(',')}`));
+    // The state this case protects: a stamp from before library rules, which has no `library-rules:` line at all.
+    const unrecord = (stamp) => fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^library-rules: .*\r?\n/m, ''));
     const rule = (repo, name) => { try { return fs.readFileSync(require('./install/copy.js').ruleAt(repo, name), 'utf8'); } catch { return null; } };
     const libraryRules = (repo) => ((/^library-rules: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '').split(',').map((e) => e.split('=')[0]);
     const each = (repo, i) =>
@@ -959,7 +954,7 @@ test('seed install --selection and update --add: a line naming an old item insta
 {
     const { result: r, out } = seedRun('install', 'skill markdown-style\nskill project-stack-usage-analyzer\nagent ci-failure-diagnoser\nrule markdown-docs\n', { inspect });
     assert.ok(r.pickedSkills.includes('capture-usage-report') && r.skills.includes('capture-usage-report'), `${r.pickedSkills} | ${r.skills}`);
-    assert.ok(r.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), r.pickedAgents.join(','));
+    assert.ok(r.pickedAgents.includes('issue-diagnoser-ci') && r.agents.includes('issue-diagnoser-ci'), `${r.pickedAgents} | ${r.agents}`);
     assert.ok(renamedLines(out).includes('==> renamed: skill project-stack-usage-analyzer -> capture-usage-report'), out);
 
     const listing = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]);
@@ -977,10 +972,11 @@ test('seed install --selection and update --add: a line naming an old item insta
         plugins: listing, args: [[], ['--installed-only', '--drop', 'skill project-stack-usage-analyzer', '--drop', 'agent ci-failure-diagnoser']], each: inspect,
     });
     const [before, after] = drop.steps;
-    assert.ok(before.skills.includes('capture-usage-report') && before.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), 'the install carries both');
+    assert.ok(before.skills.includes('capture-usage-report') && before.pickedAgents.includes('issue-diagnoser-ci'), 'the install carries both');
     assert.ok(!after.skills.includes('capture-usage-report') && !after.pickedSkills.includes('capture-usage-report'), `the dropped copy and pick are gone: ${after.skills} | ${after.pickedSkills}`);
     assert.ok(!after.pickedAgents.some((e) => /diagnoser/.test(e)), after.pickedAgents.join(','));
-    assert.ok(after.local.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `the dropped core seat is denied under its new name\n${drop.outs[1]}`);
+    assert.ok(!after.agents.includes('issue-diagnoser-ci'), `the dropped seat's copy is gone: ${after.agents}\n${drop.outs[1]}`);
+    assert.deepStrictEqual(((after.local.permissions || {}).deny || []).filter((d) => /^Agent\(/.test(d)), [], 'and no row names it');
 });
 
 // ---------- the old names stay in their homes ----------

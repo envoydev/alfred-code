@@ -52,7 +52,8 @@ function pinFiles({ projectRoot, skillsDir, agentsDir = path.join(projectRoot, '
     const out = [];
     for (const entry of agents)
     {
-        const file = path.join(agentsDir, String(entry).split('::')[0]);
+        const seat = String(entry).split('::')[0].replace(/\.md$/, '');
+        const file = [path.join(agentsDir, seat, `${seat}.md`), path.join(agentsDir, `${seat}.md`)].find((f) => fs.existsSync(f)) || path.join(agentsDir, seat, `${seat}.md`);
         if (fs.existsSync(file)) out.push(file);
     }
     for (const entry of skills)

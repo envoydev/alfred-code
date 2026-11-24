@@ -149,12 +149,34 @@ const COMMENT = /^\s*<!--.*-->\s*$/;
 const STOP = new Set(['test', 'tests', 'common', 'features', 'endpoints', 'endpoint', 'src', 'file', 'class', 'async', 'http', 'json', 'with', 'from', 'this', 'that', 'into', 'over', 'core', 'main', 'code']);
 const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/\n+$/, '');
 
+// THE TIME BUDGET (card items 1, 2 and 9, the 2026-11-22/23 sessions): a hook caller sets an absolute deadline, and every
+// git call after it is skipped while each one before it is cut to the time left - a cold, large checkout cancelled the
+// session hook at Claude Code's 10s timeout on every start, compaction and Stop, and a cancelled hook sends nothing.
+// OUT_OF_TIME says a call was skipped or cut, so the caller drops what git would have decided. No deadline (the CLI, a
+// skill's call) changes nothing.
+const GIT_TIMEOUT_MS = 5000;
+const MIN_GIT_MS = 100;
+let DEADLINE = null;
+let OUT_OF_TIME = false;
+const setDeadline = (at) => { DEADLINE = Number.isFinite(at) ? at : null; OUT_OF_TIME = false; };
+const outOfTime = () => OUT_OF_TIME;
+// The timeout a git call gets: its own, cut to the time left; 0 when the budget is spent and the call must not run.
+const budgetMs = (own = GIT_TIMEOUT_MS) => {
+  if (DEADLINE === null) return own;
+  const left = DEADLINE - Date.now();
+  if (left < MIN_GIT_MS) { OUT_OF_TIME = true; return 0; }
+  return Math.min(own, left);
+};
+const timedOut = (e) => Boolean(e && (e.code === 'ETIMEDOUT' || (e.signal && e.status === null)));
+
 const git = (args, { raw = false, ...opts } = {}) => {
+  const timeoutMs = budgetMs(opts.timeout || GIT_TIMEOUT_MS);
+  if (!timeoutMs) return null;
   try {
     // quotePath off: a non-ASCII path arrives as written, not octal-escaped; maxBuffer: ls-files on a big tree passes the 1MB default
-    const out = execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.quotePath=false', ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, maxBuffer: 64 * 1024 * 1024, ...opts, env: { ...((opts && opts.env) || process.env), GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true });
+    const out = execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.quotePath=false', ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, ...opts, timeout: timeoutMs, env: { ...((opts && opts.env) || process.env), GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true });
     return raw ? out : out.trim(); // porcelain rows start with a status column that may be a space
-  } catch { return null; }
+  } catch (e) { if (timedOut(e) && DEADLINE !== null) OUT_OF_TIME = true; return null; }
 };
 
 const safe = (b) => String(b).replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '') || 'detached';
@@ -494,7 +516,7 @@ function merge3(ours, base, theirs, name) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-merge-'));
   const trim = (t) => `${String(t).replace(/\n+$/, '')}\n`;
   const [a, o, b] = ['mainline', 'base', 'branch'].map((n, i) => { const p = path.join(tmp, n); fs.writeFileSync(p, trim([ours, base, theirs][i])); return p; });
-  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-file', '-p', '-L', 'mainline', '-L', 'base', '-L', name, a, o, b], { encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true });
+  const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-file', '-p', '-L', 'mainline', '-L', 'base', '-L', name, a, o, b], { encoding: 'utf8', timeout: budgetMs() || 1, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true });
   fs.rmSync(tmp, { recursive: true, force: true });
   if (r.status === null || r.status > 127) return { error: (r.stderr || 'git merge-file failed').trim() };
   return { text: r.stdout, conflicts: r.status };
@@ -912,7 +934,9 @@ function blobsOf(files) {
   if (rows.length === live.length) { live.forEach((f, i) => out.set(f, rows[i].slice(0, 12))); return out; }
   // git refuses the WHOLE batch over one path it cannot hash (a directory, an unreadable file). One call per file
   // then: a hiccup costs time rather than reporting every file in the tree as changed.
-  for (const f of live) out.set(f, blobOf(f));
+  // A batch git gave up on for time is no refusal: one process per file then cost the start 31s (Speech-Direct,
+  // 2026-11-23). Past the budget each file keeps '' - unknown - and the caller, reading outOfTime(), uses none of it.
+  for (const f of live) { if (outOfTime()) break; out.set(f, blobOf(f)); }
   return out;
 }
 // Every path this engine PRINTS is project-relative and '/'-separated on every platform - the form the covers globs,
@@ -954,7 +978,7 @@ function branchFiles(base, ref = 'HEAD') {
 const ANCESTRY = new Map();
 const isAncestor = (sha, ref) => {
   const k = `${sha}..${ref}`;
-  if (!ANCESTRY.has(k)) ANCESTRY.set(k, spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-base', '--is-ancestor', sha, ref], { cwd: ROOT, timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true }).status === 0);
+  if (!ANCESTRY.has(k)) ANCESTRY.set(k, spawnSync('git', ['-c', 'core.fsmonitor=false', 'merge-base', '--is-ancestor', sha, ref], { cwd: ROOT, timeout: budgetMs() || 1, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true }).status === 0);
   return ANCESTRY.get(k);
 };
 // Is this a commit the repo actually has? A recorded fork point can name one it does not - pruned, re-cloned,
@@ -2084,7 +2108,10 @@ function snapshot() {
     const parts = f.split('/');
     for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
   }
-  return { head: git(['rev-parse', 'HEAD']), at: Math.floor(Date.now() / 1000), dirty, dirs: [...dirs].slice(0, 20000) };
+  const head = git(['rev-parse', 'HEAD']);
+  // A snapshot cut short by the time budget would read every unhashed file as changed at Stop: none is better.
+  if (outOfTime()) return null;
+  return { head, at: Math.floor(Date.now() / 1000), dirty, dirs: [...dirs].slice(0, 20000) };
 }
 
 // Of the files the tree diff since the snapshot's HEAD names, only those a commit made SINCE the snapshot touched (audit
@@ -2153,6 +2180,8 @@ function changedSince(snap) {
       if (!known.has(d) && fs.existsSync(path.join(ROOT, d))) created.add(d);
     }
   }
+  // Cut short by the time budget, the list is a guess: an unhashed file reads as changed. Nothing is asked on a guess.
+  if (outOfTime()) return { files: [], dirs: [] };
   const docs = `${docsRel()}/`;
   return { files: [...out].filter((f) => !f.startsWith(docs)), dirs: [...created].filter((d) => !`${d}/`.startsWith(docs)) };
 }
@@ -2267,7 +2296,7 @@ module.exports = {
   MAP_DOMAINS, MAP_KEYS, BLOCK_KEYS, mapDomain, mapNames, isMapFile, fileDomain,
   // the run book's one rule lives in layout.js, which installer-side readers load without this engine's side effects
   runBookKey: (docsDir) => require('./layout.js').runBookKey(docsDir),
-  git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
+  git, setDeadline, outOfTime, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,

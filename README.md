@@ -214,8 +214,8 @@ The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it
 
 | Place | What goes there |
 | --- | --- |
-| `.claude/` in your project | a link per picked skill, the generated rules, the install stamp, and the stack's settings in `settings.local.json` |
-| `.alfred/` in your project | the picked skills and rules (`stack/`), docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
+| `.claude/` in your project | a link per picked skill and agent, the picked rules as marked files Claude Code loads itself, the install stamp, and the stack's settings in `settings.local.json` |
+| `.alfred/` in your project | the picked skills, agents and rules (`stack/`), docs, the hooks' state, the seats' handoff notes - all but the docs stay out of git |
 | `~/.claude/` | the plugin cache, the status line |
 
 `/alfred-code:uninstall` removes only what the install recorded. Every file, process and token, in detail: [`docs/install-footprint.md`](docs/install-footprint.md).
@@ -287,8 +287,8 @@ Or run `/alfred-code:configure` and it writes the key for you.
 
 The stack writes its settings to `.claude/settings.local.json`, which never leaves your machine. A teammate who clones
 the project gets the plugin (at project scope), the tracked `.variables` and the copies under `.claude/`, and none of
-the stack's settings - no deny rows, no seat denies, no hook switches. Their first `/alfred-code:update` writes the
-deny rows, the seat denies and the seeded keys into their own local file. Where the hooks ride the plugin (the
+the stack's settings - no deny rows, no hook switches. Their first `/alfred-code:update` writes the
+deny rows and the seeded keys into their own local file. Where the hooks ride the plugin (the
 default), the hooks your team switched off (`ALFRED_CODE_HOOKS_OFF`) are recorded in no tracked file, so they run for
 a teammate until that teammate switches them off in `/alfred-code:configure`. A cloud session reads no local file and
 gets none of the settings at all. Cursor reads the stack's hook rows from the same file as long as its 'Include

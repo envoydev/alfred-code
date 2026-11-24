@@ -78,6 +78,24 @@ const sub = (p, sid, prompt, t, env = {}, extra = {}) => run('guard-fresh-sessio
 // ---------------------------------------------------------------------------------------------
 // the stamp
 // ---------------------------------------------------------------------------------------------
+// Card item 11 (A11, 3d4c416d ledger L109-L111): under auto-run the stop contract logged 'skip: nobody is at the terminal'
+// 28 s to 74 s after the user typed. A live stamp reads as away only once the newest typed prompt is 10 minutes old.
+test('unattended: a live auto-run stamp is no absence while the user typed in the last 10 minutes (A11)', () =>
+{
+    const { unattended, AWAY_AFTER_MS } = require('../stack/hooks/hook-prelude.js');
+    const p = project();
+    const env = { CLAUDE_PROJECT_DIR: p.root };
+    const typedAt = (ms) => { const t = transcript(); const rows = fs.readFileSync(t, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        for (const r of rows) r.timestamp = new Date(Date.now() - ms).toISOString();
+        fs.writeFileSync(t, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return t; };
+    autoStamp(p, 'a11');
+    assert.strictEqual(AWAY_AFTER_MS, 600000);
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(28 * 1000) }, env), false, 'typed 28 s ago: the user is there');
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(9 * 60 * 1000) }, env), false, 'typed 9 min ago: still there');
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(11 * 60 * 1000) }, env), true, 'typed 11 min ago: away');
+    assert.strictEqual(unattended({ session_id: 'a11', transcript_path: typedAt(28 * 1000) }, { ...env, ALFRED_CODE_UNATTENDED: '1' }), true, 'the explicit switch still wins');
+});
+
 test('auto-mode stamp: one naming its session is that session\'s for the whole run, and never another\'s', () =>
 {
     const p = project();
@@ -2034,3 +2052,41 @@ test('pluginWalkOf: the walk keeps through a compaction, a built-in command and 
     assert.ok(fs.statSync(big).size > 2 * 1024 * 1024);
     assert.strictEqual(pluginWalkNow({ transcript_path: big }), 'validate', 'a walk older than the tail');
 });
+
+// Card item 12 (A12, fecb88be L44): an ask after a compaction whose summary only MENTIONS /alfred-code:update, a walk that had
+// closed hours before, went to the user as a walk ask. The one flow-end rule: the rows before the summary decide.
+test('pluginWalkOf: a summary naming a walk that closed before the compaction keeps nothing (A12)', () =>
+{
+    const { pluginWalkOf, pluginWalkNow } = require('../stack/hooks/hook-prelude.js');
+    const said = (blocks) => ({ type: 'assistant', message: { role: 'assistant', content: blocks } });
+    const text = (t) => said([{ type: 'text', text: t }]);
+    const summary = (t) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: t } });
+    const closed = [walkCommand('update'), text('Done: both projects are on 3.17.0.'), walkRow([{ type: 'text', text: 'explain the band' }]), text('The band lists the rules a session loaded.')];
+    assert.strictEqual(pluginWalkOf([...closed, summary('Earlier the user ran /alfred-code:update, then asked about the band.')]), '', 'a closed walk stays closed past the summary');
+    const open = [walkCommand('update'), text('Shall I drop the two skills?'), walkRow([{ type: 'text', text: 'yes' }]), said([{ type: 'tool_use', id: 'b9', name: 'Bash', input: {} }])];
+    assert.strictEqual(pluginWalkOf([...open, summary('The user is running /alfred-code:update.')]), 'update', 'a walk open at the compaction stays open');
+    const t = path.join(TMP, `walk-a12-${randomUUID()}.jsonl`);
+    fs.writeFileSync(t, [...closed, summary('Earlier the user ran /alfred-code:update.'), said([{ type: 'tool_use', id: 'k1', name: 'Bash', input: {} }])].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    assert.strictEqual(pluginWalkNow({ transcript_path: t }), '', 'the mid-turn ask after the compaction is no walk ask');
+});
+
+// Card item 7 (A7, 3d4c416d L8580-9141): the auto-fields hold fired on replies to plain questions long after the solve-task
+// run had closed - a run with no plan stamped Completed: never ended. The one flow-end rule ends it at the typed question.
+test('auto-mode Stop: a typed question after a solve-task close owes no fields, and a held close names only what it lacks (A7)', () =>
+{
+    const p = project();
+    const typed = (c) => ({ type: 'user', entrypoint: 'cli', message: { role: 'user', content: c } });
+    const said = (t, id) => ({ type: 'assistant', entrypoint: 'cli', message: { id, role: 'assistant', content: [{ type: 'text', text: t }] } });
+    const t = transcript([typed('<command-name>/task-solve</command-name>'), said('Result: the parser fix is in. Progress: 3 of 3. Leftovers: none.', 'c1'), typed('What are know lmits?')]);
+    autoStamp(p, 'a7');
+    const stop = (sid, tp, msg) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: tp,
+        last_assistant_message: msg, background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    const answer = stop('a7', t, 'Done - the known limits are listed above and verified against the code.');
+    assert.strictEqual(answer.status, 0, `no fields owed past the close: ${answer.stderr}`);
+    autoStamp(p, 'a7b');
+    const open = transcript([typed('<command-name>/task-solve</command-name>')]);
+    const held = stop('a7b', open, 'Result: the parser fix is built and verified.');
+    assert.strictEqual(held.status, 2, 'the run\'s own close still owes its fields');
+    assert.match(held.stderr, /missing: `Progress:`, `Leftovers:`/);
+});
+

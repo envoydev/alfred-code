@@ -237,7 +237,7 @@ if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat
   global.BLOCK_DETAIL = { branch: 'diagnoser-pin', caller: callerSeat };
   process.stderr.write(
     `Blocked: ${caller} dispatched ${seat}. A diagnoser is read-only and dispatches only the evidence gatherer\n` +
-      `(\`alfred-code:evidence-gatherer\` on the plugin route, else \`evidence-gatherer\`), one gather task each.\n` +
+      `(\`evidence-gatherer\`), one gather task each.\n` +
       `A fix, a design or a review is the ROUTE in your report - the session dispatches it.`,
   );
   process.exit(2);

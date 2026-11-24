@@ -7,8 +7,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
-const { readLedger, readLibrary } = require('./install/stamp.js');
-const { placement, CORE } = require('./plugin-placement.js');
+const { readLedger, readLibrary, readSeatsRoute } = require('./install/stamp.js');
+const { CORE } = require('./plugin-placement.js');
 const rt = require('./install/runtime.js');
 const { putWorkspace } = require('./workspace-fixture.js');
 
@@ -82,15 +82,15 @@ test('install-seats-route: --seats-route copy over a garbage settings.local.json
     const { out, result } = seedRun('install', SELECTION, {
         env: NO_ROUTE_ENV, args: ['--scope', 'project', '--seats-route', 'copy'],
         prepare: (repo) => { fs.mkdirSync(claudeFile(repo, ''), { recursive: true }); fs.writeFileSync(claudeFile(repo, LOCAL_FILE), GARBAGE); },
-        inspect: (repo) => ({ local: fs.readFileSync(claudeFile(repo, LOCAL_FILE), 'utf8'), agents: fs.existsSync(claudeFile(repo, 'agents')) }),
+        inspect: (repo) => ({ local: fs.readFileSync(claudeFile(repo, LOCAL_FILE), 'utf8'), route: readSeatsRoute(claudeFile(repo, 'alfred-code.stamp')) }),
     });
     assert.ok(out.includes('!! seats route: .claude/settings.local.json is not valid JSON - not switched'), out);
     assert.equal(result.local, GARBAGE, 'the file is untouched');
-    assert.equal(result.agents, false, 'the run took the plugin route, no seat copied');
+    assert.equal(result.route, 'library', 'the run took the plugin route: the seat is a library copy, not a copy-route file');
 });
 
 const SEATS_LINE = /^==> seats: .*$/m;
-const COPY_SEATS = '==> seats: copy route - 1 picked in .claude/agents - /alfred-code:configure (Environment) moves them back into the plugin';
+const COPY_SEATS = '==> seats: copy route - 1 picked in .claude/agents';
 
 test('install-seats-route: after --seats-route copy, three plain updates stay on the copy route', POSIX_ONLY, () =>
 {
@@ -101,7 +101,7 @@ test('install-seats-route: after --seats-route copy, three plain updates stay on
     for (const [i, step] of steps.entries())
     {
         assert.equal((outs[i].match(SEATS_LINE) || [])[0], COPY_SEATS, `run ${i + 1}: the seats line names the copy route`);
-        assert.deepEqual(step, { value: 'false', ledgered: true, seats: ['evidence-gatherer.md'] }, `after run ${i + 1}`);
+        assert.deepEqual(step, { value: 'false', ledgered: true, seats: ['evidence-gatherer'] }, `after run ${i + 1}`);
     }
 });
 
@@ -121,7 +121,7 @@ test('install-seats-route: a hand-set value with no flag stays and gets no manag
         inspect: (repo) => seen(repo),
     });
     assert.deepEqual(result, { value: 'false', ledgered: false });
-    assert.match(out, /on from the alfred-code plugin/, 'an unledgered local value is not the stack\'s, so the run takes the plugin route');
+    assert.match(out, /seats: 1 picked, copied per project and linked/, 'an unledgered local value is not the stack\'s, so the run takes the plugin route');
 });
 
 test('install-seats-route: a hand-set value with the flag is overwritten and ledgered', POSIX_ONLY, () =>
@@ -148,35 +148,32 @@ test('install-seats-route: --seats-route copy beside a settings.json that sets t
 // The switch itself: no detection code, only the deny and the records each run writes on its own route's line.
 const LISTING = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']
     .map((name) => ({ id: `${name}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
-const CORE_SEATS = placement().plugins[CORE].agents;
 const SEAT = 'aspnet-implementer';
 const SWITCH_SKILL = 'csharp';
 const PICKED = `skill markdown-style\nskill ${SWITCH_SKILL}\nagent ${SEAT}\n`;
 const EDIT = '\nhand-edited line\n';
 const PROJECT = ['--scope', 'project'];
 const ROUTE = { copy: [...PROJECT, '--seats-route', 'copy'], plugin: [...PROJECT, '--seats-route', 'plugin'], plain: PROJECT };
-const seatPath = (repo) => claudeFile(repo, path.join('agents', `${SEAT}.md`));
+const seatPath = (repo) => claudeFile(repo, path.join('agents', SEAT, `${SEAT}.md`));
 const skillPath = (repo) => claudeFile(repo, path.join('skills', SWITCH_SKILL, 'SKILL.md'));
 const stampPath = (repo) => claudeFile(repo, 'alfred-code.stamp');
 const seatRecord = (repo) => readLedger(stampPath(repo)).files[`agents/${SEAT}.md`] || readLibrary(stampPath(repo)).agents[SEAT] || null;
 const seatDeny = (repo) => ((readJson(claudeFile(repo, LOCAL_FILE)).permissions || {}).deny || []).filter((d) => d.startsWith('Agent(')).sort();
-const spelled = (seats) => seats.map((a) => `Agent(${CORE}:${a})`).sort();
 const switchRun = (actions, selection, args, each, extra = {}) => seedRun(actions, selection, { plugins: LISTING, env: NO_ROUTE_ENV, args, each, ...extra });
 
-test('the switch to copy and back keeps an edited core seat', POSIX_ONLY, () =>
+test('the switch to copy and back refreshes an edited picked seat with the overwrite line, as it does a skill', POSIX_ONLY, () =>
 {
     let recorded;
-    let edited;
-    const seen = [];
-    switchRun(['install', 'update', 'update', 'update', 'update'], PICKED,
-        [ROUTE.plugin, ROUTE.copy, ROUTE.plugin, ROUTE.plain, ROUTE.plain], (repo, i) =>
+    let fresh;
+    const { outs, result } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin],
+        (repo, i) =>
         {
-            if (i === 1) { recorded = seatRecord(repo); fs.appendFileSync(seatPath(repo), EDIT); edited = fs.readFileSync(seatPath(repo), 'utf8'); }
-            if (i > 1) seen.push({ text: fs.existsSync(seatPath(repo)) && fs.readFileSync(seatPath(repo), 'utf8'), record: seatRecord(repo) });
-        });
+            if (i === 0) fresh = fs.readFileSync(seatPath(repo), 'utf8');
+            if (i === 1) { recorded = seatRecord(repo); fs.appendFileSync(seatPath(repo), EDIT); }
+        }, { inspect: (repo) => ({ text: fs.readFileSync(seatPath(repo), 'utf8'), route: readSeatsRoute(stampPath(repo)) }) });
     assert.ok(recorded, 'the copy route recorded the seat');
-    assert.equal(seen.length, 3);
-    for (const [i, run] of seen.entries()) assert.deepEqual(run, { text: edited, record: recorded }, `after run ${i + 3}`);
+    assert.ok(outs[2].includes(`  overwriting a hand-edited copy: agent ${SEAT}`), outs[2]);
+    assert.deepEqual(result, { text: fresh, route: 'library' }, 'the switch back takes the stack text');
 });
 
 test('an edited core seat unpicked on the plugin route survives a switch to copy and back', POSIX_ONLY, () =>
@@ -200,13 +197,11 @@ test('an edited core seat unpicked on the plugin route survives a switch to copy
     assert.match(outs[1], new RegExp(`agent kept: ${SEAT}\\.md - edited in the project since the stack copied it`), 'the unpick on the plugin route names the kept seat');
 });
 
-test('the switch writes the deny rows for every core seat, and the switch back writes the unpicked seats\' rows again', POSIX_ONLY, () =>
+test('the switch writes no deny row on either route, and the seat is a copy on both', POSIX_ONLY, () =>
 {
-    const { steps } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin], seatDeny);
-    const [plugin, copy, back] = steps;
-    assert.deepEqual(plugin, spelled(CORE_SEATS.filter((a) => a !== SEAT)), 'the plugin route denies the unpicked seats');
-    assert.deepEqual(copy, spelled(CORE_SEATS), 'the copy route denies every core seat, the copied one included');
-    assert.deepEqual(back, plugin, 'back: the picked seat is allowed again and the unpicked rows are there');
+    const { steps } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin],
+        (repo) => ({ deny: seatDeny(repo), copied: fs.existsSync(seatPath(repo)) }));
+    for (const [i, step] of steps.entries()) assert.deepEqual(step, { deny: [], copied: true }, `after run ${i + 1}`);
 });
 
 test('to copy and back with an edited picked library skill: the switch back refreshes it with the overwrite line', POSIX_ONLY, () =>
@@ -236,7 +231,7 @@ const rosterSeats = (repo) =>
     return lines[lines.indexOf('## Subagent seats') + 1].split(', ');
 };
 
-test('after the switch to copy the roster names every copied seat bare, and after the switch back namespaced', POSIX_ONLY, () =>
+test('after the switch to copy the roster names every seat bare, and after the switch back it stays bare', POSIX_ONLY, () =>
 {
     const { steps } = switchRun(['install', 'update', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin, ROUTE.plain],
         (repo, i) =>
@@ -244,10 +239,27 @@ test('after the switch to copy the roster names every copied seat bare, and afte
             if (i === 0) layOutRoster(repo, [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`]);
             return i === 0 ? null : { roster: rosterSeats(repo), copied: fs.existsSync(seatPath(repo)) };
         });
-    const namespaced = [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`];
-    assert.deepEqual(steps[1], { roster: [SEAT, `${CORE}:${UNPICKED_SEAT}`], copied: true }, 'copy: the copied seat is bare, the unpicked one stays namespaced');
-    assert.deepEqual(steps[2], { roster: namespaced, copied: false }, 'plugin again: every seat is namespaced');
-    assert.deepEqual(steps[3], { roster: namespaced, copied: false }, 'a plain update changes nothing');
+    const bareCopy = { roster: [SEAT, UNPICKED_SEAT], copied: true };
+    assert.deepEqual(steps[1], bareCopy, 'copy: every seat is bare - the plugin carries none');
+    assert.deepEqual(steps[2], bareCopy, 'plugin again: the seat is still a copy, so it is still named bare');
+    assert.deepEqual(steps[3], bareCopy, 'a plain update changes nothing');
+});
+
+// A project that moves from the plugin route to the full copy route keeps the roster it had: a prefixed seat name in it
+// resolves to nothing there, so the copy route's update re-spells it bare as well.
+test('a full copy-route update over a prefixed roster re-spells it bare, and a second run changes nothing', POSIX_ONLY, () =>
+{
+    const FULL_COPY = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+    const { steps } = seedRun(['install', 'update', 'update'], PICKED, {
+        plugins: '[]', env: FULL_COPY, args: [PROJECT, PROJECT, PROJECT],
+        each: (repo, i) =>
+        {
+            if (i === 0) layOutRoster(repo, [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`, 'house-wpf:wpf-implementer']);
+            return i === 0 ? null : rosterSeats(repo);
+        },
+    });
+    assert.deepEqual(steps[1], [SEAT, UNPICKED_SEAT, 'house-wpf:wpf-implementer'], 'copy route: the core-prefixed names are bare, another plugin\'s keeps its prefix');
+    assert.deepEqual(steps[2], steps[1], 'a re-run changes nothing');
 });
 
 // A workspace: the top's deny leaves a member-held seat out and a store record follows the route, so a switch of one project
@@ -319,13 +331,12 @@ test('install-seats-route: a first install of a joined child with --seats-route 
     assert.equal(steps[1][KEY], undefined, 'no route key written');
 });
 
-test('the switch back leaves the ledger\'s managed-deny as the plugin run wrote it, and a hand-written seat deny row survives the round trip', POSIX_ONLY, () =>
+test('a hand-written row for a shipped seat is taken out by the first run, whichever route it takes, and the ledger holds no seat row', POSIX_ONLY, () =>
 {
     const HAND_ROW = `Agent(${CORE}:${UNPICKED_SEAT})`;
     const denyOf = (repo) => readLedger(stampPath(repo)).deny;
     const { steps } = switchRun(['install', 'update', 'update'], PICKED, [ROUTE.plugin, ROUTE.copy, ROUTE.plugin],
-        (repo, i) => ({ ledger: [...denyOf(repo)].sort(), file: seatDeny(repo).includes(HAND_ROW) }),
+        (repo) => ({ ledger: [...denyOf(repo)].sort(), file: seatDeny(repo) }),
         { prepare: (repo) => { fs.mkdirSync(claudeFile(repo, ''), { recursive: true }); fs.writeFileSync(claudeFile(repo, LOCAL_FILE), JSON.stringify({ permissions: { deny: [HAND_ROW] } })); } });
-    assert.deepEqual(steps[2].ledger, steps[0].ledger, 'the same managed-deny entries after the round trip');
-    for (const [i, step] of steps.entries()) assert.ok(step.file, `the hand-written row is still in the file after run ${i + 1}`);
+    for (const [i, step] of steps.entries()) assert.deepEqual(step, { ledger: steps[0].ledger.filter((d) => !/Agent\(/.test(d)), file: [] }, `after run ${i + 1}`);
 });

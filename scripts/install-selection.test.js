@@ -465,13 +465,13 @@ test('read-back: closeFrom is the picked set - disk and the stamp - never an ite
     assert.ok(older.closeFrom.includes('agent evidence-gatherer') && older.closeFrom.includes('skill habits-done-gate'), older.closeFrom.join(','));
 });
 
-test('closeLines: a requirement never switches back on a parked entry or a denied seat - it is left out and said so', () =>
+test('closeLines: a requirement never switches back on a denied seat - it is left out and said; a parked core holds no seat or skill to park', () =>
 {
     const logs = [];
     const seats = computeClosure(GRAPH, { rules: ['dotnet-repair-agents'] }).agents;
     const out = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, parked: ['alfred-code'], log: (m) => logs.push(m) });
-    for (const a of seats) assert.ok(!out.includes(`agent ${a}`), `the parked core's seat ${a} stayed out`);
-    assert.ok(logs.some((l) => new RegExp(`required: agent ${seats[0]} .*left out, its entry alfred-code is parked here`).test(l)), logs.join('\n'));
+    for (const a of seats) assert.ok(out.includes(`agent ${a}`), `the seat ${a} is a library copy: no parked entry holds it back`);
+    assert.ok(!logs.some((l) => /is parked here/.test(l)), logs.join('\n'));
     assert.ok(out.includes('skill task-solve-cross'), 'a library skill has no entry to be parked');
     const denyLogs = [];
     const out2 = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, deny: [`Agent(alfred-code-dotnet:${seats[0]})`], log: (m) => denyLogs.push(m) });
@@ -773,14 +773,13 @@ test('droppedEntries: what the drop took out of the set, folded onto the listing
         'aspnet before the csharp it depends on; the parked web entry is not touched; devops stays');
 });
 
-test('leftOut: every item a parked entry carries, and every stack seat the deny list names', () =>
+test('leftOut: every item a parked entry carries (none for the core), and every stack seat the deny list names', () =>
 {
     const deny = ['Agent(alfred-code:evidence-gatherer)', 'Agent(alfred-code-x:security-auditor)', 'Agent(my-own-seat)', 'Bash(curl:*)'];
     assert.deepStrictEqual(sel.leftOut({ parked: ['not-an-entry'], deny }).sort(), ['agent evidence-gatherer', 'agent security-auditor']);
     const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
-    assert.ok(core.agents.length > 0, 'the core carries the seats');
-    const want = [...core.skills.map((n) => `skill ${n}`), ...core.agents.map((n) => `agent ${n}`)];
-    assert.deepStrictEqual(sel.leftOut({ parked: ['alfred-code'], deny }).sort(), [...new Set(want)].sort(), 'a parked core leaves out every item it carries');
+    assert.deepStrictEqual([core.skills, core.agents], [[], []], 'the core carries no seat and no skill');
+    assert.deepStrictEqual(sel.leftOut({ parked: ['alfred-code'], deny }).sort(), ['agent evidence-gatherer', 'agent security-auditor'], 'a parked core leaves out nothing of its own - only the seats a leftover deny row names');
 });
 
 test('droppedEntries: the core is never queued', () =>
@@ -1096,4 +1095,24 @@ test('a partial --selection on install takes the locked always-on rules and skil
     assert.doesNotMatch(outs[0], /installed-only: adopting/, 'the install route says selection');
     assert.doesNotMatch(outs[1], /adopting (?:rule|skill) /, 'the first update adopts nothing more');
     assert.deepStrictEqual(steps[1], []);
+});
+
+// Seats left the core plugin: every picked seat is linked under its bare name, so a roster written while the core
+// carried them (`alfred-code:<seat>`) is re-spelled bare - whether or not a project copy sits beside it.
+test('respellRosterSeats: a core-prefixed seat in the roster becomes bare, other plugins and prose stay', () =>
+{
+    const projectRoot = path.join(TMP, `roster-${seq++}`);
+    const rule = path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
+    fs.mkdirSync(path.dirname(rule), { recursive: true });
+    fs.writeFileSync(rule, [
+        '# caps', '', '## Subagent seats',
+        'alfred-code:aspnet-verifier, aspnet-implementer, house-wpf:wpf-implementer, my-own-seat', '',
+        '## MCP routing', 'dispatch alfred-code:aspnet-verifier never; prose is left alone', '',
+    ].join('\n'));
+    const first = sel.respellRosterSeats({ projectRoot, core: 'alfred-code' });
+    const text = fs.readFileSync(rule, 'utf8');
+    assert.equal(first, 1);
+    assert.match(text, /^aspnet-verifier, aspnet-implementer, house-wpf:wpf-implementer, my-own-seat$/m, text);
+    assert.match(text, /dispatch alfred-code:aspnet-verifier never/, 'only the seats line is re-spelled');
+    assert.equal(sel.respellRosterSeats({ projectRoot, core: 'alfred-code' }), 0, 'a re-run changes nothing');
 });

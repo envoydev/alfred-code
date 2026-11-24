@@ -1,0 +1,88 @@
+# Layered native rules - the spikes the design rests on
+
+What Claude Code does with an agent folder reached through a symlink, and with native rule files in a subagent.
+The card (layered native rules, agents linked like skills) built on three checks before any code; this page holds
+the two that passed, the one not run and the rows each one carries in the code.
+
+- Date: 2026-11-23. macOS, Claude Code 2.1.330 (the spike workspace log names the headless runs), model
+  `claude-sonnet-5-5`. Headless `claude -p` runs in a spike workspace under the home folder, never under the OS temp
+  folder, with the child-session environment variables unset.
+- Layout: `<spike>/ws` (a git repo, the root) with `.claude/rules/root-always.md` (always on, the codeword
+  `ROOT-ALWAYS-7731`) and `.claude/rules/root-cs.md` (a `paths: ["**/*.cs"]` rule, `ROOT-CS-4410`); `<spike>/ws/child`
+  (a git repo) with `.claude/rules/child-own.md` (`CHILD-OWN-9902`) and `src/a.cs`.
+- A plain `InstructionsLoaded` command hook, passed through `--settings`, appended every payload to `<spike>/il.jsonl`.
+- Each row reads the run's result text and the hook log, never an exit code alone.
+
+Result words: `PASS`, `NOT RUN - <reason>`.
+
+| Check | Case | Result |
+|---|---|---|
+| 1 | macOS: a child session follows a symlink in `.claude/agents` | PASS |
+| 1 | Windows: the same through a junction | PASS (2026-11-24, after a sign-in in the VM; two earlier tries were NOT RUN - no signed-in `claude`) |
+| 2 | the alfred-mods band names a path rule loaded by file type | NOT RUN - the band belongs to alfred-mods, out of scope here. A plain hook did see every load, below |
+| 3 | a subagent loads the native rule files itself | PASS |
+
+## Check 1 - Claude Code follows an agent directory symlink (macOS)
+
+- Setup: `<spike>/ws/child/.claude/agents/spike-echo` was a symlink to the folder
+  `<spike>/ws/.alfred/stack/agents/spike-echo/` (an absolute target; the installer writes a relative one), the folder
+  holding `spike-echo.md` with a `name: spike-echo` frontmatter and a one-line instruction to answer with a fixed token.
+- Run: one headless `claude -p` in `<spike>/ws/child`, asked to list the custom subagent types and to dispatch
+  `spike-echo`.
+- Result lines, from the run's `result` text:
+  - 'The only custom subagent type is `spike-echo`. The others (`claude`, `Explore`, `general-purpose`, `Plan`,
+    `statusline-setup`, `web-fetch`) are built in.'
+  - '`spike-echo` replied: `ECHO-AGENT-OK-5521`'
+  - `subagent_stats`: 2 spawned, 2 completed, 0 failed.
+- Reading: the agent was listed by its frontmatter `name` and dispatched, with the link in place of a real folder.
+  The installer links one agent folder per pick on macOS and Linux on this result.
+- Windows (2026-11-24, Windows 11 VM, Claude Code 2.1.309, model `haiku`): in `C:\Claude-MacOs\alfred-code\<run>\proj`, an
+  agent folder `.alfred\stack\agents\probe-seat` linked by `mklink /J` as `.claude\agents\probe-seat` (`LinkType
+  Junction`). One headless `claude -p` replied `LISTED: claude, Explore, general-purpose, Plan, probe-seat,
+  statusline-setup, web-fetch` and `REPLY: JUNCTION-OK`. So `links.AGENT_JUNCTION_ON_WIN32` is on: a Windows seat is a
+  junction like a skill, and an older copy at its recorded hash is replaced by one.
+
+## Check 3 - a subagent loads the native rule files itself
+
+- Run: the same workspace, one headless `claude -p` at the root, asked to dispatch a `general-purpose` subagent and to
+  report which codewords its context held at start, then after it read `child/src/a.cs`.
+- Result lines:
+  - The subagent replied, verbatim: `ROOT-ALWAYS-7731` and `CHILD-OWN-9902` (the always-on rule text, at its start).
+  - After its own read of `child/src/a.cs`: `ROOT-CS-4410` arrived, from `.claude/rules/root-cs.md`, loaded after the
+    read.
+  - One run's subagent answered `NONE` about the rules attached after its read; the transcript's `instructions` and
+    `nested_memory` attachments carry the text, so the delivery happened and the model's report was the miss.
+- The plain `InstructionsLoaded` hook logged, in `il.jsonl`, `load_reason` `session_start` for the root's always-on
+  rule, `nested_traversal` for the child's rule on the first touch of a file in it, and `path_glob_match` for the
+  path rule; the subagent's own loads carry an `agent_id` and `agent_type: general-purpose`.
+- Reading: a subagent gets the native rules by itself, so `SubagentStart` sends part 1 only (the rules index and the
+  fallback rules) and no rule text. The hook is `rules-session.js`, `@SubagentStart --part 1`.
+
+## The built layout, live (2026-11-24)
+
+- Build: this tree's installer (`--source <repo>`, local scope, `ALFRED_CODE_WORKSPACE=1`) made a root `ws` with seven
+  picks and a joined git child `ws/api` picking `skill javascript`, `rule csharp-conventions` and
+  `agent evidence-gatherer`. The workspace sat under the OS temp folder, with a plain `InstructionsLoaded` hook in each
+  level's `settings.local.json` that logs `load_reason`, the file and `agent_id`. macOS, Claude Code 2.1.331, model
+  `haiku`.
+- A workspace inside a Claude Code session scratchpad loads no rule file: the debug log says `[CLAUDE.md] not loading
+  <ws>/.claude/rules: it, or what it links to, is in a session's scratchpad`. A probe of rule loading runs outside one.
+- Child session (`claude -p` in `ws/api`, asked to list its agents, read `Program.cs` and dispatch
+  `evidence-gatherer`):
+  - `session_start` for the root's seven always-on native files (`ws/.claude/rules/alfred-*.md`).
+  - `path_glob_match` for the child's own `ws/api/.claude/rules/csharp-conventions.md` after the read, once in the
+    main session and once with the subagent's `agent_id`.
+  - The custom agents listed were `evidence-gatherer` and `security-auditor` (the child's pick and the root's, both
+    linked store folders); `evidence-gatherer` dispatched and replied `GATHER-OK`. No `Agent(...)` deny row exists.
+- Root session (`claude -p` in `ws`, asked to read `api/Program.cs`): `session_start` for the same seven files, then
+  `path_glob_match` for `ws/api/.claude/rules/csharp-conventions.md` - the root sees a child's rule on the first touch.
+- Not shown here: the account this ran under had the released 3.17.0 core installed, so its 45 `alfred-code:` seats were
+  listed beside these; a project on this release with that core updated lists none.
+
+## Where the code rests on it
+
+- `repo-installer.md`, the Agents row of the delivery table: seats are linked library items, a junction on Windows
+  (check 1, both legs).
+- `repo-hooks.md`, the `rules-session.js` passage: `SubagentStart` sends part 1 only (check 3).
+- `scripts/install/links.js`, `AGENT_JUNCTION_ON_WIN32` (true) and the copy-to-junction step in `syncLinks`, pinned in
+  `scripts/links.test.js` (check 1, Windows leg).

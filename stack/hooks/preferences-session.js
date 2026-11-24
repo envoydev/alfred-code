@@ -495,16 +495,17 @@ function codeReason(ctx, needs, targets, room, fullRoom, mode = 'change', kind =
   }
   const sectioned = needs.find((n) => n.doc.sectioned);
   const change = mode === 'change';
-  const again = mode === 'review' ? 'start the review' : `make the ${mode}`;
-  const lead = { change: `Before changing ${target || 'code'}, read`, read: 'Before this read, take the rest of', review: 'Before this review, read' }[mode];
+  // A change waits for the docs (its call is refused); a read and a review run with them as context (card item 13), so
+  // their later parts come with the next read instead of a retry.
+  const lead = { change: `Before changing ${target || 'code'}, read`, read: 'For this read, take the rest of', review: 'For this review, read' }[mode];
   const text = [
     `${lead} the user's ${kind} preferences - ${PRECEDENCE}:`,
     ...c.parts,
     ...(c.named.length ? ['', `Not pasted here - read before a ${change ? 'change' : 'decision'} it bears on: ${nameList(c.named, (sectioned || needs[0]).doc.rel)}.`] : []),
-    ...(c.later.length ? ['', `Not pasted yet, and they bind this ${change ? 'change' : 'work'}: ${nameList(c.later, c.laterRel)} - the retry hands them over, or Read ${c.laterRel} whole.`] : []),
-    '', c.later.length ? `Follow what is pasted; now ${again} again for the next part.`
+    ...(c.later.length ? ['', `Not pasted yet, and they bind this ${change ? 'change' : 'work'}: ${nameList(c.later, c.laterRel)} - ${change ? 'the retry hands them over' : 'your next read hands them over'}, or Read ${c.laterRel} whole.`] : []),
+    '', c.later.length ? (change ? 'Follow what is pasted; now make the change again for the next part.' : 'Follow what is pasted; your next read hands over the next part.')
       : change ? 'Follow them for this change and every later one; now make the change.'
-        : mode === 'review' ? 'Follow them in every finding; now start the review again.' : 'Follow them in every decision and finding; now make the read again.',
+        : mode === 'review' ? 'Follow them in every finding of this review.' : 'Follow them in every decision and finding.',
   ].join('\n');
   return { text, marks: c.marks, used: c.used };
 }
@@ -1137,13 +1138,13 @@ function hostText() {
   return hostLines().join('\n');
 }
 // What the tool order resolves a seat against: its definition's frontmatter where the file is found - the core's own seat
-// beside this hook (`alfred-code:<seat>`), else the project's copy; another plugin's seat from that plugin's install folder
+// beside this hook (`alfred-code:<seat>`), else the project's copy (a folder `<seat>/<seat>.md` first, then a flat file); another plugin's seat from that plugin's install folder
 // (R040) - and 'other' (the main session's reach) where none is found.
 function seatOf(ctx, type) {
   const m = /^(?:([\w.-]+):)?([\w-]+)$/.exec(String(type || ''));
   if (!m) return 'other';
   let files;
-  if (!m[1] || m[1] === 'alfred-code') files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
+  if (!m[1] || m[1] === 'alfred-code') files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', m[2], `${m[2]}.md`), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
   else {
     const lib = toolsLib();
     const file = lib && typeof lib.pluginAgentFile === 'function' ? lib.pluginAgentFile(ctx.home, m[1], m[2], process.env) : null;
@@ -1243,8 +1244,8 @@ function seatHold(ctx, input, files, marks, seat, grep) {
     return true;
   }
   const text = grep ? `${c.text}\n${GREP_STEER}` : c.text;
-  blockRow(ctx, input, 'read', text);
-  emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: text });
+  blockRow(ctx, input, 'read', text, { mode: 'context' });
+  emit('PreToolUse', { additionalContext: text });
   return true;
 }
 
@@ -1369,16 +1370,15 @@ function main() {
     const needs = codeNeeds(CODE_DOCS.map((d) => readDoc(ctx, d)).filter(Boolean), marks, [], true);
     if (!needs.length) return;
     const c = codeReason(ctx, needs, [], INLINE_CAP, true, 'review');
-    // this hook refuses the call to hand the docs over, and its text says to start the review again: that refusal is the
-    // run's first step, so it never ends the run the way another hook's does
-    delete marks.runId;
+    // the docs ride the review call as context (card item 13: a refusal cost a retry), its later parts with the run's reads
+    // (seatHold); the call's id stays, so another hook's refusal of it still ends the run
     for (const k of c.marks) marks[k] = true;
     if (!saveMarks(files, marks)) {
       emit('PreToolUse', { additionalContext: `preferences-session could not keep its read record, so it holds nothing - read ${needs.map((n) => n.doc.rel).join(', ')} before this review.` });
       return;
     }
-    blockRow(ctx, input, 'review', c.text);
-    emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: c.text });
+    blockRow(ctx, input, 'review', c.text, { mode: 'context' });
+    emit('PreToolUse', { additionalContext: c.text });
     return;
   }
 

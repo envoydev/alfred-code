@@ -251,6 +251,22 @@ test('compact-state: a slash flow is named with its body path, and the compact s
     assert.match(fs.readFileSync(r.state, 'utf8'), /^active flow: none found$/m);
 });
 
+// Card item 5 (A5, fecb88be): /alfred-code:validate had closed and two other tasks ran before the compaction, yet the state
+// named it open and the compact start told the session to re-read validate.md. The one flow-end rule closes it.
+test('compact-state: a slash flow closed before the compaction is not named open; one answered mid-run still is (A5)', () =>
+{
+    const p = project();
+    const tp = p.transcript([userRow('<command-name>/task-solve</command-name>'), usageRow('a1', { cache_read_input_tokens: 900 }, 'Result: done. Progress: 2 of 2. Leftovers: none.'),
+        userRow('explain the band'), usageRow('a2', { cache_read_input_tokens: 950 }, 'The band lists the rules a session loaded.')]);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
+    assert.match(fs.readFileSync(p.state, 'utf8'), /^active flow: none found$/m);
+    assert.doesNotMatch(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp })), /typed as a slash command/);
+    const q = project();
+    const tq = q.transcript([userRow('<command-name>/task-solve</command-name>'), usageRow('b1', { cache_read_input_tokens: 900 }, 'Approve the plan?'), userRow('yes')]);
+    q.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tq });
+    assert.match(fs.readFileSync(q.state, 'utf8'), /^active flow: \/task-solve \(slash command/m, 'a reply to the run\'s question stays inside it');
+});
+
 test('compact-state: a Windows plan path - backslashes, as Claude Code writes file_path there - is the live plan (gate, Windows leg)', () =>
 {
     const p = project();

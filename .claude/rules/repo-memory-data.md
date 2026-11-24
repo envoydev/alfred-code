@@ -141,7 +141,7 @@ The stores and what each holds, where the docs root and the data root live, and 
   The status file alone refuses the link (`session-status.js linkedState`): another program reads it, so a refusal
   costs only the mod's view.
 - **The library skills and copy-route seats live in `<data root>/stack`** (workspace stage 3, 2026-11-12), beside the
-  data: `.alfred/stack/skills/<name>/` and `.alfred/stack/agents/<name>.md`, each linked into `.claude` where git
+  data: `.alfred/stack/skills/<name>/` and `.alfred/stack/agents/<name>/<name>.md`, each linked into `.claude` where git
   ignores that folder (`install/links.js`, `repo-installer.md`). The store is the stack's copies and the project's own
   items there, never state - the data root's `/*` ignore keeps it out of git at every versioning. A workspace root's
   store also holds its members' picks (the stamp's `member-picks:` line). No hook names the store: each reads

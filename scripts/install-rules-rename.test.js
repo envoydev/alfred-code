@@ -290,7 +290,8 @@ test('a stamp that records rules but not the old copy\'s successor: the copy sta
 });
 
 // installer:F4 - a rule copy goes through the same claim test a skill does: a same-named file the stamp does not record is the
-// project's own unless its opening line is the shipped rule's (an older copy of the stack's).
+// project's own unless the install is a legacy one with no stamp (planted below: a stack env key and three rule files only the
+// stack names) and its opening line is the shipped rule's (an older copy of the stack's). On a fresh install it is the user's.
 test('a project\'s own rule under a shipped name is kept and named, never overwritten; an older stack copy still updates (audit F4)', POSIX_ONLY, () =>
 {
     const shipped = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'sql-conventions.md'), 'utf8');
@@ -299,10 +300,13 @@ test('a project\'s own rule under a shipped name is kept and named, never overwr
         prepare: (repo) =>
         {
             fs.mkdirSync(rulesOf(repo), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), '{"env":{"ALFRED_CODE_HOOKS_OFF":""}}\n');
+            for (const own of ['alfred-interaction', 'alfred-preferences', 'alfred-navigation']) fs.writeFileSync(path.join(rulesOf(repo), `${own}.md`), `old ${own}\n`);
             fs.writeFileSync(path.join(rulesOf(repo), 'csharp-conventions.md'), 'MY OWN C# RULES\n');
             fs.writeFileSync(path.join(rulesOf(repo), 'sql-conventions.md'), `${shipped}\nan older tail\n`);
         },
     });
+    assert.match(out, /no stamp: an unstamped legacy install/, 'the planted tree reads as a legacy install');
     assert.strictEqual(r.files['csharp-conventions.md'], 'MY OWN C# RULES\n', 'the project\'s rule was overwritten');
     assert.match(out, /!! rule kept: csharp-conventions/, out);
     assert.ok(!('csharp-conventions' in r.stamp), 'a kept rule is never recorded');

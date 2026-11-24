@@ -1241,8 +1241,10 @@ function excludeGlobs(paths, platform = process.platform)
 // Workspace stage 3: the `skill` and `agent` lines each joined member below `root` picked itself (its stamp's `own-picks`),
 // walked `maxDepth` folders deep - an `agent` line only from a member on the root's seats route (ruling 7). A member whose
 // stamp holds no such line adds nothing and is named; a stamped folder whose chain does not end at `root` is passed over.
-function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
+function memberPicks(root, { seatsRoute = 'library', maxDepth = 8 } = {})
 {
+    // A `plugin` stamp (seats the core carried) reads as the `library` route it moves to on its next update.
+    const routeOf = (route) => (route === 'plugin' ? 'library' : route);
     const top = realOf(root);
     const lines = new Set();
     const notes = [];
@@ -1253,7 +1255,7 @@ function memberPicks(root, { seatsRoute = 'plugin', maxDepth = 8 } = {})
         const file = path.join(dir, '.claude', brand.BRAND.stamp);
         const picks = stamp.readOwnPicks(file);
         if (!picks) { notes.push(`member ${relPosix(top, dir)} not counted: its stamp holds no own-picks line`); return; }
-        for (const l of picks) if (/^(skill|rule) /.test(l) || (l.startsWith('agent ') && stamp.readSeatsRoute(file) === seatsRoute)) lines.add(l);
+        for (const l of picks) if (/^(skill|rule) /.test(l) || (l.startsWith('agent ') && routeOf(stamp.readSeatsRoute(file)) === routeOf(seatsRoute))) lines.add(l);
     };
     const walk = (dir, depth) =>
     {
@@ -1290,7 +1292,7 @@ function addToStore({ root, kind, name, copy, route = 'plugin', from = root, min
         const hash = require('./library.js').hashItem(item);
         const pairs = (map) => Object.entries(map).map(([n, h]) => `${n}=${h}`).join(',');
         if (route === 'plugin' || kind === 'rules') stamp.markLine(file, `library-${kind}`, pairs({ ...stamp.readLibrary(file)?.[kind], [name]: hash }));
-        else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${links.fileOf(kind, name)}`]: hash }));
+        else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${kind === 'agents' ? `${name}.md` : links.fileOf(kind, name)}`]: hash }));
         const line = `${kind.slice(0, -1)} ${name}`;
         const own = ((stamp.readPicked(file) || {})[kind] || []).some((e) => e.split('@')[0] === name);
         if (!own && !mine) stamp.markLine(file, 'member-picks', [...new Set([...(stamp.readMemberPicks(file) || []), line])].map((l) => l.replace(' ', '/')).sort().join(','));
@@ -1580,7 +1582,7 @@ function workspaceStep(ctx)
     const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
     // An unusable local file (installHooksAndRules' localBad) gets no row; carryMemberRows keeps what the ledger named.
     const sync = (arrayPath, list) => (!ctx.localBad && (list.length || recorded(arrayPath))
-        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note })
+        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note, report: ctx.report })
         : { rows: {}, created: false });
     const r = sync('claudeMdExcludes', want);
     // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
@@ -1774,7 +1776,7 @@ function ruleNotes({ projectRoot, env = process.env })
 {
     const loader = require('../../stack/hooks/rules-session.js');
     const r = loader.rulesFor(projectRoot, env);
-    const out = [...r.notes, ...loader.parts(r.always, { natives: r.natives }).unsent.map((u) => `not sent - ${u}`)];
+    const out = [...r.notes, ...loader.parts(r.always, { limit: 1 }).unsent.map((u) => `not sent - ${u}`)];
     const files = [['.claude/settings.json'], ['.claude/settings.local.json'], [path.join(accountPaths(env).configDir, 'settings.json'), true]];
     const jsonOf = (f) => { try { return parseJson(fs.readFileSync(f, 'utf8')) || {}; } catch { return {}; } };
     const read = files.map(([f, abs]) => [f, jsonOf(abs ? f : path.join(projectRoot, f))]);

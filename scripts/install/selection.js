@@ -149,8 +149,11 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     const ours = (kind, name) => !known || known[kind].has(name);
     for (const name of listDir(skillsDir, (d) => d.isDirectory() || d.isSymbolicLink()))
         if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name) && !keptUnpicked('skill', name)) lines.push(`skill ${name}`);
-    for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md')))
-        if (ours('agents', f.replace(/\.md$/, '')) && !keptUnpicked('agent', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
+    // An agent is a folder `<name>/<name>.md` (a link to one too); an older install's flat `<name>.md` still reads, until an update moves it.
+    const agentNames = new Set(listDir(agentsDir, (d) => (d.isDirectory() || d.isSymbolicLink()) && fs.existsSync(path.join(agentsDir, d.name, `${d.name}.md`))));
+    for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md'))) agentNames.add(f.replace(/\.md$/, ''));
+    for (const name of agentNames)
+        if (ours('agents', name) && !keptUnpicked('agent', name)) lines.push(`agent ${name}`);
     const ruleFile = (d) => d.isFile() && d.name.endsWith('.md');
     for (const f of new Set([path.join(path.dirname(claudeDir), '.alfred', 'stack'), claudeDir].flatMap((d) => listDir(path.join(d, 'rules'), ruleFile))))
     {
@@ -204,9 +207,9 @@ function adoptHooks({ lines, catalog = [], shippedBefore = [], skip = [], log = 
 // The always-on baseline, with NO drop exception - the set is locked. An install that carries no rule
 // line AT ALL stays without one. The always skills are
 // adopted into any install that carries skills or rules (2.1.0: no plugin carries them, so a copy is
-// the only way an install has them). An always SEAT rides the core and its off-switch is the deny,
-// so it is adopted only while the core loads it (`coreOn`) and only when `deny` does not name it -
-// on the full copy route absence on disk is its off-state, and adopting there would undo a drop. `label` heads each
+// the only way an install has them). An always SEAT is adopted only on a stamp whose core carried it (`coreOn`: a
+// plugin-route stamp, or one from before 2.1.0) and only when `deny` does not name it - on a library stamp, and on
+// the full copy route, absence on disk is its off-state, and adopting there would undo a drop. `label` heads each
 // log line: `installed-only` on the update's read-back, `selection` on an install's --selection.
 function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = false, label = 'installed-only' })
 {
@@ -232,10 +235,11 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
-// carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
+// carried when the last install ran (derive-state readInstalled's `core`); `library` and `copy` stamps
+// carried no seat, so their seats are the ones on disk. `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
 function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, keptUnpicked = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
-    stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
+    stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], inertSeats = [],
     scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
@@ -281,7 +285,17 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const offCopies = routes.hooks ? [] : offHooks;
     lines = lines.filter((l) => !namedOff(l));
     for (let i = closeFrom.length - 1; i >= 0; i--) if (namedOff(closeFrom[i])) closeFrom.splice(i, 1);
-    const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
+    // On a library stamp a seat is a project copy: an `Agent(alfred-code:<shipped or retired seat>)` row switches nothing off, so it
+    // is no deny here - the picks come from the stamp. A local-scope run never writes settings.json, so the rows only it holds
+    // stay, and the run says so once.
+    const inert = (entry) => seatsRoute === 'library' && inertSeats.includes(stackSeat(entry));
+    const inertShared = sharedOnlyDeny.filter(inert);
+    if (inertShared.length && !said.has('inert-shared-seat-rows'))
+    {
+        said.add('inert-shared-seat-rows');
+        log(`installed-only: settings.json still holds ${inertShared.length} seat deny row(s) (${inertShared.map(stackSeat).join(', ')}) that do nothing now - a seat is a project copy; a local-scope run never writes that file, a project-scope update removes them`);
+    }
+    const deny = (stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : []).filter((entry) => !inert(entry));
     const parked = ours.filter((r) => !rowOn(r)).map((r) => r.name);
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
     // reads skills and seats from the disk - where a plugin-route install holds no seat (2.1.0) or, before
@@ -296,7 +310,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const picks = ours.length && stampPicked
         ? new Set(['skill', 'agent'].flatMap((k) => (stampPicked[`${k}s`] || []).map((e) => `${k} ${splitPick(e).name}`)))
         : null;
-    const core = seatsRoute === 'plugin' ? 'current' : seatsRoute === 'copy' ? 'none' : 'former';
+    const core = seatsRoute === 'plugin' ? 'current' : seatsRoute === 'copy' || seatsRoute === 'library' ? 'none' : 'former';
     // The same holds for a switch onto the skills copy route with the core still on: the seats the core
     // carried last run (2.1.0 - none of them on disk) are what the project runs, and are copied now.
     const copying = leaving || (!routes.skills && corePluginOn(routes) && seatsRoute === 'plugin');
@@ -359,7 +373,7 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     {
         const carried = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
         closeFrom.push(...carried);
-        log(`installed-only: the stamp predates 2.1.0 - its core is read as the always closure it carried: those skills become copies, and every seat this install never ran is denied${carried.length ? ` (${carried.length} carried items recorded as picked)` : ''}`);
+        log(`installed-only: the stamp predates 2.1.0 - its core is read as the always closure it carried: those skills become copies, and the seats it ran become copies too - no seat is denied${carried.length ? ` (${carried.length} carried items recorded as picked)` : ''}`);
     }
 
     // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
@@ -417,7 +431,8 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     if (!(routes.hooks && names.includes(BRAND.core)))
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, skip: offHooks, log });
     const before = new Set(lines);
-    lines = adoptAlways({ lines, always, log, deny, coreOn: corePluginOn(routes) });
+    // A library or copy stamp's seats are the disk's word: a seat that is not there was dropped, so no always seat is adopted back.
+    lines = adoptAlways({ lines, always, log, deny, coreOn: corePluginOn(routes) && (seatsRoute === 'plugin' || seatsRoute === null) });
     for (const line of lines)
         if ((/^(rule|mcp|plugin|hook) /.test(line) || (/^(skill|agent) /.test(line) && !before.has(line))) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
@@ -733,22 +748,18 @@ function respellRenamed({ projectRoot, renamed, docsPath = '', owned = () => fal
     return total;
 }
 
-// THE ROSTER'S SEAT SPELLING (M6). The generated capabilities rule names each seat as it resolves, and flows
-// dispatch a seat exactly as that roster spells it. A plugin seat answers only to `<core>:<seat>` (a bare name
-// is 'Agent type not found'), so a roster written before the seats moved onto the core - a 2.0.0 library seat,
-// listed bare - sends every flow to a seat that does not resolve. Its `## Subagent seats` list is re-spelled:
-// a bare core seat with no project copy takes the core's name; a seat whose project copy is kept (a tuned or
-// edited seat, `.claude/agents/<seat>.md`) is named bare, the copy's own name - the one a flow should run. A
-// name the core does not carry, and every line that is not a plain name list, is left as written.
-function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log = () => {}, note = () => {} })
+// THE ROSTER'S SEAT SPELLING. The generated capabilities rule names each seat as it resolves, and flows dispatch a
+// seat exactly as that roster spells it. The seats left the core plugin: each picked seat is a library copy linked as
+// `.claude/agents/<name>`, so its name is bare and `<core>:<seat>` resolves to nothing. A roster written while the
+// core carried the seats - `<core>:<seat>` in its `## Subagent seats` list - is re-spelled bare; another plugin's
+// seat keeps the prefix it answers to, and every line that is not a plain name list is left as written.
+function respellRosterSeats({ projectRoot, core, docsPath = '', log = () => {}, note = () => {} })
 {
     // The inventory doc since 2026-10-16; the rule it replaced while an update has not moved it yet.
     const file = awarenessDocs(projectRoot, docsPath, { agentsOnly: true })[0] || path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
     const shown = path.relative(projectRoot, file).split(path.sep).join('/');
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
-    const carried = new Set(seats);
-    const copied = (seat) => fs.existsSync(path.join(projectRoot, '.claude', 'agents', `${seat}.md`));
     const lines = text.split('\n');
     let inSeats = false;
     let changed = 0;
@@ -758,13 +769,7 @@ function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log 
         if (!inSeats || !lines[i].trim()) continue;
         const names = lines[i].split(',').map((t) => t.trim());
         if (!names.every((t) => /^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)?$/.test(t))) continue;
-        const spelled = names.map((t) =>
-        {
-            const bare = t.startsWith(`${core}:`) ? t.slice(core.length + 1) : t;
-            if (t.includes(':') && bare === t) return t;   // another plugin's seat
-            if (!carried.has(bare)) return t;
-            return copied(bare) ? bare : `${core}:${bare}`;
-        });
+        const spelled = names.map((t) => (t.startsWith(`${core}:`) ? t.slice(core.length + 1) : t));
         const out = [...new Set(spelled)].join(', ');
         if (out === names.join(', ')) continue;
         changed += spelled.filter((t, n) => t !== names[n]).length || 1;
@@ -772,8 +777,8 @@ function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log 
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`${shown} names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-awareness`); return 0; }
-    log(`  roster: ${shown} - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
+    catch (err) { note(`${shown} names ${changed} seat(s) under the old ${core}:<seat> spelling and could not be re-spelled (${err.message}) - re-run /capture-awareness`); return 0; }
+    log(`  roster: ${shown} - ${changed} seat name(s) re-spelled bare, as the linked seats resolve`);
     return changed;
 }
 
@@ -920,8 +925,8 @@ function itemScopes(listing = [])
 }
 
 // What the user switched off, as selection lines: every item a parked stack entry carries, and
-// every seat `permissions.deny` names under a stack entry. The closure never crosses either.
-function leftOut({ parked = [], deny = [] })
+// every shipped or retired seat `permissions.deny` names under a stack entry. The closure never crosses either.
+function leftOut({ parked = [], deny = [], seats = null })
 {
     const { placement } = require('../plugin-placement.js');
     const place = placement();
@@ -933,7 +938,8 @@ function leftOut({ parked = [], deny = [] })
         for (const s of entry.skills) out.push(`skill ${s}`);
         for (const a of entry.agents) out.push(`agent ${a}`);
     }
-    for (const seat of (Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean)) out.push(`agent ${seat}`);
+    // `seats` (the shipped, retired and renamed seat names) keeps a row that names no seat of ours - the user's own - out of the list.
+    for (const seat of (Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean)) if (!seats || seats.includes(seat)) out.push(`agent ${seat}`);
     return [...new Set(out)];
 }
 

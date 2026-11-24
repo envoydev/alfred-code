@@ -143,7 +143,7 @@ function dropEmptyArray(data, arrayPath)
 // Brings the stack's members of one array to `want`: a member it wants and does not see is added and ledgered; a prior
 // row it no longer wants takes its member out (by hash); a row whose member is gone just leaves. The file is written
 // only when something changed, in the shape every settings write here uses.
-function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note = () => {} })
+function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note = () => {}, report = null })
 {
     const mine = Object.fromEntries(Object.entries(prior || {}).filter(([row]) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; }));
     let data;
@@ -163,7 +163,7 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     {
         if (wantHash.has(hash)) continue;
         const i = list.findIndex((m) => typeof m === 'string' && valueHash(m) === hash);
-        if (i >= 0) { list.splice(i, 1); changed = true; }
+        if (i >= 0) { const [gone] = list.splice(i, 1); changed = true; if (report) report.remove(arrayPath, gone); }
     }
     for (const [hash, value] of wantHash)
     {
@@ -835,22 +835,40 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, kept =
     return { managed, changed };
 }
 
+// The seat an `Agent(<core>:<seat>)` deny row names, else undefined.
+const seatOfDenyRow = (entry) => (new RegExp(`^Agent\\(${BRAND.core}:([A-Za-z0-9_-]+)\\)$`).exec(String(entry)) || [])[1];
+// Takes out of `permissions.deny`, in place, each `Agent(<core>:<seat>)` row whose seat is one of `seatNames`, said in one
+// line per file. Any other row - another plugin's, a seat this release never shipped, a rule of the user's - is left as it is.
+// `tidy`: a list or a `permissions` object this left empty goes too (the team's settings.json, where the stack made it).
+function removeSeatDenies(permissions, seatNames, label, log, { tidy = false, report = null } = {})
+{
+    if (!plain(permissions) || !Array.isArray(permissions.deny) || !seatNames.length) return false;
+    const names = new Set(seatNames);
+    const gone = [];
+    for (let i = permissions.deny.length - 1; i >= 0; i--)
+        if (names.has(seatOfDenyRow(permissions.deny[i]))) gone.unshift(...permissions.deny.splice(i, 1));
+    if (!gone.length) return false;
+    if (report) for (const row of gone) report.remove('deny', seatOfDenyRow(row));
+    log(`  ${label}: agent deny rows removed (a seat is a project copy now, not a plugin item): ${gone.map(seatOfDenyRow).join(', ')}`);
+    if (tidy && !permissions.deny.length) delete permissions.deny;
+    return true;
+}
+
 function writeSettings(opts)
 {
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
-        agentDeny = [], agentAllow = [], agentHeld = [],
+        seatNames = [],
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
-        variablesFile = null, childEnv = null, keepOwn = false, carried = {}, routeKey = null, log = () => {}, note = () => {},
+        variablesFile = null, childEnv = null, keepOwn = false, carried = {}, routeKey = null, log = () => {}, note = () => {}, report = null,
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
     // wirings the RELEASE writes, whatever this run's selection wires.
     const prior = ledger.prior || null;
-    // A seat a release RENAMED (meta/stack-manifest.json `renamed`) loads under its new name only.
-    const seatNow = (seat) => ((renamed && renamed.agents) || {})[seat] || seat;
-
+    // The seats whose `Agent(<core>:<seat>)` row is the stack's to remove: those named, and every old name a seat was renamed from.
+    const seatRows = [...new Set([...seatNames, ...Object.keys((renamed && renamed.agents) || {})])];
     // M6: every log line names the file this run writes - settings.local.json at local scope.
     const label = path.basename(file);
     let data;
@@ -959,48 +977,11 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     if (deny) for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
-    // A renamed seat's core deny is re-spelled in place, so the user's switch-off holds under the new
-    // name; the read-back already read it that way (selection.js renameDeny). The stale-row pass runs it over settings.json too.
-    const respell = (list, lab) => [...list].filter((entry) =>
-    {
-        const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
-        if (!m || m[1] !== BRAND.core || seatNow(m[2]) === m[2]) return false;
-        const now = `Agent(${BRAND.core}:${seatNow(m[2])})`;
-        if (list.includes(now)) list.splice(list.indexOf(entry), 1);
-        else list[list.indexOf(entry)] = now;
-        log(`  ${lab}: ${entry} re-spelled ${now} (the seat was renamed)`);
-        return true;
-    }).length > 0;
-    if (deny && respell(deny, label)) changed = true;
+    // No seat is denied: every seat is a project copy, and an unpicked one has none. The `Agent(alfred-code:<seat>)` rows an
+    // older install wrote - for a seat this release ships, retired or renamed (`seatNames`) - go, ledgered or not; a row naming
+    // any other seat, and every other permission row, is the user's and stays.
+    if (deny && removeSeatDenies(data.permissions, seatRows, label, log, { report })) changed = true;
     if (rekeyOverrides(data, renamed, log, label)) changed = true;
-
-    // The agent off-list (Phase 8). Same array, two directions, and the ALLOW side runs last on
-    // purpose: a seat named by both lists is a seat this run installed, and resolving toward the
-    // seat WORKING is the safe direction - the other way silently disables what was just asked for.
-    // Both lists are empty on a run that holds no selection, which leaves the deny array exactly as
-    // it was; an --installed-only refresh passes the lists it READ BACK from this array, so it
-    // writes the same seat state it found. A seat's OTHER stack spellings go either way: a release
-    // that moved the seat to another entry left an entry addressing nothing.
-    const dropSeat = (rule, keep) =>
-    {
-        const seat = stackSeat(rule);
-        if (deny) for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
-        { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
-    };
-    for (const rule of agentDeny)
-    {
-        dropSeat(rule, rule);
-        if (deny && !deny.includes(rule)) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
-    }
-    for (const rule of agentAllow) dropSeat(rule, null);
-    // Workspace stage 3: a seat a member below picked - the stack's own deny row for it goes, a row it never wrote is the user's.
-    for (const rule of deny ? deny.filter((e) => agentHeld.includes(stackSeat(e))) : [])
-    {
-        if (!((prior && prior.deny) || []).some((d) => d.file === label && d.entry === rule)) { log(`  seat ${stackSeat(rule)} stays off here: your own deny row`); continue; }
-        deny.splice(deny.indexOf(rule), 1);
-        changed = true;
-        log(`  ${label}: agent allowed again ${rule} - a member below picked it`);
-    }
 
     // enabledMcpjsonServers: an earlier release pre-approved the .mcp.json servers it registered. The stack registers
     // none since 2.10.1, so the names it wrote leave (`mcpOff` - a name the user's own .mcp.json row holds is not
@@ -1182,9 +1163,9 @@ function writeSettings(opts)
     // An entry already there is the stack's only when the ledger recorded it IN THIS FILE: the same string
     // recorded for the other file (a local-scope install's own, before a move) never claims the team's
     // copy (review finding 1). With no ledger a secret-file deny is never claimed - it may be the team's,
-    // and a leftover after uninstall is harmless where a removed one is not (finding 6); a stack seat is.
+    // and a leftover after uninstall is harmless where a removed one is not (finding 6); the stack writes no seat row now.
     const managedDeny = deny ? deny.filter((entry) => !denyBefore.includes(entry)
-        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }))
+        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : false)).map((entry) => ({ file: label, entry }))
         : (priorDeny || []).filter((d) => d.file === label);
     // The release's wirings with the shell guards folded, plus the dispatcher row this run wrote (its
     // args name this selection's guards, which the release's own full row does not).
@@ -1284,14 +1265,14 @@ function writeSettings(opts)
             }
             if (!inheritedOverrides) rekeyOverrides(shared, renamed, log, sharedName);
             // At project and user scope the team file was the stack's until this stage: the docs step's removal, a retired
-            // server's approval and a renamed seat's deny still reach what an older install left there.
+            // server's approval and a seat's deny row still reach what an older install left there.
             if (keepOwn && docsPath && docsPath.remove && plain(shared.env) && Object.hasOwn(shared.env, 'ALFRED_CODE_DOCS_PATH'))
             {
                 log(`  ${sharedName} env: ALFRED_CODE_DOCS_PATH '${shared.env.ALFRED_CODE_DOCS_PATH}' removed (${docsPath.why})`);
                 delete shared.env.ALFRED_CODE_DOCS_PATH;
             }
             if (keepOwn) approvals(shared, sharedName);
-            if (keepOwn && plain(shared.permissions) && Array.isArray(shared.permissions.deny)) respell(shared.permissions.deny, sharedName);
+            if (keepOwn && removeSeatDenies(shared.permissions, seatRows, sharedName, log, { tidy: true, report }) && !Object.keys(shared.permissions).length) delete shared.permissions;
             if (JSON.stringify(shared) !== before)
             {
                 putFile(sharedFile, stringifyLike(shared, formatOf(sharedText)));
@@ -1702,6 +1683,6 @@ function moveToLocal({ claudeDir, ledger, shippedDeny = [], log = () => {}, note
     return carried;
 }
 
-module.exports = { mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
+module.exports = { seatOfDenyRow, mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
     isStackKey, writeSettings, wiringsOf, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, localUnusable, readBackSettings,
     unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

@@ -441,7 +441,7 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
     assert.deepStrictEqual(rows.filter((r) => !r.startsWith('new: rule ')), [
         'new: skill markdown-style\tarrives\t-',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
-        'new: agent code-style-analyzer\toff\talfred-code',
+        'new: agent code-style-analyzer\toff\t-',
         'new: hook docs-session\tarrives\talfred-code',
     ]);
     // a renamed line with no old copy on disk is a plain offer; its closure copies a library skill
@@ -454,9 +454,8 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
 // follows settings.json at project and user scope. The preflight reads the routes the installer's way:
 // a value only the local file holds yields to settings.json; a shell export it does not hold stands;
 // at local scope the local file is the install's own settings and stands too.
-test('new items: the routes are read the installer\'s way - a personal switch in settings.local.json yields to settings.json (N6)', () => {
-    // An always SEAT: it rides the core on the plugin route (arrives) and is copied only on a yes on the
-    // copy route - a skill is a copy on both since 2.1.0, so it no longer tells the routes apart.
+test('new items: a seat is offered the same on every route, whatever settings.local.json says - no entry carries it (N6 for seats)', () => {
+    // A seat is a copy on every route since it left the core, so the route (which derive-state's own N6 test reads) no longer shows in its row.
     const fixture = { files: [{ status: 'added', filename: 'stack/agents/evidence-gatherer.md' }] };
     const env = { ...process.env, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
     const verdict = ({ local, stamp }) =>
@@ -468,9 +467,10 @@ test('new items: the routes are read the installer\'s way - a personal switch in
         const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing], env);
         return (/^new: agent evidence-gatherer\t.*$/m.exec(out) || [out])[0];
     };
-    assert.strictEqual(verdict({ local: true }), 'new: agent evidence-gatherer\tarrives\talfred-code', 'a personal switch decided the committed route');
-    assert.match(verdict({ local: false }), /^new: agent evidence-gatherer\toffer\t-/, 'a shell export the local file does not hold is the run\'s own');
-    assert.match(verdict({ local: true, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n' }), /^new: agent evidence-gatherer\toffer\t-/, 'at local scope the local file is the install\'s own');
+    const seat = 'new: agent evidence-gatherer\toffer\t-\tleave';
+    assert.strictEqual(verdict({ local: true }), seat);
+    assert.strictEqual(verdict({ local: false }), seat);
+    assert.strictEqual(verdict({ local: true, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n' }), seat);
 });
 
 test('new items: a relative --root and --settings still read the stamp\'s ledgered local route (the copy route)', () => {
@@ -608,7 +608,7 @@ test('new items: global mode reads the account dir itself - its settings.json, n
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const { out } = run(['--snapshot', snap, '--root', acct, '--fixture', fixtureFile, '--listing', listing]);
-    assert.match(out, /^new: agent code-style-analyzer\toff\talfred-code$/m, out);
+    assert.match(out, /^new: agent code-style-analyzer\toff\t-$/m, out);
 });
 
 test('new items: an arriving rename still names its old copy for the prune; None holds while the core is listed, whatever its flag', () => {
@@ -651,7 +651,7 @@ test('new items: a stale disabled flag on the core changes no verdict - a core i
     assert.deepStrictEqual(out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule ')), [
         'new: skill markdown-style\tarrives\t-',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
-        'new: agent code-style-analyzer\toff\talfred-code',
+        'new: agent code-style-analyzer\toff\t-',
         'new: hook docs-session\tarrives\talfred-code',
     ]);
 });
@@ -668,7 +668,7 @@ test('new items: an explicit --marketplace wins over the listing\'s key - a skil
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const forced = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--marketplace', 'elsewhere']).out;
     assert.match(forced, /^new: skill markdown-style\tarrives\t-$/m, forced);
-    assert.match(forced, /^new: agent code-style-analyzer\toff\talfred-code$/m, forced);
+    assert.match(forced, /^new: agent code-style-analyzer\toff\t-$/m, forced);
 });
 
 // `claude plugin list --json` prints every project's project-scope rows. Another project on the same
@@ -719,7 +719,7 @@ test('new items: a deny or a hooks-off in settings.local.json is the user\'s off
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
-    assert.match(out, /^new: agent code-style-analyzer\toff\talfred-code$/m, out);
+    assert.match(out, /^new: agent code-style-analyzer\toff\t-$/m, out);
     assert.match(out, /^new: hook docs-session\toff\talfred-code$/m, out);
 });
 

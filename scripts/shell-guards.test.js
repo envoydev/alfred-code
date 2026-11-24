@@ -621,6 +621,26 @@ test('file-guards: a guard never judges a tool its row did not name; an ordinary
   }
 });
 
+test('file-guards sends one additionalContext for an edit that two guards note', () => {
+  const copy = path.join(TMP, 'fg-two-notes');
+  fs.cpSync(HOOKS, copy, { recursive: true });
+  fs.writeFileSync(path.join(copy, 'docs-session.js'), "'use strict';\nprocess.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'docs note' } }));\n");
+  const home = require('./test-paths').realLong(fs.mkdtempSync(path.join(TMP, 'fg-home-')));
+  const dir = path.join(home, 'ws');
+  fs.mkdirSync(path.join(dir, '.claude', 'rules'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'rules', 'cs-style.md'), '---\npaths:\n  - "**/*.cs"\n---\n\nWrite C# in the house style. More.\n');
+  fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
+  const r = run(path.join(copy, 'file-guards.js'), filePayload('Edit', { file_path: path.join(dir, 'a.cs'), old_string: 'a', new_string: 'b' }, dir, 'fg-two'),
+    { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout).hookSpecificOutput;
+  assert.strictEqual(out.hookEventName, 'PreToolUse');
+  assert.strictEqual(out.additionalContext, 'docs note\nRules for a.cs (key lines - the full text is in context):\n- cs-style: Write C# in the house style.', 'one block, the guards\' notes in manifest order');
+  const read = run(path.join(copy, 'file-guards.js'), filePayload('Read', { file_path: path.join(dir, 'a.cs') }, dir, 'fg-two-read'),
+    { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home } });
+  assert.strictEqual(read.stdout.includes('Rules for'), false, 'a Read gets no reminder');
+});
+
 test('file-guards: the protective secret guard is answered at once, and a guard list in the wiring runs exactly those guards', () => {
   const copy = path.join(TMP, 'fg-staller');
   fs.cpSync(HOOKS, copy, { recursive: true });
