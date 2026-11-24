@@ -18,7 +18,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   rulings`); `plan-status.js` (PF1, 3.12) is copied the same way, since the plan skills write a plan folder's
   `status.json` through `node .claude/hooks/plan-status.js`. The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
-  gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 80 (10 for each guard a dispatcher runs), from the
+  gets Claude Code's 600s) except `history-session.js`'s 60 on its `Stop` wiring (the turn build check rides it, below), `shell-guards.js`'s 100 and `file-guards.js`'s 90 (10 for each guard a dispatcher runs), from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches in exec form - `"command": "node"`, `"args":
   ["${CLAUDE_PLUGIN_ROOT}/<file>", ...]` (`build-marketplace.js` `launch`, Claude Code 2.1.139+) - so no shell starts it: on
   Windows a shell-form hook ran Git Bash's launcher, bash and then node, three processes a hook, and the user reported bash
@@ -342,9 +342,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   A dispatcher run past 1,000ms, timed from its own process start, writes one `mode: probe`, `kind: slow` row with each
   guard's ms, its own checks' and the boot's (`slowProbe`, audit 2026-10-14 HK15: 86 runs of 1s or more in a week, max
   12,086ms, and no row named the guard) - read a week of them before any guard's budget is tuned.
-  The eight guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
+  The nine guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
   three node processes): the read guard, the secret guard, the data-class guard, the post-compaction hold, the config and cross-project guards,
-  docs-session and preferences-session, each
+  docs-session, preferences-session and the rule loader (`rules-session.js`: the touch record behind the summary line and, on an edit tool, the key lines of the path rules matching the file, once per session, actor and file), each
   run only for the tools its own manifest row names (its `GUARDS` table, held to the manifest by a test), the secret
   guard run first and its exit 2 answered at once; instrumentation stays its own `.*` row. Both still launch in shell form (below). Measured on real Windows (ab-H15, 2026-11-21, Claude Code 2.1.309, Haiku `claude -p` on a Windows 11 VM, the copy route's shell-form rows): the file dispatcher's secret guard blocked a Read of a JSON holding an `openai_api_key`; with `file-guards.js` renamed away the Read was still blocked (`onFailure: block` holds there); and an exec-form SessionStart hook (`"command": "node"`, `args`) ran and wrote its marker - so exec form launches node on Windows. A `.env` Read proves nothing there: a permission deny rule refuses it before any hook runs.
   Every guard appends one row per BLOCK to `<data root>/statistics/hook-blocks/<session>.jsonl`

@@ -4,15 +4,20 @@
 // rules-summary.js - the native rules summary line the prompt reminder carries (communication-reminder.js requires it):
 // how many `.claude/rules` files Claude Code holds in context, a count pair per level from the topmost ancestor below the
 // home folder down to the session folder, then each touched child's total. A module, never a hook: no `main`, nothing wired.
-// `noteTouch` has its caller in the edit-time reminder (file-guards). Every function fails open.
+// `noteTouch` and `editNote` have their caller in rules-session.js's PreToolUse branch, which file-guards folds onto the
+// file tools. Every function fails open.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { pathGlob, pathsOf, mdFiles, RULE_FILES } = require(path.join(__dirname, 'rules-session.js'));
+const { pathGlob, pathsOf, keyLine, mdFiles, RULE_FILES } = require(path.join(__dirname, 'rules-session.js'));
 
 // THE SUMMARY LINE (card 'Layered native rules', 2026-11-23): how many native rules Claude Code holds in context, one count
 // pair per level from the topmost ancestor below the home folder down to the session folder, then each touched child's total.
 const SUMMARY_HEAD = 'Native rules, full text in context - follow them: ';
+// THE EDIT-TIME REMINDER: the key lines of the path rules that match a file about to change, sent once per session, actor and file.
+const EDIT_HEAD = (relative) => `Rules for ${relative} (key lines - the full text is in context):`;
+const AWARENESS_RULE = 'alfred-awareness.md';
+const editFile = (session, actor) => `rules-edit-${String(session || 'nosession').replace(/[^\w.-]/g, '_')}-${String(actor || 'main').replace(/[^\w.-]/g, '_')}.json`;
 const SETTINGS_FILES = ['settings.local.json', 'settings.json'];
 const touchFile = (session) => `rules-touched-${String(session || 'nosession').replace(/[^\w.-]/g, '_')}.json`;
 const homeOf = (env) => path.resolve(env.HOME || env.USERPROFILE || require('node:os').homedir());
@@ -136,4 +141,69 @@ function summaryLine(start, sessionId, env = process.env)
     catch { return ''; }
 }
 
-module.exports = { levelsOf, touchedOf, noteTouch, summaryLine, isBelow };
+const posixRelative = (from, to) => path.relative(from, to).split(path.sep).join('/');
+
+// The path rules of `folder` that match `real` (the file's real path), as '- <name>: <key line>' lines; an excluded rule is out.
+function matchingRules(folder, real, excludes)
+{
+    const dir = path.join(folder, ...RULE_FILES);
+    const rel = posixRelative(folder, real);
+    const lines = [];
+    for (const f of mdFiles(dir))
+    {
+        const file = path.join(dir, f);
+        if (excludes.some((re) => re.test(asGlobPath(file)))) continue;
+        let text = '';
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const hit = pathsOf(text).some((glob) => { const re = pathGlob(glob); return re && re.test(rel); });
+        if (hit) lines.push(`- ${f.slice(0, -3)}: ${keyLine(text)}`);
+    }
+    return lines;
+}
+
+// The reminder for one file: the matching rules' key lines from every level between the topmost ancestor (the summary's top level)
+// and the file's folder, top first, and the line naming the nearest child folder below the session folder that holds its own
+// alfred-awareness rule. '' when no path rule matched, the file sits outside the levels, or anything throws.
+function editReminder(file, start, env = process.env)
+{
+    try
+    {
+        const top = ancestorsOf(start, env)[0];
+        if (!top) return '';
+        const session = realOf(start);
+        const real = path.join(realFolderOf(file), path.basename(file));
+        const excludes = excludesOf([session]);
+        const lines = [];
+        let child = '';
+        for (let at = path.dirname(real); at === top || isBelow(top, at); at = path.dirname(at))
+        {
+            lines.unshift(...matchingRules(at, real, excludes));
+            if (!child && isBelow(session, at) && fs.existsSync(path.join(at, ...RULE_FILES, AWARENESS_RULE))) child = path.basename(at);
+        }
+        if (!lines.length) return '';
+        if (child) lines.push(`- ${child}'s alfred-awareness wins for this file.`);
+        return [EDIT_HEAD(posixRelative(session, real)), ...lines].join('\n');
+    }
+    catch { return ''; }
+}
+
+// `editReminder` once per session, actor and file: the record is `rules-edit-<session>-<actor>.json`, the real paths already sent.
+function editNote(project, sessionId, actor, file, env = process.env)
+{
+    try
+    {
+        const target = require(path.join(__dirname, 'layout.js')).statePath(project, 'sessions', editFile(sessionId, actor), env);
+        const kept = readJson(target);
+        const sent = Array.isArray(kept) ? kept.filter((x) => typeof x === 'string') : [];
+        const real = path.join(realFolderOf(file), path.basename(file));
+        if (sent.includes(real)) return '';
+        const text = editReminder(file, project, env);
+        if (!text) return '';
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, JSON.stringify([...sent, real]));
+        return text;
+    }
+    catch { return ''; }
+}
+
+module.exports = { levelsOf, touchedOf, noteTouch, summaryLine, isBelow, editReminder, editNote };

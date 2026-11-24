@@ -1041,6 +1041,12 @@
     },
     {
       "file": "rules-session.js",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
+      "event": "",
+      "note": "folded into file-guards: every file tool records which child folder holding its own .claude/rules the file sits in (the prompt reminder's summary line names it), and an Edit, Write, MultiEdit or NotebookEdit gets the key line of each path-scoped native rule matching its file, walked up from the file's folder, plus the child's alfred-awareness line, once per session, actor and file; a Read prints nothing; a Cursor payload gets nothing here"
+    },
+    {
+      "file": "rules-session.js",
       "matcher": "@SessionStart",
       "event": "--part 1",
       "note": "the one start part (9,900 characters): the store rules Claude Code does not load itself - one with no same-name file in .claude/rules yet - with the update hint, the workspace members index, and the line saying the stack's agents moved out of the plugin; a rule over the room is named, never cut. A Cursor payload gets every rule and each member's rules here. Prints nothing when every rule is native and no member or notice applies"

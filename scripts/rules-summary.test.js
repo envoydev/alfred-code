@@ -1,7 +1,10 @@
 'use strict';
 const test = require('node:test');
+// No inherited stack env, entrypoint or project dir (hook-test-env.js): the hook cases below spawn the real hook.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
 const { realLong } = require('./test-paths');
@@ -180,4 +183,117 @@ test('isBelow: a path counts only strictly below the project, on one drive (win3
     assert.strictEqual(isBelow('C:\\proj', 'C:\\proj', path.win32), false);
     assert.strictEqual(isBelow('C:\\proj', 'D:\\proj\\api', path.win32), false, 'a file on another drive');
     assert.strictEqual(isBelow('C:\\proj', 'C:\\other\\api', path.win32), false);
+});
+
+// ---- the edit-time reminder (card 'Layered native rules', Task 5) ------------------------------------------------
+const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'rules-session.js');
+const RULE_BODY = (text) => (paths) => `---\npaths:\n${paths.map((g) => `  - "${g}"`).join('\n')}\n---\n\n# Heading\n\n${text}\n`;
+function writeRule(folder, name, text)
+{
+    fs.mkdirSync(path.join(folder, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(folder, '.claude', 'rules', `${name}.md`), text);
+}
+// A root with a `**/*.cs` rule, a child `api` with a `/src/**` rule and its own alfred-awareness rule.
+function workspace(home)
+{
+    const root = path.join(home, 'ws-root');
+    const child = path.join(root, 'api');
+    writeRule(root, 'cs-style', RULE_BODY('Write C# in the house style. More words follow.')(['**/*.cs']));
+    writeRule(root, 'always-on', '# Always\n\nBe plain.\n');
+    writeRule(child, 'api-src', RULE_BODY('Keep the api source small. Second sentence.')(['/src/**']));
+    writeRule(child, 'alfred-awareness', '# Awareness\n\nThe api folder is its own project.\n');
+    fs.mkdirSync(path.join(child, 'src'), { recursive: true });
+    return { root, child, file: path.join(child, 'src', 'a.cs') };
+}
+
+test('an edit gets the key line of each matching path rule, walked up from the file', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const { root, file } = workspace(home);
+        const text = loader().editReminder(file, root, env);
+        const lines = text.split('\n');
+        assert.strictEqual(lines[0], 'Rules for api/src/a.cs (key lines - the full text is in context):');
+        assert.deepStrictEqual(lines.filter((l) => /^- (cs-style|api-src):/.test(l)),
+            ['- cs-style: Write C# in the house style.', '- api-src: Keep the api source small.'], 'the root rule first, then the child rule; the pathless rule is no line');
+        assert.strictEqual(loader().editReminder(path.join(root, 'api', 'notes.txt'), root, env), '', 'no glob matches: nothing');
+    }
+    finally { done(); }
+});
+
+test('a file under a child names that child\'s awareness', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const { root, file } = workspace(home);
+        assert.ok(loader().editReminder(file, root, env).split('\n').includes('- api\'s alfred-awareness wins for this file.'));
+        const own = path.join(root, 'top.cs');
+        assert.ok(!/awareness/.test(loader().editReminder(own, root, env)), 'a file of the project itself names no child');
+        assert.ok(loader().editReminder(own, root, env).includes('- cs-style:'));
+    }
+    finally { done(); }
+});
+
+test('the second edit of the same file sends nothing, and a new actor or session hears it again', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const { root, file } = workspace(home);
+        const first = loader().editNote(root, SESSION, 'main', file, env);
+        assert.match(first, /^Rules for api\/src\/a\.cs/);
+        assert.strictEqual(loader().editNote(root, SESSION, 'main', file, env), '');
+        assert.strictEqual(loader().editNote(root, SESSION, 'agent-7', file, env), first, 'the record is per actor');
+        assert.strictEqual(loader().editNote(root, 'sess-2', 'main', file, env), first, 'and per session');
+        assert.strictEqual(loader().editNote(root, SESSION, 'main', path.join(root, 'api', 'src', 'b.cs'), env).split('\n')[0],
+            'Rules for api/src/b.cs (key lines - the full text is in context):', 'another file is its own entry');
+        assert.ok(fs.existsSync(path.join(root, '.alfred', 'state', 'sessions', 'rules-edit-sess-1-main.json')));
+    }
+    finally { done(); }
+});
+
+test('an excluded rule is no line, and a garbage edit record changes nothing', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const { root, file } = workspace(home);
+        fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ claudeMdExcludes: ['**/ws-root/.claude/rules/cs-style.md'] }));
+        assert.ok(!loader().editReminder(file, root, env).includes('cs-style'));
+        const state = path.join(root, '.alfred', 'state', 'sessions');
+        fs.mkdirSync(state, { recursive: true });
+        fs.writeFileSync(path.join(state, 'rules-edit-sess-1-main.json'), 'garbage');
+        assert.match(loader().editNote(root, SESSION, 'main', file, env), /api-src/);
+    }
+    finally { done(); }
+});
+
+function hook(root, home, payload)
+{
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: SESSION, cwd: root, hook_event_name: 'PreToolUse', ...payload }),
+        encoding: 'utf8', cwd: root, env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PROJECT_DIR: root } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    return r.stdout;
+}
+
+test('a Read records the touch and prints nothing; the first Edit prints the reminder once', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const { root, child, file } = workspace(home);
+        assert.strictEqual(hook(root, home, { tool_name: 'Read', tool_input: { file_path: file } }), '');
+        assert.deepStrictEqual(loader().touchedOf(root, SESSION, env), [child], 'the touch is recorded');
+        assert.strictEqual(loader().summaryLine(root, SESSION, env), `${LINE_HEAD}ws-root (1 always-on, 1 by path) + api (2)`);
+        const out = JSON.parse(hook(root, home, { tool_name: 'Edit', tool_input: { file_path: file } })).hookSpecificOutput;
+        assert.strictEqual(out.hookEventName, 'PreToolUse');
+        assert.match(out.additionalContext, /^Rules for api\/src\/a\.cs \(key lines - the full text is in context\):\n- cs-style: /);
+        assert.strictEqual(hook(root, home, { tool_name: 'Edit', tool_input: { file_path: file } }), '', 'the second edit of the file: nothing');
+        assert.strictEqual(hook(root, home, { tool_name: 'Write', tool_input: { file_path: 'api/src/a.cs' } }), '', 'a relative path is the same file');
+        assert.strictEqual(hook(root, home, { tool_name: 'Edit', tool_input: { file_path: file }, cursor_version: '2.1.0' }), '', 'a Cursor payload: nothing');
+        assert.strictEqual(hook(root, home, { tool_name: 'Edit', tool_input: {} }), '', 'no file: nothing');
+    }
+    finally { done(); }
 });
