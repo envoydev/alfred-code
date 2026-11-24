@@ -11,7 +11,7 @@
 //   stale   - the stamp's release is older than the running stack's (plugins update themselves,
 //             library copies only move on /alfred-code:update); a stamp from before 2.1.0 (no
 //             `seats-route:`) under a stack at or past it also names the move - every skill into the
-//             project, every seat into the core - since until the update the house skills are not here
+//             project, every seat a linked library copy - since until the update the house skills are not here
 //   blocked - a skill set to 'off' or 'user-invocable-only' in skillOverrides that a rule copy still sends
 //             the model to (a backticked name): that Skill call fails
 //   native-rule-*, link-*, seat-deny-left, exclude-drift, agents-shared-repo - the project against the layered layout
@@ -187,7 +187,7 @@ function main(argv)
     const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid + res.blocked.length + res.unrecorded.length + res.layout.length - notes.length;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
     if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update${res.moved
-        ? ' (2.1.0 moved every skill into the project and every seat into the core - until the update runs here, the house skills are not copied and every seat is listed undenied)' : ''}`);
+        ? ' (2.1.0 moved every skill into the project, and every seat is now a library copy linked per pick, the core carries none - until the update runs here, the house skills are not copied and no seat is linked)' : ''}`);
     const say = { drift: 'edited in the project since update wrote it', missing: 'listed in the stamp, absent from the project', behind: 'the running stack ships a newer version' };
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
     for (const name of res.unrecorded) console.log(`unrecorded: skill ${name} - an older stack copy the stamp does not record; /alfred-code:update takes it over`);

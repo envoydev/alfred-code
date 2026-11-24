@@ -171,14 +171,14 @@ test('no shadow warning without a project stamp, whatever the account dir holds 
     assert.equal(runHook(f), '', 'no project stamp - no project copy for the account skill to shadow');
 });
 
-// 2.1.0 moved every skill into the project and every seat into the core, and the core updates itself
-// while the copies move only on /alfred-code:update: a stamp from before it (no `seats-route:` line)
-// under a 2.1 core is the skew window - the house skills the rules name are not installed yet, and every
-// seat is listed undenied. The line says so, and what fixes it.
+// 2.1.0 moved every skill into the project and the seats became linked library copies (the core carries none), and the
+// core updates itself while the copies move only on /alfred-code:update: a stamp from before it (no `seats-route:` line)
+// under a 2.1 core is the skew window - the house skills the rules name are not installed yet, and no seat is
+// linked. The line says so, and what fixes it.
 test('a stamp from before 2.1.0 under a 2.1 core names the skew window and the update that closes it', () =>
 {
     const out = JSON.parse(runHook(fx({ stampVersion: '2.0.0', stackVersion: '2.1.0' })));
-    assert.match(out.systemMessage, /from 2\.0\.0, and 2\.1\.0 moved every skill into the project and every seat into the core/);
+    assert.match(out.systemMessage, /from 2\.0\.0, and 2\.1\.0 moved every skill into the project, and every seat is now a library copy linked per pick, the core carries none/);
     assert.match(out.systemMessage, /run \/alfred-code:update now/);
     assert.equal(out.hookSpecificOutput.additionalContext, out.systemMessage);
     const later = JSON.parse(runHook(fx({ stampVersion: '1.3.0', stackVersion: '2.2.0' })));

@@ -7,11 +7,11 @@
 //
 // The project's own stamp is the one read: a repo never set up gets silence (B-I1).
 //
-// THE 2.1.0 SKEW WINDOW. 2.1.0 moved every skill out of the core into the project and every seat into
-// the core, each unpicked one denied. The core updates itself (another project's update, auto-update);
-// the copies and the denies move only on this project's /alfred-code:update. A stamp from before the
+// THE 2.1.0 SKEW WINDOW. 2.1.0 moved every skill out of the core into the project; the seats followed as library
+// copies linked per pick, and the core carries none. The core updates itself (another project's update, auto-update);
+// the copies and the links move only on this project's /alfred-code:update. A stamp from before the
 // move (no `seats-route:` line) under a core at or past 2.1.0 is that window - the house skills the
-// rules name are not installed yet and every seat is listed - so the line says it in those words.
+// rules name are not installed yet and no seat is linked - so the line says it in those words.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -72,7 +72,7 @@ function main()
     });
     if (!older && !shadowed.length) return;
     const parts = [];
-    if (moved) parts.push(`this project's skills and seats are from ${lib.version}, and 2.1.0 moved every skill into the project and every seat into the core (the stack is ${stack}) - until /alfred-code:update runs here the house skills the rules name are not installed and every seat is listed undenied: run /alfred-code:update now`);
+    if (moved) parts.push(`this project's skills and seats are from ${lib.version}, and 2.1.0 moved every skill into the project, and every seat is now a library copy linked per pick, the core carries none (the stack is ${stack}) - until /alfred-code:update runs here the house skills the rules name are not installed and no seat is linked: run /alfred-code:update now`);
     else if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);
     if (shadowed.length) parts.push(`an account skill overrides this project's own copy of the same name (Claude Code runs personal over project): ${shadowed.join(', ')} - remove the account copy once every project has updated`);
     const line = `alfred-code: ${parts.join('; ')}.`;

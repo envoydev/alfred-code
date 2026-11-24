@@ -107,12 +107,12 @@ test('a newer source is behind and the stamp stale', () =>
     assert.doesNotMatch(out, /behind: agent seat/, 'an unchanged source item is not behind');
 });
 
-// 2.1.0 moved every skill into the project and every seat into the core: a stamp from before it (no
+// 2.1.0 moved every skill into the project and the seats became linked library copies: a stamp from before it (no
 // `seats-route:`) under a source at or past it is the skew window, and the stale line names the move.
 test('a stamp from before 2.1.0 under a 2.1 source names the move in the stale line', () =>
 {
     const out = run(fx({ sourceVersion: '2.1.0' })).out;
-    assert.match(out, /stale stamp: the project copies are from 1\.3\.0, the stack is 2\.1\.0 - run \/alfred-code:update \(2\.1\.0 moved every skill into the project and every seat into the core/);
+    assert.match(out, /stale stamp: the project copies are from 1\.3\.0, the stack is 2\.1\.0 - run \/alfred-code:update \(2\.1\.0 moved every skill into the project, and every seat is now a library copy linked per pick, the core carries none/);
     const f = fx({ sourceVersion: '2.2.0' });
     const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
     fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^version: .*$/m, 'version: 2.1.0\nseats-route: plugin'));
