@@ -53,7 +53,7 @@ const fixedRoot = require('./fixed-root.js');
 const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
-const { effectiveVersioning, chainValueOf } = require('./versioning/effects.js');
+const { effectiveVersioning, chainValueOf, ownVersioningLine } = require('./versioning/effects.js');
 const agentFolders = require('./agent-folders/effects.js');
 const { isStackText } = require('./agent-folders/plan.js');
 const { KEY: DOCS_VERSIONING_KEY } = require('./versioning/constants.js');
@@ -901,11 +901,13 @@ function runLayers(ctx)
     // Each project an older release would now misread, the records this run converted being workspace.json.
     for (const line of workspace.olderProjectLines({ conversions: workspace.takeConversions(), release: releaseVersion(ctx.source.dir), compare: compareVersions, env: ctx.env })) ctx.log(`  ${line}`);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
+    const dataIgnoreBefore = readOrNull(path.join(ctx.projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore'));
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
     // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
     if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
         told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true });
+    if (!ctx.args.printPlan) versioningNoticeStep(ctx, dataIgnoreBefore);
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
     try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal: (c, file) => warnUnignoredLocal(c.projectRoot, file, c) }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
@@ -1086,6 +1088,22 @@ function versioningStep(ctx)
         ctx.note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`);
         ctx.versioning = { value: null, source: 'seed', advice: null, linked: false, chain: undefined };
     }
+}
+
+// D6b: a linked child says what an inherited or pulled docs versioning changed; each value once, on the told-tracked record.
+function versioningNoticeStep(ctx, dataIgnoreBefore)
+{
+    if (!(ctx.childEnv && ctx.childEnv.linked) || !ctx.versioning.advice) return;
+    const { projectRoot, versioning } = ctx;
+    const told = [...ctx.agentRecord.toldTracked];
+    const lines = workspace.versioningNotices(projectRoot, {
+        scope: ctx.args.scope, before: dataIgnoreBefore, after: readOrNull(path.join(projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore')),
+        value: versioning.value, source: versioning.source, seed: versioning.advice.value, chain: versioning.chain,
+        ownLine: ownVersioningLine({ projectRoot, dataRoot: ctx.dataInfo.root }), ledgerRow: (((ctx.ledger || {}).env || {})['.variables'] || {})[DOCS_VERSIONING_KEY],
+        answered: (Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(ctx.stampFile)).includes(DOCS_VERSIONING_KEY), said: told,
+    });
+    for (const line of lines) ctx.log(`  ${line}`);
+    ctx.agentRecord = { ...ctx.agentRecord, toldTracked: [...new Set(told)].sort() };
 }
 
 function ignoreStep(ctx, docsPath)

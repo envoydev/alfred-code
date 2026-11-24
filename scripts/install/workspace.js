@@ -721,6 +721,36 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     return { dropped: true, kept: null };
 }
 
+// D6b: the lines a linked child's run says about an inherited or pulled docs versioning, as strings. `before` / `after` are
+// the data root's `.gitignore` texts around the ignore step; `said` is the stamp's told-tracked record, and a line said now
+// adds its key to it (an array handed in is appended to), so the next run stays silent. Git is asked whether it tracks the file.
+function versioningNotices(projectRoot, { scope, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said = [], exec = runtime.execCommand } = {})
+{
+    const { noticeRows } = require('./versioning/notices.js');
+    const file = `${dataRootMod.dataRootOf({ projectDir: projectRoot }).root}/.gitignore`;
+    let tracked = false;
+    try { tracked = String(exec('git', ['ls-files', '--', file], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
+    catch { tracked = false; }
+    const rows = noticeRows({ scope, tracked, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said });
+    for (const row of rows) said.push(row.key);
+    return rows.map((row) => row.line);
+}
+
+// D7: the line for a child below this root whose data root `.gitignore` names another versioning than the child reads
+// (its own ranking, ledger and answers, from its own stamp), or null. Reads the head line only and writes nothing.
+function laggingLine(child, rel, childEnv)
+{
+    const { effectiveVersioning } = require('./versioning/effects.js');
+    const { lagLine } = require('./versioning/notices.js');
+    const copy = require('./copy.js');
+    let text;
+    try { text = fs.readFileSync(path.join(child, ...dataRootMod.dataRootOf({ projectDir: child }).root.split('/'), '.gitignore'), 'utf8'); }
+    catch { return null; }
+    const scope = stamp.readStampScope(stamp.stampFiles({ projectRoot: child }).read || '');
+    const { value } = effectiveVersioning({ projectRoot: child, scope, docsPath: copy.resolveDocsRoot(child, scope), dataRoot: dataRootMod.dataRootOf({ projectDir: child }).root, env: childEnv });
+    return lagLine({ rel, text, value });
+}
+
 // Leaving a tree (D5): every value the project reads through the chain is written into its own `.variables` first, so
 // nothing changes - a member's seed (its value at the member's ledger hash) keeps a seed's ledger row here. With the
 // parent gone there is no chain to read: the keys the project does not hold read the stack's defaults now, named, and
@@ -1436,6 +1466,9 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
         relink(child, top, rel, ownRead.view.ignores || [], log);
+        // D7: read-only; a child whose data root file lags its versioning is named, whatever else happens to its excludes below.
+        try { const lag = laggingLine(child, rel, childEnv); if (lag) log(lag); }
+        catch { /* the lag line is a courtesy, never a stop */ }
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -2260,7 +2293,7 @@ module.exports = {
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, layerHolding, keepOnLeave, chain, subtree, rescan, nestedInstalls,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, versioningNotices, layerHolding, keepOnLeave, chain, subtree, rescan, nestedInstalls,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,

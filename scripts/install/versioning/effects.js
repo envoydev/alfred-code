@@ -34,4 +34,12 @@ function effectiveVersioning({ projectRoot, scope, docsPath, dataRoot, env = pro
     return { value, source, advice, linked, chain };
 }
 
-module.exports = { effectiveVersioning, chainValueOf };
+// The project's own `.variables` line for the key, as a value (undefined: no file, no line or a garbage one).
+function ownVersioningLine({ projectRoot, dataRoot })
+{
+    const variables = require('../variables.js');
+    try { return normaliseValue(variables.read(variables.fileOf(projectRoot, { env: {}, dataRoot })).values[KEY]); }
+    catch { return undefined; }
+}
+
+module.exports = { effectiveVersioning, chainValueOf, ownVersioningLine };

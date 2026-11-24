@@ -294,3 +294,129 @@ test('local scope names the seed and removes nothing', POSIX_ONLY, () =>
     assert.deepStrictEqual(r.steps[2], r.steps[1], r.outs[2]);
     assert.match(r.outs[2], /workspace: ALFRED_CODE_DOCS_VERSIONING 'local' in \.alfred\/\.variables is the stack's seed .* leaves it as it is/, r.outs[2]);
 });
+
+// ------------------------------------------------------------------ task 7: the notices (D6b, D7)
+
+const TRACKED_HEAD = (value) => `# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=${value})\n/*\n!/.gitignore\n`;
+const CHAINED_LINE = 'docs versioning local comes from the workspace and changed .alfred/.gitignore, which git tracks - teammates without the workspace read git; set ALFRED_CODE_DOCS_VERSIONING here to share it';
+const PULLED_LINE = 'docs versioning git in .variables came from another machine and outranks the workspace\'s local - remove the line to inherit, or keep it to share git';
+
+// A child whose `.alfred/.gitignore` holds `before` and is tracked (or not) by git.
+const trackedChild = ({ tracked = true, before = TRACKED_HEAD('git') } = {}) =>
+{
+    const at = joined();
+    fs.writeFileSync(path.join(at.child, '.alfred', '.gitignore'), before);
+    if (tracked) execFileSync('git', ['add', '-f', '.alfred/.gitignore'], { cwd: at.child });
+    return at;
+};
+const chainedInput = (over = {}) => ({ scope: 'project', before: TRACKED_HEAD('git'), after: TRACKED_HEAD('local'), value: 'local', source: 'chain', seed: 'git', chain: 'local', said: [], ...over });
+
+test('a project-scope child whose tracked .alfred/.gitignore changes says D6b\'s line once', () =>
+{
+    const at = trackedChild();
+    const said = [];
+    assert.deepStrictEqual(ws.versioningNotices(at.child, chainedInput({ said })), [CHAINED_LINE]);
+    assert.deepStrictEqual(said, ['versioning:local'], 'the value is recorded for the stamp');
+    assert.deepStrictEqual(ws.versioningNotices(at.child, chainedInput({ said })), [], 'said once per value');
+    const other = trackedChild();
+    assert.deepStrictEqual(ws.versioningNotices(other.child, chainedInput({ scope: 'user' })), [CHAINED_LINE], 'user scope shares the file too');
+});
+
+test('a tracked .alfred/.gitignore that did not change because of the inherited value says nothing', () =>
+{
+    const at = trackedChild();
+    const quiet = (over) => ws.versioningNotices(at.child, chainedInput(over));
+    assert.deepStrictEqual(quiet({ before: TRACKED_HEAD('local') }), [], 'the marker was already the value');
+    assert.deepStrictEqual(quiet({ after: TRACKED_HEAD('git') }), [], 'the text holds another marker');
+    assert.deepStrictEqual(quiet({ source: 'own' }), [], 'the value is the project\'s own');
+    assert.deepStrictEqual(quiet({ before: null, after: null }), [], 'no file');
+    const untracked = trackedChild({ tracked: false });
+    assert.deepStrictEqual(ws.versioningNotices(untracked.child, chainedInput()), [], 'git does not track the file');
+});
+
+test('a local-scope child says nothing', () =>
+{
+    const at = trackedChild();
+    assert.deepStrictEqual(ws.versioningNotices(at.child, chainedInput({ scope: 'local' })), []);
+});
+
+test('a line with no ledger row says the pulled-seed line once, removes nothing', () =>
+{
+    const at = joined({ child: `${KEY}=git\n` });
+    const before = varsText(at.child);
+    const said = [];
+    const input = { scope: 'project', before: null, after: null, value: 'git', source: 'own', seed: 'git', ownLine: 'git', ledgerRow: undefined, answered: false, chain: 'local', said };
+    assert.deepStrictEqual(ws.versioningNotices(at.child, input), [PULLED_LINE]);
+    assert.deepStrictEqual(said, ['versioning-pulled:git']);
+    assert.deepStrictEqual(ws.versioningNotices(at.child, input), [], 'said once per value');
+    assert.strictEqual(varsText(at.child), before, 'the line stays');
+    for (const [why, over] of [['a ledger row', { ledgerRow: hashOf('git') }], ['an answer', { answered: true }], ['the chain\'s own value', { chain: 'git' }], ['no chain', { chain: undefined }]])
+        assert.deepStrictEqual(ws.versioningNotices(at.child, { ...input, said: [], ...over }), [], why);
+});
+
+const lagging = (marker, { text } = {}) =>
+{
+    const at = joined();
+    if (text !== undefined || marker) fs.writeFileSync(path.join(at.child, '.alfred', '.gitignore'), text !== undefined ? text : TRACKED_HEAD(marker));
+    const lines = [];
+    ws.refreshBelow({ projectRoot: at.root, env: ON, log: (l) => lines.push(l) });
+    return lines.filter((l) => /reads versioning/.test(l));
+};
+
+test('refreshBelow names a child whose marker differs', () =>
+{
+    assert.deepStrictEqual(lagging('git'), ['workspace: api reads versioning local from here - its .gitignore files follow at its next update']);
+});
+
+test('refreshBelow names none when current, for the .branches line alone, or with no marker', () =>
+{
+    assert.deepStrictEqual(lagging('local'), [], 'current');
+    assert.deepStrictEqual(lagging(null, { text: `${TRACKED_HEAD('local')}/.alfred/docs/.branches/\n` }), [], 'the .branches line alone');
+    assert.deepStrictEqual(lagging(null, { text: '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local\n*\n' }), [], 'no marker');
+    assert.deepStrictEqual(lagging(null), [], 'no file');
+});
+
+test('refreshBelow writes nothing in the child and a firm child is never named', () =>
+{
+    const at = joined({ child: `${KEY}=git\n` });
+    const file = path.join(at.child, '.alfred', '.gitignore');
+    fs.writeFileSync(file, TRACKED_HEAD('git'));
+    const lines = [];
+    ws.refreshBelow({ projectRoot: at.root, env: ON, log: (l) => lines.push(l) });
+    assert.ok(!lines.some((l) => /reads versioning/.test(l)), 'the child\'s own git is its answer, not the root\'s local');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), TRACKED_HEAD('git'));
+    assert.strictEqual(varsText(at.child), `${KEY}=git\n`);
+});
+
+test('a project-scope child run says D6b\'s line when the inherited value changes its tracked file, and records it', POSIX_ONLY, () =>
+{
+    const track = (work) =>
+    {
+        fs.mkdirSync(path.join(childAt(work), '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(childAt(work), '.alfred', '.gitignore'), `${TRACKED_HEAD('git').split('\n')[0]}\n/*\n!/.gitignore\n!/.variables\n!/docs/\n`);
+        execFileSync('git', ['add', '-f', '.alfred/.gitignore'], { cwd: childAt(work) });
+        join(work);
+    };
+    const told = (work) => stampLib.readToldTracked(stampAt(childAt(work)));
+    const r = scenario([{}, { at: API, args: ['--scope', 'project'], before: track, after: told }, { at: API, act: 'update', after: told }]);
+    assert.ok(r.outs[1].includes(CHAINED_LINE), r.outs[1]);
+    assert.deepStrictEqual(r.steps[1], ['versioning:local']);
+    assert.ok(!r.outs[2].includes(CHAINED_LINE), r.outs[2]);
+    assert.deepStrictEqual(r.steps[2], ['versioning:local'], 'the record stays');
+});
+
+test('a pulled versioning line says D6b\'s second line once and stays', POSIX_ONLY, () =>
+{
+    const pull = (work) =>
+    {
+        fs.mkdirSync(path.join(childAt(work), '.alfred'), { recursive: true });
+        fs.writeFileSync(path.join(childAt(work), '.alfred', '.variables'), `${KEY}=git\n`);
+        join(work);
+    };
+    const told = (work) => ({ told: stampLib.readToldTracked(stampAt(childAt(work))), line: look(work).own });
+    const r = scenario([{}, { at: API, args: ['--scope', 'project'], before: pull, after: told }, { at: API, act: 'update', after: told }]);
+    assert.ok(r.outs[1].includes(PULLED_LINE), r.outs[1]);
+    assert.deepStrictEqual(r.steps[1], { told: ['versioning-pulled:git'], line: 'git' });
+    assert.ok(!r.outs[2].includes(PULLED_LINE), r.outs[2]);
+    assert.deepStrictEqual(r.steps[2], r.steps[1], 'the line and the record stay');
+});
