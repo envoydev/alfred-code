@@ -565,11 +565,12 @@ test('root: a run with the workspace switched off keeps its members\' picks in i
 
 test('child: on the copy route its move to the project scope copies the root\'s items and leaves the root\'s store as it was', POSIX_ONLY, () =>
 {
+    // The move names git versioning: the root's `local` would hide .claude at project scope too (the agent-folder pass), and links stay.
     const mark = (ws) => [store(ws, 'skills', 'javascript/SKILL.md'), store(ws, 'agents', 'evidence-gatherer.md')];
     const { outs, steps } = child([
         { at: '.', env: COPY, sel: `${KID_SEL}agent evidence-gatherer\n` },
         { at: 'api', before: joinApi, env: COPY, sel: `${KID_SEL}agent evidence-gatherer\n` },
-        { at: 'api', act: 'update', env: COPY, args: ['--scope', 'project'], before: (ws) => mark(ws).forEach((f) => fs.appendFileSync(f, '\nroot-mark\n')),
+        { at: 'api', act: 'update', env: COPY, args: ['--scope', 'project', '--docs-versioning', 'git'], before: (ws) => mark(ws).forEach((f) => fs.appendFileSync(f, '\nroot-mark\n')),
             after: (ws) => ({ root: mark(ws).map((f) => fs.readFileSync(f, 'utf8').includes('root-mark')), kid: lstat(claude(path.join(ws, 'api'), 'skills', 'javascript')) }) },
     ]);
     assert.deepStrictEqual(steps[2].root, [true, true], outs[2]);

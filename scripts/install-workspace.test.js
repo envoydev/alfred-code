@@ -62,9 +62,12 @@ const setEnv = (work, rel, file, values) =>
     fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
 };
 
-function layout(work)
+function layout(work, { rootRepo = true } = {})
 {
     fs.mkdirSync(at(work), { recursive: true });
+    // A root inside no repository reads docs versioning `local` (firm), which its children inherit and which would hide their
+    // `.claude` (the agent-folder pass); most cases are about the workspace's picks, so the root is a repository too.
+    if (rootRepo) rt.execCommand('git', ['init', '-q', at(work)]);
     for (const rel of ['api', 'web', 'api/tool'])
     {
         fs.mkdirSync(at(work, rel), { recursive: true });
@@ -92,7 +95,7 @@ const addKey = (work, rel, key, value) =>
 };
 
 // One sandbox, one step per entry: { at, act, sel, args: [] | (work) => [], env, before(work), after(work) }.
-function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false, failOk = false } = {})
+function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false, failOk = false, rootRepo = true } = {})
 {
     return seedRun(steps.map((s) => s.act || 'install'), '', {
         plugins, account, failOk,
@@ -107,7 +110,7 @@ function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = fals
             fs.writeFileSync(sel, s.sel ?? ROOT_SEL);
             return ['--selection', sel, ...(typeof s.args === 'function' ? s.args(work) : s.args || [])];
         }),
-        prepare: (repo, work) => { layout(work); prepare(work); },
+        prepare: (repo, work) => { layout(work, { rootRepo }); prepare(work); },
         each: (repo, i) => (steps[i].after ? steps[i].after(path.dirname(repo)) : null),
     });
 }
@@ -373,7 +376,8 @@ test('AC15: leaving keeps every effective value; with ws deleted the child is se
     const defaults = named[2].split(', ');
     assert.strictEqual(Number(named[1]), defaults.length);
     assert.ok(defaults.length > 0 && defaults.every((k) => !held.includes(k)), `${held} / ${defaults}`);
-    assert.ok(!defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !defaults.includes('ALFRED_CODE_WORKSPACE'));
+    // A child under a valued root holds no seed of the docs versioning (D3), so with the root gone it reads the default and the next update seeds it.
+    assert.ok(defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !held.includes('ALFRED_CODE_DOCS_VERSIONING') && !defaults.includes('ALFRED_CODE_WORKSPACE'));
     assert.deepStrictEqual(gone.steps[3].ws, { role: 'standalone', above: 'none' });
     const seeded = gone.steps[4].vars;
     const fresh = Object.keys(seeded).filter((k) => !held.includes(k));
@@ -426,7 +430,7 @@ test('AC24: a 2.12.0 standalone joined at update and through configure reads SCO
 
 // AC24 in the update walk's own order: the role answer runs BEFORE the installer call, so the 2.12.0 seeds are still in
 // settings.json when the project joins - the move must drop them as the join's prune would, never carry them in as its own.
-test('AC24: answered before the update moves its values, a 2.12.0 standalone still holds only its typed key and DOCS_VERSIONING', skipWithout('v2.12.0'), () =>
+test('AC24: answered before the update moves its values, a 2.12.0 standalone still holds only its typed key, and its docs seed leaves', skipWithout('v2.12.0'), () =>
 {
     const old = releaseExport('v2.12.0');
     const OLD = old && { seed: path.join(old, 'scripts', 'install', 'alfred-code.js'), source: old };
@@ -446,7 +450,8 @@ test('AC24: answered before the update moves its values, a 2.12.0 standalone sti
     assert.strictEqual(joined.from[LEVEL], '..');
     // Mode v2 stage 2: the 2.12 seeds at their ledger hash move to settings.local.json, where the prune drops them; the typed
     // value is a row changed since the stack wrote it, so it stays in settings.json and is still the one read.
-    assert.deepStrictEqual(Object.keys(joined.vars).sort(), ['ALFRED_CODE_DOCS_VERSIONING'], `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
+    // The update after the join runs the remover (D3): the 2.12 child's own docs seed is no answer and the root answers it, so it leaves too.
+    assert.deepStrictEqual(Object.keys(joined.vars).sort(), [], `${JSON.stringify(joined.vars)}\n${r.outs[4]}`);
     assert.strictEqual(joined.effective[NUDGE], 'inject');
     const left = Object.keys(JSON.parse(joined.settings).env || {}).filter((k) => layoutLib.VARIABLE_KEYS.includes(k));
     assert.deepStrictEqual(left, [NUDGE], 'no stack value left in settings.json, only the typed one');
@@ -494,13 +499,15 @@ test('W1: an update in a joined child drops every value equal to the workspace\'
     const r = scenario([{ at: '.' }, { at: 'api', after: w1Join }, update('api', { after: w1Read }), update('api', { after: w1Read })]);
     const [before, first, again] = [r.steps[1], r.steps[2], r.steps[3]];
     assert.ok(Object.keys(before.vars).length > 2, `the standalone child held its seeds: ${before.text}`);
-    const equal = Object.keys(first.vars).filter((k) => !layoutLib.MEMBER_NEVER.has(k) && first.root[k] === first.vars[k]);
+    const equal = Object.keys(first.vars).filter((k) => !layoutLib.MEMBER_NEVER.has(k) && !layoutLib.CHAIN_PRUNE_NEVER.has(k) && first.root[k] === first.vars[k]);
     assert.deepStrictEqual(equal, [], `no value equal to the root's is left: ${first.text}\n${r.outs[2]}`);
     assert.ok(!Object.hasOwn(first.vars, W1_EQ), first.text);
     assert.strictEqual(first.vars[W1_OWN], '9');
     const rows = [...first.env.matchAll(/\.variables:([A-Z0-9_]+)=/g)].map((m) => m[1]);
     assert.deepStrictEqual(rows.filter((k) => !Object.hasOwn(first.vars, k)), [], `no row for a key the file no longer holds: ${first.env}`);
-    assert.deepStrictEqual(first.effective, before.effective, r.outs[2]);
+    // The standalone's own docs seed (git) is the stack's, not an answer: the remover takes it out and the root's value is read (D3).
+    assert.ok(!Object.hasOwn(first.vars, 'ALFRED_CODE_DOCS_VERSIONING'), first.text);
+    assert.deepStrictEqual(first.effective, { ...before.effective, ALFRED_CODE_DOCS_VERSIONING: first.root.ALFRED_CODE_DOCS_VERSIONING }, r.outs[2]);
     assert.match(r.outs[2], new RegExp(`^==>\\s+workspace: \\d+ values equal to the workspace's removed from \\.alfred\\/\\.variables \\(.*${W1_EQ}.*\\) - \\d+ kept as this project's own`, 'm'), r.outs[2]);
     assert.deepStrictEqual([again.text, again.env], [first.text, first.env], r.outs[3]);
     assert.ok(!W1_PRUNED.test(r.outs[3]), r.outs[3]);
@@ -670,7 +677,88 @@ test('AC19: a launch 0 in ws/api reads a chain of one and an install there remov
     ]);
     assert.strictEqual(r.steps[1].from, '..', `unset is on: the child reads the root's value through the chain: ${r.outs[1]}`);
     assert.notStrictEqual(r.steps[2].from, '..', 'a launch 0 reads a chain of one');
-    assert.deepStrictEqual(r.steps[2].files, r.steps[1].files, `the workspace files and the .variables files are unchanged: ${r.outs[2]}`);
+    // These cases are about a child under a VALUED root: the root is a repository, so it seeds `git`, which the child inherits (no line). A plain-folder root seeds none (only a chosen value chains).
+    // At 0 the chain is empty, so the child seeds its docs versioning as a standalone would (D3: no chain value, as before); nothing else moves.
+    const seeded = [...r.steps[1].files];
+    seeded[3] = 'ALFRED_CODE_DOCS_VERSIONING=git\n';
+    assert.strictEqual(r.steps[1].files[3], null, 'a child under a valued root seeds no versioning line');
+    assert.deepStrictEqual(r.steps[2].files, seeded, `the workspace files are unchanged, nothing is removed, the docs versioning seeded: ${r.outs[2]}`);
+});
+
+// A project outside any git repository seeds no docs versioning (only a chosen value chains): a plain-folder root hands its
+// git children nothing, so their `.claude` stays visible and no `.cursor` is made.
+const DV = 'ALFRED_CODE_DOCS_VERSIONING';
+const kidAgentFolders = (work) =>
+{
+    const dir = at(work, 'api');
+    const skill = (() => { try { return fs.lstatSync(path.join(dir, '.claude', 'skills', 'javascript')); } catch { return null; } })();
+    return { gitignore: readOr(path.join(dir, '.claude', '.gitignore')), cursor: fs.existsSync(path.join(dir, '.cursor')), copy: Boolean(skill) && skill.isDirectory() && !skill.isSymbolicLink(), vars: varsOf(work, 'api')[DV] };
+};
+const seedRow = (work) => lineOf(stampOf(work, '.'), 'managed-env') || '';
+// What an older release left in a plain-folder root: the seed in `.variables` and its ledger row at the seed's hash.
+const plantRootSeed = (work) =>
+{
+    const vars = path.join(at(work), '.alfred', '.variables');
+    fs.writeFileSync(vars, `${readOr(vars, '')}${DV}=local\n`);
+    const stamp = path.join(at(work), '.claude', 'alfred-code.stamp');
+    fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^managed-env: ?(.*)$/m, (_, rest) => `managed-env: ${rest ? `${rest},` : ''}.variables:${DV}=${stampLib.valueHash('local')}`));
+};
+
+test('plain-folder root: it seeds no docs versioning, and its git child keeps .claude visible and makes no .cursor', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); return { vars: varsOf(work, '.')[DV], row: seedRow(work) }; } },
+        { at: 'api', after: kidAgentFolders },
+        update('api', { after: kidAgentFolders }),
+    ], { rootRepo: false });
+    assert.strictEqual(r.steps[0].vars, undefined, r.outs[0]);
+    assert.ok(!r.steps[0].row.includes(`.variables:${DV}`), r.steps[0].row);
+    for (const i of [1, 2]) assert.deepStrictEqual(r.steps[i], { gitignore: null, cursor: false, copy: true, vars: r.steps[i].vars }, r.outs[i]);
+});
+
+test('plain-folder root: an older root\'s stack seed leaves on update, and the child is still not hidden', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { plantRootSeed(work); return { vars: varsOf(work, '.')[DV], row: seedRow(work) }; } },
+        update('.', { after: (work) => { join(work, 'api'); return { vars: varsOf(work, '.')[DV], row: seedRow(work) }; } }),
+        { at: 'api' },
+        update('api', { after: kidAgentFolders }),
+    ], { rootRepo: false });
+    assert.strictEqual(r.steps[0].vars, 'local', 'setup: the older root\'s seed is there');
+    assert.ok(r.steps[0].row.includes(`.variables:${DV}=`), r.steps[0].row);
+    assert.strictEqual(r.steps[1].vars, undefined, r.outs[1]);
+    assert.ok(!r.steps[1].row.includes(`.variables:${DV}`), r.steps[1].row);
+    assert.match(r.outs[1], /removed from \.alfred\/\.variables - the stack's seed; a folder outside any git repository seeds none/);
+    assert.deepStrictEqual({ ...r.steps[3], vars: null }, { gitignore: null, cursor: false, copy: true, vars: null }, r.outs[3]);
+});
+
+test('plain-folder root: a child run before its older root updates takes no stale seed, keeps its own seed and files, and is told to update the root', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { plantRootSeed(work); join(work, 'api'); } },
+        { at: 'api', after: kidAgentFolders },
+        update('api', { after: kidAgentFolders }),
+        update('.', { after: (work) => varsOf(work, '.')[DV] }),
+        update('api', { after: kidAgentFolders }),
+    ], { rootRepo: false });
+    for (const i of [1, 2]) assert.deepStrictEqual(r.steps[i], { gitignore: null, cursor: false, copy: true, vars: 'git' }, `the child keeps its own seed and its files: ${r.outs[i]}`);
+    assert.match(r.outs[1], /workspace: .* update \.\. first/, r.outs[1]);
+    assert.strictEqual(r.steps[3], undefined, `the root's own run removes the seed: ${r.outs[3]}`);
+    assert.deepStrictEqual(r.steps[4], { gitignore: null, cursor: false, copy: true, vars: r.steps[4].vars }, r.outs[4]);
+    assert.doesNotMatch(r.outs[4], /update \.\. first/, r.outs[4]);
+});
+
+test('plain-folder root: a value the user typed local still hands it on, and the child hides .claude and .cursor', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); setVar(work, '.', { [DV]: 'local' }); } },
+        update('.', { after: (work) => varsOf(work, '.')[DV] }),
+        { at: 'api', after: (work) => ({ ...kidAgentFolders(work), cursorFile: readOr(path.join(at(work, 'api'), '.cursor', '.gitignore')) }) },
+    ], { rootRepo: false });
+    assert.strictEqual(r.steps[1], 'local', 'the typed value stays at the root');
+    assert.match(r.steps[2].gitignore, /versioning local - nothing under \.claude is committed/, r.outs[2]);
+    assert.match(r.steps[2].cursorFile, /versioning local - nothing under \.cursor is committed/);
+    assert.strictEqual(r.steps[2].vars, undefined, 'the child holds no line of its own');
 });
 
 test('a parent read-back that fails adds and drops nothing and prints one !! line', POSIX_ONLY, () =>
@@ -686,7 +774,7 @@ test('a parent read-back that fails adds and drops nothing and prints one !! lin
     assert.match(r.outs[3], /nothing inherited is added or dropped this run/);
 });
 
-test('kill switch: at 0, nothing is added, dropped, re-seeded or removed and the own lines are carried (AC16)', POSIX_ONLY, () =>
+test('kill switch: at 0, nothing is added or dropped, the own lines are carried and the child seeds its docs versioning as a standalone would (AC16)', POSIX_ONLY, () =>
 {
     const keep = (work) => ({ own: lineOf(stampOf(work, 'api'), 'own-picks'), ex: excludesOf(work, 'api').length, vars: varsOf(work, 'api'), x: hasSkill(work, 'api', X) });
     const r = scenario([
@@ -694,12 +782,14 @@ test('kill switch: at 0, nothing is added, dropped, re-seeded or removed and the
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: keep },
         update('.', { args: ['--add', `skill ${X}`], after: (work) => setVar(work, '.', { [SC]: '1' }) }),
         update('api', { env: { ALFRED_CODE_WORKSPACE: '0' }, after: keep }),
-        update('api', { after: (work) => effectiveOf(work, 'api')[SC] }),
+        update('api', { after: (work) => ({ level: effectiveOf(work, 'api')[SC], versioning: varsOf(work, 'api').ALFRED_CODE_DOCS_VERSIONING }) }),
     ]);
     assert.ok(r.steps[1].ex > 0);
-    assert.deepStrictEqual(Object.keys(r.steps[1].vars), ['ALFRED_CODE_DOCS_VERSIONING'], 'a child seeds no chained key');
-    assert.deepStrictEqual(r.steps[3], r.steps[1], r.outs[3]);
-    assert.strictEqual(r.steps[4], '1', 'switched back on, the root\'s value reaches the child - nothing seeded at 0 shadows it');
+    assert.deepStrictEqual(Object.keys(r.steps[1].vars), [], 'a child under a valued root seeds no chained key and no versioning line');
+    // At 0 the chain is empty: the child seeds its docs versioning as a standalone would (D3), and nothing else is added or removed.
+    assert.deepStrictEqual(r.steps[3], { ...r.steps[1], vars: { ALFRED_CODE_DOCS_VERSIONING: 'git' } }, r.outs[3]);
+    assert.strictEqual(r.steps[4].level, '1', 'switched back on, the root\'s value reaches the child - nothing seeded at 0 shadows it');
+    assert.strictEqual(r.steps[4].versioning, undefined, 'the seed made at 0 leaves once the workspace answers again');
     assert.doesNotMatch(r.outs[3], /workspace: from/);
 });
 
@@ -1063,7 +1153,7 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
         { at: '.', after: (work) => { join(work, 'api'); join(work, 'web'); } },
         { at: 'api', sel: `${ROOT_SEL}skill ${OWN}\n`, after: (work) => join(work, 'api/tool', { parent: 'api' }) },
         { at: 'api/tool' },
-        { at: 'web', after: (work) => ({ tool: tree(work, 'api/tool'), vars: readOr(path.join(at(work), '.alfred', '.variables')) }) },
+        { at: 'web', after: (work) => ({ tool: tree(work, 'api/tool'), vars: readOr(path.join(at(work), '.alfred', '.variables')), apiReads: effectiveOf(work, 'api').ALFRED_CODE_DOCS_VERSIONING }) },
         { at: '.', act: 'uninstall', after: (work) => ({
             apiVars: readOr(path.join(at(work, 'api'), '.alfred', '.variables')),
             api: readWorkspaceValues(at(work, 'api')), web: readWorkspaceValues(at(work, 'web')),
@@ -1087,7 +1177,10 @@ test('uninstall at ws: each child keeps every item, its parent line is gone, the
     const rootVars = pairs(r.steps[3].vars);
     assert.ok(Object.keys(rootVars).length, `the root seeded no .variables:\n${r.steps[3].vars}`);
     const apiVars = pairs(got.apiVars);
-    for (const [key, value] of Object.entries(rootVars)) if (!layoutLib.MEMBER_NEVER.has(key) && value !== '') assert.strictEqual(apiVars[key], value, `${key} in api after the root's uninstall:\n${got.apiVars}\n${r.outs[4]}`);
+    // The child holds no seed of the docs mode under a valued root (D3), so leaving writes the value it read through the chain.
+    assert.ok(r.steps[3].apiReads !== undefined, 'api read a docs versioning before the uninstall');
+    assert.strictEqual(apiVars.ALFRED_CODE_DOCS_VERSIONING, r.steps[3].apiReads, `api keeps the docs versioning it read:\n${got.apiVars}`);
+    for (const [key, value] of Object.entries(rootVars)) if (!layoutLib.MEMBER_NEVER.has(key) && !layoutLib.CHAIN_PRUNE_NEVER.has(key) && value !== '') assert.strictEqual(apiVars[key], value, `${key} in api after the root's uninstall:\n${got.apiVars}\n${r.outs[4]}`);
     assert.match(r.outs[4], /workspace: released api - /);
     assert.match(r.outs[4], /workspace: released web - /);
     // the next update of a released child removes its stale excludes, and keeps every item
@@ -1493,7 +1586,7 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
             update('api', { after: (work) => ({ api: excludesOf(work, 'api'), rows: ledgerRows(work, 'api') }) }),
             update('.', { before: (work) => { keep.plan = claudeHash(work, 'api'); }, args: (work) => ['--print-plan', '--plan-out', path.join(work, 'plan.json')],
                 after: (work) => ({ api: claudeHash(work, 'api') === keep.plan }) }),
-        ]);
+        ], { rootRepo: false });
         const root = r.steps[3];
         assert.ok(root.want.length > 0, 'the root holds a generated rule');
         for (const [rel, list] of [['api', root.api], ['api/tool', root.tool], ['web', root.web]])
@@ -1642,7 +1735,9 @@ test('the run\'s own garbage record freezes the workspace part of an update', PO
     assert.strictEqual(after.json, '{"children": ["api"],', 'the garbage record is left byte for byte');
     assert.strictEqual(after.x, false, `nothing inherited is added:\n${r.outs[3]}`);
     assert.deepStrictEqual(after.env, before.env, r.outs[3]);
-    assert.strictEqual(after.vars, before.vars, r.outs[3]);
+    // A frozen workspace reads no chain, so the child seeds its docs versioning as a standalone would (D3); the file held no line before.
+    assert.strictEqual(before.vars, null);
+    assert.strictEqual(after.vars, 'ALFRED_CODE_DOCS_VERSIONING=git\n', r.outs[3]);
     assert.strictEqual(after.own, before.own, r.outs[3]);
     assert.strictEqual(after.ownEnv, before.ownEnv, r.outs[3]);
     assert.strictEqual(r.outs[3].split('\n').filter((l) => l.replace(/^==>\s*/, '').trim() === GARBAGE_LINE('.alfred/workspace.json')).length, 1, r.outs[3]);

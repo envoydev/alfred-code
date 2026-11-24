@@ -47,11 +47,15 @@ say `the install at <rel> (<name>) could not be read - installing standalone; /a
   (`rule`, `agent`, `skill`, `hook` or `plugin`).
 - Screen B reads the parent's values with `node "$TMP/repo/scripts/variables.js" show --root "<rel>"; node
   "$TMP/repo/scripts/variables.js" recommend --root . --scope <screen A's scope> --child` - one `<KEY>=<value>
-  (<source>)` line per key, and its `docs-versioning:` line replaces the detection's. Each question shows the parent's value as its default, marked `from root`.
+  (<source>)` line per key, and its `docs-versioning:` line replaces the detection's. Each question shows the parent's value as its default, marked `from root` (the docs-versioning one is below).
   An answer equal to it writes nothing, since this project reads the parent's value through the workspace - the
   installer writes nothing when the answer equals the parent's value; only a different answer is set, and that key is
-  this project's own from then on. The data root is never inherited - every project's is its own `.alfred` - and
-  neither is `ALFRED_CODE_DOCS_VERSIONING`.
+  this project's own from then on. The data root is never inherited - every project's is its own `.alfred`.
+  `ALFRED_CODE_DOCS_VERSIONING` follows its own line: `docs-versioning: from root <v>` makes the parent's value the
+  default, and an answer equal to it passes no `--docs-versioning` (the child inherits); a different answer passes the
+  flag and is this project's own. A line reading `recommend <v>` while the parent holds a value makes `<v>` the default
+  instead, since the child's layout outranks the workspace (a local-scope child, say): an answer equal to the parent's
+  value then passes `--docs-versioning` too, or `<v>` wins silently.
 
 ## Before the install call - the join, then the ignores
 

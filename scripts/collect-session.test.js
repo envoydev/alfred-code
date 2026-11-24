@@ -1199,11 +1199,12 @@ test('a standalone project\'s context.json is the files read alone (a guard)', (
 test('nothing a child must not read reaches its bundle: an ignored env key, a never-member key, the parent\'s secrets, the switch off', (t) =>
 {
     const fx = joinedSession({}, { parent: '..', ignore: { env: ['ALFRED_CODE_INSTRUMENT'] } }); t.after(fx.cleanup);
-    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\nALFRED_CODE_DOCS_VERSIONING=1\nALFRED_CODE_TURN_CHECK=1\n');
+    fx.write(path.join(fx.root, '.alfred', '.variables'), 'ALFRED_CODE_INSTRUMENT=1\nALFRED_CODE_WORKSPACE=1\nALFRED_CODE_DOCS_VERSIONING=local\nALFRED_CODE_TURN_CHECK=1\n');
     fx.write(path.join(fx.root, '.alfred', '.secrets'), 'W2_TOKEN=W2-SECRET-MARK\n');
     run(fx);
     const c = contextOf(fx);
-    assert.ok(!('ALFRED_CODE_INSTRUMENT' in c.variables) && !('ALFRED_CODE_DOCS_VERSIONING' in c.variables), JSON.stringify(c.variables));
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in c.variables) && !('ALFRED_CODE_WORKSPACE' in c.variables), JSON.stringify(c.variables));
+    assert.deepStrictEqual(c.variables.ALFRED_CODE_DOCS_VERSIONING, { value: 'local', from: '..' }, 'the docs versioning is a member value since the workspace-versioning change');
     assert.deepStrictEqual(c.variables.ALFRED_CODE_TURN_CHECK, { value: '1', from: '..' }, 'a key the child may read still is');
     assert.ok(!grepBundle(fx.out, 'W2-SECRET-MARK'));
     const off = joinedSession({}); t.after(off.cleanup);

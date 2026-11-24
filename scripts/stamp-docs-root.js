@@ -24,6 +24,8 @@ const rt = require('./install/runtime.js');  // R105: every external command thr
 const { envOf } = require('../stack/hooks/hook-prelude.js');
 const layout = require('../stack/hooks/layout.js');
 const { parseJson } = require('./install/json-file.js');
+const { KEY: VERSIONING_KEY } = require('./install/versioning/constants.js');
+const { normaliseValue } = require('./install/versioning/rank.js');
 
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
 
@@ -242,6 +244,13 @@ function seedVersioning(root)
     if (stored)
     {
         console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${stored}' - nothing seeded`);
+        return;
+    }
+    // Workspace versioning D10: a linked child whose workspace root answers the key inherits it, so no seed is written.
+    const chain = normaliseValue(require('./install/workspace.js').chainValues(root, { env: process.env })[VERSIONING_KEY]);
+    if (chain)
+    {
+        console.log(`stamp-docs-root: docs versioning: ${chain} from the workspace - nothing seeded`);
         return;
     }
     const value = probeVersioning(root, docs);

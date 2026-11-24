@@ -27,6 +27,8 @@ const { commonJsScope, ruleAt } = require('./copy.js');
 const { entryHash } = require('./stamp.js');
 const { locateSeed } = require('./seeds.js');
 const { OUTSIDE_WHY } = require('./nested-constants.js');
+const { FOLDER, FOLDERS, IGNORE_FILE } = require('./agent-folders/constants.js');
+const { isStackText } = require('./agent-folders/plan.js');
 
 const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
@@ -254,7 +256,32 @@ function sweepSessionStatus({ projectRoot, dataRoot, log = () => {}, note = () =
     catch (e) { log(`  session status: not swept - ${e.message} - the next session start sweeps them`); }
 }
 
-module.exports = { seedPlan, removeManagedFiles, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus, sweepSessionStatus };
+// D8: each agent folder's `.gitignore` while it holds one of the stack's texts byte for byte (anything else is the project's),
+// then `.cursor` itself when the stamp says the stack made it and nothing else is in it.
+function removeAgentFolders({ projectRoot, claudeDir, created = [], log = () => {} })
+{
+    for (const folder of FOLDERS)
+    {
+        const dir = folder === FOLDER.claude ? claudeDir : path.join(projectRoot, folder);
+        const file = path.join(dir, IGNORE_FILE);
+        let have = null;
+        try { have = fs.readFileSync(file, 'utf8'); } catch { /* none */ }
+        if (isStackText(have))
+        {
+            // A folder that cannot be written keeps the file with one `!!` line, as the install's removeText does.
+            try
+            {
+                fs.rmSync(file, { force: true });
+                log(`  ${folder}/${IGNORE_FILE} removed`);
+            }
+            catch (err) { log(`  !! ${folder}/${IGNORE_FILE} could not be removed (${err.code || err.message}) - remove it by hand`); }
+        }
+        if (folder === FOLDER.cursor && created.includes(folder))
+            try { fs.rmdirSync(dir); log(`  ${folder} removed - the stack made it and it is empty`); } catch { /* absent, or holds your files */ }
+    }
+}
+
+module.exports = { seedPlan, removeManagedFiles, removeAgentFolders, removePlugins, removeScopedMcp, removeGeneratedRules, removeSessionStatus, sweepSessionStatus };
 
 // `node uninstall.js seed <project root>` - seedPlan over the stamp's ledger, nothing written: one
 // `instructions-seed: <path> unedited|edited` line per seed, or `instructions-seed: none` (no stamp, no ledger, no seed).

@@ -786,8 +786,27 @@ function parseShell(command, opts = {}) {
     const lead = ctx.kwOnly;
     if (!KEYWORDS.has(t.raw)) ctx.kwOnly = false; // a flag, not a walk of the words: a long command stays linear
     // `case` as a command word opens arms whose `)` close nothing; `esac` closes it wherever it stands (`case a in esac`)
-    if (t.raw === 'case' && lead) ctx.cases = (ctx.cases || 0) + 1;
-    else if (t.raw === 'esac' && ctx.cases > 0) ctx.cases--;
+    // in a pattern, `esac` ends the case only as its first word with no `(` before it (`(esac)` is a pattern)
+    const endsCase = !ctx.pattern || (!ctx.pattern.seen && !ctx.pattern.paren);
+    if (ctx.pattern) ctx.pattern.seen = true;
+    if (t.raw === 'case' && lead && !ctx.pattern) { ctx.cases = (ctx.cases || 0) + 1; ctx.caseAt = { cmd: ctx.cmd, at: ctx.cmd.words.length }; }
+    else if (t.raw === 'esac' && ctx.cases > 0 && endsCase) { ctx.cases--; ctx.pattern = null; ctx.caseAt = null; }
+    else if (t.raw === 'in' && ctx.caseAt && ctx.caseAt.cmd === ctx.cmd && ctx.cmd.words.length === ctx.caseAt.at + 2) {
+      ctx.caseAt = null;
+      patternStarts(ctx.cmd.words.length);
+    }
+  };
+  // A case arm's pattern - from `case WORD in` or `;;` to its `)` - is matched, never run: its words are no command
+  // (`[/])` read as a script run by its path, `git)` as a git call). `from` is where they start in the `case` command.
+  const patternStarts = (from) => { ctx.pattern = { cmd: ctx.cmd, from, cmdFrom: cmds.length, seen: false }; };
+  const patternBroken = (newline) => { if (ctx.pattern && (!newline || ctx.pattern.seen)) ctx.pattern = null; };
+  const patternEnds = () => {
+    const p = ctx.pattern;
+    if (!p) return;
+    ctx.pattern = null;
+    if (p.cmd) p.cmd.words.splice(p.from);
+    // a `$( )` in a pattern runs, so only this level's commands are cleared
+    for (let k = p.cmdFrom; k < cmds.length; k++) if (cmds[k].frame === ctx.frame) cmds[k].words = [];
   };
   const endCmd = () => { ctx.cmd = null; };
   const endElem = (at, next) => {
@@ -891,9 +910,18 @@ function parseShell(command, opts = {}) {
     const c = command[i];
     if (c === '\\') { if (wStart < 0) wStart = i; i++; continue; }
     if (c === ' ' || c === '\t' || c === '\r' || c === '\f' || c === '\v') { endWord(i); continue; }
-    if (c === '\n' || c === ';') { endWord(i); endElem(i, i + 1); continue; }
+    if (c === ';' && ctx.cases > 0 && (command[i + 1] === ';' || command[i + 1] === '&')) { // `;;`, `;&`, `;;&` end an arm
+      endWord(i);
+      const len = command[i + 1] === ';' && command[i + 2] === '&' ? 3 : 2;
+      endElem(i, i + len);
+      i += len - 1;
+      patternStarts(0);
+      continue;
+    }
+    if (c === '\n' || c === ';') { endWord(i); patternBroken(c === '\n'); endElem(i, i + 1); continue; }
     if (c === '&') {
       endWord(i);
+      if (command[i + 1] !== '>') patternBroken(false);
       if (command[i + 1] === '&') { endElem(i, i + 2); i++; continue; }
       if (command[i + 1] === '>') { // `&>` / `&>>` - both streams to a file
         const two = command[i + 2] === '>';
@@ -906,7 +934,7 @@ function parseShell(command, opts = {}) {
     }
     if (c === '|') {
       endWord(i);
-      if (command[i + 1] === '|') { endElem(i, i + 2); i++; continue; }
+      if (command[i + 1] === '|') { patternBroken(false); endElem(i, i + 2); i++; continue; }
       if (command[i + 1] === '&') i++;
       endCmd();
       redir = null;
@@ -914,6 +942,8 @@ function parseShell(command, opts = {}) {
       continue;
     }
     if (c === '(') {
+      // a case pattern's own `(` (`(a) ...`) opens nothing
+      if (ctx.pattern && !ctx.pattern.seen && wStart < 0 && (!ctx.cmd || (ctx.cmd === ctx.pattern.cmd && ctx.cmd.words.length === ctx.pattern.from))) { ctx.pattern.paren = true; continue; }
       // `NAME=( ... )` / `NAME+=( ... )` is an ARRAY assignment, never a subshell: `LIVE=(<file>.md)` ran the file as a
       // script and blocked a read-only scan as a write to '/' (audit 2026-10-10, session bba03dad).
       if (wStart >= 0 && /^[A-Za-z_]\w*\+?=$/.test(command.slice(wStart, i))) {
@@ -935,6 +965,7 @@ function parseShell(command, opts = {}) {
       // a `case` arm's `)` - at the top, or inside a substitution whose `case` is open - ends its pattern: a command
       // starts after it; any other closes the context it is in
       if (stack.length && !(ctx.cases > 0)) { close(i); continue; }
+      patternEnds();
       endElem(i, i + 1);
       continue;
     }

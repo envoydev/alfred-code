@@ -128,11 +128,13 @@ test('ignore env K in ws/api stops K from ws for ws/api and ws/api/tool', () =>
     assert.strictEqual(varsOf(at('ws')).values[K('SCORING_LEVEL')], '70', 'the root reads its own file');
 });
 
-test('DOCS_VERSIONING and WORKSPACE never come from a member', () =>
+test('WORKSPACE never comes from a member; DOCS_VERSIONING does, and an ignore env line stops it', () =>
 {
     const at = three({ ws: { vars: `${K('DOCS_VERSIONING')}=local\n${K('WORKSPACE')}=0\n${K('HISTORY')}=7\n` } });
     const v = varsOf(at('ws/api'));
-    assert.strictEqual(v.values[K('DOCS_VERSIONING')], undefined);
+    assert.strictEqual(v.values[K('DOCS_VERSIONING')], 'local');
+    putWorkspace(at('ws/api'), { parent: '..', children: ['tool'], ignore: { env: [K('DOCS_VERSIONING')] } });
+    assert.strictEqual(varsOf(at('ws/api')).values[K('DOCS_VERSIONING')], undefined, 'an ignore env line stops it');
     assert.deepStrictEqual([v.values[K('WORKSPACE')], v.from[K('WORKSPACE')]], ['1', 'env']);
     assert.strictEqual(v.values[K('HISTORY')], '7', 'the chain was read');
 });

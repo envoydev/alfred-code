@@ -23,6 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const rt = require('./install/runtime.js');
+const { RANK } = require('./install/versioning/constants.js');
 
 const arg = (name) => { const i = process.argv.indexOf(name); return i > -1 ? process.argv[i + 1] : ''; };
 const git = (args, cwd) => String(rt.execCommand('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim();
@@ -57,7 +58,10 @@ function dataRootOffer({ projectRoot, localChild: asked = false })
     const rel = path.posix.relative(root, docsPath.replace(/\\/g, '/').replace(/^\.\//, ''));
     const docsInside = rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel);
     let versioning = null;
-    try { versioning = require('./install/copy.js').resolveDocsVersioning(projectRoot); } catch { versioning = null; }
+    let source = null;
+    try { ({ value: versioning, source } = require('./install/copy.js').resolveDocsVersioning(projectRoot, undefined, { ranked: true, withSource: true })); } catch { versioning = null; }
+    // A value the workspace hands on is no choice of this project: hiding the root would hide `.variables` and pin the project to it.
+    if (source === RANK.chain) return none('the docs versioning comes from the workspace - the root stays as the install wrote it');
     const child = asked && docsInside && versioning !== 'local' && localChild(projectRoot);
     if (docsInside && versioning !== 'local' && !child)
         return none(`the docs under ${root}/ are committed (ALFRED_CODE_DOCS_VERSIONING=${versioning || 'git'})`);

@@ -286,7 +286,8 @@ writes each where it takes effect and prints the file; a refused key is named wi
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that one by running
 `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead, so the write re-probes at
 write time rather than trusting a preview a few turns stale, and report its printed line. A typed override (Other)
-for that same row is a deliberate decision like any other row's and goes through `variables.js set` as-is. Area
+for that same row is a deliberate decision like any other row's and goes through `variables.js set` as-is. A key the
+workspace answers (its `show` source is the root) is not MISSING: show no row for it. Area
 skipped, or nothing changed: one narration line, nothing written.
 
 **Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with the questions this step puts (three with the agents ask below), each carrying its current line:

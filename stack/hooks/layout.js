@@ -444,9 +444,12 @@ const OLD_KEYS = Object.freeze({
     ALFRED_CODE_SCORING: 'ALFRED_CODE_SCORER', ALFRED_CODE_SCORING_LEVEL: 'ALFRED_CODE_SCORER_LEVEL',
     ALFRED_CODE_SCORING_OUTPUTS: 'ALFRED_CODE_SCORER_OUTPUTS', ALFRED_CODE_SCORING_ROUNDS: 'ALFRED_CODE_SCORER_ROUNDS',
 });
-// Never taken from a member: the docs mode is this project's own layout (release 1's ENV_NEVER), and the chain cannot
-// decide the switch that gates it.
-const MEMBER_NEVER = new Set(['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_WORKSPACE']);
+// Never taken from a member: the chain cannot decide the switch that gates it. The docs mode left this set when a child
+// began to inherit it from its workspace root (workspace versioning, D1).
+const MEMBER_NEVER = new Set(['ALFRED_CODE_WORKSPACE']);
+// Read through the chain like any key, yet no join or W1 prune removes a child's own value of it (D3): the value decides
+// whether the child's docs files are tracked, so only an `ignore env` line may take the inheritance away.
+const CHAIN_PRUNE_NEVER = new Set(['ALFRED_CODE_DOCS_VERSIONING']);
 const HOOKS_OFF_KEY = 'ALFRED_CODE_HOOKS_OFF';
 const SWITCH_KEY = 'ALFRED_CODE_WORKSPACE';
 // The switch's value as read: off only at `0`, unset included as on (D9).
@@ -1233,5 +1236,5 @@ module.exports = {
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     MODE_KEYS, modeFile,
-    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, valueIn,
+    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, CHAIN_PRUNE_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, valueIn,
 };

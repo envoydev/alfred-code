@@ -1341,3 +1341,42 @@ updated, removed, kept) and one line saying a new session is needed. Report thes
 checks the same layout: marked rule files, links, and leftover seat rows.
 
 Start a new session after the update, so Claude Code loads the rule files and lists the linked agents.
+
+## after 3.18.0 - tested on Node 26, and nvm loads past the rm guard
+
+The release is now tested on Node 26: the CI runs on macOS, Linux and Windows, the lint run and the local gate all use
+it, and the repository pins it in `.nvmrc`. Update your Node to 26. Node 22.12 or newer still runs the stack, untested.
+
+The rm guard no longer blocks a command that loads a shell script with a `case` pattern holding a `/` - such as
+`source ~/.nvm/nvm.sh` - in a checkout with uncommitted changes. The shell reader took the pattern for a script to run.
+
+Nothing to do in an installed project beyond the update.
+
+## after 3.18.0 - a workspace child inherits docs versioning, and local hides .claude and .cursor
+
+**A linked child follows its workspace's `ALFRED_CODE_DOCS_VERSIONING`.** A child with no value of its own reads the
+nearest member's, so a root at `local` makes every linked child `local` at its next update. A value you typed or answered
+in the child wins, `git` included, and `ignore env ALFRED_CODE_DOCS_VERSIONING` in its `workspace.json` stops the
+inheritance. The update removes a child's own value only when it is the stack's own seed - still as the install wrote it, not an
+answer, and no settings file or launch environment holds the key - and either the child's layout does not decide it, or
+it equals the workspace's value (the child reads the same value through the workspace). Report each such removal. A
+project outside any git repository is seeded no value, and a stack seed there leaves whatever the workspace holds. A child
+whose layout decides (local scope, docs a rule of the repository keeps out, docs git tracks) keeps a value that differs
+from the root's.
+
+**`local` also hides `.claude` and `.cursor`.** Where versioning is `local` and the project is a git repository, the run
+writes `.claude/.gitignore` and `.cursor/.gitignore`, each `*` under a head line naming `local`, and creates `.cursor` when
+absent (`.cursor` at every scope; a `local`-scope install already hides `.claude`). At `project` scope the `.claude` files git does not yet track stop being shared with the team: set
+`git` to share them. A folder git already tracks files in gets one `!!` line and no file, so nothing in it is hidden;
+untrack it with `git rm -r --cached <folder>` to hide it. A file you wrote yourself stays and is named once. A move to `git` removes the
+stack's two files and a `.cursor` folder the stack made. Skills and agents move to the store (`.alfred/stack`) under
+`local` and become copies again at `git`. Report the `!!` and file lines.
+
+- `.alfred` is as before under `local`: at `project` and `user` scope `.alfred/.gitignore` and `.alfred/.variables` stay
+  committed, because `.variables` is how a team shares the choice. An inheriting child holds no versioning line, so a
+  teammate without the workspace reads the default; the update says so when a tracked `.alfred/.gitignore` changes
+  because of an inherited value (set the value in the child to share it).
+- A linked `git` child's tracked `.alfred/.gitignore` gains one line, `/<docs>/.branches/`, at its first update. Commit it.
+- A root's update names each child whose `.gitignore` still reflects the old value (`workspace: <rel> reads versioning <v>
+  from here - ...`); the child's own next update rewrites it.
+- Going back to an earlier release leaves the two new `.gitignore` files in place; delete them by hand.

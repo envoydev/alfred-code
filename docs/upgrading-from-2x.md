@@ -19,7 +19,7 @@ questions in each project. To keep your old picks with no questions instead, see
 
 ## Before you start
 
-- Node 22.12 or newer, git, and an up-to-date `claude` CLI (`claude --version`; `claude update` if behind).
+- Node 26 (the release is tested on it; 22.12 is the oldest that still runs), git, and an up-to-date `claude` CLI (`claude --version`; `claude update` if behind).
 - Windows: Git for Windows, and Git Bash must find the same Node (`node --version` in Git Bash) - Claude Code runs its
   shell through it.
 - Close every Claude Code session open in the workspace.

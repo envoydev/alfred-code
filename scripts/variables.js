@@ -11,6 +11,9 @@
 const path = require('node:path');
 const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
+const stamp = require('./install/stamp.js');
+const { KEY: DOCS_VERSIONING_KEY } = require('./install/versioning/constants.js');
+const { normaliseValue } = require('./install/versioning/rank.js');
 
 const USAGE = [
     'usage: node scripts/variables.js set --root <dir> [--scope project|user|local] KEY=value ...',
@@ -42,6 +45,14 @@ function parse(argv)
     return cmd === 'set' && !out.pairs.length ? null : out;
 }
 
+// Workspace versioning D10: the value a linked child inherits from its workspace root, as the walk's default - the
+// chain's normalised value, where no firm answer of the project's own layout outranks it (rankVersioning's order).
+function inheritedVersioning(root, advice, env)
+{
+    const chain = normaliseValue(require('./install/workspace.js').chainValues(path.resolve(root), { env })[DOCS_VERSIONING_KEY]);
+    return chain && !(advice.firm && advice.value !== chain) ? chain : undefined;
+}
+
 // `env` is the launch env: the prelude the entry loads for its blocking stdio also applies the stack's variables to
 // process.env, which would make show name every inherited value `env`.
 function main(env = process.env)
@@ -57,7 +68,8 @@ function main(env = process.env)
         const scope = args.scope || 'project';
         const docsPath = require('./install/copy.js').resolveDocsRoot(args.root, scope);
         const advice = require('./install/docs.js').docsVersioningAdvice({ projectRoot: args.root, docsPath, scope, child: args.child });
-        console.log(`docs-versioning: recommend ${advice.value} - ${advice.reason}`);
+        const inherited = args.child ? inheritedVersioning(args.root, advice, env) : undefined;
+        console.log(inherited ? `docs-versioning: from root ${inherited}` : `docs-versioning: recommend ${advice.value} - ${advice.reason}`);
         return 0;
     }
     if (args.cmd === 'show')
@@ -73,7 +85,27 @@ function main(env = process.env)
     for (const key of modes) console.error(`${key} is a mode - type /alfred-code:mode:${MODES[key]}`);
     if (modes.length) return 1;
     const got = variables.set(args.root, args.pairs, { scope: args.scope || undefined, env });
+    recordAnswer(args, got);
     return got.refused.length ? 1 : 0;
+}
+
+// D3b: a docs versioning typed here is an answer the installer's remover never takes for a seed - read-merge-write of the
+// stamp's `answered-env:` line (markLine replaces the whole line); the key set to nothing leaves it. No stamp, no write. A stamp
+// that cannot be written is one `!!` line - the value already stands in `.variables`.
+function recordAnswer(args, got)
+{
+    const pair = args.pairs.find((p) => p.startsWith(`${DOCS_VERSIONING_KEY}=`));
+    if (!pair || got.refused.includes(DOCS_VERSIONING_KEY)) return;
+    const file = stamp.stampFiles({ projectRoot: args.root }).read;
+    if (!file) return;
+    const held = stamp.readAnsweredEnv(file).filter((k) => k !== DOCS_VERSIONING_KEY);
+    const next = pair.length > DOCS_VERSIONING_KEY.length + 1 ? [...held, DOCS_VERSIONING_KEY] : held;
+    try { stamp.markLine(file, 'answered-env', next.length ? [...new Set(next)].sort().join(',') : null); }
+    catch (err)
+    {
+        const rel = path.relative(path.resolve(args.root), file).split(path.sep).join('/');
+        console.error(`!! ${rel} could not be written (${err.code || err.message}) - the value is set, but its answer is not recorded, so an update may take it for a seed`);
+    }
 }
 
 if (require.main === module)

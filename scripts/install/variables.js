@@ -16,6 +16,7 @@ const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { STEP_MS, sleepMs, takeLock } = require('./file-lock.js');
 const stamp = require('./stamp.js');
 const { DATA_IGNORE_HEAD, dataRootOf } = require('../../stack/mcp/data-root.js');
+const { isStackText } = require('./agent-folders/plan.js');
 
 const FILE = '.variables';
 // The folder a project's data sits in - `.alfred`, or an older install's folder until an update moves it.
@@ -136,7 +137,8 @@ function tracked(file)
 // D6's verdict on `<dataRoot>/.variables`: `git check-ignore -q` decides (exit 0: ignored) - `-v` exits 0 on a negated
 // match too, so it only names the rule: { ignored: false } | { ignored: true, source?, line?, own? }. `own` says the rule
 // is the data root's own .gitignore AND the stack's text (its head), which the install re-includes `.variables` in - a
-// file the user wrote there is kept as it is (docs.ensureDataIgnore), so it is not. No git, or no repository: not ignored.
+// file the user wrote there is kept as it is (docs.ensureDataIgnore), so it is not - or an agent folder's `.gitignore`
+// holding one of the stack's texts byte for byte (agent-folders: a docs root kept under `.claude` is no rule of the project's). No git, or no repository: not ignored.
 // `rel` (3.12): another path under the root - the docs root's, read when an install leaves local scope.
 function ignoreVerdict(projectRoot, dataRoot, rel = null)
 {
@@ -153,7 +155,10 @@ function ignoreVerdict(projectRoot, dataRoot, rel = null)
     const mine = path.join(projectRoot, ...root.split('/'), '.gitignore');
     let head = '';
     try { head = fs.readFileSync(mine, 'utf8'); } catch { /* the rule's file is elsewhere */ }
-    const own = Boolean(top) && real(path.resolve(top, m[1])) === real(mine) && head.startsWith(DATA_IGNORE_HEAD);
+    const ruleFile = Boolean(top) && real(path.resolve(top, m[1]));
+    let ruleText = null;
+    try { ruleText = fs.readFileSync(ruleFile, 'utf8'); } catch { /* the rule's file is unreadable */ }
+    const own = Boolean(top) && ((ruleFile === real(mine) && head.startsWith(DATA_IGNORE_HEAD)) || isStackText(ruleText));
     return { ignored: true, source: m[1], line: Number(m[2]), own };
 }
 // The line D6 prints for an ignored file.

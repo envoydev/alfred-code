@@ -401,10 +401,12 @@ const chainTree = () =>
     return at;
 };
 
-test('chainValues reads the members\' .variables, never a MEMBER_NEVER key, and stops a key at an ignore env line', () =>
+test('chainValues reads the members\' .variables, hands on the docs versioning key, never a MEMBER_NEVER key, and stops a key at an ignore env line', () =>
 {
     const at = chainTree();
-    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_INSTRUMENT: '1' });
+    assert.deepStrictEqual(ws.chainValues(at('ws/api'), { env: env0 }), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_INSTRUMENT: '1' });
+    fs.appendFileSync(path.join(at('ws'), '.alfred', '.variables'), 'ALFRED_CODE_WORKSPACE=0\n');
+    assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_WORKSPACE'), 'the switch is still never chained');
     putWorkspace(at('ws/api'), { parent: '..', ignore: { env: ['ALFRED_CODE_SCORING'] } });
     assert.ok(!Object.hasOwn(ws.chainValues(at('ws/api'), { env: env0 }), 'ALFRED_CODE_SCORING'));
 });
@@ -737,6 +739,7 @@ test('keepOnLeave: the ignored line', () =>
     const at = tree({ ws: { stamp: true, record: { role: 'root' } }, 'ws/api': { stamp: true, git: true, record: { parent: '..' } } });
     fs.writeFileSync(path.join(at('ws/api'), '.alfred', '.variables'), 'ALFRED_CODE_SCORING=1\n');
     const keys = layout.VARIABLE_KEYS.filter((k) => !layout.MEMBER_NEVER.has(k) && k !== 'ALFRED_CODE_SCORING');
+    assert.ok(keys.includes('ALFRED_CODE_DOCS_VERSIONING') && !keys.includes('ALFRED_CODE_WORKSPACE'), 'the docs mode reads its default too (D3b)');
     const logs = [];
     ws.keepOnLeave(at('ws/api'), { env: env0, log: (l) => logs.push(l), ignored: '..' });
     assert.deepStrictEqual(logs, [`workspace: .. ignores this project - ${keys.length} values it does not hold read the stack's defaults (${keys.join(', ')}); a rule that workspace sent arrives only from this project's own store now - /alfred-code:configure adds one back`]);
@@ -1156,11 +1159,13 @@ test('keepOnLeave writes each value read through the chain into the child\'s fil
     const own = { ...ON, ALFRED_CODE_WORKSPACE: '0' };
     assert.deepStrictEqual(layoutLib.variablesOf(at('ws/api'), { env: own }).values.ALFRED_CODE_SCORING_LEVEL, before.ALFRED_CODE_SCORING_LEVEL, 'the value reads the same with the chain cut');
 
-    const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
+    const gone = roleTree({ kid: { stamp: 'sha: x\n', git: true, record: { parent: '..' }, vars: '# mine\n' } });
     const lines = [];
     const g = ws.keepOnLeave(gone('kid'), { env: ON, log: (l) => lines.push(l) });
     assert.deepStrictEqual(g.written, []);
-    assert.ok(g.defaults.includes('ALFRED_CODE_SCORING_LEVEL') && !g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
+    assert.ok(g.defaults.includes('ALFRED_CODE_SCORING_LEVEL') && g.defaults.includes('ALFRED_CODE_DOCS_VERSIONING') && !g.defaults.includes('ALFRED_CODE_WORKSPACE'), g.defaults.join(','));
+    const typed = roleTree({ kid: { stamp: 'sha: x\n', git: true, record: { parent: '..' }, vars: 'ALFRED_CODE_DOCS_VERSIONING=git\n' } });
+    assert.ok(!ws.keepOnLeave(typed('kid'), { env: ON, log: () => {} }).defaults.includes('ALFRED_CODE_DOCS_VERSIONING'), 'a typed value is no default');
     assert.match(lines.join('\n'), /^workspace: \.\. is gone - \d+ values read the stack's defaults here now \(ALFRED_CODE_/m);
 });
 
@@ -1216,7 +1221,10 @@ test('pruneChained: equal is the same string (D1)', () =>
 test('pruneChained: never removed (D3) - DOCS_VERSIONING, WORKSPACE, an ignore env key, one a member between ignores', () =>
 {
     const keep = (at, rel) => { const text = varsText(at(rel)); const r = prune(at(rel)); assert.deepStrictEqual([r.dropped, r.lines, varsText(at(rel))], [[], [], text]); };
-    keep(w1Tree({ api: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n`, root: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n` }), 'ws/api');
+    const docs = w1Tree({ api: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n`, root: `${W1.DOCS}=git\nALFRED_CODE_WORKSPACE=1\n` });
+    assert.strictEqual(ws.chainValues(docs('ws/api'), { env: ON })[W1.DOCS], 'git', 'the key is chained now, and still kept: CHAIN_PRUNE_NEVER');
+    assert.ok(!Object.hasOwn(ws.chainValues(docs('ws/api'), { env: ON }), 'ALFRED_CODE_WORKSPACE'));
+    keep(docs, 'ws/api');
     const ig = w1Tree({ api: `${W1.LEVEL}=90\n` });
     ws.writeWorkspace(ig('ws/api'), (m) => ws.addIgnore(m, 'env', W1.LEVEL), { env: ON });
     keep(ig, 'ws/api');

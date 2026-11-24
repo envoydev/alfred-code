@@ -613,6 +613,24 @@ function isSeed(key, value, rows, catalogKey = key)
 // before the installer moves them) gets `join-prune: settings` in its stamp, so the next settings pass prunes them there
 // (envPlan) - a 2.12 child that never answered a join keeps every value (the spec's Migration).
 // W1: every run that writes a joined child's `.variables` calls it too, with no `seeds`: a value equal to the chain's leaves.
+// The layers the loader reads after the own file and before the members (layout.js ownLayers' order): the first holding a
+// value would answer once the own line left. Each is a [name, env object] pair; read through the loader's own `valueIn`.
+function heldLayers(projectRoot, env)
+{
+    const layout = require('../../stack/hooks/layout.js');
+    const envIn = (f) => { const e = (readJson(f) || {}).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; };
+    return [['settings.json', envIn(path.join(projectRoot, '.claude', 'settings.json'))], ['account settings',
+        envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
+}
+
+// The first of those layers that holds `key`, as [name, value], else undefined. A settings file that cannot be read reads
+// as empty, as the loader reads it. The one read both the installer's ranking and the remover use.
+function layerHolding(projectRoot, key, { env = process.env } = {})
+{
+    const layout = require('../../stack/hooks/layout.js');
+    return heldLayers(projectRoot, env).map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
+}
+
 // `write: false` (3.12 - a run that does not write a file git tracks, a local-scope one) removes nothing and names each
 // value that would leave in one line, so the team's file is never written from one machine.
 function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = false, write = true } = {})
@@ -626,13 +644,10 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const dropped = [];
     const own = [];
-    // The layers the loader reads after the own file and before the members (layout.js ownLayers' order): the first holding
-    // another value would answer once the own line left, so the line stays, named.
-    const envIn = (f) => { const e = (readJson(f) || {}).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; };
+    // A layer holding another value would answer once the own line left, so the line stays, named.
     // Each read through the loader's own `valueIn`, so a 3.10 name (layout.OLD_KEYS, until 4.0.0) answers as it does there -
     // the own file's included: with the line gone, its old name is what the loader reads next.
-    const held = [['settings.json', envIn(path.join(projectRoot, '.claude', 'settings.json'))], ['account settings',
-        envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
+    const held = heldLayers(projectRoot, env);
     const stays = [];
     for (const [key, value] of Object.entries(values))
     {
@@ -640,7 +655,8 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         const rest = { ...values };
         delete rest[key];
         const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
-        if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
+        if (layout.CHAIN_PRUNE_NEVER.has(key)) own.push(key);
+        else if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
         else if (chained[key] !== value) own.push(key);
         else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
         else dropped.push(key);
@@ -665,6 +681,73 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         log(`workspace: ${dropped.length} ${seeds ? 'stack seeds and values' : 'values'} equal to the workspace's removed from ${rel} (${dropped.join(', ') || 'none'})`
             + ` - ${own.length} kept as this project's own (${own.join(', ') || 'none'})${stays.join('')}`);
     return { dropped, own };
+}
+
+// D3's one remover: the stack's own seed of the docs versioning leaves a linked child's `.variables` once the workspace
+// answers it - the value at its ledger hash, no recorded answer, and either the seed rule's answer is not firm or the
+// chain holds the same value (versioning/rank.js seedLeaves decides). `write: false` (a tracked file the run may not
+// write) names the line and removes nothing. Returns { dropped, kept }: `kept` is the value still in the file.
+function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, answeredEnv = [], log = () => {}, write = true } = {})
+{
+    const variables = require('./variables.js');
+    const { KEY } = require('./versioning/constants.js');
+    const { seedLeaves, normaliseValue } = require('./versioning/rank.js');
+    const file = variables.fileOf(projectRoot, { env });
+    const value = variables.read(file).values[KEY];
+    if (value === undefined) return { dropped: false, kept: null };
+    const chain = normaliseValue(chainValues(projectRoot, { env })[KEY]);
+    const stampFile = stamp.stampFiles({ projectRoot }).read;
+    const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
+    const held = layerHolding(projectRoot, KEY, { env });
+    const input = { value, atLedgerHash: rows[KEY] === stamp.valueHash(value), answeredEnv, firm: Boolean(advice && advice.firm), chain, linked: chain !== undefined, noRepo: Boolean(advice && advice.noRepo) };
+    const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+    if (!seedLeaves({ ...input, heldElsewhere: Boolean(held) }))
+    {
+        if (held && seedLeaves(input)) log(`workspace: ${KEY} '${value}' stays in ${rel}: ${held[0]} holds a value for it, which would answer once the line left`);
+        return { dropped: false, kept: value };
+    }
+    if (!write)
+    {
+        log(input.noRepo ? `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and this folder is no git repository - this run does not write that file, so it leaves it as it is; a project-scope update removes it`
+            : `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - this run does not write that file, so it leaves it as it is; a project-scope update removes it`);
+        return { dropped: false, kept: value };
+    }
+    const done = variables.write(file, { [KEY]: null });
+    if (done.why) { log(`!! workspace: ${rel} could not be written (${done.why}) - ${KEY} stays`); return { dropped: false, kept: value }; }
+    editVariablesLedger(projectRoot, (r) => { delete r[KEY]; return r; });
+    log(input.noRepo ? `workspace: ${KEY} '${value}' removed from ${rel} - the stack's seed; a folder outside any git repository seeds none`
+        : `workspace: ${KEY} '${value}' removed from ${rel} - the stack's seed; the workspace answers '${chain}'`);
+    return { dropped: true, kept: null };
+}
+
+// D6b: the lines a linked child's run says about an inherited or pulled docs versioning, as strings. `before` / `after` are
+// the data root's `.gitignore` texts around the ignore step; `said` is the stamp's told-tracked record, and a line said now
+// adds its key to it (an array handed in is appended to), so the next run stays silent. Git is asked whether it tracks the file.
+function versioningNotices(projectRoot, { scope, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said = [], exec = runtime.execCommand } = {})
+{
+    const { noticeRows } = require('./versioning/notices.js');
+    const file = `${dataRootMod.dataRootOf({ projectDir: projectRoot }).root}/.gitignore`;
+    let tracked = false;
+    try { tracked = String(exec('git', ['ls-files', '--', file], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
+    catch { tracked = false; }
+    const rows = noticeRows({ scope, tracked, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said });
+    for (const row of rows) said.push(row.key);
+    return rows.map((row) => row.line);
+}
+
+// D7: the line for a child below this root whose data root `.gitignore` names another versioning than the child reads
+// (its own ranking, ledger and answers, from its own stamp), or null. Reads the head line only and writes nothing.
+function laggingLine(child, rel, childEnv)
+{
+    const { effectiveVersioning } = require('./versioning/effects.js');
+    const { lagLine } = require('./versioning/notices.js');
+    const copy = require('./copy.js');
+    let text;
+    try { text = fs.readFileSync(path.join(child, ...dataRootMod.dataRootOf({ projectDir: child }).root.split('/'), '.gitignore'), 'utf8'); }
+    catch { return null; }
+    const scope = stamp.readStampScope(stamp.stampFiles({ projectRoot: child }).read || '');
+    const { value } = effectiveVersioning({ projectRoot: child, scope, docsPath: copy.resolveDocsRoot(child, scope), dataRoot: dataRootMod.dataRootOf({ projectDir: child }).root, env: childEnv });
+    return lagLine({ rel, text, value });
 }
 
 // Leaving a tree (D5): every value the project reads through the chain is written into its own `.variables` first, so
@@ -1023,10 +1106,27 @@ function ownPicksAfter({ prior, final, parentLines, added = [], blind = false })
 
 const csv = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
-// Step 5 of the loader (layout.js resolveVariables) alone: what the workspace chain hands this project, nearest member
-// first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key.
-function chainValues(projectRoot, { env = process.env } = {})
+// A member outside any git repository whose value of the docs versioning key is still the stack's seed - at its ledger hash
+// and on no `answered-env:` line (workspace versioning A1). An older release seeded it there; the member's own update
+// removes it, and until then it is no chosen value to hand on.
+function holdsStaleSeed(member, value)
 {
+    const { KEY } = require('./versioning/constants.js');
+    if (!require('./docs.js').outsideRepo(member.root)) return false;
+    const file = stamp.stampFiles({ projectRoot: member.root }).read;
+    if (!file) return false;
+    const rows = (((stamp.readLedger(file) || {}).env || {})['.variables']) || {};
+    return rows[KEY] === stamp.valueHash(value) && !stamp.readAnsweredEnv(file).includes(KEY);
+}
+
+// Step 5 of the loader (layout.js resolveVariables) alone: what the workspace chain hands this project, nearest member
+// first, `ignore env K` lines stopping K from that member on; never a layout MEMBER_NEVER key. The docs versioning key is handed
+// on like any other (workspace versioning D1) - only `ignore env` stops it, and no prune removes it from a child (D3). A
+// stale seed in a member outside any git repository (holdsStaleSeed) hands nothing on; `stale`, an array, collects that
+// member's `rel` for the run's one line.
+function chainValues(projectRoot, { env = process.env, stale } = {})
+{
+    const { KEY: VERSIONING_KEY } = require('./versioning/constants.js');
     const layout = require('../../stack/hooks/layout.js');
     const out = {};
     if (!layout.workspaceOn({ env, projectRoot })) return out;
@@ -1041,7 +1141,13 @@ function chainValues(projectRoot, { env = process.env } = {})
         {
             if (!read || layout.MEMBER_NEVER.has(key) || skip.has(key) || Object.hasOwn(out, key)) continue;
             const value = layout.valueIn(read.values, key);
-            if (value !== undefined) out[key] = value;
+            if (value === undefined) continue;
+            if (key === VERSIONING_KEY && holdsStaleSeed(member, value))
+            {
+                if (stale && !stale.includes(member.rel)) stale.push(member.rel);
+                continue;
+            }
+            out[key] = value;
         }
         for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
@@ -1104,7 +1210,7 @@ function envPlan(ctx)
             for (const { key, value, rows } of held)
             {
                 const name = newOf[key] || key;
-                if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !plan.ignored.includes(name)
+                if (layout.VARIABLE_KEYS.includes(name) && !layout.MEMBER_NEVER.has(name) && !layout.CHAIN_PRUNE_NEVER.has(name) && !plan.ignored.includes(name)
                     && isSeed(key, value, rows, name)) add(plan.seeds, key);
             }
         return plan;
@@ -1113,7 +1219,7 @@ function envPlan(ctx)
     for (const { key, value, rows } of held)
     {
         const name = newOf[key] || key;
-        if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name)) continue;
+        if (!layout.VARIABLE_KEYS.includes(name) || own.includes(key) || own.includes(name) || layout.MEMBER_NEVER.has(name) || layout.CHAIN_PRUNE_NEVER.has(name)) continue;
         if (rows[key] === stamp.valueHash(value) && chained[name] === String(value)) add(plan.copies, key);
     }
     const memberParts = new Set(w.members.flatMap((m) => csv(settingsEnv(m.root).ALFRED_CODE_HOOKS_OFF)).filter((e) => e.includes(':')));
@@ -1434,6 +1540,12 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
             log(`workspace: ${rel} - excludes refreshed (${Object.keys(r.rows).length} rules)`);
         }
         finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
+    }
+    // D7: read-only, once per child this run did not skip (a skipped child's own run decides its files); a failed read is named, never a stop.
+    for (const rel of [...out.refreshed, ...out.current].sort())
+    {
+        try { const lag = laggingLine(path.join(top, ...rel.split('/')), rel, childEnv); if (lag) log(lag); }
+        catch (e) { log(`  !! workspace: ${rel} - its versioning could not be read (${e.message}); no lag line`); }
     }
     return out;
 }
@@ -2205,7 +2317,7 @@ module.exports = {
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, keepOnLeave, chain, subtree, rescan, nestedInstalls,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, versioningNotices, layerHolding, keepOnLeave, chain, subtree, rescan, nestedInstalls,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
