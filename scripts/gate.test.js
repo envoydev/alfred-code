@@ -23,6 +23,7 @@ test('gate: the Windows leg works under C:\\Claude-MacOs\\alfred-code\\gate and 
     assert.ok(!/alfred-gate/.test(JSON.stringify(p)), 'the old C:\\alfred-gate folder is gone');
     assert.strictEqual(p.hostDir, path.join(share.hostPath, 'Claude-MacOs', 'alfred-code', `gate-${p.winId}`));
     assert.strictEqual(p.guestDir, `\\\\Mac\\Home\\Claude-MacOs\\alfred-code\\gate-${p.winId}`);
+    assert.strictEqual(p.leg, `${p.work}\\leg`, 'the leg runs from a copy in the work dir, never from the share');
     assert.strictEqual(gate.winPaths(id, share).winId, p.winId, 'one run, one id');
     assert.notStrictEqual(gate.winPaths('20261120-101501-abcdef12', share).winId, p.winId, 'two runs of one commit stay apart');
 });
@@ -405,4 +406,14 @@ test('the leg puts its own node folder first on a Windows PATH, so npm.cmd besid
     assert.strictEqual(env.Path, `${dir};C:\\Windows`);
     assert.strictEqual(leg.runnerEnv({ Path: `${dir};C:\\Windows` }, { platform: 'win32', exists: () => false, nodeDir: dir }).Path, `${dir};C:\\Windows`, 'already first: unchanged');
     assert.strictEqual(leg.runnerEnv({ PATH: '/bin' }, { platform: 'linux', nodeDir: '/opt/node/bin' }).PATH, '/bin', 'POSIX legs keep their PATH');
+});
+
+// 2026-11-24: Node 26 run from the share failed reading \\?\UNC\Mac\package.json - nothing runs from the share.
+test('the win leg stage script sweeps old runs, copies the share\'s files into the leg folder and fails when the copy is missing', () =>
+{
+    const stage = require('./gate/win-stage.js').stageScript({ sweep: 'C:\\G\\*', guestDir: '\\\\Mac\\Home\\x', leg: 'C:\\G\\id\\leg' });
+    const at = (s) => stage.indexOf(s);
+    assert.ok(at("Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'C:\\G\\*'") === 0, 'the sweep runs first');
+    assert.ok(at("Copy-Item -Recurse -Force '\\\\Mac\\Home\\x\\*' 'C:\\G\\id\\leg'") > 0, stage);
+    assert.ok(at("if (-not (Test-Path 'C:\\G\\id\\leg\\gate-leg.js')) { exit 1 }") > at('Copy-Item'), stage);
 });

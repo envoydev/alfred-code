@@ -30,7 +30,8 @@ const os = require('node:os');
 const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { RESULT, STEP, runnerEnv } = require('./gate-leg.js');
-const { WIN_NODE } = require('./gate/constants.js');
+const { WIN_NODE, WIN_STAGE } = require('./gate/constants.js');
+const { stageScript } = require('./gate/win-stage.js');
 const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
 
 const LEGS = ['mac', 'linux', 'win'];
@@ -160,6 +161,7 @@ function winPaths(id, share)
     return {
         winId,
         work: `${VM_GATE_DIR}\\${winId}`,
+        leg: `${VM_GATE_DIR}\\${winId}\\${WIN_STAGE.folder}`,
         sweep: `${VM_GATE_DIR}\\*`,
         hostDir: path.join(share.hostPath, ...shareParts),
         guestDir: `${share.guestPath}\\${shareParts.join('\\')}`,
@@ -436,7 +438,7 @@ async function legWin(ctx)
         return { reasons: [`'${vm}' accepted no command within ${fmtMs(VM_READY_MS)} - it needs Parallels Tools running, and isolation from the Mac turned off`] };
     const winNode = process.env[WIN_NODE.env] || tryGit(ctx.root, ['config', '--get', WIN_NODE.config]) || (await findWinNode(vm, ctx.nodeMajor));
     if (!winNode) return { reasons: [`no Node ${ctx.nodeMajor || ''} found in '${vm}' (SYSTEM's PATH, Program Files, each signed-in user's nvm) - install it, or git config ${WIN_NODE.config} '<path to node.exe>'`] };
-    const { winId, work, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
+    const { winId, work, leg, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
     // Killing prlctl on the Mac leaves the run going in the VM: a timeout or Ctrl-C ends the guest
     // tree too and removes its work dir. Encoded, because prlctl exec drops quotes inside an argument.
     const guestKill = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${winId}*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId | Out-Null }; `
@@ -450,13 +452,13 @@ async function legWin(ctx)
     fs.copyFileSync(ctx.bundle, path.join(hostDir, 'repo.bundle'));
     copyLeg(hostDir);
     // SYSTEM's own temp dir is the Windows one nothing cleans: the run's temp sits in its work dir
-    writeLegFiles(hostDir, 'win', { ...ctx.legCfg, bundle: `${guestDir}\\repo.bundle`, work, tempDir: true });
+    writeLegFiles(hostDir, 'win', { ...ctx.legCfg, bundle: `${leg}\\${WIN_STAGE.bundle}`, work, tempDir: true });
     // one gate per machine, so a run dir already there is a dead run's (the VM went down under it) - only inside gate\
-    const sweep = `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '${sweepGlob}'`;
-    try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(sweep, 'utf16le').toString('base64')], 120000); }
-    catch { /* the leg reports what matters */ }
+    const stage = stageScript({ sweep: sweepGlob, guestDir, leg });
+    try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(stage, 'utf16le').toString('base64')], 300000); }
+    catch (err) { return { reasons: [`could not copy the leg's files from the share into ${leg}: ${String(err.stderr || err.message).trim().split('\n')[0]}`] }; }
     const bootBefore = await guestBoot(vm);
-    const r = await runProcess('win', 'prlctl', ['exec', vm, winNode, `${guestDir}\\gate-leg.js`, `${guestDir}\\win.json`],
+    const r = await runProcess('win', 'prlctl', ['exec', vm, winNode, `${leg}\\${WIN_STAGE.legScript}`, `${leg}\\${WIN_STAGE.config}`],
         { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
     // A run cut off with no result: the VM went down under it - Windows Update restarts a VM that sat
     // off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from
