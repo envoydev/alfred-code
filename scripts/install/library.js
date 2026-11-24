@@ -101,7 +101,7 @@ function renderTree(dir, render)
 // (`foreign` lists it for the stamp's picks), so the next run finds it unclaimed again. No `claims` is the old
 // behaviour: every copy is the stack's.
 function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, claims = null,
-    log = () => {}, note = () => {}, ruleAt = (name) => path.join(rulesDir, `${name}.md`) })
+    log = () => {}, note = () => {}, ruleAt = (name) => path.join(rulesDir, `${name}.md`), report = null })
 {
     const out = { skills: {}, agents: {}, rules: {}, foreign: [] };
     const plan = [
@@ -124,6 +124,7 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         {
             log(`  !! ${item.label} kept: ${item.name} - a project ${item.label} of that name the stamp does not record, so it is yours; the stack's ${item.name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`);
             out.foreign.push(item.name);
+            if (report) report.keep(item.label, item.name);
             continue;
         }
         if (have && was && have !== was) log(`  overwriting a hand-edited copy: ${item.label} ${item.name}`);
@@ -141,6 +142,7 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
             if (tree) renderTree(item.dst, tree);
         }
         out[item.kind][item.name] = hashItem(item.dst);
+        if (report) (have ? report.update : report.add)(item.label, item.name);
         log(`${item.label} [library]: ${item.name}`);
     }
     return out;

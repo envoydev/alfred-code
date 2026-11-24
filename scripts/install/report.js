@@ -1,0 +1,28 @@
+'use strict';
+// One run's report: the items the run's writers added, updated, removed or kept as the user's own. The writers feed one
+// collector; `line` renders it. Nothing here reads the disk.
+const { EVENT, NAME_CAP, NAME_JOIN, NAME_OVERFLOW, REPORT_PREFIX } = require('./report-constants.js');
+
+// A seat is named without its `.md`; any other name is as the writer gave it (an exclude glob ends in `.md` and keeps it).
+const itemName = (kind, name) => `${kind} ${kind === 'agent' ? String(name).replace(/\.md$/, '') : name}`;
+
+function createReport()
+{
+    const events = Object.fromEntries(Object.values(EVENT).map((event) => [event, new Set()]));
+    const feed = (event) => (kind, name) => { events[event].add(itemName(kind, name)); };
+    const names = (event) => [...events[event]];
+    const listed = (event) =>
+    {
+        const all = names(event);
+        if (!all.length) return '';
+        return ` (${[...all.slice(0, NAME_CAP), ...(all.length > NAME_CAP ? [NAME_OVERFLOW] : [])].join(NAME_JOIN)})`;
+    };
+    return {
+        add: feed(EVENT.added), update: feed(EVENT.updated), remove: feed(EVENT.removed), keep: feed(EVENT.kept),
+        names,
+        // `rel` is the level's path below the run's top, `.` for the top itself.
+        line: (rel) => `${REPORT_PREFIX} ${rel}: added ${names(EVENT.added).length}${listed(EVENT.added)}, updated ${names(EVENT.updated).length}, removed ${names(EVENT.removed).length}${listed(EVENT.removed)}, kept, yours ${names(EVENT.kept).length}${listed(EVENT.kept)}`,
+    };
+}
+
+module.exports = { createReport, itemName };

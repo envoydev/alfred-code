@@ -925,8 +925,8 @@ function itemScopes(listing = [])
 }
 
 // What the user switched off, as selection lines: every item a parked stack entry carries, and
-// every seat `permissions.deny` names under a stack entry. The closure never crosses either.
-function leftOut({ parked = [], deny = [] })
+// every shipped or retired seat `permissions.deny` names under a stack entry. The closure never crosses either.
+function leftOut({ parked = [], deny = [], seats = null })
 {
     const { placement } = require('../plugin-placement.js');
     const place = placement();
@@ -938,7 +938,8 @@ function leftOut({ parked = [], deny = [] })
         for (const s of entry.skills) out.push(`skill ${s}`);
         for (const a of entry.agents) out.push(`agent ${a}`);
     }
-    for (const seat of (Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean)) out.push(`agent ${seat}`);
+    // `seats` (the shipped, retired and renamed seat names) keeps a row that names no seat of ours - the user's own - out of the list.
+    for (const seat of (Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean)) if (!seats || seats.includes(seat)) out.push(`agent ${seat}`);
     return [...new Set(out)];
 }
 

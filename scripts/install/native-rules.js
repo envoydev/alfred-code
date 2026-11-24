@@ -89,8 +89,9 @@ function writeNative({ projectRoot, names, sourceOf, log = () => {} })
 
 // Removes each marked `.claude/rules/*.md` not in `keep`. In a child also each `<childName>.<rule>.md` of a shipped rule that
 // carries the marker or holds the stack's own text; one at any other text is the user's: kept and named.
-function pruneNative({ projectRoot, keep, childName, shipped, sourceOf, log = () => {} })
+function pruneNative({ projectRoot, keep, childName, shipped, sourceOf, generated = [], own = [], log = () => {} })
 {
+    // `own` (filled for the caller): an unmarked file that is no child copy and no generated rule - the user's, left alone and only counted.
     const out = { removed: [], kept: [] };
     const dir = rulesDirOf(projectRoot);
     let files = [];
@@ -105,7 +106,7 @@ function pruneNative({ projectRoot, keep, childName, shipped, sourceOf, log = ()
         const text = readText(path.join(dir, file));
         const childRule = childName && shipped.find((rule) => name === `${childName}.${rule}`);
         if (hasMarker(text)) { if (!keep.includes(name)) remove(file, name, REMOVED_WHY.unpicked); continue; }
-        if (!childRule) continue;
+        if (!childRule) { if (!generated.includes(name)) own.push(name); continue; }
         const stackText = stackTextOf(childRule);
         if (stackText !== null && text === stackText) remove(file, name, REMOVED_WHY.childCopy);
         else { out.kept.push(name); log(LOG.keptChildCopy(name)); }
@@ -153,7 +154,7 @@ function ensureChildWins({ projectRoot, hasChildren })
 
 // One run's pass over a project: the child-wins line, then the native files of the rules this project picks, then the prune.
 // `child` is null for a root or standalone project, else { holders: the chain roots, parentLines: the lines it inherits }.
-function syncNative({ projectRoot, rulesDir, child, listedRules, heldRules, library, shippedRules, hasChildren, log = () => {} })
+function syncNative({ projectRoot, rulesDir, child, listedRules, heldRules, library, shippedRules, hasChildren, generated = [], log = () => {} })
 {
     ensureChildWins({ projectRoot, hasChildren });
     if (rulesDir !== links.storeOf(projectRoot, 'rules')) return { written: [], updated: [], kept: [], removed: [], names: [] };   // the store was not made: rules stay in .claude
@@ -164,8 +165,9 @@ function syncNative({ projectRoot, rulesDir, child, listedRules, heldRules, libr
     const names = nativeNames({ projectRoot, library, chainRoots, child: Boolean(child),
         ownPicks: listedRules.filter((name) => !inherited.has(name)).map((name) => `rule/${name}`), memberPicks: heldRules.map((name) => `rule/${name}`) });
     const wrote = writeNative({ projectRoot, names, sourceOf, log });
-    const pruned = pruneNative({ projectRoot, keep: names, childName: child ? path.basename(projectRoot) : null, shipped: shippedRules, sourceOf, log });
-    return { ...wrote, removed: pruned.removed, names };
+    const own = [];
+    const pruned = pruneNative({ projectRoot, keep: names, childName: child ? path.basename(projectRoot) : null, shipped: shippedRules, sourceOf, generated, own, log });
+    return { ...wrote, removed: pruned.removed, kept: [...wrote.kept, ...pruned.kept, ...own], names };
 }
 
 module.exports = { syncNative, MARKER, CHILD_WINS_LINE, withMarker, hasMarker, nativeNames, writeNative, pruneNative, removeNative, ensureChildWins };

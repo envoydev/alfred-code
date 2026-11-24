@@ -35,6 +35,7 @@ const stamp = require('./install/stamp.js');
 const nestedMod = () => require('./install/nested.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
+const { REPORT_LINE_AT_TOP } = require('./install/report-constants.js');
 const { BRAND } = require('./install/brand.js');
 
 // This CLI's own flags stop at `--`; what follows is `answer`'s installer arguments.
@@ -629,6 +630,9 @@ function cascade(out)
                 continue;
             }
             row(r.rel, treeHash(r.root) === before ? 'unchanged' : 'updated');
+            // the child's own run names itself `.`; below this top it is named by its path
+            const reported = REPORT_LINE_AT_TOP.exec(said);
+            if (reported) out(`report: ${field(r.rel)}: ${reported[1]}`);
         }
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }

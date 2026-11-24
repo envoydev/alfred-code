@@ -74,6 +74,10 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
 - **COMPARE** - the signal step 2 named, one line: `no-stamp` or `compare-unreachable` (refreshed without a baseline),
   or on `TRUNCATED`: 'the compare was capped at 300 files - run /alfred-code:configure to reconcile what it may have
   missed', with configure on the suggestion card. No signal: no line.
+- **REPORT** - the grep's `report: .:` line and its `new session needed:` line, each word for word, and nothing re-counted from the
+  tree. The report line counts what this run added, updated, removed and kept as the user's own, with the names (the first 8). Then say
+  that rule files and agents load when a session starts: the user starts a new one (or `/clear`) to pick them up. A workspace run
+  has one `report:` line per level: this project's carries `.`, and each updated child's comes under its row in WORKSPACE, below.
 - **SEATS** - the grep's `seats:` line verbatim: where the agents come from on this route, so an absent
   `.claude/agents` reads as the plugin route, not a loss.
 - **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope writes
@@ -117,7 +121,7 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   project from its `cascade: <rel><TAB><state>` line - `<rel>`; its version from step 2's plan row, for a `held` row the
   stamped version alone (the left side of its `version=` field), and `-` for a project step 2's plan printed no row for,
   a `gone` or a newly joined one; and `updated` / `unchanged` / `failed` / `skipped` / `gone` / `held` / `gone-kept` / `nested` -
-  each `!!` line under it verbatim, then the `cascade: done ...` line. A `nested` row is a child that is part of this repository now: it is not unfinished and puts nothing on the follow-ups card, and its `cascade: <rel> is part of this repository now` line is pasted as it stands. A `gone-kept` row is a folder that no longer
+  each `!!` line and each `report: <rel>: ...` line under it verbatim, then the `cascade: done ...` line. A `nested` row is a child that is part of this repository now: it is not unfinished and puts nothing on the follow-ups card, and its `cascade: <rel> is part of this repository now` line is pasted as it stands. A `gone-kept` row is a folder that no longer
   holds an install: its line stays in this project's file until a cascade runs. After the rows, report each project
   joined or re-checked by this update and the ignores applied to it, one line each (`update-workspace.md` names them). Any `held` row puts ONE line on the
   follow-ups card: '`/alfred-code:update` here again, answering yes, updates the held projects' - and, where the core is

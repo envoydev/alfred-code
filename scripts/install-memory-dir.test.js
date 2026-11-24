@@ -783,7 +783,7 @@ test('docs: a teammate\'s stamp (another checkout\'s run) still vouches for this
     });
     assert.ok(!(r.result.local && Object.hasOwn(r.result.local, 'autoMemoryDirectory')), r.outs[2]);
     assert.match(r.outs[2], /autoMemoryDirectory removed - ALFRED_CODE_MEMORY is no longer docs/);
-    assert.doesNotMatch(r.outs[2], /yours/);
+    assert.doesNotMatch(r.outs[2].replace(/^==> report: .*$/m, ''), /yours/);
 });
 
 // Finding 3: an empty settings.local.json is read as {} (settings.js readSettings), so docs mode is written into it.

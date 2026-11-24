@@ -244,10 +244,10 @@ claude-hud is installed - this run or already - and no settings file this projec
 never a second grep (a tail is ~75% static boilerplate, and two greps of one log cost two full context re-sends):
 
 ```bash
-grep -E 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|session status:|\.git/info/exclude: |!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy|seats:' "$TMP/install.log"
+grep -E 'installed/refreshed this run|mcp servers:|mcp data:|mcp pruned:|mcp [A-Za-z0-9_.-]+: (the|kept)|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|layout:|session status:|\.git/info/exclude: |!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[|taking over a copy|seats:|report: \.:|new session needed:' "$TMP/install.log"
 ```
 
-Add a marker to the pattern when the report needs another fact; do not add a call. The RESTART row and any
+Add a marker when the report needs another fact, never a call. The RESTART row and any
 fail-soft `!!` are not judged from that dump - they are PRINTED by the script that already prints `changed:`,
 and the same call reads the rest of the run, `update-close.md` (steps 6-8):
 
@@ -256,8 +256,8 @@ node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <s
 ```
 
 Paste `restart: yes|no`, every `warn: <line>`, and its `renamed:` / `pruned:` lines verbatim - step 7 reads them, not
-the raw grep. `--running` is the release this session loaded, so a session already on the snapshot's release owes no
-restart for the hook delta.
+the raw grep. `--running` is the release this session loaded, so a session on the snapshot's release owes no hook
+restart.
 
 Then:
 

@@ -143,7 +143,7 @@ function dropEmptyArray(data, arrayPath)
 // Brings the stack's members of one array to `want`: a member it wants and does not see is added and ledgered; a prior
 // row it no longer wants takes its member out (by hash); a row whose member is gone just leaves. The file is written
 // only when something changed, in the shape every settings write here uses.
-function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note = () => {} })
+function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note = () => {}, report = null })
 {
     const mine = Object.fromEntries(Object.entries(prior || {}).filter(([row]) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; }));
     let data;
@@ -163,7 +163,7 @@ function syncMembers({ file, arrayPath, want, prior = {}, log = () => {}, note =
     {
         if (wantHash.has(hash)) continue;
         const i = list.findIndex((m) => typeof m === 'string' && valueHash(m) === hash);
-        if (i >= 0) { list.splice(i, 1); changed = true; }
+        if (i >= 0) { const [gone] = list.splice(i, 1); changed = true; if (report) report.remove(arrayPath, gone); }
     }
     for (const [hash, value] of wantHash)
     {
@@ -838,7 +838,7 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, kept =
 // Takes out of `permissions.deny`, in place, each `Agent(<core>:<seat>)` row whose seat is one of `seatNames`, said in one
 // line per file. Any other row - another plugin's, a seat this release never shipped, a rule of the user's - is left as it is.
 // `tidy`: a list or a `permissions` object this left empty goes too (the team's settings.json, where the stack made it).
-function removeSeatDenies(permissions, seatNames, label, log, { tidy = false } = {})
+function removeSeatDenies(permissions, seatNames, label, log, { tidy = false, report = null } = {})
 {
     if (!plain(permissions) || !Array.isArray(permissions.deny) || !seatNames.length) return false;
     const names = new Set(seatNames);
@@ -847,6 +847,7 @@ function removeSeatDenies(permissions, seatNames, label, log, { tidy = false } =
     for (let i = permissions.deny.length - 1; i >= 0; i--)
         if (names.has(seatOf(permissions.deny[i]))) gone.unshift(...permissions.deny.splice(i, 1));
     if (!gone.length) return false;
+    if (report) for (const row of gone) report.remove('deny', seatOf(row));
     log(`  ${label}: agent deny rows removed (a seat is a project copy now, not a plugin item): ${gone.map(seatOf).join(', ')}`);
     if (tidy && !permissions.deny.length) delete permissions.deny;
     return true;
@@ -860,7 +861,7 @@ function writeSettings(opts)
         mcpOff = [], dropEmptyApprovals = false, catalog = [], migrations = {},
         docsVersioning, docsPath = null, autoCompact = null, memory = null, hooksOff, hooksAnswered = false, inheritedEnv = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
-        variablesFile = null, childEnv = null, keepOwn = false, carried = {}, routeKey = null, log = () => {}, note = () => {},
+        variablesFile = null, childEnv = null, keepOwn = false, carried = {}, routeKey = null, log = () => {}, note = () => {}, report = null,
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
     // wirings the RELEASE writes, whatever this run's selection wires.
@@ -978,7 +979,7 @@ function writeSettings(opts)
     // No seat is denied: every seat is a project copy, and an unpicked one has none. The `Agent(alfred-code:<seat>)` rows an
     // older install wrote - for a seat this release ships, retired or renamed (`seatNames`) - go, ledgered or not; a row naming
     // any other seat, and every other permission row, is the user's and stays.
-    if (deny && removeSeatDenies(data.permissions, seatRows, label, log)) changed = true;
+    if (deny && removeSeatDenies(data.permissions, seatRows, label, log, { report })) changed = true;
     if (rekeyOverrides(data, renamed, log, label)) changed = true;
 
     // enabledMcpjsonServers: an earlier release pre-approved the .mcp.json servers it registered. The stack registers
@@ -1270,7 +1271,7 @@ function writeSettings(opts)
                 delete shared.env.ALFRED_CODE_DOCS_PATH;
             }
             if (keepOwn) approvals(shared, sharedName);
-            if (keepOwn && removeSeatDenies(shared.permissions, seatRows, sharedName, log, { tidy: true }) && !Object.keys(shared.permissions).length) delete shared.permissions;
+            if (keepOwn && removeSeatDenies(shared.permissions, seatRows, sharedName, log, { tidy: true, report }) && !Object.keys(shared.permissions).length) delete shared.permissions;
             if (JSON.stringify(shared) !== before)
             {
                 putFile(sharedFile, stringifyLike(shared, formatOf(sharedText)));

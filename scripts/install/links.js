@@ -22,6 +22,29 @@ const agentAt = (dir, nameOrFile) => { const folder = agentDir(dir, nameOrFile);
 const agentFile = (dir, nameOrFile) => { const at = agentAt(dir, nameOrFile); return at.endsWith('.md') ? at : path.join(at, `${path.basename(at)}.md`); };
 const storeOf = (root, kind) => path.join(root, '.alfred', 'stack', kind);
 const kept = (p, base = '.claude') => `  agent kept: ${base}/${p} - edited since it was copied from the store, so it is yours`;
+const NO_REPORT = Object.freeze({ add() {}, update() {}, remove() {}, keep() {} });
+const STACK_STORE_MARK = `${path.sep}.alfred${path.sep}stack${path.sep}`;
+// A line said once per `said` set: the migration and the link pass both meet the same user's file.
+const tell = (log, said, line) => { if (said.has(line)) return; said.add(line); log(line); };
+// A `<kind>/<file>` path as the report names it: `skill x`, `agent y`.
+const keepPath = (report, p) => { const [kind, file] = p.split('/'); report.keep(kind.slice(0, -1), file); };
+// The links in `.claude/<kind>` that no record lists, whose target path lies in a `.alfred/stack/` folder and is gone: the stack's own
+// (its store lost the item). A link to any other place, and a live one, is the user's and stays.
+function pruneDanglingLinks({ projectRoot, kind, listed, log, report })
+{
+    const dir = path.join(projectRoot, '.claude', kind);
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries.filter((e) => e.isSymbolicLink() && !listed.has(`${kind}/${e.name}`)))
+    {
+        const at = path.join(dir, entry.name);
+        const target = path.resolve(dir, fs.readlinkSync(at));
+        if (fs.existsSync(at) || !`${target}${path.sep}`.includes(STACK_STORE_MARK)) continue;
+        fs.unlinkSync(at);
+        report.remove('link', `${kind}/${entry.name}`);
+        log(`link removed: .claude/${kind}/${entry.name} - its target in the store is gone`);
+    }
+}
 const copyItem = (from, to) => { fs.rmSync(to, { recursive: true, force: true }); fs.cpSync(from, to, { recursive: true }); };
 // `none` outside a repository, else git's own word; a tracked file inside makes the folder `visible` (a link would replace
 // a committed path); `unknown` when git cannot be run.
@@ -90,13 +113,14 @@ function make({ projectRoot, kind, p, at, holder, platform, symlink, agentJuncti
 }
 // Makes, keeps, re-points and removes the links of `want` ([{ kind, name }]) against the record `prior`; returns the new
 // record. A real item or an unlisted link at a path is the user's; a kind git sees is named and left (ruling 11).
-function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = false, rt, platform = process.platform, symlink = fs.symlinkSync, agentJunction = AGENT_JUNCTION_ON_WIN32, log = () => {} })
+function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = false, rt, platform = process.platform, symlink = fs.symlinkSync, agentJunction = AGENT_JUNCTION_ON_WIN32, log = () => {}, said = new Set(), report = NO_REPORT, pruneDangling = false })
 {
     const out = [];
     const listed = new Map(prior.map((e) => [e.path, e]));
     for (const kind of KINDS)
     {
         const mine = prior.filter((e) => e.path.startsWith(`${kind}/`));
+        if (pruneDangling) pruneDanglingLinks({ projectRoot, kind, listed: listed, log, report });
         const home = homeOf(projectRoot, kind, { rt });
         if (!home.store)
         {
@@ -118,8 +142,8 @@ function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = fa
             const copy = Boolean(st) && !st.isSymbolicLink() && Boolean(was) && was.kind === 'copy';
             seen.add(p);
             // a flat agent file of an older install beside the folder: the user's (the stack's own moved, migrateFlatAgents) - kept, and nothing linked over it
-            if (kind === 'agents' && !st && lstat(`${at}.md`)?.isFile()) { log(kept(`${p}.md`)); continue; }
-            if (!holder) { const live = link && fs.existsSync(at); if (was && drop(at, was)) log(`${was.kind === 'copy' ? 'copy' : 'link'} removed: .claude/${p} - ${live ? 'nothing this project links from holds it now' : 'its target is gone'}`); }
+            if (kind === 'agents' && !st && lstat(`${at}.md`)?.isFile()) { tell(log, said, kept(`${p}.md`)); keepPath(report, p); continue; }
+            if (!holder) { const live = link && fs.existsSync(at); if (was && drop(at, was)) { report.remove(was.kind === 'copy' ? kind.slice(0, -1) : 'link', was.kind === 'copy' ? fileOf(kind, name) : p); log(`${was.kind === 'copy' ? 'copy' : 'link'} removed: .claude/${p} - ${live ? 'nothing this project links from holds it now' : 'its target is gone'}`); } }
             else if (!st || (link && real(at) !== real(holder)))
             {
                 if (st) fs.unlinkSync(at);
@@ -128,15 +152,15 @@ function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = fa
                 if (made && st) log(`link re-pointed: .claude/${p}`);
             }
             else if (link) out.push(was);
-            else if (copy && hashItem(at) !== was.hash) log(kept(p));
+            else if (copy && hashItem(at) !== was.hash) { tell(log, said, kept(p)); keepPath(report, p); }
             else if (copy) { const h = hashItem(holder); if (h !== was.hash) copyItem(holder, at); out.push({ path: p, kind: 'copy', hash: h }); }
-            else log(`  !! link skipped: .claude/${p} - ${st.isSymbolicLink() ? 'a link the stamp does not list, so it is yours' : 'a real folder or file of that name is yours'}`);
+            else { keepPath(report, p); log(`  !! link skipped: .claude/${p} - ${st.isSymbolicLink() ? 'a link the stamp does not list, so it is yours' : 'a real folder or file of that name is yours'}`); }
         }
         for (const e of mine.filter((x) => !seen.has(x.path)))
         {
             const at = path.join(projectRoot, '.claude', e.path);
             const gone = !fs.existsSync(at);
-            if (drop(at, e) && gone) log(`link removed: .claude/${e.path} - its target is gone`);
+            if (drop(at, e) && gone) { report.remove('link', e.path); log(`link removed: .claude/${e.path} - its target is gone`); }
         }
     }
     return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -165,7 +189,7 @@ function checkLinks({ projectRoot, record = [], members = [], rt })
 // bytes under the same hash) and is logged; so does one of a name nothing recorded that `isStacks(name, file)` vouches for
 // (the caller's test: the stack's own text, or a stamp that never recorded picks). Any other is the user's and stays - the
 // store's is named here, the `.claude` one by syncLinks. `names` are the seats looked at, besides the recorded ones.
-function migrateFlatAgents({ projectRoot, home, hashes = {}, names = [], isStacks = () => false, log = () => {} })
+function migrateFlatAgents({ projectRoot, home, hashes = {}, names = [], isStacks = () => false, log = () => {}, said = new Set(), report = NO_REPORT })
 {
     const target = (name) => path.join(home.dir, name);
     for (const name of [...new Set([...Object.keys(hashes), ...names])].filter((n) => validItemName(n)))
@@ -178,15 +202,16 @@ function migrateFlatAgents({ projectRoot, home, hashes = {}, names = [], isStack
             if (!(hashes[name] || []).includes(hashItem(flat)) && (Object.hasOwn(hashes, name) || !isStacks(name, flat)))
             {
                 // The store's flat file is named here; the `.claude` one by the prune or syncLinks - unless the home is the store, where neither looks at it.
-                if (base) log(kept(`${name}.md`, `.alfred/stack/agents`));
-                else if (home.store) log(kept(`agents/${name}.md`));
+                if (base) tell(log, said, kept(`${name}.md`, `.alfred/stack/agents`));
+                else if (home.store) tell(log, said, kept(`agents/${name}.md`));
+                report.keep('agent', name);
                 continue;
             }
             if (lstat(target(name))) fs.unlinkSync(flat);
             else { fs.mkdirSync(target(name), { recursive: true }); fs.renameSync(flat, path.join(target(name), `${name}.md`)); }
             moved = true;
         }
-        if (moved) log(`agent moved to a folder: ${name}`);
+        if (moved) { report.update('agent', name); log(`agent moved to a folder: ${name}`); }
     }
 }
-module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, kept, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };
+module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, kept, tell, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };

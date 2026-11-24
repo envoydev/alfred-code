@@ -1582,7 +1582,7 @@ function workspaceStep(ctx)
     const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
     // An unusable local file (installHooksAndRules' localBad) gets no row; carryMemberRows keeps what the ledger named.
     const sync = (arrayPath, list) => (!ctx.localBad && (list.length || recorded(arrayPath))
-        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note })
+        ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note, report: ctx.report })
         : { rows: {}, created: false });
     const r = sync('claudeMdExcludes', want);
     // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
