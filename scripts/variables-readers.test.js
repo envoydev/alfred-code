@@ -149,30 +149,50 @@ test('the scan sees each access shape and passes over a process env read, a mess
 });
 
 // Workspace versioning D10: `recommend --child` names the workspace root's value, so the walk shows it as the default.
-test('recommend --child names the root\'s value', () =>
+function linkedChild(rootText)
 {
     const { putWorkspace } = require('./workspace-fixture.js');
-    const os = require('node:os');
-    const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'recommend-ws-')));
-    const child = path.join(top, 'ws', 'api');
+    const top = fs.realpathSync.native(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'recommend-ws-')));
+    const root = path.join(top, 'ws');
+    const child = path.join(root, 'api');
+    for (const dir of [child, root]) fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    for (const dir of [child, root]) fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\nmanaged-env: \n');
+    execFileSync('git', ['init', '-q', '-b', 'develop', '.'], { cwd: child });
+    putWorkspace(root, { children: ['api'] });
+    putWorkspace(child, { parent: '..' });
+    const variables = path.join(root, '.alfred', '.variables');
+    if (rootText !== null) fs.writeFileSync(variables, rootText);
+    const recommend = (env, ...flags) => execFileSync('node', [path.join(ROOT, 'scripts', 'variables.js'), 'recommend', '--root', child, '--child', ...flags],
+        { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(top, 'acct'), ...env } }).trim();
+    return { top, variables, recommend };
+}
+const WORKSPACE_ON = { ALFRED_CODE_WORKSPACE: '1' };
+
+test('recommend --child names the root\'s value', () =>
+{
+    const at = linkedChild('ALFRED_CODE_DOCS_VERSIONING=local\n');
     try
     {
-        fs.mkdirSync(path.join(child, '.claude'), { recursive: true });
-        fs.mkdirSync(path.join(top, 'ws', '.claude'), { recursive: true });
-        for (const dir of [child, path.join(top, 'ws')]) fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\nmanaged-env: \n');
-        execFileSync('git', ['init', '-q', '-b', 'develop', '.'], { cwd: child });
-        putWorkspace(path.join(top, 'ws'), { children: ['api'] });
-        putWorkspace(child, { parent: '..' });
-        const recommend = (env) => execFileSync('node', [path.join(ROOT, 'scripts', 'variables.js'), 'recommend', '--root', child, '--child'],
-            { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(top, 'acct'), ...env } }).trim();
-        const on = { ALFRED_CODE_WORKSPACE: '1' };
-        fs.writeFileSync(path.join(top, 'ws', '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=local\n');
-        assert.strictEqual(recommend(on), 'docs-versioning: from root local');
-        assert.match(recommend({ ALFRED_CODE_WORKSPACE: '0' }), /^docs-versioning: recommend git - /, 'the switch off: no chain, as today');
-        fs.writeFileSync(path.join(top, 'ws', '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=maybe\n');
-        assert.match(recommend(on), /^docs-versioning: recommend git - /, 'a garbage root value is no answer');
-        fs.rmSync(path.join(top, 'ws', '.alfred', '.variables'));
-        assert.match(recommend(on), /^docs-versioning: recommend git - /, 'a root with no value: as today');
+        assert.strictEqual(at.recommend(WORKSPACE_ON), 'docs-versioning: from root local');
+        assert.match(at.recommend({ ALFRED_CODE_WORKSPACE: '0' }), /^docs-versioning: recommend git - /, 'the switch off: no chain, as today');
+        fs.writeFileSync(at.variables, 'ALFRED_CODE_DOCS_VERSIONING=maybe\n');
+        assert.match(at.recommend(WORKSPACE_ON), /^docs-versioning: recommend git - /, 'a garbage root value is no answer');
+        fs.rmSync(at.variables);
+        assert.match(at.recommend(WORKSPACE_ON), /^docs-versioning: recommend git - /, 'a root with no value: as today');
     }
-    finally { fs.rmSync(top, { recursive: true, force: true }); }
+    finally { fs.rmSync(at.top, { recursive: true, force: true }); }
+});
+
+test('recommend --child keeps the firm local of a local-scope child over a git root', () =>
+{
+    const at = linkedChild('ALFRED_CODE_DOCS_VERSIONING=git\n');
+    try
+    {
+        assert.match(at.recommend(WORKSPACE_ON, '--scope', 'local'), /^docs-versioning: recommend local - a local-scope child keeps its data root out of git$/,
+            'a firm layout answer that differs from the root\'s is the default');
+        assert.strictEqual(at.recommend(WORKSPACE_ON), 'docs-versioning: from root git', 'project scope is not firm: the root\'s value');
+        fs.writeFileSync(at.variables, 'ALFRED_CODE_DOCS_VERSIONING=local\n');
+        assert.strictEqual(at.recommend(WORKSPACE_ON, '--scope', 'local'), 'docs-versioning: from root local', 'a firm answer equal to the root\'s reads from root');
+    }
+    finally { fs.rmSync(at.top, { recursive: true, force: true }); }
 });

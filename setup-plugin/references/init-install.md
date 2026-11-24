@@ -205,7 +205,7 @@ Then run the installer **from the snapshot**, and pass it back with `--source` s
 
 `--scope-of` carries the walk's last answer (`references/walk.md`, 'Where each optional item installs'): one `--scope-of <item>=global` per optional pick the user made global; every other one installs in this project, so a 'This project, all of them' answer passes none.
 
-`--docs-versioning` carries screen B's docs-versioning answer when screen B asked it, except a child's answer equal to the workspace's value, which it inherits. The installer WRITES it, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and leaves the re-probe nothing.
+`--docs-versioning` carries screen B's docs-versioning answer, except a child's answer equal to the workspace's value (inherited, unless its line read `recommend <v>`). The installer WRITES it, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line, not a seed line, and leaves the re-probe nothing.
 
 Over docs an earlier install left (the stamp gone, the folders kept), the run moves them onto the current layout as
 an update does: report each `layout:` line it printed, verbatim; `layout: current` needs no line.
