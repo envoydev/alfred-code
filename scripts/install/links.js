@@ -152,7 +152,7 @@ function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = fa
                 if (st) fs.unlinkSync(at);
                 const made = make({ projectRoot, kind, p, at, holder, platform, symlink, agentJunction, log });
                 if (made) out.push(made);
-                if (made && st) log(`link re-pointed: .claude/${p}`);
+                if (made && st) { log(`link re-pointed: .claude/${p}`); report.update(kind.slice(0, -1), name); }
             }
             else if (link) out.push(was);
             else if (copy && hashItem(at) !== was.hash) { tell(log, said, kept(p)); keepPath(report, p); }

@@ -75,8 +75,10 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   or on `TRUNCATED`: 'the compare was capped at 300 files - run /alfred-code:configure to reconcile what it may have
   missed', with configure on the suggestion card. No signal: no line.
 - **REPORT** - the grep's `report: .:` line and its `new session needed:` line, each word for word, and nothing re-counted from the
-  tree. The report line counts what this run added, updated, removed and kept as the user's own, with the names (the first 8). Then say
-  that rule files and agents load when a session starts: the user starts a new one (or `/clear`) to pick them up. A workspace run
+  tree. The report line counts what this run added, updated, removed and kept as the user's own, with the names (the first 8). The
+  `new session needed:` line comes only when the update changed rules or agents; a run that changed none has the report line alone,
+  and no session line is said. Where it is there, say that rule files and agents load when a session starts: the user starts a new
+  one (or `/clear`) to pick them up. A workspace run
   has one `report:` line per level: this project's carries `.`, and each updated child's comes under its row in WORKSPACE, below.
 - **SEATS** - the grep's `seats:` line verbatim: where the agents come from on this route, so an absent
   `.claude/agents` reads as the plugin route, not a loss.

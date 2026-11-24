@@ -464,8 +464,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         {
             let made = true;
             try { fs.mkdirSync(rulesDir, { recursive: true }); } catch (err) { made = false; log(`  !! rules stay in .claude this run: ${err.code}`); }
-            const claimed = ruleClaim({ manifest, source: resolved, claudeDir, rulesDir: path.join(claudeDir, 'rules') });
-            const names = [...new Set([...Object.keys(stampedLib.rules || {}), ...manifest.rules.map((f) => f.replace(/\.md$/, '')).filter(claimed)])];
+            const claimed = ruleClaim({ manifest, source: resolved, claudeDir, rulesDir: path.join(claudeDir, 'rules'), stampFile, legacyUnstamped });
+            const unmarked = (n) => !nativeRules.hasMarker(readText(path.join(claudeDir, 'rules', `${n}.md`)));   // a marked file is the stack's native copy, never moved into the store
+            const names = [...new Set([...Object.keys(stampedLib.rules || {}), ...manifest.rules.map((f) => f.replace(/\.md$/, '')).filter(claimed)])].filter(unmarked);
             if (!made || links.moveIn({ projectRoot, kind: 'rules', names, home: { store: true, dir: rulesDir }, log }).failed.length)
                 rulesDir = path.join(claudeDir, 'rules');
             else for (const [n, h] of Object.entries(stampedLib.rules || {}))   // held twice: at its stamped hash the .claude copy goes; an edited one stays - writeNativeRules names it
@@ -821,7 +822,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         settings.dropEmptySharedSettings({ file: path.join(claudeDir, 'settings.json'), tracked: (at) => gitTracks(ctx, at), log, note });
 
         summarise(ctx, failures);
-        if (args.action === 'install' || args.action === 'update') for (const line of [ctx.report.line(TOP_REL), NEW_SESSION_LINE]) log(line);
+        if (args.action === 'install' || args.action === 'update') for (const line of [ctx.report.line(TOP_REL), ...(ctx.report.changedSessionItems() ? [NEW_SESSION_LINE] : [])]) log(line);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }
     catch (e)
@@ -1596,12 +1597,23 @@ const ruleOpening = (file) =>
     try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
     catch { return null; }
 };
-// Where a rule is read and written: the store, unless only .claude/rules holds it - a project's own file the move left there.
-const ruleHome = (ctx, name) => [ctx.rulesDir, path.join(ctx.claudeDir, 'rules')].map((d) => path.join(d, `${name}.md`))
-    .find((f, i) => i === 1 || fs.existsSync(f) || !fs.existsSync(path.join(ctx.claudeDir, 'rules', `${name}.md`)));
+// Where a rule is read and written: the store, unless only .claude/rules holds it as the user's own file the move left there.
+// A marked file there is the stack's native copy, never the library one: the store copy is written from the source.
+const ruleHome = (ctx, name) =>
+{
+    const native = path.join(ctx.claudeDir, 'rules', `${name}.md`);
+    const inStore = path.join(ctx.rulesDir, `${name}.md`);
+    return fs.existsSync(inStore) || !fs.existsSync(native) || nativeRules.hasMarker(readText(native)) ? inStore : native;
+};
+// A stamp that records no rule - none at all, or a legacy install with no stamp - is the only record a bare `alfred-` NAME can
+// stand in for. Under a stamp that records rules, or on a fresh install, an unmarked file it does not list is the user's
+// whatever its name; only an opening line the stack shipped still marks it as an older copy of the stack's text.
+const noRuleRecord = (ctx) => Boolean(ctx.legacyUnstamped)
+    || (Boolean(ctx.stampFile) && !Object.keys((stampLayer.readLibrary(ctx.stampFile) || {}).rules || {}).length);
 const ruleClaim = (ctx) => (name) =>
 {
-    if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
+    if (nativeRules.hasMarker(readText(path.join(ctx.claudeDir, 'rules', `${name}.md`)))) return true;
+    if (noRuleRecord(ctx) && stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
     const past = (ctx.ruleOpenings ||= ruleOpenings.pastOpenings(ctx.source.dir));
     return ruleOpenings.stackOpening(name, readText(ruleHome(ctx, name)),
         readText(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`)), past);

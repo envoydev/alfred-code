@@ -12,7 +12,9 @@ const DENY_KIND = 'deny';
 const DENY_ITEM = (count) => `deny rows (${count})`;
 const REPORT_PREFIX = 'report:';
 const NEW_SESSION_LINE = 'new session needed: rule files and agents load when a session starts - start one (or /clear) to pick them up';
+// The item kinds a session loads at its start: a run that changed one tells the user to start a new session.
+const SESSION_KINDS = Object.freeze(['rule', 'agent']);
 // A line a project's own run printed (`==> report: .: ...`), read by the cascade to relabel it with the child's path.
 const REPORT_LINE_AT_TOP = /^==> report: \.: (.+)$/m;
 
-module.exports = { EVENT, NAME_CAP, NAME_JOIN, NAME_OVERFLOW, TOP_REL, DENY_KIND, DENY_ITEM, REPORT_PREFIX, NEW_SESSION_LINE, REPORT_LINE_AT_TOP };
+module.exports = { EVENT, NAME_CAP, NAME_JOIN, NAME_OVERFLOW, TOP_REL, DENY_KIND, DENY_ITEM, REPORT_PREFIX, NEW_SESSION_LINE, SESSION_KINDS, REPORT_LINE_AT_TOP };
