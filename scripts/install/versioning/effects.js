@@ -29,7 +29,7 @@ function effectiveVersioning({ projectRoot, scope, docsPath, dataRoot, env = pro
     const advice = docs.docsVersioningAdvice({ projectRoot, docsPath, scope: at, child: linked, dataRoot });
     let own = copy.resolveDocsVersioning(projectRoot, at) || undefined;
     const heldElsewhere = Boolean(workspace.layerHolding(projectRoot, KEY, { env }));
-    if (own && seedLeaves({ value: own, atLedgerHash: rows[KEY] === stamp.valueHash(own), answeredEnv: answered, firm: advice.firm, chain, linked, heldElsewhere })) own = undefined;
+    if (own && seedLeaves({ value: own, atLedgerHash: rows[KEY] === stamp.valueHash(own), answeredEnv: answered, firm: advice.firm, chain, linked, heldElsewhere, noRepo: Boolean(advice.noRepo) })) own = undefined;
     const { value, source } = rankVersioning({ flag, carry, reseed, own, firm: advice, chain, linked });
     return { value, source, advice, linked, chain };
 }

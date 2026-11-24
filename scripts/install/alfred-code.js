@@ -824,12 +824,15 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
         // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
         // value is named, none removed (3.12).
-        if (ctx.childEnv && ctx.childEnv.linked)
+        const linkedChild = Boolean(ctx.childEnv && ctx.childEnv.linked);
+        const noRepo = Boolean(ctx.versioning.advice && ctx.versioning.advice.noRepo);
+        if (linkedChild || noRepo)
         {
             const own = variables.fileOf(projectRoot, { env: {}, dataRoot: ctx.dataInfo.root });
-            if (ctx.variablesFile || (fs.existsSync(own) && variables.tracked(own)))
+            if (linkedChild && (ctx.variablesFile || (fs.existsSync(own) && variables.tracked(own))))
                 workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile) });
-            // D3: the stack's own seed of the docs versioning, once the workspace answers it - the same write rule.
+            // D3: the stack's own seed of the docs versioning, once the workspace answers it - or, outside any git repository, never
+            // seeded (only a chosen value chains) - the same write rule.
             workspace.pruneVersioningSeed(projectRoot, { env, advice: ctx.versioning.advice, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile),
                 answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile) });
         }
@@ -2534,6 +2537,7 @@ function installHooksAndRules(ctx)
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }),
             firm: Boolean(ctx.versioning.advice && ctx.versioning.advice.firm),
             chain: ctx.versioning.linked ? ctx.versioning.chain : undefined,
+            noRepo: Boolean(ctx.versioning.advice && ctx.versioning.advice.noRepo),
         },
         docsPath: ctx.docsPath,
         // The data root, still written until the key's writes go (the fixed root, Task 2).

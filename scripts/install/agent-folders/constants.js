@@ -18,7 +18,11 @@ const VERSIONING_LOCAL = 'local';
 
 const trackedNotice = (folder) => `!! ${folder}: git tracks files under it - versioning local cannot hide it; untrack them (git rm -r --cached ${folder}) to keep it out`;
 
+// The `told-tracked:` entry for a `.gitignore` of the project's own that blocks the stack's text: said once.
+const ownEntry = (folder) => `own:${folder}`;
+const ownNotice = (folder) => `!! ${folder}/.gitignore: not the stack's text, so it is yours and stays - versioning local does not hide ${folder} until its rule is in that file`;
+
 module.exports = {
-    FOLDER, FOLDERS, IGNORE_FILE, STACK_TEXTS, ACTION, SCOPE_LOCAL, VERSIONING_LOCAL, trackedNotice,
+    ownEntry, ownNotice, FOLDER, FOLDERS, IGNORE_FILE, STACK_TEXTS, ACTION, SCOPE_LOCAL, VERSIONING_LOCAL, trackedNotice,
     CLAUDE_IGNORE, CLAUDE_VERSIONING_IGNORE, CURSOR_VERSIONING_IGNORE,
 };

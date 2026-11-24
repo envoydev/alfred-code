@@ -93,7 +93,7 @@ function docsVersioningSeed(o)
 function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child, dataRoot })
 {
     const g = git || realGit(projectRoot);
-    if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs', firm: true };
+    if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs', firm: true, noRepo: true };
     if (scope === 'local') return { value: 'local', reason: child ? 'a local-scope child keeps its data root out of git' : 'a local install keeps its data root out of git', firm: true };
     const { parts, names } = votingDomains({ projectRoot, docsPath });
     const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');

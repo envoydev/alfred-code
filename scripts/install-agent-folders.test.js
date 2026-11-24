@@ -12,7 +12,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const rt = require('./install/runtime.js');
 const { folderPlan } = require('./install/agent-folders/plan.js');
 const { apply } = require('./install/agent-folders/effects.js');
-const { trackedNotice } = require('./install/agent-folders/constants.js');
+const { trackedNotice, ownNotice } = require('./install/agent-folders/constants.js');
 const variables = require('./install/variables.js');
 const docs = require('./install/docs.js');
 const { CLAUDE_IGNORE, CLAUDE_VERSIONING_IGNORE, CURSOR_VERSIONING_IGNORE } = require('../stack/mcp/data-root.js');
@@ -50,15 +50,21 @@ const PLAN_TABLE = [
     ['project + git removes the old local scope text', { versioning: 'git', have: CLAUDE_IGNORE }, { action: 'remove', dir: false }],
     ['project + git with no file does nothing', { versioning: 'git' }, { action: 'keep' }],
     ['project + git keeps anything else', { versioning: 'git', have: `${CLAUDE_VERSIONING_IGNORE}!keep.md\n` }, { action: 'keep' }],
-    ['an unknown versioning (null) removes nothing it did not write and writes nothing', { versioning: null }, { action: 'keep' }],
+    ['an unknown versioning (null) with no file writes nothing', { versioning: null }, { action: 'keep' }],
+    ['an unknown versioning (null) keeps a stack text on .claude', { versioning: null, have: CLAUDE_VERSIONING_IGNORE }, { action: 'keep' }],
+    ['an unknown versioning (null) keeps the recorded .cursor and its stack text', { folder: '.cursor', versioning: null, have: CURSOR_VERSIONING_IGNORE, created: ['.cursor'] }, { action: 'keep' }],
+    ['an unknown versioning (null) keeps the old local scope text at project scope', { versioning: null, have: CLAUDE_IGNORE }, { action: 'keep' }],
+    ['an unknown versioning (null) at local scope still writes a local install\'s own text', { scope: 'local', versioning: null }, { action: 'write', text: CLAUDE_IGNORE }],
     ['a removed .cursor the stack made is flagged for its folder', { folder: '.cursor', versioning: 'git', have: CURSOR_VERSIONING_IGNORE, created: ['.cursor'] }, { action: 'remove', dir: true }],
     ['a scope change rewrites one stack text as the other', { have: CLAUDE_IGNORE }, { action: 'write', text: CLAUDE_VERSIONING_IGNORE }],
     ['the wanted text already there is kept', { have: CLAUDE_VERSIONING_IGNORE }, { action: 'keep' }],
-    ['tracked and not told: tell with the exact notice', { tracked: true }, { action: 'tell', line: '!! .claude: git tracks files under it - versioning local cannot hide it; untrack them (git rm -r --cached .claude) to keep it out' }],
+    ['tracked and not told: tell with the exact notice', { tracked: true }, { action: 'tell', line: '!! .claude: git tracks files under it - versioning local cannot hide it; untrack them (git rm -r --cached .claude) to keep it out', entry: '.claude' }],
     ['tracked and told: keep', { tracked: true, told: ['.claude'] }, { action: 'keep' }],
     ['not in a repository: keep', { inRepo: false }, { action: 'keep' }],
-    ['the stack\'s first line plus one more is the user\'s: keep', { have: `${CLAUDE_VERSIONING_IGNORE}!shared.md\n` }, { action: 'keep' }],
-    ['a user file at .cursor is kept', { folder: '.cursor', have: '*.log\n' }, { action: 'keep' }],
+    ['the stack\'s first line plus one more is the user\'s: kept and named once', { have: `${CLAUDE_VERSIONING_IGNORE}!shared.md\n` }, { action: 'tell', line: ownNotice('.claude'), entry: 'own:.claude' }],
+    ['a user file at .cursor is kept and named once', { folder: '.cursor', have: '*.log\n' }, { action: 'tell', line: ownNotice('.cursor'), entry: 'own:.cursor' }],
+    ['a user file already named is kept silently', { folder: '.cursor', have: '*.log\n', told: ['own:.cursor'] }, { action: 'keep' }],
+    ['a user file is not named where the stack would write nothing', { versioning: 'git', have: '*.log\n' }, { action: 'keep' }],
 ];
 for (const [name, input, expected] of PLAN_TABLE)
     test(`folderPlan: ${name}`, () => assert.deepStrictEqual(folderPlan({ ...PLAN, ...input }), expected));
@@ -131,19 +137,39 @@ test('apply: back at git the .claude text goes and the .cursor folder the stack 
     assert.match(off.lines.join('\n'), /\.claude\/\.gitignore removed/);
 });
 
-test('apply: a file of the user\'s - even the stack\'s first line plus more - is never rewritten or removed', () =>
+test('apply: a file of the user\'s - even the stack\'s first line plus more - is never rewritten or removed, and named once', () =>
 {
     const root = project();
     const mine = `${CLAUDE_VERSIONING_IGNORE}!shared.md\n`;
     put(root, '.claude/.gitignore', mine);
     put(root, '.cursor/.gitignore', '*.tmp\n');
-    for (const versioning of ['local', 'git', 'local'])
+    const first = run(root, { versioning: 'local' });
+    assert.deepStrictEqual(first.lines, [`  ${ownNotice('.claude')}`, `  ${ownNotice('.cursor')}`]);
+    assert.deepStrictEqual(first.toldTracked, ['own:.claude', 'own:.cursor']);
+    let record = first;
+    for (const versioning of ['git', 'local'])
     {
-        const result = run(root, { versioning });
-        assert.deepStrictEqual(result.lines, [], versioning);
+        record = run(root, { versioning, told: record.toldTracked, created: record.createdDirs });
+        assert.deepStrictEqual(record.lines, [], versioning);
     }
+    assert.deepStrictEqual(record.toldTracked, ['own:.claude', 'own:.cursor']);
     assert.strictEqual(read(root, '.claude', '.gitignore'), mine);
     assert.strictEqual(read(root, '.cursor', '.gitignore'), '*.tmp\n');
+});
+
+test('apply: an unread docs versioning (null) removes nothing - the stack texts, the recorded .cursor and the records stay', () =>
+{
+    const root = project();
+    const on = run(root);
+    assert.deepStrictEqual(on.createdDirs, ['.cursor']);
+    const failed = run(root, { versioning: null, told: ['.claude'], created: on.createdDirs });
+    assert.deepStrictEqual(failed.lines, []);
+    assert.strictEqual(read(root, '.claude', '.gitignore'), CLAUDE_VERSIONING_IGNORE);
+    assert.strictEqual(read(root, '.cursor', '.gitignore'), CURSOR_VERSIONING_IGNORE);
+    assert.deepStrictEqual({ toldTracked: failed.toldTracked, createdDirs: failed.createdDirs }, { toldTracked: ['.claude'], createdDirs: ['.cursor'] });
+    const second = run(root, { versioning: null, second: true, created: on.createdDirs });
+    assert.deepStrictEqual(second.lines, []);
+    assert.strictEqual(read(root, '.claude', '.gitignore'), CLAUDE_VERSIONING_IGNORE);
 });
 
 test('apply: a folder git tracks files in gets no file and one notice, told once', () =>
@@ -306,4 +332,18 @@ test('a docs root under .claude with the stack\'s .claude/.gitignore is not firm
     put(root, '.claude/.gitignore', '*\n');
     const users = docs.docsVersioningAdvice({ projectRoot: root, docsPath: '.claude/docs', scope: 'project', dataRoot: '.alfred' });
     assert.deepStrictEqual({ value: users.value, firm: users.firm }, { value: 'local', firm: true });
+});
+
+test('install: a .claude/.gitignore of the user\'s is named once and on the stamp, and a second run says nothing', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'install'], SEL, {
+        args: [LOCAL_VERSIONING, LOCAL_VERSIONING], env: COPY,
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.claude'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', '.gitignore'), '!mine\n'); },
+        each: snapshot,
+    });
+    assert.strictEqual(steps[0].claude, '!mine\n');
+    assert.match(steps[0].stamp, /^told-tracked: own:\.claude$/m);
+    assert.match(outs[0], /^==> {3}!! \.claude\/\.gitignore: not the stack's text, so it is yours and stays/m);
+    assert.doesNotMatch(outs[1], /not the stack's text/);
+    assert.deepStrictEqual(steps[1], steps[0]);
 });

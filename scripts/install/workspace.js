@@ -700,7 +700,7 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const held = layerHolding(projectRoot, KEY, { env });
-    const input = { value, atLedgerHash: rows[KEY] === stamp.valueHash(value), answeredEnv, firm: Boolean(advice && advice.firm), chain, linked: chain !== undefined };
+    const input = { value, atLedgerHash: rows[KEY] === stamp.valueHash(value), answeredEnv, firm: Boolean(advice && advice.firm), chain, linked: chain !== undefined, noRepo: Boolean(advice && advice.noRepo) };
     const rel = path.relative(projectRoot, file).split(path.sep).join('/');
     if (!seedLeaves({ ...input, heldElsewhere: Boolean(held) }))
     {
@@ -709,13 +709,15 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     }
     if (!write)
     {
-        log(`workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - git tracks the file, so this run leaves it as it is; a project-scope update removes it`);
+        log(input.noRepo ? `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and this folder is no git repository - git tracks the file, so this run leaves it as it is; a project-scope update removes it`
+            : `workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - git tracks the file, so this run leaves it as it is; a project-scope update removes it`);
         return { dropped: false, kept: value };
     }
     const done = variables.write(file, { [KEY]: null });
     if (done.why) { log(`!! workspace: ${rel} could not be written (${done.why}) - ${KEY} stays`); return { dropped: false, kept: value }; }
     editVariablesLedger(projectRoot, (r) => { delete r[KEY]; return r; });
-    log(`workspace: ${KEY} '${value}' removed from ${rel} - the stack's seed; the workspace answers '${chain}'`);
+    log(input.noRepo ? `workspace: ${KEY} '${value}' removed from ${rel} - the stack's seed; a folder outside any git repository seeds none`
+        : `workspace: ${KEY} '${value}' removed from ${rel} - the stack's seed; the workspace answers '${chain}'`);
     return { dropped: true, kept: null };
 }
 

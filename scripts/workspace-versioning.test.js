@@ -134,7 +134,9 @@ function scenario(steps)
             if (s.before) s.before(work);
             const sel = path.join(work, `sel-${i}.txt`);
             fs.writeFileSync(sel, SELECTION);
-            return [...(s.act === 'update' ? ['--installed-only'] : []), '--selection', sel, ...(s.args || [])];
+            // The root's first install chooses `local` (a plain-folder root seeds none, and only a chosen value chains).
+            const chosen = i === 0 && !s.at && !s.act && !s.args ? ['--docs-versioning', 'local'] : [];
+            return [...(s.act === 'update' ? ['--installed-only'] : []), '--selection', sel, ...chosen, ...(s.args || [])];
         }),
         prepare: (repo, work) =>
         {

@@ -58,6 +58,10 @@ const LEAVES_TABLE = [
     ['a typed value (off its hash) stays', { value: 'git', atLedgerHash: false, answeredEnv: [], firm: false, chain: 'local', linked: true }, false],
     ['an answered value stays', { value: 'git', atLedgerHash: true, answeredEnv: [KEY], firm: false, chain: 'local', linked: true }, false],
     ['a value another layer holds keeps the line', { value: 'git', atLedgerHash: true, answeredEnv: [], firm: false, chain: 'local', linked: true, heldElsewhere: true }, false],
+    ['a seed in a project with no git repository leaves, with no chain', { value: 'local', atLedgerHash: true, answeredEnv: [], firm: true, chain: undefined, linked: false, noRepo: true }, true],
+    ['a typed value in a project with no git repository stays', { value: 'local', atLedgerHash: false, answeredEnv: [], firm: true, chain: undefined, linked: false, noRepo: true }, false],
+    ['an answered value in a project with no git repository stays', { value: 'local', atLedgerHash: true, answeredEnv: [KEY], firm: true, chain: undefined, linked: false, noRepo: true }, false],
+    ['a value another layer holds stays in a project with no git repository', { value: 'local', atLedgerHash: true, answeredEnv: [], firm: true, chain: undefined, linked: false, noRepo: true, heldElsewhere: true }, false],
 ];
 for (const [name, input, leaves] of LEAVES_TABLE)
     test(`remover: ${name}`, () => assert.strictEqual(seedLeaves(input), leaves));

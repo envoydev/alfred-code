@@ -59,7 +59,7 @@ function apply({ projectRoot, claudeDir, scope, log, rt, told = [], created = []
         const tracked = inRepo && have === null && wantedText({ folder, scope, versioning }) !== null && tracksFiles(projectRoot, folder, rt);
         const plan = folderPlan({ folder, scope, versioning, have, tracked, inRepo, told: [...toldNow], created: [...createdNow] });
         let changed = false;
-        if (plan.action === ACTION.tell) { log(`  ${plan.line}`); toldNow.add(folder); }
+        if (plan.action === ACTION.tell) { log(`  ${plan.line}`); toldNow.add(plan.entry); }
         else if (plan.action === ACTION.write)
         {
             const made = writeText({ folder, dir, file, have, text: plan.text, log });

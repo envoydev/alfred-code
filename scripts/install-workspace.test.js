@@ -677,11 +677,72 @@ test('AC19: a launch 0 in ws/api reads a chain of one and an install there remov
     ]);
     assert.strictEqual(r.steps[1].from, '..', `unset is on: the child reads the root's value through the chain: ${r.outs[1]}`);
     assert.notStrictEqual(r.steps[2].from, '..', 'a launch 0 reads a chain of one');
+    // These cases are about a child under a VALUED root: the root is a repository, so it seeds `git`, which the child inherits (no line). A plain-folder root seeds none (only a chosen value chains).
     // At 0 the chain is empty, so the child seeds its docs versioning as a standalone would (D3: no chain value, as before); nothing else moves.
     const seeded = [...r.steps[1].files];
     seeded[3] = 'ALFRED_CODE_DOCS_VERSIONING=git\n';
     assert.strictEqual(r.steps[1].files[3], null, 'a child under a valued root seeds no versioning line');
     assert.deepStrictEqual(r.steps[2].files, seeded, `the workspace files are unchanged, nothing is removed, the docs versioning seeded: ${r.outs[2]}`);
+});
+
+// A project outside any git repository seeds no docs versioning (only a chosen value chains): a plain-folder root hands its
+// git children nothing, so their `.claude` stays visible and no `.cursor` is made.
+const DV = 'ALFRED_CODE_DOCS_VERSIONING';
+const kidAgentFolders = (work) =>
+{
+    const dir = at(work, 'api');
+    const skill = (() => { try { return fs.lstatSync(path.join(dir, '.claude', 'skills', 'javascript')); } catch { return null; } })();
+    return { gitignore: readOr(path.join(dir, '.claude', '.gitignore')), cursor: fs.existsSync(path.join(dir, '.cursor')), copy: Boolean(skill) && skill.isDirectory() && !skill.isSymbolicLink(), vars: varsOf(work, 'api')[DV] };
+};
+const seedRow = (work) => lineOf(stampOf(work, '.'), 'managed-env') || '';
+// What an older release left in a plain-folder root: the seed in `.variables` and its ledger row at the seed's hash.
+const plantRootSeed = (work) =>
+{
+    const vars = path.join(at(work), '.alfred', '.variables');
+    fs.writeFileSync(vars, `${readOr(vars, '')}${DV}=local\n`);
+    const stamp = path.join(at(work), '.claude', 'alfred-code.stamp');
+    fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^managed-env: ?(.*)$/m, (_, rest) => `managed-env: ${rest ? `${rest},` : ''}.variables:${DV}=${stampLib.valueHash('local')}`));
+};
+
+test('plain-folder root: it seeds no docs versioning, and its git child keeps .claude visible and makes no .cursor', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); return { vars: varsOf(work, '.')[DV], row: seedRow(work) }; } },
+        { at: 'api', after: kidAgentFolders },
+        update('api', { after: kidAgentFolders }),
+    ], { rootRepo: false });
+    assert.strictEqual(r.steps[0].vars, undefined, r.outs[0]);
+    assert.ok(!r.steps[0].row.includes(`.variables:${DV}`), r.steps[0].row);
+    for (const i of [1, 2]) assert.deepStrictEqual(r.steps[i], { gitignore: null, cursor: false, copy: true, vars: r.steps[i].vars }, r.outs[i]);
+});
+
+test('plain-folder root: an older root\'s stack seed leaves on update, and the child is still not hidden', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { plantRootSeed(work); return { vars: varsOf(work, '.')[DV], row: seedRow(work) }; } },
+        update('.', { after: (work) => { join(work, 'api'); return { vars: varsOf(work, '.')[DV], row: seedRow(work) }; } }),
+        { at: 'api' },
+        update('api', { after: kidAgentFolders }),
+    ], { rootRepo: false });
+    assert.strictEqual(r.steps[0].vars, 'local', 'setup: the older root\'s seed is there');
+    assert.ok(r.steps[0].row.includes(`.variables:${DV}=`), r.steps[0].row);
+    assert.strictEqual(r.steps[1].vars, undefined, r.outs[1]);
+    assert.ok(!r.steps[1].row.includes(`.variables:${DV}`), r.steps[1].row);
+    assert.match(r.outs[1], /removed from \.alfred\/\.variables - the stack's seed; a folder outside any git repository seeds none/);
+    assert.deepStrictEqual({ ...r.steps[3], vars: null }, { gitignore: null, cursor: false, copy: true, vars: null }, r.outs[3]);
+});
+
+test('plain-folder root: a value the user typed local still hands it on, and the child hides .claude and .cursor', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', after: (work) => { join(work, 'api'); setVar(work, '.', { [DV]: 'local' }); } },
+        update('.', { after: (work) => varsOf(work, '.')[DV] }),
+        { at: 'api', after: (work) => ({ ...kidAgentFolders(work), cursorFile: readOr(path.join(at(work, 'api'), '.cursor', '.gitignore')) }) },
+    ], { rootRepo: false });
+    assert.strictEqual(r.steps[1], 'local', 'the typed value stays at the root');
+    assert.match(r.steps[2].gitignore, /versioning local - nothing under \.claude is committed/, r.outs[2]);
+    assert.match(r.steps[2].cursorFile, /versioning local - nothing under \.cursor is committed/);
+    assert.strictEqual(r.steps[2].vars, undefined, 'the child holds no line of its own');
 });
 
 test('a parent read-back that fails adds and drops nothing and prints one !! line', POSIX_ONLY, () =>
