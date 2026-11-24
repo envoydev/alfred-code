@@ -529,6 +529,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                     .filter((l) => !((lastPicked || {})[`${l.split(' ')[0]}s`] || []).some((e) => e.split('@')[0] === l.split(' ')[1])) : [])],
                 always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
+                inertSeats: [...manifest.agents, ...manifest.retired.agents].map((f) => f.replace(/\.md$/, '')).concat(Object.keys((manifest.renamed || {}).agents || {})),
             });
             if (!back.installed)
             {
@@ -777,7 +778,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'library' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
-            picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills),
+            picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills, ctx.flatOwnSeats),
             stoodDown: stoodDownRecord(ctx),
             mcpDenied: ctx.mcpDenied.now || ctx.mcpDenied.prior,
             toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
@@ -1437,13 +1438,21 @@ function flatSeatKept(ctx, name)
 }
 
 // On the plugin routes a project's own flat `.claude/agents/<name>.md` that no stamp line records and no migration moved is the
-// seat's definition: no store folder and no link is written beside it (one definition per seat), and each run names it.
+// seat's definition: no store folder and no link is written beside it (one definition per seat). In a store home
+// `migrateFlatAgents` names it once, in a visible one the prune does.
 function projectFlatSeat(ctx, name)
 {
     const dir = path.join(ctx.projectRoot, '.claude', 'agents');
     if (fs.lstatSync(path.join(dir, name), { throwIfNoEntry: false }) || !fs.lstatSync(path.join(dir, `${name}.md`), { throwIfNoEntry: false })?.isFile()) return false;
-    if (dir !== ctx.agentsDir) ctx.log(links.kept(`agents/${name}.md`));
     return true;
+}
+
+// The copy route's twin of `projectFlatSeat`, for a stamp that holds a ledger: a flat `.claude/agents/<name>.md` neither stamp line
+// records is the user's own seat, so a seat picked over it (`--add`) writes no store folder and no row. A stamp with no ledger keeps
+// the older behaviour: the stack's own copy is stored, the user's file left beside it.
+function unrecordedFlatSeat(ctx, name)
+{
+    return ctx.records.ledgerHeld && recordOf(ctx.records, 'agent', name) === null && projectFlatSeat(ctx, name);
 }
 
 // A picked seat whose folder in the agents home holds the project's own text (no record on either stamp line, text other than the
@@ -1613,10 +1622,15 @@ function carryRecords(ctx)
     }
 }
 
-function withoutForeign(picked, foreign)
+// `flatOwnSeats`: a seat picked over the user's own flat file, which is the seat's definition - it is no pick (absence is off).
+function withoutForeign(picked, foreign, flatOwnSeats)
 {
-    if (!foreign || !foreign.size) return picked;
-    return { ...picked, skills: (picked.skills || []).filter((e) => !foreign.has(String(e).split('@')[0])) };
+    const own = (entry) => String(entry).split('@')[0];
+    return {
+        ...picked,
+        skills: foreign && foreign.size ? (picked.skills || []).filter((e) => !foreign.has(own(e))) : picked.skills,
+        agents: flatOwnSeats && flatOwnSeats.size ? (picked.agents || []).filter((e) => !flatOwnSeats.has(own(e))) : picked.agents,
+    };
 }
 
 function installSkillsAndAgents(ctx)
@@ -1763,6 +1777,7 @@ function copyKinds(ctx, closure)
         const name = f.replace(/\.md$/, '');
         // a flat file of an older install beside no folder is one the project edited (the stack's own moved, migrateFlatAgents): kept, and no folder is written beside it
         if (flatSeatKept(ctx, name)) return false;
+        if (unrecordedFlatSeat(ctx, name)) { (ctx.flatOwnSeats ||= new Set()).add(name); return false; }
         if (!projectSeat(ctx, f)) return true;
         ctx.log(ownSeatLine.copy(name));
         ctx.foreignSeats.add(name);

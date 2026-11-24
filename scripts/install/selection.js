@@ -239,7 +239,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // carried no seat, so their seats are the ones on disk. `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
 function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false, keptUnpicked = () => false, listing = [], stackListing, settings, routes = {}, manifest, sourceDir,
-    stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [],
+    stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], inertSeats = [],
     scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], held = [], linked = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
@@ -285,7 +285,17 @@ function readBack({ claudeDir, skillsDir, agentsDir, foreignSkill = () => false,
     const offCopies = routes.hooks ? [] : offHooks;
     lines = lines.filter((l) => !namedOff(l));
     for (let i = closeFrom.length - 1; i >= 0; i--) if (namedOff(closeFrom[i])) closeFrom.splice(i, 1);
-    const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
+    // On a library stamp a seat is a project copy: an `Agent(alfred-code:<shipped or retired seat>)` row switches nothing off, so it
+    // is no deny here - the picks come from the stamp. A local-scope run never writes settings.json, so the rows only it holds
+    // stay, and the run says so once.
+    const inert = (entry) => seatsRoute === 'library' && inertSeats.includes(stackSeat(entry));
+    const inertShared = sharedOnlyDeny.filter(inert);
+    if (inertShared.length && !said.has('inert-shared-seat-rows'))
+    {
+        said.add('inert-shared-seat-rows');
+        log(`installed-only: settings.json still holds ${inertShared.length} seat deny row(s) (${inertShared.map(stackSeat).join(', ')}) that do nothing now - a seat is a project copy; a local-scope run never writes that file, a project-scope update removes them`);
+    }
+    const deny = (stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : []).filter((entry) => !inert(entry));
     const parked = ours.filter((r) => !rowOn(r)).map((r) => r.name);
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
     // reads skills and seats from the disk - where a plugin-route install holds no seat (2.1.0) or, before

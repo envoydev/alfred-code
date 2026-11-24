@@ -1200,18 +1200,23 @@ const planFlatCopyInstall = (repo, edited) =>
     stamp.markLine(stampOf(repo), 'links', stamp.linksValue(links));
 };
 
-test('an update from a copy-route stamp moves each copy at its ledger hash into the store and keeps an edited copy as the user\'s', POSIX_ONLY, () =>
+const KEPT_EDITED_SEAT = /^==> {3}agent kept: \.claude\/agents\/security-auditor\.md - edited since it was copied from the store, so it is yours$/gm;
+
+for (const [route, updateEnv, seatsRoute] of [['plugin', {}, 'library'], ['copy', COPY, 'copy']])
+test(`an update from a copy-route stamp on the ${route} route moves each copy at its ledger hash into the store and keeps an edited copy as the user\'s`, POSIX_ONLY, () =>
 {
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEAT_PICKS, {
-        env: [COPY, {}, {}], args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']], plugins: CORE_LISTING,
+        env: [COPY, updateEnv, updateEnv], args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']], plugins: CORE_LISTING,
         each: (repo, i) =>
         {
             if (i === 0) { planFlatCopyInstall(repo, 'security-auditor'); return null; }
-            return { route: stamp.readSeatsRoute(stampOf(repo)), unedited: seatState(repo, 'evidence-gatherer'), edited: seatState(repo, 'security-auditor'), tree: tree(repo) };
+            return { route: stamp.readSeatsRoute(stampOf(repo)), unedited: seatState(repo, 'evidence-gatherer'), edited: seatState(repo, 'security-auditor'), tree: tree(repo), picked: stampLine(repo, 'picked-agents') };
         },
     });
     const [, first, again] = steps;
-    assert.strictEqual(first.route, 'library');
+    assert.strictEqual((outs[1].match(KEPT_EDITED_SEAT) || []).length, 1, `the edited flat copy is named once as kept:\n${outs[1]}`);
+    assert.deepStrictEqual(first.picked.split(',').sort(), ['evidence-gatherer'], 'and it is no pick: the others stay');
+    assert.strictEqual(first.route, seatsRoute);
     assert.deepStrictEqual([first.unedited.link, first.unedited.stored, first.unedited.flat], ['../../.alfred/stack/agents/evidence-gatherer', true, null], 'the unedited copy moved into the store as a folder and is linked');
     assert.match(first.edited.flat, /MY EDIT/, 'the edited copy stays the user\'s, untouched');
     assert.strictEqual(first.edited.link, null, 'and nothing is linked over it');
@@ -1274,4 +1279,46 @@ test('a user\'s own flat seat file the stamp does not record is kept by an updat
     assert.strictEqual(result.mine, OWN, `the user's file stays on disk:\n${out}`);
     assert.ok(!/agent pruned[^\n]*aspnet-verifier/.test(out), out);
     assert.ok(result.ran, 'the seat that ran is copied beside it');
+});
+
+// A shipped seat's deny row only settings.json holds, at local scope: that run never writes the file, so the row stays - but
+// on a library stamp it switches nothing off, so the read-back must not list the seat as left out, and the run says so once.
+test('at local scope a seat deny row only settings.json holds is no off-switch on a library stamp, is named once, and the file is left as it was', POSIX_ONLY, () =>
+{
+    const ROW = 'Agent(alfred-code:aspnet-verifier)';
+    const SHARED = `${JSON.stringify({ permissions: { deny: [ROW, 'Bash(rm -rf:*)'] } }, null, 2)}\n`;
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SEAT_PICKS, {
+        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local'], ['--installed-only', '--scope', 'local', '--print-plan', '--plan-out', 'plan.json']], plugins: CORE_LISTING,
+        each: (repo, i) =>
+        {
+            if (i === 0) { fs.writeFileSync(claude(repo, 'settings.json'), SHARED); return null; }
+            return { shared: readText(claude(repo, 'settings.json')), plan: i === 2 ? JSON.parse(readText(path.join(repo, 'plan.json'))) : null, picked: stampLine(repo, 'picked-agents') };
+        },
+    });
+    const [, update, plan] = steps;
+    assert.strictEqual(update.shared, SHARED, 'a local run never writes settings.json');
+    assert.strictEqual((outs[1].match(/settings\.json still holds 1 seat deny row\(s\) \(aspnet-verifier\) that do nothing now/g) || []).length, 1, outs[1]);
+    assert.ok(!(plan.left_out || []).includes('agent aspnet-verifier'), `the seat is not read as left out: ${JSON.stringify(plan.left_out)}`);
+    assert.deepStrictEqual(update.picked.split(',').sort(), ['evidence-gatherer', 'security-auditor'], 'the picks come from the stamp');
+});
+
+// The copy route twin of the plugin route's `projectFlatSeat`: a user's flat `.claude/agents/<name>.md` of a seat nothing recorded
+// is the seat's definition, so a seat picked through `--add` writes no store folder beside it, records none, and names it once.
+test('on the copy route a seat added over the user\'s own flat copy writes no store folder and no record, and says it is kept once', POSIX_ONLY, () =>
+{
+    const OWN = '---\nname: security-auditor\n---\nMY OWN SEAT\n';
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\n', {
+        env: [COPY, COPY, COPY], args: [['--scope', 'local'], ['--installed-only', '--scope', 'local', '--add', 'agent security-auditor'], ['--installed-only', '--scope', 'local']], plugins: CORE_LISTING,
+        each: (repo, i) =>
+        {
+            if (i === 0) { fs.mkdirSync(claude(repo, 'agents'), { recursive: true }); fs.writeFileSync(claude(repo, 'agents', 'security-auditor.md'), OWN); return null; }
+            return { state: seatState(repo, 'security-auditor'), stampText: stampText(repo), storeAgents: fs.existsSync(store(repo, 'agents')) ? fs.readdirSync(store(repo, 'agents')) : [] };
+        },
+    });
+    const [, added, again] = steps;
+    assert.strictEqual(added.state.flat, OWN, 'the user\'s file is untouched');
+    assert.deepStrictEqual([added.state.stored, added.state.link, added.storeAgents], [false, null, []], 'no store folder, no link');
+    assert.doesNotMatch(added.stampText, /^(managed-files|library-agents):.*security-auditor/m, 'and no ledger row or library hash records it');
+    assert.strictEqual((outs[1].match(/^==> {3}agent kept: \.claude\/agents\/security-auditor\.md - edited since it was copied from the store, so it is yours$/gm) || []).length, 1, outs[1]);
+    assert.deepStrictEqual(again.stampText, added.stampText, 'a second update changes no record');
 });

@@ -175,7 +175,13 @@ function migrateFlatAgents({ projectRoot, home, hashes = {}, names = [], isStack
         {
             const st = lstat(flat);
             if (!st || !st.isFile()) continue;
-            if (!(hashes[name] || []).includes(hashItem(flat)) && (Object.hasOwn(hashes, name) || !isStacks(name, flat))) { if (base) log(kept(`${name}.md`, `.alfred/stack/agents`)); continue; }
+            if (!(hashes[name] || []).includes(hashItem(flat)) && (Object.hasOwn(hashes, name) || !isStacks(name, flat)))
+            {
+                // The store's flat file is named here; the `.claude` one by the prune or syncLinks - unless the home is the store, where neither looks at it.
+                if (base) log(kept(`${name}.md`, `.alfred/stack/agents`));
+                else if (home.store) log(kept(`agents/${name}.md`));
+                continue;
+            }
             if (lstat(target(name))) fs.unlinkSync(flat);
             else { fs.mkdirSync(target(name), { recursive: true }); fs.renameSync(flat, path.join(target(name), `${name}.md`)); }
             moved = true;
