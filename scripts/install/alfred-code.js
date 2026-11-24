@@ -447,7 +447,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
         const writes = !args.printPlan && args.action !== 'uninstall';
         // D4: the agent-folder pass, with the docs versioning every rank but the carry gives (the carry exists after docsRootStep).
-        let agentRecord = { toldTracked: [], createdDirs: [], failed: [] };
+        let agentRecord = { toldTracked: [], createdDirs: [], failed: [], failedWant: {} };
         if (writes)
         {
             let early = null;
@@ -833,8 +833,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile) });
             // D3: the stack's own seed of the docs versioning, once the workspace answers it - or, outside any git repository, never
             // seeded (only a chosen value chains) - the same write rule.
-            workspace.pruneVersioningSeed(projectRoot, { env, advice: ctx.versioning.advice, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile),
+            // No advice (the read failed) has no firm mark to judge the seed by: the remover waits for the next run.
+            if (ctx.versioning.advice) workspace.pruneVersioningSeed(projectRoot, { env, advice: ctx.versioning.advice, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile),
                 answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile) });
+            else if (variables.read(own).values[DOCS_VERSIONING_KEY] !== undefined) log(`  workspace: ${DOCS_VERSIONING_KEY} in ${path.relative(projectRoot, own).split(path.sep).join('/')} is left as it is - the docs versioning advice could not be read this run`);
         }
 
         if (args.action === 'install' || args.action === 'update') for (const l of workspace.ruleNotes({ projectRoot, env })) log(`  ${l}`);
@@ -906,7 +908,7 @@ function runLayers(ctx)
     ignoreStep(ctx, docsPath);
     // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
     if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
-        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true, skip: ctx.agentRecord.failed });
+        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true, skip: ctx.agentRecord.failedWant });
     if (!ctx.args.printPlan)
     {
         try { versioningNoticeStep(ctx, dataIgnoreBefore); }
@@ -1090,7 +1092,7 @@ function versioningStep(ctx)
     }
     catch (err)
     {
-        ctx.note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`);
+        ctx.note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed; no docs versioning is seeded this run, the next run seeds it`);
         ctx.versioning = { value: null, source: 'seed', advice: null, linked: false, chain: undefined };
     }
 }
@@ -1162,7 +1164,8 @@ function variablesStep(ctx)
         ctx.variablesHeld = variables.read(file).values;
         const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir }, dataRoot: root }).values;
         const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
-        const current = (key) => now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '');
+        // The docs versioning is the run's ranked answer without the flag (versioningStep), not the loader's reading or the catalog's default.
+        const current = (key) => (key === DOCS_VERSIONING_KEY && ctx.versioning.unflagged) || (now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? ''));
         for (const [flag, key, value] of [['memory', 'ALFRED_CODE_MEMORY', ctx.args.memory], ['autoCompact', 'ALFRED_CODE_AUTO_COMPACT', ctx.args.autoCompact && (ctx.args.autoCompact === 'on' ? '1' : '0')],
             ['docsVersioning', 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.docsVersioning]])
         {

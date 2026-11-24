@@ -25,7 +25,7 @@ const { envOf } = require('../stack/hooks/hook-prelude.js');
 const layout = require('../stack/hooks/layout.js');
 const { parseJson } = require('./install/json-file.js');
 const { KEY: VERSIONING_KEY } = require('./install/versioning/constants.js');
-const { normaliseValue } = require('./install/versioning/rank.js');
+const { normaliseValue, chainAnswers } = require('./install/versioning/rank.js');
 
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
 
@@ -247,7 +247,10 @@ function seedVersioning(root)
         return;
     }
     // Workspace versioning D10: a linked child whose workspace root answers the key inherits it, so no seed is written.
-    const chain = normaliseValue(require('./install/workspace.js').chainValues(root, { env: process.env })[VERSIONING_KEY]);
+    // A firm answer of the child's own layout that differs from the chain's outranks it (chainAnswers), as in the walk's default.
+    const inherited = normaliseValue(require('./install/workspace.js').chainValues(root, { env: process.env })[VERSIONING_KEY]);
+    const advice = inherited ? require('./install/docs.js').docsVersioningAdvice({ projectRoot: root, docsPath: docs, scope, child: true }) : undefined;
+    const chain = chainAnswers({ chain: inherited, advice });
     if (chain)
     {
         console.log(`stamp-docs-root: docs versioning: ${chain} from the workspace - nothing seeded`);

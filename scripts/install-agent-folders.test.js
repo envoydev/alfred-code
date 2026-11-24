@@ -31,10 +31,10 @@ const project = ({ repo = true } = {}) =>
 };
 const read = (root, ...rel) => { try { return fs.readFileSync(path.join(root, ...rel), 'utf8'); } catch { return null; } };
 const put = (root, rel, text) => { const f = path.join(root, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
-const run = (root, { scope = 'project', versioning = 'local', told = [], created = [], second = false } = {}) =>
+const run = (root, { scope = 'project', versioning = 'local', told = [], created = [], second = false, skip } = {}) =>
 {
     const lines = [];
-    const record = apply({ projectRoot: root, claudeDir: path.join(root, '.claude'), scope, log: (l) => lines.push(l), rt, told, created }, { versioning, second });
+    const record = apply({ projectRoot: root, claudeDir: path.join(root, '.claude'), scope, log: (l) => lines.push(l), rt, told, created }, { versioning, second, ...(skip === undefined ? {} : { skip }) });
     return { lines, ...record };
 };
 
@@ -110,7 +110,7 @@ test('apply: a second run writes nothing and says nothing', () =>
     const second = run(root, { told: first.toldTracked, created: first.createdDirs });
     assert.deepStrictEqual(second.lines, []);
     assert.deepStrictEqual([read(root, '.claude', '.gitignore'), read(root, '.cursor', '.gitignore')], before);
-    assert.deepStrictEqual(second, { lines: [], toldTracked: first.toldTracked, createdDirs: first.createdDirs, failed: [] });
+    assert.deepStrictEqual(second, { lines: [], toldTracked: first.toldTracked, createdDirs: first.createdDirs, failed: [], failedWant: {} });
 });
 
 test('apply: a .cursor that already existed is not recorded, and never removed', () =>
@@ -202,7 +202,7 @@ test('apply: not in a git repository writes no agent-folder file', () =>
 {
     const root = project({ repo: false });
     const result = run(root);
-    assert.deepStrictEqual(result, { lines: [], toldTracked: [], createdDirs: [], failed: [] });
+    assert.deepStrictEqual(result, { lines: [], toldTracked: [], createdDirs: [], failed: [], failedWant: {} });
     assert.strictEqual(fs.existsSync(path.join(root, '.claude')), false);
     assert.strictEqual(fs.existsSync(path.join(root, '.cursor')), false);
 });
@@ -266,6 +266,54 @@ test('apply: a wanted text replaces the other stack text in place', () =>
     const result = run(root, { scope: 'project', versioning: 'local' });
     assert.strictEqual(read(root, '.claude', '.gitignore'), CLAUDE_VERSIONING_IGNORE);
     assert.match(result.lines[0], /^ {2}\.claude\/\.gitignore rewritten - versioning local keeps \.claude out of git$/);
+});
+
+const ROOT_FREE = { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) };
+
+test('apply: the second pass skips a folder the first pass failed on only while the wanted text is the same', ROOT_FREE, () =>
+{
+    const root = project();
+    put(root, '.claude/.gitignore', CLAUDE_IGNORE);
+    const file = path.join(root, '.claude', '.gitignore');
+    fs.chmodSync(file, 0o444);
+    let first;
+    try { first = run(root, { versioning: 'local' }); }
+    finally { fs.chmodSync(file, 0o644); }
+    assert.deepStrictEqual(first.failed, ['.claude'], 'the write failed');
+    const same = run(root, { versioning: 'local', second: true, skip: first.failedWant, told: first.toldTracked, created: first.createdDirs });
+    assert.deepStrictEqual(same.lines.filter((l) => l.includes('.claude/.gitignore')), [], 'the same wanted text is not tried again this run');
+    assert.strictEqual(read(root, '.claude', '.gitignore'), CLAUDE_IGNORE);
+    const changed = run(root, { versioning: 'git', second: true, skip: first.failedWant, told: first.toldTracked, created: first.createdDirs });
+    assert.ok(changed.lines.some((l) => /\.claude\/\.gitignore removed/.test(l)), changed.lines.join('\n'));
+    assert.strictEqual(read(root, '.claude', '.gitignore'), null, 'a changed wanted text is tried');
+});
+
+test('apply: an own:<folder> entry leaves the record when the file is gone or is a stack text again, so a later user file is named again', () =>
+{
+    const root = project();
+    put(root, '.cursor/.gitignore', '*.tmp\n');
+    const first = run(root, { versioning: 'local' });
+    assert.ok(first.toldTracked.includes('own:.cursor'));
+    fs.rmSync(path.join(root, '.cursor', '.gitignore'));
+    const gone = run(root, { versioning: 'git', told: first.toldTracked, created: first.createdDirs });
+    assert.ok(!gone.toldTracked.includes('own:.cursor'), 'the file is gone: the entry goes');
+    put(root, '.cursor/.gitignore', CURSOR_VERSIONING_IGNORE);
+    const told = run(root, { versioning: 'git', told: ['own:.cursor'] });
+    assert.ok(!told.toldTracked.includes('own:.cursor'), 'a stack text again: the entry goes');
+    put(root, '.cursor/.gitignore', '*.log\n');
+    const again = run(root, { versioning: 'local', told: gone.toldTracked, created: gone.createdDirs });
+    assert.deepStrictEqual(again.lines.filter((l) => l.includes('.cursor')), [`  ${ownNotice('.cursor')}`], 'a later different user file is named again');
+    assert.ok(again.toldTracked.includes('own:.cursor'));
+});
+
+test('apply: a stack-to-stack rewrite does not say the folder is hidden now', () =>
+{
+    const root = project();
+    put(root, '.claude/.gitignore', CLAUDE_IGNORE);
+    const result = run(root, { scope: 'project', versioning: 'local', second: true });
+    const line = result.lines.find((l) => l.includes('link homes'));
+    assert.match(line, /rewritten/);
+    assert.doesNotMatch(line, /hidden now/);
 });
 
 const SEL = 'skill markdown-style\nskill javascript\n';

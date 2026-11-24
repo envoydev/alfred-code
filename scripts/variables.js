@@ -13,7 +13,7 @@ const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
 const stamp = require('./install/stamp.js');
 const { KEY: DOCS_VERSIONING_KEY } = require('./install/versioning/constants.js');
-const { normaliseValue } = require('./install/versioning/rank.js');
+const { normaliseValue, chainAnswers } = require('./install/versioning/rank.js');
 
 const USAGE = [
     'usage: node scripts/variables.js set --root <dir> [--scope project|user|local] KEY=value ...',
@@ -50,7 +50,7 @@ function parse(argv)
 function inheritedVersioning(root, advice, env)
 {
     const chain = normaliseValue(require('./install/workspace.js').chainValues(path.resolve(root), { env })[DOCS_VERSIONING_KEY]);
-    return chain && !(advice.firm && advice.value !== chain) ? chain : undefined;
+    return chainAnswers({ chain, advice });
 }
 
 // `env` is the launch env: the prelude the entry loads for its blocking stdio also applies the stack's variables to

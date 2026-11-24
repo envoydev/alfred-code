@@ -4,8 +4,8 @@
 // `.claude` and `.cursor` it asks plan.folderPlan what to do, does it, and hands back the two stamp records it keeps.
 const fs = require('node:fs');
 const path = require('node:path');
-const { FOLDER, FOLDERS, IGNORE_FILE, ACTION, CLAUDE_IGNORE } = require('./constants.js');
-const { folderPlan, wantedText } = require('./plan.js');
+const { FOLDER, FOLDERS, IGNORE_FILE, ACTION, CLAUDE_IGNORE, ownEntry } = require('./constants.js');
+const { folderPlan, wantedText, ownEntryGone } = require('./plan.js');
 
 const readOrNull = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 
@@ -20,6 +20,14 @@ function tracksFiles(projectRoot, folder, rt)
 {
     const run = rt.spawnCommand('git', ['ls-files', '-z', '--', folder], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     return run.status === 0 && String(run.stdout || '').length > 0;
+}
+
+// What `second` says about the link homes: a stack-to-stack rewrite (a file was there) leaves the folder as hidden as it was.
+function linkHomesLine(folder, action, rewrote)
+{
+    if (action === ACTION.remove) return `link homes: ${folder} is shared now, so skills and agents move at the next run`;
+    if (rewrote) return `link homes: ${folder}/${IGNORE_FILE} rewritten, ${folder} stays hidden, so skills and agents stay where they are`;
+    return `link homes: ${folder} is hidden now, so skills and agents move at the next run`;
 }
 
 const writtenWhy = (folder, text) => (text === CLAUDE_IGNORE ? 'a local install keeps .claude out of git' : `versioning local keeps ${folder} out of git`);
@@ -59,20 +67,24 @@ function removeText({ folder, file, have, log })
 
 // `told` and `created` are the stamp's `told-tracked:` and `created-dirs:` records; each result is the FULL record: what
 // was handed in plus what this call added, less a folder it removed; `failed` names the folders whose write or removal
-// failed. `second` marks the pass after the ignore step: a change to `.claude` there moves the link homes, which happens
-// at the next run. `skip` (the first pass's `failed`) leaves those folders alone, so a failure is said once per run.
-function apply({ projectRoot, claudeDir, scope, log, rt, told = [], created = [] }, { versioning, second = false, skip = [] })
+// failed, and `failedWant` the text each of them wanted (null: its file should go). `second` marks the pass after the
+// ignore step: a change to `.claude` there moves the link homes, which happens at the next run. `skip` (the first pass's
+// `failedWant`) leaves a folder alone while this pass wants the same text, so a failure is said once per run; a changed
+// wanted text is tried again.
+function apply({ projectRoot, claudeDir, scope, log, rt, told = [], created = [] }, { versioning, second = false, skip = {} })
 {
     const toldNow = new Set(told);
     const createdNow = new Set(created);
     const failed = [];
+    const failedWant = {};
     const inRepo = insideRepo(projectRoot, rt);
     for (const folder of FOLDERS)
     {
-        if (skip.includes(folder)) continue;
+        if (Object.hasOwn(skip, folder) && skip[folder] === wantedText({ folder, scope, versioning })) continue;
         const dir = folder === FOLDER.claude ? claudeDir : path.join(projectRoot, folder);
         const file = path.join(dir, IGNORE_FILE);
         const have = readOrNull(file);
+        if (ownEntryGone(folder, have)) toldNow.delete(ownEntry(folder));
         const tracked = inRepo && have === null && wantedText({ folder, scope, versioning }) !== null && tracksFiles(projectRoot, folder, rt);
         const plan = folderPlan({ folder, scope, versioning, have, tracked, inRepo, told: [...toldNow], created: [...createdNow] });
         let changed = false;
@@ -81,19 +93,19 @@ function apply({ projectRoot, claudeDir, scope, log, rt, told = [], created = []
         {
             const done = writeText({ folder, dir, file, have, text: plan.text, log });
             changed = fs.existsSync(file);
-            if (!done.wrote) failed.push(folder);
+            if (!done.wrote) { failed.push(folder); failedWant[folder] = plan.text; }
             if (done.made && folder === FOLDER.cursor) createdNow.add(folder);
         }
         else if (plan.action === ACTION.remove)
         {
             changed = removeText({ folder, file, have, log });
-            if (!changed) failed.push(folder);
+            if (!changed) { failed.push(folder); failedWant[folder] = null; }
             if (changed && plan.dir) try { fs.rmdirSync(dir); createdNow.delete(folder); log(`  ${folder} removed - the stack made it and it is empty`); } catch { /* the project's files are in it */ }
         }
         if (second && changed && folder === FOLDER.claude)
-            log(`  link homes: .claude is ${plan.action === ACTION.remove ? 'shared' : 'hidden'} now, so skills and agents move at the next run`);
+            log(`  ${linkHomesLine(folder, plan.action, have !== null)}`);
     }
-    return { toldTracked: [...toldNow].sort(), createdDirs: [...createdNow].sort(), failed };
+    return { toldTracked: [...toldNow].sort(), createdDirs: [...createdNow].sort(), failed, failedWant };
 }
 
 module.exports = { apply };

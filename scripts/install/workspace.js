@@ -693,8 +693,11 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     const { KEY } = require('./versioning/constants.js');
     const { seedLeaves, normaliseValue } = require('./versioning/rank.js');
     const file = variables.fileOf(projectRoot, { env });
-    const value = variables.read(file).values[KEY];
-    if (value === undefined) return { dropped: false, kept: null };
+    const inFile = variables.read(file).values[KEY];
+    if (inFile === undefined) return { dropped: false, kept: null };
+    // The ranking (versioning/effects.js) reads the value as the key holds it - `Local` is `local`, a garbage one is none - so both callers hand seedLeaves one input.
+    const value = normaliseValue(inFile);
+    if (value === undefined) return { dropped: false, kept: inFile };
     const chain = normaliseValue(chainValues(projectRoot, { env })[KEY]);
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
@@ -760,6 +763,7 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
     const layout = require('../../stack/hooks/layout.js');
     const root = realOf(projectRoot);
     const view = readWorkspace(root, { env }).view;
+    const { KEY: VERSIONING_KEY } = require('./versioning/constants.js');
     const members = chain(root, { env }).members;
     const file = variables.fileOf(root, { env });
     if (!members.length)
@@ -780,6 +784,8 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
         if (!member || values[key] === undefined) continue;
         updates[key] = values[key];
         const memberStamp = stamp.stampFiles({ projectRoot: member.root }).read;
+        // A stale stack seed in a member outside any git repository hands nothing on (holdsStaleSeed), here too.
+        if (key === VERSIONING_KEY && holdsStaleSeed(member, values[key])) continue;
         const rows = ((memberStamp && stamp.readLedger(memberStamp)) || { env: {} }).env?.['.variables'] || {};
         if (rows[key] === stamp.valueHash(values[key])) seeds[key] = rows[key];
     }

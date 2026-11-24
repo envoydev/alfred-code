@@ -40,4 +40,8 @@ function folderPlan({ folder, scope, versioning, have = null, tracked = false, i
     return { action: ACTION.write, text };
 }
 
-module.exports = { folderPlan, wantedText, isStackText };
+// The `own:<folder>` told entry holds only while a file of the project's own is there: with the file gone, or the stack's
+// text back, a later different user file is named again.
+const ownEntryGone = (folder, have) => have === null || isStackText(have);
+
+module.exports = { folderPlan, wantedText, isStackText, ownEntryGone };

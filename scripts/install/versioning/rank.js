@@ -10,6 +10,14 @@ function normaliseValue(raw)
     return value === VALUES.git || value === VALUES.local ? value : undefined;
 }
 
+// Whether the workspace chain's value answers a linked child (D10): it does unless the child's own layout holds a firm
+// answer that differs from it (rankVersioning's order). `advice` is the seed rule's { value, firm }. Returns the value or
+// undefined. The walk's default (`variables.js recommend --child`) and the seed (`stamp-docs-root.js --seed-versioning`) read it.
+function chainAnswers({ chain, advice })
+{
+    return chain && !(advice && advice.firm && advice.value !== chain) ? chain : undefined;
+}
+
 // `firm` is the seed rule's advice, { value, firm }. In a linked child whose chain holds a value the reseed is skipped:
 // the stack's own local seed leaves through the remover, so one scope change rewrites the git files once.
 function rankVersioning({ flag, carry, reseed, own, firm, chain, linked })
@@ -38,4 +46,4 @@ function seedLeaves({ value, atLedgerHash, answeredEnv, firm, chain, linked, hel
     return noRepo || !firm || value === chain;
 }
 
-module.exports = { rankVersioning, seedLeaves, normaliseValue };
+module.exports = { rankVersioning, seedLeaves, normaliseValue, chainAnswers };
