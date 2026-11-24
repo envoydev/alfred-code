@@ -53,6 +53,7 @@ const fixedRoot = require('./fixed-root.js');
 const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
+const { effectiveVersioning } = require('./versioning/effects.js');
 const runtime = require('./runtime.js');
 const { snapshotSessionError } = require('./run-session.js');
 const { RUN_SESSION_FILE, SESSION_ENV } = require('./run-session-constants.js');
@@ -437,6 +438,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: dataInfo.root, log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
         const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root });
+        // D2 rank 2: a linked child whose chain holds a docs versioning is not reseeded - the stack's own local seed leaves through the remover.
+        if (wsPrep.on && wsPrep.members.length && workspace.chainValues(projectRoot, { env }).ALFRED_CODE_DOCS_VERSIONING !== undefined) docsReseed = null;
         // Workspace stage 3 (links.js): each kind's home - the store where git cannot commit a link, else .claude/<kind>. A local
         // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
         const writes = !args.printPlan && args.action !== 'uninstall';
@@ -862,6 +865,7 @@ function runLayers(ctx)
     // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
     selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
+    versioningStep(ctx);
     // Memory P3: a `--memory docs` that cannot be written here is unset before the settings pass writes the mode.
     try { memoryDir.gate(ctx); }
     catch (err) { ctx.note(`docs memory could not be checked (${err.message}) - --memory docs is not applied this run`); if (ctx.args.memory === 'docs') ctx.args.memory = undefined; ctx.args.memoryCopy = false; }
@@ -1036,13 +1040,32 @@ function adoptCredentialsAt(ctx, root, docsPath)
 // project's own, keeps the docs root's own file (docs.ensureDocsIgnore). ctx.dataIgnoreOk gates what may land under
 // the root only once git keeps it out (the sensitive data).
 const STACK_IGNORE = ['written', 'replaced', 'current'];
+// D2: the ONE ranked docs versioning answer of this run, computed once the carry is known (docsRootStep) and before the
+// settings pass, the ignore step and the notices read it as `ctx.versioning`. `ctx.docsRoot` is the docs root the hooks read
+// after this run; `ctx.docsPath` is only the settings decision about the old key.
+function versioningStep(ctx)
+{
+    const { projectRoot, args } = ctx;
+    try
+    {
+        ctx.versioning = effectiveVersioning({
+            projectRoot, scope: args.scope, docsPath: ctx.docsRoot, dataRoot: ctx.dataInfo.root, env: ctx.env,
+            flag: args.docsVersioning, carry: ctx.docsVersioningCarry, reseed: ctx.docsReseed,
+            ledgerRows: ((ctx.ledger || {}).env || {})['.variables'] || {}, answeredEnv: stampLayer.readAnsweredEnv(ctx.stampFile),
+        });
+    }
+    catch (err)
+    {
+        ctx.note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`);
+        ctx.versioning = { value: null, source: 'seed', advice: null, linked: false, chain: undefined };
+    }
+}
+
 function ignoreStep(ctx, docsPath)
 {
     const { projectRoot, log, note } = ctx;
     const root = ctx.dataInfo.root;
-    let mode = null;
-    try { mode = copy.resolveDocsVersioning(projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot, docsPath, scope: ctx.args.scope, child: Boolean(ctx.childEnv && ctx.childEnv.linked) }); }
-    catch (err) { note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`); }
+    const mode = ctx.versioning.value;
     // The docs memory's union-merge attributes follow the versioning (memory-dir.js, R10).
     ctx.docsVersioningMode = mode;
     let data = null;

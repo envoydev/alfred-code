@@ -84,16 +84,36 @@ function docsVersioningSeed(o)
     return docsVersioningAdvice(o).value;
 }
 
-// The answer and the reason the walk shows beside it (F3, F15): no repository, then local scope, a child's too (the data root
-// stays out of git), then the kept-out rule below; `git` otherwise. A fake git with no inRepo skips the first test.
-function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child })
+// The answer, the reason the walk shows beside it (F3, F15) and the FIRM mark (workspace-versioning D2): no repository,
+// then local scope, a child's too (the data root stays out of git), then what the project's layout says; `git` otherwise.
+// `firm` is true where the layout decides and a workspace's value must not outrank it: no repository, local scope, a rule
+// of the repository's OWN keeping the docs out (the stack's data-root file is no own rule, and 'docs exist, none
+// committed' is the weaker kept-out read), a docs domain git tracks (`git`), and a `local` while branch overlays exist.
+// A fake git with no inRepo skips the first test. `dataRoot` defaults to the project's own data root.
+function docsVersioningAdvice({ projectRoot, docsPath, git, scope, child, dataRoot })
 {
     const g = git || realGit(projectRoot);
-    if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs' };
-    if (scope === 'local') return { value: 'local', reason: child ? 'a local-scope child keeps its data root out of git' : 'a local install keeps its data root out of git' };
-    return keptOutOfGitHere({ projectRoot, docsPath, g })
-        ? { value: 'local', reason: 'the docs are kept out of git here' }
-        : { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' };
+    if (typeof g.inRepo === 'function' && !g.inRepo()) return { value: 'local', reason: 'no git repository, so nothing can commit the docs', firm: true };
+    if (scope === 'local') return { value: 'local', reason: child ? 'a local-scope child keeps its data root out of git' : 'a local install keeps its data root out of git', firm: true };
+    const { parts, names } = votingDomains({ projectRoot, docsPath });
+    const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
+    const base = [root, ...parts].join('/');
+    if (names.some((name) => g.tracked(`${base}/${name}`)))
+        return { value: 'git', reason: 'a docs domain is committed here', firm: true };
+    const rel = parts.join('/');
+    const verdict = rel ? require('./variables.js').ignoreVerdict(projectRoot, dataRoot || require('../../stack/mcp/data-root.js').dataRootOf({ projectDir: projectRoot }).root, `${rel}/`) : { ignored: false };
+    if (verdict.ignored && !verdict.own) return { value: 'local', reason: 'a rule of the repository keeps the docs out of git', firm: true };
+    if (names.length > 0 || g.ignored(rel))
+        return { value: 'local', reason: 'the docs are kept out of git here', firm: hasBranchOverlay(`${base}/.branches`) };
+    return { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch', firm: false };
+}
+
+// Any file under `<docs>/.branches/`: the docs live in those overlays, which a flip to `git` would leave unread.
+function hasBranchOverlay(dir)
+{
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    return entries.some((e) => (e.isDirectory() ? hasBranchOverlay(path.join(dir, e.name)) : e.isFile()));
 }
 
 // Stage 1 I2 (3.12): a run that moves an install off `local` scope over the stack's own local docs seed reseeds the new
@@ -115,7 +135,9 @@ function docsVersioningOnLeavingLocal({ projectRoot, dataRoot, docsPath, held = 
     return verdict.ignored && !verdict.own ? null : 'git';
 }
 
-function keptOutOfGitHere({ projectRoot, docsPath, g })
+// The docs path as posix parts, and the domains that cast a versioning vote: a preferences domain holding nothing but
+// the install's git doc and a recomputed domain cast none.
+function votingDomains({ projectRoot, docsPath })
 {
     const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
     const parts = String(docsPath || '').replace(/\\/g, '/').split('/').filter(Boolean);
@@ -126,7 +148,14 @@ function keptOutOfGitHere({ projectRoot, docsPath, g })
         try { return fs.readdirSync(`${base}/${name}`).every((f) => f === 'watch.json' || f === GIT_DOC); }
         catch { return false; }
     };
-    const names = domains(base).filter((name) => !seedOnly(name) && !recomputedDomain(`${base}/${name}`));
+    return { parts, names: domains(base).filter((name) => !seedOnly(name) && !recomputedDomain(`${base}/${name}`)) };
+}
+
+function keptOutOfGitHere({ projectRoot, docsPath, g })
+{
+    const root = String(projectRoot).replace(/\\/g, '/').replace(/\/+$/, '');
+    const { parts, names } = votingDomains({ projectRoot, docsPath });
+    const base = [root, ...parts].join('/');
     const committed = names.some((name) => g.tracked(`${base}/${name}`));
     return !committed && (names.length > 0 || g.ignored(parts.join('/')));
 }

@@ -171,15 +171,19 @@ function resolveDocsRoot(projectRoot, scope)
 // (the four-home rule answers then). One of the stack's variables (D4), read through the hooks' loader from the project's
 // files: at local scope its three, else the two the team shares, so a personal settings.local.json value never answers
 // for the committed docs (C7). The loader reads .variables from disk, so an install reads the value its own settings
-// pass just wrote.
-function resolveDocsVersioning(projectRoot, scope)
+// pass just wrote. With `ranked`, a project with no value of its own answers the way the installer does (the firm layout,
+// the workspace's value, the seed rule: versioning/effects.js).
+function resolveDocsVersioning(projectRoot, scope, { ranked = false } = {})
 {
     const { readStampScope } = require('./stamp.js');
     const { stampFile } = require('./brand.js');
     const at = scope || readStampScope(stampFile(path.join(projectRoot, '.claude')).read || '');
     const { values } = require('../../stack/hooks/layout.js').variablesOf(projectRoot, { env: {}, layers: at === 'local' ? 'files' : 'team' });
     const value = String(values.ALFRED_CODE_DOCS_VERSIONING ?? '').trim().toLowerCase();
-    return value === 'git' || value === 'local' ? value : null;
+    if (value === 'git' || value === 'local') return value;
+    if (!ranked) return null;
+    const { effectiveVersioning } = require('./versioning/effects.js');
+    return effectiveVersioning({ projectRoot, scope: at, docsPath: resolveDocsRoot(projectRoot, at) }).value;
 }
 
 // An installed rule's file: the store's (workspace stage 4c) when it is there, else the .claude/rules one.

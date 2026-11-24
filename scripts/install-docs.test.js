@@ -1152,13 +1152,13 @@ test('docsVersioningAdvice: no repository, a local-scope child, kept-out docs, a
     finally { fs.rmSync(bare, { recursive: true, force: true }); }
     const repo = project();
     const child = docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local', child: true });
-    assert.deepStrictEqual(child, { value: 'local', reason: 'a local-scope child keeps its data root out of git' });
-    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local' }), { value: 'local', reason: 'a local install keeps its data root out of git' });
+    assert.deepStrictEqual(child, { value: 'local', reason: 'a local-scope child keeps its data root out of git', firm: true });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'local' }), { value: 'local', reason: 'a local install keeps its data root out of git', firm: true });
     assert.strictEqual(docs.docsVersioningAdvice({ projectRoot: repo, docsPath: '.claude/docs', scope: 'project', child: true }).value, 'git');
     const kept = project({ ignore: '.claude/docs/\n' });
     fs.mkdirSync(path.join(kept, '.claude', 'docs'), { recursive: true });
-    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: kept, docsPath: '.claude/docs' }), { value: 'local', reason: 'the docs are kept out of git here' });
-    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs' }), { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch' });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: kept, docsPath: '.claude/docs' }), { value: 'local', reason: 'a rule of the repository keeps the docs out of git', firm: true });
+    assert.deepStrictEqual(docs.docsVersioningAdvice({ projectRoot: project(), docsPath: '.claude/docs' }), { value: 'git', reason: 'a git repository - the docs are committed and versioned per branch', firm: false });
 });
 
 test('docsVersioningAdvice: a fake git with only tracked / ignored keeps today\'s answers', () =>

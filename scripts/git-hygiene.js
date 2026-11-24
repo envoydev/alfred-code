@@ -57,7 +57,7 @@ function dataRootOffer({ projectRoot, localChild: asked = false })
     const rel = path.posix.relative(root, docsPath.replace(/\\/g, '/').replace(/^\.\//, ''));
     const docsInside = rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel);
     let versioning = null;
-    try { versioning = require('./install/copy.js').resolveDocsVersioning(projectRoot); } catch { versioning = null; }
+    try { versioning = require('./install/copy.js').resolveDocsVersioning(projectRoot, undefined, { ranked: true }); } catch { versioning = null; }
     const child = asked && docsInside && versioning !== 'local' && localChild(projectRoot);
     if (docsInside && versioning !== 'local' && !child)
         return none(`the docs under ${root}/ are committed (ALFRED_CODE_DOCS_VERSIONING=${versioning || 'git'})`);

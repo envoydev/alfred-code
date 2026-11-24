@@ -15,6 +15,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const docs = require('./install/docs.js');
 const dataRoot = require('../stack/mcp/data-root.js');
+const wsLib = require('./install/workspace.js');
+const variablesLib = require('./install/variables.js');
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'one-gitignore-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -312,4 +315,77 @@ test('the two versioning texts are exact', () =>
 {
     assert.strictEqual(dataRoot.CLAUDE_VERSIONING_IGNORE, '# alfred-code: versioning local - nothing under .claude is committed from this project\n*\n');
     assert.strictEqual(dataRoot.CURSOR_VERSIONING_IGNORE, '# alfred-code: versioning local - nothing under .cursor is committed from this project\n*\n');
+});
+
+// Workspace versioning, task 4: the installer reads ONE ranked answer (effectiveVersioning), so a child under a `local`
+// root writes the root's shape on the same run. The tree is `work/ws` (the root, a plain folder) and `ws/api` (a git repo).
+const ROOT_SEL = 'skill javascript\nrule alfred-security\n';
+const KEY = 'ALFRED_CODE_DOCS_VERSIONING';
+const SEED = path.join(__dirname, 'install', 'alfred-code.js');
+const wsAt = (work, rel = '.') => path.join(work, 'ws', ...(rel === '.' ? [] : rel.split('/')));
+const acct = (work) => ({ CLAUDE_CONFIG_DIR: path.join(work, 'acct'), ALFRED_CODE_WORKSPACE: '1' });
+const joinApi = (work) =>
+{
+    assert.ok(wsLib.writeWorkspace(wsAt(work, 'api'), (m) => wsLib.setParent(m, '..'), { env: acct(work) }).ok);
+    assert.ok(wsLib.writeWorkspace(wsAt(work), (m) => wsLib.addChild(m, 'api'), { env: acct(work) }).ok);
+};
+const rootSays = (work, value) => assert.deepStrictEqual(variablesLib.set(wsAt(work), [`${KEY}=${value}`], { env: acct(work), log: () => {} }).refused, []);
+const headOf = (work) => fs.readFileSync(path.join(wsAt(work, 'api'), '.alfred', '.gitignore'), 'utf8');
+const varsOf = (work) => { try { return fs.readFileSync(path.join(wsAt(work, 'api'), '.alfred', '.variables'), 'utf8'); } catch { return ''; } };
+// One sandbox, one step per entry: { at, act, args, after(work) }.
+function run(steps)
+{
+    return seedRun(steps.map((st) => st.act || 'install'), '', {
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, scope: 'user' }]),
+        seed: steps.map(() => SEED), source: steps.map(() => path.join(__dirname, '..')),
+        cwds: steps.map((st) => path.join('ws', ...(st.at && st.at !== '.' ? st.at.split('/') : []))),
+        env: steps.map(() => ({ ALFRED_CODE_WORKSPACE: '1' })),
+        args: steps.map((st, i) => (repo, work) =>
+        {
+            const sel = path.join(work, `sel-${i}.txt`);
+            fs.writeFileSync(sel, ROOT_SEL);
+            return ['--selection', sel, ...(st.act === 'update' ? ['--installed-only'] : []), ...(st.args || [])];
+        }),
+        prepare: (repo, work) =>
+        {
+            fs.mkdirSync(wsAt(work, 'api'), { recursive: true });
+            execFileSync('git', ['init', '-q', wsAt(work, 'api')]);
+        },
+        each: (repo, i) => (steps[i].after ? steps[i].after(path.dirname(repo)) : null),
+    });
+}
+
+test('a linked child under a local root gets the /* shape', POSIX_ONLY, () =>
+{
+    const r = run([
+        { at: '.', after: (work) => { joinApi(work); rootSays(work, 'local'); } },
+        { at: 'api', after: (work) => ({ head: headOf(work), status: status(wsAt(work, 'api')) }) },
+    ]);
+    assert.ok(r.steps[1].head.split('\n')[0].includes(`${KEY}=local`), r.steps[1].head);
+    assert.ok(r.steps[1].head.split('\n').includes('/*'), r.steps[1].head);
+    assert.ok(!r.steps[1].head.includes('!/docs/'), 'no docs re-include under local');
+});
+
+test('a linked child leaving local scope under a local root is not reseeded', POSIX_ONLY, () =>
+{
+    const r = run([
+        { at: '.', after: (work) => { joinApi(work); rootSays(work, 'local'); } },
+        { at: 'api', args: ['--scope', 'local'], after: (work) => ({ head: headOf(work) }) },
+        { at: 'api', act: 'update', args: ['--scope', 'project'], after: (work) => ({ head: headOf(work), vars: varsOf(work) }) },
+    ]);
+    assert.ok(r.steps[1].head.split('\n')[0].includes(`${KEY}=local`), r.steps[1].head);
+    assert.ok(r.steps[2].head.split('\n')[0].includes(`${KEY}=local`), `the child keeps the root's shape, no git reseed:\n${r.steps[2].head}\n${r.outs[2]}`);
+    assert.ok(!/ALFRED_CODE_DOCS_VERSIONING=git/.test(r.steps[2].vars), r.steps[2].vars);
+});
+
+test('an older child\'s git seed under a local root writes the /* shape on that same update', POSIX_ONLY, () =>
+{
+    const r = run([
+        { at: 'api', after: (work) => ({ head: headOf(work), vars: varsOf(work) }) },
+        { at: '.', after: (work) => { joinApi(work); rootSays(work, 'local'); } },
+        { at: 'api', act: 'update', after: (work) => ({ head: headOf(work) }) },
+    ]);
+    assert.ok(r.steps[0].head.split('\n')[0].includes(`${KEY}=git`), `the child started with the git shape:\n${r.steps[0].head}`);
+    assert.ok(r.steps[2].head.split('\n')[0].includes(`${KEY}=local`), `one update:\n${r.steps[2].head}\n${r.outs[2]}`);
+    assert.ok(r.steps[2].head.split('\n').includes('/*'), r.steps[2].head);
 });
