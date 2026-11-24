@@ -467,3 +467,12 @@ test('the VM stop names the last exec error when the VM never stops', () =>
     assert.match(problem, /is running, not stopped/);
     assert.match(problem, /exec timed out/);
 });
+
+test('the win leg runs no more test workers than the VM has CPUs less one, as node --test does on a runner', () =>
+{
+    const { guestWorkers } = require('./gate/workers.js');
+    assert.strictEqual(guestWorkers(11, 6), 5, 'win alone on a 12-core Mac: 11 workers on 6 vCPUs ran 6 hook-budget tests red');
+    assert.strictEqual(guestWorkers(3, 6), 3, 'three legs: the host share is already lower');
+    assert.strictEqual(guestWorkers(11, 1), 1, 'never under one');
+    assert.strictEqual(guestWorkers(11, undefined), 11, 'an unreadable CPU count keeps the host share');
+});

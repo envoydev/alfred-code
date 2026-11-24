@@ -34,6 +34,7 @@ const { WIN_NODE, WIN_STAGE } = require('./gate/constants.js');
 const { stageScript } = require('./gate/win-stage.js');
 const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
 const { unknownTestFiles } = require('./gate/tests-arg.js');
+const { guestWorkers } = require('./gate/workers.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
@@ -466,7 +467,8 @@ async function legWin(ctx)
     fs.copyFileSync(ctx.bundle, path.join(hostDir, 'repo.bundle'));
     copyLeg(hostDir);
     // SYSTEM's own temp dir is the Windows one nothing cleans: the run's temp sits in its work dir
-    writeLegFiles(hostDir, 'win', { ...ctx.legCfg, bundle: `${leg}\\${WIN_STAGE.bundle}`, work, tempDir: true });
+    const concurrency = guestWorkers(ctx.legCfg.concurrency, info.Hardware?.cpu?.cpus);
+    writeLegFiles(hostDir, 'win', { ...ctx.legCfg, concurrency, bundle: `${leg}\\${WIN_STAGE.bundle}`, work, tempDir: true });
     // one gate per machine, so a run dir already there is a dead run's (the VM went down under it) - only inside gate\
     const stage = stageScript({ sweep: sweepGlob, guestDir, leg });
     try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(stage, 'utf16le').toString('base64')], 300000); }
