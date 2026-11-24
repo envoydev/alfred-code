@@ -236,7 +236,14 @@ test('the report line counts added, updated, removed and kept per level, and the
         assert.ok(line.removed <= 8, `the fixture stays under the name cap: ${line.removedNames}`);
         assert.strictEqual(names(line.removedNames).filter((n) => n.startsWith('deny ')).length, 1, line.removedNames);
         assert.ok(/^deny rows \(\d+\)$/.test(names(line.removedNames).at(-1)), `deny rows come last: ${line.removedNames}`);
-        if (level === 'root') for (const gone of [`rule ${TWICE_RULE}`, `file ${NAV_FILE}`]) assert.ok(names(line.removedNames).includes(gone), `${gone} in removed: ${line.removedNames}`);
+        if (level === 'root')
+        {
+            assert.ok(names(line.removedNames).includes(`file ${NAV_FILE}`), `file ${NAV_FILE} in removed: ${line.removedNames}`);
+            // one file at one path, unlinked and written again in the run: updated, in neither of the other two lists
+            assert.ok(!names(line.removedNames).includes(`rule ${TWICE_RULE}`), `the rewritten rule is not removed: ${line.removedNames}`);
+            assert.ok(!names(line.addedNames).includes(`rule ${TWICE_RULE}`), `the rewritten rule is not added: ${line.addedNames}`);
+            assert.strictEqual(line.updated, 2, `the rewritten rule is counted as updated: ${JSON.stringify(line)}`);
+        }
         if (level === 'child') assert.ok(names(line.removedNames).includes(`rule ${CHILD}.${ADDED_RULE}`), `the child's rule copy is in removed: ${line.removedNames}`);
         assert.ok(out.includes(SESSION), `the new-session line is printed:\n${out}`);
         const lines = out.split('\n');
@@ -374,4 +381,14 @@ test('the seat deny rows are one report item, listed after the others', () =>
     for (const seat of ['a', 'b', 'c']) report.remove('deny', seat);
     report.remove('skill', 'old');
     assert.strictEqual(report.line('.'), 'report: .: added 0, updated 0, removed 2 (skill old, deny rows (3)), kept, yours 0');
+});
+
+test('a name removed and then added in one run is one updated item', () =>
+{
+    const { createReport } = require('./install/report.js');
+    const report = createReport();
+    report.remove('rule', 'x');
+    report.add('rule', 'x');
+    report.add('rule', 'y');
+    assert.strictEqual(report.line('.'), 'report: .: added 1 (rule y), updated 1, removed 0, kept, yours 0');
 });

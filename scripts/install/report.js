@@ -11,6 +11,13 @@ function createReport()
     const events = Object.fromEntries(Object.values(EVENT).map((event) => [event, new Set()]));
     const denies = Object.fromEntries(Object.values(EVENT).map((event) => [event, new Set()]));
     const feed = (event) => (kind, name) => { (kind === DENY_KIND ? denies : events)[event].add(kind === DENY_KIND ? name : itemName(kind, name)); };
+    // A name the run removed and then wrote again is one file that changed: updated, in neither of the other two lists.
+    const add = (kind, name) =>
+    {
+        const item = itemName(kind, name);
+        if (kind !== DENY_KIND && events[EVENT.removed].delete(item)) events[EVENT.updated].add(item);
+        else feed(EVENT.added)(kind, name);
+    };
     // The deny rows count as one item, listed after the others.
     const names = (event) => [...events[event], ...(denies[event].size ? [DENY_ITEM(denies[event].size)] : [])];
     const listed = (event) =>
@@ -20,7 +27,7 @@ function createReport()
         return ` (${[...all.slice(0, NAME_CAP), ...(all.length > NAME_CAP ? [NAME_OVERFLOW] : [])].join(NAME_JOIN)})`;
     };
     return {
-        add: feed(EVENT.added), update: feed(EVENT.updated), remove: feed(EVENT.removed), keep: feed(EVENT.kept),
+        add, update: feed(EVENT.updated), remove: feed(EVENT.removed), keep: feed(EVENT.kept),
         names,
         // `rel` is the level's path below the run's top, `.` for the top itself.
         line: (rel) => `${REPORT_PREFIX} ${rel}: added ${names(EVENT.added).length}${listed(EVENT.added)}, updated ${names(EVENT.updated).length}, removed ${names(EVENT.removed).length}${listed(EVENT.removed)}, kept, yours ${names(EVENT.kept).length}${listed(EVENT.kept)}`,
