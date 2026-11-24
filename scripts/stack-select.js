@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { USER_OFF_WINS } = require('./install/plugins.js');
 const { parseJson } = require('./install/json-file.js');
+const { probeTsServer } = require('./ts-server/effects.js');
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
 // agent -> skill/agent (to fixpoint), then every kept skill/agent/rule -> its
@@ -189,6 +190,9 @@ function detectEnvironment(opts)
     const BINS = ['node', 'npx', 'git', 'claude', 'dotnet', 'csharp-ls', 'typescript-language-server', 'brew'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
+    // typescript-lsp's server counts only when its TypeScript holds tsserver.js: a global TypeScript 7 leaves it on PATH
+    // and unable to start (2026-11-24); the prereq's `how` installs the TypeScript 6 it reads.
+    if (bins['typescript-language-server'] && probeTsServer() === 'missing') bins['typescript-language-server'] = false;
     // No prerequisite reads an env value since 2.10.1 (the documentation server's key left with it); kept as the shape.
     const envs = {};
     let forgeCli = null;
