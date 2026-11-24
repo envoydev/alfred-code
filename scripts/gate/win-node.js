@@ -5,6 +5,7 @@ const { WIN_NODE } = require('./constants.js');
 function nodeProbeScript()
 {
     const layouts = WIN_NODE.nvmLayouts.map((l) => `(Join-Path $h '${l}')`).join(', ');
+    const homes = WIN_NODE.profileNvmHomes.map((d) => `'${d}'`).join(', ');
     return [
         '$c = @()',
         '$g = Get-Command node -ErrorAction SilentlyContinue',
@@ -13,6 +14,9 @@ function nodeProbeScript()
         'Get-ChildItem \'Registry::HKEY_USERS\' | ForEach-Object { '
             + `$h = (Get-ItemProperty -Path ('Registry::' + $_.Name + '\\Environment') -Name ${WIN_NODE.nvmHomeKey} -ErrorAction SilentlyContinue).${WIN_NODE.nvmHomeKey}; `
             + `if ($h) { $c += (Get-ChildItem -Path ${layouts} -ErrorAction SilentlyContinue).FullName } }`,
+        `Get-ChildItem 'Registry::${WIN_NODE.profileList}' | ForEach-Object { `
+            + `$p = (Get-ItemProperty -Path ('Registry::' + $_.Name) -Name ${WIN_NODE.profilePathKey} -ErrorAction SilentlyContinue).${WIN_NODE.profilePathKey}; `
+            + `if ($p) { foreach ($d in @(${homes})) { $h = Join-Path $p $d; $c += (Get-ChildItem -Path ${layouts} -ErrorAction SilentlyContinue).FullName } } }`,
         `$c | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique | ForEach-Object { $_ + '${WIN_NODE.separator}' + (& $_ --version) }`,
     ].join('; ');
 }

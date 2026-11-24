@@ -399,6 +399,13 @@ test('the VM probe looks on SYSTEM\'s PATH, in Program Files and in every signed
         assert.ok(script.includes(part), part);
 });
 
+test('the VM probe also reads every profile folder\'s nvm home, so a VM nobody is signed in to still finds Node', () =>
+{
+    const script = winNode.nodeProbeScript();
+    for (const part of ['ProfileList', 'ProfileImagePath', 'AppData\\Local\\Author Software\\nvm', 'AppData\\Roaming\\nvm'])
+        assert.ok(script.includes(part), part);
+});
+
 test('the leg puts its own node folder first on a Windows PATH, so npm.cmd beside it resolves', () =>
 {
     const dir = 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1';

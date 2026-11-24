@@ -437,7 +437,7 @@ async function legWin(ctx)
     if (!(await waitForExec(vm)))
         return { reasons: [`'${vm}' accepted no command within ${fmtMs(VM_READY_MS)} - it needs Parallels Tools running, and isolation from the Mac turned off`] };
     const winNode = process.env[WIN_NODE.env] || tryGit(ctx.root, ['config', '--get', WIN_NODE.config]) || (await findWinNode(vm, ctx.nodeMajor));
-    if (!winNode) return { reasons: [`no Node ${ctx.nodeMajor || ''} found in '${vm}' (SYSTEM's PATH, Program Files, each signed-in user's nvm) - install it, or git config ${WIN_NODE.config} '<path to node.exe>'`] };
+    if (!winNode) return { reasons: [`no Node ${ctx.nodeMajor || ''} found in '${vm}' (SYSTEM's PATH, Program Files, each user's nvm) - install it, or git config ${WIN_NODE.config} '<path to node.exe>'`] };
     const { winId, work, leg, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
     // Killing prlctl on the Mac leaves the run going in the VM: a timeout or Ctrl-C ends the guest
     // tree too and removes its work dir. Encoded, because prlctl exec drops quotes inside an argument.
