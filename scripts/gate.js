@@ -33,6 +33,7 @@ const { RESULT, STEP, runnerEnv } = require('./gate-leg.js');
 const { WIN_NODE, WIN_STAGE } = require('./gate/constants.js');
 const { stageScript } = require('./gate/win-stage.js');
 const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
+const { unknownTestFiles } = require('./gate/tests-arg.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
@@ -699,7 +700,12 @@ async function main(argv)
         return 0;
     }
     const sha = git(root, ['rev-parse', '--verify', `${opts.ref}^{commit}`]);
-    const branch = /^refs\/heads\/(.+)$/.exec(tryGit(root, ['rev-parse', '--symbolic-full-name', opts.ref]))?.[1] || 'alfred-gate';
+    if (opts.tests)
+    {
+        const unknown = unknownTestFiles(opts.tests, new Set(git(root, ['ls-tree', '-r', '--name-only', sha]).split('\n')));
+        if (unknown.length) throw new Error(`--tests takes test files of the commit, as repo paths (scripts/<name>.test.js); not one: ${unknown.join(', ')}`);
+    }
+    const branch =/^refs\/heads\/(.+)$/.exec(tryGit(root, ['rev-parse', '--symbolic-full-name', opts.ref]))?.[1] || 'alfred-gate';
     if (opts.ref === 'HEAD')
     {
         const dirty = tryGit(root, ['status', '--porcelain']).split('\n').filter(Boolean).length;

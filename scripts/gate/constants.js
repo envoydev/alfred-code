@@ -21,4 +21,7 @@ const WIN_NODE = Object.freeze({
 // The leg folder under the run's work dir, and the files the gate copies there from the share.
 const WIN_STAGE = Object.freeze({ folder: 'leg', legScript: 'gate-leg.js', config: 'win.json', bundle: 'repo.bundle' });
 
-module.exports = { WIN_NODE, WIN_STAGE };
+// A test file `--tests` may name: the suite's own `*.test.js` (run-tests.js PATTERN).
+const TEST_FILE = /\.test\.js$/;
+
+module.exports = { WIN_NODE, WIN_STAGE, TEST_FILE };

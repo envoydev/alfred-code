@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 const leg = require('./gate-leg.js');
 const gate = require('./gate.js');
+const testsArg = require('./gate/tests-arg.js');
 
 const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
@@ -423,4 +424,13 @@ test('the win leg stage script sweeps old runs, copies the share\'s files into t
     assert.ok(at("Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'C:\\G\\*'") === 0, 'the sweep runs first');
     assert.ok(at("Copy-Item -Recurse -Force '\\\\Mac\\Home\\x\\*' 'C:\\G\\id\\leg'") > 0, stage);
     assert.ok(at("if (-not (Test-Path 'C:\\G\\id\\leg\\gate-leg.js')) { exit 1 }") > at('Copy-Item'), stage);
+});
+
+test('--tests names only committed test files: a bare name, a missing file or a non-test file is refused before a run', () =>
+{
+    const committed = new Set(['scripts/shell-guards.test.js', 'scripts/gate.js']);
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/shell-guards.test.js'], committed), []);
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['shell-guards'], committed), ['shell-guards'], 'a bare name ran the whole suite');
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/gone.test.js'], committed), ['scripts/gone.test.js']);
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/gate.js'], committed), ['scripts/gate.js'], 'not a test file');
 });
