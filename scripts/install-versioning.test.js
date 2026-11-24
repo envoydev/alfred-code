@@ -331,6 +331,16 @@ test('a --docs-versioning equal to the tracked .variables line is not held', POS
     assert.doesNotMatch(localRun('local', 'ALFRED_CODE_DOCS_VERSIONING=local\n').out, TRACKED_LINE);
 });
 
+test('a tracked .variables line with no valid value counts as no line: the flag is not held', POSIX_ONLY, () =>
+{
+    for (const line of ['ALFRED_CODE_DOCS_VERSIONING=\n', 'ALFRED_CODE_DOCS_VERSIONING=bogus\n'])
+    {
+        const run = localRun('local', line);
+        assert.doesNotMatch(run.out, TRACKED_LINE, line);
+        assert.strictEqual(run.result, 'local', line);
+    }
+});
+
 test('a --docs-versioning that differs from the tracked .variables line is held and named', POSIX_ONLY, () =>
 {
     assert.match(localRun('git', 'ALFRED_CODE_DOCS_VERSIONING=local\n').out, TRACKED_LINE);

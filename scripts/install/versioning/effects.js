@@ -32,11 +32,8 @@ function effectiveVersioning({ projectRoot, scope, docsPath, dataRoot, env = pro
     let own = copy.resolveDocsVersioning(projectRoot, at) || undefined;
     const heldElsewhere = Boolean(workspace.layerHolding(projectRoot, KEY, { env }));
     if (own && seedLeaves({ value: own, atLedgerHash: rows[KEY] === stamp.valueHash(own), answeredEnv: answered, firm: advice.firm, chain, linked, heldElsewhere, noRepo: Boolean(advice.noRepo) })) own = undefined;
-    const ranking = { carry, reseed, own, firm: advice, chain, linked };
-    const { value, source } = rankVersioning({ flag, ...ranking });
-    // The answer the ranking gives with no flag: what a flag has to differ from to be a change (the tracked `.variables` check).
-    const unflagged = flag ? rankVersioning(ranking).value : value;
-    return { value, source, advice, linked, chain, stale, unflagged };
+    const { value, source } = rankVersioning({ flag, carry, reseed, own, firm: advice, chain, linked });
+    return { value, source, advice, linked, chain, stale };
 }
 
 // The project's own `.variables` line for the key, as a value (undefined: no file, no line or a garbage one). The reader

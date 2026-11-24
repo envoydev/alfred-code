@@ -1168,9 +1168,9 @@ function variablesStep(ctx)
         ctx.variablesHeld = variables.read(file).values;
         const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir }, dataRoot: root }).values;
         const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
-        // The docs versioning is held only against the tracked file's own line: the file the team shares answers for a key it holds.
+        // The docs versioning is held only against the tracked file's own valid line: the file the team shares answers for a key it holds.
         const current = (key) => (key === DOCS_VERSIONING_KEY
-            ? (ctx.variablesHeld[key] === undefined ? ctx.args.docsVersioning : normaliseValue(ctx.variablesHeld[key]))
+            ? (normaliseValue(ctx.variablesHeld[key]) ?? ctx.args.docsVersioning)
             : (now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '')));
         for (const [flag, key, value] of [['memory', 'ALFRED_CODE_MEMORY', ctx.args.memory], ['autoCompact', 'ALFRED_CODE_AUTO_COMPACT', ctx.args.autoCompact && (ctx.args.autoCompact === 'on' ? '1' : '0')],
             ['docsVersioning', 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.docsVersioning]])
