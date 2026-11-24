@@ -441,24 +441,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const homes = Object.fromEntries(links.KINDS.map((k) => [k, links.homeOf(projectRoot, k, { rt, write: writes })]));
         if (writes) links.syncLinks({ projectRoot, prior: (stampFile ? stampLayer.readLinks(stampFile) : []).filter((e) => homes[e.path.split('/')[0]].state === 'visible'), rt, log });   // a scope move: links become copies before any write follows one
         const stampedLib = (stampFile && stampLayer.readLibrary(stampFile)) || {};
-        if (writes)   // an older install held each agent as a flat `<name>.md`: at its recorded hash it moves into a folder, any other is the user's
-        {
-            const view = recordView(stampFile, priorLedger);
-            const hashes = Object.fromEntries(Object.entries(view.agents).map(([n, h]) => [n, [h]]));
-            for (const e of stampFile ? stampLayer.readLinks(stampFile) : []) if (e.kind === 'copy' && e.path.startsWith('agents/')) (hashes[e.path.slice(7).replace(/\.md$/, '')] ||= []).push(e.hash);
-            // a flat file nothing recorded is the stack's when it holds the stack's own text, or when the stamp has no ledger and either never
-            // recorded picks (the disk is its only record) or lists the seat as picked; any other is the user's
-            const picks = stampFile ? stampLayer.readPicked(stampFile) : null;
-            const pickedSeats = picks ? new Set(picks.agents.map((a) => a.split('@')[0])) : null;
-            const stackText = (name) => readOrNull(path.join(resolved.dir, 'stack', 'agents', `${name}.md`));
-            const isStacks = (name, flat) =>
-            {
-                const [mine, stack] = [readOrNull(flat), stackText(name)];
-                if (mine !== null && stack !== null && (mine === stack || mine === copy.respellPreloads(stack, CORE))) return true;
-                return Boolean(stampFile) && !view.ledgerHeld && (!pickedSeats || pickedSeats.has(name));
-            };
-            links.migrateFlatAgents({ projectRoot, home: homes.agents, hashes, names: manifest.agents.map((f) => f.replace(/\.md$/, '')), isStacks, log });
-        }
+        // An older install held each agent as a flat `<name>.md`: at a recorded hash, or holding the stack's own text, it moves into a
+        // folder; any other is the user's. A second pass, once the selection is known, takes a seat this run picks where git sees the folder.
+        const flatSeats = writes ? flatSeatRecords({ stampFile, priorLedger, sourceDir: resolved.dir }) : null;
+        if (writes) links.migrateFlatAgents({ projectRoot, home: homes.agents, hashes: flatSeats.hashes, names: manifest.agents.map((f) => f.replace(/\.md$/, '')), isStacks: flatSeats.isStackText, log });
         for (const k of writes ? links.KINDS : [])
         {
             const rows = Object.keys((priorLedger && priorLedger.files) || {}).filter((r) => r.startsWith(`${k}/`)).map((r) => r.slice(k.length + 1).replace(/\.md$/, ''));
@@ -686,6 +672,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
             }
             return 0;
+        }
+
+        // A seat this run picks whose flat file in `.claude/agents` nothing recorded, on a stamp with no ledger and in a folder git sees:
+        // the copy the stack wrote before the ledger existed, so it moves to its folder and the run's own write takes its place.
+        if (writes && !homes.agents.store && !flatSeats.ledgerHeld)
+        {
+            const flatHere = (name) => path.join(projectRoot, '.claude', 'agents', `${name}.md`);
+            links.migrateFlatAgents({ projectRoot, home: homes.agents, hashes: flatSeats.hashes, names: lists.agents.map((f) => f.replace(/\.md$/, '')), isStacks: (name, file) => file === flatHere(name), log });
         }
 
         // --- the run ---------------------------------------------------------------
@@ -1414,6 +1408,22 @@ function droppedKeep(ctx, category, name)
     return kept;
 }
 
+// What the previous install recorded for each flat agent file (`hashes`: name -> hashes, from the library line, the ledger and
+// the stamp's copy links), and the test `isStackText(name, file)`: the file holds the stack's own text, raw or with the copy route's
+// respelled preloads. `ledgerHeld` says whether the stamp carries a ledger at all.
+function flatSeatRecords({ stampFile, priorLedger, sourceDir })
+{
+    const view = recordView(stampFile, priorLedger);
+    const hashes = Object.fromEntries(Object.entries(view.agents).map(([n, h]) => [n, [h]]));
+    for (const e of stampFile ? stampLayer.readLinks(stampFile) : []) if (e.kind === 'copy' && e.path.startsWith('agents/')) (hashes[e.path.slice(7).replace(/\.md$/, '')] ||= []).push(e.hash);
+    const isStackText = (name, file) =>
+    {
+        const [mine, stack] = [readOrNull(file), readOrNull(path.join(sourceDir, 'stack', 'agents', `${name}.md`))];
+        return mine !== null && stack !== null && (mine === stack || mine === copy.respellPreloads(stack, CORE));
+    };
+    return { hashes, ledgerHeld: view.ledgerHeld, isStackText };
+}
+
 // The copy route's twin: a picked seat whose file sits in `.claude/agents` with no record and text other than the render.
 function projectSeat(ctx, file)
 {
@@ -1733,7 +1743,7 @@ function copyKinds(ctx, closure)
     {
         const name = f.replace(/\.md$/, '');
         // a flat file of an older install beside no folder is one the project edited (the stack's own moved, migrateFlatAgents): kept, and no folder is written beside it
-        if (!fs.lstatSync(path.join(agentsDir, name), { throwIfNoEntry: false }) && fs.lstatSync(path.join(agentsDir, `${name}.md`), { throwIfNoEntry: false })?.isFile()) { ctx.log(links.kept(`agents/${name}.md`)); return false; }
+        if (!fs.lstatSync(path.join(agentsDir, name), { throwIfNoEntry: false }) && fs.lstatSync(path.join(agentsDir, `${name}.md`), { throwIfNoEntry: false })?.isFile()) { if (path.relative(ctx.projectRoot, agentsDir) === path.join('.claude', 'agents')) ctx.log(links.kept(`agents/${name}.md`)); return false; }
         if (!projectSeat(ctx, f)) return true;
         ctx.log(ownSeatLine.copy(name));
         ctx.foreignSeats.add(name);
