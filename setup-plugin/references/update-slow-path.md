@@ -42,9 +42,9 @@ the always skills become copies, a library seat copy is pruned (an edited one is
 is a tuned one - a `model` / `effort` other than the stack's, which no setting can give the core's seat), and
 every seat the install never ran is denied; the installer says it in one `installed-only: the stamp
 predates 2.1.0` line (and one `agent kept:` line per kept seat copy, naming its pins and that it is
-dispatched by its bare name - the capabilities rule's seats line is re-spelled to match, every other seat
-as `alfred-code:<seat>`). Quote each `agent kept:` line in the report: the core's twin still lists beside the
-copy, and deleting the copy is how the user takes the stack's seat back. A `required:` line (a dependency the new release introduced) is auto-kept and
+dispatched by its bare name - the capabilities rule's seats line is re-spelled to match, and every seat is named
+bare, as each picked seat is a linked copy). Quote each `agent kept:` line in the report: deleting the copy is how the
+user takes the stack's seat back. A `required:` line (a dependency the new release introduced) is auto-kept and
 reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote
 prints exactly that way, and the installer leaves every one of them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never
 touched). It is excluded from the emitted selection and nothing more - list it in the report as

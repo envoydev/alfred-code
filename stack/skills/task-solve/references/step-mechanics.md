@@ -75,7 +75,7 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
 ## Agents-mode dispatch - step 4
 
 Each task card goes to its stack's `<stack>-implementer` seat, dispatched exactly as the roster
-spells it (`alfred-code:<seat>` on the plugin route) - a flat fan-out with the main
+spells it - a flat fan-out with the main
 session the only orchestrator:
 
 - **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (under auto-run the hook's `AUTO` stamp already stands - leave it)

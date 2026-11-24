@@ -245,6 +245,23 @@ test('after the switch to copy the roster names every seat bare, and after the s
     assert.deepEqual(steps[3], bareCopy, 'a plain update changes nothing');
 });
 
+// A project that moves from the plugin route to the full copy route keeps the roster it had: a prefixed seat name in it
+// resolves to nothing there, so the copy route's update re-spells it bare as well.
+test('a full copy-route update over a prefixed roster re-spells it bare, and a second run changes nothing', POSIX_ONLY, () =>
+{
+    const FULL_COPY = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+    const { steps } = seedRun(['install', 'update', 'update'], PICKED, {
+        plugins: '[]', env: FULL_COPY, args: [PROJECT, PROJECT, PROJECT],
+        each: (repo, i) =>
+        {
+            if (i === 0) layOutRoster(repo, [`${CORE}:${SEAT}`, `${CORE}:${UNPICKED_SEAT}`, 'house-wpf:wpf-implementer']);
+            return i === 0 ? null : rosterSeats(repo);
+        },
+    });
+    assert.deepEqual(steps[1], [SEAT, UNPICKED_SEAT, 'house-wpf:wpf-implementer'], 'copy route: the core-prefixed names are bare, another plugin\'s keeps its prefix');
+    assert.deepEqual(steps[2], steps[1], 'a re-run changes nothing');
+});
+
 // A workspace: the top's deny leaves a member-held seat out and a store record follows the route, so a switch of one project
 // would list that seat twice - the flag is refused on the top and on a member, and nothing changes.
 const WORKSPACE_REFUSAL = "!! seats route: a workspace's seats route is its top's and members' together - not switched here";

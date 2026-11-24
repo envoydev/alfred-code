@@ -123,10 +123,9 @@ listed though it is not installed, since the parent holds it - and `from root` f
 **Skills and agents** - the ROUTE decides the set. With the core `alfred-code` entry enabled in
 the plugins listing, the installed set is what those plugins CARRY - `node
 "${CLAUDE_PLUGIN_ROOT}/scripts/selection-plugins.js" --items <their names, comma-separated>` prints
-one `skill <name>` / `agent <name>` line each (the core: every seat, no skill) - minus every seat
-`permissions.deny` names (`Agent(alfred-code:<seat>)`, each seat the project did not pick), UNIONED
-with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied per pick;
-`.claude/agents/<name>/` on the copy route). Without any such entry the disk is the whole set.
+one `skill <name>` / `agent <name>` line each (the core carries neither a skill nor a seat) - UNIONED
+with the LIBRARY copies on disk (`.claude/skills/<name>/` and `.claude/agents/<name>/`: every pick, copied
+per project and linked, a seat under its bare name). Without any such entry the disk is the whole set.
 
 | skill | origin |
 |---|---|

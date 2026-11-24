@@ -827,10 +827,10 @@ function inventory(projectRoot)
     for (const s of skills.filter((s) => s.unreadable)) sub(`UNREADABLE ${s.name}: ${s.unreadable} - report it as unreadable, never fill it from memory`);
 
     const denied = deniedSeats(projectRoot);
-    // A core seat is named bare, and a deny row an earlier release wrote spells it `alfred-code:<seat>`: both switch it off here.
-    const isDenied = (s) => denied.has(s) || denied.has(`${CORE_PLUGIN}:${s}`);
-    const offSeats = seats.filter(isDenied);
-    seats = seats.filter((s) => !isDenied(s));
+    // A linked seat is dispatched bare, and Claude Code matches the name dispatched: an `Agent(alfred-code:<seat>)` row an
+    // earlier release wrote is inert, so only the bare row switches a seat off here.
+    const offSeats = seats.filter((s) => denied.has(s));
+    seats = seats.filter((s) => !denied.has(s));
     say('SEATS', `${seats.length} total${offSeats.length ? ` (${offSeats.length} denied in permissions.deny, left out)` : ''}`);
     facts.seatsLine = seats.join(', ') || 'none';
     sub(facts.seatsLine);
