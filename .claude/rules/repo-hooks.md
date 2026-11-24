@@ -550,7 +550,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     joined after it is never read as one. An unquoted heredoc body that leaves a substitution open is unread: dash
     parses it on past the terminator line. Lexer and parser stay linear in the text: `dequote` takes a word's substitutions from its parse's
     lex (`allSubs`) and never lexes again (a test holds 800,000 characters of `case `, 400,000 of `$((1)` and a 48,000-
-    character nest under 8 s). `trap`'s action is a carried script like `eval`'s. TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
+    character nest under 8 s). `trap`'s action is a carried script like `eval`'s. A `case` arm's pattern - from `case WORD in` or `;;` to its `)`, a
+    leading `(` included - is no command (`parseShell`, 2026-11-24): `[/])` had read as a script run by its path, so a
+    sourced `nvm.sh` was unread and the rm guard blocked `source ~/.nvm/nvm.sh` in every dirty checkout, and `git)` read
+    as a git call; a `$( )` inside a pattern still runs (`scripts/shell-writes-case.test.js`). TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
     budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the thresholds at the top of each guard
