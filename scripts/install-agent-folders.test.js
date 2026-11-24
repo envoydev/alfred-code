@@ -364,6 +364,37 @@ test('uninstall: a .claude/.gitignore the user wrote stays', POSIX_ONLY, () =>
     assert.strictEqual(result, `${CLAUDE_VERSIONING_IGNORE}!keep\n`);
 });
 
+test('uninstall: a folder that cannot be written keeps the stack text, with one !! line and no throw', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
+{
+    const { removeAgentFolders } = require('./install/uninstall.js');
+    const root = project();
+    put(root, '.cursor/.gitignore', CURSOR_VERSIONING_IGNORE);
+    put(root, '.claude/.gitignore', CLAUDE_VERSIONING_IGNORE);
+    const cursor = path.join(root, '.cursor');
+    fs.chmodSync(cursor, 0o555);
+    const lines = [];
+    try
+    {
+        assert.doesNotThrow(() => removeAgentFolders({ projectRoot: root, claudeDir: path.join(root, '.claude'), created: ['.cursor'], log: (l) => lines.push(l) }));
+    }
+    finally { fs.chmodSync(cursor, 0o755); }
+    assert.strictEqual(read(root, '.cursor', '.gitignore'), CURSOR_VERSIONING_IGNORE);
+    assert.deepStrictEqual(lines.filter((l) => l.includes('!!')), ['  !! .cursor/.gitignore could not be removed (EACCES) - remove it by hand']);
+    assert.strictEqual(read(root, '.claude', '.gitignore'), null, 'the writable folder is still cleaned');
+});
+
+test('uninstall end to end: an unwritable .cursor ends the run with exit 0, one !! line and the file kept', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, () =>
+{
+    const { out, codes, result } = seedRun(['install', 'uninstall'], SEL, {
+        args: [LOCAL_VERSIONING, []], env: COPY,
+        each: (repo, i) => { if (i === 0) fs.chmodSync(path.join(repo, '.cursor'), 0o555); },
+        inspect: (repo) => { const kept = read(repo, '.cursor', '.gitignore'); fs.chmodSync(path.join(repo, '.cursor'), 0o755); return kept; },
+    });
+    assert.deepStrictEqual(codes, [0, 0]);
+    assert.strictEqual(result, CURSOR_VERSIONING_IGNORE);
+    assert.strictEqual(out.split('\n').filter((l) => l.includes('!! .cursor/.gitignore could not be removed')).length, 1);
+});
+
 test('ignoreVerdict: the stack\'s own .claude/.gitignore is the stack\'s rule, a user file is not', () =>
 {
     const root = project();

@@ -268,8 +268,13 @@ function removeAgentFolders({ projectRoot, claudeDir, created = [], log = () => 
         try { have = fs.readFileSync(file, 'utf8'); } catch { /* none */ }
         if (isStackText(have))
         {
-            fs.rmSync(file, { force: true });
-            log(`  ${folder}/${IGNORE_FILE} removed`);
+            // A folder that cannot be written keeps the file with one `!!` line, as the install's removeText does.
+            try
+            {
+                fs.rmSync(file, { force: true });
+                log(`  ${folder}/${IGNORE_FILE} removed`);
+            }
+            catch (err) { log(`  !! ${folder}/${IGNORE_FILE} could not be removed (${err.code || err.message}) - remove it by hand`); }
         }
         if (folder === FOLDER.cursor && created.includes(folder))
             try { fs.rmdirSync(dir); log(`  ${folder} removed - the stack made it and it is empty`); } catch { /* absent, or holds your files */ }
