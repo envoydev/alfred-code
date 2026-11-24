@@ -354,24 +354,6 @@ function rulesFor(start, env = process.env, { host = 'claude', prelude = loadPre
     return out;
 }
 
-// A PreToolUse call on a file tool (file-guards folds this hook onto the file tools): the touch is recorded for the summary line,
-// and an edit tool hears the key lines of the path rules that match its file, once per session, actor and file (rules-summary.js).
-// Cursor sends no such event to this hook; its rules arrive whole at the start.
-const FILE_TOOLS_EDIT = Object.freeze(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
-function onFileTool(input, env)
-{
-    const given = input.tool_input && (input.tool_input.file_path || input.tool_input.notebook_path);
-    if (typeof given !== 'string' || !given) return;
-    const start = env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    const file = path.resolve(input.cwd || process.cwd(), given);
-    const summary = require(path.join(__dirname, 'rules-summary.js'));
-    summary.noteTouch(start, input.session_id, file, env);
-    if (!FILE_TOOLS_EDIT.includes(String(input.tool_name || ''))) return;
-    const actor = String(input.agent_id || 'main');
-    const text = summary.editNote(start, input.session_id, actor, file, env);
-    if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: text } }));
-}
-
 function main(argv = process.argv, env = process.env)
 {
     const prelude = loadPrelude();
@@ -383,7 +365,7 @@ function main(argv = process.argv, env = process.env)
     if (prelude && prelude.cursorStandDown(input, __filename)) return;
     if (input.hook_event_name === 'PreToolUse')
     {
-        if (!(prelude && prelude.cursorHost(input))) onFileTool(input, env);
+        if (!(prelude && prelude.cursorHost(input))) require(path.join(__dirname, 'rules-summary.js')).onFileTool(input, env);   // the touch record and the edit-time reminder
         return;
     }
     const at = argv.indexOf('--part');

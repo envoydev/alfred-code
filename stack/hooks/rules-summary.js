@@ -16,10 +16,15 @@ const { pathGlob, pathsOf, keyLine, mdFiles, RULE_FILES } = require(path.join(__
 const SUMMARY_HEAD = 'Native rules, full text in context - follow them: ';
 // THE EDIT-TIME REMINDER: the key lines of the path rules that match a file about to change, sent once per session, actor and file.
 const EDIT_HEAD = (relative) => `Rules for ${relative} (key lines - the full text is in context):`;
+const EDIT_TOOLS = Object.freeze(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const AWARENESS_RULE = 'alfred-awareness.md';
-const editFile = (session, actor) => `rules-edit-${String(session || 'nosession').replace(/[^\w.-]/g, '_')}-${String(actor || 'main').replace(/[^\w.-]/g, '_')}.json`;
+const EDIT_PREFIX = 'rules-edit-';
+const TOUCH_PREFIX = 'rules-touched-';
+// State hygiene when a record is written: this hook's session files past 7 days go (hook-prelude.js sweepStale); no prelude, no sweep.
+const sweepOld = (dir, prefix) => { try { require(path.join(__dirname, 'hook-prelude.js')).sweepStale(dir, prefix); } catch { /* no prelude */ } };
+const editFile = (session, actor) => `${EDIT_PREFIX}${String(session || 'nosession').replace(/[^\w.-]/g, '_')}-${String(actor || 'main').replace(/[^\w.-]/g, '_')}.json`;
 const SETTINGS_FILES = ['settings.local.json', 'settings.json'];
-const touchFile = (session) => `rules-touched-${String(session || 'nosession').replace(/[^\w.-]/g, '_')}.json`;
+const touchFile = (session) => `${TOUCH_PREFIX}${String(session || 'nosession').replace(/[^\w.-]/g, '_')}.json`;
 const homeOf = (env) => path.resolve(env.HOME || env.USERPROFILE || require('node:os').homedir());
 const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
@@ -118,6 +123,7 @@ function noteTouch(project, sessionId, file, env = process.env)
         const target = require(path.join(__dirname, 'layout.js')).statePath(project, 'sessions', touchFile(sessionId), env);
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, JSON.stringify([...kept, ...fresh]));
+        sweepOld(path.dirname(target), TOUCH_PREFIX);
     }
     catch { /* the record is a hint */ }
 }
@@ -162,8 +168,8 @@ function matchingRules(folder, real, excludes)
 }
 
 // The reminder for one file: the matching rules' key lines from every level between the topmost ancestor (the summary's top level)
-// and the file's folder, top first, and the line naming the nearest child folder below the session folder that holds its own
-// alfred-awareness rule. '' when no path rule matched, the file sits outside the levels, or anything throws.
+// and the file's folder, top first (a file at or below the session folder only), and the line naming the nearest child folder below the session folder that holds its own
+// alfred-awareness rule. '' when no path rule matched, the file sits outside the session folder, or anything throws.
 function editReminder(file, start, env = process.env)
 {
     try
@@ -172,6 +178,7 @@ function editReminder(file, start, env = process.env)
         if (!top) return '';
         const session = realOf(start);
         const real = path.join(realFolderOf(file), path.basename(file));
+        if (!isBelow(session, real)) return '';   // a file outside the session folder: Claude Code loaded none of that tree's rules
         const excludes = excludesOf([session]);
         const lines = [];
         let child = '';
@@ -201,9 +208,25 @@ function editNote(project, sessionId, actor, file, env = process.env)
         if (!text) return '';
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, JSON.stringify([...sent, real]));
+        sweepOld(path.dirname(target), EDIT_PREFIX);
         return text;
     }
     catch { return ''; }
 }
 
-module.exports = { levelsOf, touchedOf, noteTouch, summaryLine, isBelow, editReminder, editNote };
+// A PreToolUse call on a file tool (file-guards folds rules-session.js onto the file tools): the touch is recorded for the summary
+// line, and an edit tool hears the key lines of the path rules that match its file, once per session, actor and file. Prints the
+// hook answer itself; a payload with no file prints nothing.
+function onFileTool(input, env = process.env)
+{
+    const given = input.tool_input && (input.tool_input.file_path || input.tool_input.notebook_path);
+    if (typeof given !== 'string' || !given) return;
+    const start = env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+    const file = path.resolve(input.cwd || process.cwd(), given);
+    noteTouch(start, input.session_id, file, env);
+    if (!EDIT_TOOLS.includes(String(input.tool_name || ''))) return;
+    const text = editNote(start, input.session_id, String(input.agent_id || 'main'), file, env);
+    if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: text } }));
+}
+
+module.exports = { levelsOf, touchedOf, noteTouch, summaryLine, isBelow, editReminder, editNote, onFileTool };

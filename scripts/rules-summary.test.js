@@ -297,3 +297,60 @@ test('a Read records the touch and prints nothing; the first Edit prints the rem
     }
     finally { done(); }
 });
+
+test('a sibling project\'s file gets no reminder, and a file of the session folder still hears the levels above it', () =>
+{
+    const { home, env, done } = fixture();
+    try
+    {
+        const top = path.join(home, 'top');
+        const proj = path.join(top, 'proj');
+        const other = path.join(top, 'other');
+        writeRule(top, 'cs-style', RULE_BODY('Write C# in the house style. More.')(['**/*.cs']));
+        writeRule(other, 'other-src', RULE_BODY('Other project only. More.')(['**/*.cs']));
+        fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+        fs.mkdirSync(path.join(other, 'src'), { recursive: true });
+        assert.strictEqual(loader().editReminder(path.join(other, 'src', 'a.cs'), proj, env), '', 'a file outside the session folder');
+        assert.strictEqual(loader().editNote(proj, SESSION, 'main', path.join(other, 'src', 'a.cs'), env), '');
+        assert.strictEqual(loader().editReminder(path.join(proj, 'src', 'a.cs'), proj, env),
+            'Rules for src/a.cs (key lines - the full text is in context):\n- cs-style: Write C# in the house style.', 'a file of the session folder: the level above counts');
+    }
+    finally { done(); }
+});
+
+test('a seat payload gets its own record: the main actor\'s sent reminder does not suppress it', () =>
+{
+    const { home, done } = fixture();
+    try
+    {
+        const { root, file } = workspace(home);
+        const edit = { tool_name: 'Edit', tool_input: { file_path: file } };
+        assert.notStrictEqual(hook(root, home, edit), '');
+        assert.strictEqual(hook(root, home, edit), '', 'the main actor heard it');
+        assert.notStrictEqual(hook(root, home, { ...edit, agent_id: 'agent-a1' }), '', 'a seat hears it once');
+        assert.strictEqual(hook(root, home, { ...edit, agent_id: 'agent-a1' }), '');
+        const state = path.join(root, '.alfred', 'state', 'sessions');
+        assert.deepStrictEqual(fs.readdirSync(state).filter((f) => f.startsWith('rules-edit-')).sort(), ['rules-edit-sess-1-agent-a1.json', 'rules-edit-sess-1-main.json']);
+    }
+    finally { done(); }
+});
+
+test('a write sweeps the hook\'s own session files past 7 days, and no others', () =>
+{
+    const { home, done } = fixture();
+    try
+    {
+        const { root, file } = workspace(home);
+        const state = path.join(root, '.alfred', 'state', 'sessions');
+        fs.mkdirSync(state, { recursive: true });
+        const old = new Date(Date.now() - 8 * 24 * 3600 * 1000);
+        const make = (name, when) => { fs.writeFileSync(path.join(state, name), '[]'); fs.utimesSync(path.join(state, name), when, when); };
+        for (const name of ['rules-edit-old-main.json', 'rules-touched-old.json', 'other-old.json']) make(name, old);
+        make('rules-edit-fresh-main.json', new Date());
+        hook(root, home, { tool_name: 'Edit', tool_input: { file_path: file } });
+        assert.deepStrictEqual(fs.readdirSync(state).filter((f) => !f.startsWith('.alfred-sweep')).sort(),
+            ['other-old.json', 'rules-edit-fresh-main.json', 'rules-edit-sess-1-main.json', 'rules-touched-sess-1.json'],
+            'the old edit record goes, the old touch record goes after the touch write, the foreign file stays');
+    }
+    finally { done(); }
+});
