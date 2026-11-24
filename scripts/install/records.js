@@ -6,6 +6,7 @@ const path = require('node:path');
 const { readLibrary } = require('./stamp.js');
 const { hashItem } = require('./library.js');
 const { RECORD_KIND, VIEW_MAP, LEDGER_ROW } = require('./records-constants.js');
+const { agentAt } = require('./links.js');
 
 // The library lines win; a ledger row fills only an item they lack. `ledger` is `stamp.readLedger`'s
 // result (or null): `files` is null when the stamp has no managed-files line, which holds nothing.
@@ -59,7 +60,7 @@ function carriedRows(view, dirOf, rewritten)
         for (const name of Object.keys(view?.[VIEW_MAP[kind]] || {}))
         {
             const row = `${prefix}${name}${suffix}`;
-            if (rewritten.has(row) || !editedSince(view, kind, name, path.join(dirOf[kind], `${name}${suffix}`))) continue;
+            if (rewritten.has(row) || !editedSince(view, kind, name, (kind === RECORD_KIND.agent ? agentAt(dirOf[kind], name) : path.join(dirOf[kind], `${name}${suffix}`)))) continue;
             out[row] = recordOf(view, kind, name);
         }
     }

@@ -399,7 +399,7 @@ function readOwnPicks(file)
 // Workspace stage 3: the links a run made (`links: <kind>/<file>=<symlink|junction|copy>[@<sha256>],...`) and the picks a
 // workspace root holds for its members (`member-picks: skill/<name>,...`). An entry of any other shape is dropped (N1).
 const linksValue = (record) => record.map((e) => `${e.path}=${e.kind}${e.hash ? `@${e.hash}` : ''}`).join(',');
-const readLinks = (file) => (lineOf(file, 'links') || []).map((s) => /^(skills\/([^/=]+)|agents\/([^/=]+)\.md)=(symlink|junction|copy)(?:@([0-9a-f]{64}))?$/.exec(s))
+const readLinks = (file) => (lineOf(file, 'links') || []).map((s) => /^(skills\/([^/=]+)|agents\/([^/=]+?)(?:\.md)?)=(symlink|junction|copy)(?:@([0-9a-f]{64}))?$/.exec(s))
     .filter((m) => m && validItemName(m[2] || m[3]) && (m[4] === 'copy') === Boolean(m[5])).map((m) => ({ path: m[1], kind: m[4], hash: m[5] || '' }));
 function readMemberPicks(file)
 {

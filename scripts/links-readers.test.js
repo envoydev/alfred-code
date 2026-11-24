@@ -170,12 +170,12 @@ test('status: an edited copy and a stale copy are named', () =>
     const { hashItem } = require('./install/library.js');
     const sha = (rel) => hashItem(path.join(proj, rel));
     // an edited copy: its text is not the recorded one
-    put(path.join(proj, '.claude', 'agents', 'edited.md'), agentMd('edited-here'));
+    put(path.join(proj, '.claude', 'agents', 'edited', 'edited.md'), agentMd('edited-here'));
     // a stale copy: at its recorded text while the store's file moved on
-    put(path.join(proj, '.claude', 'agents', 'stale.md'), agentMd('stale'));
-    put(path.join(proj, '.alfred', 'stack', 'agents', 'stale.md'), agentMd('stale-moved-on'));
+    put(path.join(proj, '.claude', 'agents', 'stale', 'stale.md'), agentMd('stale'));
+    put(path.join(proj, '.alfred', 'stack', 'agents', 'stale', 'stale.md'), agentMd('stale-moved-on'));
     const seen = put(path.join(TMP, 'status-copies-was', 'edited.md'), agentMd('edited'));
-    const out = statusOf(proj, [`links: agents/edited.md=copy@${hashItem(seen)},agents/stale.md=copy@${sha('.claude/agents/stale.md')}`]);
-    assert.match(out, /^ {2}!! link agents\/edited\.md: edited$/m, out);
-    assert.match(out, /^ {2}!! link agents\/stale\.md: stale$/m, out);
+    const out = statusOf(proj, [`links: agents/edited=copy@${hashItem(seen)},agents/stale=copy@${sha('.claude/agents/stale')}`]);
+    assert.match(out, /^ {2}!! link agents\/edited: edited$/m, out);
+    assert.match(out, /^ {2}!! link agents\/stale: stale$/m, out);
 });

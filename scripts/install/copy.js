@@ -41,8 +41,9 @@ const rendered = (src, render, rel) => (render && RENDER_EXT.includes(path.extna
 const sameBytes = (body, dest) => { try { return fs.readFileSync(dest).equals(body); } catch { return false; } };
 
 // `render` (C17): a function of a text file's source, whose result is what the copy holds - compared
-// with the copy as it stands, and written only when they differ. Without it the bytes are copied.
-function installFromSource({ sourceDir, subdir, label, destDir, files, exec = false, render = null, log = () => {}, note = () => {} })
+// with the copy as it stands, and written only when they differ. Without it the bytes are copied. `folder` (an agent):
+// each file lands as `<destDir>/<name>/<file>`, the folder an item of its own.
+function installFromSource({ sourceDir, subdir, label, destDir, files, exec = false, folder = false, render = null, log = () => {}, note = () => {} })
 {
     const copied = [];
     const skipped = [];
@@ -50,7 +51,7 @@ function installFromSource({ sourceDir, subdir, label, destDir, files, exec = fa
     for (const file of files)
     {
         const src = path.join(sourceDir, subdir, file);
-        const dest = path.join(destDir, file);
+        const dest = folder ? path.join(destDir, file.replace(/\.md$/, ''), file) : path.join(destDir, file);
         if (!fs.existsSync(src) || !fs.statSync(src).isFile())
         {
             note(`${label} '${file}' not found in the stack source`);
@@ -232,7 +233,7 @@ function stampDocsRoot(projectRoot, { scope, value: given, log = () => {}, note 
 // A --drop removes the COPY of what it names - on the copy routes the whole item, on the plugin
 // routes an extra - or the next --installed-only read-back finds the file and puts it straight back.
 // Only a name the stack ships; the engines are no hook line, so a drop never reaches them.
-const DROP_PATH = { skill: (n) => n, agent: (n) => `${n}.md`, rule: (n) => `${n}.md`, hook: (n) => `${n}.js` };
+const DROP_PATH = { skill: (n) => n, agent: (n) => n, rule: (n) => `${n}.md`, hook: (n) => `${n}.js` };
 // `keep(category, name)` (M3) names a same-named folder that is the project's own, never the stack's copy.
 function removeDropped({ drop = [], dirs, shipped, keep = () => false, log = () => {} })
 {
@@ -240,7 +241,9 @@ function removeDropped({ drop = [], dirs, shipped, keep = () => false, log = () 
     {
         const [category, name] = line.split(' ');
         if (!DROP_PATH[category] || !(shipped[category] || []).includes(name)) continue;
-        const target = path.join(dirs[category], DROP_PATH[category](name));
+        const folder = path.join(dirs[category], DROP_PATH[category](name));
+        // an agent is a folder; an older install's flat `<name>.md` goes the same way until an update moves it
+        const target = category === 'agent' && !fs.existsSync(folder) && fs.existsSync(`${folder}.md`) ? `${folder}.md` : folder;
         if (!fs.existsSync(target)) continue;
         const kept = keep(category, name);
         if (kept && typeof kept === 'object') { if (kept.say) log(kept.say); continue; }

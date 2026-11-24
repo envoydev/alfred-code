@@ -707,7 +707,7 @@ test('seed update --installed-only on the copy route: the old copies become new 
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { env: COPY_ROUTE, args: ['--installed-only'], prepare, inspect });
     for (const n of ['task-solve', 'task-verify-code', 'markdown-style']) assert.ok(r.skills.includes(n), `${n} is copied: ${r.skills.join(' ')}`);
-    assert.ok(r.agents.includes('issue-diagnoser-ci.md') && r.agents.includes('security-auditor.md'), r.agents.join(' '));
+    assert.ok(r.agents.includes('issue-diagnoser-ci') && r.agents.includes('security-auditor'), r.agents.join(' '));
     assert.ok(!r.skills.includes('project-solve-task') && !r.skills.includes('project-verify-code'), `an old skill copy survived: ${r.skills.join(' ')}`);
     assert.ok(!r.agents.includes('ci-failure-diagnoser.md'), `an old seat copy survived: ${r.agents.join(' ')}`);
     const names = (list) => list.map((e) => e.split('@')[0]);

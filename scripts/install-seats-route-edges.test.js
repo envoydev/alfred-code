@@ -48,7 +48,7 @@ test('copy route: a picked seat whose stack source is missing prints no overwrit
     {
         cleanExport(ROOT, exportDir);
         fs.rmSync(path.join(exportDir, 'stack', 'agents', `${SEAT}.md`));
-        const seat = (repo) => path.join(repo, '.claude', 'agents', `${SEAT}.md`);
+        const seat = (repo) => path.join(repo, '.claude', 'agents', SEAT, `${SEAT}.md`);
         const { outs, result } = seedRun(['install', 'update'], `skill csharp\nagent ${SEAT}\n`, {
             env: { [KEY]: 'false' }, source: [ROOT, exportDir], args: [SCOPE, SCOPE],
             each: (repo, i) => { if (i === 0) fs.appendFileSync(seat(repo), '\nhand-edited line\n'); },

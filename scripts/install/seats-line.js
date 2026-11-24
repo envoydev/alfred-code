@@ -31,24 +31,25 @@ function countSwitchedOff(denyRows, coreSeatNames)
     return new Set((Array.isArray(denyRows) ? denyRows : []).map(stackSeat).filter((seat) => seat && shipped.has(seat))).size;
 }
 
-// The seat files in the agents folder, each counted once per real path (a link and its target are one seat): `picked` for
-// the files this run picked, `earlier` for any other `<seat>.md` of the run's stack/agents. Two passes, so the order the
-// folder lists never decides - a picked file claims its real path before any other name is weighed. A file that is no
-// seat of the stack (the project's own agent) counts for nothing.
+// The seats in the agents folder - a folder `<seat>`, or an older flat `<seat>.md` - each counted once per real path (a link and
+// its target are one seat): `picked` for the ones this run picked, `earlier` for any other seat of the run's stack/agents. Two
+// passes, so the order the folder lists never decides - a picked seat claims its real path before any other name is weighed. An
+// entry that is no seat of the stack (the project's own agent) counts for nothing.
 function countSeatFiles({ agentsDir, seatNames, pickedFiles })
 {
-    const real = (file) => { try { return fs.realpathSync(path.join(agentsDir, file)); } catch { return null; } };
+    const stem = (file) => file.replace(/\.md$/, '');
+    const real = (name) => { for (const file of [name, `${name}.md`]) { try { return fs.realpathSync(path.join(agentsDir, file)); } catch { /* try the other shape */ } } return null; };
     const claimed = new Set();
-    for (const file of pickedFiles) { const at = real(file); if (at) claimed.add(at); }
+    for (const file of pickedFiles) { const at = real(stem(file)); if (at) claimed.add(at); }
     const picked = claimed.size;
     const isSeat = new Set(seatNames);
     let names = [];
     try { names = fs.readdirSync(agentsDir); } catch { /* no agents folder: nothing on disk */ }
     let earlier = 0;
-    for (const file of names)
+    for (const name of new Set(names.map(stem)))
     {
-        if (!file.endsWith('.md') || !isSeat.has(file.slice(0, -3))) continue;
-        const at = real(file);
+        if (!isSeat.has(name)) continue;
+        const at = real(name);
         if (at && !claimed.has(at)) { claimed.add(at); earlier++; }
     }
     return { picked, earlier };

@@ -88,7 +88,9 @@ function renderTree(dir, render)
     }
 }
 
-// Rules are a third kind, same shape as agents: no plugin ever carries one (there is no plugin
+// An agent is a folder in the project, `<name>/<name>.md` (the source stays the flat `<name>.md`), so the project links it
+// like a skill; its hash is the folder's, which equals the flat file's.
+// Rules are a third kind, a single file: no plugin ever carries one (there is no plugin
 // route for a rule), so every rule is always a library copy, on every route.
 // `render` maps `<kind>/<name>` of a single-file item to a function of its source text: the copy is
 // compared with, and written as, the rendered text - so a copy the installer itself substitutes into
@@ -104,7 +106,7 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
     const out = { skills: {}, agents: {}, rules: {}, foreign: [] };
     const plan = [
         ...skills.map((name) => ({ kind: 'skills', label: 'skill', name, src: path.join(sourceDir, 'stack', 'skills', name), dst: path.join(skillsDir, name) })),
-        ...agents.map((name) => ({ kind: 'agents', label: 'agent', name, src: path.join(sourceDir, 'stack', 'agents', `${name}.md`), dst: path.join(agentsDir, `${name}.md`) })),
+        ...agents.map((name) => ({ kind: 'agents', label: 'agent', name, src: path.join(sourceDir, 'stack', 'agents', `${name}.md`), dst: path.join(agentsDir, name), file: `${name}.md` })),
         ...rules.map((name) => ({ kind: 'rules', label: 'rule', name, src: path.join(sourceDir, 'stack', 'rules', `${name}.md`), dst: ruleAt(name) })),
     ];
     for (const item of plan)
@@ -113,7 +115,7 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         let body = null;
         if (renderer) { try { body = Buffer.from(renderer(fs.readFileSync(item.src, 'utf8'))); } catch { body = null; } }
         const tree = item.kind === 'skills' ? renderSkillFile : null;
-        const want = body ? hashBuffer(path.basename(item.dst), body) : hashItem(item.src, tree);
+        const want = body ? hashBuffer(item.file || path.basename(item.dst), body) : hashItem(item.src, tree);
         if (!want) { note(`${item.label} '${item.name}' not found in the stack source`); continue; }
         const have = hashItem(item.dst);
         if (have === want) { out[item.kind][item.name] = want; continue; }
@@ -130,7 +132,9 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         if (via && via.startsWith(path.join(fs.realpathSync(path.join(item.dst, '..', '..', '..')), '.alfred', 'stack') + path.sep)) item.dst = via;
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
-        if (body) fs.writeFileSync(item.dst, body);
+        if (item.file) fs.mkdirSync(item.dst, { recursive: true });
+        if (body) fs.writeFileSync(item.file ? path.join(item.dst, item.file) : item.dst, body);
+        else if (item.file) fs.copyFileSync(item.src, path.join(item.dst, item.file));
         else
         {
             fs.cpSync(item.src, item.dst, { recursive: true, filter: (from) => !OS_LITTER.has(path.basename(from)) });

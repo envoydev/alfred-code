@@ -126,7 +126,7 @@ the plugins listing, the installed set is what those plugins CARRY - `node
 one `skill <name>` / `agent <name>` line each (the core: every seat, no skill) - minus every seat
 `permissions.deny` names (`Agent(alfred-code:<seat>)`, each seat the project did not pick), UNIONED
 with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied per pick;
-`.claude/agents/<name>.md` on the copy route). Without any such entry the disk is the whole set.
+`.claude/agents/<name>/` on the copy route). Without any such entry the disk is the whole set.
 
 | skill | origin |
 |---|---|

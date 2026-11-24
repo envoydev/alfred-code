@@ -149,8 +149,11 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     const ours = (kind, name) => !known || known[kind].has(name);
     for (const name of listDir(skillsDir, (d) => d.isDirectory() || d.isSymbolicLink()))
         if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name) && !keptUnpicked('skill', name)) lines.push(`skill ${name}`);
-    for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md')))
-        if (ours('agents', f.replace(/\.md$/, '')) && !keptUnpicked('agent', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
+    // An agent is a folder `<name>/<name>.md` (a link to one too); an older install's flat `<name>.md` still reads, until an update moves it.
+    const agentNames = new Set(listDir(agentsDir, (d) => (d.isDirectory() || d.isSymbolicLink()) && fs.existsSync(path.join(agentsDir, d.name, `${d.name}.md`))));
+    for (const f of listDir(agentsDir, (d) => (d.isFile() || (d.isSymbolicLink() && fs.existsSync(path.join(agentsDir, d.name)))) && d.name.endsWith('.md'))) agentNames.add(f.replace(/\.md$/, ''));
+    for (const name of agentNames)
+        if (ours('agents', name) && !keptUnpicked('agent', name)) lines.push(`agent ${name}`);
     const ruleFile = (d) => d.isFile() && d.name.endsWith('.md');
     for (const f of new Set([path.join(path.dirname(claudeDir), '.alfred', 'stack'), claudeDir].flatMap((d) => listDir(path.join(d, 'rules'), ruleFile))))
     {
@@ -748,7 +751,7 @@ function respellRosterSeats({ projectRoot, core, seats = [], docsPath = '', log 
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
     const carried = new Set(seats);
-    const copied = (seat) => fs.existsSync(path.join(projectRoot, '.claude', 'agents', `${seat}.md`));
+    const copied = (seat) => [`${seat}.md`, path.join(seat, `${seat}.md`)].some((f) => fs.existsSync(path.join(projectRoot, '.claude', 'agents', f)));
     const lines = text.split('\n');
     let inSeats = false;
     let changed = 0;

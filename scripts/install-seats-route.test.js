@@ -101,7 +101,7 @@ test('install-seats-route: after --seats-route copy, three plain updates stay on
     for (const [i, step] of steps.entries())
     {
         assert.equal((outs[i].match(SEATS_LINE) || [])[0], COPY_SEATS, `run ${i + 1}: the seats line names the copy route`);
-        assert.deepEqual(step, { value: 'false', ledgered: true, seats: ['evidence-gatherer.md'] }, `after run ${i + 1}`);
+        assert.deepEqual(step, { value: 'false', ledgered: true, seats: ['evidence-gatherer'] }, `after run ${i + 1}`);
     }
 });
 
@@ -155,7 +155,7 @@ const PICKED = `skill markdown-style\nskill ${SWITCH_SKILL}\nagent ${SEAT}\n`;
 const EDIT = '\nhand-edited line\n';
 const PROJECT = ['--scope', 'project'];
 const ROUTE = { copy: [...PROJECT, '--seats-route', 'copy'], plugin: [...PROJECT, '--seats-route', 'plugin'], plain: PROJECT };
-const seatPath = (repo) => claudeFile(repo, path.join('agents', `${SEAT}.md`));
+const seatPath = (repo) => claudeFile(repo, path.join('agents', SEAT, `${SEAT}.md`));
 const skillPath = (repo) => claudeFile(repo, path.join('skills', SWITCH_SKILL, 'SKILL.md'));
 const stampPath = (repo) => claudeFile(repo, 'alfred-code.stamp');
 const seatRecord = (repo) => readLedger(stampPath(repo)).files[`agents/${SEAT}.md`] || readLibrary(stampPath(repo)).agents[SEAT] || null;

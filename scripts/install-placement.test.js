@@ -126,7 +126,7 @@ test('a switch to the skills copy route copies the seats the core carried, and b
     });
     const [plugin, copied, back] = steps;
     assert.deepStrictEqual([plugin.agents, plugin.seatsRoute], [[], 'plugin']);
-    assert.deepStrictEqual([copied.agents, copied.seatsRoute], [['aspnet-implementer.md'], 'copy'], 'the seat picked on the plugin route is copied');
+    assert.deepStrictEqual([copied.agents, copied.seatsRoute], [['aspnet-implementer'], 'copy'], 'the seat picked on the plugin route is copied');
     assert.deepStrictEqual(copied.seatDeny, SEATS.map((a) => `Agent(alfred-code:${a})`), 'the core still loads beside the copies - it is denied for every seat, so a copied seat lists once');
     assert.ok(copied.seatDeny.includes('Agent(alfred-code:aspnet-implementer)'), 'the picked, copied seat has no second listing under the core');
     assert.deepStrictEqual([back.agents, back.seatsRoute, back.seatDeny], [[], 'plugin', plugin.seatDeny], 'and back: the copy goes, the seat stays picked');
@@ -163,7 +163,7 @@ test('I4 update over a 2.0.0 install with a tuned seat copy: the pins are kept, 
     const { steps, outs } = seedRun(['update', 'update'], '', {
         plugins: LISTING, args: ['--installed-only', '--keep-pins'], prepare: v200Tuned,
         each: (repo) => ({ ...read(repo), roster: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-agent-awareness.md'), 'utf8'),
-            implementer: (() => { try { return fs.readFileSync(path.join(repo, '.claude', 'agents', 'aspnet-implementer.md'), 'utf8'); } catch { return ''; } })() }),
+            implementer: (() => { try { return fs.readFileSync(path.join(repo, '.claude', 'agents', 'aspnet-implementer', 'aspnet-implementer.md'), 'utf8'); } catch { return ''; } })() }),
     });
     const [first, second] = steps;
     assert.match(first.implementer, /^model: opus$/m, `the tuned copy is kept:\n${outs[0]}`);

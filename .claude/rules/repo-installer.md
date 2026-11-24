@@ -341,9 +341,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   copies, with one `<kind> stay as copies` line naming the two ways (the local scope, or an ignore line plus
   `git rm -r --cached`). The first run on a linkable kind renames each recorded copy into the store (`moveIn`; the
   first rename that throws puts back what it moved and the kind runs on copies that run), then `syncLinks` makes one
-  link per item - a relative directory symlink for a skill (a junction on Windows), a relative file symlink for a
-  copy-route agent (a copy with its hash on Windows, written again at each run, an edited one kept) - and the stamp's
-  `links:` line records each (`<kind>/<file>=symlink|junction|copy[@<hash>]`). A link points at the nearest HOLDER: the
+  link per item - a relative directory symlink for a skill (a junction on Windows) and the same for an agent, which is
+  a folder `<name>/<name>.md` in the store (on Windows a folder copy with its hash, written again at each run, an edited
+  one kept, until `links.AGENT_JUNCTION_ON_WIN32` turns on; an older install's flat `<name>.md` at its recorded hash moves
+  into a folder, `links.migrateFlatAgents`, and any other flat file is the user's, kept and named) - and the stamp's
+  `links:` line records each (`<kind>/<name>=symlink|junction|copy[@<hash>]`; a ledger row stays `agents/<name>.md`, and a
+  folder hashes as the flat file did). A link points at the nearest HOLDER: the
   project's own store, else a chain member's. Anything at a link path the stamp does not list - a real folder or file,
   a link of the user's - is left and named. The library hashes (`library-*`, or the copy route's `managed-files`) are
   of the store copies. TWO WRITERS of one store: a workspace root's run, and a child's run adding its own pick

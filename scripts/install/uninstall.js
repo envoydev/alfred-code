@@ -61,13 +61,13 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     const seeds = new Map(seedRows({ projectRoot: path.dirname(claudeDir), files, instructionsKind }).map((r) => [r.row, r.at]));
     const items = [
         ...Object.entries(library.skills || {}).map(([n, h]) => ['skill', n, path.join(skillsDir, n), h]),
-        ...Object.entries(library.agents || {}).map(([n, h]) => ['agent', n, path.join(agentsDir, `${n}.md`), h]),
+        ...Object.entries(library.agents || {}).map(([n, h]) => ['agent', n, path.join(agentsDir, n), h]),
         ...Object.entries(library.rules || {}).map(([n, h]) => ['rule', n, ruleAt(path.dirname(claudeDir), n), h]),
         ...Object.entries(files).map(([rel, h]) =>
         {
             const [kind, name] = rel.includes('/') ? rel.split('/') : ['file', rel];
             // A seed's row is read where the seed sits (seedRows).
-            const at = seeds.has(rel) ? seeds.get(rel) : kind === 'skills' ? path.join(skillsDir, name) : kind === 'agents' ? path.join(agentsDir, name) : path.join(claudeDir, ...rel.split('/'));
+            const at = seeds.has(rel) ? seeds.get(rel) : kind === 'skills' ? path.join(skillsDir, name) : kind === 'agents' ? path.join(agentsDir, name.replace(/\.md$/, '')) : path.join(claudeDir, ...rel.split('/'));
             return [kind.replace(/s$/, ''), name, at, h];
         }),
     ];
@@ -79,8 +79,10 @@ function removeManagedFiles({ claudeDir, skillsDir, agentsDir = path.join(claude
     const seedPaths = new Set([...seeds.values()].map((at) => path.resolve(at)));
     const isSeed = (label, at) => label === 'file' && seedPaths.has(path.resolve(at));
     const inside = (label, at) => [].concat(home[label] || []).some((d) => path.dirname(path.resolve(at)) === path.resolve(d)) || isSeed(label, at);
-    for (const [label, name, at, hash] of items)
+    for (const [label, name, folder, hash] of items)
     {
+        // an agent the last install held as a flat `<name>.md` (before agents became folders) goes the same way
+        const at = label === 'agent' && !fs.existsSync(folder) && fs.existsSync(`${folder}.md`) ? `${folder}.md` : folder;
         if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }
         if (!guard(at)) { log(`  ${label} ${name}: kept - ${OUTSIDE_WHY}`); continue; }   // remove-nested's guard: the item's real folder is not the project's own
         const have = hashItem(at);

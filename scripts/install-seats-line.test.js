@@ -103,7 +103,7 @@ test('install-seats-line: the copy route counts the seats that are in .claude/ag
     let present = -1;
     const { out } = seedRun('install', 'skill csharp\nagent evidence-gatherer\nagent code-quality-analyzer\n', {
         args: ['--scope', 'project'], env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' },
-        inspect: (repo) => { present = fs.readdirSync(path.join(repo, '.claude', 'agents')).filter((f) => f.endsWith('.md')).length; return null; },
+        inspect: (repo) => { present = fs.readdirSync(path.join(repo, '.claude', 'agents')).filter((f) => fs.existsSync(path.join(repo, '.claude', 'agents', f, `${f}.md`))).length; return null; },
     });
     const m = /^==> seats: copy route - (\d+) picked in \.claude\/agents(?:; (\d+) earlier)?/m.exec(out);
     assert.strictEqual(Number(m[1]) + Number(m[2] || 0), present, out);

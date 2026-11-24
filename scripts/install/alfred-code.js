@@ -441,6 +441,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const homes = Object.fromEntries(links.KINDS.map((k) => [k, links.homeOf(projectRoot, k, { rt, write: writes })]));
         if (writes) links.syncLinks({ projectRoot, prior: (stampFile ? stampLayer.readLinks(stampFile) : []).filter((e) => homes[e.path.split('/')[0]].state === 'visible'), rt, log });   // a scope move: links become copies before any write follows one
         const stampedLib = (stampFile && stampLayer.readLibrary(stampFile)) || {};
+        if (writes)   // an older install held each agent as a flat `<name>.md`: at its recorded hash it moves into a folder, any other is the user's
+        {
+            const view = recordView(stampFile, priorLedger);
+            const hashes = Object.fromEntries(Object.entries(view.agents).map(([n, h]) => [n, [h]]));
+            for (const e of stampFile ? stampLayer.readLinks(stampFile) : []) if (e.kind === 'copy' && e.path.startsWith('agents/')) (hashes[e.path.slice(7).replace(/\.md$/, '')] ||= []).push(e.hash);
+            links.migrateFlatAgents({ projectRoot, home: homes.agents, hashes, adopt: view.ledgerHeld ? [] : manifest.agents.map((f) => f.replace(/\.md$/, '')).filter((n) => !Object.hasOwn(view.agents, n)), log });
+        }
         for (const k of writes ? links.KINDS : [])
         {
             const rows = Object.keys((priorLedger && priorLedger.files) || {}).filter((r) => r.startsWith(`${k}/`)).map((r) => r.slice(k.length + 1).replace(/\.md$/, ''));
@@ -757,7 +764,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         pruneDroppedCopies(ctx);
         const secretsAt = secretsRecord(ctx, secrets);
         // The links: every item in a store is wanted; a kind git sees is wanted by what this run copied, so its line is said.
-        const storeList = (k) => { try { return fs.readdirSync(homes[k].dir, { withFileTypes: true }).filter((d) => (k === 'skills' ? d.isDirectory() : d.isFile() && d.name.endsWith('.md'))).map((d) => d.name.replace(/\.md$/, '')); } catch { return []; } };
+        const storeList = (k) => { try { return fs.readdirSync(homes[k].dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; } };
         const copied = (k) => (k === 'skills' ? lists.skills.map((e) => e.split('|').pop()) : ctx.routes.skills ? Object.keys((ctx.library && ctx.library.agents) || {}) : lists.agents.map((a) => a.replace(/\.md$/, '')));
         const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).map((name) => ({ kind: k, name })));
         const linkRecord = links.syncLinks({ projectRoot, members: child ? wsPrep.members : [], want, prior: recorded, keep: !wsPrep.on, rt, log });
@@ -1291,7 +1298,7 @@ function bootstrapSource(ctx)
 // firing on content the installer itself just wrote.
 function rehashKind(map, dir)
 {
-    for (const name of Object.keys(map || {})) map[name] = library.hashItem(path.join(dir, `${name}.md`));
+    for (const name of Object.keys(map || {})) map[name] = library.hashItem(links.agentDir(dir, name));
 }
 
 // Remove each named copy the stack itself shipped. A file no list names is the project's own and is
@@ -1325,7 +1332,7 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = 
 {
     for (const name of names)
     {
-        const target = path.join(dir, name);
+        const target = label === 'agent' ? links.agentAt(dir, name) : path.join(dir, name);
         if (!fs.existsSync(target)) continue;
         if (keepTracked && gitTracks(ctx, target))
         {
@@ -1349,7 +1356,7 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = 
 // the line to log (pruneCopies logs it as is), or false.
 function keepEdited(ctx, kind, dir)
 {
-    return (file) => (editedSince(ctx.records, kind, file.replace(/\.md$/, ''), path.join(dir, file)) ? { say: keptEditedLine(kind, file) } : false);
+    return (file) => (editedSince(ctx.records, kind, file.replace(/\.md$/, ''), kind === 'agent' ? links.agentAt(dir, file) : path.join(dir, file)) ? { say: keptEditedLine(kind, file) } : false);
 }
 
 // A seat file in `.claude/agents` named like a core seat that neither stamp line records, on a stamp that holds a ledger (a
@@ -1375,7 +1382,7 @@ function unpickedKeep({ picked, records, skillsDir, agentsDir, renamed, seat })
         const named = new Set([name, selection.renamedTo({ renamed, kind, name })]);
         if ((picked[`${kind}s`] || []).some((e) => named.has(splitPick(e).name))) return false;
         if (kind === 'skill') return editedSince(records, kind, name, path.join(skillsDir, name));
-        return editedSince(records, kind, name, path.join(agentsDir, `${name}.md`)) || ownSeatFile(seat, `${name}.md`);
+        return editedSince(records, kind, name, links.agentAt(agentsDir, name)) || ownSeatFile(seat, `${name}.md`);
     };
 }
 
@@ -1407,7 +1414,7 @@ function ownSeatFile({ records, agentsDir, sourceDir, render }, file)
 {
     const name = file.replace(/\.md$/, '');
     if (!records.ledgerHeld || recordOf(records, 'agent', name) !== null) return false;
-    const mine = readOrNull(path.join(agentsDir, file));
+    const mine = readOrNull(links.agentFile(agentsDir, file));
     if (mine === null) return false;
     const stack = readOrNull(path.join(sourceDir, 'stack', 'agents', file));
     return stack !== null && mine !== (render ? render(stack) : stack);
@@ -1429,7 +1436,7 @@ function retiredKeep(ctx, kind, dir)
         if (kind === 'rule' && nativeRules.hasMarker(readText(path.join(dir, name)))) return false;   // the stack's own native file
         const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`]
             : ['skill', 'agent'].includes(kind) ? recordOf(ctx.records, kind, bare(name)) : (lib[`${kind}s`] || {})[bare(name)];
-        if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
+        if (held) return library.hashItem(kind === 'agent' ? links.agentAt(dir, name) : path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
         const claimed = kind === 'skill' ? skillClaim(ctx)(name)
             : kind === 'agent' ? picked.agents.some((e) => e.split('@')[0] === bare(name)) || stackOwnName(names, 'agents', bare(name))
                 : renamedRuleClaim(ctx, dir, bare(name), lib.rules || {});
@@ -1532,7 +1539,7 @@ function carryRecords(ctx)
 {
     if (!ctx.records) return;
     ctx.library = ctx.library || { skills: {}, agents: {}, rules: {} };
-    for (const [kind, dir, fileOf] of [['skill', ctx.skillsDir, (n) => n], ['agent', ctx.agentsDir, (n) => `${n}.md`]])
+    for (const [kind, dir, fileOf] of [['skill', ctx.skillsDir, (n) => n], ['agent', ctx.agentsDir, (n) => path.relative(ctx.agentsDir, links.agentAt(ctx.agentsDir, n))]])
     {
         const held = ctx.library[`${kind}s`];
         for (const name of Object.keys(ctx.records[`${kind}s`]))
@@ -1591,7 +1598,7 @@ function pruneAway(ctx, away)
         pruneCopies(ctx, dir, [...away[kind]].map(file), kind.slice(0, -1), 'linked from above', { keep: (f) =>
         {
             const name = f.replace(/\.md$/, '');
-            if (kind !== 'rules') return recordOf(ctx.records, kind.slice(0, -1), name) === null || (editedSince(ctx.records, kind.slice(0, -1), name, path.join(dir, f)) && EDITED_HERE);
+            if (kind !== 'rules') return recordOf(ctx.records, kind.slice(0, -1), name) === null || (editedSince(ctx.records, kind.slice(0, -1), name, kind === 'agents' ? links.agentAt(dir, f) : path.join(dir, f)) && EDITED_HERE);
             const was = (lib[kind] || {})[name] || rows[`${kind}/${f}`];
             return !was || (library.hashItem(path.join(dir, f)) !== was && EDITED_HERE);
         } });
@@ -1639,7 +1646,7 @@ function copyKinds(ctx, closure)
     const plugin = ctx.routes.skills;
     const skillAt = (n, dir) => (plugin ? library.copyLibrary({ sourceDir: ctx.source.dir, skillsDir: dir, agentsDir: dir, skills: [n], agents: [], stamped: null, claims: () => true, log: () => {}, note: ctx.note })
         : copy.syncTree({ src: path.join(ctx.source.dir, 'stack', 'skills', n), dest: path.join(dir, n), render: copyRender(ctx, 'skill') }));
-    const agentAt = (n, dir) => copy.installFromSource({ sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent', destDir: dir, files: [`${n}.md`], render: copyRender(ctx, 'agent'), log: () => {}, note: ctx.note });
+    const agentAt = (n, dir) => copy.installFromSource({ sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent', destDir: dir, files: [`${n}.md`], folder: true, render: copyRender(ctx, 'agent'), log: () => {}, note: ctx.note });
     const away = { skills: childAway(ctx, 'skills', plugin ? closure.extraSkills : ctx.lists.skills.map((e) => e.split('|').pop()), skillAt), agents: childAway(ctx, 'agents', ctx.lists.agents.map((a) => a.replace(/\.md$/, '')), agentAt) };
     const skillNames = [...new Set([...ctx.lists.skills.map((e) => e.split('|').pop()), ...ctx.held.skills])].filter((n) => !away.skills.has(n));
     pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'skill', ctx.skillsDir) });
@@ -1656,7 +1663,7 @@ function copyKinds(ctx, closure)
         const unpicked = (names, picked) => names.filter((n) => !picked.includes(n));
         const skills = unpicked(ctx.manifest.skills.map((e) => e.split('|').pop()), closure.extraSkills);
         const agents = unpicked(ctx.manifest.agents.map((f) => f.replace(/\.md$/, '')), closure.extraAgents);
-        const edited = (n) => editedSince(ctx.records, 'agent', n, path.join(agentsDir, `${n}.md`));
+        const edited = (n) => editedSince(ctx.records, 'agent', n, links.agentAt(agentsDir, n));
         // I4: a copy whose model / effort differ from the stack's is the user's tuning, whatever its hash says -
         // 2.0.0's --keep-pins re-hashed a copy after restoring its pins, so a tuned copy reads as unedited. No
         // setting overrides a plugin seat's own frontmatter (code.claude.com/docs/en/sub-agents, 'Choose a
@@ -1665,7 +1672,7 @@ function copyKinds(ctx, closure)
         const tuning = (n) =>
         {
             const pairs = (file) => pinsLayer.KEYS.map((k) => [k, pinsLayer.readPin(file, k)]).filter(([, v]) => v);
-            const mine = pairs(path.join(agentsDir, `${n}.md`));
+            const mine = pairs(links.agentFile(agentsDir, n));
             const stack = Object.fromEntries(pairs(path.join(ctx.source.dir, 'stack', 'agents', `${n}.md`)));
             if (!mine.length || mine.every(([k, v]) => stack[k] === v)) return null;
             const say = (list) => list.map(([k, v]) => `${k}=${v}`).join(', ');
@@ -1718,10 +1725,10 @@ function copyKinds(ctx, closure)
         ctx.foreignSeats.add(f.replace(/\.md$/, ''));
         return false;
     });
-    for (const f of seatFiles.filter((name) => fs.existsSync(path.join(ctx.source.dir, 'stack', 'agents', name)))) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), path.join(agentsDir, f));
+    for (const f of seatFiles.filter((name) => fs.existsSync(path.join(ctx.source.dir, 'stack', 'agents', name)))) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), links.agentAt(agentsDir, f));
     const seatRun = copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
-        destDir: agentsDir, files: seatFiles, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
+        destDir: agentsDir, files: seatFiles, folder: true, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
     });
     // The ledger rows this run wrote itself: managedFiles carries the recorded hash of any other copy the project edited.
     ctx.rewrittenRows = new Set([...copiedSkills.map((n) => `skills/${n}`), ...seatFiles.filter((f) => !seatRun.missing.includes(f)).map((f) => `agents/${f}`)]);
@@ -1731,7 +1738,7 @@ function copyKinds(ctx, closure)
     {
         const gone = was.filter((l) => l.startsWith(`${cat} `) && !ctx.held.lines.includes(l)).map((l) => file(l.slice(cat.length + 1)))
             .filter((f) => !(cat === 'skill' ? skillNames : ctx.lists.agents).includes(f));
-        pruneCopies(ctx, dir, gone, cat, 'no member below picks it now', { keep: (f) => (editedSince(ctx.records, cat, f.replace(/\.md$/, ''), path.join(dir, f)) ? 'edited since the stack wrote it, so it is yours' : false) });
+        pruneCopies(ctx, dir, gone, cat, 'no member below picks it now', { keep: (f) => (editedSince(ctx.records, cat, f.replace(/\.md$/, ''), cat === 'agent' ? links.agentAt(dir, f) : path.join(dir, f)) ? 'edited since the stack wrote it, so it is yours' : false) });
     }
 }
 
@@ -2397,7 +2404,7 @@ function installHooksAndRules(ctx)
         if (!ctx.routes.skills)
         {
             const copiedSeats = [...new Set([...ctx.lists.agents, ...(ctx.held ? ctx.held.agents : []).map((n) => `${n}.md`)])]
-                .filter((file) => fs.existsSync(path.join(ctx.agentsDir, file)));
+                .filter((file) => fs.existsSync(links.agentDir(ctx.agentsDir, file)));
             const seatNames = fs.readdirSync(path.join(ctx.source.dir, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
             ({ picked, earlier } = countSeatFiles({ agentsDir: ctx.agentsDir, seatNames, pickedFiles: copiedSeats }));
         }
@@ -2524,9 +2531,9 @@ function managedFiles(ctx)
     if (!ctx.routes.skills)
     {
         for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) if (!ctx.foreignSkills.has(n)) put(`skills/${n}`, path.join(ctx.skillsDir, n));
-        for (const a of ctx.lists.agents) if (!ctx.foreignSeats.has(a.replace(/\.md$/, ''))) put(`agents/${a}`, path.join(ctx.agentsDir, a));
+        for (const a of ctx.lists.agents) if (!ctx.foreignSeats.has(a.replace(/\.md$/, ''))) put(`agents/${a}`, links.agentDir(ctx.agentsDir, a));
         for (const n of ctx.held ? ctx.held.skills : []) if (!ctx.foreignSkills.has(n)) put(`skills/${n}`, path.join(ctx.skillsDir, n));
-        for (const n of ctx.held ? ctx.held.agents : []) if (!ctx.foreignSeats.has(n)) put(`agents/${n}.md`, path.join(ctx.agentsDir, `${n}.md`));
+        for (const n of ctx.held ? ctx.held.agents : []) if (!ctx.foreignSeats.has(n)) put(`agents/${n}.md`, links.agentDir(ctx.agentsDir, n));
     }
     // The carry invariant, copy route: a recorded skill or seat the project edited and this run did not rewrite keeps its record.
     if (!ctx.routes.skills) Object.assign(out, carriedRows(ctx.records, { skill: ctx.skillsDir, agent: ctx.agentsDir }, ctx.rewrittenRows || new Set(Object.keys(out))));
@@ -2559,7 +2566,7 @@ function readOrNull(file)
 // The AGENTS.md row is read where the seed sits, under the install's name - .claude/, or the root on --instructions-at root
 // (seeds.seededAgentsMdPath).
 const ledgerPath = (ctx, rel) => (rel === 'AGENTS.md' ? ctx.seedFile || seeds.seededAgentsMdPath(ctx.projectRoot, ctx.instructionsKind)
-    : rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : rel.startsWith('agents/') ? path.join(ctx.agentsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
+    : rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : rel.startsWith('agents/') ? links.agentAt(ctx.agentsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
 
 // R10: a copy the last run recorded that this RELEASE no longer ships at all goes - when it still holds
 // what the stack wrote; an edited one is the user's and stays, said. The `retired` lists prune under the

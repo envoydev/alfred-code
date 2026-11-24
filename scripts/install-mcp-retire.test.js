@@ -526,7 +526,7 @@ test('seed update --scope user: an unreadable account .claude.json removes nothi
 // preloads the bare name; the plugin route keeps the shipped text.
 test('seed install + re-run (full copy route): copies hold no server and bare preloads from the first write, and a re-run rewrites nothing (C17, B seam)', POSIX_ONLY, () =>
 {
-    const seat = path.join('.claude', 'agents', 'angular-test-resolver.md');
+    const seat = path.join('.claude', 'agents', 'angular-test-resolver', 'angular-test-resolver.md');
     // The walk's closure brings a seat's preloaded skills along; a raw selection names them.
     const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nskill habits-root-cause\nskill habits-done-gate\nrule markdown-docs\nagent angular-test-resolver\n', {
         env: COPY_ENV,

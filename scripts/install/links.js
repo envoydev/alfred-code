@@ -1,18 +1,28 @@
 'use strict';
 // Workspace stage 3: a library skill - on the copy route a library agent too - lives once in `.alfred/stack/<kind>` of the
 // workspace root (or a project in no workspace), linked from each project's `.claude/<kind>` where git cannot commit a
-// link. On Windows a skill is a junction and an agent a copy with its hash: every save breaks a hard link (P11).
+// link; both kinds are folders (an agent `<name>/<name>.md`). On Windows a skill is a junction and an agent a folder copy
+// with its hash until AGENT_JUNCTION_ON_WIN32 turns on: every save breaks a hard link (P11).
 const fs = require('node:fs');
 const path = require('node:path');
 const { hashItem } = require('./library.js');
 const { validItemName } = require('./stamp.js');
 const KINDS = ['skills', 'agents'];
-const fileOf = (kind, name) => (kind === 'skills' ? name : `${name}.md`);
+// Whether an agent folder is a junction on Windows, like a skill. Off: Claude Code following one is proven in a later step.
+const AGENT_JUNCTION_ON_WIN32 = false;
+const fileOf = (kind, name) => (kind === 'rules' ? `${name}.md` : name);
 const lstat = (p) => { try { return fs.lstatSync(p); } catch { return null; } };
 const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
-const isItem = (kind, st) => Boolean(st) && !st.isSymbolicLink() && (kind === 'skills' ? st.isDirectory() : st.isFile());
+const isItem = (kind, st) => Boolean(st) && !st.isSymbolicLink() && (kind === 'rules' ? st.isFile() : st.isDirectory());
+// An agent is the folder `<dir>/<name>` holding `<name>.md`; a name may come as its file (`<name>.md`), the spelling the lists and ledger rows keep.
+// `agentAt` is what is on disk for it - the folder, else an older install's flat `<name>.md` still waiting for its move - and `agentFile`
+// the file that holds its text.
+const agentDir = (dir, nameOrFile) => path.join(dir, String(nameOrFile).replace(/\.md$/, ''));
+const agentAt = (dir, nameOrFile) => { const folder = agentDir(dir, nameOrFile); return lstat(folder) || !lstat(`${folder}.md`) ? folder : `${folder}.md`; };
+const agentFile = (dir, nameOrFile) => { const at = agentAt(dir, nameOrFile); return at.endsWith('.md') ? at : path.join(at, `${path.basename(at)}.md`); };
 const storeOf = (root, kind) => path.join(root, '.alfred', 'stack', kind);
-const kept = (p) => `  agent kept: .claude/${p} - edited since it was copied from the store, so it is yours`;
+const kept = (p, base = '.claude') => `  agent kept: ${base}/${p} - edited since it was copied from the store, so it is yours`;
+const copyItem = (from, to) => { fs.rmSync(to, { recursive: true, force: true }); fs.cpSync(from, to, { recursive: true }); };
 // `none` outside a repository, else git's own word; a tracked file inside makes the folder `visible` (a link would replace
 // a committed path); `unknown` when git cannot be run.
 function gitState(dir, { rt = require('./runtime.js') } = {})
@@ -63,24 +73,24 @@ function moveIn({ projectRoot, kind, names = [], home, log = () => {} })
 function drop(at, e)
 {
     const st = lstat(at);
-    const ours = Boolean(st) && (e.kind === 'copy' ? st.isFile() && hashItem(at) === e.hash : st.isSymbolicLink());
-    if (ours) fs.unlinkSync(at);
+    const ours = Boolean(st) && (e.kind === 'copy' ? !st.isSymbolicLink() && hashItem(at) === e.hash : st.isSymbolicLink());
+    if (ours) { if (st.isSymbolicLink()) fs.unlinkSync(at); else fs.rmSync(at, { recursive: true, force: true }); }
     return ours;
 }
-function make({ projectRoot, kind, p, at, holder, platform, symlink, log })
+function make({ projectRoot, kind, p, at, holder, platform, symlink, agentJunction, log })
 {
     fs.mkdirSync(path.dirname(at), { recursive: true });
-    const copy = () => { fs.copyFileSync(holder, at); log(`agent copy: .claude/${p} - a link cannot be made here`); return { path: p, kind: 'copy', hash: hashItem(at) }; };
-    if (kind === 'agents' && platform === 'win32') return copy();
-    const junction = kind === 'skills' && platform === 'win32';
-    try { symlink(junction ? holder : path.relative(real(path.dirname(at)), real(holder)), at, junction ? 'junction' : kind === 'skills' ? 'dir' : 'file'); }
+    const copy = () => { copyItem(holder, at); log(`agent copy: .claude/${p} - a link cannot be made here`); return { path: p, kind: 'copy', hash: hashItem(at) }; };
+    if (kind === 'agents' && platform === 'win32' && !agentJunction) return copy();
+    const junction = platform === 'win32';
+    try { symlink(junction ? holder : path.relative(real(path.dirname(at)), real(holder)), at, junction ? 'junction' : 'dir'); }
     catch (err) { if (kind === 'agents') return copy(); log(`  !! link not made: .claude/${p} - ${err.code || err.message}`); return null; }
     log(`link: .claude/${p} -> ${path.relative(projectRoot, holder).split(path.sep).join('/')}`);
     return { path: p, kind: junction ? 'junction' : 'symlink', hash: '' };
 }
 // Makes, keeps, re-points and removes the links of `want` ([{ kind, name }]) against the record `prior`; returns the new
 // record. A real item or an unlisted link at a path is the user's; a kind git sees is named and left (ruling 11).
-function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = false, rt, platform = process.platform, symlink = fs.symlinkSync, log = () => {} })
+function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = false, rt, platform = process.platform, symlink = fs.symlinkSync, agentJunction = AGENT_JUNCTION_ON_WIN32, log = () => {} })
 {
     const out = [];
     const listed = new Map(prior.map((e) => [e.path, e]));
@@ -105,19 +115,21 @@ function syncLinks({ projectRoot, members = [], want = [], prior = [], keep = fa
             // keep (the workspace switched off): a listed link that still resolves, or copy at its hash, stays - its chain unread this run
             const holder = findHolder(dirs, kind, name) || (keep && was && real(at)) || null;
             const link = Boolean(st) && st.isSymbolicLink() && Boolean(was) && was.kind !== 'copy';
-            const copy = Boolean(st) && st.isFile() && Boolean(was) && was.kind === 'copy';
+            const copy = Boolean(st) && !st.isSymbolicLink() && Boolean(was) && was.kind === 'copy';
             seen.add(p);
+            // a flat agent file of an older install beside the folder: the user's (the stack's own moved, migrateFlatAgents) - kept, and nothing linked over it
+            if (kind === 'agents' && !st && lstat(`${at}.md`)?.isFile()) { log(kept(`${p}.md`)); continue; }
             if (!holder) { const live = link && fs.existsSync(at); if (was && drop(at, was)) log(`${was.kind === 'copy' ? 'copy' : 'link'} removed: .claude/${p} - ${live ? 'nothing this project links from holds it now' : 'its target is gone'}`); }
             else if (!st || (link && real(at) !== real(holder)))
             {
                 if (st) fs.unlinkSync(at);
-                const made = make({ projectRoot, kind, p, at, holder, platform, symlink, log });
+                const made = make({ projectRoot, kind, p, at, holder, platform, symlink, agentJunction, log });
                 if (made) out.push(made);
                 if (made && st) log(`link re-pointed: .claude/${p}`);
             }
             else if (link) out.push(was);
             else if (copy && hashItem(at) !== was.hash) log(kept(p));
-            else if (copy) { const h = hashItem(holder); if (h !== was.hash) fs.copyFileSync(holder, at); out.push({ path: p, kind: 'copy', hash: h }); }
+            else if (copy) { const h = hashItem(holder); if (h !== was.hash) copyItem(holder, at); out.push({ path: p, kind: 'copy', hash: h }); }
             else log(`  !! link skipped: .claude/${p} - ${st.isSymbolicLink() ? 'a link the stamp does not list, so it is yours' : 'a real folder or file of that name is yours'}`);
         }
         for (const e of mine.filter((x) => !seen.has(x.path)))
@@ -148,4 +160,26 @@ function checkLinks({ projectRoot, record = [], members = [], rt })
         return { path: e.path, state: holder && hashItem(holder) !== e.hash ? 'stale' : 'ok' };
     });
 }
-module.exports = { KINDS, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };
+// An older install held an agent as a flat `<name>.md` (in the store or in `.claude/agents`). One at a hash the stamp or the
+// ledger recorded for it (`hashes`: name -> hashes, or any hash for a name in `adopt` - an install that kept no record) goes
+// into the kind's home as `<name>/<name>.md` (a folder holds the same bytes under the same hash) and is logged; any other
+// is the user's and stays - the store's is named here, the `.claude` one by syncLinks.
+function migrateFlatAgents({ projectRoot, home, hashes = {}, adopt = [], log = () => {} })
+{
+    const target = (name) => path.join(home.dir, name);
+    for (const name of [...new Set([...Object.keys(hashes), ...adopt])].filter((n) => validItemName(n)))
+    {
+        let moved = false;
+        for (const [flat, base] of [[path.join(storeOf(projectRoot, 'agents'), `${name}.md`), '.alfred/stack/agents'], [path.join(projectRoot, '.claude', 'agents', `${name}.md`), null]])
+        {
+            const st = lstat(flat);
+            if (!st || !st.isFile()) continue;
+            if (!adopt.includes(name) && !(hashes[name] || []).includes(hashItem(flat))) { if (base) log(kept(`${name}.md`, `.alfred/stack/agents`)); continue; }
+            if (lstat(target(name))) fs.unlinkSync(flat);
+            else { fs.mkdirSync(target(name), { recursive: true }); fs.renameSync(flat, path.join(target(name), `${name}.md`)); }
+            moved = true;
+        }
+        if (moved) log(`agent moved to a folder: ${name}`);
+    }
+}
+module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };

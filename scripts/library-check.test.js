@@ -92,7 +92,7 @@ test('a hand edit is drift', () =>
 test('a deleted copy is missing', () =>
 {
     const f = fx();
-    fs.rmSync(path.join(f.agents, 'seat.md'));
+    fs.rmSync(path.join(f.agents, 'seat'), { recursive: true });
     const r = run(f);
     assert.equal(r.code, 1);
     assert.match(r.out, /missing: agent seat/);

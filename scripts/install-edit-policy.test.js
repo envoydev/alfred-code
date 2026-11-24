@@ -20,7 +20,7 @@ const overwriteLine = (kind, name) => `  overwriting a hand-edited copy: ${kind}
 const OVERWRITE_ANY = /overwriting a hand-edited copy:/;
 
 const skillFile = (repo) => path.join(repo, '.claude', 'skills', SKILL, 'SKILL.md');
-const seatFile = (repo, seat) => path.join(repo, '.claude', 'agents', `${seat}.md`);
+const seatFile = (repo, seat) => path.join(repo, '.claude', 'agents', seat, `${seat}.md`);
 const stampOf = (repo) => path.join(repo, '.claude', 'alfred-code.stamp');
 const ledgerRow = (repo, row) => readLedger(stampOf(repo)).files[row];
 const append = (file, text = EDIT) => fs.appendFileSync(file, text);
@@ -336,7 +336,8 @@ function memberRuns(recordOn)
     const ownEditedCopy = (ws) =>
     {
         const text = fs.readFileSync(memberSeat(ws), 'utf8');
-        fs.unlinkSync(memberSeat(ws));
+        fs.unlinkSync(path.dirname(memberSeat(ws)));   // the link to the top's seat folder
+        fs.mkdirSync(path.dirname(memberSeat(ws)));
         fs.writeFileSync(memberSeat(ws), text);
         recorded = hashItem(memberSeat(ws));
         const rows = Object.entries(rowsOf(ws)).filter(([row]) => row !== `agents/${SEAT_A}.md`).map(([row, hash]) => `${row}=${hash}`);

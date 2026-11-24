@@ -60,18 +60,18 @@ test('store: a fresh local install keeps each picked skill once in the store and
     assert.match(out, /link: \.claude\/skills\/markdown-style -> \.alfred\/stack\/skills\/markdown-style/);
 });
 
-test('store: on the copy route a picked agent is a file in the store, linked from .claude/agents', POSIX_ONLY, () =>
+test('store: on the copy route a picked agent is a folder in the store, linked from .claude/agents', POSIX_ONLY, () =>
 {
     const { result } = seedRun('install', SELECTION, {
         env: COPY, args: ['--scope', 'local'],
         inspect: (repo) => ({
-            agent: lstat(claude(repo, 'agents', 'evidence-gatherer.md')), inStore: fs.existsSync(store(repo, 'agents', 'evidence-gatherer.md')),
+            agent: lstat(claude(repo, 'agents', 'evidence-gatherer')), inStore: fs.existsSync(store(repo, 'agents', 'evidence-gatherer/evidence-gatherer.md')),
             record: stamp.readLinks(stampOf(repo)), files: stamp.readLedger(stampOf(repo)).files,
         }),
     });
     assert.ok(result.agent.isSymbolicLink());
     assert.ok(result.inStore);
-    assert.ok(result.record.some((e) => e.path === 'agents/evidence-gatherer.md' && e.kind === 'symlink'));
+    assert.ok(result.record.some((e) => e.path === 'agents/evidence-gatherer' && e.kind === 'symlink'));
     assert.ok(result.files['agents/evidence-gatherer.md'] && result.files['skills/markdown-style'], 'the managed-files rows still hash the items');
 });
 
@@ -104,8 +104,48 @@ test('store: an update over copies moves each stamped one, keeps the user\'s own
         assert.ok(steps[1]['st/skills/markdown-style/SKILL.md'], 'and sits in the store');
         assert.ok(!/moved to the store|^link: /m.test(outs[2]), outs[2]);
         assert.deepStrictEqual(steps[2], steps[1], 'the second update leaves every file as it was');
-        if (env === COPY) assert.ok(steps[1]['ca/evidence-gatherer.md'].startsWith('-> '));
+        if (env === COPY) assert.ok(steps[1]['ca/evidence-gatherer'].startsWith('-> '));
     }
+});
+
+test('store: a flat agent copy at its stamped hash moves to a folder; one edited since is kept', POSIX_ONLY, () =>
+{
+    const { outs, result } = seedRun(['install', 'update', 'update'], `${SELECTION}agent code-quality-analyzer\n`, {
+        env: COPY, args: ['--scope', 'local'],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            // An older install: each agent a flat file in the store, linked as a file, the stamp listing the file.
+            for (const n of ['evidence-gatherer', 'code-quality-analyzer'])
+            {
+                const text = fs.readFileSync(store(repo, 'agents', `${n}/${n}.md`), 'utf8');
+                fs.rmSync(store(repo, 'agents', n), { recursive: true });
+                fs.unlinkSync(claude(repo, 'agents', n));
+                fs.writeFileSync(store(repo, 'agents', `${n}.md`), n === 'code-quality-analyzer' ? `${text}\nmy edit\n` : text);
+                fs.symlinkSync(path.join('..', '..', '.alfred', 'stack', 'agents', `${n}.md`), claude(repo, 'agents', `${n}.md`));
+            }
+            stamp.markLine(stampOf(repo), 'links', stamp.linksValue(stamp.readLinks(stampOf(repo)).map((e) => (e.path.startsWith('agents/') ? { ...e, path: `${e.path}.md` } : e))));
+            return null;
+        },
+        inspect: (repo) => ({
+            record: stamp.readLinks(stampOf(repo)),
+            movedFlat: lstat(store(repo, 'agents', 'evidence-gatherer.md')), movedFolder: fs.existsSync(store(repo, 'agents', 'evidence-gatherer/evidence-gatherer.md')),
+            oldLink: lstat(claude(repo, 'agents', 'evidence-gatherer.md')), link: lstat(claude(repo, 'agents', 'evidence-gatherer')),
+            editedFlat: fs.readFileSync(store(repo, 'agents', 'code-quality-analyzer.md'), 'utf8'),
+        }),
+    });
+    assert.match(outs[1], /agent moved to a folder: evidence-gatherer$/m);
+    assert.ok(!/agent moved to a folder: code-quality-analyzer/.test(outs[1]), outs[1]);
+    assert.match(outs[1], /agent kept: \.alfred\/stack\/agents\/code-quality-analyzer\.md - edited since it was copied from the store, so it is yours$/m);
+    assert.ok(!/link skipped/.test(outs[1]), outs[1]);
+    assert.strictEqual(result.movedFlat, null, 'the flat copy is gone');
+    assert.ok(result.movedFolder);
+    assert.strictEqual(result.oldLink, null, 'the old file link is dropped');
+    assert.ok(result.link.isSymbolicLink());
+    assert.match(result.editedFlat, /my edit/, 'the edited flat copy stays, untouched');
+    assert.ok(result.record.some((e) => e.path === 'agents/evidence-gatherer' && e.kind === 'symlink'));
+    assert.ok(!result.record.some((e) => e.path.endsWith('.md')));
+    assert.ok(!/agent moved to a folder/.test(outs[2]), 'a second update changes nothing');
 });
 
 test('store: the user\'s own skill folder and agent file stay in .claude, off the record', POSIX_ONLY, () =>
@@ -703,7 +743,7 @@ test('child: on the copy route it links the root\'s agent files and skills, and 
         {
             const kid = path.join(ws, 'api');
             const real = (kind, name) => { const st = lstat(claude(kid, kind, name)); return st && st.isSymbolicLink() ? fs.realpathSync.native(claude(kid, kind, name)) : null; };
-            return { eg: real('agents', 'evidence-gatherer.md'), wpf: real('agents', 'wpf-verifier.md'), js: real('skills', 'javascript'), kidStore: ownStore(kid, 'agents'), root: fs.readFileSync(stampOf(ws), 'utf8') };
+            return { eg: real('agents', 'evidence-gatherer'), wpf: real('agents', 'wpf-verifier'), js: real('skills', 'javascript'), kidStore: ownStore(kid, 'agents'), root: fs.readFileSync(stampOf(ws), 'utf8') };
         } },
         { at: 'api', act: 'update', env: COPY },
     ]);

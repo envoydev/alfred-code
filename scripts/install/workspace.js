@@ -1290,7 +1290,7 @@ function addToStore({ root, kind, name, copy, route = 'plugin', from = root, min
         const hash = require('./library.js').hashItem(item);
         const pairs = (map) => Object.entries(map).map(([n, h]) => `${n}=${h}`).join(',');
         if (route === 'plugin' || kind === 'rules') stamp.markLine(file, `library-${kind}`, pairs({ ...stamp.readLibrary(file)?.[kind], [name]: hash }));
-        else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${links.fileOf(kind, name)}`]: hash }));
+        else stamp.markLine(file, 'managed-files', pairs({ ...((stamp.readLedger(file) || {}).files || {}), [`${kind}/${kind === 'agents' ? `${name}.md` : links.fileOf(kind, name)}`]: hash }));
         const line = `${kind.slice(0, -1)} ${name}`;
         const own = ((stamp.readPicked(file) || {})[kind] || []).some((e) => e.split('@')[0] === name);
         if (!own && !mine) stamp.markLine(file, 'member-picks', [...new Set([...(stamp.readMemberPicks(file) || []), line])].map((l) => l.replace(' ', '/')).sort().join(','));

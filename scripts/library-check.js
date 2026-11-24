@@ -84,7 +84,9 @@ function check({ project, source, configDir })
         for (const [name, hash] of Object.entries(stamp[kind] || {}).sort())
         {
             if (!validItemName(name, dirs[kind])) { invalid += 1; continue; }
-            const file = kind === 'skills' ? path.join(dirs.skills, name) : kind === 'rules' ? ruleAt(project, name) : path.join(dirs[kind], `${name}.md`);
+            // an agent is a folder; an older install's flat `<name>.md` still reads until an update moves it
+            const agentAt = path.join(dirs.agents, name);
+            const file = kind === 'skills' ? path.join(dirs.skills, name) : kind === 'rules' ? ruleAt(project, name) : fs.existsSync(agentAt) || !fs.existsSync(`${agentAt}.md`) ? agentAt : `${agentAt}.md`;
             const have = hashItem(file);
             let state = 'ok';
             if (!have) state = 'missing';
