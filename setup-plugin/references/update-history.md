@@ -1357,16 +1357,18 @@ Nothing to do in an installed project beyond the update.
 **A linked child follows its workspace's `ALFRED_CODE_DOCS_VERSIONING`.** A child with no value of its own reads the
 nearest member's, so a root at `local` makes every linked child `local` at its next update. A value you typed or answered
 in the child wins, `git` included, and `ignore env ALFRED_CODE_DOCS_VERSIONING` in its `workspace.json` stops the
-inheritance. The update removes a child's own value only when it is the stack's own seed (at its ledger hash, not an
-answer) and the child's layout does not decide it; report each such removal. A project outside any git repository is
-seeded no value, and a stack seed there leaves. A child whose layout decides (local scope, docs a rule of the repository
-keeps out, docs git tracks) keeps its own value even against the root.
+inheritance. The update removes a child's own value only when it is the stack's own seed - still as the install wrote it, not an
+answer, and no settings file or launch environment holds the key - and either the child's layout does not decide it, or
+it equals the workspace's value (the child reads the same value through the workspace). Report each such removal. A
+project outside any git repository is seeded no value, and a stack seed there leaves whatever the workspace holds. A child
+whose layout decides (local scope, docs a rule of the repository keeps out, docs git tracks) keeps a value that differs
+from the root's.
 
 **`local` also hides `.claude` and `.cursor`.** Where versioning is `local` and the project is a git repository, the run
 writes `.claude/.gitignore` and `.cursor/.gitignore`, each `*` under a head line naming `local`, and creates `.cursor` when
-absent (`.cursor` at `project` and `user` scope; a `local`-scope install already hides `.claude`). A `project`-scope team that shares `.claude` settings by git stops sharing them: set
-`git` to share, or keep the folder tracked (a folder git tracks files in gets one `!!` line and no file - untrack it with
-`git rm -r --cached <folder>` to hide it). A file you wrote yourself stays and is named once. A move to `git` removes the
+absent (`.cursor` at `project` and `user` scope; a `local`-scope install already hides `.claude`). At `project` scope the `.claude` files git does not yet track stop being shared with the team: set
+`git` to share them. A folder git already tracks files in gets one `!!` line and no file, so nothing in it is hidden;
+untrack it with `git rm -r --cached <folder>` to hide it. A file you wrote yourself stays and is named once. A move to `git` removes the
 stack's two files and a `.cursor` folder the stack made. Skills and agents move to the store (`.alfred/stack`) under
 `local` and become copies again at `git`. Report the `!!` and file lines.
 

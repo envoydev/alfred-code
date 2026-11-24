@@ -178,7 +178,7 @@ function findSecretsFile(projectDir, root = DATA_ROOT_DEFAULT)
 // read by the installer (docs.ensureDataIgnore) and by the sensitive-data move (ensureRootIgnore).
 // A docs root OUTSIDE this root keeps its own file (docs.ensureDocsIgnore) - no file of the stack's reaches it.
 const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
-// `.claude/.gitignore` of a local install (the installer's claudeIgnoreStep): the whole folder stays out of git, this file too.
+// `.claude/.gitignore` of a local install (the installer's `agent-folders/effects.js apply`): the whole folder stays out of git, this file too.
 const CLAUDE_IGNORE = '# alfred-code: a local install - nothing under .claude is committed from this checkout\n*\n';
 // The same file, and a `.cursor` twin, for a project whose docs versioning is `local` (the workspace-versioning plan, D5): nothing under the folder is committed from this project.
 const CLAUDE_VERSIONING_IGNORE = '# alfred-code: versioning local - nothing under .claude is committed from this project\n*\n';
