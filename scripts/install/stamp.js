@@ -270,7 +270,7 @@ function readLedger(file)
 // Item 3's phased rename, `secrets: dual <by>`: the run that first wrote it, kept as recorded by every later run - `by`
 // null is this run, named by its session id where the caller had one, else by its install time.
 const secretsLine = (by, ms) => { const who = by === null ? `run-${ms}` : by; return who ? `secrets: dual ${who}` : 'secrets: dual'; };
-// A record line that survives a run (`answered-env:`, `told-tracked:`, `created-dirs:`): sorted, deduped, none when empty.
+// A record line that survives a run (`untrack-told:`, `answered-env:`, `told-tracked:`, `created-dirs:`): sorted, deduped, none when empty.
 const recordLine = (key, values) => (Array.isArray(values) && values.length ? [`${key}: ${[...new Set(values)].filter((v) => v && !/[,\r\n]/.test(v)).sort().join(',')}`] : []);
 function renderStamp(fields)
 {
@@ -302,7 +302,7 @@ function renderStamp(fields)
         ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(data && data.secrets ? [secretsLine(data.secrets.by, installedMs)] : []),
         ...(MEMORY_LIFT_FILES.includes(memoryLift) ? [`memory-lift: pending ${memoryLift}`] : []),
-        ...(Array.isArray(untrackTold) && untrackTold.length ? [`untrack-told: ${[...new Set(untrackTold)].filter((p) => p && !/[,\r\n]/.test(p)).sort().join(',')}`] : []),
+        ...recordLine('untrack-told', untrackTold),
         ...recordLine('answered-env', answeredEnv),
         ...recordLine('told-tracked', toldTracked),
         ...recordLine('created-dirs', createdDirs),
@@ -578,17 +578,9 @@ function readMemoryLift(file)
     return MEMORY_LIFT_FILES.includes(named) ? named : '';
 }
 
-// E-batch ab-C5: `untrack-told: <path>,<path>` - the tracked state files under the ignored data root an earlier run named
-// with their `git rm --cached` command (docs.migrateLayout), so it names each once. [] with no stamp or no line.
-function readUntrackTold(file)
-{
-    let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
-    const m = /^untrack-told: *(.*?) *$/m.exec(text);
-    return m ? m[1].split(',').map((p) => p.trim()).filter(Boolean) : [];
-}
-
-// The three record lines a run keeps for the next one, read as `untrack-told:` is: [] with no stamp or no line.
+// The record lines a run keeps for the next one: [] with no stamp or no line. E-batch ab-C5: `untrack-told: <path>,<path>` -
+// the tracked state files under the ignored data root an earlier run named with their `git rm --cached` command
+// (docs.migrateLayout), so it names each once.
 const recordReader = (key) => (file) =>
 {
     let text = '';
@@ -596,6 +588,7 @@ const recordReader = (key) => (file) =>
     const m = new RegExp(`^${key}: *(.*?) *$`, 'm').exec(text);
     return m ? m[1].split(',').map((p) => p.trim()).filter(Boolean) : [];
 };
+const readUntrackTold = recordReader('untrack-told');
 const readAnsweredEnv = recordReader('answered-env');
 const readToldTracked = recordReader('told-tracked');
 const readCreatedDirs = recordReader('created-dirs');
