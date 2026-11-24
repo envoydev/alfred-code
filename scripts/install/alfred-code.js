@@ -54,6 +54,7 @@ const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
 const { effectiveVersioning, chainValueOf, ownVersioningLine } = require('./versioning/effects.js');
+const { normaliseValue } = require('./versioning/rank.js');
 const agentFolders = require('./agent-folders/effects.js');
 const { isStackText } = require('./agent-folders/plan.js');
 const { KEY: DOCS_VERSIONING_KEY, staleSeedNotice } = require('./versioning/constants.js');
@@ -1167,8 +1168,10 @@ function variablesStep(ctx)
         ctx.variablesHeld = variables.read(file).values;
         const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir }, dataRoot: root }).values;
         const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
-        // The docs versioning is the run's ranked answer without the flag (versioningStep), not the loader's reading or the catalog's default.
-        const current = (key) => (key === DOCS_VERSIONING_KEY && ctx.versioning.unflagged) || (now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? ''));
+        // The docs versioning is held only against the tracked file's own line: the file the team shares answers for a key it holds.
+        const current = (key) => (key === DOCS_VERSIONING_KEY
+            ? (ctx.variablesHeld[key] === undefined ? ctx.args.docsVersioning : normaliseValue(ctx.variablesHeld[key]))
+            : (now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '')));
         for (const [flag, key, value] of [['memory', 'ALFRED_CODE_MEMORY', ctx.args.memory], ['autoCompact', 'ALFRED_CODE_AUTO_COMPACT', ctx.args.autoCompact && (ctx.args.autoCompact === 'on' ? '1' : '0')],
             ['docsVersioning', 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.docsVersioning]])
         {

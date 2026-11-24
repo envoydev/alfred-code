@@ -302,25 +302,38 @@ test('the remover and the ranking agree on a seed typed with another case', () =
     assert.doesNotMatch(fs.readFileSync(path.join(at.child, '.alfred', '.variables'), 'utf8'), /ALFRED_CODE_DOCS_VERSIONING/);
 });
 
-// P5 (parked fixes): at local scope over a tracked `.variables`, the flag is held only when it differs from the answer the run
-// ranks without it - not from the catalog default the loader falls back to.
+// P5 (parked fixes, review round 1): at local scope over a tracked `.variables`, the flag is held only when that file holds
+// the key with another value - the file the team shares answers only for a key it holds.
 const TRACKED_LINE = /!! variables: ALFRED_CODE_DOCS_VERSIONING - \.variables is tracked here/;
-const trackedVariables = (repo) =>
+const trackedVariables = (line) => (repo) =>
 {
     fs.mkdirSync(path.join(repo, '.alfred'), { recursive: true });
-    fs.writeFileSync(path.join(repo, '.alfred', '.variables'), 'ALFRED_CODE_HISTORY=5\n');
+    fs.writeFileSync(path.join(repo, '.alfred', '.variables'), `ALFRED_CODE_HISTORY=5\n${line}`);
     execFileSync('git', ['-C', repo, 'add', '-f', '.alfred/.variables']);
 };
-const localRun = (flag) => seedRun('install', 'skill javascript\n', { args: ['--scope', 'local', '--docs-versioning', flag], prepare: trackedVariables });
-
-test('a --docs-versioning equal to the ranked answer is not held at local scope over a tracked .variables', POSIX_ONLY, () =>
-{
-    assert.doesNotMatch(localRun('local').out, TRACKED_LINE);
+const localRun = (flag, line = '') => seedRun('install', 'skill javascript\n', {
+    args: ['--scope', 'local', '--docs-versioning', flag], prepare: trackedVariables(line),
+    inspect: (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).env || {}).ALFRED_CODE_DOCS_VERSIONING),
 });
 
-test('a --docs-versioning that differs from the ranked answer is still held and named', POSIX_ONLY, () =>
+test('a --docs-versioning over a tracked .variables that does not hold the key is not held, and the local settings take it', POSIX_ONLY, () =>
 {
-    assert.match(localRun('git').out, TRACKED_LINE);
+    for (const flag of ['git', 'local'])
+    {
+        const run = localRun(flag);
+        assert.doesNotMatch(run.out, TRACKED_LINE, flag);
+        assert.strictEqual(run.result, flag, flag);
+    }
+});
+
+test('a --docs-versioning equal to the tracked .variables line is not held', POSIX_ONLY, () =>
+{
+    assert.doesNotMatch(localRun('local', 'ALFRED_CODE_DOCS_VERSIONING=local\n').out, TRACKED_LINE);
+});
+
+test('a --docs-versioning that differs from the tracked .variables line is held and named', POSIX_ONLY, () =>
+{
+    assert.match(localRun('git', 'ALFRED_CODE_DOCS_VERSIONING=local\n').out, TRACKED_LINE);
 });
 
 test('chainAnswers: the chain answers unless the child holds a firm answer that differs', () =>
