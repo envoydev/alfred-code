@@ -446,7 +446,18 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const view = recordView(stampFile, priorLedger);
             const hashes = Object.fromEntries(Object.entries(view.agents).map(([n, h]) => [n, [h]]));
             for (const e of stampFile ? stampLayer.readLinks(stampFile) : []) if (e.kind === 'copy' && e.path.startsWith('agents/')) (hashes[e.path.slice(7).replace(/\.md$/, '')] ||= []).push(e.hash);
-            links.migrateFlatAgents({ projectRoot, home: homes.agents, hashes, adopt: view.ledgerHeld ? [] : manifest.agents.map((f) => f.replace(/\.md$/, '')).filter((n) => !Object.hasOwn(view.agents, n)), log });
+            // a flat file nothing recorded is the stack's when it holds the stack's own text, or when the stamp has no ledger and either never
+            // recorded picks (the disk is its only record) or lists the seat as picked; any other is the user's
+            const picks = stampFile ? stampLayer.readPicked(stampFile) : null;
+            const pickedSeats = picks ? new Set(picks.agents.map((a) => a.split('@')[0])) : null;
+            const stackText = (name) => readOrNull(path.join(resolved.dir, 'stack', 'agents', `${name}.md`));
+            const isStacks = (name, flat) =>
+            {
+                const [mine, stack] = [readOrNull(flat), stackText(name)];
+                if (mine !== null && stack !== null && (mine === stack || mine === copy.respellPreloads(stack, CORE))) return true;
+                return Boolean(stampFile) && !view.ledgerHeld && (!pickedSeats || pickedSeats.has(name));
+            };
+            links.migrateFlatAgents({ projectRoot, home: homes.agents, hashes, names: manifest.agents.map((f) => f.replace(/\.md$/, '')), isStacks, log });
         }
         for (const k of writes ? links.KINDS : [])
         {
@@ -1720,9 +1731,12 @@ function copyKinds(ctx, closure)
     // A seat file the project wrote under a core seat's name is its own: kept, named, and never recorded.
     const seatFiles = pickedSeats.filter((f) =>
     {
+        const name = f.replace(/\.md$/, '');
+        // a flat file of an older install beside no folder is one the project edited (the stack's own moved, migrateFlatAgents): kept, and no folder is written beside it
+        if (!fs.lstatSync(path.join(agentsDir, name), { throwIfNoEntry: false }) && fs.lstatSync(path.join(agentsDir, `${name}.md`), { throwIfNoEntry: false })?.isFile()) { ctx.log(links.kept(`agents/${name}.md`)); return false; }
         if (!projectSeat(ctx, f)) return true;
-        ctx.log(ownSeatLine.copy(f.replace(/\.md$/, '')));
-        ctx.foreignSeats.add(f.replace(/\.md$/, ''));
+        ctx.log(ownSeatLine.copy(name));
+        ctx.foreignSeats.add(name);
         return false;
     });
     for (const f of seatFiles.filter((name) => fs.existsSync(path.join(ctx.source.dir, 'stack', 'agents', name)))) logOverwrite(ctx, 'agent', f.replace(/\.md$/, ''), links.agentAt(agentsDir, f));

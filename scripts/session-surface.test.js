@@ -313,6 +313,20 @@ test('--with-user shows the user memory, skills and plugins; without it they are
     assert.deepEqual(user, ['theirs:skills/x/SKILL.md', '~config/CLAUDE.md', '~config/skills/mine/SKILL.md']);
 });
 
+test('a project seat held as a folder <name>/<name>.md is listed beside a flat one; the folder wins over a flat file of its name', () =>
+{
+    const fx = install({ project: {
+        '.claude/agents/folded/folded.md': agent('folded', 'Use when folded.'),
+        '.claude/agents/flat.md': agent('flat', 'Use when flat.'),
+        '.claude/agents/both.md': agent('both', 'Use when the flat file is read.'),
+        '.claude/agents/both/both.md': agent('both', 'Use when the folder is read.'),
+    } });
+    const rows = fx.run().rows.filter((r) => r.listing === 'agent' && r.owner === 'project');
+    assert.deepEqual(rows.map((r) => r.source).sort(), ['both', 'flat', 'folded']);
+    const chars = (name) => rows.find((r) => r.source === name).chars;
+    assert.strictEqual(chars('both') - chars('flat'), 'Use when the folder is read.'.length - 'Use when flat.'.length, 'one listing, from the folder');
+});
+
 test('the listing budget: at, one under and one over', () =>
 {
     // window 1000 tokens x 0.01 x 4 chars = 40; an entry costs its listed name plus its description.

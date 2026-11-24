@@ -1587,6 +1587,21 @@ test('every seat start carries its tools line; a judge also gets its code docs',
     finally { p.rm(); }
 });
 
+test('a project seat held as a folder <seat>/<seat>.md reads its own file, and the folder wins over a flat file', () =>
+{
+    const p = project({ docs: {}, tools: true });
+    try
+    {
+        p.write('.claude/agents/folder-seat/folder-seat.md', '---\nname: folder-seat\ntools: Grep, Read\n---\nbody\n');
+        const own = seatText(p.hook(seatStart('folder-seat')));
+        assert.ok(own.includes('- navigation (locate symbols, callers and types before reading or editing code): Grep.'), `a folder seat reads its own file: ${own}`);
+        p.write('.claude/agents/both-seat.md', '---\nname: both-seat\ntools: LSP, Read\n---\nbody\n');
+        p.write('.claude/agents/both-seat/both-seat.md', '---\nname: both-seat\ntools: Grep, Read\n---\nbody\n');
+        assert.ok(seatText(p.hook(seatStart('both-seat'))).includes('locate symbols, callers and types before reading or editing code): Grep.'), 'the folder is read first');
+    }
+    finally { p.rm(); }
+});
+
 test('a built-in seat gets the main session\'s line without the suggestion; the guide seats get none', () =>
 {
     const p = project({ docs: {}, tools: true });

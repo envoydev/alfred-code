@@ -148,6 +148,59 @@ test('store: a flat agent copy at its stamped hash moves to a folder; one edited
     assert.ok(!/agent moved to a folder/.test(outs[2]), 'a second update changes nothing');
 });
 
+const MINE = '---\nname: security-auditor\ndescription: mine\n---\nMY OWN SEAT\n';
+for (const [route, env] of [['plugin', {}], ['copy', COPY]])
+    test(`store: a stamp with no ledger keeps the user's own flat agent that shares a stack seat's name (${route} route)`, POSIX_ONLY, () =>
+    {
+        const { outs, result } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nagent evidence-gatherer\n', {
+            env, args: [['--scope', 'local'], [], []],
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                // An install from before the ledger: the stamp has no managed-* lines. The user's own flat seat sits in .claude/agents.
+                fs.writeFileSync(stampOf(repo), fs.readFileSync(stampOf(repo), 'utf8').split('\n').filter((l) => !/^(managed-|workspace-(mcp|wrap))/.test(l)).join('\n'));
+                fs.mkdirSync(claude(repo, 'agents'), { recursive: true });
+                fs.writeFileSync(claude(repo, 'agents', 'security-auditor.md'), MINE);
+                return null;
+            },
+            inspect: (repo) => ({
+                flat: lstat(claude(repo, 'agents', 'security-auditor.md')) && fs.readFileSync(claude(repo, 'agents', 'security-auditor.md'), 'utf8'),
+                folderLink: lstat(claude(repo, 'agents', 'security-auditor')),
+                storeFolder: lstat(store(repo, 'agents', 'security-auditor')),
+                storeFlat: lstat(store(repo, 'agents', 'security-auditor.md')),
+            }),
+        });
+        assert.strictEqual(result.flat, MINE, 'the user\'s file stays, untouched');
+        assert.strictEqual(result.storeFolder, null, 'nothing of it enters the store');
+        assert.strictEqual(result.storeFlat, null);
+        assert.ok(!/agent moved to a folder: security-auditor/.test(outs[1]), outs[1]);
+        assert.ok(!/agent moved to a folder: security-auditor/.test(outs[2]), outs[2]);
+    });
+
+test('store: on the copy route in a git-visible .claude, an edited flat seat from an older install stays and no folder is written beside it', POSIX_ONLY, () =>
+{
+    const { outs, result } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nagent evidence-gatherer\n', {
+        env: COPY,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const d = claude(repo, 'agents');
+            const text = fs.readFileSync(path.join(d, 'evidence-gatherer', 'evidence-gatherer.md'), 'utf8');
+            fs.rmSync(path.join(d, 'evidence-gatherer'), { recursive: true });
+            fs.writeFileSync(path.join(d, 'evidence-gatherer.md'), `${text}\nMY EDIT\n`);
+            return null;
+        },
+        inspect: (repo) => ({
+            names: fs.readdirSync(claude(repo, 'agents')).filter((n) => n.startsWith('evidence-gatherer')),
+            flat: fs.readFileSync(claude(repo, 'agents', 'evidence-gatherer.md'), 'utf8'),
+        }),
+    });
+    assert.deepStrictEqual(result.names, ['evidence-gatherer.md'], 'one definition of the seat');
+    assert.match(result.flat, /MY EDIT/);
+    assert.ok(!/overwriting a hand-edited copy[^\n]*evidence-gatherer/.test(outs[1]), outs[1]);
+    assert.match(outs[1], /agent kept: \.claude\/agents\/evidence-gatherer\.md - edited since it was copied from the store, so it is yours/);
+});
+
 test('store: the user\'s own skill folder and agent file stay in .claude, off the record', POSIX_ONLY, () =>
 {
     const { result } = seedRun(['install', 'update'], SELECTION, {

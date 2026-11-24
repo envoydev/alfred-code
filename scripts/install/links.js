@@ -161,20 +161,21 @@ function checkLinks({ projectRoot, record = [], members = [], rt })
     });
 }
 // An older install held an agent as a flat `<name>.md` (in the store or in `.claude/agents`). One at a hash the stamp or the
-// ledger recorded for it (`hashes`: name -> hashes, or any hash for a name in `adopt` - an install that kept no record) goes
-// into the kind's home as `<name>/<name>.md` (a folder holds the same bytes under the same hash) and is logged; any other
-// is the user's and stays - the store's is named here, the `.claude` one by syncLinks.
-function migrateFlatAgents({ projectRoot, home, hashes = {}, adopt = [], log = () => {} })
+// ledger recorded for it (`hashes`: name -> hashes) goes into the kind's home as `<name>/<name>.md` (a folder holds the same
+// bytes under the same hash) and is logged; so does one of a name nothing recorded that `isStacks(name, file)` vouches for
+// (the caller's test: the stack's own text, or a stamp that never recorded picks). Any other is the user's and stays - the
+// store's is named here, the `.claude` one by syncLinks. `names` are the seats looked at, besides the recorded ones.
+function migrateFlatAgents({ projectRoot, home, hashes = {}, names = [], isStacks = () => false, log = () => {} })
 {
     const target = (name) => path.join(home.dir, name);
-    for (const name of [...new Set([...Object.keys(hashes), ...adopt])].filter((n) => validItemName(n)))
+    for (const name of [...new Set([...Object.keys(hashes), ...names])].filter((n) => validItemName(n)))
     {
         let moved = false;
         for (const [flat, base] of [[path.join(storeOf(projectRoot, 'agents'), `${name}.md`), '.alfred/stack/agents'], [path.join(projectRoot, '.claude', 'agents', `${name}.md`), null]])
         {
             const st = lstat(flat);
             if (!st || !st.isFile()) continue;
-            if (!adopt.includes(name) && !(hashes[name] || []).includes(hashItem(flat))) { if (base) log(kept(`${name}.md`, `.alfred/stack/agents`)); continue; }
+            if (!(hashes[name] || []).includes(hashItem(flat)) && (Object.hasOwn(hashes, name) || !isStacks(name, flat))) { if (base) log(kept(`${name}.md`, `.alfred/stack/agents`)); continue; }
             if (lstat(target(name))) fs.unlinkSync(flat);
             else { fs.mkdirSync(target(name), { recursive: true }); fs.renameSync(flat, path.join(target(name), `${name}.md`)); }
             moved = true;
@@ -182,4 +183,4 @@ function migrateFlatAgents({ projectRoot, home, hashes = {}, adopt = [], log = (
         if (moved) log(`agent moved to a folder: ${name}`);
     }
 }
-module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };
+module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, kept, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };

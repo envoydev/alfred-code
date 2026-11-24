@@ -186,6 +186,7 @@ test('links: on win32 a skill is a junction and an agent a folder copy at its ha
     const agent = record.find((e) => e.path === 'agents/x');
     assert.strictEqual(record.find((e) => e.path === 'skills/a').kind, 'junction');
     assert.deepStrictEqual(types, ['junction'], 'the skill alone is linked');
+    if (process.platform === 'win32') assert.ok(path.isAbsolute(fs.readlinkSync(at(p, 'skills/a'))));
     assert.deepStrictEqual(agent, { path: 'agents/x', kind: 'copy', hash: hashItem(path.join(p, '.alfred', 'stack', 'agents', 'x')) });
     assert.ok(!fs.lstatSync(at(p, 'agents/x')).isSymbolicLink() && fs.lstatSync(at(p, 'agents/x')).isDirectory());
     assert.ok(log.includes('agent copy: .claude/agents/x - a link cannot be made here'), log.join('\n'));

@@ -1138,13 +1138,13 @@ function hostText() {
   return hostLines().join('\n');
 }
 // What the tool order resolves a seat against: its definition's frontmatter where the file is found - the core's own seat
-// beside this hook (`alfred-code:<seat>`), else the project's copy; another plugin's seat from that plugin's install folder
+// beside this hook (`alfred-code:<seat>`), else the project's copy (a folder `<seat>/<seat>.md` first, then a flat file); another plugin's seat from that plugin's install folder
 // (R040) - and 'other' (the main session's reach) where none is found.
 function seatOf(ctx, type) {
   const m = /^(?:([\w.-]+):)?([\w-]+)$/.exec(String(type || ''));
   if (!m) return 'other';
   let files;
-  if (!m[1] || m[1] === 'alfred-code') files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
+  if (!m[1] || m[1] === 'alfred-code') files = [...(m[1] ? [path.join(__dirname, '..', 'agents', `${m[2]}.md`)] : []), path.join(ctx.home, '.claude', 'agents', m[2], `${m[2]}.md`), path.join(ctx.home, '.claude', 'agents', `${m[2]}.md`)];
   else {
     const lib = toolsLib();
     const file = lib && typeof lib.pluginAgentFile === 'function' ? lib.pluginAgentFile(ctx.home, m[1], m[2], process.env) : null;
