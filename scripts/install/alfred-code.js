@@ -54,6 +54,8 @@ const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
 const { effectiveVersioning, chainValueOf } = require('./versioning/effects.js');
+const agentFolders = require('./agent-folders/effects.js');
+const { isStackText } = require('./agent-folders/plan.js');
 const { KEY: DOCS_VERSIONING_KEY } = require('./versioning/constants.js');
 const runtime = require('./runtime.js');
 const { snapshotSessionError } = require('./run-session.js');
@@ -444,7 +446,20 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // Workspace stage 3 (links.js): each kind's home - the store where git cannot commit a link, else .claude/<kind>. A local
         // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
         const writes = !args.printPlan && args.action !== 'uninstall';
-        if (writes) claudeIgnoreStep({ claudeDir, args, log, rt });
+        // D4: the agent-folder pass, with the docs versioning every rank but the carry gives (the carry exists after docsRootStep).
+        let agentRecord = { toldTracked: [], createdDirs: [] };
+        if (writes)
+        {
+            let early = null;
+            try
+            {
+                early = effectiveVersioning({ projectRoot, scope: args.scope, docsPath: copy.resolveDocsRoot(projectRoot, args.scope), dataRoot: dataInfo.root, env, flag: args.docsVersioning,
+                    reseed: docsReseed, ledgerRows: ((priorLedger || {}).env || {})['.variables'] || {}, answeredEnv: null }).value;
+            }
+            catch (err) { note(`the docs versioning could not be read for the agent folders (${err.message}) - they stay as they are`); }
+            agentRecord = agentFolders.apply({ projectRoot, claudeDir, scope: args.scope, log, rt,
+                told: stampFile ? stampLayer.readToldTracked(stampFile) : [], created: stampFile ? stampLayer.readCreatedDirs(stampFile) : [] }, { versioning: early });
+        }
         const homes = Object.fromEntries(links.KINDS.map((k) => [k, links.homeOf(projectRoot, k, { rt, write: writes })]));
         // What this run's writers add, update, remove or keep as the user's own (report.js), and the user's-file lines already said.
         const report = createReport();
@@ -729,7 +744,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             projectRoot, claudeDir, skillsDir, agentsDir, rulesDir, homes, child, configDir, mcpFile, home, stampFile,
             hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed, routeKeyWrite,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, docsReseed, ledger: priorLedger, legacyUnstamped,
-            dataInfo, heldTwice, report, said,
+            dataInfo, heldTwice, report, said, agentRecord,
             // The MCP plugin and server names the renames left behind (manifest `renamed.mcps`), and the ones this run prunes.
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps), legacyMcpsDue: legacyDue,
             // What this run took out of the servers an earlier release shipped, said once at the end of the retire step.
@@ -803,8 +818,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
             untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
             answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile),
-            toldTracked: Array.isArray(ctx.toldTracked) ? ctx.toldTracked : stampLayer.readToldTracked(stampFile),
-            createdDirs: Array.isArray(ctx.createdDirs) ? ctx.createdDirs : stampLayer.readCreatedDirs(stampFile),
+            toldTracked: ctx.agentRecord.toldTracked,
+            createdDirs: ctx.agentRecord.createdDirs,
         });
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
         // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
@@ -885,6 +900,9 @@ function runLayers(ctx)
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     // After the settings pass, so the versioning is the decision this run just wrote.
     ignoreStep(ctx, docsPath);
+    // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
+    if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
+        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true });
     // Memory P3: docs mode's autoMemoryDirectory row, once the docs root and its versioning are final.
     try { memoryDir.step(ctx, docsPath, { warnUnignoredLocal: (c, file) => warnUnignoredLocal(c.projectRoot, file, c) }); }
     catch (err) { ctx.note(`the docs memory row in .claude/settings.local.json could not be checked (${err.message}) - the last run's row stands; re-run /alfred-code:update`); }
@@ -1088,17 +1106,6 @@ function ignoreStep(ctx, docsPath)
     const docsCovered = (dataCovered && Boolean(dataRoot.docsInsideRoot({ root, docsPath }))) || STACK_IGNORE.includes(own);
     try { docs.pruneNestedIgnores({ projectRoot, root, docsPath, docsCovered, dataCovered, log }); }
     catch (err) { note(`the nested .gitignore files could not be checked (${err.message}) - they stay as they are`); }
-}
-
-// A local install keeps `.claude` out of git with one file of its own (never in a folder git tracks files in), written before the settings pass; another scope takes the stack's text back.
-function claudeIgnoreStep(ctx)
-{
-    const file = path.join(ctx.claudeDir, '.gitignore');
-    const have = readOrNull(file);
-    if (ctx.args.scope !== 'local') { if (have === dataRoot.CLAUDE_IGNORE) { fs.rmSync(file); ctx.log('  .claude/.gitignore removed - .claude is shared at this scope'); } return; }
-    if (have !== null || gitTracks(ctx, ctx.claudeDir)) return;
-    fs.mkdirSync(ctx.claudeDir, { recursive: true }); fs.writeFileSync(file, dataRoot.CLAUDE_IGNORE);
-    ctx.log('  .claude/.gitignore written - a local install keeps .claude out of git');
 }
 
 // THE STACK'S VARIABLES (workspace roles and variables, D5 / D6), before the settings pass: where this run keeps them.
@@ -2707,7 +2714,7 @@ function managedFiles(ctx)
         if (now === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel))) out[rel] = now;
     }
     if (ctx.canary) out['rules/alfred-rules.md'] = ctx.canary;
-    if (readOrNull(path.join(ctx.claudeDir, '.gitignore')) === dataRoot.CLAUDE_IGNORE) put('.gitignore', path.join(ctx.claudeDir, '.gitignore'));
+    if (isStackText(readOrNull(path.join(ctx.claudeDir, '.gitignore')))) put('.gitignore', path.join(ctx.claudeDir, '.gitignore'));
     return out;
 }
 function readOrNull(file)
@@ -2868,6 +2875,7 @@ function runUninstall({ dataInfo, projectRoot, claudeDir, configDir, accountFile
     const homeDir = (k) => links.homeOf(projectRoot, k, { write: false }).dir;
     links.removeLinks({ projectRoot, record: stampLayer.readLinks(file), log });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: homeDir('skills'), agentsDir: homeDir('agents'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, instructionsKind: stampLayer.readInstructionsFile(file), seed: instructionsSeed, log });
+    uninstallLayer.removeAgentFolders({ projectRoot, claudeDir, created: stampLayer.readCreatedDirs(file), log });
     nativeRules.removeNative({ projectRoot, log });
     uninstallLayer.removeGeneratedRules({ claudeDir, projectRoot, sourceDir: path.join(__dirname, '..', '..'), docsPath, log });
     toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });

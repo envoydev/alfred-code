@@ -62,9 +62,12 @@ const setEnv = (work, rel, file, values) =>
     fs.writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`);
 };
 
-function layout(work)
+function layout(work, { rootRepo = true } = {})
 {
     fs.mkdirSync(at(work), { recursive: true });
+    // A root inside no repository reads docs versioning `local` (firm), which its children inherit and which would hide their
+    // `.claude` (the agent-folder pass); most cases are about the workspace's picks, so the root is a repository too.
+    if (rootRepo) rt.execCommand('git', ['init', '-q', at(work)]);
     for (const rel of ['api', 'web', 'api/tool'])
     {
         fs.mkdirSync(at(work, rel), { recursive: true });
@@ -92,7 +95,7 @@ const addKey = (work, rel, key, value) =>
 };
 
 // One sandbox, one step per entry: { at, act, sel, args: [] | (work) => [], env, before(work), after(work) }.
-function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false, failOk = false } = {})
+function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = false, failOk = false, rootRepo = true } = {})
 {
     return seedRun(steps.map((s) => s.act || 'install'), '', {
         plugins, account, failOk,
@@ -107,7 +110,7 @@ function scenario(steps, { plugins = PLUGINS, prepare = () => {}, account = fals
             fs.writeFileSync(sel, s.sel ?? ROOT_SEL);
             return ['--selection', sel, ...(typeof s.args === 'function' ? s.args(work) : s.args || [])];
         }),
-        prepare: (repo, work) => { layout(work); prepare(work); },
+        prepare: (repo, work) => { layout(work, { rootRepo }); prepare(work); },
         each: (repo, i) => (steps[i].after ? steps[i].after(path.dirname(repo)) : null),
     });
 }
@@ -676,7 +679,7 @@ test('AC19: a launch 0 in ws/api reads a chain of one and an install there remov
     assert.notStrictEqual(r.steps[2].from, '..', 'a launch 0 reads a chain of one');
     // At 0 the chain is empty, so the child seeds its docs versioning as a standalone would (D3: no chain value, as before); nothing else moves.
     const seeded = [...r.steps[1].files];
-    seeded[3] = 'ALFRED_CODE_DOCS_VERSIONING=local\n';
+    seeded[3] = 'ALFRED_CODE_DOCS_VERSIONING=git\n';
     assert.strictEqual(r.steps[1].files[3], null, 'a child under a valued root seeds no versioning line');
     assert.deepStrictEqual(r.steps[2].files, seeded, `the workspace files are unchanged, nothing is removed, the docs versioning seeded: ${r.outs[2]}`);
 });
@@ -707,7 +710,7 @@ test('kill switch: at 0, nothing is added, dropped, re-seeded or removed and the
     assert.ok(r.steps[1].ex > 0);
     assert.deepStrictEqual(Object.keys(r.steps[1].vars), [], 'a child under a valued root seeds no chained key and no versioning line');
     // At 0 the chain is empty: the child seeds its docs versioning as a standalone would (D3), and nothing else is added or removed.
-    assert.deepStrictEqual(r.steps[3], { ...r.steps[1], vars: { ALFRED_CODE_DOCS_VERSIONING: 'local' } }, r.outs[3]);
+    assert.deepStrictEqual(r.steps[3], { ...r.steps[1], vars: { ALFRED_CODE_DOCS_VERSIONING: 'git' } }, r.outs[3]);
     assert.strictEqual(r.steps[4].level, '1', 'switched back on, the root\'s value reaches the child - nothing seeded at 0 shadows it');
     assert.strictEqual(r.steps[4].versioning, undefined, 'the seed made at 0 leaves once the workspace answers again');
     assert.doesNotMatch(r.outs[3], /workspace: from/);
@@ -1506,7 +1509,7 @@ test('a memory folder equal to the child\'s own gets no deny row', POSIX_ONLY, (
             update('api', { after: (work) => ({ api: excludesOf(work, 'api'), rows: ledgerRows(work, 'api') }) }),
             update('.', { before: (work) => { keep.plan = claudeHash(work, 'api'); }, args: (work) => ['--print-plan', '--plan-out', path.join(work, 'plan.json')],
                 after: (work) => ({ api: claudeHash(work, 'api') === keep.plan }) }),
-        ]);
+        ], { rootRepo: false });
         const root = r.steps[3];
         assert.ok(root.want.length > 0, 'the root holds a generated rule');
         for (const [rel, list] of [['api', root.api], ['api/tool', root.tool], ['web', root.web]])
@@ -1657,7 +1660,7 @@ test('the run\'s own garbage record freezes the workspace part of an update', PO
     assert.deepStrictEqual(after.env, before.env, r.outs[3]);
     // A frozen workspace reads no chain, so the child seeds its docs versioning as a standalone would (D3); the file held no line before.
     assert.strictEqual(before.vars, null);
-    assert.strictEqual(after.vars, 'ALFRED_CODE_DOCS_VERSIONING=local\n', r.outs[3]);
+    assert.strictEqual(after.vars, 'ALFRED_CODE_DOCS_VERSIONING=git\n', r.outs[3]);
     assert.strictEqual(after.own, before.own, r.outs[3]);
     assert.strictEqual(after.ownEnv, before.ownEnv, r.outs[3]);
     assert.strictEqual(r.outs[3].split('\n').filter((l) => l.replace(/^==>\s*/, '').trim() === GARBAGE_LINE('.alfred/workspace.json')).length, 1, r.outs[3]);
