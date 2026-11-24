@@ -14,6 +14,9 @@
 //             project, every seat into the core - since until the update the house skills are not here
 //   blocked - a skill set to 'off' or 'user-invocable-only' in skillOverrides that a rule copy still sends
 //             the model to (a backticked name): that Skill call fails
+//   native-rule-*, link-*, seat-deny-left, exclude-drift, agents-shared-repo - the project against the layered layout
+//             (library-check/): a native rule file, a store link, a leftover seat deny, a child's excludes. Every row fails the
+//             check but native-rule-unmarked and agents-shared-repo, which are notes: named, never counted.
 //   unrecorded - (with --source) a skill folder the stamp does not record whose heading the stack has shipped
 //             under that name: a copy made before the stamp recorded skills; /alfred-code:update takes it over
 //
@@ -31,6 +34,8 @@ const { stampFile } = require('./install/brand.js');
 const { hashItem, hashBuffer, renderSkillFile } = require('./install/library.js');
 const { parseJson } = require('./install/json-file.js');
 const { resolveDocsRoot, ruleAt } = require('./install/copy.js');
+const { layoutOf } = require('./library-check/effects.js');
+const { NOTE_ROWS } = require('./library-check/constants.js');
 
 // alfred-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
 // `__DOCS_ROOT__` placeholder) and the PROJECT copy (which the installer substitutes the resolved
@@ -162,7 +167,10 @@ function check({ project, source, configDir })
     const stale = Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version));
     // The 2.1.0 move: a stamp from before it names no `seats-route:`.
     const moved = stale && !newer('2.1.0', sourceVersion) && newer('2.1.0', stamp.version) && !readSeatsRoute(own);
-    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved, blocked, unrecorded };
+    // The workspace switch is read as the installer reads it: the launch env, the account named by --config-dir.
+    const env = { CLAUDE_CONFIG_DIR: configDir || process.env.CLAUDE_CONFIG_DIR, ...(process.env.ALFRED_CODE_WORKSPACE !== undefined ? { ALFRED_CODE_WORKSPACE: process.env.ALFRED_CODE_WORKSPACE } : {}) };
+    const layout = layoutOf({ project, source, own, stamp, env });
+    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved, blocked, unrecorded, layout };
 }
 
 function main(argv)
@@ -175,7 +183,8 @@ function main(argv)
     if (!res) { console.log('library: no library stamp - nothing to check'); return 0; }
     const bad = res.rows.filter((r) => r.state !== 'ok');
     const shadowed = res.rows.filter((r) => r.shadowedByAccount);
-    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid + res.blocked.length + res.unrecorded.length;
+    const notes = res.layout.filter((r) => NOTE_ROWS.has(r.row));
+    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid + res.blocked.length + res.unrecorded.length + res.layout.length - notes.length;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
     if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update${res.moved
         ? ' (2.1.0 moved every skill into the project and every seat into the core - until the update runs here, the house skills are not copied and every seat is listed undenied)' : ''}`);
@@ -191,7 +200,9 @@ function main(argv)
         console.log(`shadowed: skill ${r.name} - an account copy at ${path.join(configDir, 'skills', r.name)} overrides this project's own `
             + `(Claude Code runs a personal skill over a project one of the same name) - once every project has updated, `
             + `remove it: rm -rf '${path.join(configDir, 'skills', r.name)}'`);
-    console.log(findings ? `library: ${findings} finding(s) over ${res.rows.length} copies` : `library: clean (${res.rows.length} copies)`);
+    for (const r of res.layout) console.log(`${r.row}: ${r.path} - ${r.why}`);
+    const noted = notes.length ? `, ${notes.length} note(s) that fail nothing` : '';
+    console.log(`${findings ? `library: ${findings} finding(s) over ${res.rows.length} copies` : `library: clean (${res.rows.length} copies)`}${noted}`);
     return findings ? 1 : 0;
 }
 

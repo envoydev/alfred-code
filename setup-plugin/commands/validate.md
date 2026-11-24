@@ -130,7 +130,9 @@ an item that failed the name check - a hand edit or a bad merge - and the check 
 rather than joining it into a path. Report the count and route it to `/alfred-code:update`, whose
 next stamp rewrite drops it; never go looking for the withheld name. An `unrecorded: skill <name>`
 line is a stack copy made before the stamp recorded skills (its heading is one the stack shipped):
-the step-10 apply takes it over, so name it with the drift rows. Step 12 runs the same check again
+the step-10 apply takes it over, so name it with the drift rows. The layout rows (`native-rule-*`,
+`link-*`, `seat-deny-left`, `exclude-drift`, `agents-shared-repo`) print here too: step 11 says what each
+means, and this report names them with the drift rows. Step 12 runs the same check again
 over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
@@ -589,6 +591,26 @@ Never edit the override here. The check reads the project's `settings.json` and 
 only: an `off` in the account settings is not seen, so no `blocked:` row is no proof of none there.
 `library: no library stamp` is the whole paste on an install older
 than the library route.
+
+The same check reads the layered layout, one row each, `<row>: <path> - <why>`. These rows fail the
+check (exit 1), and `/alfred-code:update` fixes each:
+
+- `native-rule-missing` - a rule this project picks has no marked file in `.claude/rules`, so Claude Code does not load it.
+- `native-rule-unpicked` - a marked rule file of a rule this project no longer picks.
+- `link-missing` - a picked skill or seat has no link in `.claude/skills` or `.claude/agents` (a recorded copy counts, as
+  on Windows agent folders and in a git-visible `.claude/<kind>`).
+- `link-dangling` - a link into `.alfred/stack/` whose target is gone.
+- `link-unpicked` - a link into `.alfred/stack/` for an item this project does not pick.
+- `seat-deny-left` - a seat deny row of the old plugin spelling, for a shipped or retired seat, in `settings.json` or
+  `settings.local.json`; it does nothing, and a project-scope update removes it.
+- `exclude-drift` - a joined child's `claudeMdExcludes` differs from the chain's (the root's rules would load twice, or a
+  stale row stays).
+
+Two rows are notes only: named, never failed, and counted on the last line as `N note(s) that fail nothing`.
+`native-rule-unmarked` means a file of the user's stands at a picked rule's name, so the stack's rule does not load
+there - say so and leave it; the user decides. `agents-shared-repo` means a child with no repository of its own sits under a
+root that links agents, so a session there also lists the root's seats. A fallback install with no
+`.alfred/stack/rules` folder gets no rule rows.
 
 Then hold the project's instruction files (AGENTS.md, and a CLAUDE.md the project keeps) to the tree they describe - the drift a release never
 touches, since those files are the project's own:

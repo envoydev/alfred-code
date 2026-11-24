@@ -9,6 +9,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { copyLibrary } = require('./install/library.js');
 const { renderStamp } = require('./install/stamp.js');
+const { withMarker } = require('./install/native-rules.js');
 
 const SCRIPT = path.join(__dirname, 'library-check.js');
 const roots = [];
@@ -385,6 +386,9 @@ test('a rule in the store (workspace stage 4c) is read, changed and missing each
     const store = path.join(f.project, '.alfred', 'stack', 'rules');
     fs.mkdirSync(path.dirname(store), { recursive: true });
     fs.renameSync(f.rules, store);
+    // The store's rules are native files too, as the installer writes them (marked).
+    fs.mkdirSync(f.rules);
+    for (const name of fs.readdirSync(store)) fs.writeFileSync(path.join(f.rules, name), withMarker(fs.readFileSync(path.join(store, name), 'utf8')));
     let r = run(f);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /library: clean \(4 copies\)/);
@@ -392,6 +396,7 @@ test('a rule in the store (workspace stage 4c) is read, changed and missing each
     r = run(f);
     assert.match(r.out, /drift: rule alfred-git/);
     fs.rmSync(path.join(store, 'alfred-git.md'));
+    fs.rmSync(path.join(f.rules, 'alfred-git.md'));   // ruleAt reads the native file when the store has none
     r = run(f);
     assert.match(r.out, /missing: rule alfred-git/);
 });

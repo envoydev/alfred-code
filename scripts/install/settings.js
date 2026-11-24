@@ -835,6 +835,8 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, kept =
     return { managed, changed };
 }
 
+// The seat an `Agent(<core>:<seat>)` deny row names, else undefined.
+const seatOfDenyRow = (entry) => (new RegExp(`^Agent\\(${BRAND.core}:([A-Za-z0-9_-]+)\\)$`).exec(String(entry)) || [])[1];
 // Takes out of `permissions.deny`, in place, each `Agent(<core>:<seat>)` row whose seat is one of `seatNames`, said in one
 // line per file. Any other row - another plugin's, a seat this release never shipped, a rule of the user's - is left as it is.
 // `tidy`: a list or a `permissions` object this left empty goes too (the team's settings.json, where the stack made it).
@@ -842,13 +844,12 @@ function removeSeatDenies(permissions, seatNames, label, log, { tidy = false, re
 {
     if (!plain(permissions) || !Array.isArray(permissions.deny) || !seatNames.length) return false;
     const names = new Set(seatNames);
-    const seatOf = (entry) => (new RegExp(`^Agent\\(${BRAND.core}:([A-Za-z0-9_-]+)\\)$`).exec(String(entry)) || [])[1];
     const gone = [];
     for (let i = permissions.deny.length - 1; i >= 0; i--)
-        if (names.has(seatOf(permissions.deny[i]))) gone.unshift(...permissions.deny.splice(i, 1));
+        if (names.has(seatOfDenyRow(permissions.deny[i]))) gone.unshift(...permissions.deny.splice(i, 1));
     if (!gone.length) return false;
-    if (report) for (const row of gone) report.remove('deny', seatOf(row));
-    log(`  ${label}: agent deny rows removed (a seat is a project copy now, not a plugin item): ${gone.map(seatOf).join(', ')}`);
+    if (report) for (const row of gone) report.remove('deny', seatOfDenyRow(row));
+    log(`  ${label}: agent deny rows removed (a seat is a project copy now, not a plugin item): ${gone.map(seatOfDenyRow).join(', ')}`);
     if (tidy && !permissions.deny.length) delete permissions.deny;
     return true;
 }
@@ -1682,6 +1683,6 @@ function moveToLocal({ claudeDir, ledger, shippedDeny = [], log = () => {}, note
     return carried;
 }
 
-module.exports = { mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
+module.exports = { seatOfDenyRow, mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
     isStackKey, writeSettings, wiringsOf, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, localUnusable, readBackSettings,
     unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

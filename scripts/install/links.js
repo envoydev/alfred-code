@@ -28,6 +28,10 @@ const STACK_STORE_MARK = `${path.sep}.alfred${path.sep}stack${path.sep}`;
 const tell = (log, said, line) => { if (said.has(line)) return; said.add(line); log(line); };
 // A `<kind>/<file>` path as the report names it: `skill x`, `agent y`.
 const keepPath = (report, p) => { const [kind, file] = p.split('/'); report.keep(kind.slice(0, -1), file); };
+// Whether the link `name` in `dir` points into a `.alfred/stack/` folder (a path that may be gone), and whether it does while
+// its target is gone: the stack's own link, as pruneDanglingLinks and the library check read it.
+const pointsIntoStore = (dir, name) => `${path.resolve(dir, fs.readlinkSync(path.join(dir, name)))}${path.sep}`.includes(STACK_STORE_MARK);
+const isDanglingStackLink = (dir, name) => !fs.existsSync(path.join(dir, name)) && pointsIntoStore(dir, name);
 // The links in `.claude/<kind>` that no record lists, whose target path lies in a `.alfred/stack/` folder and is gone: the stack's own
 // (its store lost the item). A link to any other place, and a live one, is the user's and stays.
 function pruneDanglingLinks({ projectRoot, kind, listed, log, report })
@@ -38,8 +42,7 @@ function pruneDanglingLinks({ projectRoot, kind, listed, log, report })
     for (const entry of entries.filter((e) => e.isSymbolicLink() && !listed.has(`${kind}/${e.name}`)))
     {
         const at = path.join(dir, entry.name);
-        const target = path.resolve(dir, fs.readlinkSync(at));
-        if (fs.existsSync(at) || !`${target}${path.sep}`.includes(STACK_STORE_MARK)) continue;
+        if (!isDanglingStackLink(dir, entry.name)) continue;
         fs.unlinkSync(at);
         report.remove('link', `${kind}/${entry.name}`);
         log(`link removed: .claude/${kind}/${entry.name} - its target in the store is gone`);
@@ -214,4 +217,4 @@ function migrateFlatAgents({ projectRoot, home, hashes = {}, names = [], isStack
         if (moved) { report.update('agent', name); log(`agent moved to a folder: ${name}`); }
     }
 }
-module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, kept, tell, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };
+module.exports = { KINDS, AGENT_JUNCTION_ON_WIN32, pointsIntoStore, isDanglingStackLink, kept, tell, migrateFlatAgents, agentDir, agentAt, agentFile, fileOf, storeOf, gitState, homeOf, holderOf, moveIn, syncLinks, inherited, removeLinks, checkLinks };

@@ -40,6 +40,7 @@ const { recordView, recordOf, editedSince, carriedRows } = require('./records.js
 const skillHeadings = require('./skill-headings.js');
 const ruleOpenings = require('./rule-openings.js');
 const nativeRules = require('./native-rules.js');
+const { CANARY_RULE } = require('./native-rules-constants.js');
 const { createReport } = require('./report.js');
 const { NEW_SESSION_LINE, TOP_REL } = require('./report-constants.js');
 const { shippedText } = require('./retired-rules.js');
@@ -121,7 +122,6 @@ const HOOK_ENGINES = ['docs.js', 'history.js', 'layout.js', 'handoff.js', 'plan-
 // I12: the serena context the full copy route copied into the project's .claude up to 2.10.0 - no run copies it now,
 // so the ledger prunes an unchanged copy (pruneDroppedCopies).
 const NAV_CONTEXT = 'navigation-context.yml';
-const CANARY_RULE = 'alfred-rules';
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
 // shell-guards.js and file-guards.js are the dispatchers the copy route wires for the picked shell and file guards (no catalog row).
