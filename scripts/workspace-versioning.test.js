@@ -187,6 +187,14 @@ test('an older child\'s git seed leaves after the stamp and the same run already
     assert.match(r.outs[2], /workspace: .*ALFRED_CODE_DOCS_VERSIONING.*removed/);
 });
 
+test('an older child\'s git seed stays while its settings.json holds a versioning value', POSIX_ONLY, () =>
+{
+    const hold = (work) => fs.writeFileSync(path.join(childAt(work), '.claude', 'settings.json'), JSON.stringify({ env: { [KEY]: 'local' } }));
+    const r = scenario([{}, { at: API, after: look }, { at: API, act: 'update', before: (work) => { hold(work); join(work); }, after: look }]);
+    assert.deepStrictEqual(r.steps[2], { own: 'git', read: 'git', row: hashOf('git'), answered: [] }, r.outs[2]);
+    assert.match(r.outs[2], /workspace: ALFRED_CODE_DOCS_VERSIONING 'git' stays in \.alfred\/\.variables: settings\.json holds a value for it/, r.outs[2]);
+});
+
 test('--docs-versioning git stays after a second run', POSIX_ONLY, () =>
 {
     const r = scenario([{ after: join }, { at: API, args: ['--docs-versioning', 'git'], after: look }, { at: API, act: 'update', after: look }]);

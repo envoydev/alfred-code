@@ -613,6 +613,25 @@ function isSeed(key, value, rows, catalogKey = key)
 // before the installer moves them) gets `join-prune: settings` in its stamp, so the next settings pass prunes them there
 // (envPlan) - a 2.12 child that never answered a join keeps every value (the spec's Migration).
 // W1: every run that writes a joined child's `.variables` calls it too, with no `seeds`: a value equal to the chain's leaves.
+// The layers the loader reads after the own file and before the members (layout.js ownLayers' order): the first holding a
+// value would answer once the own line left. Each is a [name, env object] pair; read through the loader's own `valueIn`.
+function heldLayers(projectRoot, env)
+{
+    const layout = require('../../stack/hooks/layout.js');
+    const envIn = (f) => { const e = (readJson(f) || {}).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; };
+    return [['settings.json', envIn(path.join(projectRoot, '.claude', 'settings.json'))], ['account settings',
+        envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
+}
+
+// The first of those layers that holds `key`, as [name, value], else undefined. A settings file that cannot be read counts
+// as holding it - the line it may answer with stays. The one read both the installer's ranking and the remover use.
+function layerHolding(projectRoot, key, { env = process.env } = {})
+{
+    const layout = require('../../stack/hooks/layout.js');
+    try { return heldLayers(projectRoot, env).map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined); }
+    catch { return ['a settings file that cannot be read', undefined]; }
+}
+
 // `write: false` (3.12 - a run that does not write a file git tracks, a local-scope one) removes nothing and names each
 // value that would leave in one line, so the team's file is never written from one machine.
 function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = false, write = true } = {})
@@ -626,13 +645,10 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const dropped = [];
     const own = [];
-    // The layers the loader reads after the own file and before the members (layout.js ownLayers' order): the first holding
-    // another value would answer once the own line left, so the line stays, named.
-    const envIn = (f) => { const e = (readJson(f) || {}).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; };
+    // A layer holding another value would answer once the own line left, so the line stays, named.
     // Each read through the loader's own `valueIn`, so a 3.10 name (layout.OLD_KEYS, until 4.0.0) answers as it does there -
     // the own file's included: with the line gone, its old name is what the loader reads next.
-    const held = [['settings.json', envIn(path.join(projectRoot, '.claude', 'settings.json'))], ['account settings',
-        envIn(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'))], ['the run\'s environment', layout.launchEnv(env)]];
+    const held = heldLayers(projectRoot, env);
     const stays = [];
     for (const [key, value] of Object.entries(values))
     {
@@ -683,9 +699,14 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     const chain = normaliseValue(chainValues(projectRoot, { env })[KEY]);
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
-    const leaves = seedLeaves({ value, atLedgerHash: rows[KEY] === stamp.valueHash(value), answeredEnv, firm: Boolean(advice && advice.firm), chain, linked: chain !== undefined });
-    if (!leaves) return { dropped: false, kept: value };
+    const held = layerHolding(projectRoot, KEY, { env });
+    const input = { value, atLedgerHash: rows[KEY] === stamp.valueHash(value), answeredEnv, firm: Boolean(advice && advice.firm), chain, linked: chain !== undefined };
     const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+    if (!seedLeaves({ ...input, heldElsewhere: Boolean(held) }))
+    {
+        if (held && seedLeaves(input)) log(`workspace: ${KEY} '${value}' stays in ${rel}: ${held[0]} holds a value for it, which would answer once the line left`);
+        return { dropped: false, kept: value };
+    }
     if (!write)
     {
         log(`workspace: ${KEY} '${value}' in ${rel} is the stack's seed and the workspace answers '${chain}' - git tracks the file, so this run leaves it as it is; a project-scope update removes it`);
@@ -2237,7 +2258,7 @@ module.exports = {
     CATEGORIES, emptyRecord, workspaceOn,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, keepOnLeave, chain, subtree, rescan, nestedInstalls,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, layerHolding, keepOnLeave, chain, subtree, rescan, nestedInstalls,
     planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,

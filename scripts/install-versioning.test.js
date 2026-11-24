@@ -57,6 +57,7 @@ const LEAVES_TABLE = [
     ['a firm value that differs stays', { value: 'git', atLedgerHash: true, answeredEnv: [], firm: true, chain: 'local', linked: true }, false],
     ['a typed value (off its hash) stays', { value: 'git', atLedgerHash: false, answeredEnv: [], firm: false, chain: 'local', linked: true }, false],
     ['an answered value stays', { value: 'git', atLedgerHash: true, answeredEnv: [KEY], firm: false, chain: 'local', linked: true }, false],
+    ['a value another layer holds keeps the line', { value: 'git', atLedgerHash: true, answeredEnv: [], firm: false, chain: 'local', linked: true, heldElsewhere: true }, false],
 ];
 for (const [name, input, leaves] of LEAVES_TABLE)
     test(`remover: ${name}`, () => assert.strictEqual(seedLeaves(input), leaves));
@@ -219,4 +220,32 @@ test('copy.resolveDocsVersioning ranked falls back to the chain; unranked still 
     finally { delete process.env.ALFRED_CODE_WORKSPACE; }
     const typed = joined({ child: `${KEY}=git\n` });
     assert.strictEqual(copy.resolveDocsVersioning(typed.child, 'project', { ranked: true }), 'git');
+});
+
+test('a seed another layer answers stays the child\'s own, in the ranking and in the remover', () =>
+{
+    const at = joined({ child: `${KEY}=git\n` });
+    const ledgerRows = { [KEY]: stampLib.valueHash('git') };
+    fs.writeFileSync(path.join(at.child, '.claude', 'settings.json'), JSON.stringify({ env: { [KEY]: 'local' } }));
+    const got = rank(at, { ledgerRows, answeredEnv: [] });
+    assert.deepStrictEqual([got.value, got.source], ['git', 'own'], 'the ranking keeps the line the loader reads first');
+    const kept = require('./install/workspace.js').pruneVersioningSeed(at.child, { env: ON, advice: { firm: false }, answeredEnv: [], log: () => {} });
+    assert.deepStrictEqual([kept.dropped, kept.kept], [false, 'git']);
+});
+
+test('layerHolding names the first layer between .variables and the members that holds the key', () =>
+{
+    const ws = require('./install/workspace.js');
+    const at = joined();
+    const acct = path.join(TMP, 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    assert.strictEqual(ws.layerHolding(at.child, KEY, { env: ON }), undefined);
+    assert.deepStrictEqual(ws.layerHolding(at.child, KEY, { env: { ...ON, [KEY]: 'git' } }), ['the run\'s environment', 'git']);
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ env: { [KEY]: 'local' } }));
+    assert.deepStrictEqual(ws.layerHolding(at.child, KEY, { env: ON }), ['account settings', 'local']);
+    fs.writeFileSync(path.join(at.child, '.claude', 'settings.json'), JSON.stringify({ env: { [KEY]: 'git' } }));
+    assert.deepStrictEqual(ws.layerHolding(at.child, KEY, { env: ON }), ['settings.json', 'git']);
+    fs.writeFileSync(path.join(at.child, '.claude', 'settings.json'), '{ not json');
+    assert.strictEqual(ws.layerHolding(at.child, KEY, { env: ON })[0], 'account settings', 'a garbage file reads as empty, as the loader reads it');
+    fs.rmSync(acct, { recursive: true, force: true });
 });

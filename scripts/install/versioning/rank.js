@@ -25,10 +25,11 @@ function rankVersioning({ flag, carry, reseed, own, firm, chain, linked })
 
 // D3's remover rule: a linked child whose chain holds a value loses its own line when it is at its ledger hash, is no
 // answer, and either the seed rule's answer is not firm or equals the chain's. `answeredEnv` is the stamp's answered
-// keys (a list or a set), or a plain flag for this key.
-function seedLeaves({ value, atLedgerHash, answeredEnv, firm, chain, linked })
+// keys (a list or a set), or a plain flag for this key. `heldElsewhere`: a layer the loader reads between `.variables` and
+// the members (settings.json, the account's, the launch env) holds a value - it would answer once the line left, so it stays.
+function seedLeaves({ value, atLedgerHash, answeredEnv, firm, chain, linked, heldElsewhere = false })
 {
-    if (!linked || chain === undefined || !atLedgerHash) return false;
+    if (!linked || chain === undefined || !atLedgerHash || heldElsewhere) return false;
     const answered = Array.isArray(answeredEnv) || answeredEnv instanceof Set ? [...answeredEnv].includes(KEY) : Boolean(answeredEnv);
     if (answered) return false;
     return !firm || value === chain;
