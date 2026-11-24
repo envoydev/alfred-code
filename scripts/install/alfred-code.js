@@ -1043,7 +1043,7 @@ function ignoreStep(ctx, docsPath)
     // The docs memory's union-merge attributes follow the versioning (memory-dir.js, R10).
     ctx.docsVersioningMode = mode;
     let data = null;
-    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, log }); }
+    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, linkedChild: Boolean(ctx.childEnv && ctx.childEnv.linked), log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
     ctx.dataIgnoreOk = data !== null;
     const dataCovered = STACK_IGNORE.includes(data);

@@ -276,3 +276,40 @@ test('stage 1: a local install hides the whole data root - no self re-include; g
     assert.strictEqual(text({ mode: 'local', scope: 'local' }), `${dataRoot.DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n`);
     assert.strictEqual(dataRoot.CLAUDE_IGNORE, '# alfred-code: a local install - nothing under .claude is committed from this checkout\n*\n');
 });
+
+const GIT_SHAPE_SNAPSHOT = "# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local; the docs under it are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n/*\n!/.gitignore\n!/.variables\n!/docs/\n# the hooks' state before 2.8.0, which a session started before the update still writes\n/docs/flow/\n/docs/hook-blocks/\n/docs/history/*.json\n/docs/tools-usage/\n/docs/docs-log.jsonl\n/docs/usage-report/**/*.jsonl\n# the run book's credentials file before 2026-10-13, which an older capture still writes\n/docs/project-capabilities/credentials.local.env\n# the awareness capture's inventory names this machine's plugins\n/docs/awareness/AGENTS-AWARENESS.md\n# the user's own preferences - how they want the assistant to work, and their code taste\n/docs/preferences/PERSONAL-PREFERENCES.md\n/docs/preferences/PERSONAL-CODE-PREFERENCES.md\n# the user's own awareness notes\n/docs/awareness/USER-AWARENESS.md\n";
+
+test('the git shape ignores the branch overlays for a linked child only', () =>
+{
+    const call = (extra) => dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'project', ...extra });
+    const linked = call({ linkedChild: true });
+    assert.ok(linked.split('\n').includes('/docs/.branches/'));
+    assert.strictEqual(linked, `${GIT_SHAPE_SNAPSHOT}/docs/.branches/\n`);
+    assert.strictEqual(call({ linkedChild: false }), GIT_SHAPE_SNAPSHOT);
+    assert.strictEqual(call({}), GIT_SHAPE_SNAPSHOT);
+});
+
+test('the local shape is unchanged by linkedChild', () =>
+{
+    for (const scope of ['project', 'user', 'local', undefined])
+    {
+        const call = (extra) => dataRoot.dataIgnoreText({ root: '.alfred', docsPath: '.alfred/docs', mode: 'local', scope, ...extra });
+        assert.strictEqual(call({ linkedChild: true }), call({}), String(scope));
+    }
+    const outside = (extra) => dataRoot.dataIgnoreText({ root: '.alfred', docsPath: 'docs', mode: 'git', scope: 'project', ...extra });
+    assert.strictEqual(outside({ linkedChild: true }), outside({}));
+});
+
+test('ensureDataIgnore passes linkedChild through to the written file', () =>
+{
+    const project = path.join(TMP, 'linked-child');
+    fs.mkdirSync(project, { recursive: true });
+    docs.ensureDataIgnore({ projectRoot: project, root: '.alfred', docsPath: '.alfred/docs', mode: 'git', scope: 'project', linkedChild: true });
+    assert.ok(fs.readFileSync(path.join(project, '.alfred', '.gitignore'), 'utf8').split('\n').includes('/docs/.branches/'));
+});
+
+test('the two versioning texts are exact', () =>
+{
+    assert.strictEqual(dataRoot.CLAUDE_VERSIONING_IGNORE, '# alfred-code: versioning local - nothing under .claude is committed from this project\n*\n');
+    assert.strictEqual(dataRoot.CURSOR_VERSIONING_IGNORE, '# alfred-code: versioning local - nothing under .cursor is committed from this project\n*\n');
+});

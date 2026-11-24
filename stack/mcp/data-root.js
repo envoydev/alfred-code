@@ -180,6 +180,9 @@ function findSecretsFile(projectDir, root = DATA_ROOT_DEFAULT)
 const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
 // `.claude/.gitignore` of a local install (the installer's claudeIgnoreStep): the whole folder stays out of git, this file too.
 const CLAUDE_IGNORE = '# alfred-code: a local install - nothing under .claude is committed from this checkout\n*\n';
+// The same file, and a `.cursor` twin, for a project whose docs versioning is `local` (the workspace-versioning plan, D5): nothing under the folder is committed from this project.
+const CLAUDE_VERSIONING_IGNORE = '# alfred-code: versioning local - nothing under .claude is committed from this project\n*\n';
+const CURSOR_VERSIONING_IGNORE = '# alfred-code: versioning local - nothing under .cursor is committed from this project\n*\n';
 // What stays machine-local under the docs root, relative to it: never committed, whatever the versioning. The hooks' state
 // left in 2.8.0 for the data root's state/ and statistics/ (docs.migrateLayout), but its old homes stay listed for the 2.x
 // line: a session started before the update writes them again, and a hand-set root keeps them until its move is answered
@@ -208,7 +211,8 @@ function docsInsideRoot({ root, docsPath })
 // `scope` project or user re-includes the stack's variables (workspace roles and variables, D6): those scopes share their
 // settings, so the team shares `.variables` too. A local install, and the hooks' own write (no scope), keep it out.
 // A local install whose folder holds nothing committed re-includes nothing, the file itself neither: git lists no `.alfred/`.
-function dataIgnoreText({ root, docsPath, mode, scope })
+// `linkedChild` (a child project of a workspace that shares its docs) adds the branch overlays' folder to the git shape: they are this machine's.
+function dataIgnoreText({ root, docsPath, mode, scope, linkedChild = false })
 {
     const rel = docsInsideRoot({ root, docsPath });
     const kept = `!/.gitignore\n${scope === 'project' || scope === 'user' ? '!/.variables\n' : ''}`;
@@ -217,7 +221,7 @@ function dataIgnoreText({ root, docsPath, mode, scope })
     if (mode === 'local') return `${DATA_IGNORE_HEAD}; the docs under it are too (ALFRED_CODE_DOCS_VERSIONING=local)\n/*\n${whole}`;
     const state = DOCS_STATE_IGNORE.map((l) => (l.startsWith('#') ? l : `/${rel}${l}`));
     return `${DATA_IGNORE_HEAD}; the docs under it are committed (ALFRED_CODE_DOCS_VERSIONING=git) but for the lines below\n`
-        + `/*\n${kept}!/${rel.split('/')[0]}/\n${state.join('\n')}\n`;
+        + `/*\n${kept}!/${rel.split('/')[0]}/\n${state.join('\n')}\n${linkedChild ? `/${rel}/.branches/\n` : ''}`;
 }
 
 // Before the sensitive-data file lands in a root: the file is written only when absent (the installer keeps it current),
@@ -471,6 +475,6 @@ function readPending(text)
 module.exports = {
     DATA_ROOT_DEFAULT, SENSITIVE_FILE, SECRETS_FILE, LEGACY_SECRETS_FILE, SECRET_FILES, findSecretsFile, renameSecrets, repointRunBooks, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
     checkDataPath, dataRootOf, ROOT_ENTRIES, stackEntries, readRootLine, sameRoot, gitIgnores, targetOf,
-    DATA_IGNORE_HEAD, CLAUDE_IGNORE, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile, storeValues,
+    DATA_IGNORE_HEAD, CLAUDE_IGNORE, CLAUDE_VERSIONING_IGNORE, CURSOR_VERSIONING_IGNORE, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile, storeValues,
     writeText, moveEntry, readPending,
 };

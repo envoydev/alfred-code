@@ -2023,7 +2023,7 @@ function moveDocsRoot({ projectRoot, plan })
 const { DATA_IGNORE_HEAD, dataIgnoreText, docsInsideRoot } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
-function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, log = () => {} })
+function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, linkedChild = false, log = () => {} })
 {
     const base = path.join(projectRoot, ...normRoot(root).split('/'));
     const file = path.join(base, '.gitignore');
@@ -2049,7 +2049,7 @@ function ensureDataIgnore({ projectRoot, root, docsPath, mode, scope, log = () =
         try { keepVariables = String(rt.execCommand('git', ['ls-files', '--', `${normRoot(root)}/.gitignore`], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
         catch { keepVariables = false; }
     }
-    const want = dataIgnoreText({ root, docsPath, mode: shape, scope: keepVariables ? 'project' : scope });
+    const want = dataIgnoreText({ root, docsPath, mode: shape, scope: keepVariables ? 'project' : scope, linkedChild });
     if (have === want) return 'current';
     if (have !== null && !have.startsWith(DATA_IGNORE_HEAD))
     {
