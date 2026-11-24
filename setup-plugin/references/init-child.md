@@ -50,8 +50,10 @@ say `the install at <rel> (<name>) could not be read - installing standalone; /a
   (<source>)` line per key, and its `docs-versioning:` line replaces the detection's. Each question shows the parent's value as its default, marked `from root`.
   An answer equal to it writes nothing, since this project reads the parent's value through the workspace - the
   installer writes nothing when the answer equals the parent's value; only a different answer is set, and that key is
-  this project's own from then on. The data root is never inherited - every project's is its own `.alfred` - and
-  neither is `ALFRED_CODE_DOCS_VERSIONING`.
+  this project's own from then on. The data root is never inherited - every project's is its own `.alfred`.
+  `ALFRED_CODE_DOCS_VERSIONING` is inherited like the other keys: where the workspace answers, the `docs-versioning:`
+  line reads `from root <v>`, that is the question's default, and an answer equal to it passes no `--docs-versioning`
+  to the install call; a different answer passes the flag and is this project's own.
 
 ## Before the install call - the join, then the ignores
 

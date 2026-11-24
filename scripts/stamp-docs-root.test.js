@@ -278,6 +278,54 @@ test('--seed-versioning leaves an existing value untouched, byte for byte', () =
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+// Workspace versioning D10: a linked child whose workspace root answers the key holds no seed of its own.
+const { putWorkspace } = require('./workspace-fixture.js');
+function linkedChild(rootText, childText)
+{
+    const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-ws-')));
+    const ws = path.join(top, 'ws');
+    const child = path.join(ws, 'api');
+    for (const dir of [ws, child]) fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    for (const dir of [ws, child]) fs.mkdirSync(path.join(dir, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(child, '.claude', 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    for (const dir of [ws, child]) fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\nmanaged-env: \n');
+    fs.mkdirSync(path.join(child, '.claude', 'rules'), { recursive: true });
+    fs.copyFileSync(SOURCE_RULE, path.join(child, '.claude', 'rules', 'alfred-docs-root.md'));
+    gitIn(child, 'init', '-q', '-b', 'develop', '.');
+    putWorkspace(ws, { children: ['api'] });
+    putWorkspace(child, { parent: '..' });
+    if (rootText !== null) fs.writeFileSync(path.join(ws, '.alfred', '.variables'), rootText);
+    if (childText !== undefined) fs.writeFileSync(path.join(child, '.alfred', '.variables'), childText);
+    return { top, child };
+}
+const seedIn = (root, acct) => execFileSync('node', [SCRIPT, root, '--seed-versioning'], { encoding: 'utf8', env: { ...process.env, ALFRED_CODE_WORKSPACE: '1', CLAUDE_CONFIG_DIR: acct } });
+const lastLine = (text) => text.trim().split('\n').pop();
+
+test('--seed-versioning writes nothing when the chain answers', () => {
+    const at = linkedChild('ALFRED_CODE_DOCS_VERSIONING=local\n');
+    try
+    {
+        const acct = path.join(at.top, 'acct');
+        assert.strictEqual(lastLine(seedIn(at.child, acct)), 'stamp-docs-root: docs versioning: local from the workspace - nothing seeded');
+        assert.ok(!fs.existsSync(path.join(at.child, '.alfred', '.variables')), 'no own line is written');
+        assert.ok(!fs.existsSync(path.join(at.child, '.claude', 'settings.local.json')), 'and no settings.local.json value');
+        assert.strictEqual(lastLine(seedIn(at.child, acct)), 'stamp-docs-root: docs versioning: local from the workspace - nothing seeded', 'a re-run says the same');
+    }
+    finally { fs.rmSync(at.top, { recursive: true, force: true }); }
+});
+
+test('--seed-versioning under a chain keeps an own value as it is, and a garbage chain value is no answer', () => {
+    const own = linkedChild('ALFRED_CODE_DOCS_VERSIONING=local\n', 'ALFRED_CODE_DOCS_VERSIONING=git\n');
+    const garbage = linkedChild('ALFRED_CODE_DOCS_VERSIONING=maybe\n');
+    try
+    {
+        assert.match(seedIn(own.child, path.join(own.top, 'acct')), /already 'git' - nothing seeded/);
+        assert.strictEqual(fs.readFileSync(path.join(own.child, '.alfred', '.variables'), 'utf8'), 'ALFRED_CODE_DOCS_VERSIONING=git\n');
+        assert.match(seedIn(garbage.child, path.join(garbage.top, 'acct')), /ALFRED_CODE_DOCS_VERSIONING seeded '(git|local)'/);
+    }
+    finally { for (const d of [own.top, garbage.top]) fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test('--seed-versioning is a fail-soft no-op on malformed settings.json, exit 0', () => {
     const root = makeProject('{broken');
     const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));

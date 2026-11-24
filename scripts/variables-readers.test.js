@@ -147,3 +147,32 @@ test('the scan sees each access shape and passes over a process env read, a mess
     assert.deepStrictEqual(rows('const T = `T${n}`;'), [], 'a head that is no key fragment');
     assert.deepStrictEqual(rows('const CONFIG = /(?:\\.env[^/]*)$/;'), [], 'a regex naming .env files');
 });
+
+// Workspace versioning D10: `recommend --child` names the workspace root's value, so the walk shows it as the default.
+test('recommend --child names the root\'s value', () =>
+{
+    const { putWorkspace } = require('./workspace-fixture.js');
+    const os = require('node:os');
+    const top = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'recommend-ws-')));
+    const child = path.join(top, 'ws', 'api');
+    try
+    {
+        fs.mkdirSync(path.join(child, '.claude'), { recursive: true });
+        fs.mkdirSync(path.join(top, 'ws', '.claude'), { recursive: true });
+        for (const dir of [child, path.join(top, 'ws')]) fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\nmanaged-env: \n');
+        execFileSync('git', ['init', '-q', '-b', 'develop', '.'], { cwd: child });
+        putWorkspace(path.join(top, 'ws'), { children: ['api'] });
+        putWorkspace(child, { parent: '..' });
+        const recommend = (env) => execFileSync('node', [path.join(ROOT, 'scripts', 'variables.js'), 'recommend', '--root', child, '--child'],
+            { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(top, 'acct'), ...env } }).trim();
+        const on = { ALFRED_CODE_WORKSPACE: '1' };
+        fs.writeFileSync(path.join(top, 'ws', '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=local\n');
+        assert.strictEqual(recommend(on), 'docs-versioning: from root local');
+        assert.match(recommend({ ALFRED_CODE_WORKSPACE: '0' }), /^docs-versioning: recommend git - /, 'the switch off: no chain, as today');
+        fs.writeFileSync(path.join(top, 'ws', '.alfred', '.variables'), 'ALFRED_CODE_DOCS_VERSIONING=maybe\n');
+        assert.match(recommend(on), /^docs-versioning: recommend git - /, 'a garbage root value is no answer');
+        fs.rmSync(path.join(top, 'ws', '.alfred', '.variables'));
+        assert.match(recommend(on), /^docs-versioning: recommend git - /, 'a root with no value: as today');
+    }
+    finally { fs.rmSync(top, { recursive: true, force: true }); }
+});

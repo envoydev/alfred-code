@@ -13,6 +13,7 @@ const layout = require('../stack/hooks/layout.js');
 const variables = require('./install/variables.js');
 const stamp = require('./install/stamp.js');
 const { KEY: DOCS_VERSIONING_KEY } = require('./install/versioning/constants.js');
+const { normaliseValue } = require('./install/versioning/rank.js');
 
 const USAGE = [
     'usage: node scripts/variables.js set --root <dir> [--scope project|user|local] KEY=value ...',
@@ -44,6 +45,14 @@ function parse(argv)
     return cmd === 'set' && !out.pairs.length ? null : out;
 }
 
+// Workspace versioning D10: the value a linked child inherits from its workspace root, as the walk's default - the
+// chain's normalised value, where no firm answer of the project's own layout outranks it (rankVersioning's order).
+function inheritedVersioning(root, advice, env)
+{
+    const chain = normaliseValue(require('./install/workspace.js').chainValues(path.resolve(root), { env })[DOCS_VERSIONING_KEY]);
+    return chain && !(advice.firm && advice.value !== chain) ? chain : undefined;
+}
+
 // `env` is the launch env: the prelude the entry loads for its blocking stdio also applies the stack's variables to
 // process.env, which would make show name every inherited value `env`.
 function main(env = process.env)
@@ -59,7 +68,8 @@ function main(env = process.env)
         const scope = args.scope || 'project';
         const docsPath = require('./install/copy.js').resolveDocsRoot(args.root, scope);
         const advice = require('./install/docs.js').docsVersioningAdvice({ projectRoot: args.root, docsPath, scope, child: args.child });
-        console.log(`docs-versioning: recommend ${advice.value} - ${advice.reason}`);
+        const inherited = args.child ? inheritedVersioning(args.root, advice, env) : undefined;
+        console.log(inherited ? `docs-versioning: from root ${inherited}` : `docs-versioning: recommend ${advice.value} - ${advice.reason}`);
         return 0;
     }
     if (args.cmd === 'show')
