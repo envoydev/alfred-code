@@ -115,6 +115,13 @@ test('gate: the Node major comes from ci.yml, so the gate follows CI rather than
     assert.strictEqual(gate.ciNodeMajor('steps: []'), null);
 });
 
+test('gate: .nvmrc, ci.yml and lint.yml pin one Node major, so dev, CI and the gate run the same Node', () => {
+    const root = path.join(__dirname, '..');
+    const workflow = (name) => gate.ciNodeMajor(fs.readFileSync(path.join(root, '.github', 'workflows', name), 'utf8'));
+    const nvmrc = Number(fs.readFileSync(path.join(root, '.nvmrc'), 'utf8').trim().replace(/^v/, '').split('.')[0]);
+    assert.deepStrictEqual({ ci: workflow('ci.yml'), lint: workflow('lint.yml') }, { ci: nvmrc, lint: nvmrc });
+});
+
 test('gate: the mac leg finds the pinned Node major under nvm or Homebrew, else flags the current one', () => {
     const brew = path.join('/opt/homebrew/opt', 'node@22', 'bin', 'node');
     const exists = p => p.split(path.sep).join('/').includes('/nvm/') || p === brew;   // path.join spells \\ on Windows

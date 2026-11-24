@@ -53,7 +53,7 @@ jobs:
       - run: git show-ref --verify --quiet refs/heads/main || git branch main origin/main
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false
       - run: npm install --no-audit --no-fund
       - run: npm test -- --test-shard=${{ matrix.shard }}

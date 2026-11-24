@@ -25,6 +25,7 @@ the three exists and says nothing when one switches it off (<https://code.claude
 ## Commands
 
 ```bash
+nvm use                                # Node 26, from .nvmrc - what CI, lint and the gate run
 npm install                            # first in a fresh clone
 npm run lint                           # scripts/lint-skills.js - manifest, parity, house voice, the always-on budget
 npm test                               # scripts/run-tests.js - the whole suite, minutes; run it in the background

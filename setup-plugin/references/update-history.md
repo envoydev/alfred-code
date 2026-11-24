@@ -1341,3 +1341,10 @@ updated, removed, kept) and one line saying a new session is needed. Report thes
 checks the same layout: marked rule files, links, and leftover seat rows.
 
 Start a new session after the update, so Claude Code loads the rule files and lists the linked agents.
+
+## after 3.18.0 - tested on Node 26
+
+The release is now tested on Node 26: the CI runs on macOS, Linux and Windows, the lint run and the local gate all use
+it, and the repository pins it in `.nvmrc`. Update your Node to 26. Node 22.12 or newer still runs the stack, untested.
+
+Nothing to do in an installed project beyond the update.
