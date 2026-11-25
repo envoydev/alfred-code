@@ -148,9 +148,9 @@ const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml', '.gitign
 // A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys; custom memory's
 // switch-off is a top-level key.
 // A workspace row is one MEMBER of an array (settings.js syncMembers), keyed by the member's own hash, so two members never
-// share a ledger key.
+// share a ledger key. A key of an object (settings-keys.js, `skillOverrides{<hash of the key>}`) is a row the same way.
 // until 4.0.0: the modelSettings.<id>.autoCompactWindow rows stay readable so a later release can take ledgered windows back.
-const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|autoMemoryDirectory|(?:claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[[0-9a-f]{64}\])$/;
+const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|autoMemoryDirectory|(?:claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[[0-9a-f]{64}\]|skillOverrides\{[0-9a-f]{64}\})$/;
 const MCP_SCOPES = ['local', 'user'];
 // Workspace layering (spec 2.2): the one account settings key D5 writes, the MCP rows a child copies from its root
 // (release 2) and the wraps it put in place of a registration, each by scope.

@@ -1,0 +1,170 @@
+'use strict';
+// A workspace root hides what a child below it also loads (workspace-child-stacks, 2026-11-25): the child's copy of a skill the
+// root lists, as a `skillOverrides` key in the root's own settings.local.json, and the native rule file the root keeps for a
+// set-aside child, as a `claudeMdExcludes` glob. Each case runs the real installer over a root and a child in a temp tree.
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const rt = require('./install/runtime.js');
+const wsLib = require('./install/workspace.js');
+const stampLib = require('./install/stamp.js');
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { putWorkspace } = require('./workspace-fixture.js');
+const { realLong } = require('./test-paths.js');
+
+const RULE = 'angular-conventions';
+const DROPPED = 'sqlite';   // outside the closure of the always rules: nothing requires it, so a drop applies
+const SELECTION = `skill javascript\nskill ${DROPPED}\nrule ${RULE}\n`;
+const SCOPE = ['--scope', 'local'];
+const UPDATE = [...SCOPE, '--installed-only'];
+const OFF = 'off';
+const CHILD = 'api';
+const ACCOUNT_ON = { ALFRED_CODE_WORKSPACE: '1' };
+
+const localOf = (repo) => path.join(repo, '.claude', 'settings.local.json');
+const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+const overrides = (repo) => (readJson(localOf(repo)) || {}).skillOverrides || {};
+const excludes = (repo) => (readJson(localOf(repo)) || {}).claudeMdExcludes || [];
+const ledgerRows = (repo) => Object.keys((stampLib.readLedger(path.join(repo, '.claude', 'alfred-code.stamp')) || { settings: {} }).settings['settings.local.json'] || {});
+const keyRows = (repo) => ledgerRows(repo).filter((row) => row.startsWith('skillOverrides{'));
+const ruleGlob = (repo) => wsLib.excludeGlobs([path.join(repo, '.claude', 'rules', `${RULE}.md`)], process.platform)[0];
+
+// The child, laid down after the root's install so its skills can link into the root's store: its own stamp with the links
+// it holds, a real symlink for each, real folders no record names, its own git repository unless `shareRepo`, and its record.
+// `included` makes it an included child; else it is set aside, with `keptFor` as the root's kept lines.
+function child(repo, { links = ['javascript', DROPPED], handMade = ['hand-made'], shareRepo = false, included = true, keptFor = null } = {})
+{
+    const at = path.join(repo, CHILD);
+    const skills = path.join(at, '.claude', 'skills');
+    fs.mkdirSync(skills, { recursive: true });
+    const linkLine = links.length ? `links: ${links.map((name) => `skills/${name}=symlink`).join(',')}\n` : '';
+    fs.writeFileSync(path.join(at, '.claude', 'alfred-code.stamp'), `seats-route: plugin\nown-picks: \n${linkLine}`);
+    for (const name of links) fs.symlinkSync(path.relative(skills, path.join(repo, '.alfred', 'stack', 'skills', name)), path.join(skills, name), 'dir');
+    for (const name of handMade) fs.mkdirSync(path.join(skills, name), { recursive: true });
+    fs.writeFileSync(path.join(at, '.gitignore'), '.claude/\n.alfred/\n');   // git ignores the folder, so the child's skills stay links
+    if (!shareRepo) rt.execCommand('git', ['init', '-q', at]);
+    putWorkspace(at, { parent: '..' });
+    putWorkspace(repo, { children: [CHILD], includeAsked: [CHILD], ...(included ? { includedChildren: [CHILD] } : {}), ...(keptFor ? { keptFor } : {}) });
+}
+
+const seen = (repo) => ({ over: overrides(repo), rows: keyRows(repo) });
+// Runs the actions with the child laid down after the first one; `steps` are the args of each step after the first (an update
+// by default), and `after` reads each step's tree and may change it for the next.
+const run = (actions, { steps = [], env = ACCOUNT_ON, childOptions = {}, after = seen } = {}) =>
+    seedRun(actions, SELECTION, { args: [SCOPE, ...actions.slice(1).map((_, i) => steps[i] || UPDATE)], env, each: (repo, i) => { if (i === 0) child(repo, childOptions); return after(repo, i); } });
+const NAMES = [`${CHILD}:javascript`, `${CHILD}:${DROPPED}`];
+
+test('a root with a linked child hides the child\'s copy of each skill it lists, and no skill the child holds of its own', POSIX_ONLY, () =>
+{
+    const { outs, steps } = run(['install', 'update'], { childOptions: { links: ['javascript', DROPPED, 'csharp'] } });
+    assert.deepStrictEqual(steps[0].over, {}, 'the child was not there at the install');
+    for (const name of NAMES) assert.strictEqual(steps[1].over[name], OFF, outs[1]);
+    assert.ok(!Object.keys(steps[1].over).some((key) => /csharp|hand-made/.test(key)), `${JSON.stringify(steps[1].over)}: a skill the root does not list, and a folder no record names, stay visible`);
+    assert.strictEqual(steps[1].rows.length, Object.keys(steps[1].over).length, 'one ledger row a key');
+});
+
+test('a re-run changes nothing: the settings file and the stamp\'s ledger line stay byte for byte', POSIX_ONLY, () =>
+{
+    const bytes = (repo) => [fs.readFileSync(localOf(repo), 'utf8'), (/^managed-settings: .*$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[0]];
+    // The root's own run re-links the child after the keys are read, so the keys settle one run later (the known limit); the runs after that change nothing.
+    const { steps } = run(['install', 'update', 'update', 'update', 'update'], { after: bytes });
+    assert.match(steps[2][1], /skillOverrides\{/);
+    assert.deepStrictEqual(steps[3], steps[2]);
+    assert.deepStrictEqual(steps[4], steps[2]);
+});
+
+test('an uninstall at the root takes its keys out of settings.local.json and leaves the user\'s', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update', 'uninstall'], {
+        steps: [null, SCOPE],
+        after: (repo, i) =>
+        {
+            if (i === 0) fs.writeFileSync(localOf(repo), JSON.stringify({ skillOverrides: { mine: OFF } }));
+            return overrides(repo);
+        },
+    });
+    assert.deepStrictEqual(Object.keys(steps[1]).sort(), [...NAMES, 'mine']);
+    assert.deepStrictEqual(steps[2], { mine: OFF });
+});
+
+test('a key the user already holds is theirs: kept as set, never ledgered', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], {
+        after: (repo, i) => { if (i === 0) fs.writeFileSync(localOf(repo), JSON.stringify({ skillOverrides: { [NAMES[0]]: 'on' } })); return seen(repo); },
+    });
+    assert.deepStrictEqual(steps[1].over, { [NAMES[0]]: 'on', [NAMES[1]]: OFF });
+    assert.strictEqual(steps[1].rows.length, 1);
+});
+
+test('a skill the root drops loses its key at the next run, and a key the user then changed to on stays', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update', 'update', 'update', 'update'], {
+        steps: [null, null, [...UPDATE, '--drop', `skill ${DROPPED}`]],
+        after: (repo, i) =>
+        {
+            const got = seen(repo);
+            if (i === 3) fs.writeFileSync(localOf(repo), JSON.stringify({ ...readJson(localOf(repo)), skillOverrides: { ...got.over, [NAMES[0]]: 'on' } }));
+            return got;
+        },
+    });
+    assert.ok(NAMES.every((name) => steps[2].over[name] === OFF), JSON.stringify(steps[2].over));
+    assert.strictEqual(steps[3].over[NAMES[1]], undefined, 'the dropped skill\'s key went');
+    assert.strictEqual(steps[3].over[NAMES[0]], OFF);
+    assert.strictEqual(steps[4].over[NAMES[0]], 'on', 'a value the user changed is theirs');
+    assert.strictEqual(steps[4].rows.length, steps[3].rows.length - 1, 'the row of that key is dropped');
+});
+
+test('the workspace switch at 0 writes no key', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { env: { ALFRED_CODE_WORKSPACE: '0' } });
+    assert.deepStrictEqual(steps[1].over, {});
+});
+
+test('a print-plan run writes no key', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update', 'update'], { steps: [[...UPDATE, '--print-plan']] });
+    assert.deepStrictEqual(steps[1].over, {});
+    assert.ok(Object.keys(steps[2].over).length > 0, 'the next real run writes them');
+});
+
+test('nothing is written into the child', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { after: (repo, i) => (i === 0 ? false : fs.existsSync(path.join(repo, CHILD, '.claude', 'settings.local.json'))) });
+    assert.strictEqual(steps[1], false);
+});
+
+test('a child skill the root does not list, and a folder no record names, stay visible', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { childOptions: { links: [], handMade: ['javascript'] } });
+    assert.deepStrictEqual(steps[1].over, {}, 'a javascript folder no record names is the child\'s own');
+});
+
+// The kept rule: the root drops a rule its set-aside child keeps; the root's marked native file goes on loading unless the exclude hides it.
+const KEEP = [...UPDATE, '--drop', `rule ${RULE}`];
+const kept = (repo) => ({ glob: excludes(repo).includes(ruleGlob(repo)), native: fs.existsSync(path.join(repo, '.claude', 'rules', `${RULE}.md`)) });
+const keeper = (extra = {}) => ({ links: [], handMade: [], included: false, keptFor: { [CHILD]: [`rule ${RULE}`] }, ...extra });
+
+test('a rule the root keeps for a set-aside child with its own repository is excluded from root sessions', POSIX_ONLY, () =>
+{
+    const { outs, steps } = run(['install', 'update', 'update'], { steps: [KEEP], childOptions: keeper(), after: kept });
+    assert.strictEqual(steps[0].glob, false, 'the root lists the rule itself at the first run');
+    for (const i of [1, 2]) assert.deepStrictEqual(steps[i], { glob: true, native: true }, outs[i]);
+});
+
+test('a rule kept for a set-aside child that shares the root\'s repository stays loading, and the log names the rule and the child', POSIX_ONLY, () =>
+{
+    const { outs, steps } = run(['install', 'update'], { steps: [KEEP], childOptions: keeper({ shareRepo: true }), after: kept });
+    assert.deepStrictEqual(steps[1], { glob: false, native: true }, outs[1]);
+    assert.match(outs[1], new RegExp(`workspace: rule ${RULE} stays loading here - ${CHILD} keeps it and shares this repository's settings`));
+});
+
+test('the rule\'s exclude leaves once the child ignores the rule', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update', 'update'], {
+        steps: [KEEP], childOptions: keeper(),
+        after: (repo, i) => { const got = kept(repo); if (i === 1) putWorkspace(path.join(repo, CHILD), { parent: '..', ignore: { rule: [RULE] } }); return got; },
+    });
+    assert.deepStrictEqual(steps[1], { glob: true, native: true });
+    assert.strictEqual(steps[2].glob, false);
+});

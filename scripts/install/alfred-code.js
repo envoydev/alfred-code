@@ -2695,8 +2695,8 @@ function ledgerOf(ctx)
     const hooks = [...part.hooks, ...other(prior.hooks, (d, r) => settings.wiringsOf(d.hooks).some((w) => w.id === r.id))];
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
-    // A workspace array member (claudeMdExcludes[<hash>]) is carried apart from the keyed rows, below.
-    const keyed = (keys) => Object.fromEntries(Object.entries(keys || {}).filter(([at]) => !settings.MEMBER_PATH.test(at)));
+    // A workspace array member (claudeMdExcludes[<hash>]) and a key of an object (skillOverrides{<hash>}) are carried apart from the keyed rows, below.
+    const keyed = (keys) => Object.fromEntries(Object.entries(keys || {}).filter(([at]) => !settings.MEMBER_PATH.test(at) && !settings.KEY_PATH.test(at)));
     const settingsKeys = Object.fromEntries(Object.entries(part.settings || {}).map(([name, keys]) => [name, keyed(keys)]));
     // A row's path is read as the writer wrote it: one key (autoMemoryEnabled), two (attribution.commit) or three
     // (modelSettings.<id>.autoCompactWindow).

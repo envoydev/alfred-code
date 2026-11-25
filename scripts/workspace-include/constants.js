@@ -33,4 +33,11 @@ const KEPT_LINE_RE = /^\S+ \S+$/;
 const MARKDOWN_SUFFIX_RE = /\.md$/;
 const MARKDOWN_KINDS = Object.freeze(['agent', 'rule']);
 
-module.exports = { STATE, ROW_GONE, FLAG, NONE, STORE_KINDS, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH, CHILD_DEPTH, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS };
+// A root hides a child's copy of a skill under `<child path>:<name>` (the name Claude Code lists it by), and names a link
+// in the child's stamp `skills/<name>`.
+const SKILL_KEY_JOIN = ':';
+const SKILL_LINK_PREFIX = 'skills/';
+const REL_JOIN = '/';
+const RULE_CATEGORY = 'rule';
+
+module.exports = { SKILL_KEY_JOIN, SKILL_LINK_PREFIX, REL_JOIN, RULE_CATEGORY, STATE, ROW_GONE, FLAG, NONE, STORE_KINDS, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH, CHILD_DEPTH, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS };

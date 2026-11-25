@@ -30,6 +30,7 @@ const { parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
+const settingsKeys = require('./settings-keys.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
 const historySession = require('../../stack/hooks/history-session.js');
@@ -194,13 +195,14 @@ function carryMemberRows({ claudeDir, priorSettings = {}, workspaceRows })
     for (const [name, keys] of Object.entries(priorSettings || {}))
     {
         if (name === 'settings.local.json' && workspaceRows) continue;
-        const members = Object.entries(keys || {}).filter(([row]) => MEMBER_PATH.test(row));
+        const members = Object.entries(keys || {}).filter(([row]) => MEMBER_PATH.test(row) || settingsKeys.KEY_PATH.test(row));
         if (!members.length) continue;
         let data;
         try { ({ data } = readSettings(path.join(claudeDir, name))); }
         catch { out[name] = Object.fromEntries(members); continue; }
         const kept = members.filter(([row, hash]) =>
         {
+            if (settingsKeys.KEY_PATH.test(row)) return settingsKeys.stateOfRow(data, row, hash) === 'ours';
             const at = arrayAt(data, MEMBER_PATH.exec(row)[1]);
             return Boolean(at.list) && at.list.some((m) => typeof m === 'string' && valueHash(m) === hash);
         });
@@ -1600,6 +1602,13 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         const unwired = unwireIds(data, ids).length; changed ||= unwired > 0; removed += unwired;
         for (const [at, hash] of Object.entries(attr))
         {
+            if (settingsKeys.KEY_PATH.test(at))
+            {
+                const gone = settingsKeys.removeRowKey(data, at, hash);
+                if (gone === 'removed') { changed = true; removed += 1; }
+                else if (gone === 'changed') stays(name, at);
+                continue;
+            }
             const member = MEMBER_PATH.exec(at);
             if (member)
             {
@@ -1687,6 +1696,6 @@ function moveToLocal({ claudeDir, ledger, shippedDeny = [], log = () => {}, note
     return carried;
 }
 
-module.exports = { seatOfDenyRow, mergedOverride, settingAt, MEMBER_PATH, memberRow, syncMembers, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
+module.exports = { seatOfDenyRow, mergedOverride, settingAt, MEMBER_PATH, KEY_PATH: settingsKeys.KEY_PATH, memberRow, syncMembers, putFile, carryMemberRows, removeManagedSettings, moveToLocal, dropEmptySharedSettings, beginRun,
     isStackKey, writeSettings, wiringsOf, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, localUnusable, readBackSettings,
     unreadableSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };
