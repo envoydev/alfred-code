@@ -1702,13 +1702,13 @@ function workspaceStep(ctx)
     ctx.ownPicks = w.ownPrior;
     if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
-    // What this root hides of its children's: the keys for their copies of its skills, and the globs of the rules it keeps for a set-aside child.
-    const hidden = require('./child-hide.js').wanted(ctx);
+    // What this root hides of its children's here: the globs of the rules it keeps for a set-aside child. The skill keys are synced at the end of the run (child-hide.js syncSkillKeys).
+    const hidden = require('./child-hide.js').wantedRules(ctx);
     for (const { name, rel } of hidden.stays) ctx.log(`  workspace: rule ${name} stays loading here - ${rel} keeps it and shares this repository's settings`);
     const want = uniqSorted([...excludeGlobs(chainExcludes(ancestors, ctx.projectRoot, w.ignores), process.platform), ...hidden.ruleGlobs]);
     const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
-    const { syncKeys, KEY_PATH } = require('./settings-keys.js');
+    const { carriedRows } = require('./settings-keys.js');
     // A standalone project - nothing stamped above, nothing recorded - leaves settings.local.json alone.
     const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
     // An unusable local file (installHooksAndRules' localBad) gets no row; carryMemberRows keeps what the ledger named.
@@ -1716,11 +1716,8 @@ function workspaceStep(ctx)
         ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note, report: ctx.report })
         : { rows: {}, created: false });
     const r = sync('claudeMdExcludes', want);
-    // The `skillOverrides` keys, ledgered one row a key (settings-keys.js); an unusable local file gets none, as the member rows.
-    const keysRecorded = Object.keys(prior).some((row) => KEY_PATH.test(row));
-    const k = !ctx.localBad && (Object.keys(hidden.skills).length || keysRecorded)
-        ? syncKeys({ file: path.join(ctx.claudeDir, 'settings.local.json'), objectPath: 'skillOverrides', want: hidden.skills, prior, log: ctx.log, note: ctx.note, report: ctx.report })
-        : { rows: {}, created: false };
+    // The `skillOverrides` rows of the last run still in the file ride in this stamp; the run's last step (child-hide.js syncSkillKeys) brings the keys themselves up to date.
+    const k = { rows: ctx.localBad ? {} : carriedRows(path.join(ctx.claudeDir, 'settings.local.json'), prior) };
     // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
     // entry that hides it here. Every stamped folder above counts, linked or not, as for the excludes.
     const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores, ctx.projectRoot));
@@ -1736,7 +1733,7 @@ function workspaceStep(ctx)
             ? ownPicksAfter({ prior: w.ownPrior, final, parentLines: w.parentLines, added: ctx.userAdds || [], blind: Boolean(ctx.workspaceBlind) })
             : null;
     }
-    return { created: Boolean(r.created || d.created || a.created || n.created || k.created) };
+    return { created: Boolean(r.created || d.created || a.created || n.created) };
 }
 
 // The rule that stops Claude's own edit tools under `p` - permissions docs, 'Read and Edit': `//` is the filesystem root,

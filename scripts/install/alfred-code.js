@@ -48,6 +48,7 @@ const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
 const childKeep = require('./child-keep.js');
+const childHide = require('./child-hide.js');
 const { takeLock, sleepMs } = require('./file-lock.js');
 const links = require('./links.js');
 const fixedRoot = require('./fixed-root.js');
@@ -803,6 +804,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const copied = (k) => (k === 'skills' ? lists.skills.map((e) => e.split('|').pop()) : ctx.routes.skills ? Object.keys((ctx.library && ctx.library.agents) || {}) : lists.agents.map((a) => a.replace(/\.md$/, '')));
         const keptOnly = new Set(ctx.held ? ctx.held.keepOnly : []);
         const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).filter((name) => !keptOnly.has(`${k.slice(0, -1)} ${name}`)).map((name) => ({ kind: k, name })));
+        // What the run links into the root's own .claude/skills: the skills a child may also list, which the root then hides (child-hide.js).
+        ctx.linkedSkills = want.filter((w) => w.kind === 'skills').map((w) => w.name);
         const linkRecord = links.syncLinks({ projectRoot, members: child ? wsPrep.members : [], want, prior: recorded, keep: !wsPrep.on, rt, log, said, report, pruneDangling: true });
         nameUsersItems(ctx, linkRecord);
         stampLayer.writeStamp({
@@ -855,6 +858,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions, aside });
             }
             catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
+            // After the re-link: the keys that hide each child's copy of a skill this root links are read as the run leaves the children.
+            try { if (childHide.syncSkillKeys(ctx).created) warnUnignoredLocal(projectRoot, path.join(claudeDir, 'settings.local.json'), ctx); }
+            catch (e) { note(`workspace: the skillOverrides keys for the projects below could not be written - ${e.message}`); }
         }
 
         // After every settings write of the run: an update from an older release leaves the shared settings.json as `{}`.

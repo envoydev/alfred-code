@@ -33,13 +33,13 @@ const ruleGlob = (repo) => wsLib.excludeGlobs([path.join(repo, '.claude', 'rules
 // The child, laid down after the root's install so its skills can link into the root's store: its own stamp with the links
 // it holds, a real symlink for each, real folders no record names, its own git repository unless `shareRepo`, and its record.
 // `included` makes it an included child; else it is set aside, with `keptFor` as the root's kept lines.
-function child(repo, { links = ['javascript', DROPPED], handMade = ['hand-made'], shareRepo = false, included = true, keptFor = null } = {})
+function child(repo, { links = ['javascript', DROPPED], handMade = ['hand-made'], shareRepo = false, included = true, keptFor = null, ownPicks = '' } = {})
 {
     const at = path.join(repo, CHILD);
     const skills = path.join(at, '.claude', 'skills');
     fs.mkdirSync(skills, { recursive: true });
     const linkLine = links.length ? `links: ${links.map((name) => `skills/${name}=symlink`).join(',')}\n` : '';
-    fs.writeFileSync(path.join(at, '.claude', 'alfred-code.stamp'), `seats-route: plugin\nown-picks: \n${linkLine}`);
+    fs.writeFileSync(path.join(at, '.claude', 'alfred-code.stamp'), `seats-route: plugin\nown-picks: ${ownPicks}\n${linkLine}`);
     for (const name of links) fs.symlinkSync(path.relative(skills, path.join(repo, '.alfred', 'stack', 'skills', name)), path.join(skills, name), 'dir');
     for (const name of handMade) fs.mkdirSync(path.join(skills, name), { recursive: true });
     fs.writeFileSync(path.join(at, '.gitignore'), '.claude/\n.alfred/\n');   // git ignores the folder, so the child's skills stay links
@@ -67,11 +67,66 @@ test('a root with a linked child hides the child\'s copy of each skill it lists,
 test('a re-run changes nothing: the settings file and the stamp\'s ledger line stay byte for byte', POSIX_ONLY, () =>
 {
     const bytes = (repo) => [fs.readFileSync(localOf(repo), 'utf8'), (/^managed-settings: .*$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[0]];
-    // The root's own run re-links the child after the keys are read, so the keys settle one run later (the known limit); the runs after that change nothing.
-    const { steps } = run(['install', 'update', 'update', 'update', 'update'], { after: bytes });
-    assert.match(steps[2][1], /skillOverrides\{/);
-    assert.deepStrictEqual(steps[3], steps[2]);
-    assert.deepStrictEqual(steps[4], steps[2]);
+    const { steps } = run(['install', 'update', 'update', 'update'], { after: bytes });
+    assert.match(steps[1][1], /skillOverrides\{/, 'the first run after the join writes the rows');
+    assert.deepStrictEqual(steps[2], steps[1]);
+    assert.deepStrictEqual(steps[3], steps[1]);
+});
+
+// What the child's stamp links after the run, and what the root links itself: the keys are the two lists' common names.
+const linkedNames = (repo, rel) => stampLib.readLinks(path.join(repo, ...rel, '.claude', 'alfred-code.stamp')).filter((e) => e.path.startsWith('skills/')).map((e) => e.path.slice(7));
+const rootLinks = (repo) => fs.readdirSync(path.join(repo, '.claude', 'skills'));
+
+test('the first root run after a child joins writes a key for every skill the run links into the child, not the one the child held before', POSIX_ONLY, () =>
+{
+    const { outs, steps } = run(['install', 'update'], {
+        after: (repo) => ({ over: overrides(repo), expected: linkedNames(repo, [CHILD]).filter((name) => rootLinks(repo).includes(name)).map((name) => `${CHILD}:${name}`).sort() }),
+    });
+    assert.ok(steps[1].expected.length > 5, `the run re-links the child to the root's whole set: ${steps[1].expected.length}\n${outs[1]}`);
+    assert.deepStrictEqual(Object.keys(steps[1].over).sort(), steps[1].expected);
+});
+
+test('a member pick the root links into its own .claude/skills gets a key, though the root\'s own list does not name it', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { childOptions: { links: ['javascript', 'csharp'], ownPicks: 'skill/csharp' }, after: (repo) => ({ over: overrides(repo), linked: rootLinks(repo).includes('csharp') }) });
+    assert.ok(steps[1].linked, 'the root links the member pick itself');
+    assert.strictEqual(steps[1].over[`${CHILD}:csharp`], OFF);
+});
+
+test('a set-aside child that holds a link to a skill the root links is hidden the same way', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { childOptions: { included: false }, after: (repo) => ({ over: overrides(repo), links: linkedNames(repo, [CHILD]) }) });
+    assert.ok(steps[1].links.includes('javascript'), `the child keeps its link: ${steps[1].links}`);
+    assert.strictEqual(steps[1].over[`${CHILD}:javascript`], OFF);
+});
+
+test('a project the workspace ignores gets no key, and a grandchild is keyed by its whole path', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], {
+        childOptions: { links: ['javascript'] },
+        after: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                for (const [rel, parent] of [['api/grand', '..'], ['ign', null]])
+                {
+                    const at = path.join(repo, ...rel.split('/'));
+                    fs.mkdirSync(path.join(at, '.claude', 'skills'), { recursive: true });
+                    fs.writeFileSync(path.join(at, '.claude', 'alfred-code.stamp'), 'seats-route: plugin\nown-picks: \nlinks: skills/javascript=symlink\n');
+                    fs.symlinkSync(path.relative(path.join(at, '.claude', 'skills'), path.join(repo, '.alfred', 'stack', 'skills', 'javascript')), path.join(at, '.claude', 'skills', 'javascript'), 'dir');
+                    fs.writeFileSync(path.join(at, '.gitignore'), '.claude/\n.alfred/\n');
+                    rt.execCommand('git', ['init', '-q', at]);
+                    if (parent) putWorkspace(at, { parent });
+                }
+                putWorkspace(path.join(repo, CHILD), { parent: '..', children: ['grand'] });
+                putWorkspace(repo, { children: [CHILD], includedChildren: [CHILD], includeAsked: [CHILD], ignoredChildren: ['ign'] });
+            }
+            return overrides(repo);
+        },
+    });
+    assert.strictEqual(steps[1][`${CHILD}/grand:javascript`], OFF, JSON.stringify(steps[1]));
+    assert.strictEqual(steps[1][`${CHILD}:javascript`], OFF);
+    assert.ok(!Object.keys(steps[1]).some((key) => key.startsWith('ign:')), 'an ignored project is no child');
 });
 
 test('an uninstall at the root takes its keys out of settings.local.json and leaves the user\'s', POSIX_ONLY, () =>
@@ -84,7 +139,7 @@ test('an uninstall at the root takes its keys out of settings.local.json and lea
             return overrides(repo);
         },
     });
-    assert.deepStrictEqual(Object.keys(steps[1]).sort(), [...NAMES, 'mine']);
+    assert.ok([...NAMES, 'mine'].every((key) => Object.hasOwn(steps[1], key)), JSON.stringify(steps[1]));
     assert.deepStrictEqual(steps[2], { mine: OFF });
 });
 
@@ -93,8 +148,9 @@ test('a key the user already holds is theirs: kept as set, never ledgered', POSI
     const { steps } = run(['install', 'update'], {
         after: (repo, i) => { if (i === 0) fs.writeFileSync(localOf(repo), JSON.stringify({ skillOverrides: { [NAMES[0]]: 'on' } })); return seen(repo); },
     });
-    assert.deepStrictEqual(steps[1].over, { [NAMES[0]]: 'on', [NAMES[1]]: OFF });
-    assert.strictEqual(steps[1].rows.length, 1);
+    assert.strictEqual(steps[1].over[NAMES[0]], 'on');
+    assert.strictEqual(steps[1].over[NAMES[1]], OFF);
+    assert.strictEqual(steps[1].rows.length, Object.keys(steps[1].over).length - 1, 'a row for each key but the user\'s');
 });
 
 test('a skill the root drops loses its key at the next run, and a key the user then changed to on stays', POSIX_ONLY, () =>
@@ -167,4 +223,17 @@ test('the rule\'s exclude leaves once the child ignores the rule', POSIX_ONLY, (
     });
     assert.deepStrictEqual(steps[1], { glob: true, native: true });
     assert.strictEqual(steps[2].glob, false);
+});
+
+const FOLDS_CASE = { skip: POSIX_ONLY.skip || (process.platform === 'linux' && 'the disk keeps case') };
+test('a key spells the child\'s path as the disk does, not as the record wrote it', FOLDS_CASE, () =>
+{
+    const { steps } = run(['install', 'update'], {
+        after: (repo, i) =>
+        {
+            if (i === 0) putWorkspace(repo, { children: ['API'], includedChildren: ['API'], includeAsked: ['API'] });
+            return overrides(repo);
+        },
+    });
+    assert.strictEqual(steps[1][`${CHILD}:javascript`], OFF, JSON.stringify(steps[1]));
 });

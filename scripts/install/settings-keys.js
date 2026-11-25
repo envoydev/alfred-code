@@ -86,4 +86,16 @@ function syncKeys({ file, objectPath, want, prior = {}, log = () => {}, note = (
     return { rows, changed: true, created: !existed };
 }
 
-module.exports = { KEY_PATH, keyRow, valueRow, rowsOf, stateOfRow, removeRowKey, syncKeys };
+// The key rows of `prior` that a run which does not sync the keys still keeps: those whose key holds the stack's value in the
+// file, or every one where the file cannot be read (the carry of settings.js `carryMemberRows`, for the rows of this file alone).
+function carriedRows(file, prior)
+{
+    const { readSettings } = require('./settings.js');
+    const mine = Object.fromEntries(Object.entries(prior || {}).filter(([row]) => KEY_PATH.test(row)));
+    let data;
+    try { ({ data } = readSettings(file)); }
+    catch { return mine; }
+    return Object.fromEntries(Object.entries(mine).filter(([row, hash]) => stateOfRow(data, row, hash) === 'ours'));
+}
+
+module.exports = { KEY_PATH, keyRow, valueRow, rowsOf, stateOfRow, removeRowKey, syncKeys, carriedRows };
