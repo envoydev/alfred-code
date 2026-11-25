@@ -283,6 +283,20 @@
       }
     },
     {
+      "key": "ALFRED_CODE_ROOT_SKILLS",
+      "default": "own",
+      "ask": false,
+      "seed": false,
+      "what": "Which skills a workspace top root lists in full. `own` (the default): a skill the root links only for its children - none of the root's own files needs it - is listed by name alone, through a `skillOverrides` `name-only` key the run writes into the root's settings.local.json; the root's agents still preload it. `all`: nothing is trimmed, and the next run removes the trim keys it wrote. A skill the user sets to `on` in settings.local.json is never changed. Never written into a project; set it in the launch environment, a settings `env` or `.variables`.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "own",
+          "all"
+        ]
+      }
+    },
+    {
       "key": "ALFRED_CODE_AUTO_RUN",
       "default": "",
       "ask": false,
