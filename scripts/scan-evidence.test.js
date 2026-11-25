@@ -41,7 +41,7 @@ function buildFixture()
     put('src/Gen/Gen.csproj', `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsRoslynComponent>true</IsRoslynComponent></PropertyGroup>
 </Project>`);
-    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@playwright/test': '^1.40.0' } }));
+    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@capacitor/core': '^6.0.0' } }));
     put('nx.json', '{}');
     // content signal: a regex over a catalog-named code file (not a manifest)
     put('src/Api/Program.cs', 'app.MapGet("/health", () => "ok");\n');
@@ -512,3 +512,149 @@ test('--orientation on an Nx workspace: each project.json\'s declared targets an
         assert.match(r.stderr, /^!! scan-evidence: signals from nested repos child/m);
     });
 }
+
+// ---- --children: a workspace root reads the joined children it includes, each as its own root ----
+const { prefixHit, mergeFound, underAny, childList, withBelow } = require('./scan-evidence-children/merge.js');
+const { CHILD_LINE } = require('./scan-evidence-children/constants.js');
+
+test('prefixHit puts the child folder in front of both hit shapes', () =>
+{
+    assert.strictEqual(prefixHit('@angular/core in package.json', 'app'), '@angular/core in app/package.json');
+    assert.strictEqual(prefixHit('src/main.ts present', 'app'), 'app/src/main.ts present');
+    assert.strictEqual(prefixHit('postgres service in docker-compose in dc/docker-compose.yml', 'app/tool'), 'postgres service in docker-compose in app/tool/dc/docker-compose.yml');
+});
+
+test('mergeFound keeps own hits first, then each child in the order given, the first hit per name', () =>
+{
+    const own = { skills: { a: 'x in package.json' }, mcps: {}, plugins: {} };
+    const merged = mergeFound(own, [
+        { rel: 'app', found: { skills: { a: 'x in package.json', b: 'y in package.json' }, mcps: {}, plugins: { p: 'f.csproj present' } } },
+        { rel: 'api', found: { skills: { b: 'z in package.json', c: 'w in package.json' }, mcps: {}, plugins: {} } },
+    ]);
+    assert.deepStrictEqual(merged, { skills: { a: 'x in package.json', b: 'y in app/package.json', c: 'w in api/package.json' }, mcps: {}, plugins: { p: 'app/f.csproj present' } });
+    assert.deepStrictEqual(Object.keys(merged.skills), ['a', 'b', 'c']);
+    assert.deepStrictEqual(mergeFound(own, []), own, 'no children: the own map as it is');
+});
+
+test('underAny matches a path equal to a folder or below it, never a sibling sharing the prefix', () =>
+{
+    assert.strictEqual(underAny('app', ['app']), true);
+    assert.strictEqual(underAny('app/package.json', ['app']), true);
+    assert.strictEqual(underAny('app-two/package.json', ['app']), false);
+    assert.strictEqual(underAny('package.json', ['app', 'api']), false);
+    assert.strictEqual(underAny('app/package.json', []), false);
+});
+
+test('childList reads none as no child and a csv as its words', () =>
+{
+    assert.deepStrictEqual(childList('none'), []);
+    assert.deepStrictEqual(childList('app,api'), ['app', 'api']);
+    assert.deepStrictEqual(childList('app'), ['app']);
+});
+
+test('withBelow gives each named child, then every row below it in row order', () =>
+{
+    const rows = [{ rel: '.' }, { rel: 'app' }, { rel: 'app/tool' }, { rel: 'app/tool/deep' }, { rel: 'api' }, { rel: 'app-two' }];
+    assert.deepStrictEqual(withBelow(['api', 'app'], rows), ['api', 'app', 'app/tool', 'app/tool/deep']);
+    assert.deepStrictEqual(withBelow([], rows), []);
+});
+
+// A workspace root `ws` joined to `app` (angular-material) and `api` (dotnet), `app` joined to `app/tool` (capacitor).
+function childrenFixture({ git: useGit })
+{
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-kids-'));
+    const folder = (rel, files, record, ownGit) =>
+    {
+        const dir = path.join(base, ...rel.split('/'));
+        fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        for (const [name, text] of Object.entries(files))
+        {
+            fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+            fs.writeFileSync(path.join(dir, name), text);
+        }
+        putWorkspace(dir, record);
+        if (ownGit) execFileSync('git', ['init', '-q'], { cwd: dir });
+        return dir;
+    };
+    const ws = folder('ws', { 'package.json': JSON.stringify({ dependencies: { pg: '^8.0.0' } }) }, { role: 'root', children: ['app', 'api'] }, useGit);
+    folder('ws/app', { 'package.json': JSON.stringify({ dependencies: { '@angular/material': '^17.0.0' } }) }, { parent: '..', children: ['tool'] }, true);
+    folder('ws/app/tool', { 'package.json': JSON.stringify({ dependencies: { '@capacitor/core': '^6.0.0' } }) }, { parent: '..' }, true);
+    folder('ws/api', { 'Api.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web">\n  <ItemGroup>\n    <PackageReference Include="MassTransit" Version="8.0.0" />\n  </ItemGroup>\n</Project>' }, { parent: '..' }, true);
+    return ws;
+}
+const kids = (root, ...extra) =>
+{
+    const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-kids-out-')), 'found.json');
+    const r = spawnSync('node', [SCRIPT, '--root', root, '--catalog', CATALOG, '--out', out, ...extra], { encoding: 'utf8' });
+    return { r, lines: r.stdout.split('\n').filter(Boolean), found: JSON.parse(fs.readFileSync(out, 'utf8')).found };
+};
+const hits = (found) => Object.values(found).flatMap((layer) => Object.values(layer));
+
+test('--children reads each child repository at a git root and names the folder', () =>
+{
+    const ws = childrenFixture({ git: true });
+    const { r, lines, found } = kids(ws, '--children', 'app');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(hits(found).some((h) => /^@angular\/material in app\/package\.json$/.test(h)), JSON.stringify(found));
+    assert.ok(!hits(found).some((h) => h.includes('api/') || h.includes('Api.csproj')), 'api is not named');
+    assert.ok(lines.includes('child: app'), r.stdout);
+    assert.ok(!lines.includes('child: api'), r.stdout);
+});
+
+test('--children leaves a joined child out at a non-git root, and --children none reads the root alone', () =>
+{
+    const ws = childrenFixture({ git: false });
+    const plain = hits(kids(ws).found);
+    assert.ok(plain.some((h) => h.includes('app/') || h.includes('api/')), 'without the flag the folder walk reads into the children');
+    const only = kids(ws, '--children', 'app');
+    assert.ok(!hits(only.found).some((h) => h.includes('Api.csproj') || h.includes('api/')), JSON.stringify(only.found));
+    assert.ok(hits(only.found).some((h) => /in app\/package\.json$/.test(h)), JSON.stringify(only.found));
+    const none = kids(ws, '--children', 'none');
+    assert.ok(!hits(none.found).some((h) => h.includes('app/') || h.includes('api/') || h.includes('Api.csproj')), JSON.stringify(none.found));
+    assert.ok(hits(none.found).some((h) => /^pg in package\.json$/.test(h)), 'the root own package is read');
+    assert.deepStrictEqual(none.lines.filter((l) => l.startsWith(CHILD_LINE)), []);
+});
+
+test('--children app reads the grandchild repository below app by itself', () =>
+{
+    const ws = childrenFixture({ git: false });
+    const { lines, found } = kids(ws, '--children', 'app');
+    assert.ok(hits(found).some((h) => /in app\/tool\/package\.json$/.test(h)), JSON.stringify(found));
+    assert.ok(hits(found).every((h) => !/in app\/app\/|in app\/tool\/tool\//.test(h)));
+    assert.deepStrictEqual(lines.filter((l) => l.startsWith(CHILD_LINE)), ['child: app', 'child: app/tool']);
+});
+
+test('--children names a rel that is no joined child on stderr and reads nothing for it', () =>
+{
+    const ws = childrenFixture({ git: true });
+    const { r, lines } = kids(ws, '--children', 'nope');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stderr, /--children nope is not a joined child of/);
+    assert.deepStrictEqual(lines.filter((l) => l.startsWith(CHILD_LINE)), []);
+});
+
+// captured from the scan before --children existed
+const PINNED = { skills: { 'dotnet-messaging': 'MassTransit in api/Api.csproj', 'angular-material': '@angular/material in app/package.json', 'capacitor-release': '@capacitor/core in app/tool/package.json', postgres: 'pg in package.json' }, mcps: {}, plugins: { 'csharp-lsp': 'api/Api.csproj present' } };
+
+test('without --children the scan is unchanged', () =>
+{
+    const ws = childrenFixture({ git: false });
+    const { lines, found } = kids(ws);
+    assert.deepStrictEqual(lines, [`root: ${fs.realpathSync.native(ws)}`]);
+    assert.deepStrictEqual(found, PINNED);
+});
+
+test('--children none at a git root leaves a joined child that is a plain folder of the same repository out', () =>
+{
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-same-'));
+    execFileSync('git', ['init', '-q'], { cwd: ws });
+    fs.mkdirSync(path.join(ws, 'app', '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'app', '.claude', 'alfred-code.stamp'), 'sha: x\n');
+    fs.writeFileSync(path.join(ws, 'app', 'package.json'), JSON.stringify({ dependencies: { '@angular/material': '^17.0.0' } }));
+    putWorkspace(ws, { role: 'root', children: ['app'] });
+    putWorkspace(path.join(ws, 'app'), { parent: '..' });
+    assert.deepStrictEqual(hits(kids(ws).found), ['@angular/material in app/package.json'], 'without the flag the folder is read');
+    assert.deepStrictEqual(hits(kids(ws, '--children', 'none').found), []);
+    assert.deepStrictEqual(hits(kids(ws, '--children', 'app').found), ['@angular/material in app/package.json']);
+});

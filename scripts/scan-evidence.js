@@ -8,6 +8,8 @@
 const fs = require('fs');
 const path = require('path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
+const children = require('./scan-evidence-children/merge.js');
+const childValues = require('./scan-evidence-children/constants.js');
 
 // The data root's default (`.alfred`: the stack's docs and its servers' data) holds no manifest of the project's.
 const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'out', '.serena', '.claude', '.alfred']);
@@ -135,9 +137,10 @@ function safeRegex(source, where)
     catch (e) { console.error(`scan-evidence: skipping ${where} - invalid regex /${source}/ (${e.message})`); return null; }
 }
 
-function scan(root, catalog, nested = null)
+// `exclude`: folders (relative to root) whose files are dropped before anything is read - the projects below a root.
+function scan(root, catalog, nested = null, { exclude = [] } = {})
 {
-    const files = walk(root, nested);
+    const files = walk(root, nested).filter(f => !children.underAny(relPosix(root, f), exclude));
     const packages = collectPackages(root, files);
     const dotnetManifests = files.filter(isDotnetManifest);
 
@@ -500,15 +503,28 @@ function main(argv)
     if (argv.includes('--orientation')) return orientationMain(argv, arg);
     const root = arg('--root');
     const catalogPath = arg('--catalog');
-    if (!root || !catalogPath) { console.error('usage: scan-evidence.js --root <project> --catalog <evidence.json> [--out <file>] [--role root] | --orientation --root <project> [--out <file>]'); process.exit(2); }
+    if (!root || !catalogPath) { console.error('usage: scan-evidence.js --root <project> --catalog <evidence.json> [--out <file>] [--role root] [--children <csv|none>] | --orientation --root <project> [--out <file>]'); process.exit(2); }
     let catalog;
     try { catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); }
     catch (e) { console.error(`scan-evidence: cannot read catalog ${catalogPath}: ${e.code || e.message}`); process.exit(1); }
     if (!fs.existsSync(root)) { console.error(`scan-evidence: no such root ${root}`); process.exit(1); }
 
     const nested = [];
-    const payload = { found: scan(root, catalog, nested) };
+    let plan = null;
+    if (argv.includes(childValues.FLAG_CHILDREN))
+    {
+        const value = arg(childValues.FLAG_CHILDREN);
+        if (!value) { console.error(`usage: scan-evidence.js ${childValues.FLAG_CHILDREN} <csv|${childValues.NONE}> --root <project> --catalog <evidence.json>`); process.exit(2); }
+        plan = children.planChildren(value, require('./install/workspace.js').subtree(root));
+    }
+    const own = scan(root, catalog, nested, { exclude: plan ? plan.rootExclude : [] });
+    const payload = { found: plan ? children.mergeFound(own, plan.reads.map(({ rel, root: childRoot, exclude }) => ({ rel, found: scan(childRoot, catalog, null, { exclude }) }))) : own };
     const said = rootLines(root, nested, arg('--role') || '');
+    if (plan)
+    {
+        said.push(...plan.reads.map(({ rel }) => `${childValues.CHILD_LINE}${rel}`));
+        for (const rel of plan.unknown) console.error(`scan-evidence: ${childValues.FLAG_CHILDREN} ${rel} is not a joined child of ${root} - skipped`);
+    }
     const judgmentPath = arg('--judgment');
     if (judgmentPath)
     {
