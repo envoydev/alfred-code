@@ -20,6 +20,7 @@ const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const workspaceFile = require('../../stack/hooks/workspace-file.js');
+const { inheritKept } = require('../workspace-include/keep.js');
 const brand = require('./brand.js');
 const { readJson, parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { sleepMs, takeLock } = require('./file-lock.js');
@@ -1427,7 +1428,7 @@ function addToStore({ root, kind, name, copy, route = 'plugin', from = root, min
 // row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
 // Workspace stage 3: a moved member below `top` re-links what it links plus the top's own items of each linked kind, less
 // what it or a member between ignores, under its own lock. A child with no `links:` line is not moved yet: its update does it.
-function relink(child, top, rel, ignores, log)
+function relink(child, top, rel, ignores, log, { aside = false } = {})
 {
     const links = require('./links.js');
     const file = path.join(child, '.claude', brand.BRAND.stamp);
@@ -1440,7 +1441,8 @@ function relink(child, top, rel, ignores, log)
     const lib = stamp.readLibrary(topFile) || {};
     const rows = Object.keys((stamp.readLedger(topFile) || {}).files || {}).map((r) => r.split('/'));
     const want = [...prior.map((e) => ({ kind: e.path.split('/')[0], name: e.path.split('/')[1].replace(/\.md$/, '') }))];
-    for (const kind of links.KINDS.filter((k) => links.homeOf(child, k).store))
+    // A set-aside child gains no link: its want is its prior links, re-pointed or removed by the sync below.
+    for (const kind of aside ? [] : links.KINDS.filter((k) => links.homeOf(child, k).store))
         for (const name of [...Object.keys(lib[kind] || {}), ...rows.filter((r) => r[0] === kind).map((r) => r[1].replace(/\.md$/, ''))])
             if (!held.has(`${kind.slice(0, -1)} ${name}`) && !off.has(`${kind.slice(0, -1)} ${name}`)) want.push({ kind, name });
     const at = locate(child);
@@ -1453,7 +1455,7 @@ function relink(child, top, rel, ignores, log)
     finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
 }
 
-function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare } = {})
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare, held: ranHeld = {} } = {})
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     const top = realOf(projectRoot);
@@ -1479,6 +1481,10 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
     const older = due && below.sort().map((dir) => [dir, stamp.readVersion(path.join(dir, '.claude', brand.BRAND.stamp))]).find(([, v]) => v && compare(v, compare(PLURAL_SINCE, release) > 0 ? release : PLURAL_SINCE) < 0);
     if (older) log(`  workspace.json keeps its singular keys: ${relPosix(top, older[0])} is at ${older[1]}`);
     else if (due) writeWorkspace(top, (record) => record, { runRoot: top, plural: true, log });
+    // The keep: the lines this run changed are written now the run's lock is released, and a set-aside child only has its links re-pointed or removed.
+    const childKeep = require('./child-keep.js');
+    childKeep.writeBack(ranHeld.rewrite || [], { top, log });
+    const aside = new Set([...childKeep.asideRows(top, { env })].map((rel) => workspaceFile.low(rel)));
     const out = { refreshed: [], current: [], skipped: [] };
     // A child's switch and its ancestors are read with the account alone: this run's launch values are not the child's.
     // A launch `0` still freezes the child's switch, as it would its own run.
@@ -1494,7 +1500,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         if (!on) { skip(''); continue; }
         const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
-        relink(child, top, rel, ownRead.view.ignores || [], log);
+        relink(child, top, rel, ownRead.view.ignores || [], log, { aside: aside.has(workspaceFile.low(rel)) });
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -1592,7 +1598,7 @@ function settingsEnv(root)
 // project's ignores and own lines, and the parent's lines - read from `--parent-plan`, or from the parent's own
 // `update --installed-only --print-plan` (never inside a plan run, which reads nothing it would not print).
 // `parentLines` stays null whenever the parent's set cannot be trusted, so nothing inherited is added or dropped.
-function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir(), dataRoot: ownDataRoot })
+function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir(), dataRoot: ownDataRoot, manifest = { renamed: {}, retired: {} } })
 {
     const read = stamp.stampFiles({ projectRoot }).read;
     const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
@@ -1646,7 +1652,10 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
         finally { fs.rmSync(dir, { recursive: true, force: true }); }
     }
     if (!got.plan) return failed(got.why);
-    at.parentLines = planLines(got.plan);
+    // What the parent kept for this child joins what it inherits; the child's own ignores subtract it like any inherited line.
+    const inherited = inheritKept(planLines(got.plan), workspaceFile.keptLinesFor(parent.view, relPosix(parent.root, realOf(projectRoot))), manifest.renamed, manifest.retired);
+    for (const line of inherited.notes) log(`  ${line}`);
+    at.parentLines = inherited.lines;
     return at;
 }
 

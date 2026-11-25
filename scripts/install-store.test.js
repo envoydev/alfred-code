@@ -461,6 +461,168 @@ test('root: a run that finds the root locked keeps its member-picks line and nam
     assert.ok(steps[2].csharp);
 });
 
+// The keep (workspace-child-stacks, Task 5): what the root dropped that a set-aside child still uses.
+const { readWorkspaceValues } = require('./workspace-fixture.js');
+const KEEP_SEL = `${ROOT_ONLY}skill csharp\n`;
+const setAside = (repo, keptFor, rel = 'api') => { member(repo, rel, ''); putWorkspace(repo, { children: [rel], includeAsked: [rel], keptFor }); };
+const keepState = (repo) => ({ stamp: fs.readFileSync(stampOf(repo), 'utf8'), store: fs.existsSync(store(repo, 'skills', 'csharp/SKILL.md')), link: lstat(claude(repo, 'skills', 'csharp')), record: readWorkspaceValues(repo) });
+
+test('root: a kept skill for a set-aside member stays in the store and on member-picks, never on picked-skills or the root\'s links', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], KEEP_SEL, {
+        args: [['--scope', 'local'], ['--installed-only', '--drop', 'skill csharp']],
+        each: (repo, i) =>
+        {
+            if (i === 0) { assert.ok(lstat(claude(repo, 'skills', 'csharp')), 'the root links csharp as its own pick'); setAside(repo, { api: ['skill csharp', 'plugin typescript-lsp'] }); }
+            return keepState(repo);
+        },
+    });
+    const got = steps[1];
+    assert.ok(got.store, outs[1]);
+    assert.strictEqual(got.link, null, 'the root\'s own link to a kept-only skill goes');
+    assert.strictEqual(lineOf(got.stamp, 'member-picks'), 'skill/csharp');
+    assert.strictEqual(lineOf(got.stamp, 'kept-only'), 'skill/csharp');
+    assert.match(lineOf(got.stamp, 'library-skills'), /(^|,)csharp=/);
+    assert.doesNotMatch(lineOf(got.stamp, 'picked-skills'), /(^|,)csharp(,|$)/);
+    assert.match(outs[1], /kept for members below: csharp/);
+    assert.doesNotMatch(outs[1], /TypeError/);
+    assert.deepStrictEqual(got.record.keptFor, { api: ['skill csharp', 'plugin typescript-lsp'] }, 'the record is unchanged');
+});
+
+test('root: a renamed kept skill is held under its new name and written back; a retired one is dropped and named', POSIX_ONLY, () =>
+{
+    const source = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'keep-source-'));
+    try
+    {
+        require('./clean-export.js').cleanExport(path.join(__dirname, '..'), source);
+        const file = path.join(source, 'meta', 'stack-manifest.json');
+        const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+        manifest.renamed.skills = { ...manifest.renamed.skills, 'csharp-old': 'csharp' };
+        manifest.retired.skills = [...manifest.retired.skills, 'csharp-gone'];
+        fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
+        const { outs, steps } = seedRun(['install', 'update'], ROOT_ONLY, {
+            source, args: [['--scope', 'local'], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                if (i === 0) setAside(repo, { api: ['skill csharp-old', 'skill csharp-gone'] });
+                return keepState(repo);
+            },
+        });
+        const got = steps[1];
+        assert.ok(got.store, outs[1]);
+        assert.strictEqual(lineOf(got.stamp, 'member-picks'), 'skill/csharp');
+        assert.match(outs[1], /kept line skill csharp-old read as skill csharp/);
+        assert.match(outs[1], /kept line skill csharp-gone dropped: retired/);
+        assert.deepStrictEqual(got.record.keptFor, { api: ['skill csharp'] }, 'the record holds the new name and no retired line');
+    }
+    finally { fs.rmSync(source, { recursive: true, force: true }); }
+});
+
+test('root: a kept skill of a middle root is held at the top, and the top has no link to it', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update'], ROOT_ONLY, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                member(repo, 'mid', '');
+                const mid = path.join(repo, 'mid');
+                fs.mkdirSync(path.join(mid, 'tool', '.claude'), { recursive: true });
+                fs.writeFileSync(path.join(mid, 'tool', '.claude', 'alfred-code.stamp'), 'own-picks: \n');
+                putWorkspace(path.join(mid, 'tool'), { parent: '..' });
+                putWorkspace(mid, { parent: '..', children: ['tool'], includeAsked: ['tool'], keptFor: { tool: ['skill csharp'] } });
+            }
+            return keepState(repo);
+        },
+    });
+    const got = steps[1];
+    assert.ok(got.store, outs[1]);
+    assert.strictEqual(got.link, null);
+    assert.strictEqual(lineOf(got.stamp, 'member-picks'), 'skill/csharp');
+    assert.strictEqual(lineOf(got.stamp, 'kept-only'), 'skill/csharp');
+});
+
+test('root: a keep is held when the workspace lock is refused, and a line the child ignores is dropped on the next run', POSIX_ONLY, () =>
+{
+    const lock = (repo) => path.join(repo, '.alfred', 'workspace.lock');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], ROOT_ONLY, {
+        args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i === 0) { setAside(repo, { api: ['skill csharp'] }); fs.writeFileSync(lock(repo), String(process.pid)); }
+            if (i === 1) { fs.rmSync(lock(repo), { force: true }); putWorkspace(path.join(repo, 'api'), { parent: '..', ignore: { skill: ['csharp'] } }); }
+            return keepState(repo);
+        },
+    });
+    assert.match(outs[1], /!! workspace: the store is locked/);
+    assert.ok(steps[1].store, outs[1]);
+    assert.strictEqual(lineOf(steps[1].stamp, 'kept-only'), 'skill/csharp');
+    assert.ok(!steps[2].store, outs[2]);
+    assert.strictEqual(lineOf(steps[2].stamp, 'kept-only'), null);
+    assert.strictEqual(steps[2].record.keptFor, undefined, 'the ignored line left the record');
+});
+
+test('root: a drop with no --keep call is kept for each set-aside child by the backstop and written to the record', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], KEEP_SEL, {
+        args: [['--scope', 'local'], ['--installed-only', '--drop', 'skill csharp'], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) setAside(repo, undefined); return keepState(repo); },
+    });
+    const got = steps[1];
+    assert.ok(got.store, outs[1]);
+    assert.deepStrictEqual(got.record.keptFor, { api: ['skill csharp'] }, outs[1]);
+    assert.strictEqual(lineOf(got.stamp, 'kept-only'), 'skill/csharp');
+    assert.strictEqual(got.link, null);
+    assert.deepStrictEqual(steps[2].record, got.record, 'the next update keeps the line');
+    assert.strictEqual(bare(steps[2].stamp), bare(got.stamp), 'and changes nothing');
+    assert.ok(steps[2].store && steps[2].link === null);
+});
+
+test('root: the backstop keeps nothing for a child that ignores the dropped pick, and nothing for an included one', POSIX_ONLY, () =>
+{
+    const ignoring = seedRun(['install', 'update'], KEEP_SEL, {
+        args: [['--scope', 'local'], ['--installed-only', '--drop', 'skill csharp']],
+        each: (repo, i) => { if (i === 0) { setAside(repo, undefined); putWorkspace(path.join(repo, 'api'), { parent: '..', ignore: { skill: ['csharp'] } }); } return keepState(repo); },
+    });
+    assert.ok(!ignoring.steps[1].store, ignoring.outs[1]);
+    assert.strictEqual(ignoring.steps[1].record.keptFor, undefined);
+    const included = seedRun(['install', 'update'], KEEP_SEL, {
+        args: [['--scope', 'local'], ['--installed-only', '--drop', 'skill csharp']],
+        each: (repo, i) => { if (i === 0) member(repo, 'api', ''); return keepState(repo); },
+    });
+    assert.ok(!included.steps[1].store, included.outs[1]);
+    assert.strictEqual(included.steps[1].record.keptFor, undefined);
+});
+
+test('root: an update that drops nothing keeps nothing for a set-aside child and writes no record, and a second update changes nothing', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], KEEP_SEL, {
+        args: [['--scope', 'local'], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) setAside(repo, undefined); return { ...keepState(repo), tree: tree(repo), file: fs.readFileSync(path.join(repo, '.alfred', 'workspace.json'), 'utf8') }; },
+    });
+    assert.strictEqual(steps[1].record.keptFor, undefined, outs[1]);
+    assert.strictEqual(lineOf(steps[1].stamp, 'kept-only'), null);
+    assert.ok(steps[1].link, 'the root still links its own pick');
+    assert.strictEqual(steps[2].file, steps[1].file);
+    assert.deepStrictEqual(steps[2].tree, steps[1].tree);
+    assert.strictEqual(bare(steps[2].stamp), bare(steps[1].stamp));
+});
+
+test('root: a run with the workspace switched off keeps what it kept for a set-aside child', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], KEEP_SEL, {
+        env: [{}, {}, { ALFRED_CODE_WORKSPACE: '0' }],
+        args: [['--scope', 'local'], ['--installed-only', '--drop', 'skill csharp'], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) setAside(repo, undefined); return keepState(repo); },
+    });
+    assert.strictEqual(lineOf(steps[1].stamp, 'kept-only'), 'skill/csharp', outs[1]);
+    assert.ok(steps[2].store, outs[2]);
+    assert.strictEqual(lineOf(steps[2].stamp, 'kept-only'), 'skill/csharp');
+    assert.strictEqual(lineOf(steps[2].stamp, 'member-picks'), 'skill/csharp');
+    assert.strictEqual(steps[2].link, null);
+});
+
 // Workspace stage 3, Task 4: the joined child. `ws` is a plain folder (no repository, so every kind is linkable) holding
 // the root, and `ws/api` a child below it in its own repository; every run is at local scope. A step: { at, act, sel, args, before(ws), after(ws) }.
 const wsLib = require('./install/workspace.js');

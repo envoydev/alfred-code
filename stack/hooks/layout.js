@@ -352,8 +352,8 @@ function ownWorkspace(projectRoot, { env = process.env } = {})
     return { parent: view.parent, ignores: view.ignores };
 }
 
-// The linked members above a project, nearest first: { members: [{ root, rel, dataRoot, ignores }], notes, ignores, garbage } -
-// `ignores` the project's own workspace record's, read once for the loader; `garbage` each record the walk read as not
+// The linked members above a project, nearest first: { members: [{ root, rel, dataRoot, ignores, kept }], notes, ignores, garbage } -
+// a member's `kept` the lines it keeps for the holder just below it (its record's `keptFor` for that child); `ignores` the project's own workspace record's, read once for the loader; `garbage` each record the walk read as not
 // valid JSON, its file relative to the start, the start's own first (docs-session says each at session start); `startData`
 // the start's data root when the caller already read it. A hop needs
 // a strict ancestor holding a stamp whose workspace record lists this folder as a child (workspace.js chain()); a note
@@ -401,7 +401,8 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         }
         // W3: a folder at or below a path the parent's record ignores takes nothing from it - the walk ends, unsaid.
         if (workspaceFile.covered(parentView.ignoredChildren, keyOf(parent), keyOf(current))) { ignoredBy = label; break; }
-        if (!parentView.children.some((c) => keyOf(path.join(parent, ...c.split('/'))) === keyOf(current)))
+        const listed = parentView.children.find((c) => keyOf(path.join(parent, ...c.split('/'))) === keyOf(current));
+        if (listed === undefined)
         {
             refuse(`${label} does not list this folder as a child`);
             break;
@@ -409,7 +410,7 @@ function workspaceChain(projectRoot, { env = process.env, maxDepth = 8, startDat
         const key = keyOf(parent);
         if (seen.has(key)) { refuse(`${label} is already in the chain`); break; }
         seen.add(key);
-        members.push({ root: realOf(parent), rel: label, dataRoot: parentData, ignores: parentView.ignores });
+        members.push({ root: realOf(parent), rel: label, dataRoot: parentData, ignores: parentView.ignores, kept: workspaceFile.keptLinesFor(parentView, listed) });
         current = parent;
         file = parentFile;
         view = parentView;

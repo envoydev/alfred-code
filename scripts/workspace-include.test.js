@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { childStates, answerError, applyAnswer, setAsideRels, asideRows, skippedRows, asideHeads, withoutSkipped, lines, flagError, csvOf } = require('./workspace-include/select.js');
-const { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines } = require('./workspace-include/keep.js');
+const { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines, keptNotes, settleKept, inheritKept } = require('./workspace-include/keep.js');
 
 test('childStates: asked and included is included, asked only is set aside, not asked is unasked', () =>
     assert.deepStrictEqual(childStates({ children: ['api', 'web', 'docs'], includedChildren: ['api'], includeAsked: ['api', 'web'] }),
@@ -159,3 +159,37 @@ test('skippedRows keeps a gone head out and a gone row below an aside row in; as
     assert.deepStrictEqual([...skipped], ['api', 'api/old', 'api/tool']);
     assert.deepStrictEqual(asideHeads(rows, skipped), ['api']);
 });
+
+test('settleKept adds the backstop, drops a line the child ignores or the root holds, reads a rename and drops a retired line', () =>
+{
+    const got = settleKept({
+        keptFor: { api: ['skill old', 'skill held', 'skill ignored', 'skill gone'], web: ['skill held'] }, children: ['api', 'web'],
+        backstop: { api: ['skill fresh'] }, childIgnores: { api: ['skill ignored'], web: [] }, rootLines: ['skill held'],
+        renamed: { skills: { old: 'new' } }, retired: { skills: ['gone'] },
+    });
+    assert.deepStrictEqual(got.keptFor, { api: ['skill new', 'skill fresh'] });
+    assert.deepStrictEqual(got.notes, ['kept line skill old read as skill new', 'kept line skill gone dropped: retired']);
+    assert.strictEqual(got.changed, true);
+});
+test('settleKept reports no change for a record whose lines all stand, and never touches the record it was given', () =>
+{
+    const keptFor = { api: ['skill a'] };
+    const got = settleKept({ keptFor, children: ['api'], childIgnores: { api: [] }, rootLines: [], renamed: {}, retired: {} });
+    assert.deepStrictEqual([got.keptFor, got.changed, got.notes], [{ api: ['skill a'] }, false, []]);
+    settleKept({ keptFor, children: ['api'], backstop: { api: ['skill b'] }, childIgnores: { api: [] }, rootLines: [], renamed: {}, retired: {} });
+    assert.deepStrictEqual(keptFor, { api: ['skill a'] });
+});
+test('settleKept reads a prototype-member child key as an ordinary child', () =>
+{
+    const keptFor = Object.fromEntries([['constructor', ['skill a']]]);
+    const got = settleKept({ keptFor, children: ['constructor'], childIgnores: { constructor: ['skill a'] }, rootLines: [], renamed: {}, retired: {} });
+    assert.deepStrictEqual(got.keptFor, {});
+});
+test('inheritKept adds the kept lines to the parent\'s once, through the manifest', () =>
+{
+    const got = inheritKept(['skill a', 'skill b'], ['skill b', 'skill old', 'skill gone', 'plugin p'], { skills: { old: 'new' } }, { skills: ['gone'] });
+    assert.deepStrictEqual(got.lines, ['skill a', 'skill b', 'skill new', 'plugin p']);
+    assert.deepStrictEqual(got.notes, keptNotes({ renamedPairs: [['skill old', 'skill new']], retiredLines: ['skill gone'] }));
+});
+test('inheritKept with nothing kept is the parent\'s lines as they were', () =>
+    assert.deepStrictEqual(inheritKept(['skill a'], [], {}, {}), { lines: ['skill a'], notes: [] }));

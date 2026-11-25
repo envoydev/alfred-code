@@ -47,6 +47,7 @@ const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
+const childKeep = require('./child-keep.js');
 const { takeLock, sleepMs } = require('./file-lock.js');
 const links = require('./links.js');
 const fixedRoot = require('./fixed-root.js');
@@ -441,7 +442,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // switch says - the conversion carries every value; --print-plan writes nothing.
         if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: dataInfo.root, log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
-        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root });
+        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root, manifest });
         // D2 rank 2: a linked child whose chain holds a docs versioning is not reseeded - the stack's own local seed leaves through the remover.
         if (wsPrep.on && wsPrep.members.length && chainValueOf(projectRoot, env) !== undefined) docsReseed = null;
         // Workspace stage 3 (links.js): each kind's home - the store where git cannot commit a link, else .claude/<kind>. A local
@@ -767,7 +768,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
             instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
             // Workspace layering: prepare's answer, this run's own --add lines, and whether its read-back was blind.
-            workspace: wsPrep, userAdds, workspaceBlind: readBlind,
+            workspace: wsPrep, userAdds, workspaceBlind: readBlind, installedBefore,
         };
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
@@ -800,7 +801,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // The links: every item in a store is wanted; a kind git sees is wanted by what this run copied, so its line is said.
         const storeList = (k) => { try { return fs.readdirSync(homes[k].dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; } };
         const copied = (k) => (k === 'skills' ? lists.skills.map((e) => e.split('|').pop()) : ctx.routes.skills ? Object.keys((ctx.library && ctx.library.agents) || {}) : lists.agents.map((a) => a.replace(/\.md$/, '')));
-        const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).map((name) => ({ kind: k, name })));
+        const keptOnly = new Set(ctx.held ? ctx.held.keepOnly : []);
+        const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).filter((name) => !keptOnly.has(`${k.slice(0, -1)} ${name}`)).map((name) => ({ kind: k, name })));
         const linkRecord = links.syncLinks({ projectRoot, members: child ? wsPrep.members : [], want, prior: recorded, keep: !wsPrep.on, rt, log, said, report, pruneDangling: true });
         nameUsersItems(ctx, linkRecord);
         stampLayer.writeStamp({
@@ -817,7 +819,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
-            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
+            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [], keptOnly: ctx.held ? ctx.held.keepOnly : [],
             answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile),
             toldTracked: ctx.agentRecord.toldTracked,
             createdDirs: ctx.agentRecord.createdDirs,
@@ -845,7 +847,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // --print-plan returned before the stamp; a project with its switch off is left alone.
         if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
         {
-            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions }); }
+            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions, held: ctx.held }); }
             catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
         }
 
@@ -1823,8 +1825,9 @@ function pruneAway(ctx, away)
 // root here). A kind git sees holds none (ruling 8).
 function membersHeld(ctx, locked)
 {
-    const held = { skills: [], agents: [], rules: [], lines: [] };
+    const held = { skills: [], agents: [], rules: [], lines: [], keepOnly: [], rewrite: [] };
     if (locked === null) return held;
+    const priorOnly = (ctx.stampFile && stampLayer.readKeptOnly(ctx.stampFile)) || [];
     let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
     if (locked === false) ctx.log('  !! workspace: the store is locked - member picks are read at the next run');
     else if (locked === true)
@@ -1833,6 +1836,21 @@ function membersHeld(ctx, locked)
         for (const n of got.notes) ctx.log(`  ${n}`);
         lines = got.lines;
     }
+    // What a root keeps for a set-aside child is read from the records whether the store lock is taken or not (a record read
+    // needs no lock). A workspace switched off ('off') reads nothing: the last run's keep stays as it was.
+    let keptStore = priorOnly;
+    let memberOwn = new Set(lines.filter((l) => !priorOnly.includes(l)));
+    if (typeof locked === 'boolean')
+    {
+        if (!locked) lines = lines.filter((l) => !priorOnly.includes(l));
+        memberOwn = new Set(lines);
+        const kept = childKeep.readKeep({ projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, env: ctx.env, log: (l) => ctx.log(`  ${l}`), ownLines: workspace.listLines(ctx.lists),
+            priorOwn: ctx.installedBefore, renamed: ctx.manifest.renamed, retired: ctx.manifest.retired });
+        for (const n of kept.notes) ctx.log(`  ${n}`);
+        held.rewrite = kept.rewrite;
+        keptStore = kept.storeLines;
+    }
+    lines = [...new Set([...lines, ...keptStore])];
     const bare = (f) => f.replace(/\.md$/, '');
     const own = new Set([...ctx.lists.skills.map((e) => `skill ${e.split('|').pop()}`), ...ctx.lists.agents.map((a) => `agent ${bare(a)}`),
         ...ctx.lists.rules.map((r) => `rule ${bare(r)}`)]);
@@ -1846,6 +1864,7 @@ function membersHeld(ctx, locked)
         else { ctx.log(`  member pick ${cat}s/${name} not held: .claude/${cat}s is not ignored here`); continue; }
         held.lines.push(l);
     }
+    held.keepOnly = held.lines.filter((l) => keptStore.includes(l) && !memberOwn.has(l));
     if (held.lines.length) ctx.log(`  kept for members below: ${held.lines.map((l) => l.split(' ')[1]).join(', ')}`);
     return held;
 }

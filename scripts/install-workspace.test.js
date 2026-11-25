@@ -2027,3 +2027,94 @@ test('the switch at 0, and a same-repository entry, release nothing', POSIX_ONLY
     assert.ok(!(same.steps[2].local.claudeMdExcludes || []).some((g) => /\/\*\*$/.test(g)), same.outs[2]);
     assert.doesNotMatch(same.outs[2], /released lib|ignores this project/);
 });
+
+// The keep, child side (workspace-child-stacks, Task 5): the root's `keptFor` entry for a child is read as one more inherited
+// set whatever the child's state, and a root's run adds no link to a set-aside child.
+const LOCAL_ARGS = ['--scope', 'local'];   // a local install is where the store and its links exist
+const Y = 'npm';   // a second skill outside the closure of the root's always rules
+const keepFor = (rel, lines, { setAside = true } = {}) => (work) => edit(work, '.', (m) =>
+{
+    m.includeAsked = [rel];
+    if (!setAside) m.includedChildren = [rel];
+    m.keptFor = { [rel]: lines };
+});
+const keptState = (work) => ({ x: hasSkill(work, 'api', X), y: hasSkill(work, 'api', Y), record: readWorkspaceValues(at(work, 'api')) });
+
+test('child: a line its parent kept for it is inherited, and its own ignore wins', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${X}\nskill ${Y}\n`, after: (work) => { join(work, 'api'); edit(work, 'api', (m) => wsLib.addIgnore(m, 'skill', Y)); } },
+        { at: 'api', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${X}\n`, after: keptState },
+        update('.', { before: keepFor('api', [`skill ${X}`, `skill ${Y}`]), args: ['--drop', `skill ${X}`, '--drop', `skill ${Y}`], after: (work) => ({ store: fs.existsSync(path.join(at(work), '.alfred', 'stack', 'skills', X)) }) }),
+        update('api', { after: keptState }),
+    ]);
+    assert.deepStrictEqual(r.steps[1], { x: true, y: false, record: r.steps[1].record }, r.outs[1]);
+    assert.strictEqual(r.steps[2].store, true, r.outs[2]);
+    assert.strictEqual(r.steps[3].x, true, r.outs[3]);
+    assert.strictEqual(r.steps[3].y, false, 'its own ignore wins over the parent\'s keep');
+    assert.deepStrictEqual(r.steps[3].record, r.steps[1].record, 'its ignores are unchanged');
+});
+
+test('child: a set-aside child included again keeps reading its kept lines', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${X}\n`, after: (work) => join(work, 'api') },
+        { at: 'api', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${X}\n` },
+        update('.', { before: keepFor('api', [`skill ${X}`]), args: ['--drop', `skill ${X}`] }),
+        update('api', { before: keepFor('api', [`skill ${X}`], { setAside: false }), after: keptState }),
+    ]);
+    assert.strictEqual(r.steps[3].x, true, r.outs[3]);
+});
+
+test('child: a kept plugin line joins the child\'s inherited set', POSIX_ONLY, () =>
+{
+    const r = scenario([
+        { at: '.', args: LOCAL_ARGS, after: (work) => { join(work, 'api'); keepFor('api', ['plugin typescript-lsp'])(work); } },
+        { at: 'api', args: LOCAL_ARGS },
+        planStep('good.json'),
+        update('api', { args: (work) => ['--print-plan', '--parent-plan', path.join(work, 'good.json')] }),
+    ]);
+    const plan = r.outs[3].split('\n').find((l) => l.includes('plan plugins:')) || '';
+    assert.match(plan, /\btypescript-lsp\b/, r.outs[3]);
+});
+
+test('child: a kept line is read through the manifest - renamed to its new name, a retired one dropped and named', POSIX_ONLY, () =>
+{
+    const source = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'keep-child-source-'));
+    try
+    {
+        require('./clean-export.js').cleanExport(path.join(__dirname, '..'), source);
+        const file = path.join(source, 'meta', 'stack-manifest.json');
+        const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+        manifest.renamed.skills = { ...manifest.renamed.skills, [`${X}-old`]: X };
+        manifest.retired.skills = [...manifest.retired.skills, `${X}-gone`];
+        fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
+        const r = scenario([
+            { at: '.', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${X}\n`, after: (work) => { join(work, 'api'); keepFor('api', [`skill ${X}-old`, `skill ${X}-gone`])(work); } },
+            { at: 'api', args: LOCAL_ARGS, source, sel: `${ROOT_SEL}skill ${X}\n` },
+            update('api', { source, after: keptState }),
+        ]);
+        assert.match(r.outs[1], new RegExp(`kept line skill ${X}-old read as skill ${X}$`, 'm'));
+        assert.match(r.outs[1], new RegExp(`kept line skill ${X}-gone dropped: retired$`, 'm'));
+        assert.strictEqual(r.steps[2].x, true, r.outs[2]);
+    }
+    finally { fs.rmSync(source, { recursive: true, force: true }); }
+});
+
+test('refreshBelow adds no link to a set-aside child and removes its link to a dropped copy, and its excludes are written', POSIX_ONLY, () =>
+{
+    const links = (work) => ({ js: hasSkill(work, 'api', 'javascript'), x: hasSkill(work, 'api', X), y: hasSkill(work, 'api', Y) });
+    const r = scenario([
+        { at: '.', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${Y}\n`, after: (work) => { join(work, 'api'); plantGen(work, '.'); } },
+        { at: 'api', args: LOCAL_ARGS, sel: `${ROOT_SEL}skill ${Y}\n`, after: links },
+        update('.', {
+            before: (work) => { keepFor('api', [])(work); edit(work, 'api', (m) => wsLib.addIgnore(m, 'skill', Y)); plantGen(work, '.', 'alfred-architecture'); },
+            args: ['--add', `skill ${X}`, '--drop', `skill ${Y}`],
+            after: (work) => ({ ...links(work), want: ruleGlobs(work, '.'), excludes: excludesOf(work, 'api') }),
+        }),
+    ]);
+    assert.deepStrictEqual(r.steps[1], { js: true, x: false, y: true }, r.outs[1]);
+    const got = r.steps[2];
+    assert.deepStrictEqual([got.js, got.x, got.y], [true, false, false], r.outs[2]);
+    for (const g of got.want) assert.ok(got.excludes.includes(g), `no exclude for ${g}`);
+});
