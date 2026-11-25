@@ -9,6 +9,8 @@
 //   parent    a run of `..` segments - or role "root" / "standalone", never both: a record holding both reads parent
 //   above     the nearest stamped folder above when the role was last answered (a `..` run, or "none")
 //   children  direct children only, relative, `/` separated
+//   includedChildren / includeAsked  child lists of a root: the joined children whose stack it includes, and those it asked about
+//   keptFor   child -> ignore lines ('<category> <name>') the root keeps for a child it set aside
 //   ignore    category -> names: an inherited item this project leaves out (docs and memory take only "root")
 //             the five stack kinds read in either spelling and are written plural - an existing file with no plural key stays singular
 //
@@ -30,6 +32,8 @@ const SINGULAR = { __proto__: null, ...Object.fromEntries(Object.entries(PLURAL)
 
 const PARENT_RE = /^\.\.(\/\.\.)*$/;
 const NAME_RE = /^[A-Za-z0-9._-]+$/;
+const KEPT_PREFIX = 'keptFor.';
+const CHILD_LISTS = Object.freeze({ children: 'child', ignoredChildren: 'ignored child', includedChildren: 'included child', includeAsked: 'include-asked child' });
 const PATH_NAME_RE = /^[A-Za-z0-9._\/-]+$/;
 const segmentsOk = (value) => value.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
 
@@ -52,6 +56,16 @@ function isIgnoreEntry(category, name)
     return isIgnoreName(category, name);
 }
 
+// A keptFor line: '<category> <name>', one space, a valid ignore entry.
+function isKeptLine(line)
+{
+    if (typeof line !== 'string') return false;
+    const [category, name, ...more] = line.split(' ');
+    return more.length === 0 && isIgnoreEntry(category, name);
+}
+
+const copyKeptFor = (keptFor) => Object.fromEntries(Object.entries(keptFor || {}).map(([rel, lines]) => [rel, [...lines]]));
+
 const isCategory = (category) => CATEGORIES.includes(category) || ROOT_ONLY.includes(category);
 const isParent = (v) => typeof v === 'string' && PARENT_RE.test(v);
 const isRole = (v) => v === 'root' || v === 'standalone';
@@ -61,7 +75,7 @@ const shown = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
 
 function emptyRecord()
 {
-    return { parent: null, role: null, above: null, children: [], ignoredChildren: [], ignore: {}, parentNone: false };
+    return { parent: null, role: null, above: null, children: [], ignoredChildren: [], includedChildren: [], includeAsked: [], keptFor: {}, ignore: {}, parentNone: false };
 }
 
 function addIgnore(record, category, name)
@@ -150,15 +164,31 @@ function fromObject(obj)
         if (key === 'parent') { if (isParent(value)) record.parent = value; else bad('parent', value, 'parent'); }
         else if (key === 'role') { if (isRole(value)) record.role = value; else bad('role', value, 'role'); }
         else if (key === 'above') { if (isAbove(value)) record.above = value; else bad('above', value, 'above'); }
-        else if (key === 'children' || key === 'ignoredChildren')
+        else if (CHILD_LISTS[key])
         {
             // W3: the paths below a root the workspace ignores read by the children's rules
-            const [list, label] = key === 'children' ? [record.children, 'child'] : [record.ignoredChildren, 'ignored child'];
+            const [list, label] = [record[key], CHILD_LISTS[key]];
             if (!Array.isArray(value)) { bad(key, value, `${key} (not a list)`); continue; }
             for (const child of value)
             {
                 if (!isChildPath(child)) bad(key, child, label, true);
                 else if (!list.includes(child)) list.push(child);
+            }
+        }
+        else if (key === 'keptFor')
+        {
+            if (!isPlainObject(value)) { bad('keptFor', value, 'keptFor (not an object)'); continue; }
+            for (const [rel, lines] of Object.entries(value))
+            {
+                const at = `keptFor.${rel}`;
+                if (!isChildPath(rel) || rel === '__proto__') { bad(at, lines, 'kept child', true, `kept child '${rel}'`); continue; }
+                if (!Array.isArray(lines)) { bad(at, lines, `${at} (not a list)`); continue; }
+                for (const line of lines)
+                {
+                    if (!isKeptLine(line)) { bad(at, line, 'kept line', true); continue; }
+                    const list = record.keptFor[rel] || (record.keptFor[rel] = []);
+                    if (!list.includes(line)) list.push(line);
+                }
             }
         }
         else if (key === 'ignore')
@@ -191,6 +221,9 @@ function union(json, legacy)
     out.parentNone = legacy.parentNone && json.parent == null && json.role == null;
     for (const child of [...json.children, ...legacy.children]) if (!out.children.includes(child)) out.children.push(child);
     out.ignoredChildren = [...json.ignoredChildren];
+    out.includedChildren = [...json.includedChildren];
+    out.includeAsked = [...json.includeAsked];
+    out.keptFor = copyKeptFor(json.keptFor);
     for (const source of [json.ignore, legacy.ignore]) for (const [category, names] of Object.entries(source)) for (const name of names) addIgnore(out, category, name);
     return out;
 }
@@ -247,24 +280,54 @@ function finish(read)
     return read;
 }
 
+const foldsCase = () => process.platform === 'win32' || process.platform === 'darwin';
+const low = (text, fold = foldsCase()) => (fold ? text.toLowerCase() : text);
+
 // Whether `folderKey` is at or below `<holderKey>/<entry>` for an entry of `entries` - the two keys real paths, `/`
 // separated; lower-cased where the disk folds case. Pure: no file is read (W3).
-function covered(entries, holderKey, folderKey, fold = process.platform === 'win32' || process.platform === 'darwin')
+function covered(entries, holderKey, folderKey, fold = foldsCase())
 {
-    const low = (s) => (fold ? s.toLowerCase() : s);
-    const folder = low(folderKey);
-    return (entries || []).some((entry) => { const at = low(`${holderKey}/${entry}`); return folder === at || folder.startsWith(`${at}/`); });
+    const folder = low(folderKey, fold);
+    return (entries || []).some((entry) => { const at = low(`${holderKey}/${entry}`, fold); return folder === at || folder.startsWith(`${at}/`); });
 }
 
-// The installer's view of a record: { parent, parentNone, role, above, children, ignoredChildren, ignores: [{ category,
-// name }] } - `children` less every entry at or below an ignored path.
+// The installer's view of a record: { parent, parentNone, role, above, children, ignoredChildren, includedChildren,
+// includeAsked, keptFor, ignores: [{ category, name }] } - `children` less every entry at or below an ignored path.
 function viewOf(record)
 {
     const ignores = [];
     for (const [category, names] of Object.entries(record.ignore || {})) for (const name of names) ignores.push({ category, name });
     const ignoredChildren = [...(record.ignoredChildren || [])];
     const children = record.children.filter((c) => !covered(ignoredChildren, '', `/${c}`));
-    return { parent: record.parent, parentNone: !!record.parentNone, role: record.role, above: record.above, children, ignoredChildren, ignores };
+    return { parent: record.parent, parentNone: !!record.parentNone, role: record.role, above: record.above, children, ignoredChildren,
+        includedChildren: [...(record.includedChildren || [])], includeAsked: [...(record.includeAsked || [])], keptFor: copyKeptFor(record.keptFor), ignores };
+}
+
+// The ignore lines a view keeps for the child `rel`: the `keptFor` entry whose key equals it as `covered` compares paths.
+function keptLinesFor(view, rel)
+{
+    const key = Object.keys(view.keptFor || {}).find((k) => low(k) === low(rel));
+    return key === undefined ? [] : [...view.keptFor[key]];
+}
+
+// The keptFor value to write, or undefined: each rel's valid lines then its invalid ones; a bad child key is written back whole.
+function keptForOut(record, scalar, entries, invalid)
+{
+    const held = record.keptFor || {};
+    const rels = Object.keys(held);
+    for (const i of invalid) if (i.key.startsWith(KEPT_PREFIX) && !rels.includes(i.key.slice(KEPT_PREFIX.length))) rels.push(i.key.slice(KEPT_PREFIX.length));
+    const kept = {};
+    for (const rel of rels)
+    {
+        const key = `${KEPT_PREFIX}${rel}`;
+        const lines = held[rel] || [];
+        if (!lines.length && scalar(key)) { kept[rel] = scalar(key).value; continue; }
+        const extra = entries(key);
+        if (!isChildPath(rel) || rel === '__proto__') { if (extra.length) Object.defineProperty(kept, rel, { value: extra[0], enumerable: true, writable: true, configurable: true }); continue; }
+        if (lines.length + extra.length) kept[rel] = [...lines, ...extra];
+    }
+    if (Object.keys(kept).length) return kept;
+    return scalar('keptFor') ? scalar('keptFor').value : undefined;
 }
 
 // The object to write: keys in the fixed order (parent or role, above, children, ignore), each invalid value back by its
@@ -295,6 +358,14 @@ function renderRecord(record, unknown = {}, invalid = [], singular = false)
     const badIgnored = scalar('ignoredChildren');
     if (!(record.ignoredChildren || []).length && badIgnored) out.ignoredChildren = badIgnored.value;
     else if (ignoredChildren.length) out.ignoredChildren = ignoredChildren;
+    for (const key of ['includedChildren', 'includeAsked'])
+    {
+        const list = [...(record[key] || []), ...entries(key)];
+        if (!(record[key] || []).length && scalar(key)) out[key] = scalar(key).value;
+        else if (list.length) out[key] = list;
+    }
+    const keptFor = keptForOut(record, scalar, entries, invalid);
+    if (keptFor !== undefined) out.keptFor = keptFor;
     const badIgnore = scalar('ignore');
     const ignored = Object.values(record.ignore).some((names) => names.length);
     if (!ignored && badIgnore) out.ignore = badIgnore.value;
@@ -323,5 +394,5 @@ function renderRecord(record, unknown = {}, invalid = [], singular = false)
 
 module.exports = {
     JSON_NAME, LEGACY_NAME, LOCK_NAME, CATEGORIES, PLURAL, PARENT_RE,
-    isChildPath, isIgnoreName, isIgnoreEntry, emptyRecord, parseLegacy, readRecord, viewOf, renderRecord, covered,
+    isChildPath, isIgnoreName, isIgnoreEntry, emptyRecord, parseLegacy, readRecord, viewOf, renderRecord, covered, keptLinesFor,
 };

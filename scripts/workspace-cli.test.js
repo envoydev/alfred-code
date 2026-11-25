@@ -982,3 +982,13 @@ test('a non-ASCII folder name round-trips', () =>
     assert.strictEqual(cli('parent', '--root', child).out, 'parent: ..\tchild=yes\tname=проєкт-ü\n');
     assert.match(cli('role', '--root', child, '--when', 'init').out, /^ask: Child of \.\. \(проєкт-ü\) \(Recommended\)\tchild$/m);
 });
+
+test('a later ignore and a register keep the root\'s include answer and its kept lines', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'], includedChildren: [], includeAsked: ['api'], keptFor: { api: ['skill csharp'] } } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..' } }, 'ws/web': { git: true } });
+    assert.strictEqual(cli('ignore', '--root', at('ws'), '--add', 'skill dotnet').code, 0);
+    assert.strictEqual(cli('register', '--root', at('ws/web')).code, 0);
+    const v = readWorkspaceRecord(at('ws')).record;   // the full record: wsFile drops an empty list
+    assert.deepStrictEqual([v.includedChildren, v.includeAsked, v.keptFor, v.children], [[], ['api'], { api: ['skill csharp'] }, ['api', 'web']]);
+});
