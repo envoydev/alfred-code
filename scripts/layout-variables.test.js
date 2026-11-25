@@ -480,6 +480,7 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         FRESH_SESSION_PAYBACK: (e) => fresh.paybackOf(e),
         WORKSPACE: (e) => layout.workspaceOn({ env: e, projectRoot: empty }),
         ROOT_SKILLS: (e) => layout.variablesOf(empty, { env: e }).values.ALFRED_CODE_ROOT_SKILLS || 'own',
+        GUARD_ASK: (e) => require('../stack/hooks/hook-prelude.js').canAsk({ hook_event_name: 'PreToolUse', tool_name: 'Bash' }, e),
     };
     // The user's ruling of 2026-10-21: an unset tier takes the DEFAULT trigger, never its own seed - so two tiers read
     // 180000 with nothing set while their seeds are 400000 and 280000. D5 seeds both everywhere, so only a vanished parent

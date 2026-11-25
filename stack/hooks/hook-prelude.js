@@ -1499,6 +1499,22 @@ function withoutShortLived(text, now = Date.now())
     });
 }
 
+// Print mode: CLAUDE_CODE_ENTRYPOINT is the CLI's own answer (review A, M8) - 2.1.283 sets it to sdk-cli in print mode,
+// rewriting an inherited cli, and keeps an SDK launch's own value: one read, no torn row, and right for a resumed
+// session before its first new row. Set to anything, it decides; unset, the transcript's last `entrypoint` does.
+function printMode(input, env = process.env)
+{
+    try
+    {
+        const source = env || process.env;
+        const entry = String(source.CLAUDE_CODE_ENTRYPOINT || '').trim();
+        if (entry) return entry === 'sdk-cli';
+        const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
+        return file !== '' && transcriptField(file, 'entrypoint') === 'sdk-cli';
+    }
+    catch { return false; }
+}
+
 function unattended(input, env)
 {
     try
@@ -1508,13 +1524,7 @@ function unattended(input, env)
         // Auto-run alone is no absence (card item 11, 3d4c416d: three Stops judged 'nobody at the terminal' 28 s to 74 s
         // after the user typed): a live stamp reads as away only once the user's newest typed prompt is AWAY_AFTER_MS old.
         if (autoStampLive(input, source)) return userAway(input);
-        // The CLI's own answer first (review A, M8): 2.1.283 sets CLAUDE_CODE_ENTRYPOINT to sdk-cli in print mode,
-        // rewriting an inherited cli, and keeps an SDK launch's own value - one read, no torn row, and right for a
-        // resumed session before its first new row. Set to anything, it decides; unset, the transcript does.
-        const entry = String(source.CLAUDE_CODE_ENTRYPOINT || '').trim();
-        if (entry) return entry === 'sdk-cli';
-        const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
-        return file !== '' && transcriptField(file, 'entrypoint') === 'sdk-cli';
+        return printMode(input, source);
     }
     catch { return false; }
 }
@@ -1531,6 +1541,98 @@ function cursorHost(input)
     }
     catch { return false; }
 }
+
+// Guards ask instead of block (2026-11-25). A guard that stops a PreToolUse call hands its reason to askOrBlock: where a
+// person can answer, Claude Code's own permission prompt shows the guard's first sentence (Yes runs the call, No refuses it
+// and the model gets the full reason); where nobody can, the call is denied with the full reason, as before.
+const ASKED_PREFIX = 'A guard asked the user about this call: ';
+const ASK_RECOMMENDATION = "Recommended: No, unless you meant this call - Claude then gets the guard's fix.";
+const ASK_CONTEXT_MIDDLE = '. If the result shows the call ran, the user approved it - do not redo it. If the user declined: ';
+const ASK_SENTENCE_MAX = 400;
+const BLOCK_LEAD_RE = /^(?:Blocked|Held once): /;
+const SENTENCE_END_RE = /^[\s\S]*?[.!?](?=\s|$)/;
+const NO_ANSWER_MODES = new Set(['dontAsk', 'bypassPermissions']);
+const SUBAGENT_HANDBACK = 'SubagentHandback';
+const guardLabel = (guard) => (guard ? `alfred-code ${guard}` : 'alfred-code');
+
+// Whether a person can answer a prompt for this call. False for anything but a plain-object payload, the handback tool, a
+// Cursor payload, a mode that never prompts, ALFRED_CODE_UNATTENDED=1, print mode and the rollback switch
+// ALFRED_CODE_GUARD_ASK=0. It never reads the auto-run stamp: an idle user under auto-run is asked. A throw reads as false.
+function canAsk(input, env = process.env)
+{
+    try
+    {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+        if (input.tool_name === SUBAGENT_HANDBACK) return false;
+        if (cursorHost(input)) return false;
+        if (NO_ANSWER_MODES.has(input.permission_mode)) return false;
+        const source = env || process.env;
+        if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return false;
+        if (printMode(input, source)) return false;
+        return String(envOf(source, 'GUARD_ASK') ?? '').trim() !== '0';
+    }
+    catch { return false; }
+}
+
+// The reason as text; a reason whose conversion throws reads as the fallback line.
+function reasonText(reason, guard)
+{
+    try { return String(reason); }
+    catch { return `${guardLabel(guard)}: a guard blocked this call.`; }
+}
+
+// The first sentence of a reason for the prompt: a leading 'Blocked: ' or 'Held once: ' dropped, line breaks joined into
+// spaces, cut after the first . ! or ? that a space or the end follows, capped at 400 characters (cut at a word, then '...').
+function firstSentence(text)
+{
+    const joined = text.replace(BLOCK_LEAD_RE, '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+    const cut = (SENTENCE_END_RE.exec(joined) || [joined])[0].trim();
+    if (cut.length <= ASK_SENTENCE_MAX) return cut;
+    const room = cut.slice(0, ASK_SENTENCE_MAX - 3);
+    const atWord = room.lastIndexOf(' ');
+    return `${(atWord > 0 ? room.slice(0, atWord) : room).trimEnd()}...`;
+}
+
+// The verdict a block writes - pure, never throws. `ask` carries the user's text and, as additionalContext, the model's;
+// `deny` carries today's full reason and no additionalContext.
+function blockVerdict(input, reason, { env = process.env, guard = '' } = {})
+{
+    let text;
+    try
+    {
+        text = String(reason);
+        const output = { hookEventName: 'PreToolUse' };
+        if (!canAsk(input, env))
+            return { decision: 'deny', hookSpecificOutput: { ...output, permissionDecision: 'deny', permissionDecisionReason: text } };
+        const sentence = firstSentence(text) || 'a guard blocked this call.';
+        const spoken = sentence.replace(/[.!?]+$/, '');
+        return { decision: 'ask', hookSpecificOutput: { ...output, permissionDecision: 'ask',
+            permissionDecisionReason: `${guardLabel(guard)}: ${sentence}\n${ASK_RECOMMENDATION}`,
+            additionalContext: `${ASKED_PREFIX}${spoken}${ASK_CONTEXT_MIDDLE}${text}` } };
+    }
+    catch
+    {
+        return { decision: 'deny', hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
+            permissionDecisionReason: typeof text === 'string' ? text : `${guardLabel(guard)}: a guard blocked this call.` } };
+    }
+}
+
+// Writes the verdict as the hook's one JSON object and returns the decision. A Cursor deny also writes the reason to stderr
+// (blockExitCode then gives 2). Sets global.BLOCK_VERDICT for the block row. It never exits - the site does.
+function askOrBlock(input, reason, { env = process.env, guard = '' } = {})
+{
+    const verdict = blockVerdict(input, reason, { env, guard });
+    const denied = verdict.decision === 'deny';
+    const said = denied ? verdict.hookSpecificOutput.permissionDecisionReason : reasonText(reason, guard);
+    global.BLOCK_VERDICT = { decision: verdict.decision, reason: said };
+    try { process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput })); } catch { /* a closed pipe */ }
+    if (denied && cursorHost(input))
+        try { process.stderr.write(`${said}\n`); } catch { /* a closed pipe */ }
+    return verdict.decision;
+}
+
+// The exit code a block site returns: 2 only for a deny on a Cursor payload, which reads exit 2 as the block.
+const blockExitCode = (input, decision) => (decision === 'deny' && cursorHost(input) ? 2 : 0);
 
 // GATE 6's call. A hook runs it ONCE, right after it has parsed its own payload (`if (prelude.cursorStandDown(
 // payload, __filename)) process.exit(0)`): true only for a Cursor payload and a NON-protective hook, never for
@@ -2190,4 +2292,4 @@ function heldByReview(reviews, abs, content)
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
 module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep, userAway, AWAY_AFTER_MS });   // beside the one-line list, which a new name would push past 160
+Object.assign(module.exports, { printMode, canAsk, blockVerdict, askOrBlock, blockExitCode, ASKED_PREFIX, autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep, userAway, AWAY_AFTER_MS });   // beside the one-line list, which a new name would push past 160

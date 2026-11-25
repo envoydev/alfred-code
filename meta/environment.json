@@ -297,6 +297,20 @@
       }
     },
     {
+      "key": "ALFRED_CODE_GUARD_ASK",
+      "default": "1",
+      "ask": false,
+      "seed": false,
+      "what": "Whether a guard that stops a tool call asks you first. Unset or anything but `0`: Claude Code's permission prompt shows the guard's reason - Yes runs the call, No refuses it and Claude gets the guard's fix. `0`: every such block is a plain deny with the guard's full reason. Where nobody can answer - `dontAsk`, `bypassPermissions`, print mode, `ALFRED_CODE_UNATTENDED=1`, Cursor - a block is a deny whatever this says. Never written into a project; set `0` in the launch environment, a settings `env` or `.variables`.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
       "key": "ALFRED_CODE_AUTO_RUN",
       "default": "",
       "ask": false,

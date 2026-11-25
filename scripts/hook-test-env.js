@@ -162,5 +162,33 @@ function statusAccount()
     return statusAccountDir;
 }
 
+// What a hook run decided, as one word. `r` is a spawnSync result (`status`) or a dispatcher result (`code`): a raw exit 2
+// is 2; else stdout read as ONE JSON object gives its permissionDecision when `ask` or `deny`; else 0. Non-empty stdout
+// that opens with `{` and does not parse as one object throws - two JSON objects read as no decision in Claude Code.
+function hookOutputOf(r)
+{
+    const out = String(r.stdout ?? '').trim();
+    if (out === '' || out[0] !== '{') return {};
+    let parsed;
+    try { parsed = JSON.parse(out); } catch { throw new Error('stdout is not one JSON object'); }
+    return (parsed && parsed.hookSpecificOutput) || {};
+}
+function verdictOf(r)
+{
+    if ((r.status ?? r.code) === 2) return 2;
+    const decision = hookOutputOf(r).permissionDecision;
+    return decision === 'ask' || decision === 'deny' ? decision : 0;
+}
+// The text the model gets from a block: an ask's additionalContext, a deny's reason, an exit 2's stderr.
+function blockText(r)
+{
+    const verdict = verdictOf(r);
+    if (verdict === 2) return String(r.stderr ?? '');
+    if (verdict === 'ask') return String(hookOutputOf(r).additionalContext ?? '');
+    return verdict === 'deny' ? String(hookOutputOf(r).permissionDecisionReason ?? '') : '';
+}
+// The text the user sees on an ask.
+const askText = (r) => (verdictOf(r) === 'ask' ? String(hookOutputOf(r).permissionDecisionReason ?? '') : '');
+
 module.exports = { isolateHookSuite, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
-    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick };
+    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick, verdictOf, blockText, askText };
