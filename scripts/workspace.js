@@ -35,7 +35,7 @@ const stamp = require('./install/stamp.js');
 // and changes `process.env`, which `role --answer leave` then reads (AC15, AC24 of install-workspace.test.js).
 const nestedMod = () => require('./install/nested.js');
 const includeFx = () => require('./workspace-include/effects.js');
-const ASIDE_STATE = require('./workspace-include/constants.js').STATE.setAside;
+const { STATE: { setAside: ASIDE_STATE }, ROW_GONE } = require('./workspace-include/constants.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { REPORT_LINE_AT_TOP } = require('./install/report-constants.js');
@@ -357,9 +357,9 @@ function planVerb(out)
     catch { /* a snapshot with no plugin.json names no version */ }
     const rows = ws.subtree(top, { env });
     // A listed child that lost its own `.git` is part of this repository now: no project row, only a `nested:` one.
-    const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top)).map((r) => r.rel));
-    // A child the root set aside, and every row below it, runs nothing: it is named once, as `set-aside:`.
+    // A child the root set aside, and every row below it, runs nothing: it is named once, as `set-aside:`, and never as `nested:`.
     const aside = includeFx().readSkipped(top, rows, { env });
+    const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top) && !aside.skipped.has(r.rel)).map((r) => r.rel));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-plan-'));
     try
     {
@@ -410,7 +410,7 @@ function planVerb(out)
             for (const l of asksOf(row.root)) { out(`  ${l}`); entry.asks.push(l.trim()); }
         }
         for (const rel of aside.heads) out(`${ASIDE_STATE}: ${field(rel)}`);
-        for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${field(row.rel)}`);
+        for (const row of rows.filter((r) => r.state === ROW_GONE && !aside.skipped.has(r.rel))) out(`gone: ${field(row.rel)}`);
         let rescanned = 0;
         if (has('--rescan'))
         {
@@ -556,10 +556,10 @@ function cascade(out)
         const all = ws.subtree(top, { env });
         const { skipped } = includeFx().readSkipped(top, all, { env });
         const below = all.filter((r) => r.depth > 0);
-        const heldState = (r) => (skipped.has(r.rel) ? ASIDE_STATE : r.state === 'gone' ? 'gone-kept' : 'held');
+        const heldState = (r) => (skipped.has(r.rel) ? ASIDE_STATE : r.state === ROW_GONE ? 'gone-kept' : 'held');
         for (const r of below) out(`cascade: ${field(r.rel)}\t${heldState(r)}`);
         const setAside = below.filter((r) => skipped.has(r.rel)).length;
-        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== 'gone' && !skipped.has(r.rel)).length} held${setAside ? `, ${setAside} set aside` : ''}`);
+        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== ROW_GONE && !skipped.has(r.rel)).length} held${setAside ? `, ${setAside} set aside` : ''}`);
         return;
     }
     const source = sourceArg();
@@ -588,11 +588,11 @@ function cascade(out)
             if (skipped.has(r.rel)) { row(r.rel, ASIDE_STATE); continue; }
             if (blocked.has(r.parentRel)) { blocked.add(r.rel); row(r.rel, 'skipped'); continue; }
             const parent = byRel.get(r.parentRel);
-            if (r.state === 'gone')
+            if (r.state === ROW_GONE)
             {
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
                 ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { runRoot: top, log: out });
-                row(r.rel, 'gone');
+                row(r.rel, ROW_GONE);
                 continue;
             }
             if (isSameRepoChild(r, top))

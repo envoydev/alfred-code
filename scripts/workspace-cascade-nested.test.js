@@ -184,3 +184,43 @@ test('an unasked child still cascades as before, with no set-aside suffix', () =
     assert.match(plan(ws, src, '--rescan').out, /^workspace-plan: 3 projects$/m);
     assert.ok(ran().length > 0);
 });
+
+test('a gone row below a set-aside child is skipped with it: no gone row in plan, set-aside in cascade, its record untouched', () =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    const ws = makeFolder(top, 'ws', { git: true, record: { children: ['api'], includedChildren: [], includeAsked: ['api'] } });
+    const api = makeFolder(top, 'ws/api', { git: true, record: { parent: '..', children: ['tool', 'old'] } });
+    makeFolder(top, 'ws/api/tool', { git: true, record: { parent: '..' } });
+    const recordFile = path.join(api, '.alfred', 'workspace.json');
+    const before = fs.readFileSync(recordFile);
+    const { src } = fakeSource();
+    const planned = plan(ws, src);
+    assert.doesNotMatch(planned.out, /gone:/, planned.out);
+    assert.match(planned.out, /^set-aside: api$/m, planned.out);
+    const r = cascade(ws, src);
+    assert.match(r.out, /^cascade: api\/old\tset-aside$/m, r.out);
+    assert.doesNotMatch(r.out, /\tgone$/m, r.out);
+    assert.match(r.out, /^cascade: done 0 updated, 0 failed, 0 skipped, 3 set aside$/m, r.out);
+    assert.ok(before.equals(fs.readFileSync(recordFile)), 'the set-aside child\'s own record is byte-identical');
+});
+
+test('a gone child in the top\'s own record is still the root\'s to name and remove, set aside or not', () =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    const ws = makeFolder(top, 'ws', { git: true, record: { children: ['old'], includedChildren: [], includeAsked: ['old'] } });
+    const { src } = fakeSource();
+    assert.match(plan(ws, src).out, /^gone: old$/m);
+    assert.match(cascade(ws, src).out, /^cascade: old\tgone$/m);
+});
+
+test('a set-aside same-repo child prints set-aside and no nested row in plan', () =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    const ws = makeFolder(top, 'ws', { git: true, record: { children: ['api'], includedChildren: [], includeAsked: ['api'] } });
+    makeFolder(top, 'ws/api', { record: { parent: '..' } });
+    const { src } = fakeSource();
+    const r = plan(ws, src);
+    assert.match(r.out, /^set-aside: api$/m, r.out);
+    assert.doesNotMatch(r.out, /nested:/, r.out);
+    assert.doesNotMatch(cascade(ws, src).out, /nested/, 'cascade names it set-aside, never nested');
+});

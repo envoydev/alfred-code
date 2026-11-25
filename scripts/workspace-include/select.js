@@ -61,8 +61,9 @@ function asideRows(rows, viewsByParent)
     return aside;
 }
 
-// The aside rows `plan` and `cascade` run nothing in: a gone row is left out, since its line is still the root's to remove.
-const skippedRows = (rows, aside) => new Set(rows.filter((row) => aside.has(row.rel) && row.state !== ROW_GONE).map((row) => row.rel));
+// The aside rows `plan` and `cascade` run nothing in. A gone row whose parent row is not aside is left out: its line is the
+// root's own to remove. A gone row below a set-aside row is skipped with the rest of that subtree.
+const skippedRows = (rows, aside) => new Set(rows.filter((row) => aside.has(row.rel) && (row.state !== ROW_GONE || aside.has(row.parentRel))).map((row) => row.rel));
 
 // The skipped rows whose parent row is not skipped, in row order: the ones `plan` names, each standing for its subtree.
 const asideHeads = (rows, skipped) => rows.filter((row) => skipped.has(row.rel) && !skipped.has(row.parentRel)).map((row) => row.rel);
