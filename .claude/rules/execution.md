@@ -8,7 +8,7 @@ Applies to any task of more than a few steps across more than one file or subtas
 - Batch independent reads, searches and commands into one turn; a call that needs another's result waits.
 - Subagents only when all hold: two or more subtasks are independent, each is sizeable (about ten tool calls, or a wide read that would flood this context), the contracts they share already exist in code, and each can be verified alone. Never for a handful of calls, never to re-check your own work. A seat a skill prescribes - the plan grader, an audit's planner and editor, a step whose model is not this session's - is that skill's call and outside this limit.
 - A role's model the user names in chat - 'plan model fable', 'review with opus' - is saved in `.claude/kit/settings.json` and is that role's model in every session until it is changed (the user, 2026-11-16). Where that request's `kit status` line says `saved: plan_model=fable`, the status hook saved it; where the line carries no `saved:` for it, run `node .claude/kit/settings.mjs set plan_model <model>` (or `audit_model`, `review_model`, `implement_model`, `search_model`) and say what it printed. A dispatch takes the model the line gives.
-- Seats that edit files in one directory each get their own worktree. A fan-out goes in three steps: shared contracts first and one build to prove them; a complete brief per seat (objective, files it owns and must not touch, the contract, the checks it must pass, the report shape) because it cannot see this conversation; then integrate one track at a time. A seat's 'tests pass' stays unverified until the integrated run confirms it.
+- Seats that edit files in one directory each get their own worktree. A fan-out goes in three steps: shared contracts first and one build to prove them; a complete brief per seat (objective, files it owns and must not touch, the contract, the checks it must pass, the report shape, and that a blocked command stops the seat, as 'Blocked commands' below says) because it cannot see this conversation; then integrate one track at a time. A seat's 'tests pass' stays unverified until the integrated run confirms it.
 
 ## Plan
 
@@ -23,8 +23,10 @@ Five to ten lines in the reply or the todo list, never a plan file unless the us
 
 ## Blocked commands
 
-- A command that a guard hook or the permission mode blocks is never rewritten, split, encoded or renamed to get past the block. Why: the block is the user's check, and a command shaped to pass it takes that check away (2026-11-25: a run split a variable name to pass a secret guard).
+- A command or tool call that a guard hook or the permission mode blocks is never rewritten, split, encoded or renamed to get past the block. Why: the block is the user's check, and a command shaped to pass it takes that check away (2026-11-25: a run split a variable name to pass a secret guard).
+- Never reach the blocked effect by another route. Judge the effect by the end state of the files, not by the command: another command, a tool call, a script and another agent are each a route. Example: after a blocked `git checkout <file>`, a `git show HEAD:<file> > <file>`, a `git restore`, a `git stash` and a Write or Edit back to the old text reach the same end. Why: a fix seat restored a file with `git show` after its `git checkout` was blocked (2026-11-25).
 - Drop the part the block objects to only where the task does not need that part. Else stop, quote the message, and give the user the command to run or the permission rule to add.
+- A subagent seat stops the same way and reports the block, its message and the command to the session that dispatched it. That session reaches the effect by no other route either. It may run the same command where the guard or the permission mode asks the user, and it names the block to the user - under auto-run, in the close's 'Left for you'.
 
 ## Close
 

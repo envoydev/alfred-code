@@ -62,7 +62,7 @@ The dispatch gives you: REPOSITORY, RUN FOLDER, BATCH (a number) and the path of
 
 ## When a check stays red
 
-Fix what the check names and run the checks again, once. Still red: put the batch back and say so.
+Fix what the check names and run the checks again, once. Still red: put the batch back and say so. A guard or the permission mode that blocks a command below stops you: report the block and its message, and never reach the same end another way.
 
 ```bash
 git restore --staged --worktree --source=HEAD -- <the batch's old and new paths and every other file you touched>
