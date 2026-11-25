@@ -81,3 +81,40 @@ test('root: the native file of a kept rule goes once the child is included again
     assert.ok(!steps[2].native, outs[2]);
     assert.ok(!steps[2].store, outs[2]);
 });
+
+test('root: a run the store lock refused never prunes a rule store copy, even one a member picks while the child ignores it', POSIX_ONLY, () =>
+{
+    const lock = (repo) => path.join(repo, '.alfred', 'workspace.lock');
+    const { outs, steps } = run([DROP, UPDATE], (repo, i) =>
+    {
+        if (i === 0) setAside(repo, { api: [KEPT_LINE] });
+        if (i === 1)
+        {
+            fs.writeFileSync(path.join(repo, 'api', '.claude', 'alfred-code.stamp'), `seats-route: plugin\nown-picks: rule/${RULE}\n`);
+            putWorkspace(path.join(repo, 'api'), { parent: '..', ignore: { rule: [RULE] } });
+            fs.writeFileSync(lock(repo), String(process.pid));
+        }
+        return stateOf(repo);
+    });
+    assert.match(outs[2], /!! workspace: the store is locked/);
+    assert.doesNotMatch(outs[2], /rule pruned \(no member below picks it now\)/, outs[2]);
+    assert.ok(steps[2].store, `the store copy stays while the member picks it: ${outs[2]}`);
+});
+
+test('root: a rule store copy with no recorded hash stays when the keep ends, and the log says it has no record', POSIX_ONLY, () =>
+{
+    const { outs, steps } = run([DROP, UPDATE], (repo, i) =>
+    {
+        if (i === 0) setAside(repo, { api: [KEPT_LINE] });
+        if (i === 1)
+        {
+            putWorkspace(path.join(repo, 'api'), { parent: '..', ignore: { rule: [RULE] } });
+            const text = fs.readFileSync(stampOf(repo), 'utf8').replace(new RegExp(`(^library-rules: .*?)(^|,)${RULE}=[0-9a-f]+`, 'm'), '$1');
+            fs.writeFileSync(stampOf(repo), text);
+        }
+        return stateOf(repo);
+    });
+    assert.ok(steps[2].store, outs[2]);
+    assert.match(outs[2], /rule kept: angular-conventions\.md - no member below picks it now, but it has no recorded hash, so it stays/, outs[2]);
+    assert.doesNotMatch(outs[2], /edited since the stack wrote it/);
+});

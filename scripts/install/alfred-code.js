@@ -1831,10 +1831,12 @@ function pruneAway(ctx, away)
 // root here). A kind git sees holds none (ruling 8).
 function membersHeld(ctx, locked)
 {
-    const held = { skills: [], agents: [], rules: [], lines: [], keepOnly: [], keptRules: [], rewrite: [] };
+    const held = { skills: [], agents: [], rules: [], lines: [], keepOnly: [], keptRules: [], rewrite: [], was: null };
     if (locked === null) return held;
     const priorOnly = (ctx.stampFile && stampLayer.readKeptOnly(ctx.stampFile)) || [];
     let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
+    // What the last run held and recorded, read here under the lock: a rule store copy is pruned from this view and no later one.
+    if (locked === true) held.was = { lines: [...lines], rules: { ...((stampLayer.readLibrary(ctx.stampFile) || {}).rules || {}) } };
     if (locked === false) ctx.log('  !! workspace: the store is locked - member picks are read at the next run');
     else if (locked === true)
     {
@@ -2462,14 +2464,20 @@ function writeNativeRules(ctx)
         ctx.log(`native rules: .claude/rules - written ${done.written.length}, updated ${done.updated.length}, removed ${done.removed.length}`);
 }
 
-// A rule the last run held for a member or a keep that nothing holds now: its store copy goes, unless edited since the stack wrote it.
+// A rule the last run held for a member or a keep that nothing holds now: its store copy goes, unless edited since the stack wrote
+// it. Judged only from what `membersHeld` read under the store lock - a run the lock refused saw a partial view, and a copy a child
+// added after the lock was released is no leftover.
 function pruneHeldRules(ctx)
 {
-    const was = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
-    const gone = childKeep.goneRuleNames(was, ctx.held ? ctx.held.lines : [], ctx.lists.rules.map((f) => f.replace(/\.md$/, '')));
-    const recorded = (stampLayer.readLibrary(ctx.stampFile) || {}).rules || {};
+    const { was } = ctx.held || {};
+    if (!was) return;
+    const gone = childKeep.goneRuleNames(was.lines, ctx.held.lines, ctx.lists.rules.map((f) => f.replace(/\.md$/, '')));
     pruneCopies(ctx, ctx.rulesDir, gone.map((n) => `${n}.md`), 'rule', 'no member below picks it now', { keep: (f) =>
-        (recorded[f.replace(/\.md$/, '')] !== library.hashItem(path.join(ctx.rulesDir, f)) && 'edited since the stack wrote it, so it is yours') });
+    {
+        const recorded = was.rules[f.replace(/\.md$/, '')];
+        if (recorded === undefined) return 'it has no recorded hash, so it stays';
+        return recorded !== library.hashItem(path.join(ctx.rulesDir, f)) && 'edited since the stack wrote it, so it is yours';
+    } });
 }
 
 function installHooksAndRules(ctx)
