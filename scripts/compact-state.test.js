@@ -489,8 +489,16 @@ test('compact-state: the first change after an automatic compaction is held once
     assert.strictEqual(held.status, 'ask', 'the first edit is held');
     assert.match(held.stderr, /~120k tokens per message/, 'the measured post-compaction carry');
     assert.match(held.stderr, /A fresh session restarts at ~40k, written new at 1\.25x/, 'and the cold floor, priced');
-    assert.strictEqual(call(p, tp, 'Bash'), 'ask', 'still held - no ask yet');
-    assert.strictEqual(call(p, tp, 'Edit'), 0, 'two denials, then it gives way - never a loop');
+    assert.strictEqual(call(p, tp, 'Bash'), 0, 'the ask was the offer, shown once: the next changing call passes whatever the user answered');
+    assert.strictEqual(call(p, tp, 'Edit'), 0);
+    const nobody = project();
+    const tn = nobody.transcript(rows);
+    nobody.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tn }, env);
+    after(tn, usageRow('b', { cache_read_input_tokens: 120000 }));
+    const quiet = { permission_mode: 'dontAsk' };
+    assert.strictEqual(call(nobody, tn, 'Edit', quiet), 'deny', 'nobody to ask: a deny');
+    assert.strictEqual(call(nobody, tn, 'Bash', quiet), 'deny', 'and it holds until an answer or the cap');
+    assert.strictEqual(call(nobody, tn, 'Edit', quiet), 0, 'two denials, then it gives way - never a loop');
     const q = project();
     const tq = q.transcript(rows);
     q.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tq }, env);
@@ -531,7 +539,8 @@ test('compact-state: every hold text names the fewer-than-payback exit, and its 
     const rows = [usageRow('f', { cache_creation_input_tokens: 40000 }), usageRow('a', { cache_read_input_tokens: 316000 }), boundary('auto', 317000)];
     const EXIT = /or fewer messages than the payback, say so in one line [-(] ?'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages'/;
     const after = (tp, text) => fs.appendFileSync(tp, JSON.stringify(usageRow('c', { cache_read_input_tokens: 120000 }, text)) + '\n');
-    const edit = (s) => s.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: s.tp }, env);
+    // nobody to ask (dontAsk): a deny keeps the hold standing, which these cases read; an ask is the offer and releases it
+    const edit = (s) => s.p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: s.tp, permission_mode: 'dontAsk' }, env);
     const armed = () =>
     {
         const p = project();
@@ -543,14 +552,14 @@ test('compact-state: every hold text names the fewer-than-payback exit, and its 
     const a = armed();
     assert.match(a.started.replace(/\s+/g, ' '), EXIT, 'the compact start names both exits');
     const held = edit(a);
-    assert.strictEqual(held.status, 'ask');
+    assert.strictEqual(held.status, 'deny');
     assert.match(held.stderr.replace(/\s+/g, ' '), EXIT, 'the compaction hold names both exits');
     const n = Number((/pays back in about (\d+) messages/.exec(held.stderr) || [])[1]);
     assert.ok(n > 2, held.stderr);
     after(a.tp, `fewer messages than the payback: rename the test, ~${n} messages`);
-    assert.strictEqual(edit(a).status, 'ask', 'a count at the quoted payback is no exit');
+    assert.strictEqual(edit(a).status, 'deny', 'a count at the quoted payback is no exit');
     const b = armed();
-    assert.strictEqual(edit(b).status, 'ask');
+    assert.strictEqual(edit(b).status, 'deny');
     after(b.tp, `Fewer messages than the payback: rename the one test, ~${n - 1} messages.`);
     assert.strictEqual(edit(b).status, 0, 'a count under the quoted payback releases the hold');
     const ledger = fs.readFileSync(path.join(b.p.root, '.alfred', 'statistics', 'hook-blocks', `${b.p.sid}.jsonl`), 'utf8');
@@ -559,9 +568,9 @@ test('compact-state: every hold text names the fewer-than-payback exit, and its 
     after(c.tp, 'fewer messages than the payback: fix the typo, ~2 messages');
     assert.strictEqual(edit(c).status, 0, 'said before any hold quoted a payback, the line form is taken as the single-short-step line is');
     const d = armed();
-    assert.strictEqual(edit(d).status, 'ask');
+    assert.strictEqual(edit(d).status, 'deny');
     after(d.tp, 'fewer messages than the payback: rename the test');
-    assert.strictEqual(edit(d).status, 'ask', 'a line naming no count is no exit');
+    assert.strictEqual(edit(d).status, 'deny', 'a line naming no count is no exit');
 });
 
 test('compact-state: the hold reaches an edit and a shell call through their one-process dispatchers (C09, 7fae0c39 / 84eedb4b)', () =>
@@ -575,7 +584,7 @@ test('compact-state: the hold reaches an edit and a shell call through their one
     const rows = [usageRow('f', { cache_creation_input_tokens: 40000 }), usageRow('a', { cache_read_input_tokens: 316000 }), boundary('auto', 317000)];
     const p = project();
     const tp = p.transcript(rows);
-    const via = (hook, tool, input) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp }, env, hook);
+    const via = (hook, tool, input, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp, ...extra }, env, hook);
     assert.strictEqual(via(SHELL, 'Bash', { command: 'ls' }).status, 0, 'no hold pending: the dispatcher passes');
     assert.strictEqual(via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' }).status, 0);
     p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env);
@@ -587,10 +596,17 @@ test('compact-state: the hold reaches an edit and a shell call through their one
     assert.strictEqual(shell.status, 'ask', 'the first changing shell call after the compaction is held');
     assert.match(shell.stderr, /Held once: this session AUTO-COMPACTED/);
     assert.match(shell.stderr, /~120k tokens per message/);
-    const edit = via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' });
-    assert.strictEqual(edit.status, 'ask', 'an edit is held through the file dispatcher');
-    assert.match(edit.stderr, /Held once/);
-    assert.strictEqual(via(SHELL, 'Bash', { command: 'echo y > a.txt' }).status, 0, 'two denials, then it gives way - the cap is shared by both routes');
+    assert.strictEqual(via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' }).status, 0, 'the first ask was the offer: the other route passes');
+    const q = project();
+    const tq = q.transcript(rows);
+    const viaQ = (hook, tool, input) => q.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tq, permission_mode: 'dontAsk' }, env, hook);
+    q.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tq }, env);
+    fs.appendFileSync(tq, JSON.stringify(usageRow('b', { cache_read_input_tokens: 120000 })) + '\n');
+    assert.strictEqual(viaQ(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 'deny', 'nobody to ask: denied');
+    const editHeld = viaQ(FILES, 'Edit', { file_path: path.join(q.root, 'a.txt'), old_string: 'a', new_string: 'b' });
+    assert.strictEqual(editHeld.status, 'deny', 'an edit is held through the file dispatcher');
+    assert.match(editHeld.stderr, /Held once/);
+    assert.strictEqual(viaQ(SHELL, 'Bash', { command: 'echo y > a.txt' }).status, 0, 'two denials, then it gives way - the cap is shared by both routes');
 });
 
 test('compact-state: the prompt ending an idle gap past the clock hours is offered a fresh session once (C09, ca65b406)', () =>
@@ -673,8 +689,8 @@ test('compact-state: the idle gap leaves a hold the first change meets, released
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
     assert.match(held.stderr.replace(/\s+/g, ' '), /or fewer messages than the payback, say so in one line - 'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry/, 'AC-6: the idle hold names both exits');
-    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 'ask', 'a writing shell call is a change');
-    assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 0, 'the ask was the offer: the next change passes, whatever the user answered');
+    assert.strictEqual(s.edit().status, 0);
     const a = setup();
     fs.appendFileSync(a.tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
     assert.strictEqual(a.edit().status, 0, 'an ask answered after the gap releases it');
@@ -1014,9 +1030,9 @@ test('compact-state: a plan task ticked DONE past the trigger holds the next tas
     assert.match(said, /'Resume in a fresh session \(Recommended\)'/);
     assert.match(said, /or fewer messages than the payback, say so in one line - 'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry/, 'AC-6: the tick hold names both exits');
     assert.match(s.ledger(), /"kind":"tick-offer"/, 'one probe row records the arm');
-    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 'ask', 'a writing shell call is a change too');
-    assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
-    assert.match(s.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"denied-twice"/);
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 0, 'the ask was the offer: the next change passes, whatever the user answered');
+    assert.strictEqual(s.edit().status, 0);
+    assert.match(s.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"offered-by-ask"/);
 
     const a = setup();
     a.tick();

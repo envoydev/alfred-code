@@ -422,8 +422,14 @@ test('the deny: a sixth agent while five run, the key unset (AC1)', () =>
     assert.match(r.stderr, /\nThe setting is the user's - never change it yourself\./);
     assert.doesNotMatch(r.stderr, /lift|=0|\b0\b/, 'the denial never says how to lift the cap');
     assert.deepStrictEqual(blockRows(root).map((row) => row.detail && row.detail.branch), ['agent-cap']);
-    assert.ok(fs.existsSync(cap.deniedOf(reg)), 'a main-session denial writes .denied');
+    assert.ok(!fs.existsSync(cap.deniedOf(reg)), 'an ask writes no .denied: the Stop would send the dispatch again over the user\'s answer');
     assert.deepStrictEqual(pendings(reg), []);
+    const noOne = project();
+    const noReg = regOf(noOne);
+    runningFiles(noReg, ['Explore', 'Plan', 'alfred-code:aspnet-verifier', 'general-purpose', 'Explore']);
+    const d = callHook(GUARD, noOne, agentPayload(noOne, { extra: { permission_mode: 'dontAsk' } }));
+    assert.strictEqual(d.status, 'deny', d.stderr);
+    assert.ok(fs.existsSync(cap.deniedOf(noReg)), 'a main-session deny writes .denied');
 });
 
 test('the deny: the type list stops at eight names, then the count of the rest', () =>
@@ -451,18 +457,32 @@ test('8 dispatches at once at cap 5 on an empty registry: 5 pass, 3 are denied (
     assert.strictEqual(pendings(regOf(root)).length, 5);
 });
 
-test('an ask keeps the cap\'s pending file, a deny drops it (AC5)', () =>
+test('an ask drops the cap\'s pending file as a deny does: a declined dispatch holds no slot (AC5)', () =>
 {
     const asked = project();
     const r = callHook(GUARD, asked, agentPayload(asked, { seat: 'aspnet-implementer' }));
     assert.strictEqual(r.status, 'ask');
     assert.match(r.stderr, /without an approval gate/);
-    assert.deepStrictEqual(pendings(regOf(asked)), ['AGENT-CAP-s1-P-toolu_x'], 'the user may approve, and then the seat starts into that slot');
+    assert.deepStrictEqual(pendings(regOf(asked)), [], 'only a dispatch that starts holds a slot');
     const denied = project();
     const d = callHook(GUARD, denied, agentPayload(denied, { seat: 'aspnet-implementer', extra: { permission_mode: 'dontAsk' } }));
     assert.strictEqual(d.status, 'deny');
     assert.match(d.stderr, /without an approval gate/);
     assert.deepStrictEqual(pendings(regOf(denied)), [], 'a dispatch another rule denies holds no slot');
+});
+
+test('declined asks fill no cap slot: the next dispatch gets its own reason, not the cap prompt (AC5)', () =>
+{
+    const root = project();
+    for (let i = 0; i < 6; i += 1)
+    {
+        const r = callHook(GUARD, root, agentPayload(root, { id: `toolu_${i}`, seat: 'aspnet-implementer' }));
+        assert.strictEqual(r.status, 'ask', r.stderr);
+        assert.match(r.stderr, /without an approval gate/, `dispatch ${i} reads its own reason`);
+        assert.doesNotMatch(r.stderr, /agents are running/);
+    }
+    assert.deepStrictEqual(pendings(regOf(root)), []);
+    assert.strictEqual(callHook(GUARD, root, agentPayload(root, { id: 'toolu_ok' })).status, 0, 'a plain dispatch still passes under the cap');
 });
 
 test('the boundary: at exactly the cap denied, one under it passes (AC6)', () =>

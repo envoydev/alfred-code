@@ -211,8 +211,8 @@ const real = (p) => {
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 // The prelude (hook-prelude.js) supplies PROTECTIVE and HOOK_RENAMED below; with no prelude PROTECTIVE falls back to a fixed list and HOOK_RENAMED to none.
-let receipts = null;
-try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
+let prelude = null;
+try { prelude = require('./hook-prelude.js'); } catch { prelude = null; }
 
 // ---- SYS-01 (system audit 2026-11-03, BLOCKER): a write that switches a PROTECTIVE guard off --------------------------
 // The hooks read their off-list (the HOOKS_OFF csv) from the settings `env` (hook-prelude.js GATE 1: layout.js applies the project's
@@ -233,8 +233,8 @@ try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
 // is live. Ceilings: a destination or a value the shell computes, a runtime script that builds the JSON, a git checkout or
 // clone laying a settings file down, and another extract tool. The core switched off in `enabledPlugins` or by the CLI is
 // THE PLUGIN SWITCH-OFF, below.
-const PROTECTIVE_GUARDS = (() => { try { return [...receipts.PROTECTIVE]; } catch { return ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']; } })();
-const RENAMED_HOOKS = (receipts && receipts.HOOK_RENAMED) || {};
+const PROTECTIVE_GUARDS = (() => { try { return [...prelude.PROTECTIVE]; } catch { return ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']; } })();
+const RENAMED_HOOKS = (prelude && prelude.HOOK_RENAMED) || {};
 // The key as envOf spells every stack setting: the prefix, then the suffix.
 const HOOKS_OFF_SUFFIX = 'HOOKS_OFF';
 const HOOKS_OFF_KEY = `ALFRED_CODE_${HOOKS_OFF_SUFFIX}`;

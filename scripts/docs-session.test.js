@@ -3251,8 +3251,9 @@ test('member: through the dispatcher, one reply carries both hooks\' hand-overs 
     const s = sid();
     const child = fg(edit(path.join(r.root, 'api', 'src', 'a.ts'), s));
     const text = `${child.stdout}${child.stderr}`.replace(/\\n/g, '\n');
-    // each hook's hand-over opens with the path line; a hook that asks repeats it in the prompt's line and its model text
-    assert.ok(text.split(API_LINE).length - 1 >= 2, text);
+    // each hook's hand-over carries the path line; a hook that asks repeats it in the prompt's line and its model text
+    // (4 while docs-session still denies; Task 6 re-pins it once docs-session asks too)
+    assert.strictEqual(text.split(API_LINE).length - 1, 4, text);
     assert.match(text, /API-CODE/);
     assert.match(text, /API-SECTION/);
     assert.doesNotMatch(text, /ROOT-/);

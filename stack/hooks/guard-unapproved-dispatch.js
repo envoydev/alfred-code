@@ -129,23 +129,29 @@ function blockCall(input, text) {
 // --- ALFRED_CODE_MAXIMUM_RUN_AGENTS (the maximum-run-agents design of 2026-10-27) --------------------------------
 // How many of a session's agents may run at once, counted in agent-cap.js's per-session registry. The module is
 // required inside a try, so a copy without it runs every rule below unchanged. A dispatch this call's cap block passed
-// holds a pending file; any later exit 2 or deny of the same call drops it, so a denied dispatch holds no slot, while an
-// ask keeps it (the user may approve and the seat starts). This wrapper sits after the telemetry one and leaves it as it is.
+// holds a pending file; any later block of the same call - an exit 2, a deny or an ask - drops it, so only a dispatch that
+// actually starts holds a slot (a declined ask would otherwise fill the cap with agents that never run). This wrapper sits
+// after the telemetry one and leaves it as it is.
 let agentCap = null;
 try { agentCap = require('./agent-cap.js'); } catch { /* no module: no cap */ }
 let capRelease = null;
+let capMarkDenied = null;
 (() => {
   const exit = process.exit;
   process.exit = (code) => {
-    if ((code === 2 || (global.BLOCK_VERDICT && global.BLOCK_VERDICT.decision === 'deny')) && capRelease) { try { capRelease(); } catch { /* fail open */ } }
+    const verdict = global.BLOCK_VERDICT;
+    if ((code === 2 || verdict) && capRelease) { try { capRelease(); } catch { /* fail open */ } }
+    // `.denied` tells the main session's Stop to send the dispatch again, so only a real denial writes it - never an ask,
+    // which the user may approve (the seat ran) or decline.
+    if ((code === 2 || (verdict && verdict.decision === 'deny')) && capMarkDenied) { try { capMarkDenied(); } catch { /* fail open */ } }
     exit(code);
   };
 })();
-// One denial, both routes: the block row's branch, the three lines, and `.denied` for the main session's Stop.
+// One denial, both routes: the block row's branch, the three lines, and `.denied` (written at the exit, on a deny only) for the main session's Stop.
 const capDeny = (g, c) => {
   global.BLOCK_DETAIL = { branch: 'agent-cap', running: c.running, cap: g.n };
   if (c.byName) global.BLOCK_DETAIL.byName = true;
-  if (!payload.agent_id) agentCap.markDenied(g.reg, c, g.n);
+  if (!payload.agent_id) capMarkDenied = () => agentCap.markDenied(g.reg, c, g.n);
   blockCall(payload, agentCap.denialText(c, g.n, { seat: Boolean(payload.agent_id), byName: !!c.byName }));
 };
 const capProbe = (g) => agentCap.probeWriter(g.root, payload, path.basename(__filename));

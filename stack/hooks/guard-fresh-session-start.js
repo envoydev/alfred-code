@@ -126,9 +126,18 @@ if (cursorOff) process.exit(0);
 })();
 
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+// A hold or an offer that ASKS is itself the offer, shown once: `askedOffer`, set by the hold or the offer before its block,
+// runs when the prompt went out, so the next call is not held again whatever the user answered (the model never puts the
+// AskUserQuestion once the user approved the call). A deny - nobody to ask - leaves the state to its older readers.
+let askedOffer = null;
 function blockCall(input, text) {
   let code = 2;
-  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-fresh-session-start' })); }
+  try {
+    const p = require('./hook-prelude.js');
+    const decision = p.askOrBlock(input, text, { guard: 'guard-fresh-session-start' });
+    if (decision === 'ask' && askedOffer) { try { askedOffer(); } catch { /* state is best effort */ } }
+    code = p.blockExitCode(input, decision);
+  }
   catch { process.stderr.write(text); }
   process.exit(code);
 }
@@ -479,6 +488,7 @@ function compactHold() {
   const verdict = fresh.freshVerdict(ctx);   // its break-even is the payback the AC-6 exit's count is held under
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1, payback: verdict.breakEven })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
+  askedOffer = () => release('offered-by-ask', { ctx, floor });
   const pay = fresh.payText(ctx, verdict);
   if (tick && hold.dir) {
     // PF1: the cursor as the status file holds it NOW - the build moves it after the tick through the script
@@ -1936,6 +1946,7 @@ if (EVENT === 'UserPromptExpansion') {
   process.exit(0);
 }
 
+askedOffer = () => { try { fs.writeFileSync(sizeOfferFile(), String(ctx)); } catch { /* the file keeps its size: the offer then waits for an answered ask */ } };   // no size: read as answered, so only growth re-offers
 blockCall(payload,
   `Blocked: ${skill} ${why}\n`
   + `Put it to the user as ONE AskUserQuestion: start it in a fresh session (recommended - end\n`

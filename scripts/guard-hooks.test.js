@@ -458,18 +458,26 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   const tp = transcript('rearm', ctxRows('rearm', 450000));
   // growth is appended, as a real session grows: the answer written before it stays in the file
   const grow = (ctx) => fs.appendFileSync(tp, JSON.stringify(assistantRow(`rearm-${ctx}`, 'ok', { cache_read_input_tokens: ctx })) + '\n');
-  const answer = () => fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask1', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
-  const call = () => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status;
+  const call = (extra = {}) => runIn('guard-fresh-session-start.js',
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp, ...extra }, env).status;
   assert.equal(call(), 'ask', 'the offer is made once');
-  // audit 2026-10-08: the retry passed with no ask between - a soft gate; the offer stands until an ask answers it
-  assert.equal(call(), 'ask', 'an identical retry with no answered ask is the same offer again');
-  answer();
-  assert.equal(call(), 0, 'once the ask is answered, the retry passes - the answer is honoured');
+  // the ask itself is the offer, shown once (review fix round 1): an approved ask never puts the AskUserQuestion, so waiting
+  // for one asked again on every later orchestration call
+  assert.equal(call(), 0, 'after one ask the next orchestration call passes, whatever the user answered');
+  assert.equal(call(), 0, 'and the one after it');
   grow(500000);
   assert.equal(call(), 0, 'still inside 1.5x of the offered context');
   grow(700000);
   assert.equal(call(), 'ask', 'past 1.5x growth the number changed, so the question is new');
+  assert.equal(call(), 0, 'and that ask is shown once too');
+  // nobody to ask: the deny keeps the older rule - the offer stands until an ask is answered, then the answer is honoured
+  const quiet = transcript('rearm-quiet', ctxRows('rearm-quiet', 450000));
+  const callQuiet = () => runIn('guard-fresh-session-start.js',
+    { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: quiet, permission_mode: 'dontAsk' }, env).status;
+  assert.equal(callQuiet(), 'deny', 'nobody to ask: the offer is denied');
+  assert.equal(callQuiet(), 'deny', 'an identical retry with no answered ask is the same offer again');
+  fs.appendFileSync(quiet, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask2', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
+  assert.equal(callQuiet(), 0, 'once the ask is answered, the retry passes - the answer is honoured');
 });
 
 test('audit 2026-10-08: the fresh-session guard reads commands and the router skill, an answered fresh ask, and only its own namespace', () => {
@@ -2125,8 +2133,7 @@ test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain w
 // the APPROVAL root skipped `payload.cwd`; and the block rows did not say which branch fired.
 test('guard-unapproved-dispatch: the caller and definition shapes need a code name, and every block names its branch', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-  // No agent cap: an ask keeps the dispatch's pending file (the user may approve), and this case asks a dozen times in one session.
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs', ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' };
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const disp = (seat, prompt, extra = {}) => runIn('guard-unapproved-dispatch.js',
     { tool_name: 'Agent', session_id: 'disp-branch', tool_input: { subagent_type: seat, prompt }, ...extra }, { env }).status;
   // the replayed false positives - plain words after the shape

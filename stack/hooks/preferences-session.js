@@ -1208,7 +1208,13 @@ function emit(event, extra, input) {
     if (next.length > (at === 'additionalContext' ? ENTRY_ROOM : INLINE_CAP) - PATH_LINE.length - 1 && (keys.length || fields[at])) break;
     fields[at] = next; keys.push(key);
   }
-  for (const k of ['permissionDecisionReason', 'additionalContext']) if (PATH_LINE && fields[k]) fields[k] = `${PATH_LINE}\n${fields[k]}`;
+  // A hold's PATH line follows the reason's first line: that line is the prompt's one-sentence summary, so it must say what
+  // is held, while the line still comes before the paths it governs.
+  for (const k of ['permissionDecisionReason', 'additionalContext']) {
+    if (!PATH_LINE || !fields[k]) continue;
+    const cut = block && k === 'permissionDecisionReason' ? fields[k].indexOf('\n') : 0;
+    fields[k] = cut > 0 ? `${fields[k].slice(0, cut)}\n${PATH_LINE}${fields[k].slice(cut)}` : `${PATH_LINE}\n${fields[k]}`;
+  }
   if (block) holdCall(input, fields.permissionDecisionReason);
   else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...fields } }));
   WROTE = true;
