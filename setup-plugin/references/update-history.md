@@ -1380,3 +1380,21 @@ stack's two files and a `.cursor` folder the stack made. Skills and agents move 
 - A root's update names each child whose `.gitignore` still reflects the old value (`workspace: <rel> reads versioning <v>
   from here - ...`); the child's own next update rewrites it.
 - Going back to an earlier release leaves the two new `.gitignore` files in place; delete them by hand.
+
+## after 3.19.1 - a guard asks you before it blocks
+
+**Every guard that stopped a tool call now shows Claude Code's permission prompt first.** The prompt names the guard and
+its reason. Yes runs that one call. No refuses it, and Claude gets the guard's full reason and its fix. The prompt comes
+each time: a yes typed in chat opens nothing, and a Yes at the prompt opens only the call it shows.
+
+Where no one can answer, the guard still blocks as before: in `dontAsk` and `bypassPermissions` mode, in `claude -p`, with
+`ALFRED_CODE_UNATTENDED=1`, in Cursor, and for a seat's hand-back in every mode. To get the plain block back everywhere,
+set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`.
+
+**The chat-yes openers are gone.** The `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` and `STAGED-SCAN-ALLOW`
+files, a path you typed, and a discard picked in an answered question open no block now. No hook reads those files. One
+an older release left under `.alfred/state/approvals/` expires by itself after 8 hours. The `COMMIT-GATE`, `PUSH-GATE` and
+`APPROVAL` files stay as proof, and where their block fires it asks.
+
+Nothing to do in an installed project beyond the update. Report that the prompt replaces the block and that
+`ALFRED_CODE_GUARD_ASK=0` restores it.

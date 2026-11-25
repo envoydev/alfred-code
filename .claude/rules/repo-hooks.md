@@ -117,7 +117,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `mode-settings.js` and `json-file.js` are copied hook modules (`HOOK_MODULES`). The per-session switch files
   (`AUTO-COMPACT-<session>`, `SCORING-<session>`) are gone, and an ask's answer counts as the user's only when its own
   row's `permissionDecision.source` opens `user` (`hook-prelude.js byUser`, D25), so under the standing variable no
-  hook-answered ask opens a receipt, a discard or a picked waiver.
+  hook-answered ask opens a picked waiver.
   Two files for a `/mode-auto-run <request>` run. The MODE STAMP
   `<data root>/state/approvals/APPROVAL` (`AUTO - "<the typed words>"`, `session:`, `skill:`, `at:`, `transcript-size:`,
   `taken-from:` on a takeover) is written by `/mode-auto-run <request>` (its typed request is its own on), kept while
@@ -264,8 +264,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   expansion (`expandGitAliases`, T20, R2-m1): every spelling of the call (`/usr/bin/git`, `\git`, `-P`, `--git-dir .git`,
   `--work-tree .`), looked up with its `-c`, `--config-env`, `GIT_CONFIG*` / `HOME` / `XDG_CONFIG_HOME` / `GIT_DIR`
   assignments and an alias the same command defines; a `!` alias runs at the repo's top level; an xargs-fed subcommand
-  or an unanswered lookup is `unreadAt`. The cross-project guard scans with both (an unread alias or script asks once,
-  opened by a `CROSS-WRITE-ALLOW` line naming its path or `unread`); the done gate reads neither. It is also the one home of the SHELL ROUTE, `SHELL_TOOLS` / `isShellTool`
+  or an unanswered lookup is `unreadAt`. The cross-project guard scans with both (an unread alias or script asks,
+  every time); the done gate reads neither. It is also the one home of the SHELL ROUTE, `SHELL_TOOLS` / `isShellTool`
   (Bash, PowerShell and Monitor - Monitor runs its `command` under Bash's permission rules, and a `ws` watch carries
   none), which every shell guard requires and the dispatcher's `MATCHER` spells (2.1.4 audit I1: no guard saw a
   Monitor command). The ten guards with a
@@ -286,6 +286,30 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   through), so a broken install blocks every Read, Edit, Write and Grep as well; the secret guard's own
   filesystem-server row carries it too (hooks audit 2026-11-19 B6-S3), and every other hook keeps the default
   `continue`.
+  A GUARD ASKS BEFORE IT BLOCKS (guards ask instead of block, 2026-11-25): every PreToolUse block goes through
+  `askOrBlock(input, reason, { env, guard })` in `hook-prelude.js`, the one place a block decides - with `canAsk(input, env)`,
+  `blockVerdict` and `blockExitCode` beside it - and each guard's own `blockCall` is one call to it. Where a person can answer, the hook
+  writes `permissionDecision: 'ask'`: Claude Code's prompt shows the user text (`alfred-code <guard>: <first sentence of the
+  reason>` and a fixed line that recommends No unless the call was meant), Yes runs that one call, and No refuses it, the model
+  reading the guard's full reason (in `additionalContext`, after a line saying the user was asked) so it gets the fix. The prompt
+  comes every time: a yes in chat opens nothing. Where nobody can answer, it writes the same reason as a plain `deny`. `canAsk` is false for
+  `dontAsk`, `bypassPermissions`, print mode (`claude -p`), `ALFRED_CODE_UNATTENDED=1` and a Cursor payload (whose deny also writes the
+  reason to stderr and exits 2, `blockExitCode`), and for a `SubagentHandback` call in EVERY mode: the hooks page says no prompt
+  appears for it and the call runs, so an ask there would let a hand-back through (B62). An idle user under auto-run is asked all the
+  same - `canAsk` never reads the auto-run stamp. `ALFRED_CODE_GUARD_ASK=0` (the launch environment, a settings `env` or `.variables`;
+  any other value asks) brings the plain block back everywhere. The helper never answers `allow`: a call no guard judged harmful gets
+  no output, as before, and a failure inside it writes a `deny`, never nothing. It sets `global.BLOCK_VERDICT`, so the block row each
+  guard writes is as before and `analyze-usage.js --hook-blocks` still counts each fired block. The dispatchers collect each guard's
+  answer (`shell-guards.js` `combine`): two asks join into ONE prompt, their user texts a blank line apart, and a deny beside an ask
+  keeps the ask's full reason after it as `Also:`; they end the run early on a PROTECTIVE guard's deny alone (`isDenied`), so a
+  protective ask lets every later guard judge and the one prompt names every harm. The dispatcher's own blocks (a read-only seat's
+  write, the foreground wait, the runner's line cap and a runner line a guard blocks) use the same helper (`blockResult`). What does not change: Stop,
+  SubagentStop, PostToolUse and UserPromptSubmit blocks (Claude Code has no ask there) and the CLI usage exits of the secret guard and
+  `secrets-run.js`; `scripts/guard-ask-sweep.test.js` fails any PreToolUse deny or exit 2 that carries no marker comment and pins the
+  marker counts per file. Four chat-yes openers left with it (the receipts, the typed paths and the discard pick, each named where its guard is described). Known limits:
+  an approved dispatch ask holds no agent-cap slot until its SubagentStart, so in a fan-out wider than the cap one seat can run over it,
+  and a nested seat may lose its parent link - fixing it needs a read of the tool result. Not measured live: the prompt in an interactive
+  session, a hook `ask` under `bypassPermissions`, and how a subagent's prompt surfaces.
   A MISSING HELPER never blocks (the user's ruling, 2026-11-19, on the hooks audit's Q6): without `shell-writes.js` the
   rm, force-push and commit guards and the secret guard's shell route read the raw words one segment at a time
   (`askUnread`, one copy per guard, held identical by `guard-seam.test.js`), and only a command that can break something
@@ -392,32 +416,20 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   past 1MB, `capLog`), the fresh-session hook when it writes an offer (`guard-fresh-*`), the read guard when it logs a
   range (`guard-read-*`) and the commit guard when it writes its
   trivial ledger (`<data root>/state/sessions/trivial-*`); a folder inside the project that resolves outside it (a link) is never stamped or swept - `sweepStale`, `sweepScoringFolders` and docs-session's untracked-record sweep all ask `hook-prelude.js leavesProject`.
-  A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
-  honoured through a `<data root>/state/approvals/*-ALLOW` receipt (this session's own, under 8h).
-  THE RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings): every one is read by ONE reader,
-  `hook-prelude.js readReceiptFile` - under 8h, written after the session began, and, where the call names its session,
-  holding a `session: <id>` line naming it - and each denial prints the exact lines to write, the session line first
-  (`receiptLinesText`). The three SECURITY receipts (`DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`,
-  `GUARD-OFF-ALLOW` - the last since the system audit of 2026-11-03, SYS-01; `DESKTOP-EXEC-ALLOW` left with its guard in
-  complexity stage 1 B12, `SECRET-READ-ALLOW` in swap 1 - a credential Read is the host's own ask now) count only through
-  `securityReceipt` / `receiptAnswered`: this session's transcript must hold an
-  AskUserQuestion answered after that guard's last denial (an `is_error` tool result naming the receipt) with the
-  guard's own allow label ('Discard it', 'Allow ... for this session', 'Allow
-  this guard switch-off'), and given while auto-run was off,
-  judged at the answer's position by the typed `modeFlags` rows - deleting the stamp or typing the off command afterwards
-  opens nothing, and no file the model can write decides it. An answer counts only as the result of an AskUserQuestion
-  call in the same transcript (its `tool_use_id`; the final review of 2026-10-30 FA-4: an `answers`-shaped result under
-  another tool's id opened one), and a typed row is never a compaction summary or a sidechain row - both the model's
-  words (FA-2, `typedRowText`). The stop contract's rotation read takes no receipt since swap 1: an exposure is consented when
-  the session's hook-blocks ledger holds the secret guard's `mode: 'ask'` row with that call's `tool_use_id` (`askedExposure`; a forged row skips one rotation ask, nothing more). A seat's denial is anchored at its time in the seat
-  transcript (the payload's `agent_transcript_path`, else `<session>/subagents/agent-<agent_id>.jsonl`), the answer read
-  in the main one after it. A timed-out ask is no answer. With no transcript on disk (a CLI run) the old time rule
-  stands; with no prelude the four read shut. A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
+  A block asks the user at Claude Code's own permission prompt and opens nothing by a chat yes (guards ask instead of block,
+  2026-11-25; the paragraph before 'A MISSING HELPER'). The four chat-yes openers are gone: no `DISCARD-ALLOW`,
+  `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` or `STAGED-SCAN-ALLOW` file, no typed path and no discard pick in an answered
+  AskUserQuestion opens a block, and no hook reads them; the user's Yes at the prompt opens that one call, asked each time. A file an older
+  release left under `<data root>/state/approvals/` expires by itself. The receipts that stay are PROOF, not consent -
+  COMMIT-GATE and PUSH-GATE (the commit guard's own `readReceipt`: under 8h, written after the session began) and the dispatch
+  guard's APPROVAL stamp - and where their block fires it asks. The stop contract's rotation read takes no receipt since swap 1: an exposure is consented when
+  the session's hook-blocks ledger holds the secret guard's `mode: 'ask'` row with that call's `tool_use_id` (`askedExposure`; a forged row skips one rotation ask, nothing more).
+  A HOOK-WRITTEN AUTO stamp carries `transcript-size: <bytes>` (the start hook's writer) and is live only
   when a whole typed row turning auto-run on (`typedAutoEvent`: the mode command's row or a `/mode-auto-run <request>` row, raw or tagged - a retired-flag row proves nothing, R5) of this
   session sits within 5MB either side of that offset, read by position (64KB first; 5ms on a 200MB transcript), AND no
-  typed row of any session turns auto-run off after the newest such row (`typedAutoOffFrom`, receiptAnswered's typed-row
+  typed row of any session turns auto-run off after the newest such row (`typedAutoOffFrom`, the typed-row
   read from that row to the end, about 95ms on 200MB with the row at the start; FA-1: the model rewrote the stamp over an old on-row after the user's off line, the stop
-  contract answered its own SHOW ask and the secret receipt opened) - so a stamp more than 5MB of work away from
+  contract answered its own SHOW ask) - so a stamp more than 5MB of work away from
   its typed row is dead (the Skill route that could write one there left with the flags); a stamp missing the line, or over another session's row, is dead. A HAND-WRITTEN one
   (no `session:`) is live only when its quoted words (8 characters or more, case-insensitive) appear in a turn the user
   typed, or the user answered 'Start AUTO here' to an AskUserQuestion with auto-run off - never a Skill call alone - and
@@ -474,18 +486,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     still block, the submodule denial naming `git submodule deinit -f` then `git rm`); each target resolves against the directory a
     leading `cd` moved the shell to and through `shellVars` (`$H` after `H=$HOME`, `$(echo ~)`, `%USERPROFILE%`); and a
     runtime's recursive delete (`shutil.rmtree`, `fs.rmSync` recursive, `File::Path` rmtree, `rimraf`,
-    `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A 'discard it' answer
-    is honoured via `<data root>/state/approvals/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`), a security receipt (THE RECEIPTS above).
-    Usage audit 2026-11-03 U21 (the user's ruling): the discard also opens on the model's OWN ask - an AskUserQuestion
-    answered since the user's last typed message (`hook-prelude.js asksAnsweredSinceTyped`: FA-4's `tool_use_id` rule, no
-    timed-out ask, none answered under auto-run) whose question, header and chosen option together name EVERY target (the
-    path, its basename or a folder of it spelled with a `/`, at a name boundary, so `ba.txt` is not `a.txt`) and whose
-    pick is the discard - a discard verb (discard, revert, restore, reset, undo, roll back, throw away, drop, delete,
-    remove, wipe, clean) with no keep word (keep, don't, not, no, never, skip, cancel, leave) in the chosen label or in
-    its description, or a yes to a question asking the discard. A typed message after the answer, a free-text answer
-    naming no discard, model prose and any file (an `answers.json` included) open nothing, and a `*` loss (an unread
-    one) never opens this way. The denial says an Edit or Write revert of the same files is the same discard and
-    needs that answer first.
+    `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A discard of uncommitted work or a stash
+    asks the user, every time (guards ask, 2026-11-25): no receipt and no answer to a question the model put opens it, and the
+    reason says an Edit or Write revert of the same files is the same discard.
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). THRESHOLD is 400 lines, and the range cap and every shell span
     rule bind only above it (200 before the deep hooks review 2026-10-16, the user's ruling: 485 of 590 sized blocks in
@@ -721,7 +724,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
     most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
-    in the plugin, so every denial and view names it by its absolute path. A Read of a credential file is the HOST'S ask (`askOrDeny`, swap 1 ruling 5): `permissionDecision: 'ask'` with the file, the key and 'Allowing it puts the value in this transcript permanently', one `ask` ledger row per call (the stop contract's rotation consent), under `default`, `acceptEdits`, `plan`, `auto` or no mode; refused with the same reason under `bypassPermissions` / `dontAsk`, when unattended (`hook-prelude.js unattended`) and on a Cursor payload (its preToolUse does not enforce an ask); the store under both names and the key file are a plain deny in every mode, and Grep and the MCP reads deny with no ask. No receipt opens anything. No rewrite
+    in the plugin, so every denial and view names it by its absolute path. A Read of a credential file is the HOST'S ask (`askOrDeny`, swap 1 ruling 5): `permissionDecision: 'ask'` with the file, the key and 'Allowing it puts the value in this transcript permanently', one `ask` ledger row per call (the stop contract's rotation consent), where `canAsk` says a person can answer (`hook-prelude.js`); refused with the same reason where nobody can (`dontAsk`, `bypassPermissions`, print mode, `ALFRED_CODE_UNATTENDED=1`, a Cursor payload, `ALFRED_CODE_GUARD_ASK=0`). Since 2026-11-25 every other block of this guard asks the same way (the credential literal, the store named or copied, a Grep or an MCP read of the store, the shell route's refusals), and denies where nobody can answer. No receipt opens anything. No rewrite
     row is written any more: the masker's `mask` row and the probe rows are the measurements the block rate skips
     (2.1.5 M17), each carrying the payload's `permissionMode` when it has one (audit 2026-10-10 C09: an auto-mode
     classifier gave one rewritten call no verdict and stalled it 80s); the dispatcher's `zsh-quote` row does too.
@@ -988,8 +991,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `--only`, on top of the index under `--include`; at most 2MB, a binary file or one past the cap
     skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test (a comment-only line and an ordinary call such as `fit(...)` never count), a
     credential-shaped literal or a hidden character (`hidden-chars.js`, the lint's class; a byte-0 BOM
-    passes, and so does a joiner or direction mark a script needs) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
-    through one ask and `<data root>/state/approvals/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`). A message-only
+    passes, and so does a joiner or direction mark a script needs) asks, and no COMMIT-GATE receipt opens it - a hit meant to land is the user's Yes at that prompt, each
+    time (no `STAGED-SCAN-ALLOW` file is read since 2026-11-25). A message-only
     amend (`--amend --only` or `-o`, no path, no `-a`) takes nothing from the index, so nothing staged is scanned or
     counted (E-batch U26a).
     What was untracked when the change started (`docs-session.js`'s record, below - the one this session's first start
@@ -997,9 +1000,6 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     leaves the receipt's `spec:` count and the trivial bar - pilot 3's ~150 harness files drove 19 denials. A `git add`
     is not judged on its own: the untracked sweep and its UNTRACKED-ALLOW receipt, and the `git add -N .` survey check,
     left in complexity stage 1 (B7, 0 fires in 442 sessions), so `git add -A` takes such a path in unasked.
-    STAGED-SCAN-ALLOW is read by `hook-prelude.js readReceiptFile` (under 8h, written after the session began, a
-    `session:` line naming the call's session), and its denial prints the lines to write, `session:` first (E-batch
-    E1-6 / O1: another session's answer opened this one's scan).
     The receipt's `spec:` count is measured on what the commit takes in - the scan's set, each add and commit path placed
     where its own git call runs (the cwd, a cd, its `-C`) as a `:(top)` pathspec (2.1.6 H2: on the whole tree, narrowing a
     commit never helped) - and on the whole tree when the command does not spell that set out (a path word the shell
@@ -1498,10 +1498,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     shut, R8 - a sibling's in-tree `autoMemoryDirectory` is not read and is inside the boundary). The grant is the
     parent's `children` entry, so a stale one (a folder removed and cloned again under the same name) grants writes. Past the boundary the main session gets the ask.
     A SUBAGENT (the payload's `agent_id`) is refused there with no ask (`seatRefusal`: stop the change, report what must
-    change and where): neither the session's `CROSS-WRITE-ALLOW` receipt nor a folder the user typed opens anything
+    change and where): no prompt is put and nothing a user typed or wrote opens anything
     for it, in the plugins tree too; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, session scratch and the account dirs stay open
     to it, and a command the guard could not read (a script past the scan budget, an unread alias) is refused for it
-    too, whatever the receipt's `unread` line says. Cursor: not measured - a Cursor payload naming no
+    too. Cursor: not measured - a Cursor payload naming no
     `agent_id` is judged as a main session. A shell path is
     anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
     relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
@@ -1509,8 +1509,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `~/.claude` / `~/.claude-<name>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable - except each account dir's `plugins/`
   (minus `plugins/data/`, plugin state) and the running plugin's own root (`CLAUDE_PLUGIN_ROOT`), where the installed
   guards live: a write there, or a removal of a folder holding one (a `~/.claude-<name>` holding a `plugins/` included),
-  is asked with 'Drop the change' recommended and opened only by the user's allow answer and its receipt, or a typed folder
-  or an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` entry naming the tree or a folder in it - never a broader one (the ~/.claude
+  asks the user, 'No' recommended, and is opened only by the user's Yes at that prompt or an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` entry
+  naming the tree or a folder in it - never a broader one (the ~/.claude
   gap, the user's design of 2026-11-03; block row `plugin-code`). It runs in EVERY project, under every stand-down (a repo
   never set up, the opt-out, `minimal`, a Cursor host - only the plugin copy beside a copied twin leaves it to the twin),
   since every project runs one installed copy (the user's ruling of 2026-11-03): stood down, the guard judges that alone,
@@ -1519,8 +1519,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   core's name, never one Claude Code keeps there - `cache`, `marketplaces`, `store`, `synced`, `repos`, `.trash`); paths compared as REAL paths in their on-disk
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
-    requires - 2.1.5 M8). 'Allow' is honoured through the
-    `<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt, a security one (THE RECEIPTS above); `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
+    requires - 2.1.5 M8). A write past the boundary asks the user, every time
+    (no `CROSS-WRITE-ALLOW` receipt is read since 2026-11-25); `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. Audit 2026-10-30 HK-13 / HK-14: `scanShell`'s `expandVars` runs `shellVars` first (`$HOME`,
     `${HOME}`, `~`, `$USERPROFILE`, `$env:USERPROFILE`, `$PWD` after a followed `cd`, `$CLAUDE_PROJECT_DIR`, assigned names,
     `$(echo ...)`), so `echo x > "$HOME/.zshrc"` is judged; the write targets gain curl `-o` / `--output` /
@@ -1537,20 +1537,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
     Its `interpreter-write` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16 (622 rows nobody
     read); the denial is cut to the ask and its three options (1,553 to ~600 fixed chars).
-    The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the answer rows every receipt reads could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is denied with no receipt or allowance route (`recordAt`, branch `transcript`); memory, `settings.json`, a Read, a grep and a copy OUT stay open.
-    A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling): an ABSOLUTE path in a turn the user typed this
-    session opens writes - a typed FOLDER for itself and below, a typed FILE for that one file only (review fix pass run B
-    m5: a typed `<dir>/r.md` opened every sibling of r.md) - read from the
-    transcript at decision time (`hook-prelude.js typedTurnTexts` / `typedPaths`; no receipt, since a file the model can
-    write is no consent, HK-03, and the read runs only on a call about to be denied). File or folder is read off the disk;
-    a trailing slash is a folder, and a path that does not exist yet is a file when its last name has an extension or is a
-    dotfile, else a folder, so a doubt takes the narrower reading. `~/` is expanded, a Windows drive,
-    UNC or Git Bash mount spelling is read through `nativePath`, quotes, a trailing slash or comma and a `:line` suffix
-    are dropped, and the compare is a real-path prefix at a separator (`reportsx` is not `reports`). A relative path, a
-    URL, the model's own text, a tool result, a compaction summary, a sidechain or `isMeta` row, a harness prompt and a
-    `!` command's own row (`<bash-input>`, `<bash-stdout>`, `<bash-stderr>` - run B m6: a path printed by the user's `!`
-    command opened its folder) (`typedRowText`) open nothing; a typed folder that HOLDS the project opens nothing (`~/.zshrc`
-    opens that file, never the home). The record rule above still wins.
+    The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the rows other hooks read back could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is blocked - an ask where a person can answer, a deny where nobody can - with no allowance route (`recordAt`, branch `transcript`); memory, `settings.json`, a Read, a grep and a copy OUT stay open.
+    A PATH THE USER TYPED opened writes from 2026-11-03 to 2026-11-25 (usage audit U20); it left with the other chat-yes openers (a typed
+    path is a chat yes), and `typedPaths` is gone from the prelude. The record rule above still wins.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route + a filesystem
     server's `write_file` as a Write, `edit_file` as an edit over its `oldText` / `newText` (a `dryRun` writes nothing) and
     `move_file` by what it removes and lands, under any registration name - audit 2026-11-03 SYS-02) - one check since
@@ -1560,9 +1549,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `ALFRED_CODE_HOOKS_OFF` - where update folds the old `ALFRED_CODE_CONFIG_PROTECT=0` - switches nothing off.
     THE GUARD SWITCH-OFF (system audit 2026-11-03 SYS-01, BLOCKER): a write that adds a PROTECTIVE guard (the rm, secret
     or force-push guard; its old name too, `HOOK_RENAMED`) to `ALFRED_CODE_HOOKS_OFF` in a settings `env`, or
-    sets `disableAllHooks: true`, is denied with ONE ask ('Keep the guards on (Recommended)' / 'Allow this guard
-    switch-off'), opened only by `GUARD-OFF-ALLOW`, a security receipt (THE RECEIPTS above; a line naming the file as shown,
-    its real path or `*`). On win32 the off-list key is read in any letter case (the environment is case-insensitive there,
+    sets `disableAllHooks: true`, asks the user ('No' recommended; the user's Yes at the prompt is the only opener, since
+    2026-11-25 no `GUARD-OFF-ALLOW` receipt is read). On win32 the off-list key is read in any letter case (the environment is case-insensitive there,
     so `alfred_code_hooks_off` is the same variable - review fix pass run B m8). Watched files: the project's
     `.claude/settings.json` and `settings.local.json`, the repository
     root's `settings.local.json` (`layout.js localSettingsFile`, Claude Code 2.1.211+), the account's `settings.json`
@@ -1586,8 +1574,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     carries. `sponge` is a writer for every guard. THE COPIED TWIN (run B M2: a Write of `.claude/hooks/shell-guards.js`
     plus a settings entry running it stood the plugin's dispatcher down, `hook-prelude.js yieldToCopiedTwin`, and `rm -rf ~`
     passed): a settings write ADDING a hooks entry whose command names `.claude/hooks/<hook>.js` for a dispatcher
-    (`shell-guards`, `file-guards`), a protective guard or the cross-project guard (the transcript rule every security
-    receipt rests on) counts as a switch-off on every route, an entry the file already held passes; and while the plugin
+    (`shell-guards`, `file-guards`), a protective guard or the cross-project guard (the transcript rule) counts as a switch-off on every route, an entry the file already held passes; and while the plugin
     route is live (`CLAUDE_PLUGIN_ROOT` set, this run not the project's copy) a write that creates or replaces one of those
     files in the project's `.claude/hooks/` - on any route, a copy into the folder included - asks too. The copy route
     (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) is untouched: the installer writes both through its own process, and with no
@@ -1602,7 +1589,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     removed (`rm`, a move away, a folder holding it or its `.claude/`) - and `claude plugin disable|uninstall|remove` of the
     core or `disable --all` at a command position (`commandIndex`; in the command and each script it carries, heredoc
     bodies, comments and quoted text blanked, so a commit message or PR body naming the act is prose) stand every Alfred
-    Code guard down from the next session: the same ask and receipt, the receipt line the act with its options dropped
+    Code guard down from the next session: the same ask, its reason naming the act with its options dropped
     (`claude plugin disable alfred-code@envoydev`). An `install` or `enable` of the same core at the same scope later in the
     command, joined by `&&` alone, is a reinstall and passes, so the update notes' same-version re-release runs both in one
     call. Ceilings: a destination or value the shell computes, a runtime script that builds the JSON, a `git checkout` /
@@ -1987,7 +1974,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     not a list of CLIs or servers). `forge.js` reads any call as a concept by its WORDS - a CLI's noun then verb, an API
     call's method and path, an MCP tool's name and its selector values - so `guard-ungated-commit.js` gates a merge or a
     branch write on every transport and `preferences-session.js` holds the first one; a forge noun with no known verb is
-    `unknown` (an ask, a deny when unattended). On the MCP route a branch, tag, file or release word counts only on a
+    `unknown` (an ask, a deny where nobody can answer - `dontAsk`, `bypassPermissions`, print mode, `ALFRED_CODE_UNATTENDED=1`, `ALFRED_CODE_GUARD_ASK=0`, Cursor). On the MCP route a branch, tag, file or release word counts only on a
     FORGE-SHAPED server (repo coordinates in the input, a forge word in the key with no local `repo_path`, or launched as
     a forge server) - Supabase branches, Sentry releases and AWS tags are not forge calls (final review F3). E-batch fn-1 /
     fn-4 / fn-10: a tool whose name holds `run` beside `code` (`browser_run_code_unsafe`) is no pipeline act; inline code is
