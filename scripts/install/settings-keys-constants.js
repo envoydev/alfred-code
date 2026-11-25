@@ -7,5 +7,7 @@ const OBJECT_PATH = Object.freeze({ skillOverrides: 'skillOverrides' });
 const SKILL_HIDDEN = 'off';
 // A ledger row of one key: `<object path>{<sha256 of the key>}`. The row's value is the hash of the JSON text of the key's value.
 const KEY_PATH = /^(skillOverrides)\{([0-9a-f]{64})\}$/;
+// The one row the ledger always writes last in settings.local.json (alfred-code.js ledgerOf), so a re-rendered line keeps its order.
+const LAST_ROW = 'autoMemoryDirectory';
 
-module.exports = { OBJECT_PATH, SKILL_HIDDEN, KEY_PATH };
+module.exports = { OBJECT_PATH, SKILL_HIDDEN, KEY_PATH, LAST_ROW };

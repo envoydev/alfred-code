@@ -33,9 +33,10 @@ const ruleGlob = (repo) => wsLib.excludeGlobs([path.join(repo, '.claude', 'rules
 // The child, laid down after the root's install so its skills can link into the root's store: its own stamp with the links
 // it holds, a real symlink for each, real folders no record names, its own git repository unless `shareRepo`, and its record.
 // `included` makes it an included child; else it is set aside, with `keptFor` as the root's kept lines.
-function child(repo, { links = ['javascript', DROPPED], handMade = ['hand-made'], shareRepo = false, included = true, keptFor = null, ownPicks = '' } = {})
+function child(repo, { links = ['javascript', DROPPED], handMade = ['hand-made'], shareRepo = false, included = true, keptFor = null, ownPicks = '', symlinked = false } = {})
 {
-    const at = path.join(repo, CHILD);
+    // `symlinked`: the project lives beside the root and the root's folder is a link to it.
+    const at = symlinked ? path.join(path.dirname(repo), 'real-repo') : path.join(repo, CHILD);
     const skills = path.join(at, '.claude', 'skills');
     fs.mkdirSync(skills, { recursive: true });
     const linkLine = links.length ? `links: ${links.map((name) => `skills/${name}=symlink`).join(',')}\n` : '';
@@ -45,14 +46,15 @@ function child(repo, { links = ['javascript', DROPPED], handMade = ['hand-made']
     fs.writeFileSync(path.join(at, '.gitignore'), '.claude/\n.alfred/\n');   // git ignores the folder, so the child's skills stay links
     if (!shareRepo) rt.execCommand('git', ['init', '-q', at]);
     putWorkspace(at, { parent: '..' });
+    if (symlinked) fs.symlinkSync(path.relative(repo, at), path.join(repo, CHILD), 'dir');
     putWorkspace(repo, { children: [CHILD], includeAsked: [CHILD], ...(included ? { includedChildren: [CHILD] } : {}), ...(keptFor ? { keptFor } : {}) });
 }
 
 const seen = (repo) => ({ over: overrides(repo), rows: keyRows(repo) });
 // Runs the actions with the child laid down after the first one; `steps` are the args of each step after the first (an update
 // by default), and `after` reads each step's tree and may change it for the next.
-const run = (actions, { steps = [], env = ACCOUNT_ON, childOptions = {}, after = seen } = {}) =>
-    seedRun(actions, SELECTION, { args: [SCOPE, ...actions.slice(1).map((_, i) => steps[i] || UPDATE)], env, each: (repo, i) => { if (i === 0) child(repo, childOptions); return after(repo, i); } });
+const run = (actions, { steps = [], first = [], env = ACCOUNT_ON, childOptions = {}, after = seen } = {}) =>
+    seedRun(actions, SELECTION, { args: [[...SCOPE, ...first], ...actions.slice(1).map((_, i) => steps[i] || UPDATE)], env, each: (repo, i) => { if (i === 0) child(repo, childOptions); return after(repo, i); } });
 const NAMES = [`${CHILD}:javascript`, `${CHILD}:${DROPPED}`];
 
 test('a root with a linked child hides the child\'s copy of each skill it lists, and no skill the child holds of its own', POSIX_ONLY, () =>
@@ -100,33 +102,64 @@ test('a set-aside child that holds a link to a skill the root links is hidden th
     assert.strictEqual(steps[1].over[`${CHILD}:javascript`], OFF);
 });
 
-test('a project the workspace ignores gets no key, and a grandchild is keyed by its whole path', POSIX_ONLY, () =>
+// A project laid down below the root with one link to the root's skill, a real project of its own.
+function plant(repo, rel)
+{
+    const at = path.join(repo, ...rel.split('/'));
+    fs.mkdirSync(path.join(at, '.claude', 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(at, '.claude', 'alfred-code.stamp'), 'seats-route: plugin\nown-picks: \nlinks: skills/javascript=symlink\n');
+    fs.symlinkSync(path.relative(path.join(at, '.claude', 'skills'), path.join(repo, '.alfred', 'stack', 'skills', 'javascript')), path.join(at, '.claude', 'skills', 'javascript'), 'dir');
+    fs.writeFileSync(path.join(at, '.gitignore'), '.claude/\n.alfred/\n');
+    rt.execCommand('git', ['init', '-q', at]);
+    putWorkspace(at, { parent: '..' });
+}
+
+test('a grandchild is keyed by its whole path from the root', POSIX_ONLY, () =>
 {
     const { steps } = run(['install', 'update'], {
         childOptions: { links: ['javascript'] },
         after: (repo, i) =>
         {
-            if (i === 0)
-            {
-                for (const [rel, parent] of [['api/grand', '..'], ['ign', null]])
-                {
-                    const at = path.join(repo, ...rel.split('/'));
-                    fs.mkdirSync(path.join(at, '.claude', 'skills'), { recursive: true });
-                    fs.writeFileSync(path.join(at, '.claude', 'alfred-code.stamp'), 'seats-route: plugin\nown-picks: \nlinks: skills/javascript=symlink\n');
-                    fs.symlinkSync(path.relative(path.join(at, '.claude', 'skills'), path.join(repo, '.alfred', 'stack', 'skills', 'javascript')), path.join(at, '.claude', 'skills', 'javascript'), 'dir');
-                    fs.writeFileSync(path.join(at, '.gitignore'), '.claude/\n.alfred/\n');
-                    rt.execCommand('git', ['init', '-q', at]);
-                    if (parent) putWorkspace(at, { parent });
-                }
-                putWorkspace(path.join(repo, CHILD), { parent: '..', children: ['grand'] });
-                putWorkspace(repo, { children: [CHILD], includedChildren: [CHILD], includeAsked: [CHILD], ignoredChildren: ['ign'] });
-            }
+            if (i === 0) { plant(repo, 'api/grand'); putWorkspace(path.join(repo, CHILD), { parent: '..', children: ['grand'] }); }
             return overrides(repo);
         },
     });
     assert.strictEqual(steps[1][`${CHILD}/grand:javascript`], OFF, JSON.stringify(steps[1]));
     assert.strictEqual(steps[1][`${CHILD}:javascript`], OFF);
-    assert.ok(!Object.keys(steps[1]).some((key) => key.startsWith('ign:')), 'an ignored project is no child');
+});
+
+test('a project the workspace ignores loses its keys: a joined child has them, and the same project once ignored has none', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update', 'update'], {
+        childOptions: { links: ['javascript'] },
+        after: (repo, i) =>
+        {
+            if (i === 0) { plant(repo, 'other'); putWorkspace(repo, { children: [CHILD, 'other'], includedChildren: [CHILD, 'other'], includeAsked: [CHILD, 'other'] }); }
+            if (i === 1) putWorkspace(repo, { children: [CHILD, 'other'], includedChildren: [CHILD, 'other'], includeAsked: [CHILD, 'other'], ignoredChildren: ['other'] });
+            return overrides(repo);
+        },
+    });
+    assert.strictEqual(steps[1]['other:javascript'], OFF, `joined, it has the key: ${JSON.stringify(steps[1])}`);
+    assert.ok(!Object.keys(steps[2]).some((key) => key.startsWith('other:')), `ignored, it has none: ${JSON.stringify(steps[2])}`);
+    assert.strictEqual(steps[2][`${CHILD}:javascript`], OFF, 'the other child keeps its key');
+});
+
+test('a child that is a symlink to a project outside the root keeps its key path inside the root', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { childOptions: { symlinked: true } });
+    assert.strictEqual(steps[1].over[`${CHILD}:javascript`], OFF, JSON.stringify(Object.keys(steps[1].over).slice(0, 4)));
+    assert.ok(!Object.keys(steps[1].over).some((key) => key.includes('..')), 'no key leaves the root');
+});
+
+test('with docs memory on, two consecutive runs leave the stamp byte for byte the same: the key rows keep the ledger\'s order', POSIX_ONLY, () =>
+{
+    const stampText = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').split('\n').filter((l) => !/^(installed|installed-ms|initialised|action):/.test(l)).join('\n');
+    const { steps } = run(['install', 'update', 'update', 'update'], { first: ['--memory', 'docs'], after: (repo) => stampText(repo) });
+    assert.match(steps[1], /autoMemoryDirectory=/, 'the memory row is ledgered');
+    assert.match(steps[1], /skillOverrides\{/, 'the first run after the join writes the keys');
+    assert.strictEqual(steps[2], steps[1], 'the run that wrote the keys and the run after it leave one stamp');
+    assert.strictEqual(steps[3], steps[1]);
+    assert.ok(steps[1].indexOf('skillOverrides{') < steps[1].indexOf('autoMemoryDirectory='), 'the memory row stays last');
 });
 
 test('an uninstall at the root takes its keys out of settings.local.json and leaves the user\'s', POSIX_ONLY, () =>
