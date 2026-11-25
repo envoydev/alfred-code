@@ -364,3 +364,18 @@ child `kid` (its own git repository) held `.claude/agents/kidcheck.md` and `.cla
 `AGENTS: NONE` and `SKILLS: kidskill`; the debug log has `[skills] Dynamically discovered 1 skills` and no agent line.
 So a touch loads a child's skills into a root session and never its agents: an agent the root's own flows dispatch
 must stay linked in the root's `.claude/agents`.
+
+An agent's skill preload under `skillOverrides` (the same day, signed in, `claude -p --model haiku --allowedTools
+Agent`): a root held `.claude/skills/secret-skill` (its body a passphrase) and `.claude/agents/checker.md` with
+`skills: [secret-skill]`, told to report the passphrase if its context held one. The session was asked whether the skill
+was in its list, then to dispatch the checker.
+
+| Root `skillOverrides` | Skill in the session's list | The checker's report |
+|---|---|---|
+| none | yes | the passphrase - preloaded |
+| `"secret-skill": "off"` | no | `NONE` - not preloaded |
+| `"secret-skill": "user-invocable-only"` | no | `NONE` - not preloaded |
+| `"secret-skill": "name-only"` | yes, no description shown | the passphrase - preloaded |
+
+So hiding a skill from the model (`off`, `user-invocable-only`) also takes it from every agent that preloads it, and
+`name-only` is the one value that trims the listing while the preload still works.
