@@ -24,7 +24,7 @@
 //
 // It never blocks a request: whatever goes wrong, it exits 0 and says so on stderr.
 //
-// The communication rule's reminder is another hook's job (communication-hook.mjs).
+// The rules' reminder lines are another hook's job (agent-reminders.mjs).
 //
 // It reads the kit's file, the committed .claude/settings.json and the three agent files of the repo it sits in, writes
 // only that kit file and opens no connection. A hook a repo commits runs in a `claude -p` or SDK session with no trust

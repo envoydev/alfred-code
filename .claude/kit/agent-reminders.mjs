@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// Copied into each repo as .claude/kit/communication-hook.mjs by claude-kit's sync - edit it in claude-kit, never here.
+// Copied into each repo as .claude/kit/agent-reminders.mjs by claude-kit's sync - edit it in claude-kit, never here.
 //
-// A UserPromptSubmit hook: with every request it gives Claude the communication rule's reminder line, read from the rule
-// each time so the rule stays its one source, and a note when Claude's last reply passed the rule's limits
-// (reply-budget.mjs). The rule loads once per session, and a long session drifts from it (the user, 2026-11-21). A
-// missing rule or reminder line adds nothing. The kit's settings line is the status hook's job (status-hook.mjs).
+// A UserPromptSubmit hook: with every request it gives Claude the reminder line of each rule in a fixed list
+// (REMINDER_SOURCES in constants.mjs: communication, then cleanup), read from the rule each time so the rule stays its
+// one source, and a note on the communication line when Claude's last reply passed that rule's limits (reply-budget.mjs).
+// A rule loads once per session, and a long session drifts from it (the user, 2026-11-21 and 2026-11-25). A missing rule
+// or reminder line adds nothing. The kit's settings line is the status hook's job (status-hook.mjs).
 //
 // It never blocks a request: whatever goes wrong, it exits 0, and a failure other than a missing file goes to stderr.
 //
-// It reads the communication rule of the repo it sits in and the end of the session's transcript (up to 32 MB, in
-// growing tails), writes nothing and opens no connection.
+// It reads the listed rules of the repo it sits in and the end of the session's transcript (up to 32 MB, in growing
+// tails), writes nothing and opens no connection.
 import { closeSync, fstatSync, openSync, readFileSync, readSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,13 +27,13 @@ async function loadSiblings()
     try { return { ...(await import('./constants.mjs')), ...(await import('./reply-budget.mjs')) }; }
     catch (error)
     {
-        console.error(`claude-kit communication hook: ${describeError(error)}`);
+        console.error(`claude-kit agent-reminders hook: ${describeError(error)}`);
         return null;
     }
 }
 
 const siblings = await loadSiblings();
-const { COMMUNICATION_HOOK_ERROR_PREFIX, COMMUNICATION_RULE_FILE, TRANSCRIPT_TAIL_STEPS, reminderContextOf, replyCheckOf } = siblings ?? {};
+const { REMINDERS_HOOK_ERROR_PREFIX, REMINDER_SOURCES, TRANSCRIPT_TAIL_STEPS, reminderContextOf, replyCheckOf } = siblings ?? {};
 
 function readStdin()
 {
@@ -51,7 +52,7 @@ function parseHookInput(text)
 // A file that is not there is normal; any other failure to read goes to stderr.
 function reportReadError(error)
 {
-    if (error?.code !== 'ENOENT') console.error(`${COMMUNICATION_HOOK_ERROR_PREFIX} ${describeError(error)}`);
+    if (error?.code !== 'ENOENT') console.error(`${REMINDERS_HOOK_ERROR_PREFIX} ${describeError(error)}`);
 }
 
 function readTextOrEmpty(file)
@@ -102,7 +103,8 @@ function replyNoteFrom(transcriptPath)
 
 function buildOutput(hookInput, root)
 {
-    const reminder = reminderContextOf(readTextOrEmpty(join(root, COMMUNICATION_RULE_FILE)), replyNoteFrom(hookInput.transcript_path));
+    const ruleTexts = Object.fromEntries(REMINDER_SOURCES.map(({ file }) => [file, readTextOrEmpty(join(root, file))]));
+    const reminder = reminderContextOf(ruleTexts, replyNoteFrom(hookInput.transcript_path));
     return reminder === null ? null : { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reminder } };
 }
 
@@ -117,6 +119,6 @@ if (siblings !== null)
     catch (error)
     {
         // A reminder is never worth a blocked request: report the failure where the debug log keeps it and let the request through.
-        console.error(`${COMMUNICATION_HOOK_ERROR_PREFIX} ${describeError(error)}`);
+        console.error(`${REMINDERS_HOOK_ERROR_PREFIX} ${describeError(error)}`);
     }
 }
