@@ -19,12 +19,27 @@ const LAYERS = ['skills', 'mcps', 'plugins'];
 // Every signal kind an entry may carry, in the order the scan tries them - the lint rejects any other.
 const SIGNAL_KINDS = ['packages', 'files', 'csprojContent', 'content'];
 
+// A folder the cap leaves out holds something the scan would read: an entry that is no skip-listed folder, and, under
+// `pruneRepos`, no `.git` (a repository of its own is left out by choice, not by the cap).
+function leavesOut(dir, pruneRepos)
+{
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return false; }
+    if (pruneRepos && entries.some(e => e.name === '.git')) return false;
+    return entries.some(e => !(e.isDirectory() && SKIP_DIRS.has(e.name)));
+}
+
 // Inside git, the files git keeps - tracked, plus untracked it does not ignore - so an ignored tool cache (a
 // mutation-test sandbox, a CLI build cache, a browser profile) is never read as a module (audit 2026-10-10,
 // session f10cb06a); the skip-list and the depth cap hold either way. Outside git, or where git lists nothing
 // (an ignored root), the folder walk. `nested`, when given, collects each folder below the root holding a `.git` entry
 // (a repo of its own, file or folder) the folder walk read into - git's own listing never enters one.
-function walk(root, nested = null)
+// `exclude` (root-relative posix folders) drops a path under one on the git branch and is not entered on the folder branch
+// (its own `.git` still lands in `nested`). `pruneRepos` stops the folder branch at a folder below the root holding a `.git`
+// entry: a repository of its own, joined, ignored or unrelated. `report`, when an object, gets `capped = true` when a file
+// or folder past the depth cap was left out, so a caller can tell a cut tree from a whole one.
+function walk(root, nested = null, { exclude = [], report = null, pruneRepos = false } = {})
 {
     const r = rt.spawnCommand('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
         { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
@@ -34,7 +49,9 @@ function walk(root, nested = null)
         return listed.filter(rel =>
         {
             const seg = rel.split('/');
-            return seg.length <= MAX_DEPTH + 1 && !seg.slice(0, -1).some(d => SKIP_DIRS.has(d));
+            if (seg.slice(0, -1).some(d => SKIP_DIRS.has(d)) || children.underAny(rel, exclude)) return false;
+            if (seg.length > MAX_DEPTH + 1) { if (report) report.capped = true; return false; }
+            return true;
         }).map(rel => path.join(root, rel)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).sort();
     }
     const files = [];
@@ -44,11 +61,21 @@ function walk(root, nested = null)
         let entries;
         try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
         catch { return; }
-        if (nested && depth > 0 && entries.some(e => e.name === '.git')) nested.push(relPosix(root, dir));
+        const holdsRepo = depth > 0 && entries.some(e => e.name === '.git');
+        if (nested && holdsRepo) nested.push(relPosix(root, dir));
+        if (holdsRepo && pruneRepos) return;
         for (const e of entries)
         {
-            if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) rec(path.join(dir, e.name), depth + 1); }
-            else files.push(path.join(dir, e.name));
+            if (!e.isDirectory()) { files.push(path.join(dir, e.name)); continue; }
+            if (SKIP_DIRS.has(e.name)) continue;
+            const below = path.join(dir, e.name);
+            if (children.underAny(relPosix(root, below), exclude))
+            {
+                if (nested && fs.existsSync(path.join(below, '.git'))) nested.push(relPosix(root, below));
+                continue;
+            }
+            if (depth === MAX_DEPTH && report && leavesOut(below, pruneRepos)) report.capped = true;
+            rec(below, depth + 1);
         }
     })(root, 0);
     return files.sort();
@@ -138,9 +165,10 @@ function safeRegex(source, where)
 }
 
 // `exclude`: folders (relative to root) whose files are dropped before anything is read - the projects below a root.
-function scan(root, catalog, nested = null, { exclude = [] } = {})
+// `files`: absolute paths a caller already walked - read as they are, nothing walked again.
+function scan(root, catalog, nested = null, { exclude = [], files: walked = null } = {})
 {
-    const files = walk(root, nested).filter(f => !children.underAny(relPosix(root, f), exclude));
+    const files = walked || walk(root, nested, { exclude }).filter(f => !children.underAny(relPosix(root, f), exclude));
     const packages = collectPackages(root, files);
     const dotnetManifests = files.filter(isDotnetManifest);
 
@@ -541,7 +569,7 @@ function main(argv)
     else { process.stdout.write(result + '\n'); process.stderr.write(said.join('\n') + '\n'); }
 }
 
-module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };
+module.exports = { scan, walk, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };
 
 if (require.main === module)
 {

@@ -668,3 +668,101 @@ test('--children with a garbage child record and no --out: stdout stays the JSON
     assert.ok(JSON.parse(r.stdout).found, r.stdout);
     assert.match(r.stderr, /^!! workspace: .*workspace\.json/m);
 });
+
+// --- walk: the child-folder prune and the cap report (root-children-only-picks, Task 1) ---
+
+const walker = require('./scan-evidence.js');
+
+function walkRoot(files, { git = false } = {})
+{
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evwalk-'));
+    for (const rel of files)
+    {
+        const target = path.join(root, rel);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, '');
+    }
+    if (git) execFileSync('git', ['init', '-q'], { cwd: root });
+    return root;
+}
+const relOf = (root, list) => list.map((file) => path.relative(root, file).split(path.sep).join('/'));
+const DEEP_SEVEN = 'a/b/c/d/e/f/g.ts';
+const DEEP_SIX = 'a/b/c/d/e/g.ts';
+
+test('walk prunes an excluded child folder before the cap is judged', () =>
+{
+    const root = walkRoot([`kid/${DEEP_SEVEN}`, 'own.txt']);
+    const pruned = {};
+    const kept = walker.walk(root, null, { exclude: ['kid'], report: pruned });
+    assert.strictEqual(pruned.capped, undefined, 'a pruned child never reaches the cap');
+    assert.deepStrictEqual(relOf(root, kept), ['own.txt']);
+    const open = {};
+    walker.walk(root, null, { report: open });
+    assert.strictEqual(open.capped, true, 'the same child, not excluded, is cut at the cap');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('walk with pruneRepos skips a repository of its own', () =>
+{
+    const root = walkRoot(['clone/.git/HEAD', `clone/${DEEP_SEVEN}`, 'own.txt']);
+    const report = {};
+    const nested = [];
+    const files = walker.walk(root, nested, { pruneRepos: true, report });
+    assert.strictEqual(report.capped, undefined);
+    assert.deepStrictEqual(relOf(root, files), ['own.txt']);
+    assert.deepStrictEqual(nested, ['clone'], 'the repository is still recorded');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('walk with pruneRepos does not report the cap for a clone, or an empty folder, below it', () =>
+{
+    const root = walkRoot(['a/b/c/d/e/f/clone/.git/HEAD', 'a/b/c/d/e/f/clone/x.ts', 'own.txt']);
+    fs.mkdirSync(path.join(root, 'a', 'b', 'c', 'd', 'e', 'f', 'empty'));
+    const pruned = {};
+    walker.walk(root, null, { pruneRepos: true, report: pruned });
+    assert.strictEqual(pruned.capped, undefined);
+    const open = {};
+    walker.walk(root, null, { report: open });
+    assert.strictEqual(open.capped, true, 'without the prune the clone is a folder left out');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('walk reports the cap on a git root', () =>
+{
+    const root = walkRoot([`x/${DEEP_SEVEN}`, `y/${DEEP_SIX}`], { git: true });
+    const over = {};
+    const seen = relOf(root, walker.walk(root, null, { report: over }));
+    assert.strictEqual(over.capped, true, 'x/a/b/c/d/e/f/g.ts is 8 segments');
+    assert.deepStrictEqual(seen, ['y/a/b/c/d/e/g.ts']);
+    const underRoot = walkRoot([`z/${DEEP_SIX}`], { git: true });
+    const under = {};
+    assert.deepStrictEqual(relOf(underRoot, walker.walk(underRoot, null, { report: under })), ['z/a/b/c/d/e/g.ts']);
+    assert.strictEqual(under.capped, undefined, '7 segments is inside the cap');
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(underRoot, { recursive: true, force: true });
+});
+
+test('walk without options returns what it returned before', () =>
+{
+    const root = walkRoot(['a/package.json', 'b/c/d.txt', `kid/${DEEP_SEVEN}`, 'node_modules/x/y.js']);
+    assert.deepStrictEqual(walker.walk(root), walker.walk(root, null, { exclude: [] }));
+    assert.deepStrictEqual(relOf(root, walker.walk(root)), ['a/package.json', 'b/c/d.txt']);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('scan with files reads only those', () =>
+{
+    const root = walkRoot([]);
+    const lock = (rel) =>
+    {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), '{}');
+    };
+    lock('package-lock.json');
+    lock('clone/package-lock.json');
+    const catalog = { skills: { npm: { files: ['package-lock.json'] } } };
+    const found = walker.scan(root, catalog, null, { files: [path.join(root, 'package-lock.json')] });
+    assert.strictEqual(found.skills.npm, 'package-lock.json present');
+    assert.ok(!JSON.stringify(found).includes('clone'));
+    fs.rmSync(root, { recursive: true, force: true });
+});
