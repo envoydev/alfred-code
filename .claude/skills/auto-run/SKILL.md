@@ -84,7 +84,9 @@ Two places, because one is a record and the other is the switch:
   - `auto_approve=off`: the draft waits for the user, who is notified, and the run goes on with work that does not
     depend on it.
   - A spec or plan whose grade loop ended under the pass score, on its best round, waits under either value with its
-    score path and open findings (the user, 2026-11-10).
+    score path and open findings (the user, 2026-11-10). A stall or round 3 graded is not that end while the ceiling
+    is the pass score or more, unless the caller sets its own round limit: the run grades on, as `refining-plans`
+    says (the user, 2026-11-25).
 - A stop names the one decision it needs.
 
 ## Scope

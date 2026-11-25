@@ -21,6 +21,11 @@ Five to ten lines in the reply or the todo list, never a plan file unless the us
 - Before a push: run here every command the repo's CI workflow runs (`.github/workflows/`), in its order, and push only when each passes - the remote run confirms the other operating systems, it is never the first run. Name what could not run here (another OS's leg, a step behind a secret). After the push, watch the run to its end; a red run is fixed before anything else is pushed. Do not invent a check the project lacks.
 - A `claude` run under a throwaway `HOME` on macOS - a probe, a harness, a scratch project - puts a `security` stub first on its `PATH`: `printf '#!/bin/sh\ncase "$1" in find-*) exit 44;; esac\nexit 1\n' > <dir>/security`, then `chmod +x`. Why: with no keychain under that `HOME`, Claude Code's credential save opens macOS's 'Keychain Not Found' dialog on the user's screen, and its 'Reset To Defaults' can replace a keychain (2026-11-19). alfred-tools' `withKeychainStub` (`tests/helpers.ts`) is the same stub in code.
 
+## Blocked commands
+
+- A command that a guard hook or the permission mode blocks is never rewritten, split, encoded or renamed to get past the block. Why: the block is the user's check, and a command shaped to pass it takes that check away (2026-11-25: a run split a variable name to pass a secret guard).
+- Drop the part the block objects to only where the task does not need that part. Else stop, quote the message, and give the user the command to run or the permission rule to add.
+
 ## Close
 
 One line on the mode and why, what changed, each tier's command with its result, the `cleanup` rule's `Cleanup:` line, and what was not verified and why.
