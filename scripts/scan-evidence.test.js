@@ -41,7 +41,7 @@ function buildFixture()
     put('src/Gen/Gen.csproj', `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsRoslynComponent>true</IsRoslynComponent></PropertyGroup>
 </Project>`);
-    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@capacitor/core': '^6.0.0' } }));
+    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@playwright/test': '^1.40.0' } }));
     put('nx.json', '{}');
     // content signal: a regex over a catalog-named code file (not a manifest)
     put('src/Api/Program.cs', 'app.MapGet("/health", () => "ok");\n');
@@ -657,4 +657,14 @@ test('--children none at a git root leaves a joined child that is a plain folder
     assert.deepStrictEqual(hits(kids(ws).found), ['@angular/material in app/package.json'], 'without the flag the folder is read');
     assert.deepStrictEqual(hits(kids(ws, '--children', 'none').found), []);
     assert.deepStrictEqual(hits(kids(ws, '--children', 'app').found), ['@angular/material in app/package.json']);
+});
+
+test('--children with a garbage child record and no --out: stdout stays the JSON alone, the notice goes to stderr', () =>
+{
+    const ws = childrenFixture({ git: true });
+    fs.writeFileSync(path.join(ws, 'app', '.alfred', 'workspace.json'), '{ not json');
+    const r = spawnSync('node', [SCRIPT, '--root', ws, '--catalog', CATALOG, '--children', 'app'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(JSON.parse(r.stdout).found, r.stdout);
+    assert.match(r.stderr, /^!! workspace: .*workspace\.json/m);
 });

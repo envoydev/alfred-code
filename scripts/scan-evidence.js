@@ -515,7 +515,7 @@ function main(argv)
     {
         const value = arg(childValues.FLAG_CHILDREN);
         if (!value) { console.error(`usage: scan-evidence.js ${childValues.FLAG_CHILDREN} <csv|${childValues.NONE}> --root <project> --catalog <evidence.json>`); process.exit(2); }
-        plan = children.planChildren(value, require('./install/workspace.js').subtree(root));
+        plan = children.planChildren(value, require('./install/workspace.js').subtree(root, { log: (line) => console.error(line) }));
     }
     const own = scan(root, catalog, nested, { exclude: plan ? plan.rootExclude : [] });
     const payload = { found: plan ? children.mergeFound(own, plan.reads.map(({ rel, root: childRoot, exclude }) => ({ rel, found: scan(childRoot, catalog, null, { exclude }) }))) : own };
