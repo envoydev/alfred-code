@@ -344,3 +344,16 @@ The verdict: a `<relative path>:<name>` key in the root's own settings hides tha
 and reaches no session started in a child with its own repository. A session in a same-repository child reads the root's
 settings, so a root-side `claudeMdExcludes` row would hide a file there too. The nested load on a file touch (no
 `--add-dir`) needs a model and was not run; the skills page names the nested skill the same way.
+
+The touch load, signed in (the same day, `claude -p --model haiku --allowedTools Read`, prompted to Read `kid/x.txt` and
+name the skills holding 'dup' or 'own'; the tree moved out of the session scratchpad, since Claude Code logs
+`[skills] not loading ... is in a session's scratchpad` and loads nothing nested there). The child's `dup` was a symlink
+to the root's folder, as an install writes it:
+
+| Root `settings.local.json` | Debug | The model's list |
+|---|---|---|
+| `{}` | `Dynamically discovered 2 skills`, `Sending 2 skills via attachment (dynamic)` | `dup`, `kid:dup`, `own` |
+| `skillOverrides: {"kid:dup": "off"}` | `Dynamically discovered 2 skills`, `Sending 1 skills via attachment (dynamic)` | `dup`, `own` |
+
+So the touch path does not de-duplicate a link to a file the root already loaded (the `--add-dir` path does), which is
+the pair the user reported, and the `<rel>:<name>` key hides it there too.
