@@ -17,6 +17,7 @@
 //   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree;
 //               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
+//   include     which joined children this root includes and which it sets aside, and what it keeps for the set-aside ones
 //   ignore-child  a path below this root marked ignored: its joined children keep their values and sent rules, then run their own update
 //   remove-nested  --path <rel>: the stack's own files out of an install in a plain subfolder of this git repository - only what
 //                 that folder's own stamp records; never the root's install, the account, the plugins or git's exclude file
@@ -726,7 +727,16 @@ function removeNestedVerb(out)
     if (code) throw new Exit(code, '');
 }
 
-const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild, 'remove-nested': removeNestedVerb };
+// The feature's own folder holds the rules and the reads and writes (project-structure); this only hands it the command line.
+function includeVerb(out)
+{
+    const { FLAG } = require('./workspace-include/constants.js');
+    const given = Object.values(FLAG).filter(has);
+    const result = require('./workspace-include/effects.js').runInclude({ root: rootArg(), values: Object.fromEntries(given.map((flag) => [flag, arg(flag)])) }, { env, out });
+    if (result.code) throw new Exit(result.code, result.line);
+}
+
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild, include: includeVerb, 'remove-nested': removeNestedVerb };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()
