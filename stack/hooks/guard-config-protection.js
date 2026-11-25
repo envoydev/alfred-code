@@ -210,7 +210,7 @@ const real = (p) => {
 // layout.js finds the settings files; without it beside this file the settings paths are not read.
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
-// The receipt reader (hook-prelude.js). No prelude, no reader: every receipt here reads shut.
+// The prelude (hook-prelude.js) supplies PROTECTIVE and HOOK_RENAMED below; with no prelude PROTECTIVE falls back to a fixed list and HOOK_RENAMED to none.
 let receipts = null;
 try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
 

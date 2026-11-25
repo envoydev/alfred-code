@@ -68,7 +68,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 || global.BLOCK_VERDICT) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -87,7 +87,7 @@ if (cursorOff) process.exit(0);
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -98,6 +98,14 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-read-whole-file' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 const GATED_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/i; // any case: `BIG.TS` read whole passed
 // The image formats the Read tool renders for the model (the vision page's supported formats), judged by pixels, not bytes.
 const RENDERED_IMAGE = /\.(?:png|jpe?g|gif|webp)$/i;
@@ -590,7 +598,7 @@ function rangeCap(abs, shown, lineCount, a, b) {
   const state = treeState(fileKey);
   if (state === 'new') return;
   global.BLOCK_DETAIL = { branch: 'range-cap', covered: Math.round((100 * covered) / lineCount) };
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: ranged reads of ${shown} now cover ${Math.round((100 * covered) / lineCount)}% of its ${lineCount} lines in this ${actorKey === 'main' ? 'session' : 'seat'} -\n` +
       `ranges of one file may cover at most ${Math.round(CAP * 100)}% of it, on the Read tool and the shell's sed -n / head / tail / awk NR\n` +
       `alike: reconstructing a large file from splits is the whole-file read the guard exists to stop\n` +
@@ -603,7 +611,6 @@ function rangeCap(abs, shown, lineCount, a, b) {
       `A file with nothing to locate (a data table, a message map): grep -n '<the key you need>' '${shown}', then that range.\n` +
       `For the remainder:\n` + navHint(shown),
   );
-  process.exit(2);
 }
 
 // The path-scoped convention rules attach on a Read / Write / Edit of a matching file and on a Bash command that counts as
@@ -786,7 +793,7 @@ function announceRules(text, extra = [], cds = []) {
     }));
   };
   const exit = process.exit.bind(process);
-  process.exit = (code) => { if (code === 0) flush(); exit(code); };
+  process.exit = (code) => { if (code === 0 && !global.BLOCK_VERDICT) flush(); exit(code); };
 }
 
 // The whole line of `text` holding the first match of `re` (as `[^\n]*?<re>[^\n]*` matched it, without that lazy
@@ -1334,17 +1341,16 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     const bigNamed = namedOne && !counted ? namedFindOverCap(sweepM[0], namedFind[3], namedFind[1] === 'i') : null;
     if (bigNamed) {
       global.BLOCK_DETAIL = { branch: 'named-find-dump', file: pathMod.basename(bigNamed.file) };
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: ${sweep} prints ${bigNamed.file} whole - ${bigNamed.why}.\n` +
         `The find names the file, but the cat after it prints every line, which is the whole-file read the Read gate\n` +
         `blocks. Locate what you need first (the navigation tools - LSP documentSymbol / goToDefinition - or grep -n for a\n` +
         `pattern), then read only the ranges that matter. Where the navigation tools are deferred, load them first with\n` + LOAD_NAV,
       );
-      process.exit(2);
     }
     if (loop || (!namedOne && !counted && SWEEP_EXT_ANY.test(sweepM[0]))) {
       global.BLOCK_DETAIL = loop ? { branch: 'sweep', var: loop.var, operand: loop.operand } : { branch: 'sweep', shape: sweep };
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
         `variable or a find placeholder. Per alfred-navigation.md, locate what you need first\n` +
@@ -1352,7 +1358,6 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
         `ranges that matter. If you genuinely need one whole small file, cat it by name. Where the navigation\n` +
         `tools are deferred, load them first with\n` + LOAD_NAV,
       );
-      process.exit(2);
     }
   }
   // The segments, stages, verbs, pipes and redirects below are read on `filled` (quoteFilled): a quoted `;`, `|`, `>` or
@@ -1386,12 +1391,11 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       || unquotedMatch(seg, hseg, /\b(?:less|more)\s+((?:-\S+\s+)*\S+)/)
       || unquotedMatch(seg, hseg, /\bawk\s+(?:['"])1(?:['"])\s+((?:-\S+\s+)*\S+)/);
     if (unb && gatedIn(unb[1])) {
-      process.stderr.write(
+      blockCall(payload,
         'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
         'Per alfred-navigation.md, read the located range - the navigation tools\' goToDefinition, or a bounded\n' +
         'sed -n \'<start>,<end>p\' once you know where to look. Where the navigation tools are deferred, load them first with\n' + LOAD_NAV,
       );
-      process.exit(2);
     }
 
     // Per pipeline segment: a bare `cat <gated file>` (or sed -n '1,$p') with no limiting
@@ -1426,11 +1430,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     const subSweep = unquotedMatch(seg, hseg, SUBST_SWEEP);
     if (subSweep && SWEEP_EXT_ANY.test(subSweep[0])) {
       global.BLOCK_DETAIL = { branch: 'sweep', shape: 'substitution' };
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: a listing substitution (${subSweep[0].slice(0, 120)}) hands every file it names to the dump verb - a whole-file sweep.\n` +
         `Name the one file and read a range, or grep -n across them for what you need first:\n` + LOAD_NAV,
       );
-      process.exit(2);
     }
     const entries = files.map((f) => ({ f, printed: (lc) => lc })).concat(spanFiles(seg, fseg));
     // A literal span (`sed -n a,bp`, head, tail, `awk NR`) that reaches the terminal as it is joins the Read tool's range
@@ -1452,11 +1455,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (/[*?[]/.test(f) && (GATED_EXT.test(f) || SWEEP_EXT_ANY.test(f))) {
       const matched = unfollowedCd ? null : globFiles(nativePath(f));
       if (matched && smallFiles(matched)) continue;
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: a glob (${f}) hands every matching file to cat - a whole-file sweep, whatever each one weighs.\n` +
         `Name the one file and read a range, or locate the symbol first:\n` + navHint(f),
       );
-      process.exit(2);
     }
     if (!GATED_EXT.test(f)) {
       // Any other extension is judged by SIZE, as the Read half is: a 130KB `cat big.md` printed whole passed the shell
@@ -1465,14 +1467,13 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       const size = sizeOf(f);
       if (size > BIG_BYTES) {
         global.BLOCK_DETAIL = { branch: 'size', bytes: size };
-        process.stderr.write(
+        blockCall(payload,
           `Blocked: whole-file print of ${f} (${Math.round(size / 1024)}KB) via ${payload.tool_name}.\n` +
           `A file this large does not fit a tool result - printing it whole spends its entire size on context, the\n` +
           `whole-file Read the Read gate blocks routed through the shell. Take what you came for instead:\n` +
           `  grep -n '<pattern>' '${f}'   ->  then a bounded sed -n '<start>,<end>p' on the lines it names\n` +
           `  head -c 2000 '${f}'          ->  the first bytes, when it has no lines\n`,
         );
-        process.exit(2);
       }
       continue;
     }
@@ -1483,7 +1484,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // Read half's own 'half the file or less per range'.
     const n = shown(lc);
     if (lc > THRESHOLD && n > THRESHOLD && (n === lc || n > lc / 2)) {
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: ${n === lc ? 'whole-file dump' : `a ${n}-line span`} of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
         `Per alfred-navigation.md, a bare cat/sed of a large source file is the same\n` +
         `whole-file read the Read gate blocks - routed through the shell.\n` +
@@ -1492,7 +1493,6 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
             `git show '${f}' | sed -n '<start>,<end>p' on the lines it names (git diff <rev> -- <path> for what changed).\n`
           : navHint(f)),
       );
-      process.exit(2);
     }
     }
     for (const { f, range } of capSpans) {
@@ -1506,11 +1506,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   } catch (err) {
     if (!(err instanceof JudgeBudget)) throw err;
     global.BLOCK_DETAIL = { branch: 'budget', matched: err.message };
-    process.stderr.write(`Blocked: this command is too large or too deeply nested for the read guard to judge inside its\n` +
+    blockCall(payload, `Blocked: this command is too large or too deeply nested for the read guard to judge inside its\n` +
       `budget (${JUDGE_WORK.max} characters of judging) - nothing ran, and a command it cannot judge is read as the whole-file dump it may be.\n` +
       `Split it into smaller commands, or locate what you need first and read that range. Where the navigation tools\n` +
       `are deferred, load them first with\n` + LOAD_NAV);
-    process.exit(2);
   }
   process.exit(0);
 }
@@ -1556,9 +1555,8 @@ if (!GATED_EXT.test(path)) {
       pages = (buf.toString('latin1').match(/\/Type\s*\/Page(?![A-Za-z])/g) || []).length;
     } catch { pages = 0; }
     if (pages > 0 && pages <= 10) process.exit(0);
-    process.stderr.write(`Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB, ${pages ? `${pages} pages` : 'page count unknown'}).\n`
+    blockCall(payload, `Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB, ${pages ? `${pages} pages` : 'page count unknown'}).\n`
       + 'Read a PDF by page: Read with `pages: "1-5"` (at most 20 pages a call), then the next range only if the first did not answer.\n');
-    process.exit(2);
   }
   if (size > BIG_BYTES && whole && !planFile) {
     // A grep remedy needs LINES. This branch judges size, not language, so it also catches the 93KB
@@ -1573,7 +1571,7 @@ if (!GATED_EXT.test(path)) {
       head = buf.subarray(0, n);
     } catch { /* unreadable - fall back to the line-based remedy */ }
     const unlined = !!head && (head.includes(0) || head.toString('latin1').split('\n').some((l) => l.length > 1000));
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB).\n` +
       `A file this large does not fit a tool result - reading it whole spends its entire size on\n` +
       `context, and every message after it re-sends that. Take what you came for instead:\n` +
@@ -1585,7 +1583,6 @@ if (!GATED_EXT.test(path)) {
         : `  grep -n '<pattern>' '${path}'   ->  then Read with offset+limit on the lines it names\n`
           + `A persisted/spilled output is the common case here: grep or tail it, never Read it whole.`),
     );
-    process.exit(2);
   }
   process.exit(0);
 }
@@ -1599,14 +1596,13 @@ const wholeShape = (input.offset ?? 0) <= 1 && (input.limit == null || input.lim
 // the whole file (limit: 2000 from the top) is a whole-file Read wearing a range.
 if (wholeShape) {
   const state = treeState(pathMod.resolve(anchorDirs[0] || process.cwd(), path));
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: whole-file Read of ${path} (${lineCount} lines). Read is for code you've ALREADY located: locate the\n` +
       `symbol, then Read its range with offset+limit. A limit covering the whole file is still a whole read, and ranges\n` +
       `of one file may cover at most ${Math.round(CAP * 100)}% of it per session - never read it in halves.\n` +
       (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${path}'\n` : '') +
       navHint(path),
   );
-  process.exit(2);
 }
 
 // Cumulative cap: one rule with the shell's literal spans (rangeCap, above).

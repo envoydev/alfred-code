@@ -5,7 +5,7 @@
 // injection points at it.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-const { statusAccount } = require('./hook-test-env');
+const { statusAccount, verdictResult } = require('./hook-test-env');
 require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
@@ -41,10 +41,10 @@ function project()
     // Windows, so all three are pointed at it.
     const tmpdir = fs.mkdtempSync(path.join(TMP, `tmp-${seq}-`));
     const sid = `sess-${seq}`;
-    const run = (payload, env = {}, hook = HOOK) => spawnSync(process.execPath, [hook], {
+    const run = (payload, env = {}, hook = HOOK) => verdictResult(spawnSync(process.execPath, [hook], {
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: sid, cwd: root, ...payload }),
         encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, TMPDIR: tmpdir, TEMP: tmpdir, TMP: tmpdir, ...env },
-    });
+    }));
     // 2.8.0 layout: the snapshot and the compaction record live in <data root>/state/sessions/, the stamps in
     // state/approvals/; `flow` is the pre-2.8.0 folder a 2.7.0 hook wrote all three to
     const flow = path.join(root, '.alfred', 'docs', 'flow');
@@ -486,10 +486,10 @@ test('compact-state: the first change after an automatic compaction is held once
     assert.strictEqual(call(p, tp, 'Read'), 0, 'a read is never held');
     assert.strictEqual(call(p, tp, 'Edit', { agent_id: 'seat-1' }), 0, "a seat's call is the parent's work in flight");
     const held = p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: tp }, env);
-    assert.strictEqual(held.status, 2, 'the first edit is held');
+    assert.strictEqual(held.status, 'ask', 'the first edit is held');
     assert.match(held.stderr, /~120k tokens per message/, 'the measured post-compaction carry');
     assert.match(held.stderr, /A fresh session restarts at ~40k, written new at 1\.25x/, 'and the cold floor, priced');
-    assert.strictEqual(call(p, tp, 'Bash'), 2, 'still held - no ask yet');
+    assert.strictEqual(call(p, tp, 'Bash'), 'ask', 'still held - no ask yet');
     assert.strictEqual(call(p, tp, 'Edit'), 0, 'two denials, then it gives way - never a loop');
     const q = project();
     const tq = q.transcript(rows);
@@ -543,14 +543,14 @@ test('compact-state: every hold text names the fewer-than-payback exit, and its 
     const a = armed();
     assert.match(a.started.replace(/\s+/g, ' '), EXIT, 'the compact start names both exits');
     const held = edit(a);
-    assert.strictEqual(held.status, 2);
+    assert.strictEqual(held.status, 'ask');
     assert.match(held.stderr.replace(/\s+/g, ' '), EXIT, 'the compaction hold names both exits');
     const n = Number((/pays back in about (\d+) messages/.exec(held.stderr) || [])[1]);
     assert.ok(n > 2, held.stderr);
     after(a.tp, `fewer messages than the payback: rename the test, ~${n} messages`);
-    assert.strictEqual(edit(a).status, 2, 'a count at the quoted payback is no exit');
+    assert.strictEqual(edit(a).status, 'ask', 'a count at the quoted payback is no exit');
     const b = armed();
-    assert.strictEqual(edit(b).status, 2);
+    assert.strictEqual(edit(b).status, 'ask');
     after(b.tp, `Fewer messages than the payback: rename the one test, ~${n - 1} messages.`);
     assert.strictEqual(edit(b).status, 0, 'a count under the quoted payback releases the hold');
     const ledger = fs.readFileSync(path.join(b.p.root, '.alfred', 'statistics', 'hook-blocks', `${b.p.sid}.jsonl`), 'utf8');
@@ -559,9 +559,9 @@ test('compact-state: every hold text names the fewer-than-payback exit, and its 
     after(c.tp, 'fewer messages than the payback: fix the typo, ~2 messages');
     assert.strictEqual(edit(c).status, 0, 'said before any hold quoted a payback, the line form is taken as the single-short-step line is');
     const d = armed();
-    assert.strictEqual(edit(d).status, 2);
+    assert.strictEqual(edit(d).status, 'ask');
     after(d.tp, 'fewer messages than the payback: rename the test');
-    assert.strictEqual(edit(d).status, 2, 'a line naming no count is no exit');
+    assert.strictEqual(edit(d).status, 'ask', 'a line naming no count is no exit');
 });
 
 test('compact-state: the hold reaches an edit and a shell call through their one-process dispatchers (C09, 7fae0c39 / 84eedb4b)', () =>
@@ -584,11 +584,11 @@ test('compact-state: the hold reaches an edit and a shell call through their one
     // audit 2026-10-20 C12, add5a91e: a shell call that writes nothing is the reading the ask needs - it passes
     assert.strictEqual(via(SHELL, 'Bash', { command: 'cat .alfred/docs/flow/COMPACT-STATE; grep -rlE "x" src' }).status, 0, 'a reading shell call is never held');
     const shell = via(SHELL, 'Bash', { command: 'echo x > a.txt' });
-    assert.strictEqual(shell.status, 2, 'the first changing shell call after the compaction is held');
+    assert.strictEqual(shell.status, 'ask', 'the first changing shell call after the compaction is held');
     assert.match(shell.stderr, /Held once: this session AUTO-COMPACTED/);
     assert.match(shell.stderr, /~120k tokens per message/);
     const edit = via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' });
-    assert.strictEqual(edit.status, 2, 'an edit is held through the file dispatcher');
+    assert.strictEqual(edit.status, 'ask', 'an edit is held through the file dispatcher');
     assert.match(edit.stderr, /Held once/);
     assert.strictEqual(via(SHELL, 'Bash', { command: 'echo y > a.txt' }).status, 0, 'two denials, then it gives way - the cap is shared by both routes');
 });
@@ -668,12 +668,12 @@ test('compact-state: the idle gap leaves a hold the first change meets, released
     assert.strictEqual(s.via(FILES, 'Read', { file_path: path.join(s.p.root, 'a.txt') }).status, 0, 'a read is never held');
     assert.strictEqual(s.p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'ok, go ahead and fix it', transcript_path: s.tp }, env).stdout, '', 'the work prompt is not injected again');
     const held = s.edit();
-    assert.strictEqual(held.status, 2, 'fdce35ae: the work prompt\'s first change is held');
+    assert.strictEqual(held.status, 'ask', 'fdce35ae: the work prompt\'s first change is held');
     assert.match(held.stderr.replace(/\s+/g, ' '), /sat idle 19(?:\.0)?h before this turn and its prompt cache went cold; the turns since have re-written it, so the choice is priced as from now/);
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
     assert.match(held.stderr.replace(/\s+/g, ' '), /or fewer messages than the payback, say so in one line - 'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry/, 'AC-6: the idle hold names both exits');
-    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 2, 'a writing shell call is a change');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 'ask', 'a writing shell call is a change');
     assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
     const a = setup();
     fs.appendFileSync(a.tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
@@ -718,7 +718,7 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
     const s = setup(4.8);
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading shell call passes - the hold stands');
     const held = s.via(SHELL, 'Bash', { command: 'git push origin develop' });
-    assert.strictEqual(held.status, 2, 'the first change after the answer is held');
+    assert.strictEqual(held.status, 'ask', 'the first change after the answer is held');
     assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 4\.8h for its answer and its prompt cache went cold; the turns since have re-written it, so the choice is priced as from now/);
     assert.match(held.stderr, /~290k tokens per message/);
     assert.match(held.stderr, /A fresh session restarts at ~78k, written new at 1\.25x/);
@@ -729,7 +729,7 @@ test('compact-state: an ask answered after a long gap leaves the idle hold for t
     assert.strictEqual(s.edit().status, 0, 'the fresh-session ask answered releases it');
     assert.strictEqual(s.edit().status, 0, 'and the same long ask never arms it twice');
     assert.strictEqual(setup(1.9, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 0, 'under an explicit 2h: no hold');
-    assert.strictEqual(setup(2.1, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 2, 'over it: held');
+    assert.strictEqual(setup(2.1, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).edit().status, 'ask', 'over it: held');
     assert.strictEqual(setup(4.8, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).edit().status, 0, '0 switches it off');
     assert.strictEqual(setup(4.8, { ALFRED_CODE_UNATTENDED: '1' }).edit().status, 0, 'nobody at the terminal: no hold');
     assert.strictEqual(setup(4.8, {}, 100000).edit().status, 0, 'a carry mostly the cold floor: no hold');
@@ -771,7 +771,7 @@ test('U15-1: a typed prompt after the gap answer releases the idle hold', () =>
     assert.strictEqual(n.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0);
     n.user('<task-notification><task-id>b1</task-id><status>completed</status></task-notification>');
     n.user([{ type: 'text', text: 'Stop hook feedback: held' }]);
-    assert.strictEqual(n.edit().status, 2, 'a harness notice or a Stop hook feedback row is no typed prompt: still held');
+    assert.strictEqual(n.edit().status, 'ask', 'a harness notice or a Stop hook feedback row is no typed prompt: still held');
     const b = setup();
     b.user('push it now');
     assert.strictEqual(b.edit().status, 0, 'typed before the first call after the answer: the arm and the release in one call');
@@ -842,12 +842,12 @@ test('compact-state: the idle wait follows the cache life the last reply wrote (
     };
     assert.strictEqual(edit(askRows(4, '5m')).status, 0, 'a 5m ask answered in 4 minutes: no hold');
     const held = edit(askRows(6, '5m'));
-    assert.strictEqual(held.status, 2, 'answered in 6 minutes: held');
+    assert.strictEqual(held.status, 'ask', 'answered in 6 minutes: held');
     assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 6 min for its answer/);
     assert.strictEqual(edit(askRows(59, '1h')).status, 0, 'a 1h ask answered in 59 minutes: no hold');
-    assert.strictEqual(edit(askRows(61, '1h')).status, 2, 'in 61 minutes: held');
+    assert.strictEqual(edit(askRows(61, '1h')).status, 'ask', 'in 61 minutes: held');
     assert.strictEqual(edit(askRows(54, null)).status, 0, 'no split: the one-hour fallback');
-    assert.strictEqual(edit(askRows(66, null)).status, 2, 'past it: held');
+    assert.strictEqual(edit(askRows(66, null)).status, 'ask', 'past it: held');
     assert.strictEqual(edit(askRows(6, '5m'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '2' }).status, 0, 'an explicit 2 overrides the cache');
     assert.strictEqual(edit(askRows(600, '1h'), { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).status, 0, '0 is off');
     // Claude Code's idle compaction (the one-hour cache only) between the ask and its answer: the context past it is unknown, no hold
@@ -909,7 +909,7 @@ test('compact-state: a declined fresh-session ask is not re-offered by the idle 
     // The reviewer's chain: a slow ordinary ask arms the hold, the model puts the fresh-session choice, the user takes
     // longer than the wait to decline it - the change after it passes, and every call after that too.
     const c = world([floorRow(), reply('r0', 289000, 40), ask('toolu_push', PUSH, 290000, 30), answer('toolu_push', '"Push now?"="Push (Recommended)"', 23)]);
-    assert.strictEqual(c.edit().status, 2, 'the slow ordinary ask holds the first change');
+    assert.strictEqual(c.edit().status, 'ask', 'the slow ordinary ask holds the first change');
     c.add(ask('toolu_fresh1', FRESH, 290500, 22), answer('toolu_fresh1', '"Resume?"="Continue here"', 15));
     assert.strictEqual(c.edit().status, 0, 'the declined choice releases it');
     assert.strictEqual(c.edit().status, 0, 'and no new hold comes from the slow decline');
@@ -922,7 +922,7 @@ test('compact-state: a declined fresh-session ask is not re-offered by the idle 
     assert.doesNotMatch(under.ledger(), /"kind":"idle-gap-offer"/);
     const over = world([...declined(), reply('r1', 430000, 12), ask('toolu_push', PUSH, 440000, 10), answer('toolu_push', '"Push now?"="Hold"', 3)]);
     const held = over.edit();
-    assert.strictEqual(held.status, 2, '440k is past 1.5x the 290k declined: held');
+    assert.strictEqual(held.status, 'ask', '440k is past 1.5x the 290k declined: held');
     assert.match(held.stderr.replace(/\s+/g, ' '), /last ask waited 7 min for its answer/);
     assert.match(over.ledger(), /"kind":"idle-gap-offer"[^\n]*"via":"ask-answer"/, 'one offer row');
     over.add(answer('toolu_x', '"Fresh?"="Continue here"', 1));
@@ -932,7 +932,7 @@ test('compact-state: a declined fresh-session ask is not re-offered by the idle 
     // step 435,600 - one under is no hold, at it is held
     const at = (ctx) => world([...declined(), reply('r1', ctx - 1400, 12), ask('toolu_push', PUSH, ctx - 400, 10), answer('toolu_push', '"Push now?"="Hold"', 3)]).edit().status;
     assert.strictEqual(at(435599), 0, 'one under the step: no hold');
-    assert.strictEqual(at(435600), 2, 'at the step: held');
+    assert.strictEqual(at(435600), 'ask', 'at the step: held');
     // the prompt route: under 1.5x no offer, past it one offer, once per gap
     const pu = world([...declined(), reply('r1', 420000, 7)]);
     assert.strictEqual(pu.prompt(), '', '420k at the prompt: no offer');
@@ -1005,7 +1005,7 @@ test('compact-state: a plan task ticked DONE past the trigger holds the next tas
     assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short' }).status, 0, 'a reading shell call passes');
     assert.strictEqual(s.via(FILES, 'Read', { file_path: s.file }).status, 0, 'a read passes');
     const held = s.edit();
-    assert.strictEqual(held.status, 2, "the next task's first change is held");
+    assert.strictEqual(held.status, 'ask', "the next task's first change is held");
     const said = held.stderr.replace(/\s+/g, ' ');
     assert.match(said, /plan task 'Task 1 - slice 1' was just ticked DONE in \.alfred\/docs\/work\/plans\/export\.md/);
     assert.match(said, /\(now: 'next task 2 - nothing mid-task'\)/, 'the Resume line as it stands at the denial');
@@ -1014,7 +1014,7 @@ test('compact-state: a plan task ticked DONE past the trigger holds the next tas
     assert.match(said, /'Resume in a fresh session \(Recommended\)'/);
     assert.match(said, /or fewer messages than the payback, say so in one line - 'single short step: <what>' or 'fewer messages than the payback: <what>, ~N messages' - and retry/, 'AC-6: the tick hold names both exits');
     assert.match(s.ledger(), /"kind":"tick-offer"/, 'one probe row records the arm');
-    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 2, 'a writing shell call is a change too');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > src.js' }).status, 'ask', 'a writing shell call is a change too');
     assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
     assert.match(s.ledger(), /"kind":"tick-hold"[^\n]*"outcome":"denied-twice"/);
 
@@ -1031,16 +1031,16 @@ test('compact-state: a plan task ticked DONE past the trigger holds the next tas
     // every way a build writes the tick
     const both = setup();
     both.tick('- status: IN_PROGRESS\n- estimate: 10m\n\n### Task 2 - slice 2\n\n- status: TODO', `${DONE}\n- estimate: 10m\n\n### Task 2 - slice 2\n\n- status: IN_PROGRESS`);
-    assert.strictEqual(both.edit().status, 2, 'a tick that also starts the next card holds');
+    assert.strictEqual(both.edit().status, 'ask', 'a tick that also starts the next card holds');
     const multi = setup();
     multi.via(FILES, 'MultiEdit', { file_path: multi.file, edits: [{ old_string: '- status: IN_PROGRESS', new_string: DONE }, { old_string: 'Resume: next task 2', new_string: 'Resume: next task 2 (fresh)' }] });
-    assert.strictEqual(multi.edit().status, 2, 'a MultiEdit tick holds');
+    assert.strictEqual(multi.edit().status, 'ask', 'a MultiEdit tick holds');
     const write = setup();
     write.via(FILES, 'Write', { file_path: write.file, content: plan(['DONE (`npm test` - 12 passed)', 'TODO', 'TODO']) });
-    assert.strictEqual(write.edit().status, 2, 'a Write that ticks holds');
+    assert.strictEqual(write.edit().status, 'ask', 'a Write that ticks holds');
     const parked = setup({ statuses: ['IN_PROGRESS', 'TODO', 'IN_PROGRESS\n- needs: the integration run'] });
     parked.tick();
-    assert.strictEqual(parked.edit().status, 2, "a card parked on a run (needs:) is no work in flight");
+    assert.strictEqual(parked.edit().status, 'ask', "a card parked on a run (needs:) is no work in flight");
 
     const none = (label, t, args = []) => { t.tick(...args); assert.strictEqual(t.edit().status, 0, label); return t; };
     none('under the trigger: no hold', setup({ carry: 300000 }));
@@ -1070,7 +1070,7 @@ test('compact-state: a plan task ticked DONE past the trigger holds the next tas
     none('the next tick at 455k: no hold', twice, ['- status: TODO', DONE]);
     fs.appendFileSync(twice.tp, JSON.stringify(usageRow('c', { cache_read_input_tokens: 700000 })) + '\n');
     twice.tick('- status: TODO', DONE);
-    assert.strictEqual(twice.edit().status, 2, 'grown past 1.5x (700k over 450k): held again');
+    assert.strictEqual(twice.edit().status, 'ask', 'grown past 1.5x (700k over 450k): held again');
 
     // missing, empty and garbage input never block, and arm nothing
     const g = setup();
@@ -1139,7 +1139,7 @@ test('compact-state: the chained, hold and idle routes offer only where a fresh 
     assert.strictEqual(JSON.parse(fs.readFileSync(holdFile, 'utf8')).denied, 0, 'no denial spent');
     fs.appendFileSync(tz, JSON.stringify(usageRow('b', read(250000))) + '\n');
     const held = edit(zero, tz);
-    assert.strictEqual(held.status, 2, 'the next changing call, at 250k, is held');
+    assert.strictEqual(held.status, 'ask', 'the next changing call, at 250k, is held');
     assert.match(held.stderr, PAYS, 'with the paying text');
     assert.doesNotMatch(held.stderr, /re-sends|re-writes all/);
 
@@ -1175,7 +1175,7 @@ test('gated stops: a gated cycle\'s gate and build skills wait for a stop after 
     const p = project();
     const tp = p.transcript(base);
     const r = p.run({ ...skillCall('task-verify-plan'), transcript_path: tp });
-    assert.strictEqual(r.status, 2, 'the gate skill right after the design is held');
+    assert.strictEqual(r.status, 'ask', 'the gate skill right after the design is held');
     assert.match(r.stderr, /spec check printed `path: gated`, so step 1 DESIGN ends with a STOP before task-verify-plan/);
     const again = p.run({ ...skillCall('task-verify-plan'), transcript_path: tp });
     assert.strictEqual(again.status, 0, 'held once per step call - never a loop');
@@ -1192,13 +1192,13 @@ test('gated stops: a gated cycle\'s gate and build skills wait for a stop after 
     const gate = call('Skill', { skill: 'alfred-code:task-verify-plan' }, 'Launching skill: task-verify-plan');
     const q = project();
     const b = q.run({ ...skillCall('alfred-code:task-implement'), transcript_path: q.transcript([...base, ...answered, ...gate]) });
-    assert.strictEqual(b.status, 2, 'the build skill right after the gate is held');
+    assert.strictEqual(b.status, 'ask', 'the build skill right after the gate is held');
     assert.match(b.stderr, /step 2 GATE ends with a STOP before task-implement/);
     pass('the build after the approval ask passes', [...base, ...answered, ...gate, ...answered], 'task-implement');
     // b35afe70: the design's own clarify ask (L122) was answered BEFORE the plan was written - no stop after the artifact
     const c = project();
     const mid = [typed('<command-name>/task-solve</command-name>'), ...spec('gated'), ...design, ...answered, ...plan];
-    assert.strictEqual(c.run({ ...skillCall('task-verify-plan'), transcript_path: c.transcript(mid) }).status, 2, 'a clarify ask answered mid-design is no stop');
+    assert.strictEqual(c.run({ ...skillCall('task-verify-plan'), transcript_path: c.transcript(mid) }).status, 'ask', 'a clarify ask answered mid-design is no stop');
     const stamp = call('Edit', { file_path: 'docs/plans/2026-10-10-export.md', old_string: 'x', new_string: 'Gated: passed' }, 'ok');
     const d = project();
     assert.strictEqual(d.run({ ...skillCall('task-implement'), transcript_path: d.transcript([...base, ...answered, ...gate, ...answered, ...stamp]) }).status, 0,
@@ -1206,7 +1206,7 @@ test('gated stops: a gated cycle\'s gate and build skills wait for a stop after 
     // PF1: a folder plan's Markdown reaching disk is the design's artifact, as the flat write is
     const folderPlan = call('Write', { file_path: '.alfred/docs/work/plans/csv/csv.md', content: '# plan' }, 'ok');
     const e = project();
-    assert.strictEqual(e.run({ ...skillCall('task-verify-plan'), transcript_path: e.transcript([typed('<command-name>/task-solve</command-name>'), ...spec('gated'), ...design, ...folderPlan]) }).status, 2,
+    assert.strictEqual(e.run({ ...skillCall('task-verify-plan'), transcript_path: e.transcript([typed('<command-name>/task-solve</command-name>'), ...spec('gated'), ...design, ...folderPlan]) }).status, 'ask',
         'a folder plan is the design\'s artifact');
 });
 
@@ -1814,7 +1814,7 @@ test('PF1 tick: a done call past the trigger holds the next task\'s first change
     s.plan.run(['cursor', '--plan', 'csv'], 'note: step 4 BUILD - mode session\n');
     assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv` }).status, 0, 'resume passes');
     const held = s.edit();
-    assert.strictEqual(held.status, 2, 'the next source edit is held');
+    assert.strictEqual(held.status, 'ask', 'the next source edit is held');
     const said = held.stderr.replace(/\s+/g, ' ');
     assert.match(said, /plan task 'Task 1 - slice 1' was just ticked DONE in \.alfred\/docs\/work\/plans\/csv\//);
     assert.match(said, /\(now: 'step 4 BUILD - mode session - next task 2'\)/, 'the status on disk at the denial');
@@ -1896,6 +1896,6 @@ test('PF1: the hold passes every plan call on its three routes, and still holds 
         assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv` }).status, 0, `${route}: resume`);
         assert.strictEqual(s.via(SHELL, 'Bash', { command: heredoc('done', '--plan csv --task 1', 'result: a > b') }).status, 0, `${route}: done with a heredoc`);
         assert.strictEqual(s.via(SHELL, 'PowerShell', { command: ps }).status, 0, `${route}: a PowerShell here-string`);
-        assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv > out.txt` }).status, 2, `${route}: a call that also writes a file`);
+        assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv > out.txt` }).status, 'ask', `${route}: a call that also writes a file`);
     }
 });

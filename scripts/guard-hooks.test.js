@@ -90,17 +90,17 @@ const ctxRows = (name, ctx, text) => [
 ];
 
 test('guard-read-whole-file: shell sweeps and unbounded prints are dumps', () => {
-  assert.equal(bash('guard-read-whole-file.js', 'for f in src/*.cs; do cat -n "$f"; done'), 2, 'loop over a glob');
-  assert.equal(bash('guard-read-whole-file.js', 'find . -name "*.cs" -exec cat {} +'), 2, 'find -exec cat');
-  assert.equal(bash('guard-read-whole-file.js', 'find . -name "*.cs" | xargs cat'), 2, 'xargs cat');
-  assert.equal(bash('guard-read-whole-file.js', `head -n 100000 ${BIG}`), 2, 'head -n <huge>');
-  assert.equal(bash('guard-read-whole-file.js', `tail -n +1 ${BIG}`), 2, 'tail -n +1');
+  assert.equal(bash('guard-read-whole-file.js', 'for f in src/*.cs; do cat -n "$f"; done'), 'ask', 'loop over a glob');
+  assert.equal(bash('guard-read-whole-file.js', 'find . -name "*.cs" -exec cat {} +'), 'ask', 'find -exec cat');
+  assert.equal(bash('guard-read-whole-file.js', 'find . -name "*.cs" | xargs cat'), 'ask', 'xargs cat');
+  assert.equal(bash('guard-read-whole-file.js', `head -n 100000 ${BIG}`), 'ask', 'head -n <huge>');
+  assert.equal(bash('guard-read-whole-file.js', `tail -n +1 ${BIG}`), 'ask', 'tail -n +1');
 });
 
 // 2.1.6 audit (guards:F10): a glob operand is a sweep of many files, not a path that failed to resolve.
 test('guard-read-whole-file: cat of a source glob is denied as a sweep, not as an unsizable path', () => {
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: 'cat sub/*.cs' } });
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 'ask');
   assert.match(r.stderr, /glob/i);
   assert.doesNotMatch(r.stderr, /cannot size/);
 });
@@ -111,7 +111,7 @@ test('guard-read-whole-file: targeted reads and doc prose stay silent', () => {
   assert.equal(bash('guard-read-whole-file.js', `grep -n Foo ${BIG}`), 0, 'grep');
   assert.equal(bash('guard-read-whole-file.js', heredoc(`Step 1: cat ${BIG} to check the patterns`)), 0, 'heredoc prose');
   // 2.1.6 K1: a heredoc's FIRST line is shell - blanking the whole match hid a dump that ran beside it
-  assert.equal(bash('guard-read-whole-file.js', `cat <<'EOF'; cat ${BIG}\nnote\nEOF`), 2, 'a dump on the heredoc line');
+  assert.equal(bash('guard-read-whole-file.js', `cat <<'EOF'; cat ${BIG}\nnote\nEOF`), 'ask', 'a dump on the heredoc line');
 });
 
 // The commit gate reads the repo's real diff (a trivial one is exempt by design), so these cases
@@ -429,14 +429,14 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const hot = (n) => transcript(`hot-${n}`, ctxRows(`m6-${n}`, 450000));
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
-  assert.equal(call('loop-code-quality', hot('a')), 2, 'orchestration run on carried history');
-  assert.equal(call('alfred-code:loop-code-quality', hot('b')), 2, 'namespaced form');
+  assert.equal(call('loop-code-quality', hot('a')), 'ask', 'orchestration run on carried history');
+  assert.equal(call('alfred-code:loop-code-quality', hot('b')), 'ask', 'namespaced form');
   // The old name, still copied in a project not yet updated - read from the rename map, its one home.
   const oldLoop = Object.entries(require('../meta/stack-manifest.json').renamed.skills).find(([o, n]) => n === 'loop-code-quality' && /^loop-/.test(o))[0];
-  assert.equal(call(oldLoop, hot('f')), 2, 'the renamed loop under its old name');
-  assert.equal(call('issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
-  assert.equal(call('review-code', hot('g')), 2, 'the stack\'s own code review is an orchestration run');
-  assert.equal(call('alfred-code:review-security', hot('h')), 2, 'and its security review, namespaced');
+  assert.equal(call(oldLoop, hot('f')), 'ask', 'the renamed loop under its old name');
+  assert.equal(call('issue-diagnoser', hot('c')), 'ask', 'the gated diagnosis flow chained onto carried history');
+  assert.equal(call('review-code', hot('g')), 'ask', 'the stack\'s own code review is an orchestration run');
+  assert.equal(call('alfred-code:review-security', hot('h')), 'ask', 'and its security review, namespaced');
   assert.equal(call('loop-code-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
   // A subagent's Skill call carries agent_id: the carry this hook reads is the parent session's, and
@@ -461,15 +461,15 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   const answer = () => fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask1', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
     { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status;
-  assert.equal(call(), 2, 'the offer is made once');
+  assert.equal(call(), 'ask', 'the offer is made once');
   // audit 2026-10-08: the retry passed with no ask between - a soft gate; the offer stands until an ask answers it
-  assert.equal(call(), 2, 'an identical retry with no answered ask is the same offer again');
+  assert.equal(call(), 'ask', 'an identical retry with no answered ask is the same offer again');
   answer();
   assert.equal(call(), 0, 'once the ask is answered, the retry passes - the answer is honoured');
   grow(500000);
   assert.equal(call(), 0, 'still inside 1.5x of the offered context');
   grow(700000);
-  assert.equal(call(), 2, 'past 1.5x growth the number changed, so the question is new');
+  assert.equal(call(), 'ask', 'past 1.5x growth the number changed, so the question is new');
 });
 
 test('audit 2026-10-08: the fresh-session guard reads commands and the router skill, an answered fresh ask, and only its own namespace', () => {
@@ -484,7 +484,7 @@ test('audit 2026-10-08: the fresh-session guard reads commands and the router sk
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home, ...extra } });
   for (const s of ['alfred-code:init', 'alfred-code:alfred-code']) {
     const r = skillCall(s);
-    assert.equal(r.status, 2, `${s}: a flagged command or router skill in the cache`);
+    assert.equal(r.status, 'ask', `${s}: a flagged command or router skill in the cache`);
     assert.match(r.stderr, new RegExp(`can run /${s} themselves`), 'the escape names the command as it is typed');
   }
   // (the running plugin root is read through the same pluginHeads list; a plugin-launched hook in this unset-up
@@ -500,7 +500,7 @@ test('audit 2026-10-08: the fresh-session guard reads commands and the router sk
   const phase = (skill, tp) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp },
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } }).status;
   assert.equal(phase('task-implement', answeredFresh), 0, 'the answered fresh ask is the answer');
-  assert.equal(phase('task-implement', transcript('fresh-unanswered', ctxRows('fu', 450000))), 2, 'with no such ask the offer stands');
+  assert.equal(phase('task-implement', transcript('fresh-unanswered', ctxRows('fu', 450000))), 'ask', 'with no such ask the offer stands');
   assert.equal(phase('other:task-solve', transcript('fresh-foreign', ctxRows('ff', 450000))), 0, 'another plugin\'s task-solve is not this stack\'s run');
 });
 
@@ -519,34 +519,34 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
   const H45 = 'claude-haiku-4-5';
   // 200k tier: ALFRED_CODE_CONTEXT_WINDOW_FOR_200K, seeded 180,000 (the user's ruling of 2026-10-16; 150,000 before).
   assert.equal(call(at('w-200k-170', 170000, H45)), 0, '170k is under the 200k tier seed');
-  assert.equal(call(at('w-200k-190', 190000, H45)), 2, '190k is past it');
-  assert.equal(call(at('w-200k-110', 110000, H45), { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '100000' }), 2, 'the tier variable moves it');
+  assert.equal(call(at('w-200k-190', 190000, H45)), 'ask', '190k is past it');
+  assert.equal(call(at('w-200k-110', 110000, H45), { ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '100000' }), 'ask', 'the tier variable moves it');
   // A window that cannot be read is not guessed at: ALFRED_CODE_CONTEXT_WINDOW_DEFAULT, seeded 180,000, is the trigger
   // (the user's ruling of 2026-10-21 - a 300,000 WINDOW with the 300K tier's 280k trigger before).
   assert.equal(call(at('w-undeclared', 170000)), 0, '170k with no model is under the DEFAULT trigger');
-  assert.equal(call(at('w-undeclared-190k', 190000)), 2, '190k is past it');
+  assert.equal(call(at('w-undeclared-190k', 190000)), 'ask', '190k is past it');
   assert.equal(call(at('w-bare-sonnet-260k', 260000, 'claude-sonnet-5')), 0, 'Sonnet 5 on a bare id is 1M by its table row - 260k is under 400k');
-  assert.equal(call(at('w-200k-row-260k', 260000, H45)), 2, 'a 200k row is the answer even at a carry that window could not hold');
-  assert.equal(call(at('w-undeclared-160k', 160000), { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '150000' }), 2, 'the DEFAULT variable moves it');
+  assert.equal(call(at('w-200k-row-260k', 260000, H45)), 'ask', 'a 200k row is the answer even at a carry that window could not hold');
+  assert.equal(call(at('w-undeclared-160k', 160000), { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '150000' }), 'ask', 'the DEFAULT variable moves it');
   assert.equal(call(at('w-undeclared-190k-off', 190000), { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
-  assert.equal(call(at('w-undeclared-190k-tier', 190000), { ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0' }), 2, 'a tier variable never reaches a session with no tier');
-  assert.equal(call(at('w-undeclared-290k-retired', 290000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), 2, 'the retired catch-all key is read by nothing');
+  assert.equal(call(at('w-undeclared-190k-tier', 190000), { ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '0' }), 'ask', 'a tier variable never reaches a session with no tier');
+  assert.equal(call(at('w-undeclared-290k-retired', 290000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), 'ask', 'the retired catch-all key is read by nothing');
   assert.equal(call(at('w-undeclared-290k-compact', 290000), { ALFRED_CODE_AUTO_COMPACT: '1' }), 0, 'ALFRED_CODE_AUTO_COMPACT=1: no offer on any tier');
-  assert.equal(call(at('w-suffix-190k', 190000, 'opus[1m]')), 2, 'an alias with a [1m] suffix is no table row - no tier, the DEFAULT trigger');
-  assert.equal(call(at('w-alias-190k', 190000), { CLAUDE_CONFIG_DIR: accountDir('tier-alias', 'claude-opus-5') }), 2,
+  assert.equal(call(at('w-suffix-190k', 190000, 'opus[1m]')), 'ask', 'an alias with a [1m] suffix is no table row - no tier, the DEFAULT trigger');
+  assert.equal(call(at('w-alias-190k', 190000), { CLAUDE_CONFIG_DIR: accountDir('tier-alias', 'claude-opus-5') }), 'ask',
     'the settings model key is never read, even holding a full id - no tier, the DEFAULT trigger');
   // 1M tier: ALFRED_CODE_CONTEXT_WINDOW_FOR_1M, seeded 400,000 - deliberately above the harness's own
   // auto-compaction band (387,619-397,171 measured), so the Stop offer there is usually unreachable
   // and the SessionStart compact route carries it instead. Lower the variable to be asked earlier.
   assert.equal(call(at('w-1m-395k', 395000, O5)), 0, '395k is under the 1M tier seed');
-  assert.equal(call(at('w-1m-450k', 450000, O5)), 2, '450k is past it');
+  assert.equal(call(at('w-1m-450k', 450000, O5)), 'ask', '450k is past it');
   assert.equal(call(at('w-1m-450k-nodecl', 450000), { ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '0' }), 0,
     'without a model id it is not the 1M tier - it is the DEFAULT, off here');
-  assert.equal(call(at('w-1m-260k', 260000, O5), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '250000' }), 2, 'the tier variable moves it');
+  assert.equal(call(at('w-1m-260k', 260000, O5), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '250000' }), 'ask', 'the tier variable moves it');
   assert.equal(call(at('w-1m-450k-off', 450000, O5), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' }), 0, '0 switches that tier off');
-  assert.equal(call(at('w-1m-260k-junk', 260000, O5), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: 'lots' }), 2, 'a garbage tier value reads as the DEFAULT, 180k');
-  assert.equal(call(at('w-1m-450k-old', 450000, O5), { ALFRED_CODE_FRESH_SESSION_1M: '0' }), 2, 'the renamed key is read by nothing');
-  assert.equal(call(at('w-1m-450k-pct0', 450000, O5), { ALFRED_CODE_FRESH_SESSION_PCT: '0' }), 2, 'the retired percentage key is dead - it is no longer an off switch');
+  assert.equal(call(at('w-1m-260k-junk', 260000, O5), { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: 'lots' }), 'ask', 'a garbage tier value reads as the DEFAULT, 180k');
+  assert.equal(call(at('w-1m-450k-old', 450000, O5), { ALFRED_CODE_FRESH_SESSION_1M: '0' }), 'ask', 'the renamed key is read by nothing');
+  assert.equal(call(at('w-1m-450k-pct0', 450000, O5), { ALFRED_CODE_FRESH_SESSION_PCT: '0' }), 'ask', 'the retired percentage key is dead - it is no longer an off switch');
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
@@ -613,7 +613,7 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
   assert.ok(fs.statSync(log).size <= 256 * 1024, `the log was capped (${fs.statSync(log).size} bytes)`);
   const freshOld = plant(logDir, 'guard-fresh-size-old.offered', 8, '100 1');
   const tp = transcript('sweep-fresh', ctxRows('sweep-fresh', 450000));
-  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
+  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }, env).status, 'ask', 'the offer is made');
   assert.ok(!fs.existsSync(freshOld), 'writing an offer swept an offer past 7 days');
   // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
   const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
@@ -627,11 +627,11 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
 
 test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cumulative cap', () => {
   const read = (input, session_id) => run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: input, session_id });
-  assert.equal(read({ file_path: BIG }), 2, 'no offset/limit');
+  assert.equal(read({ file_path: BIG }), 'ask', 'no offset/limit');
   // Past the end, not a fixed 2000: BIG outgrew 2000 lines, and a 2000-line head then passed only while it sat over the
   // range cap - 40 lines more and it slipped under it.
-  assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES + 1000 }), 2, 'a limit spanning the file is a whole-file Read');
-  assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES }), 2, 'limit = the line count');
+  assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES + 1000 }), 'ask', 'a limit spanning the file is a whole-file Read');
+  assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES }), 'ask', 'limit = the line count');
   assert.equal(read({ file_path: BIG, offset: 50, limit: 40 }), 0, 'a ranged read');
   assert.equal(read({ file_path: SMALL }), 0, 'a small file reads whole');
   assert.equal(read({ file_path: NOTES }), 0, 'a non-source file is not gated');
@@ -640,21 +640,21 @@ test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cu
   const third = Math.floor(BIG_LINES * 0.3);
   assert.equal(read({ file_path: BIG, offset: 1, limit: third }, sid), 0, 'first 30%');
   assert.equal(read({ file_path: BIG, offset: third + 1, limit: third }, sid), 0, 'second 30% - at the cap');
-  assert.equal(read({ file_path: BIG, offset: 2 * third + 1, limit: third }, sid), 2, 'third 30% reconstructs the file');
+  assert.equal(read({ file_path: BIG, offset: 2 * third + 1, limit: third }, sid), 'ask', 'third 30% reconstructs the file');
   assert.equal(read({ file_path: BIG, offset: 2 * third + 1, limit: third }, `${sid}-other`), 0, 'the cap is per session');
 });
 
 test('guard-read-whole-file: file redirects, multi-file cats and unresolvable paths on Bash', () => {
   const noRoot = { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER };
   assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} > ${path.join(TMP, 'copy.js')}`), 0, 'a redirect into a file is a copy, not a dump');
-  assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} 2>&1`), 2, 'an fd redirect still prints');
-  assert.equal(bash('guard-read-whole-file.js', `cat ${SMALL} ${BIG}`), 2, 'every file of a multi-file cat is sized');
+  assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} 2>&1`), 'ask', 'an fd redirect still prints');
+  assert.equal(bash('guard-read-whole-file.js', `cat ${SMALL} ${BIG}`), 'ask', 'every file of a multi-file cat is sized');
   const rel = (payload, cwd) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', ...payload }, { cwd, env: noRoot }).status;
   // audit 2026-10-10 C11: nothing at any anchor is nothing to dump (a wrong path, a file the command creates first) - and
   // since complexity stage 1 A5, after a cd the guard cannot follow too (it failed CLOSED there and never fired)
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 0, 'a relative path with no file at any anchor prints nothing');
   assert.equal(rel({ tool_input: { command: 'cd "$X" && cat scripts/lint-skills.js' } }, TMP), 0, 'after a cd the guard cannot follow it fails open');
-  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 2, 'anchored on the session cwd it is sized - and blocked');
+  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 'ask', 'anchored on the session cwd it is sized - and blocked');
   assert.equal(rel({ tool_input: { command: 'cat stack/hooks/instrument-tool-usage.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
 });
 
@@ -1568,8 +1568,8 @@ test('guard-read-whole-file: the extension is judged against the PATH, not the w
   assert.equal(bash('guard-read-whole-file.js', `cat ${big} > /tmp/copy.js`), 0,
     'a redirected dump never reaches the context');
   // and the sweeps still block
-  assert.equal(bash('guard-read-whole-file.js', 'for f in src/*.cs; do cat -n "$f"; done'), 2, 'a loop still blocks');
-  assert.equal(bash('guard-read-whole-file.js', 'find . -name "*.cs" -exec cat {} +'), 2, 'a globbed find -exec cat still blocks');
+  assert.equal(bash('guard-read-whole-file.js', 'for f in src/*.cs; do cat -n "$f"; done'), 'ask', 'a loop still blocks');
+  assert.equal(bash('guard-read-whole-file.js', 'find . -name "*.cs" -exec cat {} +'), 'ask', 'a globbed find -exec cat still blocks');
 });
 
 test('guard-unapproved-dispatch: the stamp lifecycle', () => {
@@ -1578,25 +1578,25 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const disp = (seat, env = {}) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } }).status;
-  assert.equal(disp('aspnet-implementer'), 2, 'implementer with no stamp');
+  assert.equal(disp('aspnet-implementer'), 'ask', 'implementer with no stamp');
   assert.equal(disp('aspnet-solution-designer'), 0, 'a designer needs no stamp');
   assert.equal(disp('general-purpose'), 0, 'a generic seat outside a flow');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('aspnet-implementer'), 0, 'stamped');
-  assert.equal(disp('general-purpose'), 2, 'a generic seat while a flow is stamped');
-  assert.equal(disp('claude'), 2, 'the other generic seat');
+  assert.equal(disp('general-purpose'), 'ask', 'a generic seat while a flow is stamped');
+  assert.equal(disp('claude'), 'ask', 'the other generic seat');
   // a fork inherits the WHOLE parent context - the most expensive dispatch there is, and the one
   // seat no gate looked at (measured: 869,483 cache-read for a read-only grep job)
-  assert.equal(disp('fork'), 2, 'a fork is a generic seat while a flow is stamped');
+  assert.equal(disp('fork'), 'ask', 'a fork is a generic seat while a flow is stamped');
   assert.equal(disp('Explore'), 0, 'a read-only built-in');
   assert.equal(disp('aspnet-verifier'), 0, 'a verifier');
   fs.writeFileSync(gate, 'AUTO - "run without stops"\n'); assert.equal(disp('wpf-implementer'), 0, 'the AUTO waiver');
-  fs.writeFileSync(gate, 'approved maybe\n'); assert.equal(disp('wpf-implementer'), 2, 'a first line that is neither APPROVED nor AUTO');
+  fs.writeFileSync(gate, 'approved maybe\n'); assert.equal(disp('wpf-implementer'), 'ask', 'a first line that is neither APPROVED nor AUTO');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
-  assert.equal(disp('wpf-implementer'), 2, 'a 9h-old stamp is absent');
+  assert.equal(disp('wpf-implementer'), 'ask', 'a 9h-old stamp is absent');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
-  assert.equal(disp('wpf-implementer', { ALFRED_CODE_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under ALFRED_CODE_DOCS_PATH');
+  assert.equal(disp('wpf-implementer', { ALFRED_CODE_DOCS_PATH: 'docs' }), 'ask', 'the stamp is looked up under ALFRED_CODE_DOCS_PATH');
 });
 
 // 2.8.0 layout: the stamp lives in <data root>/state/approvals/. The core's hooks update before /alfred-code:update moves
@@ -1606,18 +1606,18 @@ test('guard-unapproved-dispatch: the stamp under state/approvals/, the legacy fl
   const disp = (seat, env = {}) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } });
   const denied = disp('aspnet-implementer');
-  assert.equal(denied.status, 2, 'no stamp anywhere');
+  assert.equal(denied.status, 'ask', 'no stamp anywhere');
   assert.match(denied.stderr, /write \S*\.alfred[\\/]state[\\/]approvals[\\/]<plan id>[\\/]APPROVAL/, 'the denial names the new path to write, per plan');
   const fresh = stateReceipt(root, 'APPROVAL', 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('aspnet-implementer').status, 0, 'an implementer dispatch passes on state/approvals/APPROVAL');
-  assert.equal(disp('general-purpose').status, 2, 'and a generic seat is held while it is stamped');
+  assert.equal(disp('general-purpose').status, 'ask', 'and a generic seat is held while it is stamped');
   fs.rmSync(fresh);
   const legacy = path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL');
   fs.mkdirSync(path.dirname(legacy), { recursive: true });
   fs.writeFileSync(legacy, 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('aspnet-implementer').status, 0, 'and on a legacy flow/APPROVAL a 2.7.0 skill copy wrote');
   stateReceipt(root, 'APPROVAL', 'approved maybe\n');
-  assert.equal(disp('aspnet-implementer').status, 2, 'the new path wins when both exist');
+  assert.equal(disp('aspnet-implementer').status, 'ask', 'the new path wins when both exist');
 });
 
 // Per-plan approvals (spec Part 4, 2026-10-20): two sessions on two plans shared one APPROVAL - the later approval
@@ -1630,7 +1630,7 @@ test('guard-unapproved-dispatch: an approval belongs to the plan the brief names
   const planStamp = (id, body) => stateReceipt(root, path.join(id, 'APPROVAL'), body);
   const a = planStamp('plan-a', 'APPROVED plan-a - "go ahead"\n');
   const deniedB = disp('aspnet-implementer', brief('plan-b'));
-  assert.equal(deniedB.status, 2, "a plan-b brief is denied on plan-a's stamp");
+  assert.equal(deniedB.status, 'ask', "a plan-b brief is denied on plan-a's stamp");
   assert.match(deniedB.stderr, /state[\\/]approvals[\\/]plan-b[\\/]APPROVAL/, "the denial names plan-b's own stamp path");
   assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 0, 'a plan-a brief passes on its own stamp');
   assert.equal(disp('aspnet-implementer', brief('.alfred/docs/work/plans/plan-a.md')).status, 0, 'a plan path names the same plan');
@@ -1638,27 +1638,27 @@ test('guard-unapproved-dispatch: an approval belongs to the plan the brief names
   assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 0, 'two plan stamps: plan-a passes');
   assert.equal(disp('aspnet-implementer', brief('plan-b')).status, 0, 'two plan stamps: plan-b passes');
   fs.rmSync(a);
-  assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 2, "deleting plan-a's stamp denies plan-a");
+  assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 'ask', "deleting plan-a's stamp denies plan-a");
   assert.equal(disp('aspnet-implementer', brief('plan-b')).status, 0, '... and only plan-a');
-  assert.equal(disp('general-purpose', 'x').status, 2, 'a generic seat is held while any plan stamp is live');
+  assert.equal(disp('general-purpose', 'x').status, 'ask', 'a generic seat is held while any plan stamp is live');
   const bad = disp('aspnet-implementer', brief('.hidden'));
-  assert.equal(bad.status, 2, 'an invalid plan id is denied');
+  assert.equal(bad.status, 'ask', 'an invalid plan id is denied');
   assert.match(bad.stderr, /plan id/i, 'naming the shape');
   fs.rmSync(b);
   const root1 = stateReceipt(root, 'APPROVAL', 'APPROVED legacy - "go"\n');
   assert.equal(disp('aspnet-implementer', 'build it, no plan line').status, 0, 'a brief with no plan line passes on a root APPROVED stamp (pre-2.8.0 copies)');
   const rootOnly = disp('aspnet-implementer', brief('plan-a'));
-  assert.equal(rootOnly.status, 2, 'a root APPROVED stamp does not pass a plan-named brief');
+  assert.equal(rootOnly.status, 'ask', 'a root APPROVED stamp does not pass a plan-named brief');
   assert.match(rootOnly.stderr, /plan-a[\\/]APPROVAL/);
   fs.writeFileSync(root1, 'AUTO - "run all recommended without asking me"\n');
   assert.equal(disp('aspnet-implementer', brief('plan-a')).status, 0, 'a root AUTO stamp passes a plan-named brief');
   fs.rmSync(root1);
   const none = disp('aspnet-implementer', 'build it');
-  assert.equal(none.status, 2, 'nothing stamped');
+  assert.equal(none.status, 'ask', 'nothing stamped');
   assert.match(none.stderr, /plan: <plan id>/, 'the denial tells the brief to carry its plan line');
   planStamp('plan-c', 'APPROVED plan-c - "go"\n');
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(layoutApproval(root, 'plan-c'), old, old);
-  assert.equal(disp('aspnet-implementer', brief('plan-c')).status, 2, 'a 9h-old plan stamp is stale');
+  assert.equal(disp('aspnet-implementer', brief('plan-c')).status, 'ask', 'a 9h-old plan stamp is stale');
 });
 const layoutApproval = (root, id) => path.join(root, '.alfred', 'state', 'approvals', id, 'APPROVAL');
 
@@ -1673,7 +1673,7 @@ test('PF1 D6: a folder plan completed after a hand-written AUTO waiver spends it
   const plan = planFolder(root, 'cart', { approve: true, done: ['1', '2', '3'], complete: true });
   const status = path.join(plan.dir, 'status.json');
   const spent = disp('aspnet-implementer');
-  assert.equal(spent.status, 2);
+  assert.equal(spent.status, 'ask');
   assert.match(spent.stderr, /AUTO waiver at .*APPROVAL predates .*work\/plans\/cart\/ was completed \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\)/);
   assert.equal(disp('general-purpose').status, 0, 'no generic seat is held by a spent waiver');
   ago(status, 1200); ago(plan.md, 1200);
@@ -1710,7 +1710,7 @@ test('guard-unapproved-dispatch: a hand-written AUTO waiver is spent by a plan c
   const write = (body, s) => { fs.writeFileSync(plan, body); ago(plan, s); };
   write('# Cart\n\nApproved: 2026-11-04\nCompleted: 2026-11-04 12:00\n', 60);
   const spent = disp('aspnet-implementer');
-  assert.equal(spent.status, 2, 'a plan completed after the waiver spends it');
+  assert.equal(spent.status, 'ask', 'a plan completed after the waiver spends it');
   assert.match(spent.stderr, /AUTO waiver at .*APPROVAL predates .*cart\.md's Completed: line \(2026-11-04 12:00\)/, 'the denial names the plan and its line');
   assert.match(spent.stderr, /a new run is waived by a new AUTO line in the user's words/, 'and the way on');
   assert.equal(disp('general-purpose').status, 0, 'a spent waiver holds no generic seat either - its run is closed');
@@ -1729,14 +1729,14 @@ test('guard-unapproved-dispatch: a hand-written AUTO waiver is spent by a plan c
   for (let i = 0; i < 50; i++) { const f = path.join(plans, `other-${i}.md`); fs.writeFileSync(f, '# Other\n'); ago(f, 100); }
   assert.equal(disp('aspnet-implementer').status, 0, '51 plans, the completed one oldest: not read');
   fs.rmSync(path.join(plans, 'other-0.md'));
-  assert.equal(disp('aspnet-implementer').status, 2, '50 plans, the completed one among them: spent');
+  assert.equal(disp('aspnet-implementer').status, 'ask', '50 plans, the completed one among them: spent');
   for (let i = 1; i < 50; i++) fs.rmSync(path.join(plans, `other-${i}.md`));
   // the pre-2.8.0 plans folder counts too
   fs.rmSync(plan);
   const legacy = path.join(root, '.alfred', 'docs', 'plans');
   fs.mkdirSync(legacy, { recursive: true });
   fs.writeFileSync(path.join(legacy, 'old.md'), 'Completed: 2026-11-04\n'); ago(path.join(legacy, 'old.md'), 60);
-  assert.equal(disp('aspnet-implementer').status, 2, 'a plan under the pre-2.8.0 plans/ spends it as well');
+  assert.equal(disp('aspnet-implementer').status, 'ask', 'a plan under the pre-2.8.0 plans/ spends it as well');
   if (process.platform !== 'win32' && process.getuid && process.getuid() !== 0) {
     fs.chmodSync(legacy, 0o000);
     try { assert.equal(disp('aspnet-implementer').status, 0, 'an unreadable plans folder is no evidence'); }
@@ -1758,11 +1758,11 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
-  assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route');
-  assert.equal(disp('alfred-code-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
-  assert.equal(disp('alfred-code:wpf-implementer'), 2, 'scoped to the core plugin');
+  assert.equal(disp('wpf-implementer'), 'ask', 'bare - the copy route');
+  assert.equal(disp('alfred-code-wpf:wpf-implementer'), 'ask', 'scoped to a per-stack plugin');
+  assert.equal(disp('alfred-code:wpf-implementer'), 'ask', 'scoped to the core plugin');
   // 2.1.0 ships every seat in the core, so this is the ONLY spelling a plugin-route flow can dispatch.
-  assert.equal(disp('alfred-code:aspnet-implementer'), 2, 'a stack implementer on the core, no APPROVAL');
+  assert.equal(disp('alfred-code:aspnet-implementer'), 'ask', 'a stack implementer on the core, no APPROVAL');
   assert.equal(disp('alfred-code:aspnet-verifier'), 0, 'a verifier on the core still needs no stamp');
   // Gating this one would block a tool the user chose with a message about a flow it has no part
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
@@ -1787,7 +1787,7 @@ test("guard-unapproved-dispatch: a stamp written before this session began is an
   fs.writeFileSync(tp, '{}\n'); pause(20); fs.appendFileSync(tp, '{}\n'); // born after the stamp, then grown like a real transcript
   const disp = () => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'wpf-implementer' }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
-  assert.equal(disp(), 2, 'the stamp predates the session');
+  assert.equal(disp(), 'ask', 'the stamp predates the session');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
   assert.equal(disp(), 0, 'a stamp written during the session');
 });
@@ -1954,11 +1954,11 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
     { env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '100000' } }).status;
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'task-solve' }, transcript_path: hot }), 2, 'the name field spelling');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'task-solve' }, transcript_path: hot }), 'ask', 'the name field spelling');
   const edge = transcript('fs-edge', withModel(ctxRows('m', 180000), H45));
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: edge }), 0, 'exactly 180k is not past it');
   const sum = transcript('fs-sum', withModel([ctxRows('m', 0)[0], assistantRow('m', 'ok', { cache_read_input_tokens: 100000, cache_creation_input_tokens: 70000, input_tokens: 10001 })], H45));
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: sum }), 2, 'the three usage fields add up');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: sum }), 'ask', 'the three usage fields add up');
 });
 
 test('instrument-tool-usage: off by default, one JSONL row per call when switched on, never blocks', () => {
@@ -2016,10 +2016,10 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
 
   // the measured case: a C# symbol hunt handed to the built-in Explore, which greps
-  assert.equal(disp('Explore', 'Find who calls SocketConnection.Send'), 2, 'callers question');
-  assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 2, 'declaration question');
-  assert.equal(disp('Explore', 'find the class SocketConnection'), 2, 'named-symbol hunt');
-  assert.equal(disp('general-purpose', 'list all usages of AddSocketServices'), 2, 'the generic seat too');
+  assert.equal(disp('Explore', 'Find who calls SocketConnection.Send'), 'ask', 'callers question');
+  assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 'ask', 'declaration question');
+  assert.equal(disp('Explore', 'find the class SocketConnection'), 'ask', 'named-symbol hunt');
+  assert.equal(disp('general-purpose', 'list all usages of AddSocketServices'), 'ask', 'the generic seat too');
 
   // the denial names the tools by job and where their load line is - the session-start tool order, since the stack ships
   // no navigation server (2026-10-24) - plus the fallback when no navigation tool serves
@@ -2049,11 +2049,11 @@ test('guard-unapproved-dispatch: a reference sweep over config and docs is no sy
   assert.equal(disp('Explore', 'Find usages of `stack-manifest.json` in the scripts'), 0, 'a backticked file');
   assert.equal(disp('Explore', 'count the usages of the word deprecated in the changelog'), 0, 'plain words');
   // a real symbol brief still blocks, in every identifier shape
-  assert.equal(disp('Explore', 'Find every reference to `resolveRoot`'), 2, 'backticked identifier');
-  assert.equal(disp('Explore', 'list the usages of OrderController'), 2, 'CamelCase');
-  assert.equal(disp('Explore', 'find references to load_manifest( in the installer'), 2, 'snake_case call');
-  assert.equal(disp('general-purpose', 'every reference to Program.Main'), 2, 'member form');
-  assert.equal(disp('Explore', 'usages of Orders::Service please'), 2, 'scope form');
+  assert.equal(disp('Explore', 'Find every reference to `resolveRoot`'), 'ask', 'backticked identifier');
+  assert.equal(disp('Explore', 'list the usages of OrderController'), 'ask', 'CamelCase');
+  assert.equal(disp('Explore', 'find references to load_manifest( in the installer'), 'ask', 'snake_case call');
+  assert.equal(disp('general-purpose', 'every reference to Program.Main'), 'ask', 'member form');
+  assert.equal(disp('Explore', 'usages of Orders::Service please'), 'ask', 'scope form');
 });
 
 // 2.1.6 audit (guards:F7): 'what type' and 'where is/are ... defined' are symbol questions only when a code identifier is in them.
@@ -2073,7 +2073,7 @@ test('guard-fresh-session-start: a manual-only flag is read from the running plu
   assert.equal(call({}), 0, 'the stale 2.0.0 copy no longer decides over 2.1.0');
   skill(path.join(cache, '2.1.0'), true);
   skill(path.join(cache, '2.0.0'), false);
-  assert.equal(call({}), 2, 'the newest version says manual-only');
+  assert.equal(call({}), 'ask', 'the newest version says manual-only');
   // the running plugin's own root wins over any cached copy
   const running = path.join(cfg, 'running', 'mk2', 'alfred-code', '9.9.9');
   skill(running, false);
@@ -2099,11 +2099,11 @@ test('READER-2: skillHeads reads a moved plugins root', () => {
     if (value === undefined) delete env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else env.CLAUDE_CODE_PLUGIN_CACHE_DIR = value;
     return runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: `alfred-code:${name}` } }, { env }).status;
   };
-  assert.equal(call('bar', moved), 2, 'the moved root holds the flagged copy');
-  assert.equal(call('bar', `  ${moved} `), 2, 'a value with spaces around it is trimmed');
+  assert.equal(call('bar', moved), 'ask', 'the moved root holds the flagged copy');
+  assert.equal(call('bar', `  ${moved} `), 'ask', 'a value with spaces around it is trimmed');
   for (const value of [undefined, '', '   ']) {
     assert.equal(call('bar', value), 0, `${JSON.stringify(value)}: <config>/plugins/cache holds the unflagged copy`);
-    assert.equal(call('baz', value), 2, `${JSON.stringify(value)}: and its flagged one is read`);
+    assert.equal(call('baz', value), 'ask', `${JSON.stringify(value)}: and its flagged one is read`);
   }
 });
 
@@ -2115,17 +2115,18 @@ test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain w
   assert.equal(disp('Explore', 'Find out what type of database this app uses and which files configure it'), 0, 'what type of database');
   assert.equal(disp('Explore', 'Where are the environment variables defined?'), 0, 'where are the env vars defined');
   assert.equal(disp('Explore', 'Where is the retry policy configured and where is it defined for the workers?'), 0, 'plain words');
-  assert.equal(disp('Explore', 'What type is SocketConnection.Send returning?'), 2, 'what type of a member');
-  assert.equal(disp('Explore', 'what type does `OrderService` expose'), 2, 'what type of a backticked identifier');
-  assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 2, 'where is a CamelCase name declared');
-  assert.equal(disp('Explore', 'where are `AddSocketServices` and its friends registered'), 2, 'where are a backticked name registered');
+  assert.equal(disp('Explore', 'What type is SocketConnection.Send returning?'), 'ask', 'what type of a member');
+  assert.equal(disp('Explore', 'what type does `OrderService` expose'), 'ask', 'what type of a backticked identifier');
+  assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 'ask', 'where is a CamelCase name declared');
+  assert.equal(disp('Explore', 'where are `AddSocketServices` and its friends registered'), 'ask', 'where are a backticked name registered');
 });
 
 // Audit 2026-10-08 row 39: the caller and definition shapes carried no identifier test, the class I5 already paid for;
 // the APPROVAL root skipped `payload.cwd`; and the block rows did not say which branch fired.
 test('guard-unapproved-dispatch: the caller and definition shapes need a code name, and every block names its branch', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  // No agent cap: an ask keeps the dispatch's pending file (the user may approve), and this case asks a dozen times in one session.
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs', ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' };
   const disp = (seat, prompt, extra = {}) => runIn('guard-unapproved-dispatch.js',
     { tool_name: 'Agent', session_id: 'disp-branch', tool_input: { subagent_type: seat, prompt }, ...extra }, { env }).status;
   // the replayed false positives - plain words after the shape
@@ -2134,18 +2135,18 @@ test('guard-unapproved-dispatch: the caller and definition shapes need a code na
   assert.equal(disp('Explore', 'list the call sites of the deprecated logger'), 0, 'call sites of plain words');
   assert.equal(disp('Explore', 'who calls the nightly job and when'), 0, 'who calls plain words');
   // a real symbol hunt in each shape still blocks
-  assert.equal(disp('Explore', 'find the definition of `parseRef`'), 2, 'definition of a backticked name');
-  assert.equal(disp('Explore', 'list the call sites of OrderService.Refund'), 2, 'call sites of a member');
-  assert.equal(disp('Explore', 'who calls loadManifest( from the installer'), 2, 'who calls a call');
-  assert.equal(disp('Explore', 'all implementations of IRepository'), 2, 'implementations of an interface');
-  assert.equal(disp('Explore', 'subclasses of the BaseController'), 2, 'subclasses of a CamelCase type');
-  assert.equal(disp('Explore', 'find the class Order'), 2, 'a kind word before a capitalised name');
-  assert.equal(disp('Explore', 'who calls Foo'), 2, 'a capitalised name after any shape');
+  assert.equal(disp('Explore', 'find the definition of `parseRef`'), 'ask', 'definition of a backticked name');
+  assert.equal(disp('Explore', 'list the call sites of OrderService.Refund'), 'ask', 'call sites of a member');
+  assert.equal(disp('Explore', 'who calls loadManifest( from the installer'), 'ask', 'who calls a call');
+  assert.equal(disp('Explore', 'all implementations of IRepository'), 'ask', 'implementations of an interface');
+  assert.equal(disp('Explore', 'subclasses of the BaseController'), 'ask', 'subclasses of a CamelCase type');
+  assert.equal(disp('Explore', 'find the class Order'), 'ask', 'a kind word before a capitalised name');
+  assert.equal(disp('Explore', 'who calls Foo'), 'ask', 'a capitalised name after any shape');
   const rows = () => fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'disp-branch.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepStrictEqual(rows().at(-1).detail, { branch: 'symbol-question', asked: 'who calls Foo' });
-  assert.equal(disp('alfred-code:aspnet-implementer', 'build it'), 2);
+  assert.equal(disp('alfred-code:aspnet-implementer', 'build it'), 'ask');
   assert.equal(rows().at(-1).detail.branch, 'implementer-unapproved');
-  assert.equal(disp('alfred-code:aspnet-implementer', 'build it', { agent_type: 'alfred-code:issue-diagnoser-ci' }), 2);
+  assert.equal(disp('alfred-code:aspnet-implementer', 'build it', { agent_type: 'alfred-code:issue-diagnoser-ci' }), 'ask');
   assert.equal(rows().at(-1).detail.branch, 'diagnoser-pin');
   // the stamp is read where the session runs when no project dir is set
   const cwdRoot = fs.mkdtempSync(path.join(TMP, 'proj-cwd-'));
@@ -2156,7 +2157,7 @@ test('guard-unapproved-dispatch: the caller and definition shapes need a code na
   const stamped = (seat) => runIn('guard-unapproved-dispatch.js',
     { tool_name: 'Agent', cwd: cwdRoot, session_id: 'disp-cwd', tool_input: { subagent_type: seat, prompt: 'build it' } }, { env: noDir }).status;
   assert.equal(stamped('alfred-code:aspnet-implementer'), 0, 'the payload cwd holds the approval');
-  assert.equal(stamped('general-purpose'), 2, 'and the stamp gates a generic seat there');
+  assert.equal(stamped('general-purpose'), 'ask', 'and the stamp gates a generic seat there');
   assert.equal(JSON.parse(fs.readFileSync(path.join(cwdRoot, '.alfred', 'statistics', 'hook-blocks', 'disp-cwd.jsonl'), 'utf8').trim()).detail.branch, 'generic-while-stamped');
 });
 
@@ -2189,8 +2190,8 @@ test('guard-unapproved-dispatch: an Explore or Plan brief carries the untrusted-
   for (const seat of ['general-purpose', 'claude', 'fork', 'aspnet-verifier', 'alfred-code:evidence-gatherer', 'explore'])
     assert.equal(disp({ subagent_type: seat, prompt: 'Map the auth module' }).stdout, '', `no rewrite for ${seat}`);
   const denied = disp({ subagent_type: 'Explore', prompt: 'Find who calls SocketConnection.Send' });
-  assert.equal(denied.status, 2, 'a symbol question to Explore stays denied');
-  assert.equal(denied.stdout, '', '... with no rewrite beside the denial');
+  assert.equal(denied.status, 'ask', 'a symbol question to Explore stays denied');
+  assert.equal(JSON.parse(denied.stdout).hookSpecificOutput.updatedInput, undefined, '... with no rewrite beside the denial');
   assert.equal(disp({ subagent_type: 'Explore' }).stdout, '', 'no prompt, nothing to append to');
 });
 
@@ -2203,11 +2204,11 @@ test('guard-unapproved-dispatch: an untyped dispatch is the general-purpose seat
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const untyped = (prompt) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { prompt } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
-  assert.equal(untyped('Find who calls SocketConnection.Send').status, 2, 'a symbol question with the seat left out');
+  assert.equal(untyped('Find who calls SocketConnection.Send').status, 'ask', 'a symbol question with the seat left out');
   assert.equal(untyped('Implement the endpoint in Orders.cs').status, 0, 'no flow stamped - a generic seat is free');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
   const r = untyped('Implement the endpoint in Orders.cs');
-  assert.equal(r.status, 2, 'a stamped flow refuses the untyped generic seat');
+  assert.equal(r.status, 'ask', 'a stamped flow refuses the untyped generic seat');
   assert.match(r.stderr, /general-purpose/, 'the denial names the seat that would have run');
 });
 
@@ -2225,13 +2226,13 @@ test('guard-unapproved-dispatch: a diagnoser dispatches the evidence gatherer an
     assert.equal(disp(caller, 'evidence-gatherer').status, 0, `${caller}: the copy route's gatherer`);
     for (const seat of ['general-purpose', 'claude', 'fork', 'Explore', 'Plan', 'alfred-code:aspnet-implementer', 'alfred-code:aspnet-verifier', 'someone-else:evidence-gatherer']) {
       const r = disp(caller, seat);
-      assert.equal(r.status, 2, `${caller} -> ${seat}: refused`);
+      assert.equal(r.status, 'ask', `${caller} -> ${seat}: refused`);
       assert.match(r.stderr, /dispatches only the evidence gatherer/, 'the denial names the one seat it may dispatch');
     }
   }
   const untyped = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', agent_type: 'alfred-code:issue-diagnoser-ci', tool_input: { prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
-  assert.equal(untyped.status, 2, 'an untyped dispatch runs general-purpose - refused too');
+  assert.equal(untyped.status, 'ask', 'an untyped dispatch runs general-purpose - refused too');
   // every other caller keeps the rules it had
   assert.equal(disp(undefined, 'general-purpose').status, 0, 'the main session, no flow stamped');
   assert.equal(disp('alfred-code:aspnet-verifier', 'general-purpose').status, 0, 'another seat is not pinned here');
@@ -2249,7 +2250,7 @@ test('guard-unapproved-dispatch: the diagnoser denial names the bare evidence-ga
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   for (const [caller, seat] of [['issue-diagnoser-ci', 'general-purpose'], ['alfred-code:issue-diagnoser-ci', 'general-purpose']]) {
     const r = disp(caller, seat);
-    assert.equal(r.status, 2, `${caller} -> ${seat}: refused`);
+    assert.equal(r.status, 'ask', `${caller} -> ${seat}: refused`);
     assert.match(r.stderr, /the evidence-gatherer seat|`evidence-gatherer`/, `${caller}: the denial names the bare seat`);
     assert.doesNotMatch(r.stderr, /alfred-code:evidence-gatherer/, `${caller}: the denial never tells the model to use the prefix`);
   }
@@ -2918,7 +2919,7 @@ test('guard hooks record every block, and nothing on a pass', () => {
 
   assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }), 'ask', 'an ask is a block too: its row is written');
   assert.equal(run('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: '/etc/elsewhere/x.ts' } }), 'ask');
-  assert.equal(run('guard-unapproved-dispatch.js', { tool_name: 'Task', tool_input: { subagent_type: 'Explore', prompt: 'who calls Foo' } }), 2);
+  assert.equal(run('guard-unapproved-dispatch.js', { tool_name: 'Task', tool_input: { subagent_type: 'Explore', prompt: 'who calls Foo' } }), 'ask');
 
   const rows = ledger();
   assert.equal(rows.length, 3, 'one row per block');
@@ -3152,7 +3153,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
   if (process.platform === 'win32') return;
   assert.equal(xpWrite('/c/Users/u/AppData/Local/Temp/x.ts'), 2, 'still outside this project on POSIX');
   assert.equal(xpWrite(path.join(XP_ROOT, 'src', 'x.ts')), 0, 'and this project\'s own file still passes');
-  assert.equal(bash('guard-read-whole-file.js', `cat -n ${BIG}`), 2, 'the read guard still counts a real file');
+  assert.equal(bash('guard-read-whole-file.js', `cat -n ${BIG}`), 'ask', 'the read guard still counts a real file');
 });
 
 // --- the context window the trigger scales against: reported 2026-09-04 on a 1M session -------
@@ -3230,9 +3231,9 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
         /just AUTO-COMPACTED/, '... while the DEFAULT trigger is on, a session of no known window still has an offer to make');
 
     // the Skill route is unchanged, and the widened list reaches the review seats
-    assert.equal(askLoop(hot, winEnv()), 2, 'the Skill route still BLOCKS');
+    assert.equal(askLoop(hot, winEnv()), 'ask', 'the Skill route still BLOCKS');
     assert.equal(runIn('guard-fresh-session-start.js',
-        { tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: hot }, { env: winEnv() }).status, 2,
+        { tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: hot }, { env: winEnv() }).status, 'ask',
         'task-verify-code is orchestration - measured starting at 364.6k ctx');
 });
 
@@ -3241,14 +3242,14 @@ test('fresh-session window: the session model id names the tier before any usage
     // context-window.test.js). 190k is past the 180k trigger on the 200k tier and the 180k DEFAULT, and under the 1M
     // tier's 400k, so each source shows its own trigger here.
     assert.equal(askLoop(ctxAt('win-model-190k-1m', 190000, 'claude-opus-5'), winEnv()), 0, 'a 1M model id lifts the trigger to that tier\'s 400k');
-    assert.equal(askLoop(ctxAt('win-model-190k-200k', 190000, 'claude-haiku-4-5'), winEnv()), 2, 'a 200k row - 190k is past its 180k trigger');
+    assert.equal(askLoop(ctxAt('win-model-190k-200k', 190000, 'claude-haiku-4-5'), winEnv()), 'ask', 'a 200k row - 190k is past its 180k trigger');
     const hot = ctxAt('win-model-190k', 190000);
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m', 'claude-opus-5') })), 2,
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m', 'claude-opus-5') })), 'ask',
         'the settings model key is never read (it held the alias sonnet, which named no row - the user\'s report of 2026-10-21): no tier, the DEFAULT trigger');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-plain', 'sonnet') })), 2, 'an alias there is no window either');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-plain', 'sonnet') })), 'ask', 'an alias there is no window either');
     assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-plain-180', 'sonnet'), ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '200000' })), 0,
         '... the DEFAULT variable is that session\'s trigger');
-    assert.equal(askLoop(ctxAt('win-model-450k', 450000, 'claude-opus-5'), winEnv()), 2, 'and 450k on the 1M tier still fires');
+    assert.equal(askLoop(ctxAt('win-model-450k', 450000, 'claude-opus-5'), winEnv()), 'ask', 'and 450k on the 1M tier still fires');
 });
 
 test('fresh-session window: the retired ALFRED_CODE_CONTEXT_WINDOW override is inert', () => {
@@ -3256,7 +3257,7 @@ test('fresh-session window: the retired ALFRED_CODE_CONTEXT_WINDOW override is i
     // Every install seeded the key, so a settings block still carrying one must not move a tier.
     assert.equal(askLoop(ctxAt('win-env-190k-1m', 190000, 'claude-opus-5'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '200000' })), 0,
         'a stated 200k window resolves nothing - the 1M row decides, and 190k is under its 400k');
-    assert.equal(askLoop(ctxAt('win-env-190k-200k', 190000, 'claude-haiku-4-5'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000' })), 2,
+    assert.equal(askLoop(ctxAt('win-env-190k-200k', 190000, 'claude-haiku-4-5'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000' })), 'ask',
         'the model id decides alone: 190k is past the 200k tier trigger, whatever the dead key says');
     assert.equal(askLoop(ctxAt('win-env-170k', 170000), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '100000' })), 0,
         '... and with no model the DEFAULT trigger stands - 170k is under its 180k, the dead key naming a window it cannot set');
@@ -3269,14 +3270,14 @@ test('fresh-session window: the tier variable is the whole setting on a declared
     // absolute variable IS the trigger, with no arithmetic between the setting and the behaviour.
     const at260 = ctxAt('win-tier-260k', 260000, 'claude-opus-5');
     assert.equal(askLoop(at260, winEnv()), 0, '260k is under the 400,000 seed of the 1M tier');
-    assert.equal(askLoop(at260, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '250000' })), 2, '... and past a 250,000 setting');
+    assert.equal(askLoop(at260, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '250000' })), 'ask', '... and past a 250,000 setting');
     assert.equal(askLoop(at260, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '0' })), 0, '0 disables that tier outright');
     // the 200k tier has its own knob and the others never interfere
     const at190 = ctxAt('win-tier-190k', 190000, 'claude-haiku-4-5');
-    assert.equal(askLoop(at190, winEnv()), 2, '190k is past the 180,000 seed of the 200k tier');
-    assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '100000' })), 2, 'the 1M knob does not touch the 200k tier');
-    assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '100000' })), 2, 'nor does the 300K one');
-    assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '195000' })), 2, 'nor the DEFAULT, while its own seed is set');
+    assert.equal(askLoop(at190, winEnv()), 'ask', '190k is past the 180,000 seed of the 200k tier');
+    assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '100000' })), 'ask', 'the 1M knob does not touch the 200k tier');
+    assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '100000' })), 'ask', 'nor does the 300K one');
+    assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '195000' })), 'ask', 'nor the DEFAULT, while its own seed is set');
     assert.equal(askLoop(at190, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '195000' })), 0, '... and its own knob does');
 });
 
@@ -3289,15 +3290,15 @@ test('fresh-session window: model-windows.json is the single source, ALFRED_CODE
         ...extra,
     ]);
     const fb = (extra) => winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '500000', ...extra });
-    assert.equal(askLoop(onModel('tbl-haiku-190k', 190000, 'claude-haiku-4-5-20251001'), fb()), 2,
+    assert.equal(askLoop(onModel('tbl-haiku-190k', 190000, 'claude-haiku-4-5-20251001'), fb()), 'ask',
         'a dated Haiku id matches its 200k row - 190k is past the 180k trigger, the DEFAULT never consulted');
-    assert.equal(askLoop(onModel('tbl-haiku-260k', 260000, 'claude-haiku-4-5-20251001'), fb()), 2,
+    assert.equal(askLoop(onModel('tbl-haiku-260k', 260000, 'claude-haiku-4-5-20251001'), fb()), 'ask',
         'the row stands even at a carry past 200k - usage is not read');
     assert.equal(askLoop(onModel('tbl-sonnet5-190k', 190000, 'claude-sonnet-5'), winEnv()), 0,
         'Sonnet 5 on a bare id is 1M by its row - 190k is under 400k');
-    assert.equal(askLoop(onModel('tbl-bedrock-190k', 190000, 'us.anthropic.claude-haiku-4-5-20251001-v1:0'), fb()), 2,
+    assert.equal(askLoop(onModel('tbl-bedrock-190k', 190000, 'us.anthropic.claude-haiku-4-5-20251001-v1:0'), fb()), 'ask',
         'a provider-prefixed id matches the same row');
-    assert.equal(askLoop(onModel('tbl-suffix-190k', 190000, 'claude-haiku-4-5[1m]'), fb()), 2,
+    assert.equal(askLoop(onModel('tbl-suffix-190k', 190000, 'claude-haiku-4-5[1m]'), fb()), 'ask',
         'a [1m] suffix is not read - the Haiku row still answers 200k');
     assert.equal(askLoop(onModel('tbl-compact-160k', 160000, 'claude-opus-5',
         [{ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 170000 } }]), winEnv()), 0,
@@ -3306,12 +3307,12 @@ test('fresh-session window: model-windows.json is the single source, ALFRED_CODE
         'the transcript model decides; the settings model is not read');
     // not in the table: the DEFAULT is the trigger
     assert.equal(askLoop(onModel('fb-unknown-190k', 190000, 'claude-nova-9'), fb()), 0, 'an unlisted model takes the DEFAULT - 190k is under 500k');
-    assert.equal(askLoop(onModel('fb-unknown-190k-150k', 190000, 'claude-nova-9'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '150000' })), 2, '... or past a 150k one');
-    assert.equal(askLoop(onModel('fb-seed-190k', 190000, 'claude-nova-9'), winEnv()), 2, 'the 180,000 seed: 190k is past it');
+    assert.equal(askLoop(onModel('fb-unknown-190k-150k', 190000, 'claude-nova-9'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '150000' })), 'ask', '... or past a 150k one');
+    assert.equal(askLoop(onModel('fb-seed-190k', 190000, 'claude-nova-9'), winEnv()), 'ask', 'the 180,000 seed: 190k is past it');
     assert.equal(askLoop(onModel('fb-seed-170k', 170000, 'claude-nova-9'), winEnv()), 0, '... which 170k is under');
-    assert.equal(askLoop(onModel('fb-junk-190k', 190000, 'claude-nova-9'), fb({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: 'lots' })), 2, 'garbage reads as the 180,000 seed');
-    assert.equal(askLoop(onModel('fb-unset-190k', 190000, 'claude-nova-9'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '' })), 2, 'and so does empty');
-    assert.equal(askLoop(onModel('fb-old-190k', 190000, 'claude-nova-9'), winEnv({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '1000000' })), 2, 'the renamed key is read by nothing');
+    assert.equal(askLoop(onModel('fb-junk-190k', 190000, 'claude-nova-9'), fb({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: 'lots' })), 'ask', 'garbage reads as the 180,000 seed');
+    assert.equal(askLoop(onModel('fb-unset-190k', 190000, 'claude-nova-9'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '' })), 'ask', 'and so does empty');
+    assert.equal(askLoop(onModel('fb-old-190k', 190000, 'claude-nova-9'), winEnv({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '1000000' })), 'ask', 'the renamed key is read by nothing');
     assert.equal(askLoop(ctxAt('fb-nomodel-190k', 190000), fb()), 0, 'no model id at all takes the DEFAULT too');
     assert.equal(askLoop(onModel('fb-unknown-off', 900000, 'claude-nova-9'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '0' })), 0, '0 on the DEFAULT is its off switch');
 });
@@ -3320,7 +3321,7 @@ test('fresh-session window: a trigger at or above its own window is clamped back
     // A gate that cannot fire is the gate not existing. The measured case is the DEFAULT at 250,000
     // on a 200k window, and the same hole opens whenever the variable is hand-set past the window.
     const hot = ctxAt('clamp-190k', 190000, 'claude-haiku-4-5');
-    assert.equal(askLoop(hot, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000' })), 2,
+    assert.equal(askLoop(hot, winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000' })), 'ask',
         'a 250,000 trigger on a 200k window is unreachable - clamped to 90% of the window, so 190k still fires');
     assert.equal(askLoop(ctxAt('clamp-170k', 170000, 'claude-haiku-4-5'), winEnv({ ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '250000' })), 0,
         '... and the clamp does not fire the gate early - 170k is under the clamped 180,000');
@@ -3392,8 +3393,8 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   // a denial and an injection are two answers to one call: the rule is not spent on a blocked command
   const s2 = `m5-${Math.random().toString(36).slice(2)}`;
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);
-  assert.equal(blocked.status, 2, 'a whole-file dump of a large .js file is still blocked');
-  assert.equal(ctxOf(blocked), '', 'and announces nothing');
+  assert.equal(blocked.status, 'ask', 'a whole-file dump of a large .js file is still blocked');
+  assert.doesNotMatch(ctxOf(blocked), /touches files governed by/, 'and announces nothing');
   // (an in-project target: a write outside the project is governed by no rule of its own - audit 2026-10-10 C13)
   assert.match(ctxOf(call('cp x.js lib/out.js', s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
   // The Angular row is the twin of angular-conventions.md's `paths:`, and that rule matches
@@ -3436,9 +3437,9 @@ test('guard-read-whole-file: an unexpanded $VAR is judged by nobody, and a leadi
   assert.equal(call(`cat $R/src/Thing.cs`), 0, 'an unexpanded variable target is not judged');
   assert.equal(call(`cat \${SRC}/Thing.ts`), 0, 'the braced spelling either');
   // ... but a variable the SAME command sets is knowable, and the file is large
-  assert.equal(call(`R=${REPO}/scripts && cat $R/lint-skills.js`), 2, 'a same-command assignment is expanded and judged');
+  assert.equal(call(`R=${REPO}/scripts && cat $R/lint-skills.js`), 'ask', 'a same-command assignment is expanded and judged');
   // a leading cd moves the anchor: this relative path resolves nowhere from the project root
-  assert.equal(call(`cd ${path.join(REPO, 'scripts')} && cat lint-skills.js`), 2, 'a cd-anchored relative dump is still caught');
+  assert.equal(call(`cd ${path.join(REPO, 'scripts')} && cat lint-skills.js`), 'ask', 'a cd-anchored relative dump is still caught');
   assert.equal(call(`cd ${path.join(REPO, 'stack', 'hooks')} && cat instrument-tool-usage.js`), 0, 'and a small one still passes');
 });
 
@@ -3449,7 +3450,7 @@ test('stage 1 A5: a runtime print, a copy and an unfollowed cd are not judged; a
   assert.equal(call(`node -e 'console.log(require("fs").readFileSync("${BIG}","utf8"))'`), 0, 'a runtime print is not read');
   assert.equal(call(`cp "${BIG}" copied.txt && cat copied.txt`), 0, 'a copy is not tracked');
   assert.equal(call(`cd "$SOMEDIR" && cat ${path.basename(BIG)}`), 0, 'an unfollowed cd fails open');
-  assert.equal(call(`cat "${BIG}"`), 2, 'a literal cat of a big file is still refused');
+  assert.equal(call(`cat "${BIG}"`), 'ask', 'a literal cat of a big file is still refused');
 });
 
 test('guard-read-whole-file: a verb that prints a whole file under another name is size-gated like cat (2.1.6)', () => {
@@ -3472,7 +3473,7 @@ test('guard-read-whole-file: a verb that prints a whole file under another name 
     ['diff against /dev/null', `diff /dev/null ${BIG}`], ['comm against /dev/null', `comm ${BIG} /dev/null`], ['split --filter', `split --filter=cat ${BIG}`],
     ['sqlite3 readfile()', `sqlite3 :memory: "select readfile('${BIG}')"`], ['a bare name after a cd', `cd ${dir} && nl ${name}`],
   ];
-  for (const [what, command] of whole) assert.equal(call(command), 2, `whole: ${what}`);
+  for (const [what, command] of whole) assert.equal(call(command), 'ask', `whole: ${what}`);
   const bounded = [
     ['nl piped into a range', `nl -ba ${BIG} | sed -n '10,40p'`], ['cut of one field', `cut -d: -f1 ${BIG}`], ['cut of a short prefix', `cut -c1-20 ${BIG}`],
     ['grep with a real pattern', `grep -n require ${BIG}`], ['grep . is the allowed filter', `grep -c . ${BIG}`], ['sort into a file', `sort ${BIG} > ${path.join(TMP, 'sorted.txt')}`],
@@ -3498,11 +3499,11 @@ test('guard-read-whole-file: a 40,000-character pathological command is judged i
     const t = process.hrtime.bigint();
     const r = spawnSync(process.execPath, ['-r', meter, path.join(HOOKS, 'guard-read-whole-file.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, JUDGE_WORK_MAX: String(max) } });
     const w = /JUDGE_WORK (\d+) (\d+)/.exec(r.stderr) || [];
-    return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, stderr: r.stderr, work: Number(w[1]), max: Number(w[2]) };
+    return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: verdictOf(r), stderr: r.stderr + blockText(r), work: Number(w[1]), max: Number(w[2]) };
   };
   const shapes = [
     ['many pipeline stages', (n) => rep(`nl ${BIG} | head -1; `, n), 0],
-    ['many while words before one read loop', (n) => `${rep('while true; ', n)}while read l; do echo "$l"; done < ${BIG}`, 2],
+    ['many while words before one read loop', (n) => `${rep('while true; ', n)}while read l; do echo "$l"; done < ${BIG}`, 'ask'],
   ];
   let slowest = 0;
   for (const [what, shape, want] of shapes) {
@@ -3518,7 +3519,7 @@ test('guard-read-whole-file: a 40,000-character pathological command is judged i
   assert.ok(slowest < 5000, `the slowest run took ${Math.round(slowest)}ms`);
   // At the real ceiling: a 400,000-character line of here-strings costs past JUDGE_MAX_WORK, and is blocked by it, in bounded time.
   const huge = once(`wc -c ${'<<< x '.repeat(400000 / 6)}`);
-  assert.equal(huge.status, 2, `a 400,000-character shape past the work budget is blocked (${huge.work} of ${huge.max})`);
+  assert.equal(huge.status, 'ask', `a 400,000-character shape past the work budget is blocked (${huge.work} of ${huge.max})`);
   assert.match(huge.stderr, /budget/);
   assert.ok(huge.ms < 5000, `the blocked run took ${Math.round(huge.ms)}ms`);
   // Past the work budget: the same count on every run, and a ceiling under it blocks the command, never lets it through.
@@ -3528,7 +3529,7 @@ test('guard-read-whole-file: a 40,000-character pathological command is judged i
   assert.ok(r.work > 1, `the heredoc is judged (${r.work})`);
   assert.equal(once(small).work, r.work, 'the same command costs the same work on every run');
   const over = once(small, r.work - 1);
-  assert.equal(over.status, 2, 'a command whose judging passes the work budget is blocked, never let through');
+  assert.equal(over.status, 'ask', 'a command whose judging passes the work budget is blocked, never let through');
   assert.match(over.stderr, /budget/);
 });
 
@@ -3544,13 +3545,13 @@ test('guard-read-whole-file: a plain grep pattern with || or a leading or traili
   for (const pat of literal) assert.equal(call(`grep -n ${pat} ${BIG}`), 0, `plain grep, literal: grep -n ${pat}`);
   assert.equal(call(`grep -n "a || b" ${BIG}; grep -n "x ||" ${BIG}`), 0, 'two literal searches in one command');
   // still a dump: an empty alternative in ERE, or in BRE through the escaped alternation, matches every line
-  assert.equal(call(`grep -nE "a||b" ${BIG}`), 2, 'grep -E: || is an empty alternative');
-  assert.equal(call(`egrep -n "a||b" ${BIG}`), 2, 'egrep: || is an empty alternative');
-  assert.equal(call(`rg -n "a||b" ${BIG}`), 2, 'rg: || is an empty alternative');
-  assert.equal(call(`egrep -n "a|" ${BIG}`), 2, 'egrep: a trailing | is an empty alternative');
-  assert.equal(call(`grep -n "a\\|" ${BIG}`), 2, 'plain grep: a trailing escaped alternation is an empty alternative');
-  assert.equal(call(`grep -n "^" ${BIG}`), 2, 'plain grep: ^ matches every line');
-  assert.equal(call(`grep -n "" ${BIG}`), 2, 'plain grep: an empty pattern matches every line');
+  assert.equal(call(`grep -nE "a||b" ${BIG}`), 'ask', 'grep -E: || is an empty alternative');
+  assert.equal(call(`egrep -n "a||b" ${BIG}`), 'ask', 'egrep: || is an empty alternative');
+  assert.equal(call(`rg -n "a||b" ${BIG}`), 'ask', 'rg: || is an empty alternative');
+  assert.equal(call(`egrep -n "a|" ${BIG}`), 'ask', 'egrep: a trailing | is an empty alternative');
+  assert.equal(call(`grep -n "a\\|" ${BIG}`), 'ask', 'plain grep: a trailing escaped alternation is an empty alternative');
+  assert.equal(call(`grep -n "^" ${BIG}`), 'ask', 'plain grep: ^ matches every line');
+  assert.equal(call(`grep -n "" ${BIG}`), 'ask', 'plain grep: an empty pattern matches every line');
 });
 
 test('guard-read-whole-file: a dump verb inside a quoted string is text, and a quoted separator splits nothing (2.1.6)', () => {
@@ -3585,7 +3586,7 @@ test('guard-read-whole-file: a dump verb inside a quoted string is text, and a q
     // an apostrophe in a comment flips the quote pairing after it: nothing past it is read as text
     ['a comment apostrophe before the cat', `# it's a check\ncat ${BIG}; echo 'x'`],
   ];
-  for (const [what, command] of dumps) assert.equal(call(command), 2, `dump: ${what}`);
+  for (const [what, command] of dumps) assert.equal(call(command), 'ask', `dump: ${what}`);
 });
 
 test('guard-read-whole-file: a shell heredoc body is judged as commands, like -c; a body fed to a script or an eval is data (2.1.6)', () => {
@@ -3608,7 +3609,7 @@ test('guard-read-whole-file: a shell heredoc body is judged as commands, like -c
     ['bash -eo pipefail', `bash -eo pipefail <<'EOF'\ncat ${BIG}\nEOF`],
     ['bash --rcfile', `bash --rcfile /dev/null <<'EOF'\ncat ${BIG}\nEOF`],
   ];
-  for (const [what, command] of judged) assert.equal(call(command), 2, `judged: ${what}`);
+  for (const [what, command] of judged) assert.equal(call(command), 'ask', `judged: ${what}`);
   const passes = [
     ['a small file', `bash <<'EOF'\ncat ${SMALL}\nEOF`],
     ['a bounded read in the body', `bash <<'EOF'\ncat ${BIG} | head -20\ngrep -n function ${BIG}\nEOF`],
@@ -3628,9 +3629,9 @@ test('guard-read-whole-file: a sweep over .md files is a sweep; one named .md fi
   // harness's own output cap. Markdown is not symbol-navigable, so the single-file check still
   // ignores it: the sweep is the shape that dumps, not the named read.
   const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
-  assert.equal(call('for f in .claude/skills/*/SKILL.md; do cat "$f"; done'), 2, 'a loop over every SKILL.md is blocked');
+  assert.equal(call('for f in .claude/skills/*/SKILL.md; do cat "$f"; done'), 'ask', 'a loop over every SKILL.md is blocked');
   assert.equal(call(`cat ${NOTES}`), 0, 'one named markdown file is still a fine read');
-  assert.equal(call('find .claude/skills -name SKILL.md -exec cat {} \\;'), 2, 'find -exec over the same set too');
+  assert.equal(call('find .claude/skills -name SKILL.md -exec cat {} \\;'), 'ask', 'find -exec over the same set too');
 });
 
 // I4 (2.1.4 audit): the loop branch matched any `for ... do ... cat` whose text named a gated extension anywhere -
@@ -3643,9 +3644,9 @@ test('guard-read-whole-file: a loop sweeps only when cat reads the loop variable
   assert.equal(call('for f in .alfred/docs/hook-blocks/*.jsonl; do cat "$f" | node -e "process.stdin.pipe(process.stdout)" x.js; done'), 0, 'a loop over ledger files, a .js elsewhere');
   assert.equal(call('for n in 1 2 3; do cat notes.txt; echo run.ts; done'), 0, 'cat of a fixed non-gated file');
   // the positive controls still block
-  assert.equal(call('for f in src/*.ts; do cat "$f"; done'), 2, 'the loop variable over a glob of sources');
-  assert.equal(call('for d in .claude/skills/*; do cat ${d}/SKILL.md; done'), 2, 'the braced variable naming a gated file');
-  assert.equal(call("for f in $(git ls-files '*.cs'); do cat -n $f; done"), 2, 'a substitution listing sources');
+  assert.equal(call('for f in src/*.ts; do cat "$f"; done'), 'ask', 'the loop variable over a glob of sources');
+  assert.equal(call('for d in .claude/skills/*; do cat ${d}/SKILL.md; done'), 'ask', 'the braced variable naming a gated file');
+  assert.equal(call("for f in $(git ls-files '*.cs'); do cat -n $f; done"), 'ask', 'a substitution listing sources');
   const detail = r('for f in src/*.ts; do cat "$f"; done');
   assert.match(detail.stderr, /shell loop over a file list/);
 });
@@ -3657,7 +3658,7 @@ test('guard-read-whole-file: a whole Read of an oversized file is blocked whatev
   const spill = path.join(dir, 'persisted-output.txt');
   fs.writeFileSync(spill, 'x'.repeat(70 * 1024));
   const read = (tool_input) => runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input }, {}).status;
-  assert.equal(read({ file_path: spill }), 2, 'the whole-file shape is blocked');
+  assert.equal(read({ file_path: spill }), 'ask', 'the whole-file shape is blocked');
   assert.equal(read({ file_path: spill, offset: 1, limit: 50 }), 0, 'a ranged read of the same file passes');
   const small = path.join(dir, 'small.txt');
   fs.writeFileSync(small, 'x'.repeat(1024));
@@ -3676,7 +3677,7 @@ test('guard-read-whole-file: the denial names where the navigation tools LOAD fr
   const big = path.join(process.env.CLAUDE_PROJECT_DIR, 'navigable.ts');
   fs.writeFileSync(big, Array.from({ length: 600 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 'ask');
   assert.match(r.stderr, /LSP documentSymbol on '[^']+navigable\.ts'/);
   assert.match(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/);
   assert.match(r.stderr, /With none of them: grep -n '<symbol>'/, 'and the fallback where no navigation tool serves');
@@ -3689,7 +3690,7 @@ test('guard-read-whole-file: the denial names where the navigation tools LOAD fr
   fs.mkdirSync(path.dirname(hidden), { recursive: true });
   fs.copyFileSync(big, hidden);
   const h = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: hidden } }, {});
-  assert.equal(h.status, 2);
+  assert.equal(h.status, 'ask');
   assert.match(h.stderr, /No symbol lookup indexes this tree/);
 });
 
@@ -3704,14 +3705,14 @@ test('guard-read-whole-file: a file is as long as its lines - the trailing newli
   assert.equal(bash('guard-read-whole-file.js', `cat ${at}`), 0, 'exactly the threshold passes');
   assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: at } }), 0, 'on the Read route too');
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: `cat ${over}` } }, {});
-  assert.equal(r.status, 2, 'one line over blocks');
+  assert.equal(r.status, 'ask', 'one line over blocks');
   assert.match(r.stderr, /\(401 lines\)/, 'and the denial counts it right');
 });
 
 test('guard-read-whole-file: the PowerShell reads and anchors are judged like their Bash twins', () => {
   // Wired on PowerShell, yet Get-Content / gc / type dumped a 3000-line file unjudged.
   for (const c of [`Get-Content ${BIG}`, `gc ${BIG}`, `type ${BIG}`, `Get-Content -Path ${BIG} -Raw`, `Get-Content -LiteralPath '${BIG}'`])
-    assert.equal(pwsh('guard-read-whole-file.js', c), 2, `must block: ${c}`);
+    assert.equal(pwsh('guard-read-whole-file.js', c), 'ask', `must block: ${c}`);
   for (const c of [`Get-Content ${BIG} -TotalCount 40`, `gc ${BIG} -Head 20`, `Get-Content ${BIG} -Tail 30`,
     `Get-Content ${BIG} | Select-Object -First 40`, `Get-Content ${BIG} | Select-String 'foo'`, `Get-Content ${BIG} | Measure-Object -Line`])
     assert.equal(pwsh('guard-read-whole-file.js', c), 0, `bounded: ${c}`);
@@ -3719,7 +3720,7 @@ test('guard-read-whole-file: the PowerShell reads and anchors are judged like th
     'a Set-Location moves the anchor, so a small file named relative to it resolves');
   assert.equal(bash('guard-read-whole-file.js', 'type node'), 0, 'the bash builtin reads no file');
   assert.equal(bash('guard-read-whole-file.js', `grep -n type ${BIG}`), 0, 'nor is the word an argument');
-  assert.equal(pwsh('guard-read-whole-file.js', `$x = (Get-Content ${BIG})`), 2, 'a parenthesised read is still the command');
+  assert.equal(pwsh('guard-read-whole-file.js', `$x = (Get-Content ${BIG})`), 'ask', 'a parenthesised read is still the command');
 });
 
 test('guard-read-whole-file: every source-read denial says where the navigation tools load from', () => {
@@ -3730,7 +3731,7 @@ test('guard-read-whole-file: every source-read denial says where the navigation 
   // a runtime print left this list with the print analyser (complexity stage 1 A5)
   for (const c of [`for f in ${dir}/*.ts; do cat $f; done`, `head -n 99999 ${big}`]) {
     const r = deny(c);
-    assert.equal(r.status, 2, c);
+    assert.equal(r.status, 'ask', c);
     assert.match(r.stderr, /navigation line of your session-start tool order - its ToolSearch select: loads them/, `the loading line: ${c}`);
   }
 });
@@ -3778,7 +3779,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
     const blocked = skillCall('loop-code-quality');
-    assert.equal(blocked.status, 2, 'the model may not call a slash-only skill');
+    assert.equal(blocked.status, 'ask', 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
     // No threshold involved: this payload carries no transcript at all, so a context-based block
@@ -3829,25 +3830,25 @@ test('guard-fresh-session-start: the model\'s call to a built-in review is denie
     fs.writeFileSync(local, JSON.stringify({ skillOverrides: { 'review-code': 'user-invocable-only' } }));
     assert.equal(skillCall('code-review').status, 0, 'review-code left to the user: the built-in passes');
     fs.writeFileSync(local, '{ not json');
-    assert.equal(skillCall('code-review').status, 2, 'a settings file that does not parse switches nothing off');
+    assert.equal(skillCall('code-review').status, 'ask', 'a settings file that does not parse switches nothing off');
     fs.rmSync(local);
 
     const code = skillCall('code-review');
-    assert.equal(code.status, 2, 'the model may not call the bundled code review');
+    assert.equal(code.status, 'ask', 'the model may not call the bundled code review');
     assert.match(code.stderr, /\/review-code/, 'the denial names ours');
     const security = skillCall('security-review');
-    assert.equal(security.status, 2, 'nor the bundled security review');
+    assert.equal(security.status, 'ask', 'nor the bundled security review');
     assert.match(security.stderr, /\/review-security/, 'and names ours');
-    assert.equal(skillCall('code-review', { agent_id: 'a1', agent_type: 'alfred-code:aspnet-verifier' }).status, 2, 'a seat is denied too');
+    assert.equal(skillCall('code-review', { agent_id: 'a1', agent_type: 'alfred-code:aspnet-verifier' }).status, 'ask', 'a seat is denied too');
     const slashed = skillCall('/code-review');
-    assert.equal(slashed.status, 2, 'the slash spelling is the same built-in');
+    assert.equal(slashed.status, 'ask', 'the slash spelling is the same built-in');
     assert.match(slashed.stderr, /the user can type \/code-review themselves/, 'the denial says the typed route stays the user\'s');
     const rows = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'builtin-review.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.some((r) => r.detail && r.detail.branch === 'builtin-review'), 'each denial writes a block row naming its branch');
 
     assert.equal(skillCall('other-plugin:code-review').status, 0, 'another plugin\'s skill of that name is not the built-in');
     assert.equal(skillCall('code-review', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 0, 'the part switch stands the deny down');
-    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 2, 'while the manual-only gate keeps working');
+    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 'ask', 'while the manual-only gate keeps working');
     const typed = runIn('guard-fresh-session-start.js',
         { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'code-review', prompt: '/code-review', cwd: root, session_id: 'builtin-review' },
         { env });
@@ -3883,8 +3884,8 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('loop-code-quality').status, 2, 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:loop-code-quality').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('loop-code-quality').status, 'ask', 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:loop-code-quality').status, 'ask', 'and under its scoped spelling');
     assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
@@ -3897,7 +3898,7 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
     };
     writeAt(path.join(root, '.claude'), 'review-notes', '');
     writeAt(cfg, 'review-notes', 'disable-model-invocation: true\n');
-    assert.equal(skillCall('review-notes').status, 2, 'the personal copy is flagged, and it is the one that runs');
+    assert.equal(skillCall('review-notes').status, 'ask', 'the personal copy is flagged, and it is the one that runs');
     writeAt(path.join(root, '.claude'), 'draft-notes', 'disable-model-invocation: true\n');
     writeAt(cfg, 'draft-notes', '');
     assert.equal(skillCall('draft-notes').status, 0, 'an unflagged personal copy runs over a flagged project one');
@@ -4062,7 +4063,7 @@ test('fresh-session offer: what a resume would RECOVER, not the absolute carry -
     // Same context, a floor a tenth the size: now the carry IS the conversation.
     const real = rows('recov-real', 12000, 159363);
     assert.equal(stop(real), 2, 'the same 159k with a small floor is 92% recoverable - offer it');
-    assert.equal(askLoop(real, w200()), 2, '... and the gate blocks the chained run there');
+    assert.equal(askLoop(real, w200()), 'ask', '... and the gate blocks the chained run there');
     // The cache-aware verdict replaced the 40% line (2026-10-29): 120k under a 200k carry still pays back.
     assert.equal(stop(rows('recov-40', 120000, 200000)), 2, 'a 120k floor under a 200k carry pays back');
     // At the payback line, from both sides - Haiku 4.5 reads at 0.1x, no cache split is 5m (1.25x), payback 30: floor
@@ -4169,7 +4170,7 @@ test('PowerShell route: the shell guards judge the second spelling of the same c
   assert.equal(pwsh('guard-protected-force-push.js', 'echo "git push --force origin main"'), 0, 'the same text quoted is prose');
   assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf $HOME'), 'ask', 'recursive rm of an unrecoverable target');
   assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf bin obj node_modules'), 0, 'named build dirs pass');
-  assert.equal(pwsh('guard-read-whole-file.js', `cat ${BIG}`), 2, 'whole-file dump of a large source');
+  assert.equal(pwsh('guard-read-whole-file.js', `cat ${BIG}`), 'ask', 'whole-file dump of a large source');
   assert.equal(pwsh('guard-read-whole-file.js', `sed -n 1,40p ${BIG}`), 0, 'a ranged read passes');
   assert.equal(pwsh('guard-ungated-commit.js', 'git push origin develop'), 'ask', 'a push with no PUSH-GATE receipt');
   assert.equal(pwsh('guard-ungated-commit.js', 'git push --dry-run origin develop'), 0, 'a dry run publishes nothing');
@@ -4787,7 +4788,7 @@ test('H5: a session-named auto-run whose run marker names a skill that dispatche
   assert.equal(disp('general-purpose').status, 0, 'the plugin-spelled skill too');
   stamp('task-solve');
   const denied = disp('general-purpose');
-  assert.equal(denied.status, 2, 'a solve run still dispatches its named seats');
+  assert.equal(denied.status, 'ask', 'a solve run still dispatches its named seats');
   assert.match(denied.stderr, /Never delete or edit the stamp/);
   assert.match(denied.stderr, /AskUserQuestion/);
   assert.doesNotMatch(denied.stderr, /clear the\s+stamp file first/);
@@ -4797,7 +4798,7 @@ test('H5: a session-named auto-run whose run marker names a skill that dispatche
   stamp('capture-usage-report', 'another-session');
   assert.equal(disp('general-purpose').status, 0, 'another session\'s stamp is no live stamp here at all');
   fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "run without stops"\nskill: capture-usage-report\n');
-  assert.equal(disp('general-purpose').status, 2, 'a hand-written stamp naming no session is no exemption');
+  assert.equal(disp('general-purpose').status, 'ask', 'a hand-written stamp naming no session is no exemption');
 });
 
 // Audit 2026-10-20 H10: the built-in `/init` reached the model's Skill route as the bare name `init`, matched the core's
@@ -4815,10 +4816,10 @@ test('H10: a bare built-in name is never a plugin command, the scoped one still 
   const call = (skill) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`h10-${skill.replace(/:/g, '-')}`, ctxRows('h10', 1000)) },
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home } });
   assert.equal(call('init').status, 0, 'the built-in /init is no plugin command');
-  assert.equal(call('alfred-code:init').status, 2, 'the core command under its own namespace is still denied');
-  assert.equal(call('alfred-code:mode:scoring').status, 2, 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
+  assert.equal(call('alfred-code:init').status, 'ask', 'the core command under its own namespace is still denied');
+  assert.equal(call('alfred-code:mode:scoring').status, 'ask', 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
   assert.equal(call('mode:scoring').status, 0, 'with no plugin before it the same name is no plugin command');
-  assert.equal(call('loop-code-quality').status, 2, 'a plugin skill still answers to its bare name');
+  assert.equal(call('loop-code-quality').status, 'ask', 'a plugin skill still answers to its bare name');
   fs.rmSync(home, { recursive: true, force: true });
 });
 
@@ -4836,14 +4837,14 @@ test('S3 + S1: a stamp after a timed-out ask is denied once; the unapproved deni
   const disp = () => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', session_id: 's3d-sess', cwd: root, tool_input: { subagent_type: 'wpf-implementer', prompt: 'build it' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const unapproved = disp();
-  assert.equal(unapproved.status, 2);
+  assert.equal(unapproved.status, 'ask');
   assert.match(unapproved.stderr, /'\/alfred-code:mode:auto-run on' before the command/, 'S1: a no-stops run is the typed mode command');
   assert.match(unapproved.stderr, /only under task-solve and task-solve-cross/, 'S1: a hand-written AUTO is the solve flows\' alone');
   const past = new Date(Date.now() - 60000);
   fs.writeFileSync(marker, past.toISOString()); fs.utimesSync(marker, past, past);
   fs.writeFileSync(gate, 'APPROVED plan-x - "Approve (Recommended)"\n');
   const denied = disp();
-  assert.equal(denied.status, 2, 'a stamp written after the timeout is no approval');
+  assert.equal(denied.status, 'ask', 'a stamp written after the timeout is no approval');
   assert.match(denied.stderr, /the question timed out - re-ask/);
   assert.ok(!fs.existsSync(marker), 'the marker is spent');
   assert.equal(disp().status, 0, 'denied once - the re-asked approval is never held twice');
@@ -5614,7 +5615,7 @@ test('audit 2026-10-30 HK-19: shuf, git show <rev>:<path> and an added file\'s d
     'git --no-pager show HEAD:./src/big.ts',
     'git diff --cached -- src/new.ts',
     'git diff --staged src/new.ts',
-  ]) { const r = readIn(c); assert.equal(r.status, 2, `must block: ${c}\n${r.stderr}`); }
+  ]) { const r = readIn(c); assert.equal(r.status, 'ask', `must block: ${c}\n${r.stderr}`); }
   for (const c of [
     'shuf -n 5 src/big.ts',
     'shuf -e a b c',

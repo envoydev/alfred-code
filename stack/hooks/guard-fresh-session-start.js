@@ -94,7 +94,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 || global.BLOCK_VERDICT) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -113,7 +113,7 @@ if (cursorOff) process.exit(0);
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -124,6 +124,14 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-fresh-session-start' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 // One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
 // block. Best-effort - a lost row is a lost measurement, never a changed turn.
 function ledgerRow(row) {
@@ -476,7 +484,7 @@ function compactHold() {
     // PF1: the cursor as the status file holds it NOW - the build moves it after the tick through the script
     let resume = String(hold.resume || '');
     try { if (folderStatus) resume = planStatusEngine().resumeText(folderStatus) || resume; } catch { /* the text read at the tick */ }
-    process.stderr.write(
+    blockCall(payload,
       `Held once: plan task '${hold.task}' was just ticked DONE in ${hold.rel}, and the next task is a clean point\n`
       + `to resume from. ${pay}\n`
       + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
@@ -484,13 +492,12 @@ function compactHold() {
       + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
       + `resume block naming the plan), or continue here. ${HOLD_EXIT}`,
     );
-    process.exit(2);
   }
   if (tick) {
     // PF1 flat plan - until 4.0.0: the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
     let resume = String(hold.resume || '');
     try { resume = resumeLine(fs.readFileSync(String(hold.plan), 'utf8')) || resume; } catch { /* the line read at the tick */ }
-    process.stderr.write(
+    blockCall(payload,
       `Held once: plan task '${hold.task}' was just ticked DONE in ${relPlan(hold.plan)}, and the next task is a clean point\n`
       + `to resume from. ${pay}\n`
       + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
@@ -498,14 +505,13 @@ function compactHold() {
       + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
       + `resume block naming the plan), or continue here. ${HOLD_EXIT}`,
     );
-    process.exit(2);
   }
   if (idle) {
     // the gap as the offer printed it: minutes under an hour since the wait follows the cache (U16), a hold an older
     // release wrote carrying only its hours
     const gap = Number(hold.gapMs) > 0 && typeof fresh.gapText === 'function' ? fresh.gapText(Number(hold.gapMs))
       : Number(hold.gapH) ? `${Number(hold.gapH)}h` : 'past its wait';
-    process.stderr.write(
+    blockCall(payload,
       (hold.via === 'ask'
         ? `Held once: this session's last ask waited ${gap} for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
           + `is priced as from now, and it has not been put to the user yet. ${pay}\n`
@@ -515,16 +521,14 @@ function compactHold() {
       + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
       + `block and the plan or state file it resumes from), or continue here. ${HOLD_EXIT}`,
     );
-    process.exit(2);
   }
-  process.stderr.write(
+  blockCall(payload,
     `Held once: this session AUTO-COMPACTED and the fresh-session choice has not been put to the user yet. ${pay}\n`
     + `The compaction summary's closing line - continue 'without asking the user\n`
     + `any further questions' - is the harness's default, and this hold supersedes it. Before this call, put the choice to\n`
     + `the user as ONE AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn\n`
     + `with the paste-ready resume block and the plan or state file it resumes from), or continue here. ${HOLD_EXIT}`,
   );
-  process.exit(2);
 }
 // THE RE-OFFER STEP on both idle routes (review fix pass, run B, M4): the newest fresh-session ask answered in any turn -
 // 'Continue here' included - is the last offer, so neither the prompt route nor the ask route speaks again until the
@@ -1265,13 +1269,12 @@ if (IS_SKILL_CALL && skill) {
       break;
     }
     if (/^disable-model-invocation:\s*true\s*$/m.test(head)) {
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: ${skill} is marked disable-model-invocation - it is the USER's to type, never yours\n` +
         `to call. Do not retry it under another spelling and do not spend the turn explaining that you\n` +
         `cannot: name the command, say in ONE line what it does, and hand the turn back so the user\n` +
         `can run /${skill} themselves.`,
       );
-      process.exit(2);
     }
   } catch { /* no such skill on disk, or unreadable - not this guard's business */ }
 }
@@ -1294,12 +1297,11 @@ if (IS_SKILL_CALL && Object.prototype.hasOwnProperty.call(BUILTIN_REVIEW, skill.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   if (!off && !skillHeads(root, name).some((f) => fs.existsSync(f)) && oursLoadable(root, BUILTIN_REVIEW[name].slice(1))) {
     global.BLOCK_DETAIL = { branch: 'builtin-review', skill: name };
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: ${name} is Claude Code's built-in review, not this stack's. Use ${BUILTIN_REVIEW[name]} instead - load it\n` +
       `with the Skill tool; never retry the built-in under another spelling. If the user asked for the built-in by name,\n` +
       `say so: the user can type /${name} themselves.\n`,
     );
-    process.exit(2);
   }
 }
 // A phase Skill call after a compaction is a change like any other (the post-compaction hold above).
@@ -1385,13 +1387,12 @@ function gatedStepHold() {
   try { fs.writeFileSync(marker, new Date().toISOString()); } catch { return; }   // no marker, no deny - never a loop
   global.BLOCK_DETAIL = { branch: 'gated-stop', skill: name, after: prev };
   const step = prev === 'task-design' ? 'step 1 DESIGN' : 'step 2 GATE';
-  process.stderr.write(
+  blockCall(payload,
     `Held once: this solve-task cycle's spec check printed \`path: gated\`, so ${step} ends with a STOP before ${name} runs,\n`
     + `and none landed since ${prev} ran. Put the stop to the user now: \`Result:\` (the plan path${prev === 'task-verify-plan' ? ', and each fix the gate applied, named' : ''}), \`Progress:\`\n`
     + `and \`Leftovers:\`, then ONE AskUserQuestion with the next step recommended${prev === 'task-verify-plan' ? ' - on a gate pass with no open item, step 3\'s approval ask is this stop' : ''}.\n`
     + `Call ${name} after the answer.`,
   );
-  process.exit(2);
 }
 
 // --- AUTO-RUN: on for the SESSION (stack-modes spec section 2, 2026-10-27; the mode-commands spec, 2026-11-12) ---
@@ -1935,10 +1936,9 @@ if (EVENT === 'UserPromptExpansion') {
   process.exit(0);
 }
 
-process.stderr.write(
+blockCall(payload,
   `Blocked: ${skill} ${why}\n`
   + `Put it to the user as ONE AskUserQuestion: start it in a fresh session (recommended - end\n`
   + `this turn with the paste-ready invocation and the state file it resumes from), or run it\n`
   + `here anyway with the cost stated. Do not start the run before that answer lands.`,
 );
-process.exit(2);

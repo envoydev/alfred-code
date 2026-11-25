@@ -360,7 +360,7 @@ test('seam: the missing-helper reader is one text in each guard that carries it'
 });
 test('seam: without shell-writes.js the read guard keeps judging (degraded) and the secret guard keeps the Read and the literal check', () => {
   const r = rawCall(NO_SHELL, 'guard-read-whole-file.js', READ_BODY);
-  assert.strictEqual(r.status, 2, `the read guard still judges a plain read: ${r.status}`);
+  assert.strictEqual(verdictOf(r), 'ask', `the read guard still judges a plain read: ${r.stdout}${r.stderr}`);
   // the secret guard's core reads its words through the module: without it only a print of a secret file asks (above),
   // and the other routes stand
   const secret = (payload) => spawnSync(process.execPath, [path.join(NO_SHELL, 'guard-secret-value.js')], {

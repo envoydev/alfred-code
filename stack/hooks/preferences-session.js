@@ -1192,16 +1192,25 @@ const pathLine = (T) => `Project ${T} - paths below are from ${T}/.`;
 // Stage 6: the pieces an actor entering a member is still owed ride the one reply - a denial while the whole stays within
 // INLINE_CAP, else an additionalContext of ENTRY_ROOM (the first piece always goes); each is marked once written.
 let PUSH = null, WROTE = false; const ENTRY_ROOM = 3600;
-function emit(event, extra) {
-  const at = extra.permissionDecisionReason ? 'permissionDecisionReason' : 'additionalContext';
+// The hold (guards ask, D1): the prelude asks where a person can answer and denies otherwise, writing the one JSON object
+// itself; with no prelude the hold is today's deny.
+function holdCall(input, text) {
+  const p = prelude();
+  if (p && p.askOrBlock) { p.askOrBlock(input, text, { guard: 'preferences-session' }); return; }
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: text } })); // guard-ask fallback: no prelude
+}
+function emit(event, extra, input) {
+  const { block, ...fields } = extra;
+  const at = fields.permissionDecisionReason ? 'permissionDecisionReason' : 'additionalContext';
   const keys = [];
   for (const [key, t] of (PUSH && event === 'PreToolUse' && PUSH.pieces) || []) {
-    const next = extra[at] ? `${extra[at]}\n\n${t}` : t;
-    if (next.length > (at === 'additionalContext' ? ENTRY_ROOM : INLINE_CAP) - PATH_LINE.length - 1 && (keys.length || extra[at])) break;
-    extra[at] = next; keys.push(key);
+    const next = fields[at] ? `${fields[at]}\n\n${t}` : t;
+    if (next.length > (at === 'additionalContext' ? ENTRY_ROOM : INLINE_CAP) - PATH_LINE.length - 1 && (keys.length || fields[at])) break;
+    fields[at] = next; keys.push(key);
   }
-  for (const k of ['permissionDecisionReason', 'additionalContext']) if (PATH_LINE && extra[k]) extra[k] = `${PATH_LINE}\n${extra[k]}`;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...extra } }));
+  for (const k of ['permissionDecisionReason', 'additionalContext']) if (PATH_LINE && fields[k]) fields[k] = `${PATH_LINE}\n${fields[k]}`;
+  if (block) holdCall(input, fields.permissionDecisionReason);
+  else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...fields } }));
   WROTE = true;
   if (keys.length) { PUSH.marks.entered = keys.length === PUSH.pieces.length || [...PUSH.sent, ...keys]; saveMarks(PUSH.files, PUSH.marks); }
 }
@@ -1448,7 +1457,7 @@ function main() {
     return;
   }
   blockRow(ctx, input, kinds.join('+'), reasons.join('\n\n'));
-  emit('PreToolUse', { permissionDecision: 'deny', permissionDecisionReason: reasons.join('\n\n') });
+  emit('PreToolUse', { block: true, permissionDecisionReason: reasons.join('\n\n') }, input);
 }
 
 module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };

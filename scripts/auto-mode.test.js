@@ -9,7 +9,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
-const { foreignWords } = require('./hook-test-env'); // another script's text, generated from code points
+const { foreignWords, verdictResult } = require('./hook-test-env'); // another script's text, generated from code points
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -64,8 +64,8 @@ function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
 // The window keys an install seeds (absent-only, meta/environment.json): an unset tier reads as the default's trigger.
 const WINDOW_SEEDS = { ALFRED_CODE_CONTEXT_WINDOW_FOR_1M: '400000', ALFRED_CODE_CONTEXT_WINDOW_FOR_300K: '280000',
     ALFRED_CODE_CONTEXT_WINDOW_FOR_200K: '180000', ALFRED_CODE_CONTEXT_WINDOW_DEFAULT: '180000' };
-const run = (hook, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
+const run = (hook, payload, env = {}) => verdictResult(spawnSync(process.execPath, [path.join(HOOKS, hook)],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...WINDOW_SEEDS, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } }));
 const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
 const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n${extra}`);
 // The run marker (stack-modes spec section 2): open while a run in auto-run goes; the Stop hold and the dispatch guard read it.
@@ -869,7 +869,7 @@ test('auto-mode dispatch: the run\'s stamp approves its implementer seats past 8
     const old = (Date.now() - 12 * 3600 * 1000) / 1000;
     fs.utimesSync(p.gate, old, old);
     assert.strictEqual(disp('d1'), 0, 'a 12h auto run still dispatches');
-    assert.strictEqual(disp('d2'), 2, "another session's run is no approval");
+    assert.strictEqual(disp('d2'), 'ask', "another session's run is no approval");
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1135,7 +1135,7 @@ test('mode-auto-run: the model never calls it, and a typed /mode-auto-run mid-ru
     fs.cpSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-auto-run'), path.join(p.root, '.claude', 'skills', 'mode-auto-run'), { recursive: true });
     const self = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'mode-auto-run', args: 'add x' },
         session_id: 'tb1', cwd: p.root, transcript_path: transcript([typed('go on')]) }, { CLAUDE_PROJECT_DIR: p.root });
-    assert.strictEqual(self.status, 2);
+    assert.strictEqual(self.status, 'ask');
     assert.match(self.stderr, /mode-auto-run is marked disable-model-invocation/);
     assert.ok(!fs.existsSync(p.gate));
     // mid-run: a typed /mode-auto-run with a request opens a new run under the mode; an empty one ends nothing; the off command ends it
@@ -1343,12 +1343,12 @@ test('mode dispatch: a live stamp and no marker lets a generic seat and an imple
     autoStamp(p, 'ds');
     assert.strictEqual(disp('general-purpose').status, 0, 'between runs a generic seat goes, as with no stamp');
     const impl = disp('aspnet-implementer', 'build it');
-    assert.strictEqual(impl.status, 2, 'and an implementer needs its plan stamp, as with no stamp');
+    assert.strictEqual(impl.status, 'ask', 'and an implementer needs its plan stamp, as with no stamp');
     assert.match(impl.stderr, /'\/alfred-code:mode:auto-run on' before the command/, 'the denial names the mode command');
     assert.doesNotMatch(impl.stderr, /--auto-mode|--mode-auto-run/);
     openRun(p, 'ds', 'task-solve');
     const generic = disp('general-purpose');
-    assert.strictEqual(generic.status, 2, 'a run open: the generic block fires');
+    assert.strictEqual(generic.status, 'ask', 'a run open: the generic block fires');
     assert.match(generic.stderr, /\/alfred-code:mode:auto-run off/);
     assert.doesNotMatch(generic.stderr, /--mode-auto-run/);
     assert.doesNotMatch(generic.stderr, /clears the stamp/);

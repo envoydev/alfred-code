@@ -4,6 +4,7 @@
 // the seat wins - and checks its shape; the dispatch guard puts an entry's model into the one `updatedInput` it writes.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { verdictOf } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -331,8 +332,8 @@ test('dispatch guard: a block carries nothing', () =>
     const { at, put } = fixture();
     put('ws/.alfred/agents.json', seatsFile({ 'aspnet-implementer': 'opus' }));
     const r = dispatch(at('ws'), { subagent_type: 'alfred-code:aspnet-implementer', prompt: 'build task 1' });
-    assert.strictEqual(r.status, 2);
-    assert.strictEqual(r.stdout, '');
+    assert.strictEqual(verdictOf(r), 'ask', 'the unapproved implementer is asked about');
+    assert.strictEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedInput, undefined, 'and the ask carries no model rewrite');
 });
 
 test('dispatch guard: the off-list and the minimal profile leave the pin', () =>

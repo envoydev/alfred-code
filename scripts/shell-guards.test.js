@@ -254,7 +254,7 @@ test('copy route: the ledger keeps the dispatcher wiring this run wrote', () => 
 });
 
 // ---- the dispatcher, end to end -----------------------------------------------------------------
-const ASKING = new Set(['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-secret-value', 'guard-ungated-commit', 'guard-config-protection', 'guard-cross-project-write']);
+const ASKING = new Set(['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-secret-value', 'guard-ungated-commit', 'guard-config-protection', 'guard-cross-project-write', 'guard-read-whole-file']);
 test('each guard\'s block reaches the combined answer, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'other-'));
@@ -279,7 +279,7 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     const session = `each-${guard}`;
     const payload = { ...bashPayload(command, dir), session_id: session };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
-    // the guards in ASKING ask where a person can answer (guards ask, D1, D2); the read guard still exits 2
+    // the guards in ASKING ask where a person can answer (guards ask, D1, D2)
     const verdict = ASKING.has(guard) ? 'ask' : 2;
     assert.strictEqual(verdictOf(alone), verdict, `${guard} blocks '${command}' on its own: ${alone.stderr}${alone.stdout}`);
     for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
@@ -321,9 +321,12 @@ test('several guards blocking one command: every reason, one ledger row per bloc
   for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
   assert.ok(alone.length >= 2 && alone.some((x) => x.g === 'guard-read-whole-file') && alone.some((x) => x.g === 'guard-ungated-commit'), alone.map((x) => x.g).join(', '));
   const out = run(DISPATCH, payload, { cwd: dir, env });
-  // the read guard still exits 2 and ends the call; the commit guard asks, and its prompt text rides after the block's (2026-11-21)
-  assert.strictEqual(out.status, 2);
-  for (const x of alone) assert.ok(out.stderr.includes((verdictOf(x) === 2 ? x.stderr : askText(x)).trim()), `${x.g}'s reason is in the one answer`);
+  // the read guard and the commit guard both ask: one prompt names both, and the model text carries both reasons
+  assert.strictEqual(verdictOf(out), 'ask', `${out.stdout}${out.stderr}`);
+  for (const x of alone) {
+    assert.ok(askText(out).includes(askText(x).trim()), `${x.g}'s line is in the one prompt`);
+    assert.ok(blockText(out).includes(blockText(x).trim()), `${x.g}'s reason is in the model text`);
+  }
   assert.deepStrictEqual(hooksOf(ledgerRows(dir)), alone.map((x) => `${x.g}.js`).sort());
 });
 
@@ -608,8 +611,8 @@ test('file-guards: each guard\'s block reaches the combined answer through the d
     const session = `fg-${guard}`;
     const payload = { ...filePayload(tool, input, dir, session), ...more };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
-    // the secret case runs under bypassPermissions: a deny, one JSON object; the config and cross-project guards ask (D1, D2); the read guard exits 2
-    const verdict = guard === 'guard-secret-value' ? 'deny' : guard === 'guard-read-whole-file' ? 2 : 'ask';
+    // the secret case runs under bypassPermissions: a deny, one JSON object; the read, config and cross-project guards ask (D1, D2)
+    const verdict = guard === 'guard-secret-value' ? 'deny' : 'ask';
     assert.strictEqual(verdictOf(alone), verdict, `${guard} blocks ${tool} on its own: ${alone.stderr}${alone.stdout}`);
     for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
     const both = run(FILES, payload, { cwd: dir, env });

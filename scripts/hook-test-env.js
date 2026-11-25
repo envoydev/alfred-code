@@ -202,5 +202,13 @@ function legacyBlock(r)
     return { ...r, status: 2, stdout: '', stderr: at < 0 ? text : text.slice(at + ASK_REASON_MARK.length) };
 }
 
+// A spawn result with `status` as the one-word decision (verdictOf) and, for an ask or a deny, `stderr` as the guard's own
+// reason (the text after an ask's 'If the user declined: '). For the suites that read what a guard decided and said.
+function verdictResult(r)
+{
+    const verdict = verdictOf(r);
+    return { ...r, status: verdict, stderr: verdict === 'ask' || verdict === 'deny' ? legacyBlock(r).stderr : r.stderr };
+}
+
 module.exports = { isolateHookSuite, legacyBlock, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
-    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick, verdictOf, blockText, askText };
+    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick, verdictOf, blockText, askText, verdictResult };

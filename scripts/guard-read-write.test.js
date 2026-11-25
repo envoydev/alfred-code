@@ -26,7 +26,7 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
 
-const { legacyBlock } = require('./hook-test-env');
+const { legacyBlock, verdictOf } = require('./hook-test-env');
 const run = (hook, payload, opts) => legacyBlock(spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', ...opts }));
 const bash = (hook, command, opts) => run(hook, { tool_name: 'Bash', tool_input: { command } }, opts);
 const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
@@ -258,13 +258,15 @@ test('audit 2026-10-08: parallel ranged Reads cannot each pass the cumulative ca
   const { spawn } = require('node:child_process');
   const ranged = (session_id, file_path, offset) => new Promise((resolve) => {
     const p = spawn(process.execPath, [READ], { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
-    p.on('exit', resolve);
+    let stdout = '';
+    p.stdout.on('data', (chunk) => { stdout += chunk; });
+    p.on('close', (status) => resolve(verdictOf({ status, stdout })));
     p.stdin.end(JSON.stringify({ session_id, cwd: dir, tool_name: 'Read', tool_input: { file_path, offset, limit: 125 } }));
   });
   for (let t = 0; t < 5; t++) {
     const session = sid();
     const codes = await Promise.all([1, 126, 251, 376].map((o) => ranged(session, file, o)));
-    assert.ok(codes.includes(2), `trial ${t}: four parallel quarters all passed (${codes})`);
+    assert.ok(codes.includes('ask'), `trial ${t}: four parallel quarters all passed (${codes})`);
   }
   // the same file spelled through a link is the same file
   const link = path.join(TMP, `par-link-${sid()}`);
@@ -272,7 +274,7 @@ test('audit 2026-10-08: parallel ranged Reads cannot each pass the cumulative ca
   const s = sid();
   assert.equal(await ranged(s, file, 1), 0);
   assert.equal(await ranged(s, path.join(link, 'big.ts'), 126), 0, 'half, through the link');
-  assert.equal(await ranged(s, file, 251), 2, 'a third quarter of the same real file passes the cap');
+  assert.equal(await ranged(s, file, 251), 'ask', 'a third quarter of the same real file passes the cap');
 });
 
 test('guard-cross-project-write: a quote inside a $( ) substitution does not close the outer span', () => {

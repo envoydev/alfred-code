@@ -3,6 +3,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { verdictOf, legacyBlock, blockText, askText } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a case - the hold is made unattended too
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -70,8 +71,10 @@ const pre = (tool, input, session, extra = {}) => ({ hook_event_name: 'PreToolUs
 const edit = (file, session, extra) => pre('Edit', { file_path: file, old_string: 'x', new_string: 'y' }, session, extra);
 const bash = (command, session, extra) => pre('Bash', { command }, session, extra);
 const out = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { return {}; } };
-const denied = (r) => out(r).permissionDecision === 'deny';
-const reason = (r) => String(out(r).permissionDecisionReason || '');
+// The hold asks where a person can answer (guards ask): `denied` is a hold, `reason` the text the model reads after it (the pushed
+// pieces and the PATH line), `legacyBlock` giving the reason of an ask or a deny alike.
+const denied = (r) => verdictOf(r) === 'ask';
+const reason = (r) => (verdictOf(r) ? legacyBlock(r).stderr : '');
 // A hand-over that lets the call run (card item 13): the docs ride additionalContext, no permission decision.
 const handed = (r) => (out(r).permissionDecision === undefined ? String(out(r).additionalContext || '') : '');
 // A read or review hand-over: the docs as context, the call let run (no deny) - the PATH line or memory may lead the text.
@@ -2305,6 +2308,26 @@ test('member: the first edit under a child is denied with the child\'s code docs
         assert.match(reason(held), /API-CODE/);
         assert.doesNotMatch(reason(held), /ROOT-CODE/);
         assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
+    }
+    finally { p.rm(); }
+});
+
+test('preferences-session: the hold asks with the docs pieces in the model text, and denies with today\'s text where nobody can answer', () =>
+{
+    const p = joined();
+    try
+    {
+        const held = p.hook(edit('api/src/x.ts', sid()));
+        assert.strictEqual(verdictOf(held), 'ask', held.stdout);
+        assert.match(askText(held), /^alfred-code preferences-session: /);
+        assert.doesNotMatch(askText(held), /API-CODE/, 'the user\'s line is the first sentence, not the docs');
+        assert.match(blockText(held), new RegExp(`${API_LINE}\\n`));
+        assert.match(blockText(held), /API-CODE/);
+        const dontAsk = p.hook(edit('api/src/x.ts', sid(), { permission_mode: 'dontAsk' }));
+        assert.strictEqual(verdictOf(dontAsk), 'deny', dontAsk.stdout);
+        assert.ok(blockText(dontAsk).startsWith(`${API_LINE}\n`), 'a deny carries today\'s text, the PATH line first');
+        assert.match(blockText(dontAsk), /API-CODE/);
+        assert.strictEqual(out(dontAsk).additionalContext, undefined, 'a deny carries no additionalContext');
     }
     finally { p.rm(); }
 });

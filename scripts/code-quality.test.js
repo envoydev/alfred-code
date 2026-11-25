@@ -7,6 +7,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { verdictResult } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const { readClaudeDocs } = require('./claude-docs.js');
@@ -423,13 +424,13 @@ test('a code-quality capture started past the fresh-session trigger is offered a
             fs.writeFileSync(p, [row(`${name}-floor`, { cache_creation_input_tokens: 20000 }), row(name, { cache_read_input_tokens: ctx })].map((r) => JSON.stringify(r)).join('\n') + '\n');
             return p;
         };
-        const call = (skill, tp) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js')],
-            { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp }), encoding: 'utf8', env });
+        const call = (skill, tp) => verdictResult(spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js')],
+            { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp }), encoding: 'utf8', env }));
         const hot = call('alfred-code:capture-quality', transcript('hot-code', 450000));
-        assert.strictEqual(hot.status, 2, 'blocked past the trigger');
+        assert.strictEqual(hot.status, 'ask', 'blocked past the trigger');
         assert.match(hot.stderr, /^Blocked: alfred-code:capture-quality/);
         assert.match(squash(hot.stderr), /ONE AskUserQuestion: start it in a fresh session \(recommended/);
-        assert.strictEqual(call('capture-quality', transcript('hot-bare', 450000)).status, 2, 'the bare name too');
+        assert.strictEqual(call('capture-quality', transcript('hot-bare', 450000)).status, 'ask', 'the bare name too');
         assert.strictEqual(call('alfred-code:capture-quality', transcript('cold', 50000)).status, 0, 'under the trigger it runs');
     }
     finally

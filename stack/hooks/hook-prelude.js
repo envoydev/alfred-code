@@ -656,7 +656,6 @@ function linesWith(file, needles, onLine, from = 0)
     finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed */ } }
 }
 const rowOf = (line) => { if (line.length > ROW_PARSE_MAX) return null; try { return JSON.parse(line.toString('utf8')); } catch { return null; } };
-const contentText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : typeof p === 'string' ? p : '')).join('\n') : '');
 // The text of a turn the user TYPED: a user row, never a meta row (a skill body, an expansion), a compaction summary or a
 // sidechain row (both the model's words - the final review of 2026-10-30 FA-2: `AUTO - "Pending Tasks"` was proven by a
 // summary), a tool result (an ask's answer is the harness's row) or a harness prompt (a task notice, a command's output, a

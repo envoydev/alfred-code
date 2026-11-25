@@ -87,7 +87,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2 && !unsetRepo) {
+    if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -106,7 +106,7 @@ if (cursorOff) process.exit(0);
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -118,18 +118,26 @@ if (cursorOff) process.exit(0);
   };
 })();
 
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-unapproved-dispatch' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
+
 // --- ALFRED_CODE_MAXIMUM_RUN_AGENTS (the maximum-run-agents design of 2026-10-27) --------------------------------
 // How many of a session's agents may run at once, counted in agent-cap.js's per-session registry. The module is
 // required inside a try, so a copy without it runs every rule below unchanged. A dispatch this call's cap block passed
-// holds a pending file; any later exit 2 of the same call drops it, so a denied dispatch holds no slot. This wrapper
-// sits after the telemetry one and leaves it as it is.
+// holds a pending file; any later exit 2 or deny of the same call drops it, so a denied dispatch holds no slot, while an
+// ask keeps it (the user may approve and the seat starts). This wrapper sits after the telemetry one and leaves it as it is.
 let agentCap = null;
 try { agentCap = require('./agent-cap.js'); } catch { /* no module: no cap */ }
 let capRelease = null;
 (() => {
   const exit = process.exit;
   process.exit = (code) => {
-    if (code === 2 && capRelease) { try { capRelease(); } catch { /* fail open */ } }
+    if ((code === 2 || (global.BLOCK_VERDICT && global.BLOCK_VERDICT.decision === 'deny')) && capRelease) { try { capRelease(); } catch { /* fail open */ } }
     exit(code);
   };
 })();
@@ -138,8 +146,7 @@ const capDeny = (g, c) => {
   global.BLOCK_DETAIL = { branch: 'agent-cap', running: c.running, cap: g.n };
   if (c.byName) global.BLOCK_DETAIL.byName = true;
   if (!payload.agent_id) agentCap.markDenied(g.reg, c, g.n);
-  process.stderr.write(agentCap.denialText(c, g.n, { seat: Boolean(payload.agent_id), byName: !!c.byName }));
-  process.exit(2);
+  blockCall(payload, agentCap.denialText(c, g.n, { seat: Boolean(payload.agent_id), byName: !!c.byName }));
 };
 const capProbe = (g) => agentCap.probeWriter(g.root, payload, path.basename(__filename));
 const capUnjudged = (g) => capProbe(g)('agent-cap-unjudged', 'probe: the agent cap could not take its lock or write its registry - the call passed unjudged');
@@ -235,12 +242,11 @@ const caller = typeof payload.agent_type === 'string' ? payload.agent_type : '';
 const callerSeat = !caller.includes(':') ? caller : (HOUSE_PREFIX.test(caller) ? caller.slice(caller.indexOf(':') + 1) : '');
 if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
   global.BLOCK_DETAIL = { branch: 'diagnoser-pin', caller: callerSeat };
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: ${caller} dispatched ${seat}. A diagnoser is read-only and dispatches only the evidence gatherer\n` +
       `(\`evidence-gatherer\`), one gather task each.\n` +
       `A fix, a design or a review is the ROUTE in your report - the session dispatches it.`,
   );
-  process.exit(2);
 }
 
 // A symbol question routed at a grep-shaped seat: block and send it back to the navigation tools.
@@ -294,7 +300,7 @@ if (SEARCH_SEATS.has(seat)) {
   const asked = symbolQuestion(brief) || brief.match(REFERENCE_QUESTION) || brief.match(WHERE_QUESTION) || brief.match(TYPE_QUESTION);
   if (asked) {
     global.BLOCK_DETAIL = { branch: 'symbol-question', asked: asked[0].trim().slice(0, 80) };
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
         `Explore does not load this project's rules at all, so it cannot know to use the navigation tools.\n` +
@@ -305,7 +311,6 @@ if (SEARCH_SEATS.has(seat)) {
         `Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,
     );
-    process.exit(2);
   }
 }
 
@@ -475,29 +480,27 @@ function stampAfterTimeout(file) {
 if (isImplementer) {
   if (planId === null) {
     global.BLOCK_DETAIL = { branch: 'implementer-bad-plan-id' };
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: dispatch of ${seat} - the brief's plan: line names no plan id. A plan id is the plan file's name without\n` +
       `.md, or the run's own id: letters, digits, '.', '_' and '-', opening with a letter or digit, at most 128 characters.\n` +
       `Fix the line (plan: <plan id>) to name the plan whose stamp, ${path.join(approvalsDir, '<plan id>', 'APPROVAL')}, records the\n` +
       `user's approval, then retry the dispatch.`);
-    process.exit(2);
   }
   const planStamp = planId ? readStamp(layout.approvalPath(root, planId), planId) : null;
   const approving = planStamp && CONSENT.test(planStamp.first) ? planStamp
     : /^AUTO\b/.test(rootStamp.first) || (!planId && CONSENT.test(rootStamp.first)) ? rootStamp : null;
   if (approving && stampAfterTimeout(approving.file)) {
     global.BLOCK_DETAIL = { branch: 'implementer-ask-timed-out' };
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: dispatch of ${seat} - the question timed out - re-ask. The approval stamp at ${approving.file} was written after\n` +
       `an AskUserQuestion that Claude Code closed on its idle timeout ('No response after ...'), so nobody approved\n` +
       `anything. Re-ask through ONE AskUserQuestion when the user is back and write the stamp from their answer.\n` +
       `Never delete or edit the stamp to get past this.`);
-    process.exit(2);
   }
   if (approving) answer();
   const needed = planStamp || rootStamp;
   global.BLOCK_DETAIL = { branch: needed.stale ? 'implementer-stale-stamp' : autoSpent ? 'implementer-auto-spent' : 'implementer-unapproved' };
-  process.stderr.write(
+  blockCall(payload,
     (needed.stale
       ? `Blocked: dispatch of ${seat} - the approval stamp at ${needed.file} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
       : autoSpent
@@ -521,7 +524,6 @@ if (isImplementer) {
       `verify step exists to catch).\n` +
       `Clear the file when the run completes.`,
   );
-  process.exit(2);
 }
 // Generic seat: blocked only while a flow is actively stamped - the root stamp or any plan's.
 let liveStamp = CONSENT.test(rootStamp.first) ? rootStamp : null;
@@ -544,7 +546,7 @@ if (runSkill && GENERIC_DISPATCH_SKILLS.has(runSkill.replace(/^alfred-code:/, ''
   answer();
 }
 global.BLOCK_DETAIL = { branch: 'generic-while-stamped' };
-process.stderr.write(
+blockCall(payload,
   `Blocked: dispatch of ${seat} while a flow is active (${liveStamp.file} is stamped).\n` +
     `A stamped run dispatches its NAMED domain seats - a generic seat carries none of the\n` +
     `seat's pins, preloads, or trap-lists, and silently bypasses the implementer gate.\n` +
@@ -555,4 +557,3 @@ process.stderr.write(
     `the run's own close then deletes its run marker (auto-run itself ends only with the user's /alfred-code:mode:auto-run off),\n` +
     `and the dispatch goes after it.`,
 );
-process.exit(2);

@@ -7,6 +7,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { verdictOf } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -58,13 +59,13 @@ const HOOK_ROUTES = {
   'guard-fresh-session-start (run gate)': (tp, env) => ['guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: tp }, env],
 };
 function run([hook, payload, env]) {
-  return spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env }).status;
+  return verdictOf(spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env }));
 }
 function offered(route, tp, extra = {}, logDir) {
   const env = unsetUndefined({ ...baseEnv(), ALFRED_CODE_HOOK_LOG_DIR: logDir || fs.mkdtempSync(path.join(TMP, 'state-')), ...extra });
   const status = run(HOOK_ROUTES[route](tp, env));
-  assert.ok(status === 0 || status === 2, `${route}: exit ${status} is neither pass nor offer`);
-  return status === 2;
+  assert.ok(status === 0 || status === 2 || status === 'ask', `${route}: verdict ${status} is neither pass nor offer`);
+  return status === 2 || status === 'ask';   // the Stop route exits 2, the run gate asks
 }
 // The trigger a window takes with the seeded defaults: the largest tier it reaches (fresh-session.js tierKeyOf).
 const triggerFor = (window) => (window >= 1000000 ? 400000 : window >= 300000 ? 280000 : 180000);

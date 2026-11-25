@@ -10,6 +10,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { verdictResult } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -54,8 +55,8 @@ const transcripts = (text, usage) => ({
 });
 const UNREADABLE = ['missing', 'empty', 'garbage'];
 
-const run = (hook, payload, env) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(env || {}) } });
+const run = (hook, payload, env) => verdictResult(spawnSync(process.execPath, [path.join(HOOKS, hook)],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(env || {}) } }));
 
 // ---------------------------------------------------------------------------------------------
 // the helper
@@ -306,9 +307,9 @@ test('guard-fresh-session-start: print mode offers no fresh session before a run
         ...convo(entrypoint, 'ok', { cache_read_input_tokens: 450000 }),
     ];
     const call = (tp) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'loop-code-quality' }, transcript_path: tp }).status;
-    assert.strictEqual(call(file(hot('cli'))), 2, 'an orchestration run on carried history, at a terminal');
+    assert.strictEqual(call(file(hot('cli'))), 'ask', 'an orchestration run on carried history, at a terminal');
     assert.strictEqual(call(file(hot('sdk-cli'))), 0, 'the same run with nobody there');
-    assert.strictEqual(call(file(hot('sdk-cli').concat([]), '{"type":"assist')), 2, 'a torn last row reads as interactive');
+    assert.strictEqual(call(file(hot('sdk-cli').concat([]), '{"type":"assist')), 'ask', 'a torn last row reads as interactive');
 });
 
 test('guard-fresh-session-start: after a compaction print mode gets the pointer only, never the ask', () =>
@@ -326,7 +327,7 @@ test('guard-fresh-session-start: the user-only skill is still denied in print mo
     fs.mkdirSync(path.join(root, '.claude', 'skills', 'users-own'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'skills', 'users-own', 'SKILL.md'), '---\nname: users-own\ndescription: x\ndisable-model-invocation: true\n---\nbody\n');
     const r = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'users-own' }, transcript_path: transcripts().print }, { CLAUDE_PROJECT_DIR: root });
-    assert.strictEqual(r.status, 2);
+    assert.strictEqual(r.status, 'deny', 'print mode: nobody can answer, so the block is a deny');
     assert.match(r.stderr, /disable-model-invocation/);
 });
 
