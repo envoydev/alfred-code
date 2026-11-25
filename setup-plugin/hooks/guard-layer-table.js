@@ -516,6 +516,7 @@ function unpasted(rows) {
   const silent = !texts.trim();
   if (output) return {
     branch: `void ${table.name}`,
+    tableId,
     shown: output,
     // Claude Code shows the reason under 'hook returned blocking error', so it opens with a plain line for the user.
     lead: `Alfred: the model's message left out the ${table.name}, so it is printed below - your answer was not used, and the same question comes back next.`,
@@ -647,6 +648,13 @@ function ownAskOnDisk() {
     try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ASK_ROW_STEP_MS); } catch { return false; }
   }
 }
+// The printed-table marker (printTable's, `wasPrinted` reads it) set for a table the hold's ask prints beside it: the table
+// is then on screen when the user answers, so the PostToolUse void leaves a Yes alone and a re-send after a No passes.
+function markPrinted(session, id) {
+  try { fs.closeSync(fs.openSync(printedPath(session, id), 'wx')); } catch { return false; }
+  try { if (prelude) prelude.sweepStale(os.tmpdir(), 'alfred-layer-printed-'); } catch { /* housekeeping only */ }
+  return true;
+}
 function holdUnpasted() {
   let off = false;
   try { off = (prelude || require(PRELUDE)).partOff('guard-layer-table', 'void', process.env); } catch { /* no prelude: the hold runs */ }
@@ -659,9 +667,18 @@ function holdUnpasted() {
   const line = `${MARKER}: the ${name} ran but its output is not in your message - this ask was held before the user saw it; ` + (found.shown
     ? `${PRINTED}; send this same ask again, unchanged - do not re-run or paste the table.`
     : 'send ONE message: the step banner, the output byte-for-byte in a fenced block, then this same ask - your thinking is never on screen. Do not re-run the table - its output is already in your context.');
-  // The ask (guards ask, D1) keeps the table's systemMessage beside it: one JSON object, the verdict inside.
+  // The ask (guards ask, D1) keeps the table's systemMessage beside it: one JSON object, the verdict inside. It asks only
+  // where it prints the table: that print is the marker the void and the re-send read. A hold with no table to print, or one
+  // whose marker cannot be written, stays a deny - nothing on screen would make a Yes count, and the void would throw it away.
   let verdict = null;
-  try { verdict = (prelude || require(PRELUDE)).blockVerdict(payload, line, { guard: 'guard-layer-table' }); } catch { /* no prelude: today's deny */ }
+  let asked = false;
+  try {
+    const p = prelude || require(PRELUDE);
+    asked = Boolean(found.shown && found.tableId && p.canAsk(payload) && markPrinted(payload.session_id, found.tableId));
+    verdict = asked
+      ? p.blockVerdict(payload, `the ${name} ran but its output is not in the message above - ${PRINTED}. Send this same ask again, unchanged - do not re-run or paste the table.`, { guard: 'layer-table gate' })
+      : p.blockVerdict(payload, line, { guard: 'guard-layer-table', env: { ...process.env, ALFRED_CODE_GUARD_ASK: '0' } });
+  } catch { /* no prelude: today's deny */ }
   const output = verdict ? verdict.hookSpecificOutput : { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: line }; // guard-ask fallback: no prelude
   process.stdout.write(JSON.stringify({ ...(found.shown ? { systemMessage: `Alfred - the ${name}:\n${found.shown}` } : {}), hookSpecificOutput: output }));
   blockRow(line, found.branch);

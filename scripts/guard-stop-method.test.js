@@ -714,7 +714,7 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         const written = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
         assert.strictEqual(written.filter((x) => x.detail && x.detail.branch === 'reask').length, 1, 'one block row, the site\'s own - not two');
         const second = reask(root, rows, { sid });
-        assert.notStrictEqual(decision(second), 'ask', 'the valve: the second send goes out');
+        assert.strictEqual(decision(second), '', 'the valve: the second send goes out');
     });
 
     test('re-ask: nobody to ask - the same ask is denied once with the full reason (B60)', () => {
@@ -757,10 +757,10 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
 
     test('re-ask: a label pick, another question text, the part switch and nobody at the terminal all pass', () => {
         const root = project();
-        assert.notStrictEqual(decision(reask(root, opened('The docs pass'))), 'ask', 'a label pick closed the ask');
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { question: 'Which file first?' })), 'ask', 'a different ask');
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' } })), 'ask', 'the part switch');
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_UNATTENDED: '1' } })), 'ask', 'an unattended run');
+        assert.strictEqual(decision(reask(root, opened('The docs pass'))), '', 'a label pick closed the ask');
+        assert.strictEqual(decision(reask(root, opened(QUESTION), { question: 'Which file first?' })), '', 'a different ask');
+        assert.strictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' } })), '', 'the part switch');
+        assert.strictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_UNATTENDED: '1' } })), '', 'an unattended run');
         assert.strictEqual(decision(reask(root, opened(QUESTION))), 'ask', 'the control still asks');
     });
 
@@ -771,7 +771,8 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         fs.writeFileSync(path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL'), `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`);
         const at = new Date(Date.now() - 60000).toISOString();
         const modeRow = { type: 'user', timestamp: at, message: { role: 'user', content: '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>' } };
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION, [modeRow]), { sid })), 'ask');
+        // auto-run answers the ask itself (an allow), so the pass here is no block of either kind
+        assert.ok(!['ask', 'deny'].includes(decision(reask(root, opened(QUESTION, [modeRow]), { sid }))));
     });
 }
 

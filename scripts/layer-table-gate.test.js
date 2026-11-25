@@ -36,11 +36,15 @@ function run(rows, input = ask, env = {}) {
 // disk, and a failed check replaces the answers through `updatedToolOutput`: the stored result carries the marker every
 // reader below already counts. runPost writes the ask's own call row, as Claude Code has by then.
 const ANS = { questions: ask.questions, answers: { 'Keep as shown?': 'Recommended' }, annotations: {} };
-function runPost(rows, toolResponse = ANS, env = {}, input = ask) {
+// Every call gets a session of its own unless the case names one: the hold's printed-table marker is keyed on the session and the
+// table call's id, so a shared id would carry one case's marker into the next. A case that spans a hold and its answer names it.
+const freshSession = () => `lt-${Math.random().toString(36).slice(2)}`;
+const markerOf = (session, id) => path.join(os.tmpdir(), `alfred-layer-printed-${session}-${id}`);
+function runPost(rows, toolResponse = ANS, env = {}, input = ask, session = freshSession()) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, [...rows, call('a9', 'AskUserQuestion', input)].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: input,
-    tool_use_id: 'a9', tool_response: toolResponse, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
+    session_id: session, tool_use_id: 'a9', tool_response: toolResponse, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, stdout: r.stdout, stderr: r.stderr, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
 }
 const voided = (r) => r.status === 0 && !!r.out && r.out.decision === 'block';
@@ -158,41 +162,83 @@ test('PreToolUse with no tool_use id never waits, and judges no paste', () => {
 // but lands 444-539 ms into it - F4's 'only after the PreToolUse hooks finish' no longer holds. So the paste check runs
 // before the ask is shown: the hook waits for the ask's own row, and an unpasted table holds the ask (the table printed
 // for the user) instead of voiding an answer.
-function runPre(rows, id = 'a9', input = ask, env = {}) {
+function runPre(rows, id = 'a9', input = ask, env = {}, session = freshSession(), extra = {}) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: input, tool_use_id: id, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: input, session_id: session, tool_use_id: id, transcript_path: p, ...extra }), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, stderr: r.stderr };
 }
+const HOLD_PROMPT = /^alfred-code layer-table gate: the agents table ran but its output is not in the message above - the gate printed the table for the user\./;
 test('PreToolUse holds an unpasted ask before the user sees it, printing the table; a pasted one and the re-ask pass (A8)', () => {
   const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
-  const held = runPre([...UNPASTED(), ...own]);
-  assert.strictEqual(held.status, 0);
-  assert.strictEqual(held.out.hookSpecificOutput.permissionDecision, 'ask');
-  const reason = held.out.hookSpecificOutput.additionalContext.split('If the user declined: ')[1];
-  assert.match(reason, /^alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
-  assert.match(held.out.hookSpecificOutput.permissionDecisionReason, /^alfred-code guard-layer-table: alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
-  assert.match(held.out.systemMessage, / 1 {2}x/, 'the table is printed for the user');
-  const pasted = runPre([...UNPASTED(), say('```\n 1  x\ntotal: 43 agents - if fewer\n```'), call('a9', 'AskUserQuestion', ask)]);
-  assert.strictEqual(pasted.out, null, 'a pasted table: the ask is shown');
-  const again = runPre([...UNPASTED(), ...own, result('a9', reason, true), call('a10', 'AskUserQuestion', ask)], 'a10');
-  assert.strictEqual(again.out, null, 'the re-ask after a printed hold passes - one hold per layer');
+  const session = freshSession();
+  const held = runPre([...UNPASTED(), ...own], 'a9', ask, {}, session);
+  try {
+    assert.strictEqual(held.status, 0);
+    assert.strictEqual(held.out.hookSpecificOutput.permissionDecision, 'ask');
+    const reason = held.out.hookSpecificOutput.additionalContext.split('If the user declined: ')[1];
+    assert.match(reason, /^the agents table ran but its output is not in the message above - the gate printed the table for the user\. Send this same ask again, unchanged/);
+    assert.match(held.out.hookSpecificOutput.permissionDecisionReason, HOLD_PROMPT);
+    assert.doesNotMatch(held.out.hookSpecificOutput.permissionDecisionReason, /held before the user saw it|layer-table gate: alfred-code/, 'the prompt names the hold once, in the user\'s words');
+    assert.match(held.out.systemMessage, / 1 {2}x/, 'the table is printed for the user');
+    const pasted = runPre([...UNPASTED(), say('```\n 1  x\ntotal: 43 agents - if fewer\n```'), call('a9', 'AskUserQuestion', ask)]);
+    assert.strictEqual(pasted.out, null, 'a pasted table: the ask is shown');
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
+});
+
+// The hold's ask prints the table beside it, and that print is the printed-table marker: the answer is not voided after a Yes
+// (the table was on screen), and a re-send after a No is not held again.
+test('a Yes to the hold\'s ask is not voided at PostToolUse', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  try {
+    assert.strictEqual(runPre([...UNPASTED(), ...own], 'a9', ask, {}, session).out.hookSpecificOutput.permissionDecision, 'ask');
+    const after = runPost([...UNPASTED(), ...own.slice(0, 1)], ANS, {}, ask, session);
+    assert.ok(!voided(after), after.stdout);
+    assert.ok(!('updatedToolOutput' in ((after.out && after.out.hookSpecificOutput) || {})), 'the answer is kept');
+    assert.ok(voided(runPost([...UNPASTED(), ...own.slice(0, 1)], ANS)), 'control: with no hold before it, the unpasted table voids the answer');
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
+});
+
+test('a No to the hold\'s ask is not held forever: the re-send passes', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  try {
+    assert.strictEqual(runPre([...UNPASTED(), ...own], 'a9', ask, {}, session).out.hookSpecificOutput.permissionDecision, 'ask');
+    const declined = result('a9', "The user doesn't want to proceed with this tool use. The tool use was rejected.", true);
+    const resent = runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', ask)], 'a10', ask, {}, session);
+    assert.strictEqual(resent.out, null, 'the re-send after a No reaches the user');
+    assert.strictEqual(runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', ask)], 'a10').out.hookSpecificOutput.permissionDecision, 'ask', 'control: another session is held');
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
+});
+
+test('a hold where nobody can answer is a deny and sets no printed marker', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  const r = runPre([...UNPASTED(), ...own], 'a9', ask, {}, session, { permission_mode: 'dontAsk' });
+  assert.strictEqual(r.out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(r.out.hookSpecificOutput.permissionDecisionReason, /^alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
+  assert.ok(!fs.existsSync(markerOf(session, 't1')), 'a deny prints nothing the user answers over');
 });
 
 // L1, 656: the hold keeps the table's systemMessage beside the ask - one JSON object, never two.
 test('holdUnpasted keeps its systemMessage beside the ask', () => {
   const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, [...UNPASTED(), ...own].map((r) => JSON.stringify(r)).join('\n') + '\n');
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: ask, tool_use_id: 'a9', transcript_path: p }), encoding: 'utf8', ...inProject() });
-  const out = JSON.parse(r.stdout);
-  assert.deepStrictEqual(Object.keys(out).sort(), ['hookSpecificOutput', 'systemMessage']);
-  assert.strictEqual(verdictOf(r), 'ask');
-  assert.match(out.systemMessage, /^Alfred - the agents table:\n 1 {2}x/);
-  assert.match(blockText(r), /the agents table ran but its output is not in your message/);
-  const denied = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', permission_mode: 'dontAsk', tool_input: ask, tool_use_id: 'a9', transcript_path: p }), encoding: 'utf8', ...inProject() });
-  assert.strictEqual(verdictOf(denied), 'deny', 'nobody to ask: the hold denies');
-  assert.match(JSON.parse(denied.stdout).systemMessage, /^Alfred - the agents table:/);
+  const go = (extra) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', session_id: session, tool_input: ask, tool_use_id: 'a9', transcript_path: p, ...extra }), encoding: 'utf8', ...inProject() });
+  try {
+    const denied = go({ permission_mode: 'dontAsk' });
+    assert.strictEqual(verdictOf(denied), 'deny', 'nobody to ask: the hold denies');
+    assert.match(JSON.parse(denied.stdout).systemMessage, /^Alfred - the agents table:/);
+    const r = go({});
+    const out = JSON.parse(r.stdout);
+    assert.deepStrictEqual(Object.keys(out).sort(), ['hookSpecificOutput', 'systemMessage']);
+    assert.strictEqual(verdictOf(r), 'ask');
+    assert.match(out.systemMessage, /^Alfred - the agents table:\n 1 {2}x/);
+    assert.match(askText(r), HOLD_PROMPT);
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
 });
 
 test('no answers object, or an empty one, passes (Review Focus 1)', () => {

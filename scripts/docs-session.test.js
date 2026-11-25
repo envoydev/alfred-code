@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { verdictOf, legacyBlock, blockText } = require('./hook-test-env');
+const { verdictOf, legacyBlock, blockText, askText } = require('./hook-test-env');
 const { repo, section, HOOKS } = require('./docs-fixture');
 const { putWorkspace } = require('./workspace-fixture.js');
 
@@ -268,6 +268,8 @@ test('a syntax error in a PRESENT engine surfaces on stderr, never swallowed as 
 
 const pre = (tool, input, session) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input });
 const denied = (out) => verdictOf(out) === 'ask';
+// A pass is no block of either kind: a deny, where nobody can answer, is no pass.
+const blocked = (out) => ['ask', 'deny'].includes(verdictOf(out));
 // The model's text of a block, as the older suites read a deny's reason: an ask's text after its 'If the user declined: ', a deny's reason.
 // A hand-back is denied in every mode: a seat has nobody to ask (B62).
 const refused = (out) => verdictOf(out) === 'deny';
@@ -282,10 +284,10 @@ test('the first source change is held and handed the covering section; a show un
     assert.match(held.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/);
     assert.match(held.stdout, /ledgered before the payment call/);
     assert.match(r.read('.alfred/statistics/hook-blocks/' + s + '.jsonl'), /"hook":"docs-session\.js"/);
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s))), 'the handed-over section counts as read');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s))), 'the handed-over section counts as read');
     const s2 = sid();
     r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders 2>&1' }, s2));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))));
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))));
   } finally { r.rm(); }
 });
 
@@ -377,7 +379,7 @@ test('where, toc and status do not unlock; a Read of a doc file does', () => {
     assert.ok(denied(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, s))));
     const s2 = sid();
     r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/architecture/references/patterns.md` }, s2));
-    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, s2))));
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, s2))));
   } finally { r.rm(); }
 });
 
@@ -388,7 +390,7 @@ test('no covering section: two holds pointing at the doc list, then the change g
     const edit = pre('Edit', { file_path: 'tests/Zeta/Quux.cs' }, s);
     assert.match(r.hook(edit).stdout, /see what is documented: node \.claude\/hooks\/docs\.js files/);
     assert.ok(denied(r.hook(edit)));
-    assert.ok(!denied(r.hook(edit)));
+    assert.ok(!blocked(r.hook(edit)));
     assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"bypass"/);
   } finally { r.rm(); }
 });
@@ -397,13 +399,13 @@ test('shell reads are never held; shell writes are', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     const s = sid();
-    assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -n Refund src/Api/Orders/Refund.cs 2>/dev/null' }, s))));
-    assert.ok(!denied(r.hook(pre('Bash', { command: 'dotnet test tests/Api > run.log 2>&1' }, s))));
+    assert.ok(!blocked(r.hook(pre('Bash', { command: 'grep -n Refund src/Api/Orders/Refund.cs 2>/dev/null' }, s))));
+    assert.ok(!blocked(r.hook(pre('Bash', { command: 'dotnet test tests/Api > run.log 2>&1' }, s))));
     assert.ok(denied(r.hook(pre('Bash', { command: "cat > src/Api/Orders/Refund.cs <<'EOF'\nclass Refund {}\nEOF" }, s))));
     // Audit 2026-10-08 row 46: the Monitor tool runs its command under the shell route, and its writes are held too.
     const m = sid();
     assert.ok(denied(r.hook(pre('Monitor', { command: 'echo x > src/Api/Orders/Refund.cs' }, m))), 'a Monitor write is held');
-    assert.ok(!denied(r.hook(pre('Monitor', { command: 'tail -f run.log' }, m))), 'a Monitor watch is not');
+    assert.ok(!blocked(r.hook(pre('Monitor', { command: 'tail -f run.log' }, m))), 'a Monitor watch is not');
   } finally { r.rm(); }
 });
 
@@ -413,7 +415,7 @@ test('PowerShell is the same shell route as Bash: its writes are held and its do
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     const s = sid();
-    assert.ok(!denied(r.hook(pre('PowerShell', { command: 'Select-String -Pattern Refund -Path src/Api/Orders/Refund.cs' }, s))), 'a shell read is never held');
+    assert.ok(!blocked(r.hook(pre('PowerShell', { command: 'Select-String -Pattern Refund -Path src/Api/Orders/Refund.cs' }, s))), 'a shell read is never held');
     // The shared syntax is what writeTargets parses on either shell: redirection, and the rm/mv/cp/mkdir aliases
     // PowerShell carries for its own Remove-Item / Move-Item / Copy-Item.
     assert.ok(denied(r.hook(pre('PowerShell', { command: "'class Refund {}' > src/Api/Orders/Refund.cs" }, s))), 'a redirect write is held');
@@ -421,10 +423,10 @@ test('PowerShell is the same shell route as Bash: its writes are held and its do
     assert.ok(denied(r.hook(pre('PowerShell', { command: 'rm src/Api/Orders/Refund.cs' }, sRm))), 'an alias write is held');
     const s2 = sid();
     r.hook(pre('PowerShell', { command: 'node .claude/hooks/docs.js show patterns#orders' }, s2));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))), 'a docs.js show through PowerShell unlocks the gate');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))), 'a docs.js show through PowerShell unlocks the gate');
     const s3 = sid();
     r.hook(pre('PowerShell', { command: 'Get-Content .claude/docs/architecture/references/patterns.md' }, s3));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s3))), 'a doc file read through PowerShell earns consult credit');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s3))), 'a doc file read through PowerShell earns consult credit');
   } finally { r.rm(); }
 });
 
@@ -441,10 +443,10 @@ test('the navigation server\'s two kept edit tools are held like an Edit, on bot
         assert.ok(denied(r.hook(pre(name, { name_path: 'Refund/Apply', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Run' }, sid()))), `${name} is held`);
       }
     }
-    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held'); // mcp-fixture
+    assert.ok(!blocked(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held'); // mcp-fixture
     const s = sid();
     r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders' }, s));
-    assert.ok(!denied(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it'); // mcp-fixture
+    assert.ok(!blocked(r.hook(pre('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it'); // mcp-fixture
   } finally { r.rm(); }
 });
 
@@ -468,9 +470,9 @@ test('source roots come from watch.json; docs-session:gate in ALFRED_CODE_HOOKS_
   const r = repo({ files: { 'app/Orders/Refund.cs': 'x\n', 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'app/Orders/**', 'App rule.'), 'watch.json': JSON.stringify({ sourceRoots: ['app'] }) } });
   try {
     assert.ok(denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()))));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' })));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_DOCS_GATE: '0' })), 'the old key, read for the 2.x line');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))));
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_HOOKS_OFF: 'docs-session:gate' })));
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_DOCS_GATE: '0' })), 'the old key, read for the 2.x line');
   } finally { r.rm(); }
 });
 
@@ -487,7 +489,7 @@ test('an empty watch.json declares no source roots, and never widens another dom
     r.write('.claude/docs/related-projects/watch.json', '{}');
     r.write('.claude/docs/related-projects/RELATED-PROJECTS.md', section('sibling', '', 'A sibling repo.'));
     assert.ok(denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()))), 'the declared root still holds');
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))), 'and src/ is not adopted from an empty watch.json');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))), 'and src/ is not adopted from an empty watch.json');
     assert.ok(denied(bare.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))), 'a project declaring no root anywhere still gets the src/tests default');
   } finally { r.rm(); bare.rm(); }
 });
@@ -1344,7 +1346,7 @@ test('a doc read under any domain earns consult credit, not just architecture/',
     r.write('.claude/docs/code-style/STYLE.md', section('format', 'nomatch/**', 'Braces open on the same line.'));
     const s = sid();
     r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/code-style/STYLE.md` }, s));
-    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/Format.cs', content: 'x' }, s))), 'a code-style/ read releases the gate on the first try');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: 'src/Api/Format.cs', content: 'x' }, s))), 'a code-style/ read releases the gate on the first try');
   } finally { r.rm(); }
 });
 
@@ -1589,7 +1591,7 @@ test('a provisional orientation is pushed with its stale warning, and with no se
     assert.doesNotMatch(text, /Before your first change/, 'no section exists to read first');
     assert.match(ctx(r.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1' })), /This orientation is PROVISIONAL/);
     const s = sid();
-    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/New.cs', content: 'x' }, s))), 'nothing to read, no hold');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: 'src/Api/New.cs', content: 'x' }, s))), 'nothing to read, no hold');
     r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
     assert.ok(denied(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, sid()))), 'with a section to read the gate holds as before');
     assert.match(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /Before your first change/);
@@ -1766,7 +1768,7 @@ test('a listing, a watch.json read, an echoed show and a show of a missing ref e
     }
     const s = sid();
     r.hook(pre('Bash', { command: `head -40 ${refs}/patterns.md` }, s));
-    assert.ok(!denied(write(s)), 'a shell read of a doc file still counts');
+    assert.ok(!blocked(write(s)), 'a shell read of a doc file still counts');
   } finally { r.rm(); }
 });
 
@@ -1791,14 +1793,14 @@ test('an unattended hold and an unattended Stop ask each write one mode: unatten
     const s = sid();
     r.hook({ hook_event_name: 'SessionStart', session_id: s }, U);
     ran(r, s, U);
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'never held unattended');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'never held unattended');
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
     const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.deepStrictEqual(rows.map((x) => [x.mode, x.event, x.kind]), [['unattended', 'PreToolUse', 'docs hold'], ['unattended', 'Stop', 'docs finish ask']]);
     // Audit 2026-10-20 H11: one row per kind per session - a second held write and a second Stop add none.
     r.write('src/Api/Orders/Refund.cs', 'y\n');
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'still never held');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'still never held');
     assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'still never asked');
     assert.strictEqual(r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').length, 2, 'no row repeats its kind');
   } finally { r.rm(); }
@@ -1837,13 +1839,13 @@ test('a write to a plan stamped Completed: is denied unless it changes only stam
     const add = edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2 - the form fixes\n');
     assert.ok(denied(add), 'new scope appended to the stamped plan');
     assert.match(blockReason(add), /stamped Completed: .*NEW plan file.*ungated: <why>/s);
-    assert.ok(!denied(edit('Completed: 2026-10-09\n', 'Completed: 2026-10-09 - Conformance: sound\n')), 'a stamp line may change');
-    assert.ok(!denied(edit('- [ ] Task 1\n', '- [x] Task 1\n', 'open.md')), 'an open plan is edited freely');
+    assert.ok(!blocked(edit('Completed: 2026-10-09\n', 'Completed: 2026-10-09 - Conformance: sound\n')), 'a stamp line may change');
+    assert.ok(!blocked(edit('- [ ] Task 1\n', '- [x] Task 1\n', 'open.md')), 'an open plan is edited freely');
     assert.ok(denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, content: `${PLAN}- [ ] Task 2\n` }, s))), 'a Write that adds a task');
-    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/next-cycle.md`, content: '# Plan: next\n' }, s))), 'a NEW plan file');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/next-cycle.md`, content: '# Plan: next\n' }, s))), 'a NEW plan file');
     assert.ok(denied(r.hook(pre('MultiEdit', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, edits: [{ old_string: 'Gated: 2026-10-09', new_string: 'Gated: 2026-10-10' }, { old_string: '## Tasks', new_string: '## Tasks\n- [ ] Task 0' }] }, s))), 'one non-stamp edit in a MultiEdit');
     assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/plans/csv-export.md' }, s))), 'a shell append');
-    assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
     const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
   } finally { r.rm(); }
@@ -1864,10 +1866,10 @@ test('the close that stamps Completed: finishes its own edits; after its stop is
     rows({ type: 'user', message: { role: 'user', content: 'close it' } });
     const file = `${r.root}/.claude/docs/plans/csv-export.md`;
     const edit = (o, nw, session = s) => r.hook({ ...pre('Edit', { file_path: file, old_string: o, new_string: nw }, session), transcript_path: tp });
-    assert.ok(!denied(edit('Approved: 2026-10-09 - build inline\n', 'Approved: 2026-10-09 - build inline\nCompleted: 2026-10-17\n')), 'the stamp itself');
+    assert.ok(!blocked(edit('Approved: 2026-10-09 - build inline\n', 'Approved: 2026-10-09 - build inline\nCompleted: 2026-10-17\n')), 'the stamp itself');
     r.write('.claude/docs/plans/csv-export.md', OPEN.replace('build inline\n', 'build inline\nCompleted: 2026-10-17\n'));
     rows({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: {} }] } }, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'e1', content: 'ok' }] } });
-    assert.ok(!denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\nmemories purged: none\n')), 'the close\'s own line after the stamp');
+    assert.ok(!blocked(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\nmemories purged: none\n')), 'the close\'s own line after the stamp');
     assert.ok(denied(edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2\n', sid())), 'another session is still refused');
     rows({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: {} }] } },
       { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'Your questions have been answered: "Close?"="Close (Recommended)"' }] } });
@@ -1895,7 +1897,7 @@ test('audit 2026-10-10 C03 C23: a word-only hit is named as a candidate, never p
     assert.match(held.stdout, /integrations#di-selection \(\d+ chars, `node \.claude\/hooks\/docs\.js show integrations#di-selection`\)/);
     assert.doesNotMatch(held.stdout, /selection happens in the composition root/, 'the section is not pasted');
     assert.doesNotMatch(held.stdout, /convention this change follows/);
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s))), 'the retry goes through');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s))), 'the retry goes through');
     assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"hold".*"via":"words"/);
   } finally { r.rm(); }
 });
@@ -1918,7 +1920,7 @@ test('audit 2026-10-10 C23: a covering section is the documented context; a pref
   try {
     only.write('.claude/docs/preferences/watch.json', JSON.stringify({ sourceRoots: ['src'] }));
     only.write('.claude/docs/preferences/PROJECT-CODE-PREFERENCES.md', section('handlers', 'src/Api/Orders/**', 'A handler returns a Result.'));
-    assert.ok(!denied(only.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'preferences docs alone: no docs hold');
+    assert.ok(!blocked(only.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'preferences docs alone: no docs hold');
   } finally { only.rm(); }
 });
 
@@ -2035,9 +2037,9 @@ test('audit 2026-10-11 SD09: a run artifact git ignores, or one under TestResult
     fs.mkdirSync(p.join(r.root, 'tests', 'App.IntegrationTests', 'TestResults'), { recursive: true });
     fs.writeFileSync(p.join(r.root, 'tests', 'App.IntegrationTests', 'TestResults', 'ib10.trx'), '<x/>');
     fs.writeFileSync(p.join(r.root, 'src', 'Api', 'debug.log'), 'x');
-    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f tests/App.IntegrationTests/TestResults/ib10.trx' }, s))), 'the measured TestResults artifact');
-    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f src/Api/debug.log' }, s))), 'a file git ignores');
-    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/debug.log', content: 'y' }, s))), 'on the file route too');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: 'rm -f tests/App.IntegrationTests/TestResults/ib10.trx' }, s))), 'the measured TestResults artifact');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: 'rm -f src/Api/debug.log' }, s))), 'a file git ignores');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: 'src/Api/debug.log', content: 'y' }, s))), 'on the file route too');
     assert.ok(denied(r.hook(pre('Bash', { command: 'rm -f src/Api/Orders/Refund.cs' }, s))), 'a tracked source file is still a change the hold reads');
     assert.ok(denied(r.hook(pre('Bash', { command: 'rm -f src/Api/debug.log src/Api/Orders/Refund.cs' }, sid()))), 'an artifact beside a source file does not open the hold');
   } finally { r.rm(); }
@@ -2151,11 +2153,11 @@ test('audit 2026-10-20 C25: a resume that reads its plan\'s Oriented sections is
     plan('refunds', 'patterns#orders, CODE-STYLE.md lines 30-99 (C#); code read - src/Api/Orders/Refund.cs');
     const s = sid();
     r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/refunds.md` }, s));
-    assert.ok(!denied(edit(s)), 'the plan\'s Oriented section counts as read');
+    assert.ok(!blocked(edit(s)), 'the plan\'s Oriented section counts as read');
     assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"consult","refs":\["patterns#orders"\]/);
     const sh = sid();
     r.hook(pre('Bash', { command: 'cat .claude/docs/plans/refunds.md' }, sh));
-    assert.ok(!denied(edit(sh)), 'a shell read of the plan counts the same');
+    assert.ok(!blocked(edit(sh)), 'a shell read of the plan counts the same');
     plan('blind', 'none - a one-line fix');
     const none = sid();
     r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/blind.md` }, none));
@@ -2184,7 +2186,7 @@ test('2.8.0: a plan under work/plans/ is a plan - its Completed: stamp holds and
     assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/work/plans/csv-export.md' }, s))), 'a shell append');
     const read = sid();
     r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/work/plans/csv-export.md` }, read));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, read))), 'its Oriented section counts as read');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, read))), 'its Oriented section counts as read');
   } finally { r.rm(); }
 });
 
@@ -2204,7 +2206,7 @@ test('audit 2026-10-20 C25: an interpreter write to a computed temp path is not 
     assert.deepStrictEqual(unknownRoots('node -e "x" ./tests/a.json', ['src', 'tests']), ['tests']);
     assert.deepStrictEqual(unknownRoots('node -e "x" mysrc/a.json resources/b', ['src', 'tests']), [], 'a root inside another word is not named');
     assert.deepStrictEqual(unknownRoots('node -e "x"', ['.', 'src']), ['.'], 'a root that is the project is named by every command');
-    assert.ok(!denied(r.hook(pre('Bash', { command: TEMP }, sid()))), 'the audited temp write is not held');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: TEMP }, sid()))), 'the audited temp write is not held');
     assert.ok(denied(r.hook(pre('Bash', { command: INTO_SRC }, sid()))), 'an interpreter write naming src/ is held');
     assert.ok(denied(r.hook(pre('Bash', { command: 'git apply fix.patch' }, sid()))), 'a patch is still a source write');
   } finally { r.rm(); }
@@ -2247,9 +2249,9 @@ test('U27-2: a node -e writing only under the temp dir or the session scratchpad
   const scratch = path.join(os.tmpdir(), `u27-scratch-${process.pid}`, 'src');
   const W = (dir) => `node -e 'const fs=require("fs");const dir=${JSON.stringify(dir)};fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(dir + "/out.json","x")'`;
   try {
-    assert.ok(!denied(r.hook(pre('Bash', { command: W(scratch) }, sid()))), 'a computed write under the temp dir, outside the project');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: W(scratch) }, sid()))), 'a computed write under the temp dir, outside the project');
     if (typeof process.getuid === 'function') {
-      assert.ok(!denied(r.hook(pre('Bash', { command: W(`/tmp/claude-${process.getuid()}/u27/scratchpad/src`) }, sid()))), 'under the session scratchpad root');
+      assert.ok(!blocked(r.hook(pre('Bash', { command: W(`/tmp/claude-${process.getuid()}/u27/scratchpad/src`) }, sid()))), 'under the session scratchpad root');
     }
     assert.ok(denied(r.hook(pre('Bash', { command: W(path.join(r.root, 'src', 'Api', 'Orders')) }, sid()))), 'under the project - itself in the temp dir - still held');
     assert.ok(denied(r.hook(pre('Bash', { command: `${W(scratch)} src/Api/Orders/Gen.cs` }, sid()))), 'one path word in the project: held');
@@ -2353,7 +2355,7 @@ test('audit 2026-10-20 C43: an architecture write is held once while an analyzer
     const doc = `${r.root}/.claude/docs/architecture/references/patterns.md`;
     const edit = (session = s, extra = {}) => r.hook({ ...pre('Edit', { file_path: doc, old_string: 'a', new_string: 'b' }, session), transcript_path: tp, ...extra });
     rows({ type: 'user', message: { role: 'user', content: '/capture-awareness architecture' } });
-    assert.ok(!denied(edit()), 'no seat dispatched: the write passes');
+    assert.ok(!blocked(edit()), 'no seat dispatched: the write passes');
     rows(dispatchRow('t1', 'alfred-code:architecture-analyzer', 'Verify remaining patterns'), launchedRow('t1', 'a111'));
     const held = edit();
     assert.ok(denied(held), 'the audited case: a seat is out');
@@ -2361,7 +2363,7 @@ test('audit 2026-10-20 C43: an architecture write is held once while an analyzer
     assert.match(held.stdout, /Wait for the hand-back/);
     assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"seat-hold"/);
     assert.match(fs.readdirSync(p.join(r.root, '.alfred/statistics/hook-blocks')).map((f) => r.read(`.alfred/statistics/hook-blocks/${f}`)).join(''), /Held: /);
-    assert.ok(!denied(edit()), 'once per dispatch: the second attempt passes');
+    assert.ok(!blocked(edit()), 'once per dispatch: the second attempt passes');
     assert.match(r.read('.alfred/statistics/docs-log.jsonl'), /"event":"seat-bypass"/);
     // an enqueued notice is not delivered yet; a new dispatch is held again
     rows(dispatchRow('t2', 'code-quality-analyzer'), launchedRow('t2', 'a222'));
@@ -2369,16 +2371,16 @@ test('audit 2026-10-20 C43: an architecture write is held once while an analyzer
     assert.ok(denied(edit()), 'a second seat out is held again, its queued notice not yet delivered');
     rows({ type: 'user', message: { role: 'user', content: noticeText('t1', 'a111') } });
     rows({ type: 'attachment', attachment: { type: 'queued_command', prompt: noticeText('t2', 'a222') } });
-    assert.ok(!denied(edit()), 'every seat handed back: nothing is held');
+    assert.ok(!blocked(edit()), 'every seat handed back: nothing is held');
     // a delivered hand-back message settles its seat too
     rows(dispatchRow('t3', 'architecture-analyzer'), launchedRow('t3', 'a333'));
     assert.ok(denied(edit()));
     rows({ type: 'user', isMeta: true, message: { role: 'user', content: 'Another Claude session sent a message:\n<agent-message from="a333">\n[Subagent hand-back] The text below is the final report.' } });
-    assert.ok(!denied(edit()), 'the delivered hand-back ends the seat');
+    assert.ok(!blocked(edit()), 'the delivered hand-back ends the seat');
     // a seat's own call, and the gate switch, are never held
     rows(dispatchRow('t4', 'architecture-analyzer'), launchedRow('t4', 'a444'));
-    assert.ok(!denied(edit(s, { agent_id: 'a444', agent_type: 'alfred-code:architecture-analyzer' })), 'a seat caller passes');
-    assert.ok(!denied(r.hook({ ...pre('Edit', { file_path: doc }, s), transcript_path: tp }, { ALFRED_CODE_DOCS_GATE: '0' })), 'DOCS_GATE=0 passes');
+    assert.ok(!blocked(edit(s, { agent_id: 'a444', agent_type: 'alfred-code:architecture-analyzer' })), 'a seat caller passes');
+    assert.ok(!blocked(r.hook({ ...pre('Edit', { file_path: doc }, s), transcript_path: tp }, { ALFRED_CODE_DOCS_GATE: '0' })), 'DOCS_GATE=0 passes');
   } finally { r.rm(); }
 });
 
@@ -2393,28 +2395,28 @@ test('audit 2026-10-20 C43: no false hold - a returned seat, another seat type, 
     const write = (file, session = s, t = tp) => r.hook({ ...pre('Write', { file_path: file, content: '# x\n' }, session), transcript_path: t });
     // a foreground seat whose report is its tool_result has handed back
     rows(dispatchRow('f1', 'architecture-analyzer'), { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'f1', content: [{ type: 'text', text: 'status: done\nDigest...' }] }] } });
-    assert.ok(!denied(write(arch)), 'a foreground seat that returned');
+    assert.ok(!blocked(write(arch)), 'a foreground seat that returned');
     // a launch that failed is no seat out
     rows(dispatchRow('f2', 'architecture-analyzer'), { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'f2', is_error: true, content: 'Agent type not found' }] } });
-    assert.ok(!denied(write(arch)), 'a failed launch');
+    assert.ok(!blocked(write(arch)), 'a failed launch');
     // an implementer or a foreign plugin's analyzer is no capture seat
     rows(dispatchRow('f3', 'dotnet-implementer'), launchedRow('f3', 'b333'), dispatchRow('f4', 'other:architecture-analyzer'), launchedRow('f4', 'b444'));
-    assert.ok(!denied(write(arch)), 'not a capture analyzer');
+    assert.ok(!blocked(write(arch)), 'not a capture analyzer');
     // a TaskStop ends a seat
     rows(dispatchRow('f5', 'architecture-analyzer'), launchedRow('f5', 'b555'), { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'k1', name: 'TaskStop', input: { task_id: 'b555' } }] } });
-    assert.ok(!denied(write(arch)), 'a stopped seat');
+    assert.ok(!blocked(write(arch)), 'a stopped seat');
     // a seat out, but the write is not an architecture doc
     rows(dispatchRow('f6', 'architecture-analyzer'), launchedRow('f6', 'b666'));
-    assert.ok(!denied(write(`${r.root}/.claude/docs/plans/x.md`)), 'a plan write is not held by the seat hold');
-    assert.ok(!denied(write(`${r.root}/.claude/docs/architecture-notes.md`)), 'a sibling folder sharing the prefix');
+    assert.ok(!blocked(write(`${r.root}/.claude/docs/plans/x.md`)), 'a plan write is not held by the seat hold');
+    assert.ok(!blocked(write(`${r.root}/.claude/docs/architecture-notes.md`)), 'a sibling folder sharing the prefix');
     // malformed: garbage rows, a torn last row, a missing transcript, no transcript at all
     const bad = p.join(r.root, `${s}-bad.jsonl`);
     fs.writeFileSync(bad, 'not json\n{"type":"assistant","message":{"content":[{"type":"tool_use","id":"g1","name":"Agent","input":{"subagent_type":"architecture-analyzer"}}]}}\n\u0000\u0001{garbage\n{"type":"user","message":{"content":[{"type":"tool_re');
     assert.ok(denied(write(arch, sid(), bad)), 'garbage rows around a real dispatch: the real row still counts');
-    assert.ok(!denied(write(arch, sid(), p.join(r.root, 'missing.jsonl'))), 'a missing transcript releases');
-    assert.ok(!denied(r.hook(pre('Write', { file_path: arch, content: '# x\n' }, sid()))), 'no transcript path releases');
+    assert.ok(!blocked(write(arch, sid(), p.join(r.root, 'missing.jsonl'))), 'a missing transcript releases');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: arch, content: '# x\n' }, sid()))), 'no transcript path releases');
     fs.writeFileSync(bad, '\u0000garbage only\n[1,2]\nnull\n"str"\n');
-    assert.ok(!denied(write(arch, sid(), bad)), 'a transcript of garbage holds nothing');
+    assert.ok(!blocked(write(arch, sid(), bad)), 'a transcript of garbage holds nothing');
   } finally { r.rm(); }
 });
 
@@ -2429,8 +2431,8 @@ test('audit 2026-10-20 C43: the shell route and a docs.js set of an architecture
     assert.ok(!r.exists('.claude/docs/architecture'), 'a first capture: no architecture domain yet');
     assert.ok(denied(bash('mkdir -p .claude/docs/architecture && cat > .claude/docs/architecture/ARCHITECTURE.md <<\'EOF\'\n# A\nEOF', sid())), 'a shell write under architecture/');
     assert.ok(denied(bash('node .claude/hooks/docs.js set architecture/ARCHITECTURE#layers < /tmp/x.md', sid())), 'a docs.js set of an architecture ref');
-    assert.ok(!denied(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
-    assert.ok(!denied(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
+    assert.ok(!blocked(bash('cat .claude/docs/architecture/ARCHITECTURE.md', sid())), 'a read is no write');
+    assert.ok(!blocked(bash('node .claude/hooks/docs.js set code-style/CODE-STYLE#naming < /tmp/x.md', sid())), 'another domain\'s set');
   } finally { r.rm(); }
 });
 
@@ -2451,13 +2453,13 @@ test('the analyzer hold covers both homes', () => {
       assert.ok(denied(out), rel);
       assert.match(out.stdout, /\/capture-awareness architecture/, `${rel}: the denial names the part`);
     }
-    assert.ok(!denied(write('awareness/RUN-AND-DEBUG-AWARENESS.md')), 'the run book writes while a seat is out');
+    assert.ok(!blocked(write('awareness/RUN-AND-DEBUG-AWARENESS.md')), 'the run book writes while a seat is out');
     assert.ok(denied(bash('mkdir -p .claude/docs/awareness && cat > .claude/docs/awareness/ARCHITECTURE-AWARENESS.md <<\'EOF\'\n# A\nEOF')), 'a shell write to the map');
     for (const ref of ['ARCHITECTURE-AWARENESS#modules', 'awareness/ARCHITECTURE-ORIENTATION-AWARENESS#x', 'awareness/references/x#y']) {
       assert.ok(denied(bash(`node .claude/hooks/docs.js set ${ref} < /tmp/x.md`)), `a docs.js set of ${ref}`);
     }
-    assert.ok(!denied(bash('node .claude/hooks/docs.js set RUN-AND-DEBUG-AWARENESS#build < /tmp/x.md')), 'the run book\'s set');
-    assert.ok(!denied(bash('node .claude/hooks/docs.js set awareness/RUN-AND-DEBUG-AWARENESS#build < /tmp/x.md')), 'the run book\'s qualified set');
+    assert.ok(!blocked(bash('node .claude/hooks/docs.js set RUN-AND-DEBUG-AWARENESS#build < /tmp/x.md')), 'the run book\'s set');
+    assert.ok(!blocked(bash('node .claude/hooks/docs.js set awareness/RUN-AND-DEBUG-AWARENESS#build < /tmp/x.md')), 'the run book\'s qualified set');
   } finally { r.rm(); }
 });
 
@@ -2520,7 +2522,7 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     const env = { ALFRED_CODE_HOOK_LOG_DIR: logs };
     const stamp = `${r.root}/.claude/docs/flow/APPROVAL`;
     const write = (content, session = s) => r.hook(pre('Write', { file_path: stamp, content }, session), env);
-    assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'no timeout: the stamp is written');
+    assert.ok(!blocked(write('APPROVED 1 - "build it"\n')), 'no timeout: the stamp is written');
     const marker = require('../stack/hooks/hook-prelude.js').askTimeoutMarker(s, env);
     fs.writeFileSync(marker, String(Date.now()));
     const held = write('APPROVED 1 - "build it"\n');
@@ -2529,10 +2531,10 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     assert.ok(denied(write('AUTO - "go"\n')), 'an AUTO line too');
     assert.ok(denied(r.hook(pre('Edit', { file_path: stamp, old_string: 'x', new_string: 'APPROVED 2 - "ok"' }, s), env)), 'an Edit that adds it');
     assert.ok(denied(r.hook(pre('Bash', { command: "printf 'APPROVED 1 - ok\\n' > .claude/docs/flow/APPROVAL" }, s), env)), 'a shell write that carries it');
-    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f .claude/docs/flow/APPROVAL' }, s), env)), 'deleting the stamp passes');
-    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/flow/NOTES`, content: 'APPROVED by nobody\n' }, s), env)), 'another flow file passes');
-    assert.ok(!denied(write('APPROVED 1 - "x"\n', sid())), 'another session with no timeout passes');
-    assert.ok(!denied(r.hook({ ...pre('Write', { file_path: stamp, content: 'APPROVED 1\n' }, s), agent_id: 'a1', agent_type: 'x' }, env)), 'a seat\'s call is not judged here');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: 'rm -f .claude/docs/flow/APPROVAL' }, s), env)), 'deleting the stamp passes');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/flow/NOTES`, content: 'APPROVED by nobody\n' }, s), env)), 'another flow file passes');
+    assert.ok(!blocked(write('APPROVED 1 - "x"\n', sid())), 'another session with no timeout passes');
+    assert.ok(!blocked(r.hook({ ...pre('Write', { file_path: stamp, content: 'APPROVED 1\n' }, s), agent_id: 'a1', agent_type: 'x' }, env)), 'a seat\'s call is not judged here');
     // 2.8.0: the stamp's own home, <data root>/state/approvals/ - the pre-2.8.0 flow/ above stays covered for the 2.x line
     const fresh = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/APPROVAL`, content: 'APPROVED 1 - "build it"\n' }, s), env);
     assert.ok(denied(fresh), 'the stamp under state/approvals/ is denied too');
@@ -2543,9 +2545,9 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     assert.ok(denied(plan), "a plan's stamp under state/approvals/<plan id>/ is denied too");
     assert.match(blockReason(plan), /\.alfred\/state\/approvals\/cart\/APPROVAL would record/);
     assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals/cart && printf 'APPROVED cart - go\\n' > .alfred/state/approvals/cart/APPROVAL" }, s), env)), 'and a shell write there');
-    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/NOTES`, content: 'APPROVED cart\n' }, s), env)), 'another file in the plan folder passes');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/NOTES`, content: 'APPROVED cart\n' }, s), env)), 'another file in the plan folder passes');
     fs.rmSync(marker, { force: true });
-    assert.ok(!denied(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
+    assert.ok(!blocked(write('APPROVED 1 - "build it"\n')), 'once the next answer clears the marker, the stamp is written');
   } finally { r.rm(); fs.rmSync(logs, { recursive: true, force: true }); }
 });
 
@@ -2568,7 +2570,7 @@ test('PF-8: reading a preferences doc earns no credit with the docs gate', () =>
     assert.ok(denied(r.hook(editRefund(s))), 'the preferences are preferences-session\'s to hand over');
     const t = sid();
     r.hook(pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, t));
-    assert.ok(!denied(r.hook(editRefund(t))), 'an architecture read still counts');
+    assert.ok(!blocked(r.hook(editRefund(t))), 'an architecture read still counts');
   } finally { r.rm(); }
 });
 
@@ -2590,7 +2592,7 @@ test('G4: the gate is per actor, and a compaction re-arms the actor it summarize
     const t = sid();
     r.hook(pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, t));
     assert.ok(denied(r.hook(editRefund(t, { agent_id: 'a2', agent_type: 'dotnet-implementer' }))), 'nor main\'s the seat\'s');
-    assert.ok(!denied(r.hook(editRefund(t))), 'main read it');
+    assert.ok(!blocked(r.hook(editRefund(t))), 'main read it');
     r.hook({ hook_event_name: 'SessionStart', session_id: t, source: 'compact' });
     assert.ok(denied(r.hook(editRefund(t))), 'the summary dropped the section: held again');
   } finally { r.rm(); }
@@ -2705,7 +2707,7 @@ test('recomputed: reading the assessment earns no gate credit; a weakness-only t
     const c = sid(); r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/plans/fix.md` }, c));
     assert.ok(denied(edit(c)), 'nor a plan whose Oriented line names one');
     const d = sid(); r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/architecture/ARCHITECTURE.md` }, d));
-    assert.ok(!denied(edit(d)), 'a durable doc read releases the gate');
+    assert.ok(!blocked(edit(d)), 'a durable doc read releases the gate');
     const e = sid();
     const held = edit(e, 'src/Legacy/Old.cs');
     assert.ok(denied(held));
@@ -3049,6 +3051,8 @@ test('HK-28 replay: an output-scoring seat is never denied at its hand-back, so 
 // A root (durable docs, ROOT-SECTION covering src/**) with children `api` (its own durable docs, API-SECTION), `src/pkg` and
 // `tools` (no docs), all stamped and joined; `api` a plain folder of the root's repository.
 const API_LINE = 'Project api - paths below are from api/.';
+// A hold's reason carries the path line right after its first line: that line is the prompt's one-sentence summary.
+const pathAfterHead = (text) => text.split('\n')[1] === API_LINE;
 const mKey = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
 const why = (out) => blockReason(out) || '';
 function joined({ apiCovers = 'src/**', apiOff = '', rootDocs = true, rootWatch = null, prefs = false } = {}) {
@@ -3080,10 +3084,10 @@ test('member: the first change under the child\'s source root is denied with the
     const s = sid();
     const held = r.run(edit('api/src/a.ts', s));
     assert.ok(denied(held), held.stdout + held.stderr);
-    assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+    assert.ok(pathAfterHead(why(held)), why(held));
     assert.match(why(held), /API-SECTION/);
     assert.doesNotMatch(why(held), /ROOT-SECTION/);
-    assert.ok(!denied(r.run(edit('api/src/a.ts', s))), 'the retry passes');
+    assert.ok(!blocked(r.run(edit('api/src/a.ts', s))), 'the retry passes');
   } finally { r.rm(); }
 });
 
@@ -3118,7 +3122,7 @@ test('member: the child\'s gate sits in the session\'s -m-<key> file, per actor'
   try {
     const s = sid();
     assert.ok(denied(r.run(edit('api/src/a.ts', s))));
-    assert.ok(!denied(r.run(edit('api/src/a.ts', s))));
+    assert.ok(!blocked(r.run(edit('api/src/a.ts', s))));
     const seat = r.run(preBy(s, 'seat-1', 'api/src/a.ts'));
     assert.ok(denied(seat), 'a seat\'s first change under api is still held');
     assert.match(why(seat), /API-SECTION/);
@@ -3135,10 +3139,10 @@ test('member: a compact start re-arms the child\'s gate for that actor only - wi
     const r = joined({ rootDocs });
     try {
       const s = sid();
-      for (const call of [edit('api/src/a.ts', s), preBy(s, 'seat-1', 'api/src/a.ts')]) { r.run(call); assert.ok(!denied(r.run(call))); }
+      for (const call of [edit('api/src/a.ts', s), preBy(s, 'seat-1', 'api/src/a.ts')]) { r.run(call); assert.ok(!blocked(r.run(call))); }
       r.run({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' });
       assert.ok(denied(r.run(edit('api/src/a.ts', s))), `rootDocs ${rootDocs}: the main session is held again`);
-      assert.ok(!denied(r.run(preBy(s, 'seat-1', 'api/src/a.ts'))), `rootDocs ${rootDocs}: the seat is not`);
+      assert.ok(!blocked(r.run(preBy(s, 'seat-1', 'api/src/a.ts'))), `rootDocs ${rootDocs}: the seat is not`);
     } finally { r.rm(); }
   }
 });
@@ -3171,7 +3175,7 @@ test('member: a file both projects cover is held by the child\'s gate', () => {
   const r = joined({ rootWatch: JSON.stringify({ sourceRoots: ['src', 'api/src'] }) });
   try {
     const held = r.run(edit('api/src/a.ts', sid()));
-    assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+    assert.ok(pathAfterHead(why(held)), why(held));
     assert.match(why(held), /API-SECTION/);
   } finally { r.rm(); }
 });
@@ -3182,7 +3186,7 @@ test('member: a shell edit placed under the child by the command\'s own cd is th
     for (const command of ['cd api && sed -i s/a/b/ src/a.ts', 'sed -i s/a/b/ api/src/a.ts']) {
       const held = r.run(pre('Bash', { command }, sid()));
       assert.ok(denied(held), command);
-      assert.ok(why(held).startsWith(`${API_LINE}\n`), `${command}: ${why(held)}`);
+      assert.ok(pathAfterHead(why(held)), `${command}: ${why(held)}`);
       assert.match(why(held), /API-SECTION/, command);
     }
   } finally { r.rm(); }
@@ -3195,13 +3199,13 @@ test('member: a seat in a worktree of the root\'s repository editing the child\'
     const s = sid();
     const file = path.join(r.root, '.claude', 'worktrees', 'w1', 'api', 'src', 'a.ts');
     const held = r.run(preBy(s, 'seat-1', file));
-    assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+    assert.ok(pathAfterHead(why(held)), why(held));
     assert.match(why(held), /API-SECTION/);
-    assert.ok(!denied(r.run(preBy(s, 'seat-1', file))));
+    assert.ok(!blocked(r.run(preBy(s, 'seat-1', file))));
     const rec = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `docs-session-${s}--seat-1.json`), 'utf8'));
     assert.deepStrictEqual(rec.wrote, ['api/src/a.ts']);
     const sh = r.run({ ...pre('Bash', { command: 'cd .claude/worktrees/w1/api && sed -i s/a/b/ src/b.ts' }, s), agent_id: 'seat-2', agent_type: 'dotnet-implementer' });
-    assert.ok(why(sh).startsWith(`${API_LINE}\n`), why(sh));
+    assert.ok(pathAfterHead(why(sh)), why(sh));
     assert.match(why(sh), /API-SECTION/);
   } finally { r.rm(); }
 });
@@ -3212,14 +3216,14 @@ test('member: a hold with no section naming the target is made twice, then the c
     const s = sid();
     for (let i = 0; i < 2; i++) {
       const held = r.run(edit('api/src/b.ts', s));
-      assert.ok(why(held).startsWith(`${API_LINE}\n`), why(held));
+      assert.ok(pathAfterHead(why(held)), why(held));
       assert.match(why(held), /docs\.js files/);
     }
-    assert.ok(!denied(r.run(edit('api/src/b.ts', s))), 'the third passes');
+    assert.ok(!blocked(r.run(edit('api/src/b.ts', s))), 'the third passes');
     const t = sid();
     assert.ok(denied(r.run(edit('api/src/b.ts', t))));
     r.run(pre('Read', { file_path: path.join(r.root, 'api', '.alfred', 'docs', 'architecture', 'references', 'patterns.md') }, t));
-    assert.ok(!denied(r.run(edit('api/src/b.ts', t))), 'a Read of the child\'s doc counts for the child\'s gate');
+    assert.ok(!blocked(r.run(edit('api/src/b.ts', t))), 'a Read of the child\'s doc counts for the child\'s gate');
   } finally { r.rm(); }
 });
 
@@ -3227,7 +3231,7 @@ test('member: the gate part named in the child\'s off-list does not hold', () =>
   const r = joined({ apiOff: 'docs-session:gate' });
   try {
     const s = sid();
-    assert.ok(!denied(r.run(edit('api/src/a.ts', s))));
+    assert.ok(!blocked(r.run(edit('api/src/a.ts', s))));
     assert.match(why(r.run(edit('src/a.ts', s))), /ROOT-SECTION/, 'the root\'s gate still holds');
   } finally { r.rm(); }
 });
@@ -3271,9 +3275,12 @@ test('member: through the dispatcher, one reply carries both hooks\' hand-overs 
     const s = sid();
     const child = fg(edit(path.join(r.root, 'api', 'src', 'a.ts'), s));
     const text = `${child.stdout}${child.stderr}`.replace(/\\n/g, '\n');
-    // each hook's hand-over carries the path line; a hook that asks repeats it in the prompt's line and twice in its model
-    // text (the spoken sentence and the reason after 'If the user declined'), so both hooks ask: 3 + 3
-    assert.strictEqual(text.split(API_LINE).length - 1, 6, text);
+    // docs-session's hold carries the path line after its first line, so its prompt and its model's first sentence name the
+    // hold and the line is read once (the reason after 'If the user declined'); preferences-session's one-sentence reason
+    // runs on into the line, so it shows in its prompt and twice in its model text: 1 + 3
+    assert.strictEqual(text.split(API_LINE).length - 1, 4, text);
+    assert.match(askText(child), /^alfred-code docs-session: Docs not read yet in this session\./, 'the prompt names the hold, not the path line');
+    assert.ok(!askText(child).startsWith(`alfred-code docs-session: ${API_LINE}`), askText(child));
     assert.match(text, /API-CODE/);
     assert.match(text, /API-SECTION/);
     assert.doesNotMatch(text, /ROOT-/);
@@ -3310,7 +3317,7 @@ test('member: an id-less payload keeps its none record, and that record is what 
     const kept = () => fs.readdirSync(tmp).filter((f) => f.startsWith('docs-session-none'));
     assert.ok(denied(r.run(none, t)));
     assert.ok(kept().includes(`docs-session-none-m-${mKey('api')}.json`), kept().join(' '));
-    assert.ok(!denied(r.run(none, t)));
+    assert.ok(!blocked(r.run(none, t)));
     for (const f of kept()) fs.unlinkSync(path.join(tmp, f));
     assert.ok(denied(r.run(none, t)));
   } finally { r.rm(); fs.rmSync(tmp, { recursive: true, force: true }); }
@@ -3405,7 +3412,7 @@ test('entry: a held first call carries the orientation in its denial', () => {
   try {
     const s = sid();
     const held = why(r.run(edit('api/src/a.ts', s)));
-    assert.ok(held.startsWith(`${API_LINE}\n`), held);
+    assert.ok(pathAfterHead(held), held);
     assert.strictEqual(countOf(held, API_LINE), 1);
     assert.ok(held.includes('API-SECTION') && held.includes(ORIENT_LEAD), held);
     assert.strictEqual(r.run(readAt('api/src/a.ts', s)).stdout, '');
@@ -3571,8 +3578,8 @@ test('PF1: status.json and scoring.json are written by their scripts only', () =
     fs.writeFileSync(at('status.json'), '{');
     assert.ok(denied(r.hook(pre('Edit', { file_path: at('status.json'), old_string: '{', new_string: '{}' }, s))), 'a garbage file is still the script\'s (R31)');
     for (const command of [`node .claude/hooks/plan-status.js show --plan csv`, `node .claude/hooks/plan-status.js done --plan csv --task 1 <<'EOF'\nresult: a > b\nEOF`, `cat ${PLAN_ROOT}/csv/status.json`])
-      assert.ok(!denied(r.hook(pre('Bash', { command }, s))), command);
-    assert.ok(!denied(r.hook(pre('Read', { file_path: at('status.json') }, s))), 'a read');
+      assert.ok(!blocked(r.hook(pre('Bash', { command }, s))), command);
+    assert.ok(!blocked(r.hook(pre('Read', { file_path: at('status.json') }, s))), 'a read');
   } finally { r.rm(); }
 });
 
@@ -3582,7 +3589,7 @@ test('PF1: a folder with no Markdown is no plan (R32)', () => {
     const s = sid();
     for (const rel of [`${PLAN_ROOT}/notes/status.json`, `${PLAN_ROOT}/graded/scoring.json`, 'config/status.json', 'data/plans/status.json']) {
       r.write(rel, '{}\n');
-      assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, rel), old_string: '{}', new_string: '{ }' }, s))), rel);
+      assert.ok(!blocked(r.hook(pre('Edit', { file_path: path.join(r.root, rel), old_string: '{}', new_string: '{ }' }, s))), rel);
     }
   } finally { r.rm(); }
 });
@@ -3593,7 +3600,7 @@ test('PF1: the approved plan is not edited; before approval and while reopened i
     const plan = planFolder(r.root, 'csv', {});
     const s = sid();
     const edit = () => r.hook(pre('Edit', { file_path: plan.md, old_string: 'slice 1', new_string: 'slice one' }, s));
-    assert.ok(!denied(edit()), 'not approved yet');
+    assert.ok(!blocked(edit()), 'not approved yet');
     plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
     const no = edit();
     assert.ok(denied(no), 'approved');
@@ -3601,11 +3608,11 @@ test('PF1: the approved plan is not edited; before approval and while reopened i
     assert.ok(denied(r.hook(pre('Write', { file_path: plan.md, content: '# x\n' }, s))), 'a Write');
     assert.ok(denied(r.hook(pre('Bash', { command: `echo x >> ${PLAN_ROOT}/csv/csv.md` }, s))), 'a shell append');
     plan.run(['redesign', '--plan', 'csv'], 'why: the seam moved\n');
-    assert.ok(!denied(edit()), 'reopened');
+    assert.ok(!blocked(edit()), 'reopened');
     plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
     assert.ok(denied(edit()), 'approved again');
     fs.writeFileSync(path.join(plan.dir, 'status.json'), '{');
-    assert.ok(!denied(edit()), 'an unreadable status.json denies nothing');
+    assert.ok(!blocked(edit()), 'an unreadable status.json denies nothing');
     const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
     assert.strictEqual(rows.length, 4, 'one block row per denial: the edit, the Write, the shell append, the edit after the second approve');
   } finally { r.rm(); }
@@ -3635,7 +3642,7 @@ test('PF1: a member\'s plan is guarded by shape; a flat plan keeps the Completed
     r.write(`${FLAT}/old.md`, '# Plan\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1\n');
     r.write(`${FLAT}/open.md`, '# Plan\n\n## Tasks\n- [ ] Task 1\n');
     assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'old.md'), old_string: '- [x] Task 1\n', new_string: '- [x] Task 1\n- [ ] Task 2\n' }, s))), 'the flat rule');
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'open.md'), old_string: '- [ ] Task 1', new_string: '- [x] Task 1' }, s))), 'an open flat plan');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: path.join(r.root, FLAT, 'open.md'), old_string: '- [ ] Task 1', new_string: '- [x] Task 1' }, s))), 'an open flat plan');
   } finally { r.rm(); }
 });
 
@@ -3648,8 +3655,8 @@ test('PF1: the by-shape guard reads only a folder under work/plans; a project\'s
     for (const f of ['csv.md', 'status.json']) fs.copyFileSync(path.join(real.dir, f), path.join(own, f));
     const s = sid();
     assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(real.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'the work/plans folder is guarded');
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(own, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'status.json under src/plans');
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: path.join(own, 'csv.md'), old_string: 'slice 1', new_string: 'x' }, s))), 'its Markdown');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: path.join(own, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'status.json under src/plans');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: path.join(own, 'csv.md'), old_string: 'slice 1', new_string: 'x' }, s))), 'its Markdown');
     const member = planFolder(path.join(r.root, 'apps', 'api'), 'csv', { approve: true });
     assert.ok(denied(r.hook(pre('Edit', { file_path: path.join(member.dir, 'status.json'), old_string: 'a', new_string: 'b' }, s))), 'a member\'s work/plans folder stays guarded');
   } finally { r.rm(); }

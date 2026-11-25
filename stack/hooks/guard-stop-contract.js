@@ -3270,7 +3270,7 @@ function reAskDeny() {
   ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: redactShapes(why.split('\n')[0]).slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
   breadcrumb(`block reask: ${open.kind}`);
   // The ask (guards ask, D1): the prelude asks where a person can answer and denies otherwise. The row above is this site's
-  // own, so the verdict it leaves for the exit wrapper is dropped: one row, not two.
+  // own, so the verdict it leaves for the exit wrapper is dropped: the wrapper must not write a second row for this block.
   let wrote = false;
   try { const p = require('./hook-prelude.js'); p.askOrBlock(payload, why, { guard: 'guard-stop-contract' }); wrote = true; delete global.BLOCK_VERDICT; } catch { /* no prelude: today's deny */ }
   if (!wrote) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } })); // guard-ask fallback: no prelude

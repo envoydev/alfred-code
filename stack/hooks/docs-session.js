@@ -1611,7 +1611,10 @@ function seatHold(input, root, docs) {
   return true;
 }
 const deny = (input, reason) => {
-  let text = PATH_LINE ? `${PATH_LINE}\n${reason}` : reason;
+  // The PATH line follows the reason's first line: that line is the prompt's one-sentence summary, so it must say what is held,
+  // while the line still comes before the paths it governs (as preferences-session does).
+  const cut = reason.indexOf('\n');
+  let text = !PATH_LINE ? reason : cut > 0 ? `${reason.slice(0, cut)}\n${PATH_LINE}${reason.slice(cut)}` : `${reason}\n${PATH_LINE}`;
   if (ENTRY && text.length + 2 + ENTRY.text.length <= 7000 && claimed()) text += `\n\n${ENTRY.text}`;
   WROTE = true;
   blockWrite(input, text);
