@@ -323,3 +323,24 @@ polls the transcript every 100 ms for its own `tool_use` id. The prompt asked fo
 same message. Results, one row per run: `atStart false, foundAt 534 ms`, `false, 539 ms`, `false, 444 ms`; the text line
 was on disk each time the row was. So a call's own message lands while its PreToolUse hook still runs: the layer-table
 gate (and the stop contract's approval check, card item 10) wait up to 1.5 s for the row, then judge.
+
+## A child's skills seen from the root (2026-11-25, Claude Code 2.1.332, macOS)
+
+A logged-out `claude -p hi --debug` in a throwaway account, the keychain stub first on `PATH`. The root held
+`.claude/skills/dup`; the child `kid` held `.claude/skills/own` and a `dup` of its own. The count is the debug line
+`Sending <n> skills via attachment`, 13 of them built in. The root runs took `--add-dir kid`, the documented way to load a
+folder's nested skills at the start (code.claude.com/docs/en/skills, 'Load skills in monorepos and subdirectories').
+
+| Session at | The child's `dup` | Root `settings.local.json` | Sent |
+|---|---|---|---|
+| root | a copy | `{}` | 16 |
+| root | a copy | `skillOverrides: {"kid:dup": "off"}` | 15 - the child's copy alone hidden |
+| root | a copy | `skillOverrides: {"dup": "off"}` | 14 - both hidden |
+| root | a symlink to the root's folder | `{}` | 15 - `Skipping duplicate skill 'dup' ... (same file already loaded)` |
+| `kid`, its own git repository | a symlink | `skillOverrides: {"own": "off"}` | 15 - the root's settings do not reach it |
+| `kid`, a plain folder of the root's repository | a symlink | `skillOverrides: {"own": "off"}` | 14 - the root's settings reach it |
+
+The verdict: a `<relative path>:<name>` key in the root's own settings hides that child's copy from root sessions alone,
+and reaches no session started in a child with its own repository. A session in a same-repository child reads the root's
+settings, so a root-side `claudeMdExcludes` row would hide a file there too. The nested load on a file touch (no
+`--add-dir`) needs a model and was not run; the skills page names the nested skill the same way.
