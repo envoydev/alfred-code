@@ -77,11 +77,12 @@ function readAside(top, rows, { env })
     return select.asideRows(rows, views);
 }
 
-// What `plan` and `cascade` skip: { skipped, heads } - the rels they run nothing in, and the ones `plan` names.
+// What `plan` and `cascade` skip: { skipped, heads, without } - the rels they run nothing in, the ones `plan` names, and a filter
+// that takes a rel list (a disk walk's, say) less the skipped ones.
 function readSkipped(top, rows, { env })
 {
     const skipped = select.skippedRows(rows, readAside(top, rows, { env }));
-    return { skipped, heads: select.asideHeads(rows, skipped) };
+    return { skipped, heads: select.asideHeads(rows, skipped), without: (rels) => select.withoutSkipped(rels, skipped, low) };
 }
 
 const usage = (text) => ({ code: EXIT.usage, line: `${ERROR_PREFIX}${text}` });

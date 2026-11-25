@@ -3,7 +3,7 @@
 // what it keeps for the set-aside ones. Plain values, no fakes.
 const test = require('node:test');
 const assert = require('node:assert');
-const { childStates, answerError, applyAnswer, setAsideRels, asideRows, lines, flagError, csvOf } = require('./workspace-include/select.js');
+const { childStates, answerError, applyAnswer, setAsideRels, asideRows, skippedRows, asideHeads, withoutSkipped, lines, flagError, csvOf } = require('./workspace-include/select.js');
 const { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines } = require('./workspace-include/keep.js');
 
 test('childStates: asked and included is included, asked only is set aside, not asked is unasked', () =>
@@ -145,4 +145,17 @@ test('backstopLines reads a line kept under a case-variant key as kept when the 
     const args = [['skill a'], [], {}, ['api'], {}, { API: ['skill a'] }];
     assert.deepStrictEqual(backstopLines(...args, fold), {});
     assert.deepStrictEqual(backstopLines(...args), { api: ['skill a'] });
+});
+test('withoutSkipped drops a rel a skipped row names, compared the way the caller folds, and keeps the others', () =>
+{
+    const skipped = new Set(['Api', 'web']);
+    assert.deepStrictEqual(withoutSkipped(['api', 'stray', 'web'], skipped, (text) => text.toLowerCase()), ['stray']);
+    assert.deepStrictEqual(withoutSkipped(['api', 'stray'], skipped, (text) => text), ['api', 'stray'], 'a caller that does not fold compares as written');
+});
+test('skippedRows keeps a gone head out and a gone row below an aside row in; asideHeads names only the top of each aside subtree', () =>
+{
+    const rows = [{ rel: 'api', parentRel: '.', state: 'ok' }, { rel: 'api/old', parentRel: 'api', state: 'gone' }, { rel: 'old', parentRel: '.', state: 'gone' }, { rel: 'api/tool', parentRel: 'api', state: 'ok' }];
+    const skipped = skippedRows(rows, new Set(['api', 'api/old', 'old', 'api/tool']));
+    assert.deepStrictEqual([...skipped], ['api', 'api/old', 'api/tool']);
+    assert.deepStrictEqual(asideHeads(rows, skipped), ['api']);
 });

@@ -416,7 +416,7 @@ function planVerb(out)
         {
             for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
         }
-        for (const rel of [...new Set([...(has('--rescan') ? ws.nestedInstalls(top, { env }) : []), ...joinedNested])].sort()) { out(`nested: ${field(rel)}`); rescanned += 1; }
+        for (const rel of aside.without([...new Set([...(has('--rescan') ? ws.nestedInstalls(top, { env }) : []), ...joinedNested])].sort())) { out(`nested: ${field(rel)}`); rescanned += 1; }
         if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }

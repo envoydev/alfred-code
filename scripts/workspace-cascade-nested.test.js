@@ -224,3 +224,27 @@ test('a set-aside same-repo child prints set-aside and no nested row in plan', (
     assert.doesNotMatch(r.out, /nested:/, r.out);
     assert.doesNotMatch(cascade(ws, src).out, /nested/, 'cascade names it set-aside, never nested');
 });
+
+test('plan --rescan on a set-aside same-repo child prints set-aside and no nested row, and no table for it', () =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    const ws = makeFolder(top, 'ws', { git: true, record: { children: ['api'], includedChildren: [], includeAsked: ['api'] } });
+    makeFolder(top, 'ws/api', { record: { parent: '..' } });
+    const { src } = fakeSource();
+    const r = plan(ws, src, '--rescan');
+    assert.match(r.out, /^set-aside: api$/m, r.out);
+    assert.doesNotMatch(r.out, /nested:/, r.out);
+    assert.doesNotMatch(r.out, /^total: /m, 'one project and nothing found: no table');
+});
+
+test('plan --rescan still names a same-repo install no set-aside row covers', () =>
+{
+    const top = fs.mkdtempSync(path.join(TMP, 't-'));
+    const ws = makeFolder(top, 'ws', { git: true, record: { children: ['api'], includedChildren: [], includeAsked: ['api'] } });
+    makeFolder(top, 'ws/api', { git: true, record: { parent: '..' } });
+    makeFolder(top, 'ws/stray', {});
+    const { src } = fakeSource();
+    const r = plan(ws, src, '--rescan');
+    assert.match(r.out, /^nested: stray$/m, r.out);
+    assert.doesNotMatch(r.out, /nested: api/, r.out);
+});

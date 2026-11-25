@@ -68,6 +68,13 @@ const skippedRows = (rows, aside) => new Set(rows.filter((row) => aside.has(row.
 // The skipped rows whose parent row is not skipped, in row order: the ones `plan` names, each standing for its subtree.
 const asideHeads = (rows, skipped) => rows.filter((row) => skipped.has(row.rel) && !skipped.has(row.parentRel)).map((row) => row.rel);
 
+// `rels` less each one a skipped row names, compared with `fold` (the platform's case rule: a disk path against a record's name).
+const withoutSkipped = (rels, skipped, fold) =>
+{
+    const folded = new Set([...skipped].map(fold));
+    return rels.filter((rel) => !folded.has(fold(rel)));
+};
+
 // The verb's lines: one a child, the count, then each project below.
 function lines(states, below, saved = false)
 {
@@ -88,4 +95,4 @@ function flagError(values)
     return null;
 }
 
-module.exports = { asWritten, ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, skippedRows, asideHeads, lines, csvOf, flagError };
+module.exports = { asWritten, ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, skippedRows, asideHeads, withoutSkipped, lines, csvOf, flagError };
