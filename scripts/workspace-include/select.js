@@ -2,7 +2,7 @@
 // workspace-include: which joined children a root includes, which it has set aside and which it has not asked about.
 // Pure: values in, values out. The installer requires this file, so it requires nothing but its own constants.
 
-const { STATE, ROW_GONE, FLAG, TOP_RELS } = require('./constants.js');
+const { STATE, ROW_GONE, FLAG, TOP_RELS, CHILD_DEPTH } = require('./constants.js');
 
 // A map read as an own key only: a child named `constructor` or `toString` is an ordinary child, never an inherited member.
 const ownValue = (map, key) => (map && Object.hasOwn(map, key) ? map[key] : undefined);
@@ -17,6 +17,12 @@ function stateOf(view, rel)
 }
 
 const childStates = (view) => view.children.map((rel) => ({ rel, state: stateOf(view, rel) }));
+// The states less each child whose `subtree()` row is gone (its folder holds no install), compared with `fold`: nothing is asked about it.
+function liveStates(states, rows, fold = asWritten)
+{
+    const gone = new Set(rows.filter((row) => row.state === ROW_GONE && row.depth === CHILD_DEPTH).map((row) => fold(row.rel)));
+    return states.filter((child) => !gone.has(fold(child.rel)));
+}
 const setAsideRels = (view) => childStates(view).filter((child) => child.state === STATE.setAside).map((child) => child.rel);
 
 // The text of the first thing wrong with an answer, or null. `joined` is the root's joined children.
@@ -95,4 +101,4 @@ function flagError(values)
     return null;
 }
 
-module.exports = { asWritten, ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, skippedRows, asideHeads, withoutSkipped, lines, csvOf, flagError };
+module.exports = { asWritten, ownValue, childStates, liveStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, skippedRows, asideHeads, withoutSkipped, lines, csvOf, flagError };

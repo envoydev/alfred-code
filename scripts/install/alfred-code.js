@@ -1831,7 +1831,7 @@ function pruneAway(ctx, away)
 // root here). A kind git sees holds none (ruling 8).
 function membersHeld(ctx, locked)
 {
-    const held = { skills: [], agents: [], rules: [], lines: [], keepOnly: [], rewrite: [] };
+    const held = { skills: [], agents: [], rules: [], lines: [], keepOnly: [], keptRules: [], rewrite: [] };
     if (locked === null) return held;
     const priorOnly = (ctx.stampFile && stampLayer.readKeptOnly(ctx.stampFile)) || [];
     let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
@@ -1844,19 +1844,12 @@ function membersHeld(ctx, locked)
     }
     // What a root keeps for a set-aside child is read from the records whether the store lock is taken or not (a record read
     // needs no lock). A workspace switched off ('off') reads nothing: the last run's keep stays as it was.
-    let keptStore = priorOnly;
-    let memberOwn = new Set(lines.filter((l) => !priorOnly.includes(l)));
-    if (typeof locked === 'boolean')
-    {
-        if (!locked) lines = lines.filter((l) => !priorOnly.includes(l));
-        memberOwn = new Set(lines);
-        const kept = childKeep.readKeep({ projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, env: ctx.env, log: (l) => ctx.log(`  ${l}`), ownLines: workspace.listLines(ctx.lists),
-            priorOwn: ctx.installedBefore, priorKept: priorOnly, renamed: ctx.manifest.renamed, retired: ctx.manifest.retired });
-        for (const n of kept.notes) ctx.log(`  ${n}`);
-        held.rewrite = kept.rewrite;
-        keptStore = kept.storeLines;
-    }
-    lines = [...new Set([...lines, ...keptStore])];
+    const settled = childKeep.settleLines({ locked, lines, priorOnly, readArgs: { projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, env: ctx.env, log: (l) => ctx.log(`  ${l}`),
+        ownLines: workspace.listLines(ctx.lists), priorOwn: ctx.installedBefore, renamed: ctx.manifest.renamed, retired: ctx.manifest.retired } });
+    for (const n of settled.notes) ctx.log(`  ${n}`);
+    held.rewrite = settled.rewrite;
+    const { keptStore, memberOwn } = settled;
+    lines = [...new Set([...settled.lines, ...keptStore])];
     const bare = (f) => f.replace(/\.md$/, '');
     const own = new Set([...ctx.lists.skills.map((e) => `skill ${e.split('|').pop()}`), ...ctx.lists.agents.map((a) => `agent ${bare(a)}`),
         ...ctx.lists.rules.map((r) => `rule ${bare(r)}`)]);
@@ -1870,7 +1863,8 @@ function membersHeld(ctx, locked)
         else { ctx.log(`  member pick ${cat}s/${name} not held: .claude/${cat}s is not ignored here`); continue; }
         held.lines.push(l);
     }
-    held.keepOnly = held.lines.filter((l) => keptStore.includes(l) && !memberOwn.has(l));
+    held.keepOnly = childKeep.keepOnlyLines(held.lines, keptStore, memberOwn);
+    held.keptRules = childKeep.keptRuleNames(keptStore);
     if (held.lines.length) ctx.log(`  kept for members below: ${held.lines.map((l) => l.split(' ')[1]).join(', ')}`);
     return held;
 }
@@ -2456,7 +2450,7 @@ function writeNativeRules(ctx)
     const bare = (f) => f.replace(/\.md$/, '');
     const { view } = workspace.readWorkspace(ctx.projectRoot, { dataRoot: ctx.dataInfo.root });
     const done = nativeRules.syncNative({ projectRoot: ctx.projectRoot, rulesDir: ctx.rulesDir, child: ctx.child, listedRules: ctx.lists.rules.map(bare),
-        heldRules: ctx.held ? ctx.held.rules : [], library: ctx.library, shippedRules: ctx.manifest.rules.map(bare), hasChildren: view.children.length > 0,
+        heldRules: ctx.held ? childKeep.memberOnlyRules(ctx.held.rules, ctx.held.keptRules) : [], library: ctx.library, shippedRules: ctx.manifest.rules.map(bare), hasChildren: view.children.length > 0,
         generated: [...selection.GENERATED_FILES, CANARY_RULE], log: ctx.log });
     // writeNative names a file it keeps; one it never writes (a member's pick at a root, a rule a chain root holds) is named here.
     const heldHere = new Set([...ctx.lists.rules.map(bare), ...(ctx.held ? ctx.held.rules : [])]);
@@ -2466,6 +2460,16 @@ function writeNativeRules(ctx)
     for (const name of ctx.heldTwice.filter((n) => heldHere.has(n) && !done.names.includes(n))) ctx.report.keep('rule', name);
     if (done.written.length || done.updated.length || done.removed.length)
         ctx.log(`native rules: .claude/rules - written ${done.written.length}, updated ${done.updated.length}, removed ${done.removed.length}`);
+}
+
+// A rule the last run held for a member or a keep that nothing holds now: its store copy goes, unless edited since the stack wrote it.
+function pruneHeldRules(ctx)
+{
+    const was = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
+    const gone = childKeep.goneRuleNames(was, ctx.held ? ctx.held.lines : [], ctx.lists.rules.map((f) => f.replace(/\.md$/, '')));
+    const recorded = (stampLayer.readLibrary(ctx.stampFile) || {}).rules || {};
+    pruneCopies(ctx, ctx.rulesDir, gone.map((n) => `${n}.md`), 'rule', 'no member below picks it now', { keep: (f) =>
+        (recorded[f.replace(/\.md$/, '')] !== library.hashItem(path.join(ctx.rulesDir, f)) && 'edited since the stack wrote it, so it is yours') });
 }
 
 function installHooksAndRules(ctx)
@@ -2522,6 +2526,7 @@ function installHooksAndRules(ctx)
     });
     ctx.library.rules = rulesLibrary.rules;
     pruneAway(ctx, away);
+    pruneHeldRules(ctx);
     // W3: a project every stamped folder above is cut from (the workspace ignores it) seeds its own - with the switch on.
     const above = workspace.stampedAncestors(ctx.projectRoot, { env: ctx.env });
     const cut = Boolean(ctx.workspace && ctx.workspace.on) && above.length === above.cut.length;

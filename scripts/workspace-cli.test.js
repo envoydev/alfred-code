@@ -1009,6 +1009,13 @@ test('include lists each joined child unasked until answered, and says why a pro
     assert.strictEqual(cli('include', '--root', at('empty')).out, 'include: no children\n');
 });
 
+test('include leaves a joined child whose folder holds no install out of the states, the count and an answer\'s lines', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'old', 'web'], includedChildren: ['web'], includeAsked: ['web'] } }, 'ws/api': childOfRoot, 'ws/web': childOfRoot });
+    assert.strictEqual(cli('include', '--root', at('ws')).out, 'unasked: api\nincluded: web\ninclude: 1 included, 0 set aside, 1 unasked\n', 'the gone child is not asked about');
+    assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'api').out, 'included: api\nincluded: web\ninclude: saved 2 included, 0 set aside, 0 unasked\n');
+});
+
 test('include --include and --set-aside merge, and a child joined later is the only one unasked', () =>
 {
     const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'] } }, 'ws/api': childOfRoot, 'ws/web': childOfRoot, 'ws/docs': childOfRoot });

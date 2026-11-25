@@ -27,8 +27,9 @@ function readInclude(root, { env, log = quiet })
     const read = ws.readWorkspace(root, { env });
     if (read.state === 'garbage') return none(READ.garbage, read.file);
     if (!read.view.children.length) return none(ws.roleOf(root, { env, log: quiet }).kind === 'root' ? READ.noChildren : READ.notRoot, read.file);
-    const below = ws.subtree(root, { env, log }).filter((row) => row.depth >= MIN_BELOW_DEPTH && row.state === 'ok').map((row) => row.rel);
-    return { state: READ.ok, rows: select.childStates(read.view), below, file: read.file };
+    const rows = ws.subtree(root, { env, log });
+    const below = rows.filter((row) => row.depth >= MIN_BELOW_DEPTH && row.state === 'ok').map((row) => row.rel);
+    return { state: READ.ok, rows: select.liveStates(select.childStates(read.view), rows, low), below, file: read.file };
 }
 
 // The answer merged into the record under its lock: { ok, code, why, rows }. A usage fault is code 2 with its text in `why`.
@@ -46,7 +47,7 @@ function writeInclude(root, answer, { env, log = quiet })
         record.keptFor = keep.pruneKept(record.keptFor, childIgnores, rootLines);
     }, { env, log });
     if (!written.ok) return { ok: false, code: writeCode(written.why), why: written.why, rows: [] };
-    return { ok: true, code: EXIT.ok, rows: select.childStates(written.view) };
+    return { ok: true, code: EXIT.ok, rows: select.liveStates(select.childStates(written.view), ws.subtree(root, { env, log: quiet }), low) };
 }
 
 // `line` kept for each set-aside child that does not ignore it: { ok, code, why, kept, ignoring }.

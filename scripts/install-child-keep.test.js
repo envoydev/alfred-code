@@ -95,6 +95,37 @@ test('writeBack writes the new kept lines, and names a record whose lock is refu
         assert.deepStrictEqual(readWorkspaceValues(root).keptFor, { api: ['skill a'] });
         assert.deepStrictEqual(readWorkspaceValues(path.join(root, 'api')).keptFor, { tool: ['skill t', 'skill mine'] }, 'the refused write left the record');
         assert.strictEqual(lines.filter((line) => /^  !! workspace: the kept lines of api were not written \(locked\)/.test(line)).length, 1, lines.join('\n'));
+        assert.strictEqual(lines.filter((line) => line === '  kept lines of . rewritten: api keeps skill a').length, 1, 'the write that went through is named once');
+        assert.ok(!lines.some((line) => /kept lines of api rewritten/.test(line)), 'a refused write is not named as a rewrite');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('settleLines reads the keep when the lock state says a record was read, and carries the stamp keep as it was when none was', () =>
+{
+    const root = tree();
+    try
+    {
+        const readArgs = { projectRoot: root, env: ENV, ownLines: ['skill w'], priorOwn: null, renamed: {}, retired: {} };
+        const read = childKeep.settleLines({ locked: true, lines: ['skill m'], priorOnly: [], readArgs });
+        assert.deepStrictEqual(read.keptStore, ['skill a', 'skill old', 'skill t']);
+        assert.deepStrictEqual([...read.memberOwn], ['skill m']);
+        assert.ok(read.rewrite.length);
+        const off = childKeep.settleLines({ locked: 'off', lines: ['skill m', 'skill kept'], priorOnly: ['skill kept'], readArgs });
+        assert.deepStrictEqual(off, { lines: ['skill m', 'skill kept'], memberOwn: new Set(['skill m']), keptStore: ['skill kept'], rewrite: [], notes: [] });
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('writeBack names a set-aside middle root whose kept lines it rewrote, and an entry emptied', () =>
+{
+    const root = tree();
+    try
+    {
+        const lines = [];
+        childKeep.writeBack([{ root: path.join(root, 'api'), keptFor: { tool: ['skill t', 'skill new'] } }], { top: root, log: (line) => lines.push(line) });
+        childKeep.writeBack([{ root: path.join(root, 'api'), keptFor: {} }], { top: root, log: (line) => lines.push(line) });
+        assert.deepStrictEqual(lines, ['  kept lines of api rewritten: tool keeps skill t, skill new', '  kept lines of api rewritten: none left']);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

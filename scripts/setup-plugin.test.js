@@ -2156,6 +2156,7 @@ test('workspace-include.md: the one ask, the unattended and !! cases, the scans 
         'One report line each: `set aside <rel>`',
         '`included: <rel>`', '`set-aside: <rel>`', '`unasked: <rel>`', '`below: <rel>`',
         'cross-check',
+        'kept lines of <rel> rewritten: ...',
         "`<category> <name>` stays at the root: its keep was not written",
         'plugin <name> stays on at user scope: <rel> uses it',
     ]) assert.ok(text.includes(part), part);
@@ -2180,6 +2181,8 @@ test('validate: the keep covers REDUNDANT and accepted JUDGMENT-DROP rows, never
     const include = flat(refBody('workspace-include'));
     assert.match(include, /root scan takes `--children none` and the close says the children were not read/, 'the !! case names the scan value');
     assert.match(include, /`below:` folder under those children/, 'detection reads the below folders');
+    assert.match(include, /No `included:`, `set-aside:` or `unasked:` line printed: this project's own record is the bad one[^.]*\. Take every joined child as included for the cascade/, 'the !! case applies to a garbage root record alone, and the cascade reads it as included');
+    assert.match(include, /Any of those lines printed: the bad record is a child's or a grandchild's\. Follow sections 2 to 4 on the lines printed/, 'a child\'s !! line never stops the scan of the rest');
     for (const name of ['workspace-include', 'update-workspace', 'validate-workspace'])
         assert.ok(!/left out of the count|counted|left out/.test(refBody(name).replace(/never counted\n?\s*as a project below/, '')), `${name}: no forbidden state word`);
     const configure = flat(cmdBody('configure'));

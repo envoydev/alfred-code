@@ -13,11 +13,14 @@ set-aside child's picks, version or settings values.
 - `below: <rel>` - a project below a child. It follows its child and is never asked about.
 - `unattended: on` - nobody answers asks in this run.
 - `include: <i> included, <s> set aside, <u> unasked` - the summary line.
-- `!!` - the record is garbage or locked.
+- `!!` - a record is garbage, or locked.
 
 ## 1. The `!!` case
 
-Paste the `!!` line. Take every joined child as included this run, ask nothing and write nothing. No `included:` or `unasked:` line printed, since the record cannot list its children, so the root scan takes `--children none` and the close says the children were not read, naming the line.
+Paste each `!!` line. Then read the other lines printed with it.
+
+- No `included:`, `set-aside:` or `unasked:` line printed: this project's own record is the bad one, and it cannot list its children. Take every joined child as included for the cascade, ask nothing and write nothing. The root scan takes `--children none` and the close says the children were not read, naming the line.
+- Any of those lines printed: the bad record is a child's or a grandchild's. Follow sections 2 to 4 on the lines printed. The child with the bad record keeps the state its own line shows, and no project below it is listed. The close names the `!!` line.
 
 ## 2. The ask - only on `unasked:` lines
 
@@ -75,6 +78,8 @@ It prints `include: kept <category> <name> for <rel>` per child, `include: <rel>
 a child that never had the item, or `include: no child set aside`. The installer backs the walk up: where a root drops an
 own pick that a set-aside child neither ignores nor has a keep line for, the installer keeps it and writes the line itself.
 So this call is a cross-check, not the only guard.
+
+The installer's own output may carry `kept lines of <rel> rewritten: ...`. It means the run rewrote the kept lines in a record at or below this project (a rename mapped, a line pruned, a backstop line added). The close names each `<rel>`.
 
 A `!!` line from the call: paste it and take that item out of this run's drop set. The close says
 '`<category> <name>` stays at the root: its keep was not written'.

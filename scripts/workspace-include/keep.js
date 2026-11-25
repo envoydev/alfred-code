@@ -110,6 +110,30 @@ function inheritKept(parentLines, kept, renamed, retired)
     return { lines: [...new Set([...parentLines, ...mapped.lines])], notes: keptNotes(mapped) };
 }
 
+// The member lines a root holds when the keep is read, and which of them a member picked itself. `priorOnly` are the lines the
+// last stamp held for a keep alone. A run that holds the store lock reads the members afresh (`lines` already is that read),
+// a run the lock refused (`locked` false) drops the keep-only lines it carried so the keep is read again, and a run that read
+// no record (`locked` neither true nor false) carries the stamp's lines as they were.
+function splitMemberLines({ lines, priorOnly, locked })
+{
+    const kept = (line) => priorOnly.includes(line);
+    if (locked === true) return { lines, memberOwn: new Set(lines) };
+    const members = lines.filter((line) => !kept(line));
+    return locked === false ? { lines: members, memberOwn: new Set(members) } : { lines, memberOwn: new Set(members) };
+}
+
+// The held lines that stay only for a set-aside child's keep: in the kept store lines, picked by no member.
+const keepOnlyLines = (heldLines, keptStore, memberOwn) => heldLines.filter((line) => keptStore.includes(line) && !memberOwn.has(line));
+
+// The rule names among the kept store lines. The root keeps each one's native file: the set-aside child loads it from there.
+const keptRuleNames = (keptStore) => keptStore.filter((line) => categoryOf(line) === 'rule').map(nameOf);
+
+// The rules the root holds for members that only a member uses (no native file at the root), less the ones a keep holds.
+const memberOnlyRules = (heldRules, keptRules) => heldRules.filter((name) => !keptRules.includes(name));
+
+// The rules the last run held for a member or a keep that no held line and no own pick names now: their store copies go.
+const goneRuleNames = (was, heldLines, listedRules) => was.filter((line) => categoryOf(line) === 'rule' && !heldLines.includes(line)).map(nameOf).filter((name) => !listedRules.includes(name));
+
 const keepLines = (line, kept, ignoring) => [...kept.map((rel) => `include: kept ${line} for ${rel}`), ...ignoring.map((rel) => `include: ${rel} ignores ${line} - not kept`)];
 
-module.exports = { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines, keptNotes, settleKept, inheritKept };
+module.exports = { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines, keptNotes, settleKept, inheritKept, splitMemberLines, keepOnlyLines, keptRuleNames, memberOnlyRules, goneRuleNames };

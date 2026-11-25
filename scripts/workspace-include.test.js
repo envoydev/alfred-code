@@ -3,8 +3,8 @@
 // what it keeps for the set-aside ones. Plain values, no fakes.
 const test = require('node:test');
 const assert = require('node:assert');
-const { childStates, answerError, applyAnswer, setAsideRels, asideRows, skippedRows, asideHeads, withoutSkipped, lines, flagError, csvOf } = require('./workspace-include/select.js');
-const { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines, keptNotes, settleKept, inheritKept } = require('./workspace-include/keep.js');
+const { childStates, liveStates, answerError, applyAnswer, setAsideRels, asideRows, skippedRows, asideHeads, withoutSkipped, lines, flagError, csvOf } = require('./workspace-include/select.js');
+const { keepTargets, addKept, pruneKept, storeLines, backstopLines, mapKept, keepLines, keptNotes, settleKept, inheritKept, splitMemberLines, keepOnlyLines, keptRuleNames, memberOnlyRules, goneRuleNames } = require('./workspace-include/keep.js');
 
 test('childStates: asked and included is included, asked only is set aside, not asked is unasked', () =>
     assert.deepStrictEqual(childStates({ children: ['api', 'web', 'docs'], includedChildren: ['api'], includeAsked: ['api', 'web'] }),
@@ -208,4 +208,36 @@ test('settleKept drops an entry whose child left the workspace on every read, ma
     assert.deepStrictEqual([got.keptFor, got.changed], [{ api: ['skill a'] }, true]);
     const folded = settleKept({ keptFor: { API: ['skill a'] }, children: ['api'], childIgnores: { API: [] }, rootLines: [], renamed: {}, retired: {}, low: (text) => text.toLowerCase() });
     assert.deepStrictEqual([folded.keptFor, folded.changed], [{ API: ['skill a'] }, false]);
+});
+
+test('splitMemberLines reads the member lines by the lock state: fresh when locked, without the keep-only lines when refused, as stamped when no record was read', () =>
+{
+    const lines = ['skill a', 'skill kept', 'rule r'];
+    const priorOnly = ['skill kept'];
+    assert.deepStrictEqual(splitMemberLines({ lines, priorOnly, locked: true }), { lines, memberOwn: new Set(lines) });
+    assert.deepStrictEqual(splitMemberLines({ lines, priorOnly, locked: false }), { lines: ['skill a', 'rule r'], memberOwn: new Set(['skill a', 'rule r']) });
+    assert.deepStrictEqual(splitMemberLines({ lines, priorOnly, locked: 'off' }), { lines, memberOwn: new Set(['skill a', 'rule r']) });
+});
+
+test('keepOnlyLines names the held lines only a keep holds; keptRuleNames and memberOnlyRules read the rules among them', () =>
+{
+    assert.deepStrictEqual(keepOnlyLines(['skill a', 'skill k', 'rule r'], ['skill k', 'rule r', 'skill a'], new Set(['skill a'])), ['skill k', 'rule r']);
+    assert.deepStrictEqual(keptRuleNames(['skill k', 'rule angular-conventions']), ['angular-conventions']);
+    assert.deepStrictEqual(memberOnlyRules(['a', 'b', 'c'], ['b']), ['a', 'c']);
+    assert.deepStrictEqual(memberOnlyRules(['a'], []), ['a']);
+});
+
+test('goneRuleNames names the rules the last run held that no held line and no own pick names now', () =>
+{
+    assert.deepStrictEqual(goneRuleNames(['rule a', 'rule b', 'rule c', 'skill s'], ['rule b'], ['c']), ['a']);
+    assert.deepStrictEqual(goneRuleNames([], ['rule b'], []), []);
+});
+
+test('liveStates leaves out a joined child whose subtree row is gone, and a gone row below a child is no child', () =>
+{
+    const states = [{ rel: 'api', state: 'unasked' }, { rel: 'old', state: 'unasked' }, { rel: 'web', state: 'included' }];
+    const rows = [{ rel: '.', depth: 0, state: 'ok' }, { rel: 'api', depth: 1, state: 'ok' }, { rel: 'old', depth: 1, state: 'gone' }, { rel: 'api/tool', depth: 2, state: 'gone' }, { rel: 'web', depth: 1, state: 'ok' }];
+    assert.deepStrictEqual(liveStates(states, rows), [states[0], states[2]]);
+    assert.deepStrictEqual(liveStates(states, rows.map((row) => ({ ...row, rel: row.rel.toUpperCase() })), (text) => text.toLowerCase()), [states[0], states[2]], 'the fold decides the match');
+    assert.deepStrictEqual(liveStates(states, []), states);
 });

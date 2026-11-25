@@ -25,10 +25,12 @@ const LINE = Object.freeze({
 // The one child path `subtree()` gives the top row, and the one the lists use for it.
 const TOP_RELS = Object.freeze(['', '.']);
 const MIN_BELOW_DEPTH = 2;
+// The `subtree()` depth of a joined child of the root.
+const CHILD_DEPTH = 1;
 
 // A kept line: two words, one space. The category and the name are judged by the record's own ignore-entry rule.
 const KEPT_LINE_RE = /^\S+ \S+$/;
 const MARKDOWN_SUFFIX_RE = /\.md$/;
 const MARKDOWN_KINDS = Object.freeze(['agent', 'rule']);
 
-module.exports = { STATE, ROW_GONE, FLAG, NONE, STORE_KINDS, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS };
+module.exports = { STATE, ROW_GONE, FLAG, NONE, STORE_KINDS, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH, CHILD_DEPTH, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS };

@@ -64,6 +64,16 @@ function readKeep({ projectRoot, dataRoot, env = process.env, log = quiet, ownLi
     return out;
 }
 
+// The member lines and the keep a root's run holds, from the lock state (`locked` true, false, or neither when no record is read):
+// { lines, memberOwn, keptStore, rewrite, notes }. `readArgs` are `readKeep`'s; the keep is read whether the lock is taken or not.
+function settleLines({ locked, lines, priorOnly, readArgs })
+{
+    const split = keep.splitMemberLines({ lines, priorOnly, locked });
+    if (typeof locked !== 'boolean') return { ...split, keptStore: priorOnly, rewrite: [], notes: [] };
+    const kept = readKeep({ ...readArgs, priorKept: priorOnly });
+    return { ...split, keptStore: kept.storeLines, rewrite: kept.rewrite, notes: kept.notes };
+}
+
 // The `subtree()` rows below `top` that a parent's record sets aside, as the rels the records write them.
 function asideRows(top, { env, dataRoot })
 {
@@ -71,14 +81,20 @@ function asideRows(top, { env, dataRoot })
     return select.asideRows(rows, viewsByParent);
 }
 
-// Writes each record's new kept lines, after the run's lock is released. A refused write is named and the next root run makes it.
+const relOf = (top, root) => path.relative(top, root).split(path.sep).join('/') || '.';
+const keptSummary = (keptFor) => Object.entries(keptFor).map(([rel, lines]) => `${rel} keeps ${lines.join(', ')}`).join('; ') || 'none left';
+
+// Writes each record's new kept lines, after the run's lock is released, and names each write (a set-aside middle root's record
+// is one). A refused write is named and the next root run makes it.
 function writeBack(rewrite, { top, log = quiet })
 {
     for (const entry of rewrite)
     {
         const wrote = ws.writeWorkspace(entry.root, (record) => { record.keptFor = entry.keptFor; return record; }, { dataRoot: entry.dataRoot, runRoot: top, log: (line) => log(`  ${line}`) });
-        if (!wrote.ok) log(`  !! workspace: the kept lines of ${path.relative(top, entry.root).split(path.sep).join('/') || '.'} were not written (${wrote.why}) - the next run on this root writes them`);
+        const rel = relOf(top, entry.root);
+        if (wrote.ok) log(`  kept lines of ${rel} rewritten: ${keptSummary(entry.keptFor)}`);
+        else log(`  !! workspace: the kept lines of ${rel} were not written (${wrote.why}) - the next run on this root writes them`);
     }
 }
 
-module.exports = { recordsBelow, readKeep, asideRows, writeBack };
+module.exports = { recordsBelow, readKeep, settleLines, asideRows, writeBack, keepOnlyLines: keep.keepOnlyLines, keptRuleNames: keep.keptRuleNames, memberOnlyRules: keep.memberOnlyRules, goneRuleNames: keep.goneRuleNames };
