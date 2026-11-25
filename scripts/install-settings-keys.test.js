@@ -14,11 +14,13 @@ const { realLong } = require('./test-paths.js');
 
 const OBJECT = 'skillOverrides';
 const OFF = 'off';
+const ON = 'on';
 const sandbox = () => realLong(fs.mkdtempSync(path.join(os.tmpdir(), 'settings-keys-')));
 const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
 const sync = (file, want, prior = {}, extra = {}) => keys.syncKeys({ file, objectPath: OBJECT, want, prior, ...extra });
 const rowOf = (key) => keys.keyRow(OBJECT, key);
 const offHash = stamp.valueHash(JSON.stringify(OFF));
+const onHash = stamp.valueHash(JSON.stringify(ON));
 
 function inSandbox(body)
 {
@@ -76,6 +78,33 @@ test('syncKeys keeps a key the user set to "on" and drops its row, wanted or not
         assert.deepStrictEqual(got.rows, {}, 'the row is dropped: the value is the user\'s now');
         fs.rmSync(file);
     }
+}));
+
+test('syncKeys rewrites a key it owns when the wanted value changes, and the row follows', () => inSandbox((dir, file) =>
+{
+    const first = sync(file, { 'api:npm': OFF });
+    const toOn = sync(file, { 'api:npm': ON }, first.rows);
+    assert.strictEqual(read(file).skillOverrides['api:npm'], ON);
+    assert.deepStrictEqual(toOn.rows, { [rowOf('api:npm')]: onHash });
+    assert.ok(toOn.changed);
+    const back = sync(file, { 'api:npm': OFF }, toOn.rows);
+    assert.strictEqual(read(file).skillOverrides['api:npm'], OFF);
+    assert.deepStrictEqual(back.rows, { [rowOf('api:npm')]: offHash });
+    const bytes = fs.readFileSync(file);
+    assert.strictEqual(sync(file, { 'api:npm': OFF }, back.rows).changed, false, 'a second run with the same want writes nothing');
+    assert.ok(fs.readFileSync(file).equals(bytes));
+}));
+
+test('syncKeys leaves a key whose value the user changed, and drops its row, though the wanted value differs', () => inSandbox((dir, file) =>
+{
+    const first = sync(file, { 'api:npm': OFF });
+    const data = read(file);
+    data.skillOverrides['api:npm'] = ON;
+    fs.writeFileSync(file, JSON.stringify(data));
+    const before = fs.readFileSync(file);
+    const got = sync(file, { 'api:npm': OFF }, first.rows);
+    assert.ok(fs.readFileSync(file).equals(before), 'the file is untouched');
+    assert.deepStrictEqual(got.rows, {}, 'the row is dropped');
 }));
 
 test('syncKeys lets a row whose key is gone just leave, and writes nothing', () => inSandbox((dir, file) =>

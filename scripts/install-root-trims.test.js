@@ -13,6 +13,7 @@ const settingsKeys = require('./install/settings-keys.js');
 const childrenOnly = require('./install/children-only-read.js');
 const childHide = require('./install/child-hide.js');
 const { NAME_ONLY, ROOT_SKILLS, trimLogLine } = require('./install/children-only-constants.js');
+const { SKILL_SHOWN } = require('./install/settings-keys-constants.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { putWorkspace } = require('./workspace-fixture.js');
 
@@ -75,7 +76,9 @@ test('a top root with an Angular child and a .NET child lists their skills by na
         assert.ok(steps[1].rows.includes(settingsKeys.keyRow('skillOverrides', name)), `${name} has its ledger row`);
         assert.ok(steps[1].links.includes(name), `${name} stays linked at the root`);
     }
-    assert.strictEqual(steps[1].over[`${WEB}:angular-conventions`], OFF, 'the child-qualified hide keys stay');
+    assert.strictEqual(steps[1].over[`${WEB}:angular-conventions`], SKILL_SHOWN, 'a trimmed skill\'s child key shows the child\'s copy in full');
+    for (const key of Object.keys(steps[1].over).filter((candidate) => candidate.includes(':')))
+        assert.strictEqual(steps[1].over[key], trimKeys(steps[1].over).includes(key.slice(key.lastIndexOf(':') + 1)) ? SKILL_SHOWN : OFF, key);
     assert.strictEqual(steps[1].rows.length, Object.keys(steps[1].over).length, 'one ledger row a key');
     assert.ok(trimKeys(steps[1].over).every((name) => !['habits-clarify', 'task-solve'].includes(name)), 'a locked skill is never trimmed');
     assert.match(outs[1], new RegExp(trimLogLine('typescript').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -108,14 +111,72 @@ test('a user "on" for a skill the run would trim stays and gets no row; a key se
     assert.strictEqual(steps[2].over['angular-conventions'], NAME_ONLY);
 });
 
-test('ALFRED_CODE_ROOT_SKILLS=all after a trim removes exactly the trim keys and leaves the hide keys', POSIX_ONLY, () =>
+const childKeysOf = (over) => Object.keys(over).filter((key) => key.includes(':')).sort();
+const childKeyOf = (name) => `${name in Object.fromEntries(API_SKILLS.map((skill) => [skill, 1])) ? API : WEB}:${name}`;
+
+test('ALFRED_CODE_ROOT_SKILLS=all after a trim removes exactly the trim keys, keeps every <rel>:<name> key, and puts the trimmed skills\' child keys back to off', POSIX_ONLY, () =>
 {
     const { outs, steps } = run(['install', 'update', 'update'], { env: [ON, ON, { ...ON, [ROOT_SKILLS.key]: ROOT_SKILLS.all }] });
     assert.deepStrictEqual(trimKeys(steps[1].over).filter((name) => TRIMMED.includes(name)), [...TRIMMED].sort());
     assert.deepStrictEqual(trimKeys(steps[2].over), [], outs[2]);
-    const hide = (over) => Object.keys(over).filter((key) => over[key] === OFF).sort();
-    assert.deepStrictEqual(hide(steps[2].over), hide(steps[1].over), 'the <rel>:<name> keys stay');
-    assert.ok(hide(steps[1].over).length > 0);
+    assert.deepStrictEqual(childKeysOf(steps[2].over), childKeysOf(steps[1].over), 'the <rel>:<name> keys stay');
+    assert.ok(childKeysOf(steps[1].over).length > TRIMMED.length);
+    for (const name of TRIMMED)
+    {
+        assert.strictEqual(steps[1].over[childKeyOf(name)], SKILL_SHOWN, `${name}: on while it is trimmed`);
+        assert.strictEqual(steps[2].over[childKeyOf(name)], OFF, `${name}: back to off with the switch`);
+    }
+    for (const key of childKeysOf(steps[2].over)) assert.strictEqual(steps[2].over[key], OFF, `${key} after the switch`);
+    assert.strictEqual(steps[2].rows.length, Object.keys(steps[2].over).length, 'one ledger row a key, the rewritten ones too');
+});
+
+test('a trimmed skill\'s child key is on and goes back to off with the all switch, and to on again without it', POSIX_ONLY, () =>
+{
+    const key = childKeyOf('typescript');
+    const { steps } = run(['install', 'update', 'update', 'update'], { env: [ON, ON, { ...ON, [ROOT_SKILLS.key]: ROOT_SKILLS.all }, ON] });
+    assert.deepStrictEqual(steps.slice(1).map((step) => step.over[key]), [SKILL_SHOWN, OFF, SKILL_SHOWN]);
+    assert.ok(steps[1].rows.includes(settingsKeys.keyRow('skillOverrides', key)));
+    assert.deepStrictEqual(steps[3], steps[1], 'the round trip leaves the file and its rows as the first trim wrote them');
+});
+
+test('a user\'s own <rel>:<name> value stays through a trim and through the all switch, with no row', POSIX_ONLY, () =>
+{
+    const mine = childKeyOf('typescript');
+    const { steps } = run(['install', 'update', 'update'], {
+        env: [ON, ON, { ...ON, [ROOT_SKILLS.key]: ROOT_SKILLS.all }],
+        after: (repo, i) =>
+        {
+            if (i === 0) fs.writeFileSync(localOf(repo), JSON.stringify({ skillOverrides: { [mine]: OFF } }));
+            return { ...seen(repo), mineRow: hasRow(repo, mine) };
+        },
+    });
+    for (const i of [1, 2]) { assert.strictEqual(steps[i].over[mine], OFF, `step ${i}`); assert.strictEqual(steps[i].mineRow, false); }
+    assert.strictEqual(steps[1].over[childKeyOf('angular-conventions')], SKILL_SHOWN, 'the other trimmed skills\' child keys are still on');
+});
+
+test('a user\'s bare "on" keeps the skill\'s child key off, so the skill is never listed in full twice', POSIX_ONLY, () =>
+{
+    const { steps } = run(['install', 'update'], { after: (repo, i) => { if (i === 0) fs.writeFileSync(localOf(repo), JSON.stringify({ skillOverrides: { typescript: 'on' } })); return { ...seen(repo), hasTs: hasRow(repo, childKeyOf('typescript')) }; } });
+    assert.strictEqual(steps[1].over.typescript, 'on');
+    assert.strictEqual(steps[1].over[childKeyOf('typescript')], OFF);
+    assert.strictEqual(steps[1].hasTs, true, 'the child key is the stack\'s, at off');
+    assert.strictEqual(steps[1].over[childKeyOf('angular-conventions')], SKILL_SHOWN);
+});
+
+test('a root file that ends the trim puts the child key back to off, and takes the bare key out', POSIX_ONLY, () =>
+{
+    const key = childKeyOf('typescript');
+    const { steps } = run(['install', 'update', 'update'], {
+        after: (repo, i) =>
+        {
+            if (i === 1) { fs.mkdirSync(path.join(repo, 'src', 'app'), { recursive: true }); fs.writeFileSync(path.join(repo, 'src', 'app', 'x.ts'), ''); }
+            return { ...seen(repo), keyRow: hasRow(repo, key) };
+        },
+    });
+    assert.deepStrictEqual([steps[1].over.typescript, steps[1].over[key]], [NAME_ONLY, SKILL_SHOWN]);
+    assert.strictEqual(steps[2].over[key], OFF);
+    assert.strictEqual(steps[2].keyRow, true, 'with its row');
+    assert.strictEqual(steps[2].over.typescript, undefined, 'the bare key is gone');
 });
 
 test('an uninstall takes the trim keys out and leaves the user\'s', POSIX_ONLY, () =>
@@ -162,7 +223,7 @@ function bareRoot(options = {})
 }
 const ctxOf = (repo, work, sourceDir) => ({
     workspace: { on: true }, projectRoot: repo, env: { CLAUDE_CONFIG_DIR: path.join(work, 'acct') }, configDir: path.join(work, 'acct'),
-    dataInfo: { root: path.join(repo, '.alfred') }, source: { dir: sourceDir }, linkedSkills: TRIMMED,
+    dataInfo: { root: path.join(repo, '.alfred') }, source: { dir: sourceDir }, linkedSkills: TRIMMED, claudeDir: path.join(repo, '.claude'),
 });
 const REPO_ROOT = path.join(__dirname, '..');
 
@@ -265,7 +326,8 @@ test('a rule whose paths is not an array is skipped: no throw, the skill that on
         const got = childHide.skillKeys(ctxOf(repo, work, snapshotWith(work, { 'stack-graph.json': JSON.stringify(graph) })));
         assert.strictEqual(got.want['angular-conventions'], undefined, 'its only signal was the broken rule');
         assert.strictEqual(got.want.typescript, NAME_ONLY, 'a skill with a sound rule is still trimmed');
-        assert.strictEqual(got.want[`${WEB}:typescript`], OFF);
+        assert.strictEqual(got.want[`${WEB}:typescript`], SKILL_SHOWN);
+        assert.strictEqual(got.want[`${WEB}:angular-conventions`], OFF, 'a skill that is not trimmed keeps its child key off');
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });

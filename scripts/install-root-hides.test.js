@@ -20,7 +20,8 @@ const SCOPE = ['--scope', 'local'];
 const UPDATE = [...SCOPE, '--installed-only'];
 const OFF = 'off';
 const CHILD = 'api';
-const ACCOUNT_ON = { ALFRED_CODE_WORKSPACE: '1' };
+// The trim of a root's child-only skills (install-root-trims.test.js) is switched off here, so each case tests the hide keys alone.
+const ACCOUNT_ON = { ALFRED_CODE_WORKSPACE: '1', ALFRED_CODE_ROOT_SKILLS: 'all' };
 
 const localOf = (repo) => path.join(repo, '.claude', 'settings.local.json');
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
@@ -85,7 +86,7 @@ test('the first root run after a child joins writes a key for every skill the ru
         after: (repo) => ({ over: overrides(repo), expected: linkedNames(repo, [CHILD]).filter((name) => rootLinks(repo).includes(name)).map((name) => `${CHILD}:${name}`).sort() }),
     });
     assert.ok(steps[1].expected.length > 5, `the run re-links the child to the root's whole set: ${steps[1].expected.length}\n${outs[1]}`);
-    assert.deepStrictEqual(Object.keys(steps[1].over).filter((key) => key.includes(':')).sort(), steps[1].expected, 'the <rel>:<name> keys; the root\'s own trim keys have no colon');
+    assert.deepStrictEqual(Object.keys(steps[1].over).filter((key) => key.includes(':')).sort(), steps[1].expected, 'the <rel>:<name> keys; a key with no colon would be a trim key');
 });
 
 test('a member pick the root links into its own .claude/skills gets a key, though the root\'s own list does not name it', POSIX_ONLY, () =>
@@ -206,7 +207,7 @@ test('a skill the root drops loses its key at the next run, and a key the user t
 
 test('the workspace switch at 0 writes no key', POSIX_ONLY, () =>
 {
-    const { steps } = run(['install', 'update'], { env: { ALFRED_CODE_WORKSPACE: '0' } });
+    const { steps } = run(['install', 'update'], { env: { ...ACCOUNT_ON, ALFRED_CODE_WORKSPACE: '0' } });
     assert.deepStrictEqual(steps[1].over, {});
 });
 

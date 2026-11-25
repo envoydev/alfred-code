@@ -22,7 +22,7 @@ const childrenOnly = require('./children-only-constants.js');
 const hide = require('../workspace-include/hide.js');
 const brand = require('./brand.js');
 const settingsKeys = require('./settings-keys.js');
-const { OBJECT_PATH, SKILL_HIDDEN, LAST_ROW } = require('./settings-keys-constants.js');
+const { OBJECT_PATH, SKILL_HIDDEN, SKILL_SHOWN, LAST_ROW } = require('./settings-keys-constants.js');
 const { RULES_DIR_PARTS } = require('./native-rules-constants.js');
 
 const bare = (file) => file.replace(/\.md$/, '');
@@ -34,23 +34,54 @@ function isStackFile(file)
     catch { return false; }
 }
 
-// The `skillOverrides` keys of the running project: { want, said }. `want` holds `'<rel>:<name>': 'off'` for each skill a
+const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const skillNameOf = (key) => key.slice(key.lastIndexOf(':') + 1);
+
+// The `skillOverrides` object of the root's settings.local.json, or null where it cannot be read or is no object.
+function fileOverrides(ctx)
+{
+    const { readSettings } = require('./settings.js');
+    try
+    {
+        const { data } = readSettings(path.join(ctx.claudeDir, 'settings.local.json'));
+        if (data.skillOverrides === undefined) return {};
+        return isPlainObject(data.skillOverrides) ? data.skillOverrides : null;
+    }
+    catch { return null; }
+}
+
+// The trimmed names whose bare key is in effect: absent from the file, or `name-only` under the stack's row in `prior`. A bare
+// key the user set (another value, or `name-only` with no row) is theirs, so the child's key stays hidden: the skill is never
+// listed in full twice. A file that cannot be read puts none in effect.
+function bareKeysInEffect(ctx, names, prior)
+{
+    const over = names.length ? fileOverrides(ctx) : null;
+    if (!over) return new Set();
+    const nameOnlyHash = settingsKeys.valueRow(childrenOnly.NAME_ONLY);
+    const ours = (name) => prior[settingsKeys.keyRow(OBJECT_PATH.skillOverrides, name)] === nameOnlyHash;
+    return new Set(names.filter((name) => !Object.hasOwn(over, name) || (over[name] === childrenOnly.NAME_ONLY && ours(name))));
+}
+
+// The `skillOverrides` keys of the running project: { want, said }. `want` holds `'<rel>:<name>'` at 'off' (at 'on' for a trimmed skill, below) for each skill a
 // child below holds as the stack's that this run links into the root's own `.claude/skills` (`ctx.linkedSkills`, the names of
 // the link step's want - a member pick the root links is one, a store item kept for a set-aside child alone is not), and
 // `'<name>': 'name-only'` for each skill the root links only for its children (children-only-read.js); `said` its `!!` lines.
-function skillKeys(ctx)
+// A child key whose skill is trimmed is wanted at 'on' while the root's bare key is in effect (`prior`, the ledger's rows of
+// settings.local.json): measured, a `<rel>:<name>` key outranks the bare key for that copy, so a root session working in the
+// child sees the child's copy in full (docs/workspace-layering-evidence.md, G5).
+function skillKeys(ctx, { prior = {} } = {})
 {
     const top = fs.realpathSync.native(ctx.projectRoot);
     const { rows } = childKeep.recordsBelow(ctx.projectRoot, { env: ctx.env, dataRoot: ctx.dataInfo.root });
     const children = hide.belowRows(rows).map((row) => ({ rel: relOnDisk(top, row.root, row.rel), skills: stackSkillsOf(row.root) }));
-    const hidden = Object.fromEntries(hide.hiddenSkillKeys({ children, listed: ctx.linkedSkills || [] }).map((key) => [key, SKILL_HIDDEN]));
+    const hiddenKeys = hide.hiddenSkillKeys({ children, listed: ctx.linkedSkills || [] });
     let trims;
     try { trims = trimWant(ctx); }
     catch (err) { trims = { want: {}, said: [childrenOnly.failureLine(err.message)] }; }
+    const shown = bareKeysInEffect(ctx, Object.keys(trims.want), prior);
+    const hidden = Object.fromEntries(hiddenKeys.map((key) => [key, shown.has(skillNameOf(key)) ? SKILL_SHOWN : SKILL_HIDDEN]));
     return { want: { ...hidden, ...trims.want }, said: trims.said };
 }
-
-const wantedSkills = (ctx) => skillKeys(ctx).want;
 
 // { ruleGlobs: [glob], stays: [{ name, rel }] } for the running project. `ctx.lists` is the run's final set and
 // `ctx.held.keepOnly` the lines it keeps for a set-aside child alone, both set before the workspace step.
@@ -82,7 +113,7 @@ function syncSkillKeys(ctx)
     if (!ledger) return { created: false };
     const settingsMap = ledger.settings || {};
     const prior = settingsMap['settings.local.json'] || {};
-    const { want, said } = skillKeys(ctx);
+    const { want, said } = skillKeys(ctx, { prior });
     for (const line of said) ctx.log(`  ${line}`);
     if (!Object.keys(want).length && !Object.keys(prior).some((row) => settingsKeys.KEY_PATH.test(row))) return { created: false };
     let before = null;
@@ -114,4 +145,4 @@ function syncSkillKeys(ctx)
     return { created: got.created };
 }
 
-module.exports = { wantedSkills, skillKeys, wantedRules, syncSkillKeys, stackSkillsOf };
+module.exports = { skillKeys, wantedRules, syncSkillKeys, stackSkillsOf };

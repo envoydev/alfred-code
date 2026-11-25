@@ -42,8 +42,9 @@ function removeRowKey(data, row, hash)
 }
 
 // Brings the stack's keys of one object to `want` (`{ key: value }`): a wanted key the file lacks is added and ledgered, a
-// row whose key is no longer wanted takes its key out while the value is still the stack's, and a row whose key is gone or
-// changed just leaves. The file is written only when something changed. Returns { rows, changed, created, refused }.
+// ledgered key still at the stack's value but wanted at another is rewritten (its row follows), a row whose key is no longer
+// wanted takes its key out while the value is still the stack's, and a row whose key is gone or changed just leaves. The
+// file is written only when something changed. Returns { rows, changed, created, refused }.
 function syncKeys({ file, objectPath, want, prior = {}, log = () => {}, note = () => {}, report = null })
 {
     const { readSettings, putFile } = require('./settings.js');
@@ -66,7 +67,13 @@ function syncKeys({ file, objectPath, want, prior = {}, log = () => {}, note = (
     {
         const key = keyByHash(object, KEY_PATH.exec(row)[2]);
         if (key === undefined || valueRow(object[key]) !== hash) continue;
-        if (wanted.has(valueHash(key))) { rows[row] = hash; continue; }
+        if (wanted.has(valueHash(key)))
+        {
+            // The stack's own key at a new wanted value is rewritten, and its row follows; the file's one summary line counts it.
+            if (valueRow(want[key]) !== hash) { object[key] = want[key]; changed = true; }
+            rows[row] = valueRow(want[key]);
+            continue;
+        }
         delete object[key];
         changed = true;
         if (report) report.remove(objectPath, key);
