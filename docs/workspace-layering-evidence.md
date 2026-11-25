@@ -357,3 +357,10 @@ to the root's folder, as an install writes it:
 
 So the touch path does not de-duplicate a link to a file the root already loaded (the `--add-dir` path does), which is
 the pair the user reported, and the `<rel>:<name>` key hides it there too.
+
+A child's agents from the root (the same day, signed in, `claude -p --model haiku --allowedTools Read,Agent`): the
+child `kid` (its own git repository) held `.claude/agents/kidcheck.md` and `.claude/skills/kidskill/`. Prompted to Read
+`kid/x.txt`, then name the dispatchable agents holding 'kidcheck' and the skills holding 'kidskill', the model answered
+`AGENTS: NONE` and `SKILLS: kidskill`; the debug log has `[skills] Dynamically discovered 1 skills` and no agent line.
+So a touch loads a child's skills into a root session and never its agents: an agent the root's own flows dispatch
+must stay linked in the root's `.claude/agents`.
