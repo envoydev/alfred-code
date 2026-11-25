@@ -13,7 +13,7 @@ own picks and ignores, and its own scope.
   the cascade skips it and everything below it.
 - Indented under a row, that project's own asks, as its own update would print them:
   `docs-move: offer`, `instructions-file: ... update=ask*`, `instructions-both: ask`, `workspace: role-ask <case> <rel>`.
-- `set-aside: <rel>` - a joined child the user set aside, printed in place of its `project:` row: it is no child for the fit check, the carry ask or the cascade: it is left out of the count and runs nothing here, and a plan with only `set-aside:` rows below asks and runs nothing. The close names each: '`/alfred-code:update` in `<rel>` brings it up to date'.
+- `set-aside: <rel>` - a joined child the user set aside, printed in place of its `project:` row: it is no child for the fit check, the carry ask or the cascade: it is not in the count and runs nothing here, and a plan with only `set-aside:` rows below asks and runs nothing. The close names each: '`/alfred-code:update` in `<rel>` brings it up to date'.
 - `gone: <rel>` - a listed child folder that no longer holds an install; the cascade removes its line.
 - `rescan: <rel>` - an installed project below with no parent line, no role recorded and its workspace switch not 0
   (every update's `plan` rescans). Each is joined below, after step 2's answers and before the installer call, and

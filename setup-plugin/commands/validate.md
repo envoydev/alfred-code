@@ -465,7 +465,7 @@ output to `$TMP/select.out` - then:
 - **Keep, before the apply.** While `include` printed a `set-aside:` line, REDUNDANT and accepted JUDGMENT-DROP rows
   show `kept for <rels>`. The keep covers REDUNDANT and accepted JUDGMENT-DROP rows and never a retired row: a migration row goes
   everywhere. On a yes, each `drop` of such a row gets `workspace-include.md`'s keep call once, and each keep call runs
-  before step 10's apply. Its `!!` case and the user-scope plugin case are that file's too.
+  before step 10's apply. A `!!` keep and a user-scope plugin (that file's two cases) leave the drop set: leave that row's `--drop` flag off the installer call.
 - **Apply**: run the delta, then the installer from the snapshot. `node "$TMP/repo/scripts/derive-state.js" --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/final.json"`
   prints one `add <line>` / `drop <line>` per accepted change against step 1's read-back, or
   `none` - which with no environment row accepted means there is nothing to apply: say so, run

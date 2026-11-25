@@ -9,7 +9,7 @@ set-aside child's picks, version or settings values.
 
 - `included: <rel>` - a joined child this run works on: detection reads it, the cascade updates it.
 - `set-aside: <rel>` - a joined child this run leaves alone. It is not read, not scanned and not updated.
-- `unasked: <rel>` - a joined child the user was never asked about. It counts as included until answered, and a child an update's rescan joins stays unasked until the next walk.
+- `unasked: <rel>` - a joined child the user was never asked about. It is taken as included until answered, and a child an update's rescan joins stays unasked until the next walk.
 - `below: <rel>` - a project below a child. It follows its child and is never asked about.
 - `unattended: on` - nobody answers asks in this run.
 - `include: <i> included, <s> set aside, <u> unasked` - the summary line.
@@ -17,7 +17,7 @@ set-aside child's picks, version or settings values.
 
 ## 1. The `!!` case
 
-Paste the `!!` line. Count every joined child as included this run, ask nothing and write nothing. The close names the line.
+Paste the `!!` line. Take every joined child as included this run, ask nothing and write nothing. No `included:` or `unasked:` line printed, since the record cannot list its children, so the root scan takes `--children none` and the close says the children were not read, naming the line.
 
 ## 2. The ask - only on `unasked:` lines
 
@@ -45,8 +45,8 @@ With no `unasked:` line, ask nothing. Say in one line which children are include
 
 ## 3. Detection and the scans
 
-- Detection reads `.` and the folder of every `included:` and `unasked:` child. The report names the folder per stack,
-  as `web-angular (app: angular.json)`.
+- Detection reads `.`, the folder of every `included:` and `unasked:` child, and each `below:` folder under those children.
+  The report names the folder per stack, as `web-angular (app: angular.json)`.
 - A set-aside child is not read. One report line each: `set aside <rel>`.
 - The root scan carries `--children`. `<csv>` is every `included:` and `unasked:` rel, and `none` is the value when there
   is none. The scan reads the projects below each child by itself. `--children none` reads this project's own files only.

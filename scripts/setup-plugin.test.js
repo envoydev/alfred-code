@@ -2171,6 +2171,17 @@ test('validate: the keep covers REDUNDANT and accepted JUDGMENT-DROP rows, never
     assert.match(validate, /never a (migration|retired) row/);
     assert.match(validate, /each keep call runs before step 10's apply/);
     assert.ok(validate.includes('--children'), 'the audit block scans the included children');
+    assert.match(flat(cmdBody('configure')), /scan-evidence\.js" --root \. --catalog "\$TMP\/repo\/meta\/evidence\.json" --children <csv\|none> --out/, 'configure: the evidence scan carries --children');
+    assert.match(flat(installBody()), /scan-evidence\.js" --root \. --catalog [^`]*`\. Add `--role root`[^.]*and `--children <csv\|none>` as `workspace-include\.md` says/, 'init install: the evidence scan carries --children');
+    assert.match(flat(validate), /--judgment "\$TMP\/repo\/meta\/judgment\.json" --children "<csv\|none>" --out/, 'validate scan carries --children');
+    assert.match(validate, /leave that row's `--drop` flag off the installer call/, 'a failed keep and a user-scope plugin leave the drop set');
+    const configureText = flat(cmdBody('configure'));
+    assert.match(configureText, /'Keep' makes no call\. Any other answer is ONE call[^.]*run at once, before step 11's installer/, 'configure: the include answer is written before the installer');
+    const include = flat(refBody('workspace-include'));
+    assert.match(include, /root scan takes `--children none` and the close says the children were not read/, 'the !! case names the scan value');
+    assert.match(include, /`below:` folder under those children/, 'detection reads the below folders');
+    for (const name of ['workspace-include', 'update-workspace', 'validate-workspace'])
+        assert.ok(!/left out of the count|counted|left out/.test(refBody(name).replace(/never counted\n?\s*as a project below/, '')), `${name}: no forbidden state word`);
     const configure = flat(cmdBody('configure'));
     assert.match(configure, /at a root with a set-aside child[^.]*take the same keep call before (its|the) apply/i);
 });

@@ -146,7 +146,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   until this call ran and its `total:` line is in your message (audit 2026-10-11, session a9e06780: the inventory
   sat in a collapsed tool result and the ask said 'Installed set is shown above'). Also run the evidence scan quietly -
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
-  --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
+  --children <csv|none> --out "$TMP/found.json"` (the value is `workspace-include.md`'s) - so the walk's tables can label what the project provably uses
   (`--found`).
 - **Report what changed since the install.** `.claude/alfred-code.stamp` records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
@@ -385,7 +385,7 @@ Children included from this root: <csv>. Change that?
 - 'Set all aside' - this project leaves every joined child alone: each stays joined and keeps what it has
 ```
 
-Every answer is ONE call naming every joined child, its lines pasted: `node "$TMP/repo/scripts/workspace.js" include --root . --include <csv> --set-aside <csv>`, either flag left off when its list is empty. A set-aside child kept what it had when the last run dropped something, and a child included again reads that keep at its next update.
+'Keep' makes no call. Any other answer is ONE call naming every joined child, run at once, before step 11's installer as the role change above is, so the installer's backstop sees it; its lines are pasted: `node "$TMP/repo/scripts/workspace.js" include --root . --include <csv> --set-aside <csv>`, either flag left off when its list is empty. A set-aside child kept what it had when the last run dropped something, and a child included again reads that keep at its next update.
 
 When the role line reads a root and `workspace.js children` or `status`'s `ignored-children:` line names at least one
 project below (`<n>` is the `child:` rows plus the listed entries, `<m>` the listed entries), ask:
