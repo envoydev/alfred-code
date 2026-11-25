@@ -59,6 +59,7 @@ Thumbs.db
 !.claude/rules/cleanup.md
 !.claude/rules/windows-vm.md
 !.claude/rules/plan-approval.md
+!.claude/rules/update-command.md
 !.claude/rules/javascript.md
 !.claude/rules/typescript.md
 !.claude/rules/project-structure.md
