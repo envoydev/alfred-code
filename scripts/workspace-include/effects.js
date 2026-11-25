@@ -77,6 +77,13 @@ function readAside(top, rows, { env })
     return select.asideRows(rows, views);
 }
 
+// What `plan` and `cascade` skip: { skipped, heads } - the rels they run nothing in, and the ones `plan` names.
+function readSkipped(top, rows, { env })
+{
+    const skipped = select.skippedRows(rows, readAside(top, rows, { env }));
+    return { skipped, heads: select.asideHeads(rows, skipped) };
+}
+
 const usage = (text) => ({ code: EXIT.usage, line: `${ERROR_PREFIX}${text}` });
 const writeFailure = (result) => (result.why === WRITE_WHY.garbage ? { code: result.code }
     : { code: result.code, line: `${ERROR_PREFIX}this project's workspace file could not be written (${result.why})` });
@@ -122,4 +129,4 @@ function runInclude({ root, values }, { env, out })
     return runRead(read, { env, out });
 }
 
-module.exports = { readInclude, writeInclude, writeKeep, readAside, runInclude };
+module.exports = { readInclude, writeInclude, writeKeep, readAside, readSkipped, runInclude };

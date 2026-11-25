@@ -2,6 +2,8 @@
 // workspace-include: the named values of `workspace.js include`.
 
 const STATE = Object.freeze({ included: 'included', setAside: 'set-aside', unasked: 'unasked' });
+// The `subtree()` row state of a listed child whose folder is gone.
+const ROW_GONE = 'gone';
 const FLAG = Object.freeze({ include: '--include', setAside: '--set-aside', keep: '--keep' });
 const NONE = 'none';
 const STORE_KINDS = Object.freeze(['skill', 'agent', 'rule']);
@@ -29,4 +31,4 @@ const KEPT_LINE_RE = /^\S+ \S+$/;
 const MARKDOWN_SUFFIX_RE = /\.md$/;
 const MARKDOWN_KINDS = Object.freeze(['agent', 'rule']);
 
-module.exports = { STATE, FLAG, NONE, STORE_KINDS, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS };
+module.exports = { STATE, ROW_GONE, FLAG, NONE, STORE_KINDS, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS };

@@ -2,7 +2,7 @@
 // workspace-include: which joined children a root includes, which it has set aside and which it has not asked about.
 // Pure: values in, values out. The installer requires this file, so it requires nothing but its own constants.
 
-const { STATE, FLAG, TOP_RELS } = require('./constants.js');
+const { STATE, ROW_GONE, FLAG, TOP_RELS } = require('./constants.js');
 
 // A map read as an own key only: a child named `constructor` or `toString` is an ordinary child, never an inherited member.
 const ownValue = (map, key) => (map && Object.hasOwn(map, key) ? map[key] : undefined);
@@ -61,6 +61,12 @@ function asideRows(rows, viewsByParent)
     return aside;
 }
 
+// The aside rows `plan` and `cascade` run nothing in: a gone row is left out, since its line is still the root's to remove.
+const skippedRows = (rows, aside) => new Set(rows.filter((row) => aside.has(row.rel) && row.state !== ROW_GONE).map((row) => row.rel));
+
+// The skipped rows whose parent row is not skipped, in row order: the ones `plan` names, each standing for its subtree.
+const asideHeads = (rows, skipped) => rows.filter((row) => skipped.has(row.rel) && !skipped.has(row.parentRel)).map((row) => row.rel);
+
 // The verb's lines: one a child, the count, then each project below.
 function lines(states, below, saved = false)
 {
@@ -81,4 +87,4 @@ function flagError(values)
     return null;
 }
 
-module.exports = { asWritten, ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, lines, csvOf, flagError };
+module.exports = { asWritten, ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, skippedRows, asideHeads, lines, csvOf, flagError };

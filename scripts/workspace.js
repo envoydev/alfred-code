@@ -34,6 +34,8 @@ const stamp = require('./install/stamp.js');
 // (settings.js -> derive-state.js -> hook-prelude.js, and copy.js), whose line 67 runs `layout.applyVariables(<cwd project>)` at load
 // and changes `process.env`, which `role --answer leave` then reads (AC15, AC24 of install-workspace.test.js).
 const nestedMod = () => require('./install/nested.js');
+const includeFx = () => require('./workspace-include/effects.js');
+const ASIDE_STATE = require('./workspace-include/constants.js').STATE.setAside;
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { REPORT_LINE_AT_TOP } = require('./install/report-constants.js');
@@ -356,16 +358,18 @@ function planVerb(out)
     const rows = ws.subtree(top, { env });
     // A listed child that lost its own `.git` is part of this repository now: no project row, only a `nested:` one.
     const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top)).map((r) => r.rel));
+    // A child the root set aside, and every row below it, runs nothing: it is named once, as `set-aside:`.
+    const aside = includeFx().readSkipped(top, rows, { env });
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-plan-'));
     try
     {
-        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok' && !joinedNested.has(r.rel)).length} projects`);
+        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok' && !joinedNested.has(r.rel) && !aside.skipped.has(r.rel)).length} projects`);
         const entries = [];
         const plans = new Map();
         const parents = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
         for (const [i, row] of rows.entries())
         {
-            if (row.state !== 'ok' || joinedNested.has(row.rel)) continue;
+            if (row.state !== 'ok' || joinedNested.has(row.rel) || aside.skipped.has(row.rel)) continue;
             // The top project's own changes and asks are its walk's (the preflight printed them): its read-back is taken
             // only to project its children, so a standalone update spawns nothing here.
             if (row.parentRel === null)
@@ -405,6 +409,7 @@ function planVerb(out)
             if (why) out(`  !! ${why}`);
             for (const l of asksOf(row.root)) { out(`  ${l}`); entry.asks.push(l.trim()); }
         }
+        for (const rel of aside.heads) out(`${ASIDE_STATE}: ${field(rel)}`);
         for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${field(row.rel)}`);
         let rescanned = 0;
         if (has('--rescan'))
@@ -548,19 +553,24 @@ function cascade(out)
     if (has('--hold') || answers['.'] === HOLD)
     {
         // A gone row is no project to update later, only its line: it is named apart and left out of the count.
-        const below = ws.subtree(top, { env }).filter((r) => r.depth > 0);
-        for (const r of below) out(`cascade: ${field(r.rel)}\t${r.state === 'gone' ? 'gone-kept' : 'held'}`);
-        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== 'gone').length} held`);
+        const all = ws.subtree(top, { env });
+        const { skipped } = includeFx().readSkipped(top, all, { env });
+        const below = all.filter((r) => r.depth > 0);
+        const heldState = (r) => (skipped.has(r.rel) ? ASIDE_STATE : r.state === 'gone' ? 'gone-kept' : 'held');
+        for (const r of below) out(`cascade: ${field(r.rel)}\t${heldState(r)}`);
+        const setAside = below.filter((r) => skipped.has(r.rel)).length;
+        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== 'gone' && !skipped.has(r.rel)).length} held${setAside ? `, ${setAside} set aside` : ''}`);
         return;
     }
     const source = sourceArg();
     const rows = ws.subtree(top, { env });
+    const { skipped } = includeFx().readSkipped(top, rows, { env });
     const byRel = new Map(rows.map((r) => [r.rel, r]));
     const hasChildren = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cascade-'));
     const plans = new Map();
     const blocked = new Set();
-    const count = { updated: 0, failed: 0, skipped: 0, nested: 0 };
+    const count = { updated: 0, failed: 0, skipped: 0, nested: 0, [ASIDE_STATE]: 0 };
     const row = (rel, state) => { out(`cascade: ${field(rel)}\t${state}`); if (state in count) count[state] += 1; };
     try
     {
@@ -575,6 +585,7 @@ function cascade(out)
         for (const [i, r] of rows.entries())
         {
             if (r.depth === 0) continue;
+            if (skipped.has(r.rel)) { row(r.rel, ASIDE_STATE); continue; }
             if (blocked.has(r.parentRel)) { blocked.add(r.rel); row(r.rel, 'skipped'); continue; }
             const parent = byRel.get(r.parentRel);
             if (r.state === 'gone')
@@ -638,7 +649,7 @@ function cascade(out)
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     // A nested row is no failure and no skipped one: it follows `skipped`, so a reader of the line up to there keeps matching.
-    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped${count.nested ? `, ${count.nested} nested` : ''}`);
+    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped${count.nested ? `, ${count.nested} nested` : ''}${count[ASIDE_STATE] ? `, ${count[ASIDE_STATE]} set aside` : ''}`);
 }
 
 // W3 Task 7: a path below this root marked ignored. Each joined child at or below it keeps the values and rules it reads
