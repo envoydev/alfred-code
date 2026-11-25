@@ -6,6 +6,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+const { verdictOf, blockText, askText } = require('./hook-test-env');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // RU04: the background note's once-per-actor marker sits in the hook temp dir
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
@@ -22,6 +23,7 @@ const shell = require(DISPATCH);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-guards-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const BIG = path.join(__dirname, 'lint-skills.js');
+const { blockVerdict } = require('../stack/hooks/hook-prelude.js');
 
 // The containment every guard suite applies: an empty account dir, no ambient stack settings from the
 // session this suite may run inside (an installed checkout exports ALFRED_CODE_* into every tool call).
@@ -736,11 +738,11 @@ test('the docs label every shell guard with the shell route, never Bash alone (2
 // audit 2026-10-10 (C14, C25, T5 cross-track): the dispatcher's own checks - zsh quoting, the foreground poll loop,
 // an unaddressed sed -i over several lines
 // ---------------------------------------------------------------------------------------------
-const own = (dir, command, { env = {}, extra = {} } = {}) => {
-  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
+const own = (dir, command, { env = {}, extra = {}, mode } = {}) => {
+  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir, ...(mode ? { permission_mode: mode } : {}) }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
   let h = {};
   try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
-  return { status: r.status, stderr: r.stderr, command: h.updatedInput ? h.updatedInput.command : null, context: h.additionalContext || '' };
+  return { status: r.status, stderr: r.stderr, verdict: verdictOf(r), text: blockText(r), asked: askText(r), command: h.updatedInput ? h.updatedInput.command : null, context: h.additionalContext || '' };
 };
 const ZSH = { env: { SHELL: '/bin/zsh' } };
 const rowsIn = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'own.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
@@ -766,31 +768,31 @@ test('audit 2026-10-10 C14: under zsh a tool-owned glob and a bare =word are quo
 test('audit 2026-10-10 C25: a foreground until / while loop that sleeps is blocked, naming the background routes', () => {
   const dir = project('poll-');
   const r = own(dir, 'until grep -q READY run.log; do sleep 5; done');
-  assert.equal(r.status, 2, '516e653d, 3b53e0e8');
-  assert.match(r.stderr, /FOREGROUND wait[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/, 'the background routes lead');
-  assert.doesNotMatch(r.stderr, /timeout 60 <the loop>/, 'no bounded-loop hint - the model chained them (deep hooks review 2026-10-16)');
-  assert.equal(own(dir, 'while true; do curl -s localhost:1 && break; sleep 2; done').status, 2);
-  assert.equal(own(dir, "bash -c 'until test -f done.flag; do sleep 1; done'").status, 2, 'inside a shell -c string');
-  assert.equal(own(dir, 'until grep -q READY run.log; do sleep 5; done', { extra: { run_in_background: true } }).status, 0, 'in the background');
-  assert.equal(own(dir, 'timeout 60 bash -c "until test -f done.flag; do sleep 1; done"').status, 0, 'bounded at 60s');
-  assert.equal(own(dir, 'timeout 600 bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'a 600s bound is the wait it replaces');
+  assert.equal(r.verdict, 'ask', '516e653d, 3b53e0e8');
+  assert.match(r.text, /FOREGROUND wait[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/, 'the background routes lead');
+  assert.doesNotMatch(r.text, /timeout 60 <the loop>/, 'no bounded-loop hint - the model chained them (deep hooks review 2026-10-16)');
+  assert.equal(own(dir, 'while true; do curl -s localhost:1 && break; sleep 2; done').verdict, 'ask');
+  assert.equal(own(dir, "bash -c 'until test -f done.flag; do sleep 1; done'").verdict, 'ask', 'inside a shell -c string');
+  assert.equal(own(dir, 'until grep -q READY run.log; do sleep 5; done', { extra: { run_in_background: true } }).verdict, 0, 'in the background');
+  assert.equal(own(dir, 'timeout 60 bash -c "until test -f done.flag; do sleep 1; done"').verdict, 0, 'bounded at 60s');
+  assert.equal(own(dir, 'timeout 600 bash -c "until test -f done.flag; do sleep 1; done"').verdict, 'ask', 'a 600s bound is the wait it replaces');
   // hooks review 2026-10-16: the duration takes its unit and the options before it
   for (const t of ['timeout 2m', 'timeout -s KILL 60', 'timeout --signal=KILL 90s', 'timeout -k 5 1m'])
-    assert.equal(own(dir, `${t} bash -c "until test -f done.flag; do sleep 1; done"`).status, 0, `bounded: ${t}`);
-  assert.equal(own(dir, 'timeout 3m bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'three minutes is past the bound');
-  assert.equal(own(dir, 'while read -r l; do echo "$l"; sleep 0.1; done < a.txt').status, 0, 'a read loop reads input');
-  assert.equal(own(dir, 'echo "until x; do sleep 1; done"').status, 0, 'text in quotes');
-  assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').status, 0, 'a for loop is bounded by its list');
+    assert.equal(own(dir, `${t} bash -c "until test -f done.flag; do sleep 1; done"`).verdict, 0, `bounded: ${t}`);
+  assert.equal(own(dir, 'timeout 3m bash -c "until test -f done.flag; do sleep 1; done"').verdict, 'ask', 'three minutes is past the bound');
+  assert.equal(own(dir, 'while read -r l; do echo "$l"; sleep 0.1; done < a.txt').verdict, 0, 'a read loop reads input');
+  assert.equal(own(dir, 'echo "until x; do sleep 1; done"').verdict, 0, 'text in quotes');
+  assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').verdict, 0, 'a for loop is bounded by its list');
   // deep hooks review 2026-10-16: the turn was freed in 2 of 11 episodes - the loop came back as a tail -f or a chain
-  assert.equal(own(dir, 'timeout 280 tail -f run.log').status, 2, 'a long follow');
-  assert.equal(own(dir, 'tail -n 50 -f run.log').status, 2, 'an unbounded follow');
-  assert.equal(own(dir, 'tail -F run.log | grep -m1 READY').status, 2, 'a follow piped into its sentinel');
-  assert.equal(own(dir, 'timeout 90 tail -f run.log').status, 0, 'a follow bounded at 90s');
-  assert.equal(own(dir, 'tail -n 50 run.log').status, 0, 'a plain tail');
-  assert.equal(own(dir, 'tail -f run.log', { extra: { run_in_background: true } }).status, 0, 'a background follow');
+  assert.equal(own(dir, 'timeout 280 tail -f run.log').verdict, 'ask', 'a long follow');
+  assert.equal(own(dir, 'tail -n 50 -f run.log').verdict, 'ask', 'an unbounded follow');
+  assert.equal(own(dir, 'tail -F run.log | grep -m1 READY').verdict, 'ask', 'a follow piped into its sentinel');
+  assert.equal(own(dir, 'timeout 90 tail -f run.log').verdict, 0, 'a follow bounded at 90s');
+  assert.equal(own(dir, 'tail -n 50 run.log').verdict, 0, 'a plain tail');
+  assert.equal(own(dir, 'tail -f run.log', { extra: { run_in_background: true } }).verdict, 0, 'a background follow');
   const chain = 'timeout 110 bash -c "until test -f a; do sleep 5; done"; timeout 110 bash -c "until test -f b; do sleep 5; done"';
-  assert.equal(own(dir, chain).status, 2, 'two 110s waits hold 220s');
-  assert.equal(own(dir, 'timeout 60 bash -c "until test -f a; do sleep 1; done"; timeout 60 bash -c "until test -f b; do sleep 1; done"').status, 0, 'two 60s waits stay inside 120s');
+  assert.equal(own(dir, chain).verdict, 'ask', 'two 110s waits hold 220s');
+  assert.equal(own(dir, 'timeout 60 bash -c "until test -f a; do sleep 1; done"; timeout 60 bash -c "until test -f b; do sleep 1; done"').verdict, 0, 'two 60s waits stay inside 120s');
   assert.ok(rowsIn(dir).some((x) => !x.mode && x.detail && x.detail.branch === 'poll-loop'), 'a block row');
 });
 
@@ -1055,21 +1057,23 @@ test('A-T1: a read-only seat may not write through the shell; a writing seat, th
     for (const c of ['git reset -q', 'git restore --staged a.txt', 'git checkout -- a.txt', 'git stash', 'git rm --cached a.txt', 'git add .',
       'git commit -m x', 'git switch main', 'git clean -fd', 'echo x > notes.txt', 'sed -i s/a/b/ a.txt', 'cp a.txt b.txt', 'rm a.txt']) {
       const r = fire(c, seat);
-      assert.equal(r.status, 2, `${seat}: ${c} must block`);
+      // a guard that still exits 2 on the same command (the rm guard on a checkout) makes it an exit 2 with the ask after it
+      assert.notEqual(verdictOf(r), 0, `${seat}: ${c} must block`);
+      assert.match(blockText(r), /read-only seat/, `${seat}: ${c} names the seat rule`);
     }
   }
   const verifier = 'alfred-code:web-angular-verifier';
   const denied = fire('git reset -q', verifier);
-  assert.match(denied.stderr, /read-only seat/);
-  assert.match(denied.stderr, /report/, 'the denial routes the change to the report');
+  assert.match(blockText(denied), /read-only seat/);
+  assert.match(blockText(denied), /report/, 'the denial routes the change to the report');
   for (const c of ['git status', 'git diff', 'git stash list', 'git clean -n', 'git log -p -1', 'npm test', `echo x > ${path.join(scratch, 'out.txt')}`,
     'echo x > /dev/null', 'out=$(mktemp); echo x > "$out"']) {
-    assert.equal(fire(c, verifier).status, 0, `${verifier}: ${c} must pass`);
+    assert.equal(verdictOf(fire(c, verifier)), 0, `${verifier}: ${c} must pass`);
   }
-  assert.equal(fire('Set-Content -Path notes.txt -Value x', verifier, 'PowerShell').status, 2, 'PowerShell: a write cmdlet');
+  assert.equal(verdictOf(fire('Set-Content -Path notes.txt -Value x', verifier, 'PowerShell')), 'ask', 'PowerShell: a write cmdlet');
   for (const [c, a] of [['git reset -q', 'alfred-code:aspnet-implementer'], ['echo x > notes.txt', undefined], ['git add .', 'dotnet-build-error-resolver'],
     ['git reset -q', 'other-plugin:aspnet-verifier']]) {
-    assert.equal(fire(c, a).status, 0, `${a || 'the main session'}: ${c} must pass`);
+    assert.equal(verdictOf(fire(c, a)), 0, `${a || 'the main session'}: ${c} must pass`);
   }
   // a project that itself lives in a temp dir is never scratch (the gate's Linux leg: /tmp held the project, and every
   // write in it passed as a temp-dir write)
@@ -1078,9 +1082,9 @@ test('A-T1: a read-only seat may not write through the shell; a writing seat, th
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'seat', cwd: inTmp, agent_id: 'a1', agent_type: verifier }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: inTmp, TMPDIR: scratch, TEMP: scratch, TMP: scratch },
   });
-  assert.equal(fireIn('echo x > notes.txt').status, 2, 'a write into a project under the temp dir is the seat\'s write');
+  assert.equal(verdictOf(fireIn('echo x > notes.txt')), 'ask', 'a write into a project under the temp dir is the seat\'s write');
   const beside = fireIn(`echo x > ${path.join(scratch, 'out2.txt')}`);
-  assert.doesNotMatch(beside.stderr, /read-only seat/, `a scratch write beside that project is no seat write: ${beside.stderr.slice(0, 200)}`);
+  assert.doesNotMatch(blockText(beside), /read-only seat/, `a scratch write beside that project is no seat write: ${blockText(beside).slice(0, 200)}`);
 });
 
 // Audit 2026-10-21 agents T1-2 / A-Q2: `git bisect` moves HEAD and the tree, so a read-only seat's bisect in the shared
@@ -1097,23 +1101,23 @@ test('agents T1-2: a read-only seat may not bisect the project; a bisect read an
   });
   for (const c of ['git bisect start', 'git bisect good HEAD~1', 'git bisect bad', 'git bisect reset', 'git bisect run npm test',
     'git bisect skip', 'git bisect replay log.txt']) {
-    assert.equal(fire(c).status, 2, `${c} in the project must block`);
+    assert.equal(verdictOf(fire(c)), 'ask', `${c} in the project must block`);
   }
   for (const c of ['git bisect log', 'git bisect visualize', 'git bisect view', 'git bisect terms']) {
-    assert.equal(fire(c).status, 0, `${c} reads`);
+    assert.equal(verdictOf(fire(c)), 0, `${c} reads`);
   }
   const clone = path.join(scratch, 'clone');
   git(scratch, 'clone', '-q', dir, clone);
   for (const c of [`git -C ${clone} bisect start`, `cd ${clone} && git bisect run npm test`, `git -C ${clone} checkout -q HEAD~0`]) {
-    assert.equal(fire(c).status, 0, `${c} works in a scratch clone`);
+    assert.equal(verdictOf(fire(c)), 0, `${c} works in a scratch clone`);
   }
-  assert.equal(fire('git bisect start', clone).status, 0, 'a seat whose cwd is the scratch clone');
+  assert.equal(verdictOf(fire('git bisect start', clone)), 0, 'a seat whose cwd is the scratch clone');
   // a worktree of the project under the temp dir shares its refs: a `.git` file is never scratch
   const wt = path.join(scratch, 'wt');
   git(dir, 'worktree', 'add', '-q', '--detach', wt);
-  assert.equal(fire(`git -C ${wt} bisect start`).status, 2, 'a worktree of the project is the project');
-  assert.equal(fire(`git -C ${wt} commit -m x`).status, 2, 'a commit in a worktree of the project');
-  assert.equal(fire(`git -C ${path.join(dir, '.claude')} bisect start`).status, 2, 'a subdirectory of the project');
+  assert.equal(verdictOf(fire(`git -C ${wt} bisect start`)), 'ask', 'a worktree of the project is the project');
+  assert.equal(verdictOf(fire(`git -C ${wt} commit -m x`)), 'ask', 'a commit in a worktree of the project');
+  assert.equal(verdictOf(fire(`git -C ${path.join(dir, '.claude')} bisect start`)), 'ask', 'a subdirectory of the project');
 });
 
 // audit 2026-10-21 H5: the `[[ ]]` / `(( ))` scan ran a lazy match from every opener to the end of the text when no
@@ -1140,9 +1144,7 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command li
   const fire = (command) => run(DISPATCH, bashPayload(command, dir), { env: { CLAUDE_PROJECT_DIR: dir } });
   const blocked = (command, why, re) => {
     const r = fire(command);
-    let deny = false;
-    try { deny = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision === 'deny'; } catch { /* exit 2 */ }
-    assert.ok(r.status === 2 || deny, `${why}: ${command}\n${r.stderr}${r.stdout}`);
+    assert.notStrictEqual(verdictOf(r), 0, `${why}: ${command}\n${r.stderr}${r.stdout}`);
     if (re) assert.match(`${r.stderr}${r.stdout}`, re, why);
   };
   blocked(runner('"rm -rf ~"'), 'a recursive rm of home', /recursive rm/);
@@ -1166,4 +1168,105 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command li
   }
   const rows = ledgerRows(dir).filter((r) => r.detail && r.detail.branch === 'sensitive-runner');
   assert.ok(rows.length >= 1, 'the runner block writes its own ledger row');
+});
+
+// ---- guards ask instead of block (2026-11-25): the dispatcher's combine step, its protective stop and its own blocks ----
+// A block ask as a guard writes it: the verdict the helper builds for a payload nobody has stopped from asking.
+const blockAsk = (reason, guard) => JSON.stringify({ hookSpecificOutput: blockVerdict({ tool_name: 'Bash' }, reason, { env: {}, guard }).hookSpecificOutput });
+const DECLINED = 'If the user declined: ';
+
+test('combine: two block asks are one prompt with both user texts and both model texts', () => {
+  const one = blockAsk('Blocked: first harm. Fix one.', 'guard-a');
+  const two = blockAsk('Blocked: second harm. Fix two.', 'guard-b');
+  const out = shell.combine([r('guard-a.js', 0, one), r('guard-b.js', 0, two)]);
+  assert.strictEqual(out.code, 0);
+  assert.strictEqual(verdictOf(out), 'ask');
+  const user = askText(out);
+  assert.match(user, /alfred-code guard-a: first harm\./);
+  assert.match(user, /alfred-code guard-b: second harm\./);
+  assert.ok(user.indexOf('first harm') < user.indexOf('second harm'), 'guard order');
+  const model = blockText(out);
+  assert.ok(model.includes(`${DECLINED}Blocked: first harm. Fix one.`), model);
+  assert.ok(model.includes(`${DECLINED}Blocked: second harm. Fix two.`), model);
+});
+
+test('combine: a deny beside a block ask stays a deny, the ask riding after it as Also', () => {
+  const askJson = blockAsk('Blocked: the ask harm. Fix it.', 'guard-b');
+  const out = shell.combine([r('guard-a.js', 0, deny('Docs not read yet')), r('guard-b.js', 0, askJson)]);
+  assert.strictEqual(out.code, 0);
+  assert.strictEqual(verdictOf(out), 'deny');
+  const reason = JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason;
+  assert.match(reason, /^Docs not read yet\n\nAlso: alfred-code guard-b: the ask harm\./);
+});
+
+test('isDenied: exit 2 and a JSON deny stop the protective run, an ask does not', () => {
+  assert.strictEqual(shell.isDenied(r('g.js', 2, '', 'Blocked\n')), true);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, deny('no'))), true);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, blockAsk('Blocked: x. y.', 'g'))), false);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, ctx('only context'))), false);
+  assert.strictEqual(shell.isDenied(r('g.js', 0)), false);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, '{"hookSpecificOutput": ')), false, 'unparseable output is no deny');
+  assert.strictEqual(shell.isDenied(null), false);
+});
+
+test('blockResult: a verdict as a dispatcher result - ask or deny by the payload, exit 2 only on a Cursor deny', () => {
+  const plain = { tool_name: 'Bash' };
+  const asked = shell.blockResult(plain, 'Blocked: a thing. More.', 'shell-guards.js');
+  assert.deepStrictEqual([asked.guard, asked.code, asked.stderr], ['shell-guards.js', 0, '']);
+  assert.strictEqual(verdictOf(asked), 'ask');
+  const denied = shell.blockResult({ tool_name: 'Bash', permission_mode: 'dontAsk' }, 'Blocked: a thing. More.', 'shell-guards.js');
+  assert.strictEqual(denied.code, 0);
+  assert.strictEqual(blockText(denied), 'Blocked: a thing. More.');
+  const cursor = shell.blockResult({ tool_name: 'Bash', cursor_version: '1.0' }, 'Blocked: a thing. More.', 'shell-guards.js');
+  assert.deepStrictEqual([cursor.code, cursor.stderr], [2, 'Blocked: a thing. More.']);
+});
+
+// The four own blocks, each by the fixture the older tests use. B5 and B6 name the secret and read guards, whose own
+// runs find nothing in these lines.
+const OWN_BLOCKS = [
+  { name: 'a read-only seat write', branch: 'read-only-seat', re: /read-only seat/, guard: 'shell-guards',
+    command: () => 'git reset -q', extra: { agent_id: 'a1', agent_type: 'alfred-code:aspnet-verifier' } },
+  { name: 'a foreground wait', branch: 'poll-loop', re: /FOREGROUND wait/, guard: 'shell-guards',
+    command: () => 'until grep -q READY run.log; do sleep 5; done', extra: {} },
+  { name: 'the runner cap', branch: 'sensitive-runner-cap', re: /more than 4 judged/, guard: 'guard-secret-value',
+    command: () => Array.from({ length: 5 }, () => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- "true"`).join('; '), extra: {} },
+  { name: 'a runner line a guard blocks', branch: 'sensitive-runner', re: /--with-sensitive runner runs/, guard: 'guard-read-whole-file',
+    command: () => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- "cat big.ts"`, extra: {} },
+];
+function fireOwn(dir, block, session, mode)
+{
+  fs.writeFileSync(path.join(dir, 'big.ts'), 'const a = 1;\n'.repeat(500));
+  return run(DISPATCH, { ...bashPayload(block.command(), dir), session_id: session, ...block.extra, ...(mode ? { permission_mode: mode } : {}) }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
+}
+
+test('own checks ask: a read-only seat write, a foreground wait, the runner cap, a runner line a guard blocks', () => {
+  for (const block of OWN_BLOCKS) {
+    const dir = project('ownask-');
+    const session = `ask-${block.branch}`;
+    const res = fireOwn(dir, block, session);
+    assert.strictEqual(res.status, 0, `${block.name}: exit 0, the prompt is the answer (${res.stderr})`);
+    assert.strictEqual(verdictOf(res), 'ask', block.name);
+    assert.match(blockText(res), block.re, `${block.name}: the model text is today's text`);
+    assert.ok(blockText(res).startsWith('A guard asked the user about this call: '), block.name);
+    assert.match(askText(res), new RegExp(`^alfred-code ${block.guard}: `), `${block.name}: the prompt names the guard`);
+    const rows = ledgerRows(dir, session).filter((x) => !x.mode && x.detail && x.detail.branch === block.branch);
+    assert.strictEqual(rows.length, 1, `${block.name}: one ledger row, branch ${block.branch}`);
+  }
+});
+
+test('own checks deny where nobody can answer', () => {
+  for (const block of OWN_BLOCKS) {
+    const dir = project('owndeny-');
+    const session = `deny-${block.branch}`;
+    const asked = fireOwn(dir, block, `${session}-ask`);
+    const res = fireOwn(dir, block, session, 'dontAsk');
+    assert.strictEqual(res.status, 0, block.name);
+    assert.strictEqual(verdictOf(res), 'deny', block.name);
+    const reason = blockText(res);
+    assert.match(reason, block.re, block.name);
+    assert.ok(reason.startsWith('Blocked: '), `${block.name}: the full text, no lead added`);
+    const tail = blockText(asked);
+    assert.strictEqual(reason, tail.slice(tail.indexOf(DECLINED) + DECLINED.length), `${block.name}: the deny reason is the ask's full text, byte for byte`);
+    assert.strictEqual(ledgerRows(dir, session).filter((x) => !x.mode && x.detail && x.detail.branch === block.branch).length, 1, `${block.name}: the row is written on a deny too`);
+  }
 });

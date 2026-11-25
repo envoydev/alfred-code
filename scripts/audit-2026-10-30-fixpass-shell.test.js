@@ -42,7 +42,7 @@ function project(prefix) {
   fs.writeFileSync(path.join(dir, 'build.log'), 'log\n');
   return dir;
 }
-// The dispatcher's verdict on one Bash command: 2 (exit 2), 'deny', 'rewrite' or 0.
+// The dispatcher's verdict on one Bash command: 2 (exit 2), 'deny', 'ask' (the dispatcher's own blocks), 'rewrite' or 0.
 function fire(dir, command) {
   const r = spawnSync(process.execPath, [DISPATCH], {
     input: JSON.stringify({ session_id: 'fb', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: dir }),
@@ -51,7 +51,7 @@ function fire(dir, command) {
   let v = r.status === 2 ? 2 : 0;
   try {
     const o = JSON.parse(r.stdout).hookSpecificOutput || {};
-    if (v === 0 && o.permissionDecision === 'deny') v = 'deny';
+    if (v === 0 && (o.permissionDecision === 'deny' || o.permissionDecision === 'ask')) v = o.permissionDecision;
     else if (v === 0 && o.updatedInput) v = 'rewrite';
   } catch { /* no JSON */ }
   return { v, out: `${r.stderr}${r.stdout}`, stdout: r.stdout };
@@ -100,13 +100,13 @@ test('FB 2: every runner spelling is carried - a variable script, a node option 
   const calls = (n, last) => Array.from({ length: n }, (_, i) => runner(i === n - 1 && last ? last : '"true"')).join('; ');
   assert.strictEqual(fire(dir, calls(5, '"cat .env"')).v, 2, 'four true lines then cat .env');
   const over = fire(dir, calls(5));
-  assert.strictEqual(over.v, 2, 'five lines: one past the cap blocks');
-  assert.match(over.out, /more than 4/, 'the denial names the cap');
+  assert.strictEqual(over.v, 'ask', 'five lines: one past the cap blocks');
+  assert.match(over.out, /more than 4/, 'the block names the cap');
   assert.strictEqual(fire(dir, calls(4)).v, 0, 'four lines: at the cap, judged and run');
   assert.strictEqual(fire(dir, calls(3)).v, 0, 'three lines: under the cap');
   // a runner nested past the carried-script depth is never let through unjudged
   const wrap = (s) => `sh -c '${s.replace(/'/g, "'\\''")}'`;
-  assert.strictEqual(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v, 2, 'a runner four shells deep');
+  assert.notStrictEqual(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v, 0, 'a runner four shells deep: a guard exit 2 or the dispatcher ask, never a pass');
   assert.strictEqual(fire(dir, wrap(runner('"true"'))).v, 0, 'a runner one shell deep runs');
   assert.strictEqual(fire(dir, runner('"npm test"')).v, 0, 'one legitimate call runs');
 });

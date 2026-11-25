@@ -120,8 +120,8 @@ function main()
     {
         const r = shell.runGuard(path.join(__dirname, `${g}.js`), stdin);
         results.push(r);
-        // A protective block is a correct answer alone, so it is answered now (shell-guards.js, 2.1.5 M2).
-        if (r.code === 2 && PROTECTIVE.has(g)) break;
+        // A protective deny is a correct answer alone, so it is answered now (shell-guards.js, 2.1.5 M2); an ask is not.
+        if (PROTECTIVE.has(g) && shell.isDenied(r)) break;
     }
     const verdict = shell.combine(results.sort((a, b) => NAMES.indexOf(a.guard.replace(/\.js$/, '')) - NAMES.indexOf(b.guard.replace(/\.js$/, ''))));
     // Exit only once both streams have flushed: a pipe write can still be pending on macOS.
