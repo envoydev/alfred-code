@@ -1,6 +1,6 @@
 # /alfred-code:validate - the workspace: the children's fit and the cascade
 
-Read by step 10's last call only when `workspace.js plan` names a second project. This project's reconcile is done
+Read by step 10's last call only when `workspace.js plan` names a second project or a `set-aside:` row. This project's reconcile is done
 by then; this file carries its result to the projects joined below it. Without it a child keeps the set it read at its
 last update, and a clean validate here says nothing about it. Each child keeps its own picks, ignores and scope.
 
@@ -11,6 +11,7 @@ Rows as `update-workspace.md` lists them: `workspace-plan: <n> projects`, one `p
 `!! no projection` is a child the cascade skips with everything below it), `gone:`, `rescan:` and `nested:` rows.
 Paste the plan's table in your message verbatim, its `total:` line included, before any ask.
 
+- `set-aside: <rel>` - a joined child the user set aside, printed in place of its `project:` row: it is no child for the fit check, the carry ask or the cascade: it is left out of the count and runs nothing here, and a plan with only `set-aside:` rows below skips the fit check, the asks and the cascade call. The close names each: '`/alfred-code:update` in `<rel>` brings it up to date'.
 - `rescan: <rel>` - validate joins no project. One line: '`<rel>` is installed below with no parent - `/alfred-code:update`
   here joins it'. It is no child for the check or the cascade.
 - `nested: <rel>` - one line: '`<rel>` holds an install inside this repository - `/alfred-code:update` here offers its

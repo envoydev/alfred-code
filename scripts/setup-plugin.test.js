@@ -1718,7 +1718,7 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     const walk = flat(refBody('update-walk'));
     const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
-    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child, a rescan row or a nested row');
+    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^set-aside: \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a set-aside row, a gone child, a rescan row or a nested row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
 });
 
@@ -1727,7 +1727,7 @@ test('validate at a workspace root carries its reconcile to the joined children 
     const walk = flat(cmdBody('validate'));
     const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/validate-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of validate-workspace.md, in step 10');
-    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project');
+    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^set-aside: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project or a set-aside row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
     assert.ok(walk.indexOf('validate-workspace.md') < walk.indexOf('## 11. Post-check'), 'the children are carried before the post-check');
 
@@ -2110,4 +2110,79 @@ test('update-history: an after 3.12.1 section names the switch, the kept copies 
     const section = flat(history.slice(at, next < 0 ? undefined : next));
     for (const part of ['overwriting a hand-edited copy', '--seats-route', '/alfred-code:configure', 'is kept on either route', 'A project\'s own seat file', 'bare names'])
         assert.ok(section.includes(part), part);
+});
+
+// ---- the walks ask once which joined children they include (workspace child stacks, Task 6) ----
+const INCLUDE_CALL = 'node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E \'^(included|set-aside|unasked|below|unattended|!!)\' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"';
+const countOf = (text, part) => text.split(part).length - 1;
+
+test('the four walks run the one include call, ahead of what reads the children', () =>
+{
+    const walks = [
+        ['validate', cmdBody('validate'), 'setup-plugin/references/stack-detection.md'],
+        ['init install', installBody(), 'scripts/scan-evidence.js" --root . --catalog'],
+        ['configure', cmdBody('configure'), 'installed-only --print-plan --plan-out "$TMP/installed.json"'],
+        ['update walk', refBody('update-walk'), 'node "$TMP/repo/scripts/update-preflight.js" --snapshot'],
+    ];
+    for (const [name, text, later] of walks)
+    {
+        assert.strictEqual(countOf(text, INCLUDE_CALL), 1, `${name}: the call, once`);
+        assert.ok(text.indexOf(INCLUDE_CALL) < text.indexOf(later.replace('setup-plugin/references/', '')), `${name}: the call comes before ${later}`);
+    }
+    const validate = cmdBody('validate');
+    assert.ok(validate.indexOf(INCLUDE_CALL) < validate.indexOf('stack-detection.md'), 'validate: before its first stack-detection.md read');
+    assert.ok(validate.indexOf(INCLUDE_CALL) < validate.indexOf('node "$TMP/repo/scripts/stack-select.js"'), 'validate: before any stack-select.js call');
+});
+
+test('workspace-include.md: the one ask, the unattended and !! cases, the scans and the keep call', () =>
+{
+    const ref = refBody('workspace-include');
+    const asks = askBlocks(ref);
+    assert.strictEqual(asks.length, 1, 'one ask template');
+    const opts = asks[0].filter((l) => /^- '/.test(l));
+    assert.strictEqual(opts.length, 3);
+    assert.ok(opts[0].startsWith("- 'Include the <n> new one(s) (Recommended)' - "), 'the first option is the marked one');
+    assert.ok(opts[1].startsWith("- 'Pick which to include' - ") && opts[2].startsWith("- 'Set them aside' - "));
+    assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
+    const text = flat(ref);
+    for (const part of [
+        "The stack's auto-run answers none of it",
+        '`unattended: on`',
+        '`!!`',
+        'node "$TMP/repo/scripts/workspace.js" include --root . --include <csv> --set-aside <csv>',
+        '`--children none`',
+        'kept for <rels>',
+        "include --root . --keep '<category> <name>'",
+        'One report line each: `set aside <rel>`',
+        '`included: <rel>`', '`set-aside: <rel>`', '`unasked: <rel>`', '`below: <rel>`',
+        'cross-check',
+        "`<category> <name>` stays at the root: its keep was not written",
+        'plugin <name> stays on at user scope: <rel> uses it',
+    ]) assert.ok(text.includes(part), part);
+    assert.match(text, /--children <[^>]+> --out "\$TMP\/found\.json"/, 'the root scan names its children');
+    assert.ok(text.includes('node "$TMP/repo/scripts/workspace.js" include --root . --keep'), 'the keep call is a real gated call');
+});
+
+test('validate: the keep covers REDUNDANT and accepted JUDGMENT-DROP rows, never a retired row, and runs before the apply', () =>
+{
+    const validate = flat(cmdBody('validate'));
+    assert.match(validate, /kept for <rels>/);
+    assert.match(validate, /REDUNDANT and accepted JUDGMENT-DROP rows/);
+    assert.match(validate, /never a (migration|retired) row/);
+    assert.match(validate, /each keep call runs before step 10's apply/);
+    assert.ok(validate.includes('--children'), 'the audit block scans the included children');
+    const configure = flat(cmdBody('configure'));
+    assert.match(configure, /at a root with a set-aside child[^.]*take the same keep call before (its|the) apply/i);
+});
+
+test('the workspace greps carry the set-aside row, and the two workspace references name it', () =>
+{
+    assert.ok(cmdBody('validate').includes("grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^set-aside: '"), 'validate step 10');
+    assert.ok(refBody('update-walk').includes('|^set-aside: '), 'update step 2');
+    for (const name of ['validate-workspace', 'update-workspace'])
+    {
+        const text = flat(refBody(name));
+        assert.match(text, /`set-aside: <rel>`[^.]*no child for the fit check, the carry ask or the cascade/, name);
+        assert.ok(text.includes('`/alfred-code:update` in `<rel>` brings it up to date'), `${name}: the close line`);
+    }
 });

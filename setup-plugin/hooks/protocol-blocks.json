@@ -522,6 +522,11 @@
               "suffix": "repo/meta/evidence.json"
             }
           ],
+          "--children": [
+            {
+              "kind": "word"
+            }
+          ],
           "--orientation": [
             true
           ],
@@ -991,6 +996,36 @@
           "--add",
           "--root",
           "--source"
+        ]
+      },
+      "include": {
+        "positionals": [
+          []
+        ],
+        "flags": {
+          "--include": [
+            {
+              "kind": "word"
+            }
+          ],
+          "--keep": [
+            {
+              "kind": "phrase"
+            }
+          ],
+          "--root": [
+            {
+              "kind": "cwdPath"
+            }
+          ],
+          "--set-aside": [
+            {
+              "kind": "word"
+            }
+          ]
+        },
+        "required": [
+          "--root"
         ]
       },
       "join": {

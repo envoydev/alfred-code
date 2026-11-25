@@ -88,6 +88,15 @@ comparable banner by banner; the content varies, the skeleton never does.
   to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
+- **Which joined children this run includes** - one call, before the inventory call below, so the ask (if any) comes before
+  the inventory table is printed:
+
+  ```bash
+  node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E '^(included|set-aside|unasked|below|unattended|!!)' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"
+  ```
+
+  Nothing printed: no child is joined - go on. Otherwise follow `workspace-include.md`, printed with it.
+
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
   or from memory. It is the SAME read an `update` writes back, so an item the user switched
   off stays out of it; a hand inventory misses what the stamp's picks and the links record, and the next apply
@@ -364,6 +373,20 @@ line's answer>`, its lines pasted as they are; a `!!` line (a refusal naming the
 nothing changed. A join's values reach the project at once; the parent's set reaches it at the next
 `/alfred-code:update`.
 
+When the role line reads a root and `include`'s call printed an `included:`, `set-aside:` or `unasked:` line, the Environment
+table carries the row `Children included from this root: <csv>` (the `included:` and `unasked:` rels, `none` when there is
+none), and the change ask:
+
+```ask
+Children included from this root: <csv>. Change that?
+- 'Keep <csv> (Recommended)' - nothing changes
+- 'Pick the children' - up to 4 multi-select questions list every joined child; the ones picked are included, the rest are set aside
+- 'Include all' - every joined child is included, so this project reads, scans and updates all of them
+- 'Set all aside' - this project leaves every joined child alone: each stays joined and keeps what it has
+```
+
+Every answer is ONE call naming every joined child, its lines pasted: `node "$TMP/repo/scripts/workspace.js" include --root . --include <csv> --set-aside <csv>`, either flag left off when its list is empty. A set-aside child kept what it had when the last run dropped something, and a child included again reads that keep at its next update.
+
 When the role line reads a root and `workspace.js children` or `status`'s `ignored-children:` line names at least one
 project below (`<n>` is the `child:` rows plus the listed entries, `<m>` the listed entries), ask:
 
@@ -445,6 +468,8 @@ Otherwise, run the installer **from the snapshot**, passing it back with `--sour
 lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output').
+
+**At a root with a set-aside child, the keep before the call.** Each drop line shows `kept for <rels>` in the walk's tables. Its drops at a root with a set-aside child take the same keep call before its apply, once per item, as validate does: the call printed with the `include` output, whose `!!` case and user-scope plugin case apply here too.
 
 **In a child, the ignores before the call.** A dropped `from root` item is an ignore of the parent's item and an
 added `ignored` one takes its ignore back: one call before the installer, `node "$TMP/repo/scripts/workspace.js" ignore

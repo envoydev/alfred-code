@@ -137,6 +137,14 @@ over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
+First, which joined children this run includes - ONE call, before the detection read and before any `stack-select.js` call:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E '^(included|set-aside|unasked|below|unattended|!!)' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"
+```
+
+Nothing printed: no child is joined - go on. Otherwise follow `workspace-include.md`, printed with it: the one ask on `unasked:` lines, the detection over `.` and the included folders, and the scan below with its `--children` value.
+
 The install phase's step-3 artifact scan: read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/stack-detection.md` (the one marker list, init's too) in one Bash `cat` and apply every bullet, its suppressions included.
 
 Report the detected set AND, for every stack you will treat as ABSENT, the exact signal you looked
@@ -174,7 +182,7 @@ answered with 8 ad hoc catalog reads before this block's own pass had even run):
 
 ```
 node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" \
-  --judgment "$TMP/repo/meta/judgment.json" --out "$TMP/found.json"
+  --judgment "$TMP/repo/meta/judgment.json" --children "<csv|none>" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
   --found "$TMP/found.json" \
   --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
@@ -189,6 +197,8 @@ node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.jso
 node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/meta/judgment.json" \
   --installed "$TMP/installed.json" > "$TMP/judgment.out"
 ```
+
+`--children` takes the value `workspace-include.md` gives: every `included:` and `unasked:` rel, or `none`. A set-aside child is never scanned.
 
 `redundant:` lines = installed, whole owning stack absent, no evidence signal (remove candidates). `missing:` lines =
 detected-stack + baseline closure not installed (add candidates), each with `needed by <stack|baseline>`.
@@ -421,7 +431,7 @@ This step is model judgment, not a signal: it is non-deterministic and can be co
 which is exactly why every row carries its quotation and nothing here ever auto-applies. A
 decline is final for this run - never re-litigate it. Accepted judgment drops join step 10's
 removal set and accepted judgment adds its install set, both reported there under their
-JUDGMENT label.
+JUDGMENT label. While a child is set aside, a JUDGMENT-DROP row shows `kept for <rels>` too.
 
 **The dormant advisory - fine to keep, fires rarely, by requirement.** Under the judgment table,
 as PLAIN TEXT (no row numbers, no consent - like the walk's `no-evidence:` lines), print the
@@ -452,6 +462,10 @@ through `variables.js set` or that merge. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check`,
 output to `$TMP/select.out` - then:
 
+- **Keep, before the apply.** While `include` printed a `set-aside:` line, REDUNDANT and accepted JUDGMENT-DROP rows
+  show `kept for <rels>`. The keep covers REDUNDANT and accepted JUDGMENT-DROP rows and never a retired row: a migration row goes
+  everywhere. On a yes, each `drop` of such a row gets `workspace-include.md`'s keep call once, and each keep call runs
+  before step 10's apply. Its `!!` case and the user-scope plugin case are that file's too.
 - **Apply**: run the delta, then the installer from the snapshot. `node "$TMP/repo/scripts/derive-state.js" --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/final.json"`
   prints one `add <line>` / `drop <line>` per accepted change against step 1's read-back, or
   `none` - which with no environment row accepted means there is nothing to apply: say so, run
@@ -502,10 +516,10 @@ output to `$TMP/select.out` - then:
 its set only at its own update, so this reconcile reaches none of them unless it is carried. ONE call:
 
 ```bash
-node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/validate-workspace.md"
+node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^set-aside: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/validate-workspace.md"
 ```
 
-Nothing printed: no project is joined below - go on to step 11. Otherwise follow `validate-workspace.md`, printed
+Nothing printed: no project is joined below, and none is set aside - go on to step 11. Otherwise follow `validate-workspace.md`, printed
 with the plan: the fit check per child, its asks and the cascade, before step 11.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the

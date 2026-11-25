@@ -28,12 +28,20 @@ so there is one mode. The user names items to add or drop -> that is the sibling
 
 ## 2. Compute the delta since the stamp - ONE call
 
+First, which joined children this run includes, so the `plan` below reads the answer:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E '^(included|set-aside|unasked|below|unattended|!!)' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"
+```
+
+Nothing printed: go on. Otherwise follow `workspace-include.md`, printed with it.
+
 Everything this step needs comes back from one call in the snapshot - the preflight, then the release notes THIS
 install owes (only the releases between its stamp and the snapshot, from `setup-plugin/references/update-history.md`;
 a snapshot without the script prints an error - read nothing more for it and go on):
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^gone: |^rescan: |^nested: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^set-aside: |^gone: |^rescan: |^nested: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
 ```
 
 (The last two read the workspace: with children below, their rows (trigger rows print twice) and `update-workspace.md`,
@@ -91,14 +99,13 @@ overwritten by the new key's default), and prints one line each - step 7 reports
 **Build the prune list** from the detected migrations alone - the removals step 5 makes by hand. The installer prunes
 every copy the release retired or renamed ITSELF, on either path and whatever step 4's answer, so a compare `removed`
 line or a `new:` row carrying `old-on-disk` is reported at step 7 from the `--log` call's `pruned:` line, never offered
-as a choice (measured: a 'Refresh only' option promised the old copies would stay, and the installer pruned all 34).
+as a choice.
 Then route, as numbered actions:
 
 1. **Name the compare signal**, if one applied, in your narration now - `no-stamp` (exit 2 - no baseline, refreshing
    unaffected), `compare-unreachable` (exit 3 - same), or a `TRUNCATED` line (third after the version and base lines:
    the compare caps at 300 files, so the file list may be incomplete). Step 7 repeats it as its COMPARE line, and a
-   `TRUNCATED` one routes the reconcile to `/alfred-code:configure` there (audit 2026-10-20 C15:
-   a truncated compare went out unnamed).
+   `TRUNCATED` one routes the reconcile to `/alfred-code:configure` there.
 2. **Prune list EMPTY** -> step 3, the fast path. **NON-EMPTY** -> read `update-slow-path.md` and run its step 4.
 
 **New items - ONE ask, and only when a `new:` line says `offer`.** Put every offer through one
@@ -137,8 +144,7 @@ it names, as it is.
 
 After a move - this one, or a docs root's below - the `--log` call prints `restart: yes`, and until that restart this
 session's hooks keep writing under the OLD root - they read it from the environment the session started with - and its
-loaded rule text still names the old one (audit 2026-10-11, session bca100bd: the monitor hook re-created `<old
-root>/flow/` after the move). Say so in the close, with the one action it leaves: after the restart, a file under the
+loaded rule text still names the old one. Say so in the close, with the one action it leaves: after the restart, a file under the
 old root's `state/` or `statistics/` - or, from a session that started before 2.8.0, its `flow/` or `hook-blocks/` - is
 this session's record and safe to delete.
 
@@ -226,8 +232,7 @@ user's own invocation names a value - read `update-slow-path.md`'s 'Flags' secti
 the run then pays turns re-finding its own installer. Pass `timeout: 600000`, open the call with
 `set -o pipefail;`, append `; echo "install exit: $?"` and read THAT number. A NON-ZERO exit stops the run - report
 the log's last lines verbatim as a blocker with the fix they name, and never continue to the prune, the close, or
-ad-hoc repair work (measured: 1.69M tokens of improvised forensics after exit 1, then 226 files changed
-with no ask).
+ad-hoc repair work.
 
 The refresh updates each stack plugin at EVERY scope it is installed at (`plugin update [<scope>]: <entry>` as
 `x -> y`, `installed this run` or `already newest`; `plugin current [<scope>]` for one the resolve already took to
@@ -284,5 +289,4 @@ Then:
   grep step 3 names, and no hand-written probe for anything step 2's preflight already printed.
 - **A fail-soft `!!` line is not a re-run trigger.** The installers log `!!` for a step that fell
   back and CONTINUED - the fallback is the designed behaviour, and the line usually says so.
-  Report it; never re-run the installer end to end to feel sure (measured: one run did, at
-  half the session's cost, and changed nothing).
+  Report it; never re-run the installer end to end to feel sure.
