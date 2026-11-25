@@ -111,3 +111,38 @@ test('storeLines holds only skill, agent and rule lines of joined children', () 
     assert.deepStrictEqual(storeLines({ children: ['api'], keptFor: { api: ['plugin p', 'skill b', 'rule r'], gone: ['skill z'] } }), ['rule r', 'skill b']));
 test('keepLines say who kept a line and who ignores it', () =>
     assert.deepStrictEqual(keepLines('skill a', ['app'], ['api']), ['include: kept skill a for app', 'include: api ignores skill a - not kept']));
+
+// A kept key is matched to its child through the caller's fold, as the hook's keptLinesFor does on a disk that folds case.
+const fold = (text) => text.toLowerCase();
+test('applyAnswer keeps a kept key that differs from its child only in case when the caller folds, and drops it when it does not', () =>
+{
+    const rec = () => ({ children: ['api'], includedChildren: [], includeAsked: [], keptFor: { API: ['skill a'] } });
+    const folded = rec();
+    applyAnswer(folded, { include: ['api'], setAside: [] }, fold);
+    assert.deepStrictEqual(folded.keptFor, { API: ['skill a'] });
+    const exact = rec();
+    applyAnswer(exact, { include: ['api'], setAside: [] });
+    assert.deepStrictEqual(exact.keptFor, {});
+});
+test('addKept writes into a case-variant key when the caller folds, and makes a second entry only when it does not', () =>
+{
+    const folded = { children: ['api'], keptFor: { API: ['skill a'] } };
+    addKept(folded, 'api', 'skill b', fold);
+    addKept(folded, 'api', 'skill a', fold);
+    assert.deepStrictEqual(folded.keptFor, { API: ['skill a', 'skill b'] });
+    const exact = { children: ['api'], keptFor: { API: ['skill a'] } };
+    addKept(exact, 'api', 'skill b');
+    assert.deepStrictEqual(exact.keptFor, { api: ['skill b'] });
+});
+test('storeLines counts a case-variant key as joined when the caller folds, and not when it does not', () =>
+{
+    const view = { children: ['api'], keptFor: { API: ['skill a'] } };
+    assert.deepStrictEqual(storeLines(view, fold), ['skill a']);
+    assert.deepStrictEqual(storeLines(view), []);
+});
+test('backstopLines reads a line kept under a case-variant key as kept when the caller folds', () =>
+{
+    const args = [['skill a'], [], {}, ['api'], {}, { API: ['skill a'] }];
+    assert.deepStrictEqual(backstopLines(...args, fold), {});
+    assert.deepStrictEqual(backstopLines(...args), { api: ['skill a'] });
+});

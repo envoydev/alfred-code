@@ -11,6 +11,8 @@ const keep = require('./keep.js');
 const { FLAG, EXIT, READ, WRITE_WHY, ERROR_PREFIX, LINE, TOP_RELS, MIN_BELOW_DEPTH } = require('./constants.js');
 
 const quiet = () => {};
+// A kept key is compared with a child the way the hook's `keptLinesFor` does: case folded where the disk folds it.
+const low = (text) => recordFile.low(text);
 const childRoot = (root, rel) => path.join(root, ...rel.split('/'));
 const writeCode = (why) => (why === WRITE_WHY.locked ? EXIT.locked : EXIT.failed);
 const ignoreLinesOf = (root, rel, env) => ws.readWorkspace(childRoot(root, rel), { env }).view.ignores.map((entry) => `${entry.category} ${entry.name}`);
@@ -40,7 +42,7 @@ function writeInclude(root, answer, { env, log = quiet })
     const rootLines = ownPicksOf(root);
     const written = ws.writeWorkspace(root, (record) =>
     {
-        select.applyAnswer(record, answer);
+        select.applyAnswer(record, answer, low);
         record.keptFor = keep.pruneKept(record.keptFor, childIgnores, rootLines);
     }, { env, log });
     if (!written.ok) return { ok: false, code: writeCode(written.why), why: written.why, rows: [] };
@@ -57,7 +59,7 @@ function writeKeep(root, line, { env, log = quiet })
     const targets = keep.keepTargets(read.view, line, ignoresOf(root, select.setAsideRels(read.view), env), isEntry);
     if (targets.error) return failed(EXIT.usage, targets.error);
     if (!targets.kept.length) return { ok: true, code: EXIT.ok, kept: [], ignoring: targets.ignoring };
-    const written = ws.writeWorkspace(root, (record) => { for (const rel of targets.kept) keep.addKept(record, rel, line); }, { env, log });
+    const written = ws.writeWorkspace(root, (record) => { for (const rel of targets.kept) keep.addKept(record, rel, line, low); }, { env, log });
     if (!written.ok) return failed(writeCode(written.why), written.why, targets.ignoring);
     return { ok: true, code: EXIT.ok, kept: targets.kept, ignoring: targets.ignoring };
 }

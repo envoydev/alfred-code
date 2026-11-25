@@ -401,5 +401,5 @@ function renderRecord(record, unknown = {}, invalid = [], singular = false)
 
 module.exports = {
     JSON_NAME, LEGACY_NAME, LOCK_NAME, CATEGORIES, PLURAL, PARENT_RE,
-    isChildPath, isIgnoreName, isIgnoreEntry, emptyRecord, parseLegacy, readRecord, viewOf, renderRecord, covered, keptLinesFor,
+    isChildPath, isIgnoreName, isIgnoreEntry, emptyRecord, parseLegacy, readRecord, viewOf, renderRecord, covered, keptLinesFor, low,
 };

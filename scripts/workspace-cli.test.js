@@ -1105,3 +1105,13 @@ test('include drops a kept line the child ignores or the root holds, and a kept 
     assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'web').code, 0);
     assert.deepStrictEqual(recordOf(at('ws')).keptFor, { api: ['skill b'] });
 });
+
+test('include keeps and extends a kept entry whose key differs from its child only in case, where the disk folds case', { skip: process.platform !== 'darwin' && process.platform !== 'win32' }, () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'], includedChildren: ['web'], includeAsked: ['api', 'web'], keptFor: { API: ['skill a'] } } },
+        'ws/api': childOfRoot, 'ws/web': childOfRoot });
+    assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'web').code, 0);
+    assert.deepStrictEqual(recordOf(at('ws')).keptFor, { API: ['skill a'] });
+    assert.strictEqual(cli('include', '--root', at('ws'), '--keep', 'skill b').out, 'include: kept skill b for api\n');
+    assert.deepStrictEqual(recordOf(at('ws')).keptFor, { API: ['skill a', 'skill b'] });
+});

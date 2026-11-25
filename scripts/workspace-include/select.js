@@ -7,6 +7,8 @@ const { STATE, FLAG, TOP_RELS } = require('./constants.js');
 // A map read as an own key only: a child named `constructor` or `toString` is an ordinary child, never an inherited member.
 const ownValue = (map, key) => (map && Object.hasOwn(map, key) ? map[key] : undefined);
 const unique = (list) => [...new Set(list)];
+// How a key is compared with a child: the caller passes the platform's rule (`workspace-file.js low`); the default compares as written.
+const asWritten = (text) => text;
 
 function stateOf(view, rel)
 {
@@ -30,17 +32,17 @@ function answerError(answer, joined)
     return twice === undefined ? null : `'${twice}' is named twice`;
 }
 
-// The kept lines of the children that are still joined; an entry is built as an own key.
-const keptForJoined = (keptFor, children) => Object.fromEntries(Object.entries(keptFor || {}).filter(([rel]) => children.includes(rel)));
+// The kept lines of the children that are still joined, a key matched to a child through `low`; an entry is built as an own key.
+const keptForJoined = (keptFor, children, low = asWritten) => Object.fromEntries(Object.entries(keptFor || {}).filter(([rel]) => children.some((child) => low(child) === low(rel))));
 
 // Merges an answer into the record: a child the answer does not name keeps its state.
-function applyAnswer(record, answer)
+function applyAnswer(record, answer, low = asWritten)
 {
     const included = record.includedChildren.filter((rel) => !answer.setAside.includes(rel));
     for (const rel of answer.include) if (!included.includes(rel)) included.push(rel);
     record.includedChildren = included;
     record.includeAsked = unique([...record.includeAsked, ...answer.setAside, ...answer.include]);
-    record.keptFor = keptForJoined(record.keptFor, record.children);
+    record.keptFor = keptForJoined(record.keptFor, record.children, low);
 }
 
 const relativeTo = (rel, parentRel) => (TOP_RELS.includes(parentRel) ? rel : rel.slice(parentRel.length + 1));
@@ -79,4 +81,4 @@ function flagError(values)
     return null;
 }
 
-module.exports = { ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, lines, csvOf, flagError };
+module.exports = { asWritten, ownValue, childStates, setAsideRels, answerError, keptForJoined, applyAnswer, asideRows, lines, csvOf, flagError };

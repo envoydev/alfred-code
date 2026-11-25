@@ -2,7 +2,7 @@
 // workspace-include: the lines a root keeps for a child it set aside. Pure, like select.js.
 
 const { STORE_KINDS, KEPT_LINE_RE, MARKDOWN_SUFFIX_RE, MARKDOWN_KINDS } = require('./constants.js');
-const { ownValue, setAsideRels, keptForJoined } = require('./select.js');
+const { asWritten, ownValue, setAsideRels, keptForJoined } = require('./select.js');
 
 // An ignore entry as a view holds it ({ category, name }) or as a line.
 const lineOf = (entry) => (typeof entry === 'string' ? entry : `${entry.category} ${entry.name}`);
@@ -19,16 +19,16 @@ function keepTargets(view, line, ignoresByRel, isEntry = () => true)
     return { error: null, kept: aside.filter((rel) => !ignores(rel)), ignoring: aside.filter(ignores) };
 }
 
-// Adds `line` to the child's entry once; an entry whose child is no longer joined goes.
-function addKept(record, rel, line)
+// Adds `line` to the child's entry once, in the entry whose key `low` reads as the child; an entry whose child is no longer joined goes.
+function addKept(record, rel, line, low = asWritten)
 {
-    const held = ownValue(record.keptFor, rel) || [];
     const entries = Object.entries(record.keptFor || {});
-    const at = entries.findIndex(([key]) => key === rel);
-    const entry = [rel, held.includes(line) ? held : [...held, line]];
+    const at = entries.findIndex(([key]) => low(key) === low(rel));
+    const [key, held] = at >= 0 ? entries[at] : [rel, []];
+    const entry = [key, held.includes(line) ? held : [...held, line]];
     if (at >= 0) entries[at] = entry;
     else entries.push(entry);
-    record.keptFor = keptForJoined(Object.fromEntries(entries), record.children);
+    record.keptFor = keptForJoined(Object.fromEntries(entries), record.children, low);
 }
 
 // Drops a line the child ignores or the root's own set holds, and an entry left empty.
@@ -41,9 +41,9 @@ function pruneKept(keptFor, childIgnores, rootLines)
 }
 
 // The kept lines that go to the root's own store: skills, agents and rules of children that are still joined.
-function storeLines(view)
+function storeLines(view, low = asWritten)
 {
-    const lines = Object.entries(view.keptFor || {}).filter(([rel]) => view.children.includes(rel)).flatMap(([, held]) => held);
+    const lines = Object.entries(keptForJoined(view.keptFor, view.children, low)).flatMap(([, held]) => held);
     return [...new Set(lines.filter((line) => STORE_KINDS.includes(categoryOf(line))))].sort();
 }
 
@@ -54,12 +54,15 @@ function isRetired(line, retired)
     return (ownValue(retired, `${category}s`) || []).some((entry) => comparable(entry) === nameOf(line));
 }
 
+// The lines kept for `rel`: the entry whose key `low` reads as it.
+const keptLinesAt = (keptFor, rel, low) => Object.entries(keptFor || {}).filter(([key]) => low(key) === low(rel)).flatMap(([, held]) => held);
+
 // Each own pick the run dropped, for each set-aside child that neither ignores it nor keeps it already.
-function backstopLines(priorOwn, finalOwn, retired, asideRels, ignoresByRel, keptFor)
+function backstopLines(priorOwn, finalOwn, retired, asideRels, ignoresByRel, keptFor, low = asWritten)
 {
     const dropped = priorOwn.filter((line) => !finalOwn.includes(line) && !isRetired(line, retired));
     return Object.fromEntries(asideRels
-        .map((rel) => [rel, dropped.filter((line) => !linesOf(ownValue(ignoresByRel, rel)).has(line) && !(ownValue(keptFor, rel) || []).includes(line))])
+        .map((rel) => [rel, dropped.filter((line) => !linesOf(ownValue(ignoresByRel, rel)).has(line) && !keptLinesAt(keptFor, rel, low).includes(line))])
         .filter(([, lines]) => lines.length));
 }
 
