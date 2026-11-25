@@ -34,7 +34,7 @@ test('the re-check ask is a second fit-style template: three options, the Recomm
 test('unattended, the re-check keeps everything inherited, and the walk and the slow path run it', () =>
 {
     const text = flat(body('update-workspace'));
-    assert.match(text, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or auto-run - take 'Keep everything inherited', as the join ask does/);
+    assert.match(text, /Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep everything inherited', as the join ask does/);
     assert.match(flat(body('update-slow-path')), /run its re-check on the added items too/);
 });
 

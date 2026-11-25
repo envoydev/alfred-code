@@ -498,6 +498,16 @@ output to `$TMP/select.out` - then:
   hand-edits it: the file's own header says the installers write it, and a hand-written one carries a
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
+**The projects below - every run, after the apply or its 'nothing to apply'.** A child joined to this project reads
+its set only at its own update, so this reconcile reaches none of them unless it is carried. ONE call:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/validate-workspace.md"
+```
+
+Nothing printed: no project is joined below - go on to step 11. Otherwise follow `validate-workspace.md`, printed
+with the plan: the fit check per child, its asks and the cascade, before step 11.
+
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for a plugin change, `/capture-awareness`
 (when installed and this run added or removed something it lists), a manual-only capture whose

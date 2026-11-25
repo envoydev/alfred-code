@@ -1722,6 +1722,51 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
 });
 
+test('validate at a workspace root carries its reconcile to the joined children instead of reaching none of them', () =>
+{
+    const walk = flat(cmdBody('validate'));
+    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/validate-workspace\.md"/g) || [];
+    assert.strictEqual(cats.length, 1, 'one read of validate-workspace.md, in step 10');
+    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project');
+    assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+    assert.ok(walk.indexOf('validate-workspace.md') < walk.indexOf('## 11. Post-check'), 'the children are carried before the post-check');
+
+    const ref = flat(refBody('validate-workspace'));
+    assert.match(ref, /--redundant --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json"/, 'the fit check reads the set this run just wrote');
+    assert.match(ref, /node "\$TMP\/repo\/scripts\/workspace\.js" cascade --root \. --source "\$TMP\/repo" --answers "\$TMP\/answers\.json"/);
+    assert.match(ref, /workspace\.js" answer --file "\$TMP\/answers\.json" --hold/, 'only this project is a hold, never a skipped call');
+    assert.match(ref, /nobody answers a fit ask .* take 'Keep everything inherited'/, 'an unanswered run never ignores what a child may own');
+    assert.match(ref, /validate joins no project/);
+    assert.match(ref, /Paste the plan's table in your message verbatim, its `total:` line included/, 'the layer-table gate proves the plan by its total line');
+    assert.match(ref, /`\/alfred-code:validate` in `<rel>` - this run checked only what `<rel>` inherits, not its own picks/, 'the close says what was not checked');
+});
+
+test('a fit check with nothing to ignore still prints the word the layer-table gate proves a --redundant call by', () =>
+{
+    const gate = fs.readFileSync(path.join(PLUGIN_DIR, 'hooks', 'guard-layer-table.js'), 'utf8');
+    const proof = new RegExp(/const AUDIT_PROOF = \/(.+)\/;/.exec(gate)[1]);
+    for (const name of ['validate-workspace', 'update-workspace'])
+    {
+        const ref = flat(refBody(name));
+        assert.match(ref, /one row per line with the state word `REDUNDANT`/, `${name}: each child's lines are shown with the proof word`);
+        const none = [...ref.matchAll(/`(<rel>: no REDUNDANT row[^`]*)`/g)].map((m) => m[1]);
+        assert.ok(none.length >= 1, `${name}: a child with no line still says so`);
+        for (const line of none) assert.match(line, proof, `${name}: '${line}' carries the gate's proof word`);
+    }
+});
+
+test('the stack\'s auto-run answers no ask of the plugin\'s own walks: no walk file counts it as nobody answering (3.14.1)', () =>
+{
+    const files = fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).filter((f) => f.endsWith('.md')).map((f) => cmdBody(f.slice(0, -3)))
+        .concat(fs.readdirSync(path.join(PLUGIN_DIR, 'references')).filter((f) => f.endsWith('.md') && f !== 'update-history.md').map((f) => refBody(f.slice(0, -3))));
+    for (const text of files.map(flat))
+    {
+        assert.doesNotMatch(text, /nobody answers[^.]*auto-run/i);
+        assert.doesNotMatch(text, /takes the Recommended options \(auto-run\)/);
+    }
+    assert.match(flat(refBody('validate-workspace')), /The stack's auto-run answers no ask of this walk: each goes to the user/);
+});
+
 test('update offers to remove an install nested in the same repository: one ask per nested row, a removal that never joins or counts it', () =>
 {
     const workspace = refBody('update-workspace');
@@ -1733,7 +1778,7 @@ test('update offers to remove an install nested in the same repository: one ask 
     assert.match(flatWorkspace, /- `nested: <rel>` - an install inside this repository[\s\S]*?never joined, never counted as a project below/);
     assert.match(flatWorkspace, /node "\$TMP\/repo\/scripts\/workspace\.js" remove-nested --root \. --path <rel>/);
     assert.match(flatWorkspace, /once the answers are applied and before the installer call/);
-    assert.match(flatWorkspace, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own/);
+    assert.match(flatWorkspace, /Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own/);
     assert.match(flatWorkspace, /A joined child whose `\.git` is gone is one too: it prints only as `nested:`, never as a `project:` row, and the cascade counts it `nested`[^.]*and never runs the installer there/);
     const slow = flat(refBody('update-slow-path'));
     assert.match(slow, /with a `rescan:` row run `update-workspace\.md`'s joins first, and with a `nested:` row answered 'Remove the nested install' its removal, as step 3 does; then run the installer/);
@@ -1833,7 +1878,7 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.match(walk, order);
     assert.match(flatCascade, /The check runs after this project's own installer run \(step 3\) and before the cascade/);
     assert.match(flatCascade, /A join that prints `!!` is reported and skipped/);
-    assert.match(flatCascade, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep everything inherited', never 'Ignore the <k> suggested': an unanswered run never drops what a project may own/);
+    assert.match(flatCascade, /Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep everything inherited', never 'Ignore the <k> suggested': an unanswered run never drops what a project may own/);
     assert.match(flatCascade, /The cascade runs when the plan names a child or a `rescan:` row joined/);
     // the fit ask: three labels, the Recommended one first, one per joined child with a `redundant:` line
     const fitAsks = askBlocks(cascade).filter((b) => /joined this workspace as a child/.test(b[0]));
