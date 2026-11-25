@@ -103,14 +103,14 @@ test('judgeCall asks who answers only when a Read verdict needs the choice, neve
     fs.writeFileSync(path.join(dir, 'orders.csv'), Buffer.alloc(200 * 1024, 'a'));
     fs.writeFileSync(path.join(dir, 'notes.js'), 'x');
     let asked = 0;
-    const prelude = { partOff: () => false, unattended: () => (asked++, false) };
+    const prelude = { partOff: () => false, canAsk: () => (asked++, true) };
     const ctx = (payload) => ({ prelude, root: dir, payload: { cwd: dir, ...payload } });
     assert.equal(judgeCall(ctx({ tool_name: 'WebSearch', tool_input: { query: 'node 22 fs.rmSync recursive' } })), null);
     assert.equal(judgeCall(ctx({ tool_name: 'Read', tool_input: { file_path: path.join(dir, 'notes.js') } })), null);
     assert.equal(asked, 0);
     assert.equal(judgeCall(ctx({ tool_name: 'Read', tool_input: { file_path: path.join(dir, 'orders.csv') } })).mode, 'ask');
     assert.equal(asked, 1);
-    prelude.unattended = () => true;
+    prelude.canAsk = () => false;
     assert.equal(judgeCall(ctx({ tool_name: 'Read', tool_input: { file_path: path.join(dir, 'orders.csv') } })).mode, 'deny');
     assert.equal(judgeCall(ctx({ permission_mode: 'dontAsk', tool_name: 'Read', tool_input: { file_path: path.join(dir, 'orders.csv') } })).mode, 'deny');
   } finally {

@@ -5833,19 +5833,6 @@
         }
       ]
     },
-    "discard-allow-receipt": {
-      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and its denial carries the whole route - the three-option ask, the receipt path and spelling, the retry - at the moment of need ('no prose copy to consult'). The habits-commit-checkpoint copy went in the 2026-10-08 audit: that skill never fires on a discard, so it was paid on every commit for a receipt written a few times a year. The repo hook notes name the same path, pinned here so a rename in the hook re-syncs them.",
-      "owner": {
-        "file": "stack/hooks/guard-catastrophic-rm.js",
-        "marker": "layout.findState(root, 'approvals', 'DISCARD-ALLOW')"
-      },
-      "sites": [
-        {
-          "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<data root>/state/approvals/DISCARD-ALLOW`"
-        }
-      ]
-    },
     "seat-checked-notes-opener": {
       "_note": "The report opener that makes a skipped START memory read visible. It began on the 10 implementers and now runs on every seat that reads a prior note: the 10 verifiers, the 4 repair resolvers, the two diagnosers, the integration reviewer and the security auditor. The carve-out names its findings-plan reading ('none' on a sanctioned skip).",
       "owner": {

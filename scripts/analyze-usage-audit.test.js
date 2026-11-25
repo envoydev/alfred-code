@@ -653,9 +653,9 @@ test('C07: a block row names the agent and the call, and HOOK BLOCKS splits main
     const sid = '55555555-6666-4777-8888-999999999999';
     const proj = path.join(dir, 'proj');
     fs.mkdirSync(proj);
-    const rm = (extra) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'guard-catastrophic-rm.js')], {
+    const rm = (extra) => require('./hook-test-env').legacyBlock(require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'guard-catastrophic-rm.js')], {
       input: JSON.stringify({ session_id: sid, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, cwd: proj, ...extra }),
-      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }).status;
+      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } })).status;
     assert.strictEqual(rm({ tool_use_id: 'toolu_main' }), 2);
     assert.strictEqual(rm({ tool_use_id: 'toolu_seat', agent_id: 'a1b2', agent_type: 'Explore' }), 2);
     const blocks = path.join(proj, '.alfred', 'statistics', 'hook-blocks');

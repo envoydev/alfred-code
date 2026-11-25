@@ -343,10 +343,9 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     assert.ok(cp.includes('a picked option is the receipt\'s `answered:` line'), 'a pick is the answered: line');
     assert.ok(cp.includes('read `git log -1 --stat` back into the close'), 'the commit is read back');
     assert.doesNotMatch(raw, /## Discarding uncommitted work/, 'the discard section is gone');
-    assert.match(read('stack/hooks/guard-catastrophic-rm.js'), /On 'Discard it', write the receipt \$\{receiptRel\}/, 'the denial carries the receipt route');
+    assert.doesNotMatch(read('stack/hooks/guard-catastrophic-rm.js'), /write the receipt|DISCARD-ALLOW/, 'the rm guard asks for itself since guards ask (D3): its denial names no receipt route');
     assert.ok(cp.includes('`<data root>/state/approvals/STAGED-SCAN-ALLOW`'), 'the staged-scan receipt has a writer');
-    const discard = JSON.parse(read('meta/shared-rules.json')).rules['discard-allow-receipt'];
-    assert.ok(!discard.sites.some((s) => s.file.includes('habits-commit-checkpoint')), 'the registry no longer pins a checkpoint copy');
+    assert.ok(!('discard-allow-receipt' in JSON.parse(read('meta/shared-rules.json')).rules), 'the registry holds no discard receipt: the rm guard reads none since guards ask (D3)');
 });
 
 // Audit 2026-10-14 SKC03 / SKC04 / SKC07: the no-formatter paragraph had split the receipt block from its

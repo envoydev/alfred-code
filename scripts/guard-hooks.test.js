@@ -5,7 +5,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
-const { reviewedTranscript, REVIEW_ROW, userPick } = require('./hook-test-env');
+const { reviewedTranscript, REVIEW_ROW, userPick, verdictOf, blockText, askText } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -21,9 +21,10 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
 const REVIEWED = reviewedTranscript(TMP);
 const BIG = path.join(__dirname, 'lint-skills.js'); // a real, long source file in this repo
 
+// What the hook decided, as one word (hook-test-env.js verdictOf): 0 a pass, 'ask' or 'deny' a converted guard's block, 2 a
+// guard that still exits 2.
 function run(hook, payload) {
-  const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8' });
-  return r.status;
+  return verdictOf(spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8' }));
 }
 const bash = (hook, command) => run(hook, { tool_name: 'Bash', tool_input: { command } });
 const heredoc = (body, target = '/tmp/plan.md') => `cat <<'EOF' > ${target}\n${body}\nEOF`;
@@ -145,9 +146,9 @@ test('guard-ungated-commit: the receipt must target the gate file, not merely na
 
 test('guard-protected-force-push / guard-catastrophic-rm: heredoc bodies are data', () => {
   assert.equal(bash('guard-protected-force-push.js', heredoc('Deploy: git push --force origin main')), 0);
-  assert.equal(bash('guard-protected-force-push.js', 'git push --force origin main'), 2);
+  assert.equal(bash('guard-protected-force-push.js', 'git push --force origin main'), 'ask');
   assert.equal(bash('guard-catastrophic-rm.js', heredoc('Cleanup: rm -rf ~')), 0);
-  assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf ~'), 2);
+  assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf ~'), 'ask');
 });
 
 test('guard-stop-contract: a decision question in ordinary words is still a stop', () => {
@@ -334,7 +335,7 @@ test('guard-stop-contract: a re-ask denial stores <redacted> for a credential sh
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const payload = { session_id: 'rq1', cwd: root, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'tu2', tool_input: ask, transcript_path: transcript('rq1', rows) };
   const r = runIn('guard-stop-contract.js', payload, { env, cwd: root });
-  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.status, 'deny', r.stderr);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny', 'the re-ask is denied');
   const ledger = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'rq1.jsonl'), 'utf8');
   assert.ok(!ledger.includes(shape), 'the ledger row holds no credential shape');
@@ -549,8 +550,13 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
-const runIn = (hook, payload, opts) =>
-  spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+// `status` is the hook's decision as one word (verdictOf): 0, 'ask', 'deny', or 2 for a guard that still exits 2. For an ask or a
+// deny `stderr` carries the text the model reads (blockText), so the cases that match a guard's wording read it where they always did.
+const runIn = (hook, payload, opts) => {
+  const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  const verdict = verdictOf(r);
+  return { ...r, status: verdict, stderr: verdict === 'ask' || verdict === 'deny' ? blockText(r) : r.stderr };
+};
 const BIG_LINES = fs.readFileSync(BIG, 'utf8').replace(/\n$/, '').split('\n').length; // lines, not newline-split pieces
 const SMALL = path.join(HOOKS, 'instrument-tool-usage.js'); // 74 lines - the smallest shipped hook,
 // deliberately not one of the guards: they grow, and a fixture that drifts past 200 lines turns
@@ -658,7 +664,7 @@ test('guard-protected-force-push: the protected-branch matrix', () => {
     'git push --mirror origin', 'git push origin "main" --force', 'git push --force origin refs/heads/main', 'npm test && git push --force origin main',
     'git push origin HEAD:main --force', 'git push -uf origin main', 'git push --force-with-lease=main:abc origin main', 'git push --all --force',
     'GIT_SSH_COMMAND=ssh git push -f origin main', 'git push -f origin main; echo done', "git push origin 'main' -d"]) {
-    assert.equal(fp(c), 2, `must block: ${c}`);
+    assert.equal(fp(c), 'ask', `must block: ${c}`);
   }
   for (const c of ['git push --force-with-lease origin feature/x', 'git push origin main', 'git push origin feature:main', 'git push --follow-tags origin main',
     'echo "git push --force origin main"', 'git commit -m "no git push --force to main"', 'git push origin --delete feature/x', 'git push -u origin feature/x']) {
@@ -670,17 +676,17 @@ test('guard-protected-force-push: a branch held in a variable is read - a plain 
   const fp = (c) => bash('guard-protected-force-push.js', c);
   for (const c of ['b=main; git push -f origin "$b"', 'b=main; git push -f origin $b', 'BR=develop; git push --force origin "${BR}"',
     "b='master'; git push origin \"+$b\""]) {
-    assert.equal(fp(c), 2, `must block: ${c}`);
+    assert.equal(fp(c), 'ask', `must block: ${c}`);
   }
   for (const c of ['b=feature/x; git push -f origin "$b"', 'for b in feat-a feat-b; do git push -f origin "$b"; done', 'b=main; git push origin "$b"']) {
     assert.equal(fp(c), 0, `must allow: ${c}`);
   }
   const at = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
   const cur = 'BR=$(git branch --show-current); git push --force origin "$BR"';
-  assert.equal(at(cur, scratchRepoOn('main')), 2, 'the current branch, on main');
+  assert.equal(at(cur, scratchRepoOn('main')), 'ask', 'the current branch, on main');
   assert.equal(at(cur, scratchRepoOn('feature/x')), 0, 'the current branch, on a feature branch');
   for (const c of ['git push --force origin "$(git branch --show-current)"', 'git push -f origin $(git rev-parse --abbrev-ref HEAD)', 'git push origin "+`git symbolic-ref --short HEAD`"']) {
-    assert.equal(at(c, scratchRepoOn('main')), 2, `written into the push, on main: ${c}`);
+    assert.equal(at(c, scratchRepoOn('main')), 'ask', `written into the push, on main: ${c}`);
     assert.equal(at(c, scratchRepoOn('feature/x')), 0, `written into the push, on a feature branch: ${c}`);
   }
 });
@@ -691,9 +697,9 @@ test('guard-protected-force-push: a held branch: the remote left alone, the bran
   const onFeature = scratchRepoOn('feature/x');
   // 1: a loop over remotes keeps a bare force a bare force
   for (const c of ['for r in origin backup; do git push --force $r; done', 'for remote in origin upstream; do git push --force-with-lease "$remote"; done']) {
-    assert.equal(at(c, onMain), 2, `bare force on main: ${c}`);
+    assert.equal(at(c, onMain), 'ask', `bare force on main: ${c}`);
   }
-  assert.equal(at('for r in origin backup; do git send-pack --force "$r"; done', onFeature), 2, 'a forced send-pack naming no ref');
+  assert.equal(at('for r in origin backup; do git send-pack --force "$r"; done', onFeature), 'ask', 'a forced send-pack naming no ref');
   // 2, 3: a loop over branches stays unread, as in 3.8.0 (reviews 17-19 each found new false blocks in reading it)
   for (const c of ['for b in $(git branch --merged main | grep -v main); do git push origin --delete "$b"; done',
     "for b in $(git branch -r --merged | grep -v -e main -e develop | sed 's#origin/##'); do git push origin --delete $b; done",
@@ -705,12 +711,12 @@ test('guard-protected-force-push: a held branch: the remote left alone, the bran
   for (const c of ['BR=$(git rev-parse --abbrev-ref HEAD); git checkout main; git pull; git checkout $BR; git rebase main; git push -f origin $BR',
     'BR=$(git branch --show-current); git stash && git checkout main && git pull --ff-only && git checkout "$BR" && git stash pop && git rebase main && git push -f origin "$BR"']) {
     assert.equal(at(c, onFeature), 0, `back on the feature branch: ${c}`);
-    assert.equal(at(c.replace(/git checkout main/, 'git checkout feature/x'), onMain), 2, `started on main: ${c}`);
+    assert.equal(at(c.replace(/git checkout main/, 'git checkout feature/x'), onMain), 'ask', `started on main: ${c}`);
   }
   // the spellings a held branch also takes
   for (const c of ['BR=$(git branch --show-current 2>/dev/null); git push -f origin "$BR"', 'BR=`git branch --show-current`; git push -f origin "$BR"',
     'B=main; git push -f origin "$B:$B"']) {
-    assert.equal(at(c, onMain), 2, `must block on main: ${c}`);
+    assert.equal(at(c, onMain), 'ask', `must block on main: ${c}`);
   }
   // 5: linear in the number of loops
   const t0 = Date.now();
@@ -724,12 +730,12 @@ test('guard-protected-force-push: a held branch: a switch back through a variabl
   const onFeature = scratchRepoOn('feature/x');
   // a held literal inside a carried script
   for (const c of ['b=main; bash -c "git push -f origin $b"', 'b=main; eval "git push --force origin $b"']) {
-    assert.equal(at(c, onFeature), 2, `must block: ${c}`);
+    assert.equal(at(c, onFeature), 'ask', `must block: ${c}`);
   }
   // F2: a checkout back to the branch a current-branch binding held
   const back = 'BR=$(git branch --show-current); git checkout main && git pull && git checkout "$BR" && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"';
   assert.equal(at(back, onFeature), 0, 'back on the feature branch');
-  assert.equal(at(back.replace('git checkout main', 'git checkout feature/x'), onMain), 2, 'back on main');
+  assert.equal(at(back.replace('git checkout main', 'git checkout feature/x'), onMain), 'ask', 'back on main');
   // F3: each git asked once per name - about one git process per checkout (42 for the 40, counted 2026-11-12). The budget
   // scales with what one git process costs here: a loaded Windows VM pays ~115 ms each and passed 4 s twice with nothing
   // asked twice, while a guard that asks per pair of names (1,600 calls) is still far over three calls a name.
@@ -775,7 +781,7 @@ test('guard-protected-force-push: checkouts replayed in run order, the current b
   fs.writeFileSync(path.join(onFeature, 'scripts', 'sync-main.sh'), 'BR=$(git branch --show-current); git checkout main; git pull --ff-only; git checkout "$BR"\n');
   fs.writeFileSync(path.join(onFeature, 'scripts', 'update-main.sh'), 'git checkout main && git pull --ff-only\n');
   for (const c of ['./scripts/sync-main.sh && git checkout main && git push -f', 'bash scripts/sync-main.sh; git checkout main; git push --force-with-lease']) {
-    assert.equal(at(c, onFeature), 2, `ends on main: ${c}`);
+    assert.equal(at(c, onFeature), 'ask', `ends on main: ${c}`);
   }
   for (const c of ['./scripts/update-main.sh && git checkout feature/x && git rebase main && git push --force-with-lease', 'bash scripts/sync-main.sh && git rebase main && git push -f']) {
     assert.equal(at(c, onFeature), 0, `ends on the feature branch: ${c}`);
@@ -785,7 +791,7 @@ test('guard-protected-force-push: checkouts replayed in run order, the current b
     assert.equal(at(c, onFeature), 0, `the feature branch, pushed from the main checkout: ${c}`);
   }
   for (const c of [`BR=$(git branch --show-current) && cd ${onFeature} && git push -f origin "$BR"`, `git -C ${onFeature} push --force-with-lease origin "$(git branch --show-current)"`]) {
-    assert.equal(at(c, onMain), 2, `main, pushed from the feature checkout: ${c}`);
+    assert.equal(at(c, onMain), 'ask', `main, pushed from the feature checkout: ${c}`);
   }
 });
 
@@ -800,18 +806,18 @@ test('guard-protected-force-push: the current branch unread past an unread check
     'gh pr checkout 12 && git rebase main && git push --force-with-lease origin "$(git branch --show-current)"']) {
     assert.equal(at(c, onMain), 0, `must allow: ${c.slice(0, 90)}`);
   }
-  assert.equal(at('git checkout "$b"; git checkout main; git push -f origin "$(git branch --show-current)"', onMain), 2, 'a readable checkout after it');
+  assert.equal(at('git checkout "$b"; git checkout main; git push -f origin "$(git branch --show-current)"', onMain), 'ask', 'a readable checkout after it');
   // F2: a trap's action runs at exit, after the push
   for (const c of ['ORIG=$(git branch --show-current); git checkout main; trap \'git checkout "$ORIG"\' EXIT; git pull; git push -f',
     "git checkout main && trap 'git checkout -' EXIT && git pull && git push -f"]) {
-    assert.equal(at(c, onFeature), 2, `ends on main before the trap: ${c}`);
+    assert.equal(at(c, onFeature), 'ask', `ends on main before the trap: ${c}`);
   }
   assert.equal(at("git checkout feature/x; trap 'git checkout main' EXIT; git rebase main; git push --force-with-lease", onFeature), 0, 'the trap runs after the push');
   // F3: `$(git rev-parse --show-toplevel)` is the work tree holding the shell
   fs.mkdirSync(path.join(onMain, 'src'), { recursive: true });
   for (const [c, cwd] of [['cd "$(git rev-parse --show-toplevel)" && git push --force-with-lease', onMain], ['cd `git rev-parse --show-toplevel` && git push -f origin HEAD', onMain],
     ['git -C "$(git rev-parse --show-toplevel)" push -f', onMain], ['cd "$(git rev-parse --show-toplevel 2>/dev/null)" && git push -f', path.join(onMain, 'src')]]) {
-    assert.equal(at(c, cwd), 2, `the work tree on main: ${c}`);
+    assert.equal(at(c, cwd), 'ask', `the work tree on main: ${c}`);
   }
   assert.equal(at('cd "$(git rev-parse --show-toplevel)" && git push --force-with-lease', onFeature), 0, 'the work tree on a feature branch');
 });
@@ -819,7 +825,7 @@ test('guard-protected-force-push: the current branch unread past an unread check
 test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
   const dir = scratchRepoOn('main');
   const fp = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
-  assert.equal(fp('git push -f', dir), 2, 'bare -f on main');
+  assert.equal(fp('git push -f', dir), 'ask', 'bare -f on main');
   assert.equal(fp('git push', dir), 0, 'a plain push to main is fast-forward work');
   spawnSync('git', ['-C', dir, 'checkout', '-qb', 'feature/z']);
   assert.equal(fp('git push -f', dir), 0, 'bare -f on a feature branch');
@@ -832,14 +838,14 @@ test('guard-protected-force-push: HEAD and @ are the current branch, and -C or a
   const dir = scratchRepoOn('main');
   const fp = (c, cwd) => runIn('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd }, {});
   for (const c of ['git push -f origin HEAD', 'git push --force origin @', 'git push origin +HEAD', 'git push -d origin HEAD'])
-    assert.equal(fp(c, dir).status, 2, `must block on main: ${c}`);
-  assert.equal(fp(`git -C ${dir} push -f`, TMP).status, 2, 'a -C names the repo the bare force runs in');
-  assert.equal(fp(`cd ${dir} && git push -f`, TMP).status, 2, 'and so does a cd before it');
-  assert.match(fp('git push -f origin HEAD', dir).stderr, /^Blocked: /, 'the denial opens on the word the analyzer counts');
+    assert.equal(fp(c, dir).status, 'ask', `must block on main: ${c}`);
+  assert.equal(fp(`git -C ${dir} push -f`, TMP).status, 'ask', 'a -C names the repo the bare force runs in');
+  assert.equal(fp(`cd ${dir} && git push -f`, TMP).status, 'ask', 'and so does a cd before it');
+  assert.match(fp('git push -f origin HEAD', dir).stderr, /If the user declined: Blocked: /, 'the reason opens on the word the analyzer counts');
   assert.equal(fp('git push origin HEAD', dir).status, 0, 'a plain push of HEAD is fast-forward work');
   spawnSync('git', ['-C', dir, 'checkout', '-qb', 'feature/y']);
   assert.equal(fp('git push -f origin HEAD', dir).status, 0, 'HEAD on a feature branch is the feature branch');
-  assert.equal(fp('git push -f origin HEAD:main', dir).status, 2, 'an explicit protected destination still blocks');
+  assert.equal(fp('git push -f origin HEAD:main', dir).status, 'ask', 'an explicit protected destination still blocks');
 });
 
 test('guard-protected-force-push: option values, a clustered -d and a forced wildcard (audit 2026-10-08)', () => {
@@ -847,12 +853,12 @@ test('guard-protected-force-push: option values, a clustered -d and a forced wil
   const fp = (c, tool = 'Bash') => runIn('guard-protected-force-push.js', { tool_name: tool, tool_input: { command: c }, cwd: dir }, {});
   for (const c of ['git push -f -o ci.skip origin', 'git push --force --push-option=x --repo origin', 'git push -ud origin main', 'git push -qd origin develop',
     "git push -f origin 'refs/heads/*:refs/heads/*'", "git push origin '+refs/heads/*:refs/heads/*'", "git push --prune origin 'refs/heads/*:refs/heads/*'"])
-    assert.equal(fp(c).status, 2, `must block on main: ${c}`);
+    assert.equal(fp(c).status, 'ask', `must block on main: ${c}`);
   for (const c of ['git push -o ci.skip origin main', 'git push -u origin feature/x', "git push origin 'refs/heads/*:refs/heads/*'", 'git push -o ci.skip origin'])
     assert.equal(fp(c).status, 0, `must allow: ${c}`);
   // The other two shell routes: PowerShell and Monitor run the same push.
-  assert.equal(fp('git push --force origin main', 'PowerShell').status, 2, 'PowerShell');
-  assert.equal(fp('git push -ud origin main', 'Monitor').status, 2, 'Monitor');
+  assert.equal(fp('git push --force origin main', 'PowerShell').status, 'ask', 'PowerShell');
+  assert.equal(fp('git push -ud origin main', 'Monitor').status, 'ask', 'Monitor');
   // git's own stderr stays out of the denial: an unborn repo printed `fatal: ambiguous argument 'HEAD'`.
   const unborn = fs.mkdtempSync(path.join(os.tmpdir(), 'unborn-'));
   spawnSync('git', ['-C', unborn, 'init', '-q']);
@@ -863,8 +869,8 @@ test('guard-protected-force-push: option values, a clustered -d and a forced wil
 
 test('guard-catastrophic-rm: an unscoped marketplace remove is blocked - it uninstalls every plugin from it at every scope', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
-  assert.equal(rm('claude plugin marketplace remove other-market'), 2);
-  assert.equal(rm('cd x && claude plugin marketplace rm envoydev'), 2);
+  assert.equal(rm('claude plugin marketplace remove other-market'), 'ask');
+  assert.equal(rm('cd x && claude plugin marketplace rm envoydev'), 'ask');
   assert.equal(rm('claude plugin marketplace remove envoydev --scope user'), 0);
   assert.equal(rm('claude plugin marketplace remove envoydev --scope=project'), 0);
   assert.equal(rm('claude plugin marketplace remove --help'), 0);
@@ -877,7 +883,7 @@ test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
   for (const c of ['rm -rf /', 'rm -rf /*', 'rm -rf /usr /lib', 'rm -rf .', 'rm -rf ./', 'rm -rf *', 'rm -rf "$HOME"/*', 'rm -rf ${HOME}',
     'rm -rf /home/../', 'rm -rf $PWD', 'sudo rm -rf /', 'cd x && rm -rf *', 'rm --recursive ~/', 'rm -rf -- /', 'rm -r -f "/"',
     'rm -rf dist; rm -rf /', 'rm -rf ..', 'rm -rf ../*', 'rm -rf a/../..']) {
-    assert.equal(rm(c), 2, `must block: ${c}`);
+    assert.equal(rm(c), 'ask', `must block: ${c}`);
   }
   for (const c of ['rm -rf bin obj node_modules', 'git commit -m "rm -rf /"', 'rm -f /', 'rm -rf ./build/*', 'rm -rf ~/projects',
     'echo rm -rf /', 'rm -rf ./build 2>&1', 'rm -rf /usr/', 'find . -name "*.o" -delete']) {
@@ -895,7 +901,7 @@ test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
 // 2.1.6 audit (guards:S3): a repository's .git holds the unpushed commits, the stashes and the reflog - nothing recovers them.
 test('guard-catastrophic-rm: a recursive rm of a .git directory is blocked, its lookalikes and its insides are not', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
-  for (const c of ['rm -rf .git', 'rm -rf ./.git', 'rm -rf sub/.git', 'rm -rf a .git']) assert.equal(rm(c), 2, `must block: ${c}`);
+  for (const c of ['rm -rf .git', 'rm -rf ./.git', 'rm -rf sub/.git', 'rm -rf a .git']) assert.equal(rm(c), 'ask', `must block: ${c}`);
   for (const c of ['rm -rf .github', 'rm -rf .gitignore', 'rm -f .git/index.lock', 'rm -rf .git/index.lock', 'rm -rf my.git', 'rm -f .git', 'rm -rf "$TMP/repo/.git"']) assert.equal(rm(c), 0, `must allow: ${c}`);
 });
 
@@ -1135,11 +1141,11 @@ test('guard-catastrophic-rm: git destroys a working tree too, and prose about it
   assert.equal(rm('git reset --hard'), 0, '... same');
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
   fs.writeFileSync(path.join(dir, 'new.txt'), 'x\n');
-  assert.equal(rm('git checkout -- .'), 2, 'a dirty tree loses work with no reflog');
-  assert.equal(rm('git checkout .'), 2, 'the pathless spelling too');
-  assert.equal(rm('git restore seed.txt'), 2, 'and restore');
-  assert.equal(rm('git reset --hard HEAD'), 2, 'and reset --hard');
-  assert.equal(rm('git clean -fdx'), 2, 'and clean -fdx');
+  assert.equal(rm('git checkout -- .'), 'ask', 'a dirty tree loses work with no reflog');
+  assert.equal(rm('git checkout .'), 'ask', 'the pathless spelling too');
+  assert.equal(rm('git restore seed.txt'), 'ask', 'and restore');
+  assert.equal(rm('git reset --hard HEAD'), 'ask', 'and reset --hard');
+  assert.equal(rm('git clean -fdx'), 'ask', 'and clean -fdx');
   assert.equal(rm('git restore --staged seed.txt'), 0, 'unstaging destroys nothing');
   assert.equal(rm('git checkout -b feature'), 0, 'a branch checkout is not a discard');
   assert.equal(rm('git reset HEAD~1'), 0, 'a soft reset keeps the tree');
@@ -1148,7 +1154,7 @@ test('guard-catastrophic-rm: git destroys a working tree too, and prose about it
   assert.equal(rm("grep -o 'git checkout --' t.jsonl"), 0, 'nor does a grep pattern');
   assert.equal(rm('git commit -m "undo the git reset --hard"'), 0, 'nor a commit message');
   assert.equal(rm("cat > plan.md <<'EOF'\nThen: git clean -fdx\nEOF"), 0, 'nor a plan document');
-  assert.equal(rm('echo "careful" && git clean -fdx'), 2, 'but a real one after a prose mention still blocks');
+  assert.equal(rm('echo "careful" && git clean -fdx'), 'ask', 'but a real one after a prose mention still blocks');
 });
 
 // audit 2026-10-10 C17 (session 349e4825): an approved `git merge --abort && ... git reset --hard` was denied over the
@@ -1164,21 +1170,21 @@ test('guard-catastrophic-rm: a reset after an abort of a merge in progress is ju
   g('checkout', '-q', base); fs.writeFileSync(path.join(dir, 'seed.txt'), 'ours\n'); g('commit', '-qam', 'ours');
   g('merge', 'other');
   assert.ok(fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD')), 'a conflicted merge is in progress');
-  assert.equal(rm('git reset --hard'), 2, 'without the abort the merge rows are still judged');
+  assert.equal(rm('git reset --hard'), 'ask', 'without the abort the merge rows are still judged');
   assert.equal(rm('git merge --abort && git reset --hard'), 0, 'the abort drops them first');
   assert.equal(rm('git merge --abort; git reset --hard HEAD'), 0, 'chained by ; too');
-  assert.equal(rm('git rebase --abort && git reset --hard'), 2, 'an abort of an operation not in progress changes nothing');
+  assert.equal(rm('git rebase --abort && git reset --hard'), 'ask', 'an abort of an operation not in progress changes nothing');
   g('merge', '--abort');
   fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'y\n'); g('add', 'tracked-edit.md'); g('commit', '-qm', 't');
   fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'mine\n');
   g('merge', 'other');
   assert.ok(fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD')), 'the merge starts beside an unstaged edit of a file it does not touch');
-  assert.equal(rm('git merge --abort && git reset --hard'), 2, 'a work-tree edit of the user\'s own is still a loss');
+  assert.equal(rm('git merge --abort && git reset --hard'), 'ask', 'a work-tree edit of the user\'s own is still a loss');
   fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'y\n');
   assert.equal(rm('git merge --abort && git reset --hard'), 0, 'and without it the abort and reset lose nothing of the user\'s');
 });
 
-test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard receipt', () => {
+test('guard-catastrophic-rm: the gate reads the PATHSPEC, and no discard receipt opens it', () => {
   // The gate asked only 'is the tree dirty', which made its own prescribed escape - 'name the ONE
   // file to revert instead of the whole tree' - unreachable: `git restore .gitignore` was denied
   // with all seven dirty files listed, six of which the command never touched (measured twice).
@@ -1192,33 +1198,31 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
 
   assert.equal(rm('git restore b.txt').status, 0, 'a CLEAN path has nothing to lose, dirty tree or not');
-  assert.equal(rm('git restore a.txt').status, 2, 'the dirty one it names is still blocked');
+  assert.equal(rm('git restore a.txt').status, 'ask', 'the dirty one it names is still blocked');
   // hooks review 2026-10-16 (7376ac10, 9968046e): a variable the command assigned a literal names that literal; a loop,
   // a command substitution and an unset name stay the whole tree
   assert.equal(rm("F=b.txt; sed -i.bak 's/two/2/' $F; npm test; git checkout -- $F").status, 0, 'a literal $F names b.txt');
   assert.equal(rm('F="b.txt" && git restore "${F}"').status, 0, 'quoted and braced');
-  assert.equal(rm('F=a.txt; git checkout -- $F').status, 2, 'a literal naming the dirty file still blocks');
+  assert.equal(rm('F=a.txt; git checkout -- $F').status, 'ask', 'a literal naming the dirty file still blocks');
   for (const c of ['F=$(git ls-files -m); git checkout -- $F', 'for F in b.txt; do git checkout -- $F; done', 'F=b.txt; for F in a.txt; do git checkout -- "$F"; done', 'git checkout -- $UNSET'])
-    assert.equal(rm(c).status, 2, `unknowable, the whole tree: ${c}`);
-  assert.equal(rm('git checkout -- .').status, 2, 'and the whole tree keeps the old arithmetic');
+    assert.equal(rm(c).status, 'ask', `unknowable, the whole tree: ${c}`);
+  assert.equal(rm('git checkout -- .').status, 'ask', 'and the whole tree keeps the old arithmetic');
   assert.match(rm('git restore a.txt').stderr, /the path\(s\) this command names/, 'the denial says which scope it judged');
 
-  // every other blocking guard honours an answer; this one re-blocked a discard the user had just
-  // chosen, and the chosen action was silently substituted with a `git stash push -u`
-  assert.match(rm('git restore a.txt').stderr, /\.alfred\/state\/approvals\/DISCARD-ALLOW/, 'the denial names the receipt, where 2.8.0 writes it');
+  // guards ask (D3, 2026-11-25): the discard is the guard's own ask each time, and no receipt opens it - the reason names none
+  assert.doesNotMatch(rm('git restore a.txt').stderr, /DISCARD-ALLOW|AskUserQuestion|Discard it/, 'the reason names no receipt and no ask of the model\'s');
+  assert.match(rm('git restore a.txt').stderr, /Keep the work instead: Keep the work - `git stash -u`, or commit it/, 'the reason keeps the keep advice');
+  assert.match(rm('git restore a.txt').stderr, /Reverting these files with Edit or Write instead is the same discard\./, 'and the Edit and Write sentence');
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '# the user answered Discard it\na.txt\n');
-  assert.equal(rm('git restore a.txt').status, 0, 'the receipt is honoured for the path it names');
-  assert.equal(rm('git checkout -- .').status, 0, 'and for a whole-tree command whose only loss is that path');
+  assert.equal(rm('git restore a.txt').status, 'ask', 'a receipt for the path opens nothing');
+  assert.equal(rm('git checkout -- .').status, 'ask', 'nor for a whole-tree command');
   fs.writeFileSync(path.join(dir, 'b.txt'), 'two changed\n');
-  assert.equal(rm('git checkout -- .').status, 2, 'but not once the whole tree loses a path it does not name');
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
-  assert.equal(rm('git checkout -- .').status, 0, 'the * line does');
-  fs.utimesSync(path.join(flow, 'DISCARD-ALLOW'), new Date(Date.now() - 9 * 3600 * 1000), new Date(Date.now() - 9 * 3600 * 1000));
-  assert.equal(rm('git checkout -- .').status, 2, 'a receipt older than 8h reads as absent');
+  assert.equal(rm('git checkout -- .').status, 'ask', 'nor does the * line');
   stateReceipt(dir, 'DISCARD-ALLOW', '*\n');
-  assert.equal(rm('git checkout -- .').status, 0, '2.8.0: the receipt under state/approvals/ is read');
+  assert.equal(rm('git checkout -- .').status, 'ask', 'nor the receipt under state/approvals/');
 });
 
 test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a target that tracks the same path', () => {
@@ -1237,7 +1241,7 @@ test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a ta
   for (const c of ['git checkout -f', 'git checkout -f other', 'git switch --discard-changes other', 'git reset --hard',
     'git reset --hard other', 'git checkout -- .', 'git restore .'])
     assert.equal(rm(c), 0, `an untracked file it never touches: ${c}`);
-  assert.equal(rm('git clean -fd'), 2, 'clean deletes exactly the untracked files');
+  assert.equal(rm('git clean -fd'), 'ask', 'clean deletes exactly the untracked files');
 
   git('checkout', '-q', 'other');
   fs.writeFileSync(path.join(dir, 'clash.txt'), 'theirs\n');
@@ -1245,14 +1249,14 @@ test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a ta
   git('checkout', '-q', '-');
   fs.writeFileSync(path.join(dir, 'clash.txt'), 'mine, untracked here\n');
   for (const c of ['git checkout -f other', 'git switch --discard-changes other', 'git reset --hard other'])
-    assert.equal(rm(c), 2, `the target tracks clash.txt, so the untracked copy is overwritten: ${c}`);
+    assert.equal(rm(c), 'ask', `the target tracks clash.txt, so the untracked copy is overwritten: ${c}`);
   assert.equal(rm('git reset --hard'), 0, 'HEAD does not track it - reset --hard keeps it');
 
   fs.rmSync(path.join(dir, 'clash.txt'));
   fs.rmSync(path.join(dir, 'notes'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
   assert.equal(rm('git clean -fd'), 0, 'clean never touches a modified tracked file');
-  assert.equal(rm('git reset --hard'), 2, 'which reset --hard does discard');
+  assert.equal(rm('git reset --hard'), 'ask', 'which reset --hard does discard');
 });
 
 test('guard-catastrophic-rm: a forced checkout or switch and a stash drop or clear lose work too', () => {
@@ -1270,14 +1274,14 @@ test('guard-catastrophic-rm: a forced checkout or switch and a stash drop or cle
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
   for (const c of ['git checkout -f other', 'git checkout --force', 'git checkout -qf other', 'git switch -f other',
     'git switch --force other', 'git switch --discard-changes other', 'git -C . checkout -f other'])
-    assert.equal(rm(c).status, 2, `a dirty tree is overwritten: ${c}`);
-  assert.match(rm('git switch -f other').stderr, /DISCARD-ALLOW/, 'the denial names the receipt');
+    assert.equal(rm(c).status, 'ask', `a dirty tree is overwritten: ${c}`);
+  assert.match(rm('git switch -f other').stderr, /Keep the work instead/, 'the reason carries the keep advice');
   for (const c of ['git switch -c fresh', 'git checkout other', 'git switch other', 'git stash list', 'git stash push -m keep'])
     assert.equal(rm(c).status, 0, `keeps the work: ${c}`);
 
   git('stash', 'push', '-qm', 'keep');                            // the tree is clean, one stash holds the work
   for (const c of ['git stash clear', 'git stash drop', 'git stash drop stash@{0}', 'git stash drop 0', "git stash drop 'stash@{0}'"])
-    assert.equal(rm(c).status, 2, `a stash with work in it: ${c}`);
+    assert.equal(rm(c).status, 'ask', `a stash with work in it: ${c}`);
   assert.equal(rm('git stash drop stash@{4}').status, 0, 'an entry that does not exist loses nothing');
   assert.equal(rm('git stash pop').status, 0, 'pop drops only what it applied');
   assert.match(rm('git stash clear').stderr, /stash@\{0\}/, 'the denial lists the entries it would destroy');
@@ -1286,11 +1290,11 @@ test('guard-catastrophic-rm: a forced checkout or switch and a stash drop or cle
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
-  assert.equal(rm('git stash drop').status, 0, 'the receipt names the entry the user chose to drop');
+  assert.equal(rm('git stash drop').status, 'ask', 'a receipt naming the entry opens nothing');
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed again\n');
-  assert.equal(rm('git checkout -f other').status, 2, 'and covers nothing else');
+  assert.equal(rm('git checkout -f other').status, 'ask', 'and covers nothing else');
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
-  assert.equal(rm('git checkout -f other').status, 0, 'the * line does');
+  assert.equal(rm('git checkout -f other').status, 'ask', 'nor does the * line');
 });
 
 test('stage 1 B6/B13: reflog, gc and SQL DROP are unread; the rm guard\'s delete checks stay', () => {
@@ -1315,12 +1319,12 @@ test('stage 1 B6/B13: reflog, gc and SQL DROP are unread; the rm guard\'s delete
   const rt = ['rm', 'tree'].join('');
   for (const c of ['rm -rf ~', 'rm -rf .git', 'rm -rf *', 'find ~ -delete', 'find . -delete',
     `python3 -c "import shutil, os; shutil.${rt}(os.path.expanduser('~'))"`])
-    assert.equal(rm(c).status, 2, `the rm core still refuses: ${c}`);
-  assert.equal(rm('Get-ChildItem -Recurse | Remove-Item -Recurse -Force', 'PowerShell').status, 2, 'a piped Remove-Item of the cwd is still refused');
+    assert.equal(rm(c).status, 'ask', `the rm core still refuses: ${c}`);
+  assert.equal(rm('Get-ChildItem -Recurse | Remove-Item -Recurse -Force', 'PowerShell').status, 'ask', 'a piped Remove-Item of the cwd is still refused');
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
   spawnSync('git', ['-C', dir, 'stash', 'push', '-qm', 'keep'], { encoding: 'utf8' });
   const drop = rm('git stash drop');
-  assert.equal(drop.status, 2, 'a stash drop over a stash with work in it is still refused');
+  assert.equal(drop.status, 'ask', 'a stash drop over a stash with work in it still asks');
   assert.match(drop.stderr, /this destroys 1 stash entry/, 'with the stash head in its denial');
 });
 
@@ -1336,9 +1340,9 @@ test('guard-catastrophic-rm: the pathspec is judged where the command runs - its
   const rm = (command, cwd) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', cwd, tool_input: { command } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
 
-  assert.equal(rm('git checkout -- a.txt', sub), 2, 'the payload cwd is where git resolves the path');
-  assert.equal(rm('git -C sub restore a.txt', dir), 2, 'a -C moves it');
-  assert.equal(rm('cd sub && git checkout -- a.txt', dir), 2, 'a cd before it moves it');
+  assert.equal(rm('git checkout -- a.txt', sub), 'ask', 'the payload cwd is where git resolves the path');
+  assert.equal(rm('git -C sub restore a.txt', dir), 'ask', 'a -C moves it');
+  assert.equal(rm('cd sub && git checkout -- a.txt', dir), 'ask', 'a cd before it moves it');
   assert.equal(rm('git checkout -- seed.txt', dir), 0, 'a clean path at the root still passes');
 });
 
@@ -1357,15 +1361,15 @@ test('guard-catastrophic-rm: every git call in a chained command is judged, and 
   const rm = rmAt(dir);
   for (const c of ['git reset --hard && git clean -fd', 'git checkout . && git clean -fdx',
     'git reset --hard origin/main && git clean -fdx', 'git fetch && git clean -fd', 'git status; git clean -f'])
-    assert.equal(rm(c).status, 2, `the clean after it deletes the untracked file: ${c}`);
+    assert.equal(rm(c).status, 'ask', `the clean after it deletes the untracked file: ${c}`);
   for (const c of ['git reset --hard && git clean -n -fd', 'git checkout . && git status'])
     assert.equal(rm(c).status, 0, `nothing in it loses the file: ${c}`);
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
   const r = rm('git checkout . && git clean -fdx');
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 'ask');
   assert.match(r.stderr, /seed\.txt/, 'the checkout loss is named');
   assert.match(r.stderr, /only-untracked\.txt/, 'and so is the clean loss');
-  assert.equal(r.stderr.match(/AskUserQuestion/g).length, 1, 'in ONE block');
+  assert.equal(r.stderr.match(/Keep the work instead/g).length, 1, 'in ONE block');
 });
 
 test('guard-catastrophic-rm: a non-ASCII name and the `-` target are read the way git reads them', () => {
@@ -1382,7 +1386,7 @@ test('guard-catastrophic-rm: a non-ASCII name and the `-` target are read the wa
   const rm = rmAt(dir);
   for (const c of ['git reset --hard other', 'git checkout -f other', 'git switch --discard-changes other', 'git switch -f -', 'git checkout -f -']) {
     const r = rm(c);
-    assert.equal(r.status, 2, `the target tracks café.txt, so the untracked copy is overwritten: ${c}`);
+    assert.equal(r.status, 'ask', `the target tracks café.txt, so the untracked copy is overwritten: ${c}`);
     assert.match(r.stderr, /café\.txt/, `the name is shown as written, not C-quoted: ${c}`);
   }
   assert.equal(rm('git reset --hard').status, 0, 'HEAD does not track it');
@@ -1393,7 +1397,7 @@ test('guard-catastrophic-rm: a non-ASCII name and the `-` target are read the wa
   git('add', 'sub'); git('commit', '-qm', 'sub');
   const fromSub = runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', cwd: path.join(dir, 'sub'), tool_input: { command: 'git reset --hard other' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-  assert.equal(fromSub.status, 2, 'run from a subfolder, the clash at the root is still seen');
+  assert.equal(fromSub.status, 'ask', 'run from a subfolder, the clash at the root is still seen');
 });
 
 test('guard-catastrophic-rm: a backslash is literal in PowerShell, whose escape is the backtick, and an escape in bash', { skip: process.platform === 'win32' && 'a Windows filename cannot hold a backslash' }, () => {
@@ -1409,11 +1413,11 @@ test('guard-catastrophic-rm: a backslash is literal in PowerShell, whose escape 
   fs.writeFileSync(path.join(dir, 'my file.txt'), 'changed\n');
   const run = (tool_name, command) => runIn('guard-catastrophic-rm.js', { tool_name, tool_input: { command } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
-  assert.equal(run('PowerShell', 'git checkout -- back\\slash.txt'), 2, 'PowerShell keeps the backslash in the path');
-  assert.equal(run('Bash', 'git checkout -- my\\ file.txt'), 2, 'bash still reads an escaped space');
-  assert.equal(run('Bash', 'git checkout -- "back\\slash.txt"'), 2, 'and a backslash inside double quotes before a letter');
-  assert.equal(run('Bash', 'git checkout -- my\\ fil\\e.txt'), 2, 'an unquoted bash backslash before a letter drops, as bash drops it');
-  assert.equal(run('PowerShell', 'git checkout -- my` file.txt'), 2, 'the PowerShell escape is the backtick');
+  assert.equal(run('PowerShell', 'git checkout -- back\\slash.txt'), 'ask', 'PowerShell keeps the backslash in the path');
+  assert.equal(run('Bash', 'git checkout -- my\\ file.txt'), 'ask', 'bash still reads an escaped space');
+  assert.equal(run('Bash', 'git checkout -- "back\\slash.txt"'), 'ask', 'and a backslash inside double quotes before a letter');
+  assert.equal(run('Bash', 'git checkout -- my\\ fil\\e.txt'), 'ask', 'an unquoted bash backslash before a letter drops, as bash drops it');
+  assert.equal(run('PowerShell', 'git checkout -- my` file.txt'), 'ask', 'the PowerShell escape is the backtick');
 });
 
 test('guard-catastrophic-rm: git clean -x / -X is judged on the ignored files it deletes', () => {
@@ -1427,7 +1431,7 @@ test('guard-catastrophic-rm: git clean -x / -X is judged on the ignored files it
   const rm = rmAt(dir);
   for (const c of ['git clean -fdx', 'git clean -fX', 'git clean -xf', 'git clean -f -x -d', 'git clean -fx -- .env']) {
     const r = rm(c);
-    assert.equal(r.status, 2, `an ignored file is deleted: ${c}`);
+    assert.equal(r.status, 'ask', `an ignored file is deleted: ${c}`);
     assert.match(r.stderr, /\.env/, `and named: ${c}`);
   }
   for (const c of ['git clean -fd', 'git clean -n -fdx', 'git clean -fdx --dry-run', 'git clean -fdx -e .env -e .claude -e .alfred'])
@@ -1449,7 +1453,7 @@ test('guard-catastrophic-rm: the discard spellings are read from the git argv, f
     'git restore --staged --worktree seed.txt', 'git restore -SW seed.txt', 'git restore --sour=HEAD seed.txt',
     'git reset HEAD --hard', 'git reset -q --hard', 'git reset --har', 'git clean -d -f', 'git clean -q -fd', 'git clean -f -- new.txt',
     'git checkout "seed.txt"', 'git -c core.quotePath=false checkout -- seed.txt'])
-    assert.equal(rm(c).status, 2, `a discard of dirty work: ${c}`);
+    assert.equal(rm(c).status, 'ask', `a discard of dirty work: ${c}`);
   for (const c of ['git checkout -b fresh', 'git checkout -B fresh2 trunk', 'git checkout --orphan lonely', 'git checkout trunk',
     'git restore --staged seed.txt', 'git restore -S seed.txt', 'git reset', 'git reset --soft HEAD', 'git reset -q HEAD seed.txt',
     'git reset --keep HEAD', 'git clean -d', 'git clean -n -fd', 'git clean -fd --dry-run', 'git clean -f -- seed.txt',
@@ -1460,9 +1464,9 @@ test('guard-catastrophic-rm: the discard spellings are read from the git argv, f
 test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', () => {
   for (const c of ['Remove-Item -Recurse -Force ~', 'Remove-Item -Recurse -Force $HOME', 'Remove-Item -Recurse -Force C:\\',
     'rm -r -fo $env:USERPROFILE', 'ri -Recurse C:/', 'Remove-Item C:\\* -Recurse', 'del -Recurse -Force .'])
-    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 'ask', `must block: ${c}`);
   for (const c of ['rm -rf C:/', 'rm -rf /c/', 'rm -rf /c', 'rm -rf /cygdrive/c', 'rm -rf /mnt/c/'])
-    assert.equal(bash('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+    assert.equal(bash('guard-catastrophic-rm.js', c), 'ask', `must block: ${c}`);
   for (const c of ['Remove-Item -Recurse -Force ./dist', 'Remove-Item -Force *', 'rm -Force *.log', 'Remove-Item -Recurse ./logs -Include *',
     'Remove-Item -Recurse -Force C:\\build\\out'])
     assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
@@ -1471,10 +1475,10 @@ test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', ()
 
 test('guard-catastrophic-rm: PowerShell .\\ and ..\\ are the cwd and its parent; Monitor runs the same shell (audit 2026-10-08)', () => {
   for (const c of ['Remove-Item -Recurse -Force .\\', 'Remove-Item -Recurse -Force .\\*', 'Remove-Item -Recurse -Force ..\\', 'ri -Recurse ..\\*'])
-    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 'ask', `must block: ${c}`);
   for (const c of ['Remove-Item -Recurse -Force .\\build', 'Remove-Item -Recurse -Force ..\\other\\out'])
     assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
-  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Monitor', tool_input: { command: 'rm -rf ~' } }), 2, 'Monitor');
+  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Monitor', tool_input: { command: 'rm -rf ~' } }), 'ask', 'Monitor');
 });
 
 test('guard-catastrophic-rm: past the judged-call cap a clean, a stash clear and unread git text are still read (audit 2026-10-08)', () => {
@@ -1487,13 +1491,13 @@ test('guard-catastrophic-rm: past the judged-call cap a clean, a stash clear and
   const filler = Array.from({ length: SCAN_LIMITS.gitJudged }, () => 'git restore --staged seed.txt').join('\n');
   assert.equal(rm(`${filler}\ngit status`).status, 0, 'control: the tracked tree is clean and nothing destructive follows');
   const clean = rm(`${filler}\ngit clean -fd`);
-  assert.equal(clean.status, 2, 'git clean past the cap deletes the untracked file - it passed before');
+  assert.equal(clean.status, 'ask', 'git clean past the cap deletes the untracked file - it passed before');
   assert.match(clean.stderr, /untracked\.txt/);
-  assert.equal(rm(`${filler}\ngit stash clear`).status, 2, 'git stash clear past the cap destroys the stash - it passed before');
-  assert.equal(rm('git clean -fd').status, 2, 'control: the same clean alone');
+  assert.equal(rm(`${filler}\ngit stash clear`).status, 'ask', 'git stash clear past the cap destroys the stash - it passed before');
+  assert.equal(rm('git clean -fd').status, 'ask', 'control: the same clean alone');
   // A subcommand xargs supplies is text the reader cannot read: judged as a whole-tree discard where the shell runs.
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'dirty\n');
-  assert.equal(rm('echo checkout -- seed.txt | xargs git').status, 2, 'an xargs-fed git call on a dirty tree');
+  assert.equal(rm('echo checkout -- seed.txt | xargs git').status, 'ask', 'an xargs-fed git call on a dirty tree');
   git('checkout', '--', 'seed.txt');
   assert.equal(rm('echo status | xargs git').status, 0, 'and on a clean tree nothing is lost');
 });
@@ -1501,7 +1505,7 @@ test('guard-catastrophic-rm: past the judged-call cap a clean, a stash clear and
 test('guard-catastrophic-rm: an unscoped marketplace remove is blocked by path and inside bash -c (audit 2026-10-08)', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
   for (const c of ['/usr/local/bin/claude plugin marketplace remove foo', "bash -c 'claude plugin marketplace remove foo'", 'sh -c "claude plugin marketplace rm foo"'])
-    assert.equal(rm(c), 2, `must block: ${c}`);
+    assert.equal(rm(c), 'ask', `must block: ${c}`);
   for (const c of ["bash -c 'claude plugin marketplace remove foo --scope user'", 'echo "claude plugin marketplace remove foo"', '/usr/local/bin/claude plugin marketplace list'])
     assert.equal(rm(c), 0, `must allow: ${c}`);
 });
@@ -1512,14 +1516,14 @@ test('guard-catastrophic-rm: a literal find delete and a piped Remove-Item are j
   for (const c of ['find / -delete', 'find ~ -delete', 'find ~ -exec rm -rf {} +', 'find "$HOME" -mindepth 1 -delete',
     'find . -delete', 'find ~ -type f -exec /bin/rm {} \\;', 'sudo find / -xdev -delete', 'find /usr /lib -execdir rm -f {} +',
     'find ~ \\( -name a -o -name b \\) -o -delete'])
-    assert.equal(bash('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+    assert.equal(bash('guard-catastrophic-rm.js', c), 'ask', `must block: ${c}`);
   for (const c of ['find . -name "*.log" -delete', 'find ~ -name "*.tmp" -delete', 'find ./build -delete', 'find / -name core -exec rm {} +',
     'find . \\( -name "*.log" -o -name "*.tmp" \\) -delete', 'find ~ -print', 'find . -type f -exec cat {} +', 'echo find / -delete',
     'find ~/projects/x -mindepth 1 -delete'])
     assert.equal(bash('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
   for (const c of ['Get-ChildItem ~ | Remove-Item -Recurse -Force', 'gci $HOME -Recurse | Remove-Item -Force', 'ls C:\\ | ri -Recurse',
     'Get-ChildItem -Path . | Remove-Item -Recurse'])
-    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 'ask', `must block: ${c}`);
   for (const c of ['Get-ChildItem ./dist | Remove-Item -Recurse -Force', 'Get-ChildItem ~ -Filter *.log | Remove-Item -Recurse',
     'Get-ChildItem ~ | Remove-Item', 'Get-ChildItem ~ -Include *.tmp -Recurse | Remove-Item -Force', 'Get-ChildItem ~ | Select-Object Name'])
     assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
@@ -1533,17 +1537,16 @@ test('guard-catastrophic-rm: only the -o branch holding the delete is judged, na
     "find . -path ./node_modules -prune -o -exec rm -rf {} +", "find ~ '(' -true -o -name a ')' -delete",
     'find ~ \\( \\( -name a -o -name b \\) -o -true \\) -delete', 'find ~ \\( -name x -o -delete \\)', 'find ~ -delete \\( -name x \\)',
     'find ~ -exec rm {} + -name x', 'find ~ -name "(" -o -delete'])
-    assert.equal(bash('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+    assert.equal(bash('guard-catastrophic-rm.js', c), 'ask', `must block: ${c}`);
   for (const c of ["find . -path ./node_modules -prune -o -name '*.pyc' -delete", "find . -name '*.o' -o -name '*.a' -delete",
     "find . -name '*.log' -delete", 'find /tmp/x -type f -mtime +7 -delete', 'find . \\( \\( -name a -o -name b \\) -o -name c \\) -delete',
     'find ~ -name x \\( -true -o -delete \\)', "find . -name '*.o' -o -name '*.a' -exec rm {} +", 'find ~ -mtime -7 -delete'])
     assert.equal(bash('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
   // An unbalanced group (find refuses to run it) keeps the whole-expression rule: a filter narrows unless an
   // alternative sits outside every group.
-  assert.equal(bash('guard-catastrophic-rm.js', 'find ~ -name x \\) -o -delete'), 2, 'unbalanced, an alternative outside every group');
+  assert.equal(bash('guard-catastrophic-rm.js', 'find ~ -name x \\) -o -delete'), 'ask', 'unbalanced, an alternative outside every group');
   assert.equal(bash('guard-catastrophic-rm.js', 'find ~ \\( -name x -delete'), 0, 'unbalanced, filtered');
-  const why = spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
-    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'find ~ -delete -name x' } }), encoding: 'utf8' });
+  const why = runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'find ~ -delete -name x' } });
   assert.match(why.stderr, /filter the find \(-name, -path\) BEFORE its -delete/, 'the remedy names the order that narrows');
 });
 
@@ -2901,11 +2904,11 @@ test('guard-cross-project-write: a filesystem server write is judged like a Writ
 // retried turn. Until this ledger existed the per-hook block count was unmeasurable.
 test('guard hooks record every block, and nothing on a pass', () => {
   const proj = fs.mkdtempSync(path.join(TMP, 'blocklog-'));
-  const run = (hook, payload) => spawnSync(process.execPath, [path.join(HOOKS, hook)], {
+  const run = (hook, payload) => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, hook)], {
     input: JSON.stringify({ session_id: 'sess1', hook_event_name: 'PreToolUse', ...payload }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
-  }).status;
+  }));
   const ledger = () => {
     const f = path.join(proj, '.alfred', 'statistics', 'hook-blocks', 'sess1.jsonl');
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
@@ -2914,7 +2917,7 @@ test('guard hooks record every block, and nothing on a pass', () => {
   assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'npm test' } }), 0);
   assert.deepEqual(ledger(), [], 'a pass writes nothing - the ledger is blocks only');
 
-  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }), 2);
+  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }), 'ask', 'an ask is a block too: its row is written');
   assert.equal(run('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: '/etc/elsewhere/x.ts' } }), 2);
   assert.equal(run('guard-unapproved-dispatch.js', { tool_name: 'Task', tool_input: { subagent_type: 'Explore', prompt: 'who calls Foo' } }), 2);
 
@@ -2931,6 +2934,24 @@ test('guard hooks record every block, and nothing on a pass', () => {
   }
 });
 
+// Guards ask instead of block (D1, 2026-11-25): where nobody can answer, a protective block is a deny with today's full text.
+test('each protective block denies under dontAsk with today\'s text', () => {
+  const proj = fs.mkdtempSync(path.join(TMP, 'dontask-'));
+  spawnSync('git', ['init', '-q', '-b', 'main', proj]);
+  const deny = (hook, command) => {
+    const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], {
+      input: JSON.stringify({ session_id: 'da1', permission_mode: 'dontAsk', tool_name: 'Bash', tool_input: { command }, cwd: proj }),
+      encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+    });
+    assert.equal(verdictOf(r), 'deny', `${hook}: ${command}`);
+    assert.equal(r.stdout.trim().split('\n').length, 1, 'one decision object, never two');
+    return blockText(r);
+  };
+  assert.match(deny('guard-catastrophic-rm.js', 'rm -rf /'), /^Blocked: a recursive rm/);
+  assert.match(deny('guard-protected-force-push.js', 'git push --force origin main'), /^Blocked: /);
+  assert.match(deny('guard-secret-value.js', `curl -H 'Authorization: token ${['gh', 'p_'].join('')}${'A1b2'.repeat(9)}' https://example.invalid`), /./);
+});
+
 test('block telemetry never interferes with the gate', () => {
   // An unwritable docs root must not turn a block into a pass, nor a pass into an error.
   const proj = fs.mkdtempSync(path.join(TMP, 'blockro-'));
@@ -2942,8 +2963,8 @@ test('block telemetry never interferes with the gate', () => {
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
   });
   const blocked = run('rm -rf /');
-  assert.equal(blocked.status, 2, 'still blocks when the ledger cannot be written');
-  assert.match(blocked.stderr, /^Blocked: a recursive rm/, 'and the model still gets the reason, under the word the analyzer counts');
+  assert.equal(verdictOf(blocked), 'ask', 'still blocks when the ledger cannot be written');
+  assert.match(blockText(blocked), /If the user declined: Blocked: a recursive rm/, 'and the model still gets the reason, under the word the analyzer counts');
   assert.equal(run('npm test').status, 0, 'and an ordinary command still passes');
 });
 
@@ -4157,9 +4178,9 @@ test('guard-stop-contract: a credential the USER pasted demands the rotate ask t
 const pwsh = (hook, command) => run(hook, { tool_name: 'PowerShell', tool_input: { command } });
 
 test('PowerShell route: the shell guards judge the second spelling of the same call', () => {
-  assert.equal(pwsh('guard-protected-force-push.js', 'git push --force origin main'), 2, 'force-push to a protected branch');
+  assert.equal(pwsh('guard-protected-force-push.js', 'git push --force origin main'), 'ask', 'force-push to a protected branch');
   assert.equal(pwsh('guard-protected-force-push.js', 'echo "git push --force origin main"'), 0, 'the same text quoted is prose');
-  assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf $HOME'), 2, 'recursive rm of an unrecoverable target');
+  assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf $HOME'), 'ask', 'recursive rm of an unrecoverable target');
   assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf bin obj node_modules'), 0, 'named build dirs pass');
   assert.equal(pwsh('guard-read-whole-file.js', `cat ${BIG}`), 2, 'whole-file dump of a large source');
   assert.equal(pwsh('guard-read-whole-file.js', `sed -n 1,40p ${BIG}`), 0, 'a ranged read passes');
@@ -4606,7 +4627,7 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
   const root = fs.mkdtempSync(path.join(TMP, 'sid-'));
   const r = runIn('guard-catastrophic-rm.js', { session_id: '../../escaped', tool_name: 'Bash', tool_input: { command: 'rm -rf /' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 'ask');
   assert.ok(!fs.existsSync(path.join(root, 'escaped.jsonl')), 'nothing lands outside hook-blocks');
   assert.deepStrictEqual(fs.readdirSync(path.join(root, '.alfred', 'statistics', 'hook-blocks')), ['.._.._escaped.jsonl']);
   // Every writer and reader spells the name the same way, or a reader opens a file the
@@ -4695,17 +4716,17 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
 test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught however they are spelled; cmd /c is a wrapper', () => {
   const proj = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'h6-')));
   fs.mkdirSync(path.join(proj, 'sub', 'build'), { recursive: true });
-  const rm = (command, tool = 'Bash') => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+  const rm = (command, tool = 'Bash') => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ tool_name: tool, tool_input: { command }, cwd: path.join(proj, 'sub') }), encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
-  }).status;
+  }));
   const home = os.homedir();
   for (const c of ['rm -rf "${HOME:?}"', 'rm -rf ${HOME:-/tmp}/', 'rm -rf "${HOME?unset}"/*', `rm -rf ${home}`, `rm -rf "${home}/"`, `rm -rf ${path.dirname(home)}`,
     'rm -rf "$(pwd)"', 'rm -rf `pwd`', `rm -rf ${proj}`, `rm -rf ${path.dirname(proj)}`, `rm -rf ${path.join(proj, 'sub')}`, `find ${home} -delete`,
     'cmd /c rd /s /q C:\\', 'cmd //c "rd /s /q C:\\"', 'rd /s /q C:\\', 'cmd.exe /d /c rmdir /S /Q C:\\']) {
-    assert.equal(rm(c), 2, `must block: ${c}`);
+    assert.equal(rm(c), 'ask', `must block: ${c}`);
   }
-  assert.equal(rm('cmd /c rd /s /q C:\\', 'PowerShell'), 2, 'cmd /c from PowerShell');
+  assert.equal(rm('cmd /c rd /s /q C:\\', 'PowerShell'), 'ask', 'cmd /c from PowerShell');
   for (const c of ['rm -rf build', `rm -rf ${path.join(proj, 'sub', 'build')}`, 'rm -rf "${TMPDIR:?}/h6-scratch"', 'rm -rf ${HOME:+x}',
     'rmdir /s', 'cmd /c dir', 'cmd /c rd /s /q build', `rm -rf ${path.join(home, 'no-such-h6-dir')}`]) {
     assert.equal(rm(c), 0, `must allow: ${c}`);
@@ -4713,10 +4734,10 @@ test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught howe
   // A tilde inside a segment is a name, not the home dir: Windows CI's 8.3 temp path (`RUNNER~1`) let the project through.
   const tilde = path.join(proj, 'RUNNER~1');
   fs.mkdirSync(tilde);
-  const rmIn = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+  const rmIn = (command) => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: tilde }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: tilde },
-  }).status;
-  assert.equal(rmIn(`rm -rf '${tilde}'`), 2, 'a project whose path holds a mid-segment tilde');
+  }));
+  assert.equal(rmIn(`rm -rf '${tilde}'`), 'ask', 'a project whose path holds a mid-segment tilde');
   assert.equal(rmIn('rm -rf ~/no-such-h6-dir'), 0, 'a leading tilde stays the symbolic rules\'');
 });
 
@@ -4849,10 +4870,10 @@ test('guard-protected-force-push: the remote default branch is protected, and th
   git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk');
   const fp = (command) => runIn('guard-protected-force-push.js', { tool_name: 'Bash', cwd: dir, tool_input: { command } }, { cwd: dir });
   const denied = fp('git push --force origin trunk');
-  assert.equal(denied.status, 2, 'a force of the remote default');
+  assert.equal(denied.status, 'ask', 'a force of the remote default');
   assert.match(denied.stderr, /theirs to run: give them the exact command to type themselves/);
-  assert.equal(fp('git push origin :trunk').status, 2, 'a delete of it');
-  assert.equal(fp('git push -f').status, 2, 'a bare force while HEAD is the default');
+  assert.equal(fp('git push origin :trunk').status, 'ask', 'a delete of it');
+  assert.equal(fp('git push -f').status, 'ask', 'a bare force while HEAD is the default');
   assert.equal(fp('git push origin trunk').status, 0, 'an ordinary push of it passes');
   assert.equal(fp('git push --force origin feature/x').status, 0, 'another branch stays open');
   git('symbolic-ref', '--delete', 'refs/remotes/origin/HEAD');
@@ -5333,7 +5354,7 @@ test('audit 2026-10-30 HK-08..HK-11: .git insides, a followed cd, a variable tar
   const { home, dir } = hkProject('hk-rm');
   const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home };
   const rmIn = (command, { cwd = dir, tool = 'Bash' } = {}) => runIn('guard-catastrophic-rm.js', { tool_name: tool, tool_input: { command }, cwd }, { cwd, env });
-  const blocks = (c, why, opts) => { const r = rmIn(c, opts); assert.equal(r.status, 2, `must block (${why}): ${c}\n${r.stderr}`); };
+  const blocks = (c, why, opts) => { const r = rmIn(c, opts); assert.equal(r.status, 'ask', `must block (${why}): ${c}\n${r.stderr}`); };
   const allows = (c, why, opts) => { const r = rmIn(c, opts); assert.equal(r.status, 0, `must allow (${why}): ${c}\n${r.stderr}`); };
   const base = path.basename(dir);
   // HK-08: anything at or under a repository's .git - resolved, not literal
@@ -5388,7 +5409,7 @@ test('audit 2026-10-30 HK-12, HK-15: a chained switch, a configured refspec, gh 
   git('checkout', '-q', 'feature'); // `-` names main from here
   const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home };
   const pushIn = (command, { cwd = dir, tool = 'Bash' } = {}) => runIn('guard-protected-force-push.js', { tool_name: tool, tool_input: { command }, cwd }, { cwd, env });
-  const blocks = (c, why, opts) => { const r = pushIn(c, opts); assert.equal(r.status, 2, `must block (${why}): ${c}\n${r.stderr}`); };
+  const blocks = (c, why, opts) => { const r = pushIn(c, opts); assert.equal(r.status, 'ask', `must block (${why}): ${c}\n${r.stderr}`); };
   const allows = (c, why, opts) => { const r = pushIn(c, opts); assert.equal(r.status, 0, `must allow (${why}): ${c}\n${r.stderr}`); };
   // HK-12: the branch a later bare or HEAD push names is the last one switched to, in that push's checkout
   for (const c of [
@@ -5850,35 +5871,33 @@ test('guard-cross-project-write: in a project with no workspace a subagent is re
   assert.ok(r.stderr.includes(`outside this session's project (`) && r.stderr.includes(otherRoot.split(path.sep).pop()), r.stderr);
 });
 
-test('audit 2026-10-30 HK-03 / HK-16: DISCARD and CROSS-WRITE are this session\'s and the user\'s; each denial prints the lines', () => {
+// Guards ask instead of block (D3, 2026-11-25): the rm guard's discard is its own ask each time. A DISCARD-ALLOW receipt and a discard
+// the user picked in the model's own ask were the chat-yes openers; neither opens anything now.
+test('the DISCARD-ALLOW receipt and an answered discard ask open nothing', () => {
+  let k = 0;
+  const session = (dir, rows) => { const tp = rcFile(path.join(dir, 'sessions', `d${++k}.jsonl`), rows); pause(5); return tp; };
+  const { home, dir } = hkProject('rc-rm');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home };
+  const rm = (tp) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git restore a.txt' }, cwd: dir, session_id: RC, transcript_path: tp }, { cwd: dir, env });
+  const first = rm(session(home, [rc.typed('tidy up')]));
+  assert.equal(first.status, 'ask');
+  assert.doesNotMatch(first.stderr, /DISCARD-ALLOW|AskUserQuestion/, 'the reason names no receipt and asks the model for no answer');
+  // a live receipt for the path, with its session line, behind an answered 'Discard it' to an earlier denial
+  const answered = session(home, [rc.typed('tidy up'), rc.denial('DISCARD-ALLOW', 'Bash'), rc.answer('Discard it')]);
+  stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\na.txt\n`);
+  assert.equal(rm(answered).status, 'ask', 'the receipt for the path');
+  stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\n*\n`);
+  assert.equal(rm(answered).status, 'ask', 'the * line');
+  // the user's pick of the discard in the model's own ask, naming the file
+  const pick = session(home, [rc.typed('tidy up'), rc.answer('Revert a.txt')]);
+  assert.equal(rm(pick).status, 'ask', 'a pick in the model\'s own ask naming the file');
+  assert.ok(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8') === 'changed\n', 'the dirty file is untouched');
+});
+
+test('audit 2026-10-30 HK-03 / HK-16: CROSS-WRITE is this session\'s and the user\'s; the denial prints the lines', () => {
   let k = 0;
   const session = (dir, rows) => { const tp = rcFile(path.join(dir, 'sessions', `s${++k}.jsonl`), rows); pause(5); return tp; };
-  // DISCARD-ALLOW: the rm guard's git half
-  {
-    const { home, dir } = hkProject('rc-rm');
-    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
-    const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home };
-    const rm = (tp, sid = RC) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git restore a.txt' }, cwd: dir, session_id: sid, transcript_path: tp }, { cwd: dir, env });
-    const first = rm(session(home, [rc.typed('tidy up')]));
-    assert.equal(first.status, 2);
-    assert.ok(first.stderr.includes(`  session: ${RC}\n  a.txt\n`), `HK-16: the denial prints the exact lines\n${first.stderr}`);
-    const answered = [rc.typed('tidy up'), rc.denial('DISCARD-ALLOW', 'Bash'), rc.answer('Discard it')];
-    let tp = session(home, answered);
-    stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\na.txt\n`);
-    assert.equal(rm(tp).status, 0, 'the lines it printed, after the user\'s Discard it');
-    stateReceipt(dir, 'DISCARD-ALLOW', 'a.txt\n');
-    assert.match(rm(tp).stderr, /no session: line naming this session/, 'HK-16: a receipt naming no session is refused, and the denial says why');
-    stateReceipt(dir, 'DISCARD-ALLOW', 'session: other\na.txt\n');
-    assert.equal(rm(tp).status, 2, 'HK-16: another session\'s receipt');
-    tp = session(home, [rc.typed('tidy up'), rc.denial('DISCARD-ALLOW', 'Bash')]);
-    stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\na.txt\n`);
-    assert.equal(rm(tp).status, 2, 'HK-03: no Discard it answered');
-    tp = session(home, [rc.command('alfred-code:mode:auto-run', 'on'), rc.denial('DISCARD-ALLOW', 'Bash'), rc.answer('Discard it')]);
-    stateReceipt(dir, 'DISCARD-ALLOW', `session: ${RC}\na.txt\n`);
-    const auto = rm(tp);
-    assert.equal(auto.status, 2, 'HK-03: a Discard it given under auto-run');
-    assert.match(auto.stderr, /hard stop/, 'and the denial says auto-run cannot lift it');
-  }
   // CROSS-WRITE-ALLOW: a file-tool write into a sibling tree
   {
     const root = fs.mkdtempSync(path.join(TMP, 'rc-crossA-'));

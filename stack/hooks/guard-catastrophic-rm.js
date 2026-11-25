@@ -743,7 +743,7 @@ function gitPlan(verb, args, isRev)
 }
 
 // What a plan destroys, read from git itself: [{ kind, rows, targets, named }] - `rows` the lines the
-// denial lists, `targets` what a DISCARD-ALLOW line must cover, `named` when the command named paths.
+// denial lists, `targets` the paths the loss covers, `named` when the command named paths.
 // `run(argv)` is git in the call's own directory; it throws when git cannot answer. `opAborted`: the same command aborts
 // a merge, rebase, cherry-pick, revert or am in progress here before this call (below).
 function readLoss(plan, run, opAborted = false)
@@ -812,50 +812,12 @@ function readLoss(plan, run, opAborted = false)
     }];
 }
 
-// THE USER'S PICK IN THE MODEL'S OWN ASK (usage audit 2026-11-03 U21, the user's ruling): DISCARD-ALLOW also opens on an
-// AskUserQuestion answered since the user's newest typed message, auto-run off, whose question names every file the
-// discard loses (its path, its name, or a folder of it spelled with a `/`) and whose picked option discards - a discard
-// verb in the picked label or its description, or a yes to a question asking the discard; a keep, skip or negated pick
-// is none (e95004e7: a revert picked by label was asked again twice, then done with Edit). Read from the transcript
-// alone (hook-prelude.js asksAnsweredSinceTyped: an answer is the result of an AskUserQuestion call in it - FA-4), never
-// from a file (HK-03). A stash entry is named as `stash@{N}`; an unread loss (`*`) opens only through the receipt.
-const DISCARD_VERB = /\b(?:discard|revert|restore|reset|undo|roll\s?-?back|throw\s+(?:it\s+|them\s+)?away|drop|delete|remove|wipe|clean)\w*/i;
-const KEEP_WORD = /\b(?:keep|don'?t|do\s+not|not|no|never|skip|cancel|leave)\b/i;
-const YES_LABEL = /^\s*(?:yes|y|ok|okay|sure|go\s+ahead|do\s+it|proceed|confirm(?:ed)?|approve[d]?)\b/i;
-const discards = (s) => DISCARD_VERB.test(String(s || '')) && !KEEP_WORD.test(String(s || ''));
-const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-function namesTarget(text, target)
-{
-    const t = String(target).replace(/\\/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, '');
-    if (!t) return false;
-    const parts = t.split('/');
-    const candidates = new Set([t, parts[parts.length - 1]]);
-    for (let i = 1; i < parts.length; i++)
-    {
-        const dir = parts.slice(0, i).join('/');
-        candidates.add(`${dir}/`);
-        if (dir.includes('/')) candidates.add(dir);
-    }
-    const hay = String(text).replace(/\\/g, '/');
-    return [...candidates].some((c) => c && new RegExp(`(?:^|[^A-Za-z0-9_.\\-])${escapeRe(c)}(?=$|[^A-Za-z0-9_\\-]|\\.(?![A-Za-z0-9]))`, 'i').test(hay));
-}
-function pickedInAsk(prelude, payload, targets)
-{
-    try
-    {
-        if (!prelude || !prelude.asksAnsweredSinceTyped || !targets.length || targets.some((f) => f === '*')) return false;
-        for (const a of prelude.asksAnsweredSinceTyped(payload))
-        {
-            if (a.auto) continue;
-            const picks = a.chosen.filter((c) => discards(c.label) || discards(c.description)
-                || (YES_LABEL.test(c.label) && !KEEP_WORD.test(c.label.replace(YES_LABEL, '')) && discards(a.question)));
-            if (!picks.length) continue;
-            const text = [a.question, a.header, ...picks.flatMap((c) => [c.label, c.description])].join('\n');
-            if (targets.every((f) => namesTarget(text, f))) return true;
-        }
-    }
-    catch { /* an unreadable transcript opens nothing */ }
-    return false;
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-catastrophic-rm' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
 }
 
 function main()
@@ -888,7 +850,7 @@ function main()
         const exit = process.exit.bind(process);
         process.exit = (code) =>
         {
-            if (code === 2 && !unsetRepo)
+            if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo)
             {
                 try
                 {
@@ -908,7 +870,7 @@ function main()
                         // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
                         agent: payload.agent_id || null,
                         tool_use_id: payload.tool_use_id || null,
-                        reason: last.split('\n')[0].slice(0, 200),
+                        reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -937,11 +899,10 @@ function main()
             const m = /(?:^|[\s(/\\])claude(?:\.exe|\.cmd)?\s+plugins?\s+marketplace\s+(?:remove|rm)\b(.*)$/.exec(seg);
             if (!m || /(?:^|\s)(?:--scope(?:=|\s)|-h\b|--help\b)/.test(m[1])) continue;
             global.BLOCK_DETAIL = { branch: 'marketplace-remove-unscoped' };
-            process.stderr.write('BLOCKED: `claude plugin marketplace remove` with no --scope removes the marketplace from EVERY scope and '
+            blockCall(payload, 'BLOCKED: `claude plugin marketplace remove` with no --scope removes the marketplace from EVERY scope and '
                 + 'uninstalls every plugin installed from it, in every project on this machine. Name the scope the declaration '
                 + 'sits at - `--scope user`, `project` or `local` (`claude plugin marketplace list --json` shows it) - and run it '
                 + 'once per scope the user asked for.\n');
-            process.exit(2);
         }
     };
 
@@ -1075,65 +1036,22 @@ function main()
     if (groups.size)
     {
         const kinds = [...groups.values()];
-        const targets = kinds.flatMap((g) => g.targets);
-        // The user's own 'discard it' for THIS session. Every other blocking guard in the stack
-        // honours an answer; this one had none, so it re-blocked a discard the user had just
-        // chosen through AskUserQuestion, and the chosen action was silently substituted with a
-        // `git stash push -u` (measured: answer at 06:54:14, block at 06:54:22, 142,674 cache-read
-        // on the retried turn). Same shape as CROSS-WRITE-ALLOW: one path (or stash entry) per line,
-        // or `*` for everything - and it must cover EVERY loss named. A security receipt (audit 2026-10-30 HK-03 /
-        // HK-16, hook-prelude.js securityReceipt): this session's own (`session:`), under 8h, and only after the user
-        // answered this guard's last denial 'Discard it' with auto-run off. No prelude, no reader: shut.
-        const receiptFile = layout ? layout.findState(root, 'approvals', 'DISCARD-ALLOW') : path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
-        let receipts = null;
-        try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
-        const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(receiptFile, payload, { marker: 'DISCARD-ALLOW', labels: ['Discard it'] }) : null;
-        const allowed = (() => {
-            if (!held || !held.live) return false;
-            if (held.lines.includes('*')) return true;
-            return targets.length > 0 && targets.every((f) => f !== '*' && held.lines.some((l) => l === f || f.startsWith(`${l}/`)));
-        })() || pickedInAsk(receipts, payload, targets);
-
-        if (!allowed)
-        {
-            const receiptRel = layout ? path.relative(root, layout.statePath(root, 'approvals', 'DISCARD-ALLOW')).split(path.sep).join('/') : path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
-            const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;
-            const head = (g) => (g.kind === 'stash'
-                ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}, and a dropped stash leaves no\nreflog entry to recover it from.`
-                : `this discards uncommitted work in ${g.rows.length} file(s) under ${g.named ? 'the path(s) this command names' : 'the working tree'}, and there is\nno reflog for a working tree - once it is gone it is gone.`);
-            const body = kinds.map((g, k) => `${k ? 'And ' : 'Blocked: '}${head(g)}\n` +
-                g.rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
-                (g.rows.length > 10 ? `\n  ... and ${g.rows.length - 10} more` : '')).join('\n');
-            const one = kinds.length === 1 ? kinds[0].kind : '';
-            const keep = one === 'stash' ? `'Keep the stash (Recommended)' - leave it, or \`git stash apply\` it first`
-                : one === 'tree' ? `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`
-                    : `'Keep it all (Recommended)' - run none of it; \`git stash -u\` or commit the work first`;
-            const narrow = one === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
-                : groups.has('tree') ? `'Narrow it' - name the ONE file to revert instead of the whole tree` : '';
-            // The exact lines to write (HK-16): the session line, then every target the discard must cover - `*` when an
-            // unread loss is named, or past 30 targets.
-            const want = [...new Set(targets)];
-            const lines = want.includes('*') || want.length > 30 || !want.length ? ['*'] : want;
-            const write = receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join('');
-            const shut = receipts && receipts.receiptShutText ? receipts.receiptShutText(held, receiptRel) : '';
-            process.stderr.write(
-                body +
-                `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
-                `\n\nDo not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-                `  ${keep}\n` +
-                `  'Discard it' - the loss is intended and the user says so\n` +
-                (narrow ? `  ${narrow}\n` : '') +
-                `On 'Discard it', write the receipt ${receiptRel} with exactly these lines, then retry the SAME command,\n` +
-                `and delete the receipt once the discard ran (a \`*\` left in place opens every discard for 8h):\n` +
-                write +
-                `It counts only after the user's own 'Discard it' to this denial - never one auto-run gave - for this\n` +
-                `session, under 8h. Nothing to lose passes this gate untouched.\n` +
-                `An ask of your own the user answered since their last message, naming every file above and picking the\n` +
-                `discard, opens it too - retry the SAME command. Reverting these files with Edit or Write instead is the same\n` +
-                `discard: it needs that same answer first.\n` + shut,
-            );
-            process.exit(2);
-        }
+        const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;
+        const head = (g) => (g.kind === 'stash'
+            ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}, and a dropped stash leaves no\nreflog entry to recover it from.`
+            : `this discards uncommitted work in ${g.rows.length} file(s) under ${g.named ? 'the path(s) this command names' : 'the working tree'}, and there is\nno reflog for a working tree - once it is gone it is gone.`);
+        const body = kinds.map((g, k) => `${k ? 'And ' : 'Blocked: '}${head(g)}\n` +
+            g.rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
+            (g.rows.length > 10 ? `\n  ... and ${g.rows.length - 10} more` : '')).join('\n');
+        const one = kinds.length === 1 ? kinds[0].kind : '';
+        const keep = one === 'stash' ? 'Keep the stash - leave it, or `git stash apply` it first'
+            : one === 'tree' ? 'Keep the work - `git stash -u`, or commit it'
+                : 'Keep it all - run none of it; `git stash -u` or commit the work first';
+        blockCall(payload,
+            body +
+            `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
+            `\nKeep the work instead: ${keep}\n` +
+            `Reverting these files with Edit or Write instead is the same discard.\n`);
     }
 
     // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written - with
@@ -1150,7 +1068,7 @@ function main()
     }
     if (parsed || runtime) global.BLOCK_DETAIL = { branch: parsed ? 'rm-resolved-target' : 'runtime-delete' };
 
-    process.stderr.write(
+    blockCall(payload,
         'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd, the project or a folder holding ' +
         'it, a bare *, a .git directory or anything in it, or several top-level system dirs at once - read after the command\'s ' +
         'own cd and the variables it sets) - or an unfiltered find -delete / -exec rm, a piped Remove-Item, or a runtime\'s ' +
@@ -1159,7 +1077,6 @@ function main()
         'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
         'in the same -o branch, instead. A .git directory holds the unpushed commits, stashes and reflog: if the user ' +
         'wants it gone, they run that themselves.\n' + submoduleRoute(parsed));
-    process.exit(2);
 }
 
 main();

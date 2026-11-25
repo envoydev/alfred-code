@@ -197,7 +197,8 @@ function replayPreToolUse(tool, toolInput, cwd)
         }
     return out;
 }
-const denied = (runs) => runs.some(r => r.status === 2 || /"permissionDecision":"deny"/.test(r.stdout));
+// A block is an exit 2, a deny or an ask (guards ask where a person can answer, and deny otherwise).
+const denied = (runs) => runs.some(r => r.status === 2 || /"permissionDecision":"(deny|ask)"/.test(r.stdout));
 const rewrittenTo = (runs) => runs.map(r => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command; } catch { return null; } }).find(Boolean) || null;
 
 test('the Monitor route: the shell guards judge a Monitor command through the generated wiring', { skip: process.platform === 'win32' && 'replayed on POSIX only' }, () => {

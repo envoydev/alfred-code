@@ -244,9 +244,9 @@ function fire(file, env)
     const [, script, ...args] = command.split(/\s+/).filter(Boolean);
     const rel = script.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\//, '');
     const clean = { PATH: process.env.PATH, HOME: env.CLAUDE_CONFIG_DIR || os.tmpdir(), ...env };
-    return spawnSync(process.execPath, [path.join(__dirname, '..', rel), ...args], {
+    return require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(__dirname, '..', rel), ...args], {
         input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push --force origin main' }, session_id: 's' }), env: clean, encoding: 'utf8',
-    });
+    }));
 }
 
 // Review M4: the prelude runs from `.claude/hooks/` with no `scripts/install/` beside it, so it retypes
@@ -348,10 +348,15 @@ const unsetEnv = (dir) => ({ CLAUDE_PLUGIN_ROOT: UNSET_ROOT, CLAUDE_PROJECT_DIR:
 const HOOK_FILE = (file) => path.join(__dirname, '..', 'stack', 'hooks', file);
 function fireIn(file, dir, toolInput, toolName = 'Bash', more = {})
 {
-    return spawnSync(process.execPath, [HOOK_FILE(file)], {
+    return require('./hook-test-env').legacyBlock(fireRaw(file, dir, toolInput, toolName, more));
+}
+// the hook's own answer, an ask or a deny read as it is printed
+function fireRaw(file, dir, toolInput, toolName = 'Bash', more = {})
+{
+    return (spawnSync(process.execPath, [HOOK_FILE(file)], {
         input: JSON.stringify({ session_id: 's', cwd: dir, hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput, ...more }),
         env: { PATH: process.env.PATH, HOME: path.join(os.tmpdir(), 'prelude-no-home'), ...unsetEnv(dir) }, encoding: 'utf8',
-    });
+    }));
 }
 
 test('a git worktree of a set-up repo is set up - its guards stay on under a user-scope core (C1)', () => {
@@ -424,7 +429,7 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }));
         const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read', { permission_mode: 'bypassPermissions' });
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
-        const asked = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read', { permission_mode: 'default' });
+        const asked = fireRaw('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read', { permission_mode: 'default' });
         assert.match(asked.stdout, /"permissionDecision":"ask"/, 'an attended session is asked there too (swap 1)');
         assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'three blocks, no block row - nothing written into a repo never set up');
 
@@ -1140,8 +1145,8 @@ test('H2 replay: a foreign repository\'s fsmonitor program never runs from the r
         fs.writeFileSync(path.join(repo, 'mon.sh'), `#!/bin/sh\ntouch "${mark}"\nexit 1\n`);
         fs.chmodSync(path.join(repo, 'mon.sh'), 0o755);
         g('config', 'core.fsmonitor', path.join(repo, 'mon.sh'));
-        const fire = (hook, payload) => spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', hook)],
-            { input: JSON.stringify({ session_id: 'h2', ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } });
+        const fire = (hook, payload) => require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', hook)],
+            { input: JSON.stringify({ session_id: 'h2', ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }));
         const cases = [
             ['guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: path.join(repo, 'big.ts'), offset: 1, limit: 350 } }, 2],
             ['guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git checkout -- a.txt' }, cwd: repo }, 2],
@@ -1613,8 +1618,8 @@ const onEvent = (event, matcher, ...hooks) => ({ hooks: { [event]: [{ ...(matche
 function dispatch(p, file, payload, args = [])
 {
     const env = { PATH: process.env.PATH, HOME: p.home, USERPROFILE: p.home, CLAUDE_CONFIG_DIR: path.join(p.home, '.claude'), ...p.env };
-    return spawnSync(process.execPath, [path.join(WORKTREE_HOOKS, file), ...args], {
-        input: JSON.stringify({ session_id: 's', cwd: p.repo, hook_event_name: 'PreToolUse', ...payload }), cwd: p.repo, env, encoding: 'utf8' });
+    return require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(WORKTREE_HOOKS, file), ...args], {
+        input: JSON.stringify({ session_id: 's', cwd: p.repo, hook_event_name: 'PreToolUse', ...payload }), cwd: p.repo, env, encoding: 'utf8' }));
 }
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
 const DOTENV = 'API_KEY=sk-live-abcdef1234567890abcdef12\n';
@@ -1696,9 +1701,9 @@ test('HK-02 legitimate twin: the copy route\'s own wiring and files still stand 
         const r = dispatch(p, 'shell-guards.js', bash('rm -rf ~'));
         assert.strictEqual(r.status, 0, r.stderr);
         assert.strictEqual(r.stdout + r.stderr, '', 'the plugin copy says nothing - the copy is the guard');
-        const copy = spawnSync(process.execPath, [path.join(p.repo, '.claude', 'hooks', 'shell-guards.js')], {
+        const copy = require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(p.repo, '.claude', 'hooks', 'shell-guards.js')], {
             input: JSON.stringify({ session_id: 's', cwd: p.repo, hook_event_name: 'PreToolUse', ...bash('rm -rf ~') }), cwd: p.repo,
-            env: { PATH: process.env.PATH, HOME: p.home, CLAUDE_PROJECT_DIR: p.repo, CLAUDE_CONFIG_DIR: path.join(p.home, '.claude') }, encoding: 'utf8' });
+            env: { PATH: process.env.PATH, HOME: p.home, CLAUDE_PROJECT_DIR: p.repo, CLAUDE_CONFIG_DIR: path.join(p.home, '.claude') }, encoding: 'utf8' }));
         assert.strictEqual(copy.status, 2, `the copy itself blocks: ${copy.stderr}`);
         // the same wiring in settings.local.json (a local-scope copy install)
         fs.writeFileSync(path.join(p.repo, '.claude', 'settings.local.json'), JSON.stringify(wired));

@@ -3,6 +3,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { verdictOf, blockText } = require('./hook-test-env');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -66,14 +67,17 @@ test('an untracked 200 KB csv asks, and the reason names the size and the clear 
   assert.ok(out.permissionDecisionReason.includes('.alfred/.sensitive-paths'));
 });
 
-test('dontAsk and an unattended run deny without naming the list, bypassPermissions and no mode ask', () => {
+test('dontAsk, bypassPermissions and an unattended run deny without naming the list; the modes that can answer ask', () => {
   const dir = csvProject();
   for (const r of [read(dir, 'data/orders.csv', { permission_mode: 'dontAsk' }), run(dir, { tool_name: 'Read', tool_input: { file_path: path.join(dir, 'data/orders.csv') } }, { ALFRED_CODE_UNATTENDED: '1' })]) {
-    assert.equal(r.status, 2);
-    assert.ok(r.stderr.includes('Blocked: Read of'));
-    assert.ok(!r.stderr.includes('.sensitive-paths'));
+    assert.deepEqual([r.status, verdictOf(r), r.stderr], [0, 'deny', ''], 'a deny is one JSON object, exit 0');
+    assert.ok(blockText(r).includes('Blocked: Read of'));
+    assert.ok(!blockText(r).includes('.sensitive-paths'));
   }
-  for (const mode of ['bypassPermissions', 'default', 'auto', 'plan', 'acceptEdits']) assert.equal(decision(read(dir, 'data/orders.csv', { permission_mode: mode })).permissionDecision, 'ask', mode);
+  for (const mode of ['default', 'auto', 'plan', 'acceptEdits']) assert.equal(decision(read(dir, 'data/orders.csv', { permission_mode: mode })).permissionDecision, 'ask', mode);
+  const bypass = read(dir, 'data/orders.csv', { permission_mode: 'bypassPermissions' });
+  assert.deepEqual([bypass.status, verdictOf(bypass)], [0, 'deny'], 'bypassPermissions answers no ask (canAsk replaces nobodyAnswers)');
+  assert.equal(ledger(dir).at(-1).detail.mode, 'deny', 'the ledger row names the deny');
 });
 
 test('a cleared line, a part off and the whole hook off keep a read silent', () => {
@@ -108,7 +112,7 @@ test('a listed document asks with the list in its reason and denies without it',
   put(dir, '.alfred/.sensitive-paths', 'clients/**\n');
   assert.ok(decision(read(dir, 'clients/a.txt')).permissionDecisionReason.includes('listed in .alfred/.sensitive-paths'));
   const denied = read(dir, 'clients/a.txt', { permission_mode: 'dontAsk' });
-  assert.ok(denied.stderr.includes('listed as sensitive') && !denied.stderr.includes('.sensitive-paths'));
+  assert.ok(blockText(denied).includes('listed as sensitive') && !blockText(denied).includes('.sensitive-paths'));
 });
 
 test('a tracked large csv passes, a tracked prod csv still asks, 20 emails ask with counts only', () => {
@@ -135,11 +139,11 @@ test('a folder, a missing file, a Cursor payload and garbage input stay silent',
 test('a query naming project code is denied with the tokens to remove, a public one passes', () => {
   const dir = codeProject();
   const path1 = search(dir, 'why does applyDiscount in src/pricing.js round wrong');
-  assert.equal(path1.status, 2);
-  assert.ok(path1.stderr.includes('Remove: src/pricing.js, applyDiscount.'));
+  assert.equal(verdictOf(path1), 'ask');
+  assert.ok(blockText(path1).includes('Remove: src/pricing.js, applyDiscount.'));
   const arrow = search(dir, 'clampPercent returns NaN');
-  assert.equal(arrow.status, 2);
-  assert.ok(arrow.stderr.includes('clampPercent'));
+  assert.equal(verdictOf(arrow), 'ask');
+  assert.ok(blockText(arrow).includes('clampPercent'));
   silent(search(dir, 'getServerSideProps redirect not working'));
   silent(search(dir, 'node 22 fs.rmSync maxRetries'));
   silent(run(dir, { tool_name: 'WebSearch', tool_input: { query: 'why does applyDiscount round wrong' } }, { ALFRED_CODE_HOOKS_OFF: 'guard-data-class:egress' }));
@@ -149,18 +153,18 @@ test('a WebFetch path is never judged, its query string is', () => {
   const dir = codeProject();
   silent(run(dir, { tool_name: 'WebFetch', tool_input: { url: 'https://github.com/o/r/blob/main/src/pricing.js', prompt: 'src/pricing.js' } }));
   const r = run(dir, { tool_name: 'WebFetch', tool_input: { url: 'https://www.google.com/search?q=src/pricing.js+bug' } });
-  assert.equal(r.status, 2);
-  assert.ok(r.stderr.includes('Remove: src/pricing.js.'));
+  assert.equal(verdictOf(r), 'ask');
+  assert.ok(blockText(r).includes('Remove: src/pricing.js.'));
 });
 
 test('a documentation server query with code is denied and another server is not judged', () => {
   const dir = project();
   const input = { query: 'const a = () => { return 1; };\nconst b = () => { return 2; };' };
   const r = run(dir, { tool_name: 'mcp__context7__query-docs', tool_input: input }); // mcp-fixture
-  assert.equal(r.status, 2);
-  assert.ok(r.stderr.includes('2 code lines'));
+  assert.equal(verdictOf(r), 'ask');
+  assert.ok(blockText(r).includes('2 code lines'));
   silent(run(dir, { tool_name: 'mcp__serena__search_for_pattern', tool_input: input })); // mcp-fixture
-  assert.equal(run(dir, { tool_name: 'mcp__docs__query-docs', tool_input: input }, { ALFRED_CODE_EGRESS_SERVERS: 'docs' }).status, 2); // mcp-fixture
+  assert.equal(verdictOf(run(dir, { tool_name: 'mcp__docs__query-docs', tool_input: input }, { ALFRED_CODE_EGRESS_SERVERS: 'docs' })), 'ask'); // mcp-fixture
 });
 
 test('a git that outlasts the deadline passes the query and writes one egress-unjudged row', { skip: process.platform === 'win32' }, () => {
@@ -229,7 +233,7 @@ test('an absolute data root holds the list that is read, and the ask names that 
   assert.ok(reason.includes(path.join(data, '.sensitive-paths')), reason);
   assert.ok(!reason.includes(' .alfred/.sensitive-paths'));
   const denied = run(dir, { ...payload, permission_mode: 'dontAsk', tool_input: { file_path: path.join(dir, 'docs/contract.pdf') } }, env);
-  assert.ok(!denied.stderr.includes('.sensitive-paths'));
+  assert.ok(!blockText(denied).includes('.sensitive-paths'));
 });
 
 test('a file outside the project asks without the clear-line sentence', () => {
@@ -245,11 +249,11 @@ test('a session started in a subfolder judges the whole repo for names and paths
   put(dir, 'docs/readme.md', 'notes');
   const cwd = path.join(dir, 'docs');
   const named = run(dir, { tool_name: 'WebSearch', cwd, tool_input: { query: 'why does applyDiscount round wrong' } });
-  assert.equal(named.status, 2);
-  assert.ok(named.stderr.includes('Remove: applyDiscount.'));
+  assert.equal(verdictOf(named), 'ask');
+  assert.ok(blockText(named).includes('Remove: applyDiscount.'));
   const pathed = run(dir, { tool_name: 'WebSearch', cwd, tool_input: { query: 'bug in src/pricing.js today' } });
-  assert.equal(pathed.status, 2);
-  assert.ok(pathed.stderr.includes('Remove: src/pricing.js.'));
+  assert.equal(verdictOf(pathed), 'ask');
+  assert.ok(blockText(pathed).includes('Remove: src/pricing.js.'));
 });
 
 test('timing: p50 and max of 20 WebSearch runs', () => {
@@ -279,9 +283,9 @@ test('E2: a public question passes beside a type annotation, a vendored library 
 test('E1: an absolute path inside the repo is refused as its repo-relative name, one outside passes', () => {
   const dir = codeProject();
   const r = search(dir, 'bug in ' + path.join(dir, 'src', 'pricing.js') + ':3:7 today');
-  assert.equal(r.status, 2);
-  assert.ok(r.stderr.includes('Remove: src/pricing.js.'), r.stderr);
-  assert.ok(!r.stderr.includes(dir), 'the absolute spelling is not repeated');
+  assert.equal(verdictOf(r), 'ask');
+  assert.ok(blockText(r).includes('Remove: src/pricing.js.'), blockText(r));
+  assert.ok(!r.stdout.includes(dir), 'the absolute spelling is not repeated');
   silent(search(dir, 'bug in ' + path.join(outside(), 'src', 'pricing.js') + ' today'));
 });
 
@@ -289,8 +293,8 @@ test('E2: an async arrow held in an object key is a project name, a type annotat
   const dir = project({ 'src/x.js': 'const handlers = { otherThing: async (y) => y };\n', 'src/p.ts': 'interface P { onChange: (e: Event) => void }\n' });
   git(dir, 'add', '.');
   const r = search(dir, 'why does otherThing return a promise');
-  assert.equal(r.status, 2);
-  assert.ok(r.stderr.includes('Remove: otherThing.'), r.stderr);
+  assert.equal(verdictOf(r), 'ask');
+  assert.ok(blockText(r).includes('Remove: otherThing.'), r.stderr);
   silent(search(dir, 'react onChange event typescript type'));
 });
 
@@ -303,7 +307,7 @@ test('E2: the project\'s own code under public/ is searched, its vendored copies
   git(dir, 'add', '.');
   silent(search(dir, 'react useMemo with a dependency array'));
   const r = search(dir, 'why does applyCoupon return undefined');
-  assert.equal(r.status, 2, r.stderr);
-  assert.ok(r.stderr.includes('Remove: applyCoupon.'), r.stderr);
+  assert.equal(verdictOf(r), 'ask', r.stdout);
+  assert.ok(blockText(r).includes('Remove: applyCoupon.'), blockText(r));
   silent(search(dir, 'react useEffect cleanup function'));
 });

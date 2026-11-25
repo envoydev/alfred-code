@@ -44,7 +44,7 @@ function project(prefix) {
   fs.writeFileSync(path.join(dir, 'README.md'), '# readme\n');
   return dir;
 }
-// A dispatcher's verdict on one call: 2 (exit 2), 'deny', 'rewrite' or 0.
+// A dispatcher's verdict on one call: 2 (an exit 2 or an ask), 'deny', 'rewrite' or 0.
 function fire(dir, tool, toolInput, extra = {}) {
   const dispatcher = shell.isShellTool(tool) ? DISPATCH : path.join(HOOKS, 'file-guards.js');
   const r = spawnSync(process.execPath, [dispatcher], {
@@ -54,7 +54,9 @@ function fire(dir, tool, toolInput, extra = {}) {
   let v = r.status === 2 ? 2 : 0;
   try {
     const o = JSON.parse(r.stdout).hookSpecificOutput || {};
-    if (v === 0 && o.permissionDecision === 'deny') v = 'deny';
+    // an ask is a block as the exit 2 was (guards ask where a person can answer): these cases pin WHAT is refused
+    if (v === 0 && o.permissionDecision === 'ask') v = 2;
+    else if (v === 0 && o.permissionDecision === 'deny') v = 'deny';
     else if (v === 0 && o.updatedInput) v = 'rewrite';
   } catch { /* no JSON */ }
   return { v, out: `${r.stderr}${r.stdout}`, stdout: r.stdout };

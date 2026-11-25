@@ -190,5 +190,17 @@ function blockText(r)
 // The text the user sees on an ask.
 const askText = (r) => (verdictOf(r) === 'ask' ? String(hookOutputOf(r).permissionDecisionReason ?? '') : '');
 
-module.exports = { isolateHookSuite, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
+// A block as the suites written before guards asked read it: an ask or a deny becomes exit 2 with the full reason on stderr
+// and nothing on stdout. For the many cases that pin WHAT a guard refuses; the ask and the deny have their own cases.
+const ASK_REASON_MARK = 'If the user declined: ';
+function legacyBlock(r)
+{
+    const verdict = verdictOf(r);
+    if (verdict !== 'ask' && verdict !== 'deny') return r;
+    const text = blockText(r);
+    const at = verdict === 'ask' ? text.indexOf(ASK_REASON_MARK) : -1;
+    return { ...r, status: 2, stdout: '', stderr: at < 0 ? text : text.slice(at + ASK_REASON_MARK.length) };
+}
+
+module.exports = { isolateHookSuite, legacyBlock, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
     reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick, verdictOf, blockText, askText };

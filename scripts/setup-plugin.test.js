@@ -1511,8 +1511,8 @@ test('init\'s install phase and configure read permissions.defaultMode with the 
         const transcript = (version) => { const p = path.join(home, `t-${version}.jsonl`); fs.writeFileSync(p, JSON.stringify({ type: 'user', entrypoint: 'cli', version }) + '\n'); return p; };
         const HOSTS = { 'above the floor': { transcript_path: transcript('2.1.322') }, 'an older Claude Code': { transcript_path: transcript('2.1.321') },
             Cursor: { cursor_version: '2.1.0', hook_event_name: 'preToolUse' } };
-        const guard = (payload) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
-            { input: JSON.stringify({ session_id: 'suite', cwd: dir, ...payload }), encoding: 'utf8', env });
+        const guard = (payload) => require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
+            { input: JSON.stringify({ session_id: 'suite', cwd: dir, ...payload }), encoding: 'utf8', env }));
         const before = (host, command) => guard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, ...HOSTS[host] });
         const read = (host) => {
             const command = cmd.replace('<file>', 'settings.json');

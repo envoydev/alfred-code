@@ -176,7 +176,12 @@ test('in a never-set-up project every plugin-launched hook writes nothing, and o
                 catch (err) { status = err.status; out = String(err.stdout || '') + String(err.stderr || ''); }
                 const destructive = Boolean(event.tool_input && event.tool_input.command === 'rm -rf /');
                 if (PROTECTIVE.has(hook))
-                    assert.strictEqual(status, hook === 'guard-catastrophic-rm' && destructive ? 2 : 0, `${hook} on ${event.hook_event_name} stays live: ${out.slice(0, 200)}`);
+                {
+                    // the rm guard stays live and asks (exit 0, the ask on stdout; guards ask instead of block)
+                    assert.strictEqual(status, 0, `${hook} on ${event.hook_event_name} stays live: ${out.slice(0, 200)}`);
+                    if (hook === 'guard-catastrophic-rm' && destructive)
+                        assert.match(out, /"permissionDecision":"ask"/, `${hook} asks on a recursive rm of the root: ${out.slice(0, 200)}`);
+                }
                 else if (hook === 'guard-cross-project-write' && destructive)
                 {
                     assert.strictEqual(status, 2, `the installed-code check stays live in a repo never set up: ${out.slice(0, 200)}`);

@@ -11,6 +11,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { verdictOf } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -101,7 +102,7 @@ test('a hook with no docs path set writes its ledger under .alfred/statistics', 
         input: JSON.stringify({ session_id: 'dflt', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' }, cwd: root }),
         env, cwd: root, encoding: 'utf8',
     });
-    assert.strictEqual(res.status, 2, res.stderr);
+    assert.strictEqual(verdictOf(res), 'ask', res.stderr);
     assert.ok(fs.existsSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'dflt.jsonl')), 'the block row lands under the data root\'s statistics/');
     assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs')), 'nothing is written under .claude/docs');
 });
@@ -260,7 +261,7 @@ test('a hook under DATA_PATH=\'.\' writes its ledger under .alfred/statistics, n
         input: JSON.stringify({ session_id: 'dot', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' }, cwd: root }),
         env, cwd: root, encoding: 'utf8',
     });
-    assert.strictEqual(res.status, 2, res.stderr);
+    assert.strictEqual(verdictOf(res), 'ask', res.stderr);
     assert.ok(!fs.existsSync(path.join(root, 'statistics')), 'nothing lands in <project>/statistics');
     assert.ok(fs.existsSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'dot.jsonl')), 'the row lands where the installer put the data root');
 });
@@ -278,7 +279,7 @@ test('fixed root: a hook ignores a relative ALFRED_CODE_DATA_PATH in its env', (
         input: JSON.stringify({ session_id: 'rel', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' }, cwd: root }),
         env, cwd: root, encoding: 'utf8',
     });
-    assert.strictEqual(res.status, 2, res.stderr);
+    assert.strictEqual(verdictOf(res), 'ask', res.stderr);
     assert.ok(fs.existsSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'rel.jsonl')), 'the row lands under .alfred');
     assert.ok(!fs.existsSync(path.join(root, 'var')), 'nothing lands under the folder the key names');
 });

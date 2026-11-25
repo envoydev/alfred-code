@@ -56,6 +56,8 @@ function fire(dir, command) {
   } catch { /* no JSON */ }
   return { v, out: `${r.stderr}${r.stdout}`, stdout: r.stdout };
 }
+// a block is an ask, or the exit 2 of a guard that is not yet converted (the cross-project and commit guards, Task 4)
+const RUNNER_BLOCK = new Set(['ask', 2]);
 const runner = (line) => `node "${GUARD}" --with-sensitive -- ${line}`;
 
 test('FB 1: a double-quoted carried line is judged as bash hands it on - its \\" \\$ \\\\ escapes undone', () => {
@@ -73,7 +75,7 @@ test('FB 1: a double-quoted carried line is judged as bash hands it on - its \\"
     [runner('"rm -rf \\"\\$HOME\\""'), 'an escaped $HOME the runner\'s shell expands'],
     ['bash -c "rm -rf \\"\\$HOME\\""', 'the same gap in a plain bash -c (it predates the runner)'],
     [runner('\'bash -c "rm -rf ~"\''), 'the single-quoted control'],
-  ]) assert.strictEqual(fire(dir, c).v, 2, `${why}: ${c}`);
+  ]) assert.ok(RUNNER_BLOCK.has(fire(dir, c).v), `${why}: ${c}`);
   // the legitimate use: a stored key in an escaped header still runs, unrewritten
   const ok = fire(dir, runner('"curl -H \\"Authorization: Bearer $API_TOKEN\\" https://example.invalid"'));
   assert.strictEqual(ok.v, 0, ok.out);
@@ -95,10 +97,10 @@ test('FB 2: every runner spelling is carried - a variable script, a node option 
     [`node --disable-warning ExperimentalWarning "${GUARD}" --with-sensitive -- "rm -rf ~"`, '--disable-warning X'],
     [`node --report-dir ${TMP} "${GUARD}" --with-sensitive -- "rm -rf ~"`, '--report-dir X'],
     [`node --openssl-config /dev/null "${GUARD}" --with-sensitive -- "cat .env"`, '--openssl-config X'],
-  ]) assert.strictEqual(fire(dir, c).v, 2, `${why}: ${c}`);
+  ]) assert.ok(RUNNER_BLOCK.has(fire(dir, c).v), `${why}: ${c}`);
   // the cap: four lines are judged; a fifth is never let through unjudged
   const calls = (n, last) => Array.from({ length: n }, (_, i) => runner(i === n - 1 && last ? last : '"true"')).join('; ');
-  assert.strictEqual(fire(dir, calls(5, '"cat .env"')).v, 2, 'four true lines then cat .env');
+  assert.strictEqual(fire(dir, calls(5, '"cat .env"')).v, 'ask', 'four true lines then cat .env');
   const over = fire(dir, calls(5));
   assert.strictEqual(over.v, 'ask', 'five lines: one past the cap blocks');
   assert.match(over.out, /more than 4/, 'the block names the cap');
@@ -106,7 +108,7 @@ test('FB 2: every runner spelling is carried - a variable script, a node option 
   assert.strictEqual(fire(dir, calls(3)).v, 0, 'three lines: under the cap');
   // a runner nested past the carried-script depth is never let through unjudged
   const wrap = (s) => `sh -c '${s.replace(/'/g, "'\\''")}'`;
-  assert.notStrictEqual(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v, 0, 'a runner four shells deep: a guard exit 2 or the dispatcher ask, never a pass');
+  assert.ok(RUNNER_BLOCK.has(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v), 'a runner four shells deep is an ask or a guard exit 2, never a pass');
   assert.strictEqual(fire(dir, wrap(runner('"true"'))).v, 0, 'a runner one shell deep runs');
   assert.strictEqual(fire(dir, runner('"npm test"')).v, 0, 'one legitimate call runs');
 });
@@ -168,9 +170,9 @@ test('FB 5: git\'s own regenerable leftovers may go; a submodule\'s repo, the ho
     assert.strictEqual(fire(dir, c).v, 0, `${c}: git regenerates it`);
   for (const c of ['rm -rf .git', 'rm -rf .git/objects', 'rm -rf .git/hooks', 'rm -rf .git/worktrees', 'rm -rf .git/lfs', 'rm -rf .git/lfs/objects',
     'rm -rf .git/refs', 'rm -rf .git/lfs/tmp/..', 'rm -rf .git/refs/original/../heads'])
-    assert.strictEqual(fire(dir, c).v, 2, `${c} still blocks`);
+    assert.strictEqual(fire(dir, c).v, 'ask', `${c} still blocks`);
   const sub = fire(dir, 'rm -rf .git/modules/sub');
-  assert.strictEqual(sub.v, 2, 'a submodule\'s own repo holds its unpushed commits');
+  assert.strictEqual(sub.v, 'ask', 'a submodule\'s own repo holds its unpushed commits');
   assert.match(sub.out, /git submodule deinit -f/, 'the denial names the safe route');
   assert.match(sub.out, /git rm/, 'then git rm');
 });
@@ -183,5 +185,5 @@ test('FB 6: the print-verb table reads a compressor\'s level cluster (-9c) as fl
   assert.deepStrictEqual(shell.printedFiles('join', ['-1', '2', 'a', 'b']), { files: ['a', 'b'], bounded: false }, 'join keeps its own digits rule');
   const dir = project('fb6-');
   assert.strictEqual(fire(dir, 'gzip -9c ./build.log > out.gz').v, 0, 'a clean file compressed to a file');
-  assert.strictEqual(fire(dir, 'gzip -9c .env | zcat').v, 2, 'the credential file through a level cluster: named, so refused where no masker runs');
+  assert.strictEqual(fire(dir, 'gzip -9c .env | zcat').v, 'ask', 'the credential file through a level cluster: named, so refused where no masker runs');
 });

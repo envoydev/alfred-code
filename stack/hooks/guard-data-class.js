@@ -44,8 +44,6 @@ const PART = Object.freeze({ dumps: 'dumps', documents: 'documents', egress: 'eg
 const GIT_READ_TIMEOUT_MS = 2000;
 const GIT_MAX_BUFFER = 4 * 1024 * 1024;
 const GIT_FATAL_STATUS = 128;
-const DENY_EXIT = 2;
-const NO_ANSWER_MODE = 'dontAsk';
 // A test and tuning knob: a positive whole number of ms replaces EGRESS_DEADLINE_MS for route 3.
 const DEADLINE_ENV = 'ALFRED_CODE_EGRESS_DEADLINE_MS';
 const SERVERS_ENV = 'ALFRED_CODE_EGRESS_SERVERS';
@@ -540,7 +538,7 @@ function readFacts(ctx, file, stat) {
 }
 
 function nobodyAnswers(ctx) {
-  return ctx.payload.permission_mode === NO_ANSWER_MODE || Boolean(ctx.prelude.unattended(ctx.payload));
+  return !ctx.prelude.canAsk(ctx.payload);
 }
 
 function readOutcome(ctx) {
@@ -664,8 +662,8 @@ function deliver(ctx, outcome) {
   if (outcome.mode === 'ask') {
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: outcome.text } }));
   } else if (outcome.mode === 'deny') {
-    process.stderr.write(outcome.text + '\n');
-    process.exit(DENY_EXIT);
+    const verdict = ctx.prelude.askOrBlock(ctx.payload, outcome.text, { guard: 'guard-data-class' });
+    process.exit(ctx.prelude.blockExitCode(ctx.payload, verdict));
   }
 }
 

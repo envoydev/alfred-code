@@ -9,6 +9,7 @@
 // conservatively, never let through.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { verdictOf } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -1090,9 +1091,9 @@ test('review 15, 7: a reader failure reaches every consumer as unread', () => {
   const stub = path.join(dir, 'stub.js');
   fs.writeFileSync(stub, `const sw = require(${JSON.stringify(path.join(HOOKS, 'shell-writes.js'))}); sw.gitText = (raw, cwd) => sw.failedRead(raw, cwd, new RangeError('x'));\n`);
   // run in a project of its own, so a block row lands in the temp dir, never the checkout's ledger
-  const guard = (command) => spawnSync(process.execPath, ['-r', stub, path.join(HOOKS, 'guard-protected-force-push.js')], { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: dir }), encoding: 'utf8' }).status;
+  const guard = (command) => verdictOf(spawnSync(process.execPath, ['-r', stub, path.join(HOOKS, 'guard-protected-force-push.js')], { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: dir }), encoding: 'utf8' }));
   try {
-    assert.strictEqual(guard('git push --force origin main'), 2, 'a failed read of a push blocks');
+    assert.strictEqual(guard('git push --force origin main'), 'ask', 'a failed read of a push blocks');
     assert.strictEqual(guard('npm test'), 0, 'a failed read naming no push passes');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

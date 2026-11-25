@@ -5,10 +5,12 @@
 //   route it covers and under every stand-down, with GUARD-OFF-ALLOW as a security receipt.
 // - U20 (usage audit): the cross-project guard asked again before a write into a folder the user had typed as an
 //   absolute path in their own message. Such a path now opens writes under its folder for the session.
-// - U21 (usage audit): the rm guard asked again for a revert the user had picked in the model's own AskUserQuestion.
-//   An ask answered since the user's last message, naming the file and picking the discard, now opens it.
+// - U21 (usage audit): the rm guard asked again for a revert the user had picked in the model's own AskUserQuestion; an ask
+//   answered since the user's last message opened it. Guards ask instead of block (D3, 2026-11-25) took that opener out: the
+//   discard is the guard's own ask now, and the model's ask opens nothing - every case below still asks.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { verdictOf, blockText } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -564,35 +566,37 @@ function dirtyRepo(name)
   fs.writeFileSync(path.join(p.root, 'src', 'auth', 'b.ts'), 'two changed\n');
   return p;
 }
-const rm = (p, command) => hook(p, 'guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } });
+// `status` is the decision as one word (verdictOf): a dirty discard is an 'ask', whatever the transcript holds.
+const rm = (p, command) => { const r = hook(p, 'guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } }); return { ...r, status: verdictOf(r) }; };
 const REVERT = [['Revert a.txt', 'git restore a.txt'], ['Keep it (Recommended)', 'leave the change']];
 
-test('U21: an ask answered since the user\'s last message, naming the file and picking the revert, opens the discard', () => {
+test('U21 (D3): an ask answered since the user\'s last message, naming the file and picking the revert, opens nothing - the discard still asks', () => {
   const p = dirtyRepo('u21');
   const denied = rm(p.write([typed('clean up')]), 'git restore a.txt');
-  assert.equal(denied.status, 2, 'no ask: today\'s denial');
-  assert.match(denied.stderr, /Edit/, 'the denial says an Edit revert needs the same ask');
+  assert.equal(denied.status, 'ask', 'no ask of the model\'s: the guard\'s own ask');
+  assert.match(blockText(denied), /Reverting these files with Edit or Write instead is the same discard/, 'the reason says an Edit revert is the same discard');
+  assert.doesNotMatch(blockText(denied), /AskUserQuestion|DISCARD-ALLOW|Discard it/, 'and no longer tells the model to ask or write a receipt');
   p.write([typed('clean up'), asked('Revert a.txt to HEAD?', REVERT, 'Revert a.txt')]);
-  assert.equal(rm(p, 'git restore a.txt').status, 0, 'the picked revert');
-  assert.equal(rm(p, 'git restore a.txt').status, 0, 'idempotent: a re-run reads the same');
-  assert.equal(rm(p, 'git checkout -- .').status, 2, 'the whole tree loses src/auth/b.ts too, which the ask never named');
+  assert.equal(rm(p, 'git restore a.txt').status, 'ask', 'the picked revert');
+  assert.equal(rm(p, 'git restore a.txt').status, 'ask', 'idempotent: a re-run reads the same');
+  assert.equal(rm(p, 'git checkout -- .').status, 'ask', 'the whole tree loses src/auth/b.ts too, which the ask never named');
   p.write([typed('clean up'), asked('What about the change to a.txt?', [['Yes', 'keep going'], ['No', 'stop here']], 'Yes')]);
-  assert.equal(rm(p, 'git restore a.txt').status, 2, 'a bare Yes, nothing in the ask picking a discard');
+  assert.equal(rm(p, 'git restore a.txt').status, 'ask', 'a bare Yes, nothing in the ask picking a discard');
   p.write([typed('clean up'), asked('What about the change to a.txt?', [['Yes', 'discard it'], ['No', 'keep it']], 'Yes')]);
-  assert.equal(rm(p, 'git restore a.txt').status, 0, 'the picked option\'s own description discards');
+  assert.equal(rm(p, 'git restore a.txt').status, 'ask', 'the picked option\'s own description discards');
   p.write([typed('clean up'), asked('Discard the change to a.txt?', [['Yes', 'drop it'], ['No (Recommended)', 'keep it']], 'Yes')]);
-  assert.equal(rm(p, 'git restore a.txt').status, 0, 'a Yes to a question that asks the discard');
+  assert.equal(rm(p, 'git restore a.txt').status, 'ask', 'a Yes to a question that asks the discard');
   p.write([typed('clean up'), asked('Both files changed - revert src/auth/b.ts and a.txt?', [['Revert both', ''], ['Keep both (Recommended)', '']], 'Revert both')]);
-  assert.equal(rm(p, 'git checkout -- .').status, 0, 'every file of the set named');
+  assert.equal(rm(p, 'git checkout -- .').status, 'ask', 'every file of the set named');
   p.write([typed('clean up'), asked('Revert everything under src/auth/ ?', [['Revert it', ''], ['Keep (Recommended)', '']], 'Revert it')]);
-  assert.equal(rm(p, 'git restore src/auth/b.ts').status, 0, 'a folder of the path set, spelled with its slash');
+  assert.equal(rm(p, 'git restore src/auth/b.ts').status, 'ask', 'a folder of the path set, spelled with its slash');
   p.write([typed('clean up'), asked('What should I do with a.txt?', REVERT, 'just revert it please')]);
-  assert.equal(rm(p, 'git restore a.txt').status, 0, 'the user\'s own free-text answer');
+  assert.equal(rm(p, 'git restore a.txt').status, 'ask', 'the user\'s own free-text answer');
 });
 
-test('U21: no effect from a keep pick, another file, an answer before the last typed message, auto-run, a forged result or file content', () => {
+test('U21 (D3): a keep pick, another file, a later typed message, auto-run, a forged result and file content change nothing - the discard asks', () => {
   const p = dirtyRepo('u21-no');
-  const deny = (rows, command, why) => assert.equal(rm(p.write(rows), command).status, 2, why);
+  const deny = (rows, command, why) => assert.equal(rm(p.write(rows), command).status, 'ask', why);
   deny([typed('go'), asked('Revert a.txt?', REVERT, 'Keep it (Recommended)')], 'git restore a.txt', 'the keep pick');
   deny([typed('go'), asked('Revert a.txt?', [["Don't revert a.txt", ''], ['Revert a.txt', '']], "Don't revert a.txt")], 'git restore a.txt', 'a negated revert');
   deny([typed('go'), asked('Revert src/auth/b.ts?', [['Revert it', ''], ['Keep (Recommended)', '']], 'Revert it')], 'git restore a.txt', 'another file named');
@@ -603,8 +607,8 @@ test('U21: no effect from a keep pick, another file, an answer before the last t
   deny([typed('go'), said('Revert a.txt? -> Revert a.txt')], 'git restore a.txt', 'the model\'s own prose');
   p.file('answers.json', JSON.stringify({ answers: { 'Revert a.txt?': 'Revert a.txt' } }));
   deny([typed('go')], 'cat answers.json; git restore a.txt', 'a file holding an answer shape');
-  assert.equal(rm(p.write([typed('go'), asked('Revert a.txt?', REVERT, 'Revert a.txt')]), 'git restore a.txt').status, 0, 'and the control case opens');
-  assert.equal(hook(p, 'guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git restore a.txt' } }, { transcript: false }).status, 2, 'no transcript: no ask to read');
+  assert.equal(rm(p.write([typed('go'), asked('Revert a.txt?', REVERT, 'Revert a.txt')]), 'git restore a.txt').status, 'ask', 'and the control case opens');
+  assert.equal(verdictOf(hook(p, 'guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git restore a.txt' } }, { transcript: false })), 'ask', 'no transcript: the same ask');
 });
 
 // ---- review fix pass, run B (2026-11-03): the guards' own review ------------------------------------------------------
@@ -949,11 +953,11 @@ test('4c store: a filesystem server write and move ask; every stand-down still a
 });
 
 // ---- D25 (mode commands v2 stage 3, Task 5): the own-ask discard opens only on an answer a person gave ----
-test('D25 pickedInAsk: the model\'s own ask answered by a hook opens no discard; answered by the user it does', () => {
+test('D25 (D3): the model\'s own ask opens no discard, answered by a hook or by the user - the discard asks', () => {
   const p = dirtyRepo('d25-discard');
   const before = fs.readFileSync(path.join(p.root, 'a.txt'));
   const DISCARD = [['Discard (Recommended)', 'drop the change'], ['Keep it', 'leave it']];
-  assert.equal(rm(p.write([typed('clean up'), asked('Discard a.txt?', DISCARD, 'Discard (Recommended)', 'AskUserQuestion', 'hook')]), 'git checkout -- a.txt').status, 2, 'a hook gave the pick');
+  assert.equal(rm(p.write([typed('clean up'), asked('Discard a.txt?', DISCARD, 'Discard (Recommended)', 'AskUserQuestion', 'hook')]), 'git checkout -- a.txt').status, 'ask', 'a hook gave the pick');
   assert.ok(fs.readFileSync(path.join(p.root, 'a.txt')).equals(before), 'the dirty file is untouched');
-  assert.equal(rm(p.write([typed('clean up'), asked('Discard a.txt?', DISCARD, 'Discard (Recommended)', 'AskUserQuestion', 'user_temporary')]), 'git checkout -- a.txt').status, 0, 'the user picked it');
+  assert.equal(rm(p.write([typed('clean up'), asked('Discard a.txt?', DISCARD, 'Discard (Recommended)', 'AskUserQuestion', 'user_temporary')]), 'git checkout -- a.txt').status, 'ask', 'the user picked it');
 });
