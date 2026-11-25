@@ -379,3 +379,15 @@ was in its list, then to dispatch the checker.
 
 So hiding a skill from the model (`off`, `user-invocable-only`) also takes it from every agent that preloads it, and
 `name-only` is the one value that trims the listing while the preload still works.
+
+A child's copy shown in full while the root's own is name-only (the same day, signed in, `claude -p --model haiku
+--allowedTools Read`): a root and a child with its own repository each held `.claude/skills/secret-skill` with a
+different description; the session read a file in the child, then listed the skill's entries.
+
+| Root `skillOverrides` | `secret-skill` | `kid:secret-skill` (after the read) |
+|---|---|---|
+| `"secret-skill": "name-only"` | name only | name only - the bare key covers the child's copy |
+| plus `"kid:secret-skill": "on"` | name only | the child's full description, with Claude Code's note to use it for files under `kid/` |
+
+So a `<rel>:<name>` key outranks the bare key for that copy, and `"on"` gives a root session the full description only
+once it works in that child.
