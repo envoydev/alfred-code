@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@0fcc919",
+  "kit": "claude-kit@59a1f12",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
@@ -10,7 +10,7 @@
     ".claude/rules/communication.md": "f4ea1e9aea03859735b23ac192b8ca71539b04fc347180e3f0e0bc686bc4c784",
     ".claude/rules/execution.md": "e7c8fbdd3c69e6574926f2fdf2a2c3b366851187643675f940e00f47cc6976ab",
     ".claude/rules/javascript.md": "8f4ff96fe8839fc542bb837913d5518147b497e76eb73b05e044bd6e8fd5ffb6",
-    ".claude/rules/plan-approval.md": "bb2a06a5b6ad9ae7c75e4b202d601a037b9be624a012f4153283153fc139ec71",
+    ".claude/rules/plan-approval.md": "ef19d179f33e9a7fed73ac4a884598279ae54d3618808990adb6341acac8c72d",
     ".claude/rules/project-structure.md": "69aab8b915e2fbe1a606405f51b621db02ee3d3e45dde47c7eb6d190942e9841",
     ".claude/rules/refining-plans.md": "34be8fee74b741b5d7e4908fdb34108233772c33768f6b330abadc4b757b2c45",
     ".claude/rules/skill-authoring.md": "8becdf7851bb7beac89d16444481764198de73e7a26dd34f90f5ccc4b91f5484",
@@ -37,7 +37,7 @@
     ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "bb95566e76cd5d6661011b9f3be7377e5f0f4a24bea90d09b977f1e5cb2ac522",
     ".claude/skills/plugin-packaging/references/security-and-governance.md": "1e060dfd86fb6ad6aae9e36529e7f817bbe81994c1cd6ac08b85e141d210fa9a",
     ".claude/skills/project-structure/SKILL.md": "a54a1b3cbf16cba0975e9918f94ce2db15fa321fcc90e18cde97af67012cb66b",
-    ".claude/skills/refining-plans/SKILL.md": "53bfd4bce1d106b4d6eeee6dc629f68f46379ecb6308abde8de5d36e5d159402",
+    ".claude/skills/refining-plans/SKILL.md": "f5a0e9f5555b89c9fb79afafdb14f812dff449461156cbdd5bb508c6d567f5ed",
     ".claude/skills/refining-plans/references/reviewer-prompt.md": "24d7f43a615e87662c159941c6e7ee035cd8c849366ee32d295b4025bc013631",
     ".claude/skills/refining-plans/references/rubric.md": "8c6bf43913654af755c55363ac5614cb0c86a7168b7d4cebb0567f9902507b84",
     ".claude/skills/repo-audit-agent-md/SKILL.md": "972ebdaad1bd81f5dda775f257217a0debf4a8569d9ad2d2c5552987a047aeed",
