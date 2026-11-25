@@ -97,7 +97,7 @@ function main()
     if (!words.length)
     {
         say('usage: node <project>/.claude/hooks/secrets-run.js -- <command> [args...]');
-        process.exit(2);
+        process.exit(2); // guard-ask: CLI usage
     }
     const env = process.env;
     const cwd = process.cwd();

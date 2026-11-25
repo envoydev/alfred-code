@@ -498,6 +498,27 @@ function parsedWipe(read)
     return false;
 }
 
+// The target a blocked delete names, for the prompt's first sentence (guards ask, spec G4: the user sees what is at risk).
+// The resolved path of a parsed rm; else the first catastrophic operand of an rm or find segment as written; else the
+// command's own opening, cut at 80 characters, so the prompt never names nothing.
+const TARGET_NAME_MAX = 80;
+function wipeTargetOf(parsed, command)
+{
+    if (typeof parsed === 'string' && parsed) return parsed;
+    const parts = shellWrites.groupsAsCuts(command).split(/([;|&]{1,2}|\n)/);
+    for (let k = 0; k < parts.length; k += 2)
+    {
+        const { cmd, args } = commandOf(parts[k]);
+        const verb = cmd.toLowerCase();
+        if (verb === 'find' || cmd.endsWith('/find')) { const start = pathArgs(args)[0]; if (start) return start; continue; }
+        if (!cmd || !(REMOVE_VERBS.has(verb) || cmd.endsWith('/rm'))) continue;
+        const hit = pathArgs(args).find((a) => isCatastrophic(a) || isTopLevelDir(a));
+        if (hit) return hit;
+    }
+    const line = String(command || '').trim().replace(/\s+/g, ' ');
+    return line.length > TARGET_NAME_MAX ? `${line.slice(0, TARGET_NAME_MAX - 3).trimEnd()}...` : line;
+}
+
 // The safe route out of a submodule, for a denial whose target is its repository under `.git/modules/` (final review
 // 2026-10-30, FB): that repository holds the submodule's own unpushed commits, so it goes last, by the user's hand.
 function submoduleRoute(target)
@@ -1065,7 +1086,8 @@ function main()
     if (parsed || runtime) global.BLOCK_DETAIL = { branch: parsed ? 'rm-resolved-target' : 'runtime-delete' };
 
     blockCall(payload,
-        'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd, the project or a folder holding ' +
+        `Blocked: this command recursively deletes \`${wipeTargetOf(parsed, powershell || !read ? rawCommand : read.command)}\`.\n` +
+        'The rule blocks a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd, the project or a folder holding ' +
         'it, a bare *, a .git directory or anything in it, or several top-level system dirs at once - read after the command\'s ' +
         'own cd and the variables it sets) - or an unfiltered find -delete / -exec rm, a piped Remove-Item, or a runtime\'s ' +
         'recursive delete (rmtree, rmSync recursive, rm_rf, Directory.Delete), over one - the filesystem has no reflog. A house ' +

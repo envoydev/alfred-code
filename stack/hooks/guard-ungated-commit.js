@@ -372,7 +372,7 @@ const PUSH_GATE_ON = !(() => { try { return require('./hook-prelude.js').partOff
 // Past `git push`, a publish is read by CONCEPT on every transport (forge.js): a merge or a branch write through any CLI
 // (`gh pr merge`, `glab mr merge`, `az repos pr update --status completed`, one nobody listed), a raw API call, or an
 // MCP tool (`accept_merge_request`, `repo_pull_request_write {autoComplete: true}`, `push_files`) needs the same receipt.
-// A forge call whose verb the lexicon does not know is an ask - a deny when nobody is at the terminal to answer it.
+// A forge call whose verb the lexicon does not know is an ask - a deny where no prompt can show (dontAsk, bypassPermissions, print mode, an unattended run, ALFRED_CODE_GUARD_ASK=0, Cursor).
 // With the publish half off nothing is gated or asked.
 let publishMatch = null;
 let askMatch = null;
@@ -443,7 +443,7 @@ function forgeAsk(r) {
   try { nobody = !require('./hook-prelude.js').canAsk(payload); } catch { nobody = true; }
   const what = String(r.act || '').slice(0, 200);
   if (nobody) {
-    blockCall(payload, `Blocked: ${what} - a forge call the stack cannot classify (${r.why}), and nobody is at the terminal to\n` +
+    blockCall(payload, `Blocked: ${what} - a forge call the stack cannot classify (${r.why}), and no prompt can show here to\n` +
       `confirm it publishes nothing. If it merges, pushes or releases, run habits-commit-checkpoint's publish half first; if it\n` +
       `does not, add its verb to <data root>/forge-lexicon.json.`);
   }
@@ -2124,7 +2124,7 @@ function stagedFindings() {
       (found.length > 15 ? `  ... and ${found.length - 15} more\n` : '') +
       `Remove it and stage again. This is a fact check on the diff, separate from the commit-gate receipt,\n` +
       `which does not open it.\n` +
-      `If a hit is meant to land (a test fixture, a documented sample), the user approves this call.`,
+      `If a hit is meant to land (a test fixture, a documented sample), the user decides - they run the commit themselves.`,
     );
   }
 }

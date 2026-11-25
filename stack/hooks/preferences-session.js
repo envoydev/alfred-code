@@ -1189,6 +1189,21 @@ function sessionCheckout(ctx) {
 
 let PATH_LINE = '';
 const pathLine = (T) => `Project ${T} - paths below are from ${T}/.`;
+// The PATH line goes after the first SENTENCE of a hold's reason - the prompt's one-sentence summary, which says what is held and
+// names no path - so it still comes before the member-relative paths it governs (the docs-session hold's reasons open with
+// 'Docs not read yet in this session.' and name the target after it). A reason whose first line holds no sentence end (this
+// file's holds open with one line ending in a colon) takes the line after its first line; a one-line reason, at its end.
+const SENTENCE_END_RE = /[.!?](?=\s|$)/;
+function withPathLine(reason, line) {
+  if (!line) return reason;
+  const lineEnd = reason.indexOf('\n');
+  const head = lineEnd < 0 ? reason : reason.slice(0, lineEnd);
+  const end = SENTENCE_END_RE.exec(head);
+  if (lineEnd < 0 && !end) return `${reason}\n${line}`;
+  const cut = end ? end.index + 1 : lineEnd;
+  const rest = reason.slice(cut).replace(/^[ \t]+/, '');
+  return `${reason.slice(0, cut)}\n${line}${rest && !rest.startsWith('\n') ? '\n' : ''}${rest}`;
+}
 // Stage 6: the pieces an actor entering a member is still owed ride the one reply - a denial while the whole stays within
 // INLINE_CAP, else an additionalContext of ENTRY_ROOM (the first piece always goes); each is marked once written.
 let PUSH = null, WROTE = false; const ENTRY_ROOM = 3600;
@@ -1208,12 +1223,11 @@ function emit(event, extra, input) {
     if (next.length > (at === 'additionalContext' ? ENTRY_ROOM : INLINE_CAP) - PATH_LINE.length - 1 && (keys.length || fields[at])) break;
     fields[at] = next; keys.push(key);
   }
-  // A hold's PATH line follows the reason's first line: that line is the prompt's one-sentence summary, so it must say what
-  // is held, while the line still comes before the paths it governs.
+  // A hold's PATH line follows the reason's first sentence (withPathLine): that sentence is the prompt's summary, so it must say
+  // what is held, while the line still comes before the paths it governs.
   for (const k of ['permissionDecisionReason', 'additionalContext']) {
     if (!PATH_LINE || !fields[k]) continue;
-    const cut = block && k === 'permissionDecisionReason' ? fields[k].indexOf('\n') : 0;
-    fields[k] = cut > 0 ? `${fields[k].slice(0, cut)}\n${PATH_LINE}${fields[k].slice(cut)}` : `${PATH_LINE}\n${fields[k]}`;
+    fields[k] = block && k === 'permissionDecisionReason' ? withPathLine(fields[k], PATH_LINE) : `${PATH_LINE}\n${fields[k]}`;
   }
   if (block) holdCall(input, fields.permissionDecisionReason);
   else process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, ...fields } }));
@@ -1467,7 +1481,7 @@ function main() {
 }
 
 module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
-Object.assign(module.exports, { ownerOf, pathLine, shellTargets });
+Object.assign(module.exports, { ownerOf, pathLine, withPathLine, shellTargets });
 if (require.main === module) {
   try { main(); if (PUSH && !WROTE) emit('PreToolUse', { additionalContext: '' }); } catch { /* fail open: a hand-over hook never blocks on its own error */ }
   finally { releaseRecord(); }

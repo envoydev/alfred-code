@@ -9,7 +9,9 @@
 // audit). This hook is the ONE process for all of them, on shell-guards.js's in-process runtime: each guard runs
 // as its own main module with its own gates, its own ledger row and its own fail-open, and the verdicts merge the
 // way Claude Code merges the same guards wired as separate hooks (shell-guards.js `combine`, whose header states
-// the rules). A PROTECTIVE guard (the secret guard, on a Read or a Grep) runs first and its exit 2 is answered at once.
+// the rules). Every guard's block goes through the prelude's askOrBlock: an ask where a person can answer, a deny
+// (exit 2 only on Cursor) where nobody can. A PROTECTIVE guard (the secret guard, on a Read or a Grep) runs first and its
+// deny is answered at once; its ask lets every later guard judge the call, so the one prompt names every harm.
 //
 // Each guard runs only for the tools its own manifest row named - the table below, which the manifest's rows are
 // held to (scripts/shell-guards.test.js) - so a guard never judges a tool it was never wired on. instrument-tool-

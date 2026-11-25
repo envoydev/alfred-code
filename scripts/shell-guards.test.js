@@ -121,7 +121,7 @@ test('combine: a lone ask and two blocks read as before', () => {
   const lone = shell.combine([r('a.js', 0, ask('only ask')), r('b.js', 0)]);
   assert.deepStrictEqual(JSON.parse(lone.stdout).hookSpecificOutput, { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'only ask' });
   const twoAsks = shell.combine([r('a.js', 0, ask('one')), r('b.js', 0, ask('two'))]);
-  assert.strictEqual(JSON.parse(twoAsks.stdout).hookSpecificOutput.permissionDecisionReason, 'one\ntwo');
+  assert.strictEqual(JSON.parse(twoAsks.stdout).hookSpecificOutput.permissionDecisionReason, 'one\n\ntwo');
   assert.strictEqual(shell.combine([r('a.js', 2, '', 'Blocked: a\n'), r('c.js', 2, '', 'Blocked: c\n')]).stderr, 'Blocked: a\n\nBlocked: c\n');
 });
 
@@ -1234,7 +1234,15 @@ test('combine: a deny beside a block ask stays a deny, the ask riding after it a
   assert.strictEqual(out.code, 0);
   assert.strictEqual(verdictOf(out), 'deny');
   const reason = JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason;
-  assert.match(reason, /^Docs not read yet\n\nAlso: alfred-code guard-b: the ask harm\./);
+  assert.strictEqual(reason, 'Docs not read yet\n\nAlso: Blocked: the ask harm. Fix it.');
+  assert.ok(!JSON.parse(out.stdout).hookSpecificOutput.additionalContext, 'nobody was asked, so no ask context rides beside a deny');
+});
+
+test('combine: two block asks join their prompts with a blank line, and a plain context still rides beside a deny', () => {
+  const out = shell.combine([r('guard-a.js', 0, blockAsk('Blocked: first harm. Fix one.', 'guard-a')), r('guard-b.js', 0, blockAsk('Blocked: second harm. Fix two.', 'guard-b'))]);
+  assert.strictEqual(askText(out).split('\n\n').length, 2, askText(out));
+  const withCtx = shell.combine([r('guard-a.js', 0, deny('Docs not read yet')), r('guard-c.js', 0, ctx('keep this note'))]);
+  assert.strictEqual(JSON.parse(withCtx.stdout).hookSpecificOutput.additionalContext, 'keep this note');
 });
 
 test('isDenied: exit 2 and a JSON deny stop the protective run, an ask does not', () => {

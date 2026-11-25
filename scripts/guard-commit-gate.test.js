@@ -388,7 +388,7 @@ test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0
     const r = gateFull(dir, 'git commit -m one');
     assert.equal(r.status, 2, `${name}: a hidden U+${hex} on an added line blocks`);
     assert.match(r.stderr, new RegExp(`${name.replace('.', '\\.')}:\\d+ - a hidden character U\\+${hex}`), `${name}: the hit names file, line and code point`);
-    assert.match(r.stderr, /the user approves this call/, `${name}: the user approves the call`);
+    assert.match(r.stderr, /the user decides - they run the commit themselves/, `${name}: the user decides`);
     assert.doesNotMatch(r.stderr, /STAGED-SCAN-ALLOW/, `${name}: no receipt route`);
   }
 

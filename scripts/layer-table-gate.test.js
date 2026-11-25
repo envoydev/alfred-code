@@ -5,7 +5,7 @@ const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 // The hook writes its block row under CLAUDE_PROJECT_DIR || cwd: every spawn runs in the suite's own project, or the
 // rows land in the checkout's real ledger (audit 2026-10-08: 494 nosession.jsonl rows were this suite's).
-const { project } = require('./hook-test-env').isolateHookSuite();
+const { project } = require('./hook-test-env').isolateHookSuite({ ownTmp: true });
 const { verdictResult, verdictOf, blockText, askText, legacyBlock } = require('./hook-test-env');
 const inProject = (env = {}) => ({ cwd: project, env: { ...process.env, CLAUDE_PROJECT_DIR: project, ...env } });
 const assert = require('node:assert');
@@ -219,6 +219,16 @@ test('a hold where nobody can answer is a deny and sets no printed marker', () =
   assert.strictEqual(r.out.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(r.out.hookSpecificOutput.permissionDecisionReason, /^alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
   assert.ok(!fs.existsSync(markerOf(session, 't1')), 'a deny prints nothing the user answers over');
+});
+
+test('a deny-path hold, then the re-send passes - one hold per layer where nobody can answer', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  const held = runPre([...UNPASTED(), ...own], 'a9', ask, {}, session, { permission_mode: 'dontAsk' });
+  assert.strictEqual(held.out.hookSpecificOutput.permissionDecision, 'deny');
+  const reason = held.out.hookSpecificOutput.permissionDecisionReason;
+  const again = runPre([...UNPASTED(), ...own, result('a9', reason, true), call('a10', 'AskUserQuestion', ask)], 'a10', ask, {}, session, { permission_mode: 'dontAsk' });
+  assert.strictEqual(again.out, null, 'the re-send after a denied hold reaches the ask');
 });
 
 // L1, 656: the hold keeps the table's systemMessage beside the ask - one JSON object, never two.

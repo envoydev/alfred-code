@@ -142,7 +142,7 @@ test('stage 1 B7: a staged credential is still refused at commit', () => {
         const r = p.bash('s5', 'git commit -m x');
         assert.strictEqual(r.status, 2, 'the staged-diff scan refuses the commit');
         assert.match(r.stderr, /a credential-shaped literal/);
-        assert.match(r.stderr, /the user approves this call/, 'and leaves the call to the user');
+        assert.match(r.stderr, /the user decides - they run the commit themselves/, 'and leaves the call to the user');
     } finally { p.rm(); }
 });
 

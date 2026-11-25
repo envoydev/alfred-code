@@ -3051,8 +3051,12 @@ test('HK-28 replay: an output-scoring seat is never denied at its hand-back, so 
 // A root (durable docs, ROOT-SECTION covering src/**) with children `api` (its own durable docs, API-SECTION), `src/pkg` and
 // `tools` (no docs), all stamped and joined; `api` a plain folder of the root's repository.
 const API_LINE = 'Project api - paths below are from api/.';
-// A hold's reason carries the path line right after its first line: that line is the prompt's one-sentence summary.
-const pathAfterHead = (text) => text.split('\n')[1] === API_LINE;
+// A hold's reason carries the path line right after its first sentence ('Docs not read yet in this session.'): the sentence is the
+// prompt's summary and names no path, and every path the hold names comes after the line that says what they are relative to.
+const pathAfterHead = (text) => {
+  const lines = text.split('\n');
+  return lines[1] === API_LINE && /^[A-Z][^/]*\.$/.test(lines[0]) && !lines[0].includes('src/') && lines.slice(2).join('\n').includes('src/');
+};
 const mKey = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
 const why = (out) => blockReason(out) || '';
 function joined({ apiCovers = 'src/**', apiOff = '', rootDocs = true, rootWatch = null, prefs = false } = {}) {

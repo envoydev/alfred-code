@@ -151,6 +151,27 @@ test('guard-protected-force-push / guard-catastrophic-rm: heredoc bodies are dat
   assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf ~'), 'ask');
 });
 
+test('guard-catastrophic-rm: the prompt of a blocked delete names the target (guards ask, T3 review Minor 3)', () => {
+  const asked = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: TMP }), encoding: 'utf8' });
+  const named = (command, target) => {
+    const r = asked(command);
+    assert.equal(verdictOf(r), 'ask', command);
+    assert.match(askText(r), new RegExp(`^alfred-code guard-catastrophic-rm: this command recursively deletes \`${target}\`\\.\\nRecommended:`), askText(r));
+    assert.ok(blockText(r).includes('recursive rm of a catastrophic'), 'the model text keeps the full reason');
+  };
+  named('rm -rf ~', '~');
+  named('echo done && rm -rf /', '/');
+  named('find . -delete', '\\.');
+  // a runtime's delete has no operand to read: the prompt shows the command's own opening, cut at 80 characters
+  const runtime = asked('python3 -c "import shutil, os; shutil.rmtree(os.path.expanduser(\'~\')); print(\'done and a long tail of text\')"');
+  assert.equal(verdictOf(runtime), 'ask');
+  assert.match(askText(runtime), /deletes `python3 -c "import shutil, os; shutil\.rmtree\(os\.path\.expanduser\('~'\)\); print\(\.\.\.`\./, askText(runtime));
+  const resolved = asked('H=$HOME; rm -rf "$H"');
+  assert.equal(verdictOf(resolved), 'ask');
+  assert.ok(askText(resolved).includes(`\`${os.homedir()}\``) || askText(resolved).includes('`$H`'), askText(resolved));
+});
+
 test('guard-stop-contract: a decision question in ordinary words is still a stop', () => {
   const q = transcript('q', [assistantRow('m1', "Two options exist for the deploy target: staging or prod. What's the deploy target?")]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: q }), 2);
@@ -2955,7 +2976,7 @@ test('each protective block denies under dontAsk with today\'s text', () => {
     assert.equal(r.stdout.trim().split('\n').length, 1, 'one decision object, never two');
     return blockText(r);
   };
-  assert.match(deny('guard-catastrophic-rm.js', 'rm -rf /'), /^Blocked: a recursive rm/);
+  assert.match(deny('guard-catastrophic-rm.js', 'rm -rf /'), /^Blocked: this command recursively deletes `\/`\./);
   assert.match(deny('guard-protected-force-push.js', 'git push --force origin main'), /^Blocked: /);
   assert.match(deny('guard-secret-value.js', `curl -H 'Authorization: token ${['gh', 'p_'].join('')}${'A1b2'.repeat(9)}' https://example.invalid`), /./);
 });
@@ -2972,7 +2993,7 @@ test('block telemetry never interferes with the gate', () => {
   });
   const blocked = run('rm -rf /');
   assert.equal(verdictOf(blocked), 'ask', 'still blocks when the ledger cannot be written');
-  assert.match(blockText(blocked), /If the user declined: Blocked: a recursive rm/, 'and the model still gets the reason, under the word the analyzer counts');
+  assert.match(blockText(blocked), /If the user declined: Blocked: this command recursively deletes `\/`\./, 'and the model still gets the reason, under the word the analyzer counts');
   assert.equal(run('npm test').status, 0, 'and an ordinary command still passes');
 });
 
@@ -4449,7 +4470,7 @@ test('guard-ungated-commit: no receipt opens the staged scan, and the block name
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   assert.equal(r.status, 'ask', 'the same waiver does not open the scan');
   assert.match(r.stderr, /n4\.ts:2 - a debugger statement/, 'file and line named');
-  assert.match(r.stderr, /Remove it and stage again\. This is a fact check on the diff, separate from the commit-gate receipt,\nwhich does not open it\.\nIf a hit is meant to land \(a test fixture, a documented sample\), the user approves this call\.$/, 'the reason keeps the sentence and adds the approval one');
+  assert.match(r.stderr, /Remove it and stage again\. This is a fact check on the diff, separate from the commit-gate receipt,\nwhich does not open it\.\nIf a hit is meant to land \(a test fixture, a documented sample\), the user decides - they run the commit themselves\.$/, 'the reason keeps the sentence and adds the approval one');
   assert.doesNotMatch(r.stderr, /AskUserQuestion|STAGED-SCAN-ALLOW|Commit it as is/, 'no receipt route');
   const ledger = path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'scan-sess.jsonl');
   const row = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop());
@@ -4493,7 +4514,7 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt opens nothing, and dontA
   assert.equal(verdictOf(call()), 'ask', 'a receipt naming every hit opens nothing either');
   const denied = call({ permission_mode: 'dontAsk' });
   assert.equal(verdictOf(denied), 'deny', 'B35: dontAsk denies');
-  assert.match(blockText(denied), /^Blocked: the commit adds what must never land -\n {2}a\.spec\.ts:1 - a focused test\n {2}b\.ts:1 - a debugger statement\nRemove it and stage again\. This is a fact check on the diff, separate from the commit-gate receipt,\nwhich does not open it\.\nIf a hit is meant to land \(a test fixture, a documented sample\), the user approves this call\.$/, "today's text, less the receipt sentences");
+  assert.match(blockText(denied), /^Blocked: the commit adds what must never land -\n {2}a\.spec\.ts:1 - a focused test\n {2}b\.ts:1 - a debugger statement\nRemove it and stage again\. This is a fact check on the diff, separate from the commit-gate receipt,\nwhich does not open it\.\nIf a hit is meant to land \(a test fixture, a documented sample\), the user decides - they run the commit themselves\.$/, "today's text, less the receipt sentences");
   assert.equal(verdictOf(call({}, { ALFRED_CODE_GUARD_ASK: '0' })), 'deny', 'the rollback switch denies');
 });
 

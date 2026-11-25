@@ -1059,7 +1059,7 @@ if (process.argv[2] === '--with-sensitive') {
   const words = rest[0] === '--' ? rest.slice(1) : rest;
   if (!words.length) {
     process.stderr.write('usage: node guard-secret-value.js --with-sensitive -- "<command line>"\n');
-    process.exit(2);
+    process.exit(2); // guard-ask: CLI usage
   }
   const quote = (w) => (process.platform === 'win32' ? (/[\s"&|<>^]/.test(w) ? `"${w.replace(/"/g, '\\"')}"` : w) : (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`));
   const line = words.length === 1 ? words[0] : words.map(quote).join(' ');
@@ -1399,7 +1399,7 @@ function lineRedactor() {
 // Any other `--` mode is no mode (swap 1 ruling 8: the stream mode left with the rewrite that piped into it).
 if (require.main === module && /^--/.test(process.argv[2] || '')) {
   process.stderr.write('usage: guard-secret-value.js --presence <file> [KEY ...] | --redacted <file> | --redacted-env | --with-sensitive -- "<command>"\n');
-  process.exit(2);
+  process.exit(2); // guard-ask: CLI usage
 }
 
 try {

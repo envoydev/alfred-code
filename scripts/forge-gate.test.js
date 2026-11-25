@@ -84,13 +84,16 @@ test('a forge call with no known verb is denied when nobody can answer - dontAsk
   const call = mcp('pull_request_frobnicate', { iid: 4 });
   const r = run(dir, call, { ALFRED_CODE_UNATTENDED: '1' });
   assert.strictEqual(r.status, 2, r.stderr);
-  assert.match(r.stderr, /nobody|unattended/i);
+  assert.match(r.stderr, /no prompt can show here/);
   for (const permission_mode of ['dontAsk', 'bypassPermissions']) {
     const denied = runRaw(dir, { ...call, permission_mode });
     assert.strictEqual(verdictOfHook(denied), 'deny', `${permission_mode}: the call is denied, not asked`);
-    assert.match(blockText(denied), /^Blocked: .*pull_request_frobnicate.*nobody is at the terminal/s, permission_mode);
+    assert.match(blockText(denied), /^Blocked: .*pull_request_frobnicate.*no prompt can show here/s, permission_mode);
   }
   assert.strictEqual(verdictOfHook(runRaw(dir, { ...call, permission_mode: 'default' })), 'ask', 'a default payload asks');
+  const off = runRaw(dir, { ...call, permission_mode: 'default' }, { ALFRED_CODE_GUARD_ASK: '0' });
+  assert.strictEqual(verdictOfHook(off), 'deny', 'ALFRED_CODE_GUARD_ASK=0 turns the forge ask into a deny too');
+  assert.match(blockText(off), /no prompt can show here/, 'and the deny text fits every deny mode, not only an unattended run');
 });
 
 test('a glab merge is gated like gh pr merge', () => {

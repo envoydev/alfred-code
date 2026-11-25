@@ -2818,3 +2818,17 @@ test('entry: the first hook\'s push at 3,599 / 3,600 / 3,601', () =>
         finally { p.rm(); }
     }
 });
+
+test('withPathLine: the line follows the first sentence, else the first line, else the end of a one-line reason', () => {
+    const { withPathLine } = require(path.join(HOOKS, 'preferences-session.js'));
+    const line = 'Project api - paths below are from api/.';
+    assert.strictEqual(withPathLine('Docs not read yet in this session. Before changing src/b.ts, read it.\nMore.', line),
+        `Docs not read yet in this session.\n${line}\nBefore changing src/b.ts, read it.\nMore.`);
+    assert.strictEqual(withPathLine('Docs not read yet in this session.\nBefore changing src/b.ts.', line),
+        `Docs not read yet in this session.\n${line}\nBefore changing src/b.ts.`);
+    assert.strictEqual(withPathLine('Before changing src/b.ts, read the preferences:\nRule one.', line),
+        `Before changing src/b.ts, read the preferences:\n${line}\nRule one.`, 'no sentence end on line one: after the line');
+    assert.strictEqual(withPathLine('Held: one line with no end', line), `Held: one line with no end\n${line}`);
+    assert.strictEqual(withPathLine('Held: x.', line), `Held: x.\n${line}`);
+    assert.strictEqual(withPathLine('A reason', ''), 'A reason', 'no member, no line');
+});
