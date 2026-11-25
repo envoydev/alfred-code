@@ -147,8 +147,8 @@ commit plus the session's earlier commits that passed without a receipt - so a d
 needs a review whatever it changes, a formatting-only sweep included (spacing inside a string, or one
 that splits a shell word, is code). Never split a real change into small commits to slip under it. What counts as a review of the committed files, and how one receipt covers a reviewed batch, is `references/evidence.md` `## What counts as a review` - read it before a receipt that rests on a seat's review or covers more than one commit. The hook's staged-diff scan (a conflict marker, a
 debugger, a focused test, a credential-shaped literal, a hidden character) is a fact check this receipt
-never opens: remove the hit and stage again, or, on the user's 'Commit it as is' in the denial's own
-ask, write the `<data root>/state/approvals/STAGED-SCAN-ALLOW` receipt it names.
+never opens: remove the hit and stage again. The scan asks the user through the permission prompt, and no receipt
+or chat answer opens it - a hit meant to land (a test fixture, a documented sample) lands only when the user approves that call.
 
 A commit in a second tree the cross-project guard allows gets its own receipt in THAT tree's
 `<data root>/state/approvals/`, written by `receipt.js` run from that tree and cleared the same way. A sibling repo is never committed, branched, pushed or sent as a change request

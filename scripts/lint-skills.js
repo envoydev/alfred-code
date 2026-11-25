@@ -3135,7 +3135,7 @@ const REALPATH_PINS = {
     'scripts/audit-2026-10-30-fixpass-gaps.test.js': 2,
     'scripts/audit-2026-10-30-fixpass-receipts.test.js': 2,
     'scripts/audit-2026-10-30-fixpass-shell.test.js': 2,
-    'scripts/audit-2026-11-03-guard-asks.test.js': 12,
+    'scripts/audit-2026-11-03-guard-asks.test.js': 10,
     'scripts/code-quality.test.js': 1,
     'scripts/docs-engine.test.js': 2,
     'scripts/docs-versioning-rule.test.js': 1,

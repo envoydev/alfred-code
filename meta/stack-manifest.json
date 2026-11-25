@@ -707,7 +707,7 @@
       "file": "guard-catastrophic-rm.js",
       "matcher": "Bash|PowerShell|Monitor",
       "event": "",
-      "note": "block recursive rm (Remove-Item -Recurse and cmd /c rd /s too) of /, ~, $HOME (however spelled - ${HOME:?}, the absolute home path), a Windows drive, the cwd or its parent (. / .. / $(pwd)), the project root or a folder holding it, a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch or stash drop/clear that would destroy work; the DISCARD-ALLOW receipt opens it after the user's answer, and so does the user's pick of the discard in an ask naming every file (audit 2026-11-03 U21)"
+      "note": "block recursive rm (Remove-Item -Recurse and cmd /c rd /s too) of /, ~, $HOME (however spelled - ${HOME:?}, the absolute home path), a Windows drive, the cwd or its parent (. / .. / $(pwd)), the project root or a folder holding it, a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch or stash drop/clear that would destroy work; every block asks the user through the permission prompt, and no receipt or chat answer opens it (guards ask, D3)"
     },
     {
       "file": "guard-read-whole-file.js",
@@ -893,7 +893,7 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
-      "note": "the guard switch-off check alone since complexity stage 1 B11 (the lint-config judge and its CONFIG-EDIT-ALLOW receipt left; guard-config-protection in ALFRED_CODE_HOOKS_OFF switches nothing off): a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, opened only by the GUARD-OFF-ALLOW security receipt (audit 2026-11-03 SYS-01) - judged on what a copy, move, link or extract into a watched folder lands (unread content asks too), and a new hooks entry wiring a copied twin of a dispatcher or protective guard is a switch-off"
+      "note": "the guard switch-off check alone since complexity stage 1 B11 (the lint-config judge and its CONFIG-EDIT-ALLOW receipt left; guard-config-protection in ALFRED_CODE_HOOKS_OFF switches nothing off): a settings write adding a protective guard to ALFRED_CODE_HOOKS_OFF or setting disableAllHooks asks under every stand-down, and no receipt or chat answer opens it (guards ask, D3; audit 2026-11-03 SYS-01) - judged on what a copy, move, link or extract into a watched folder lands (unread content asks too), and a new hooks entry wiring a copied twin of a dispatcher or protective guard is a switch-off"
     },
     {
       "file": "guard-config-protection.js",

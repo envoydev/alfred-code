@@ -184,7 +184,9 @@ test('in a never-set-up project every plugin-launched hook writes nothing, and o
                 }
                 else if (hook === 'guard-cross-project-write' && destructive)
                 {
-                    assert.strictEqual(status, 2, `the installed-code check stays live in a repo never set up: ${out.slice(0, 200)}`);
+                    // the installed-code check asks (exit 0, the ask on stdout; guards ask instead of block)
+                    assert.strictEqual(status, 0, `the installed-code check stays live in a repo never set up: ${out.slice(0, 200)}`);
+                    assert.match(out, /"permissionDecision":"ask"/, out.slice(0, 200));
                     assert.match(out, /installed plugins/, out.slice(0, 200));
                 }
                 else

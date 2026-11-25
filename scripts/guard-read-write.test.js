@@ -26,7 +26,8 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
 
-const run = (hook, payload, opts) => spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+const { legacyBlock } = require('./hook-test-env');
+const run = (hook, payload, opts) => legacyBlock(spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', ...opts }));
 const bash = (hook, command, opts) => run(hook, { tool_name: 'Bash', tool_input: { command } }, opts);
 const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 const sid = () => `rw-${Math.random().toString(36).slice(2)}`;

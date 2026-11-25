@@ -7,7 +7,7 @@ const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
 // Non-English text is generated from code points (foreignWords): no other language is written into this repo's code.
-const { reviewedTranscript, REVIEW_ROW, foreignWords, userPick } = require('./hook-test-env');
+const { reviewedTranscript, REVIEW_ROW, foreignWords, userPick, legacyBlock, verdictOf, blockText } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -27,8 +27,9 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 // runs the guard over this transcript unless it hands its own.
 const REVIEWED = reviewedTranscript(TMP);
 
+// A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 with the reason on stderr these cases were written for.
 const runIn = (hook, payload, opts) =>
-  spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts }));
 const gateFull = (dir, command, env = {}) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, transcript_path: REVIEWED }, {
   env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir,
 });
@@ -387,7 +388,8 @@ test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0
     const r = gateFull(dir, 'git commit -m one');
     assert.equal(r.status, 2, `${name}: a hidden U+${hex} on an added line blocks`);
     assert.match(r.stderr, new RegExp(`${name.replace('.', '\\.')}:\\d+ - a hidden character U\\+${hex}`), `${name}: the hit names file, line and code point`);
-    assert.match(r.stderr, /STAGED-SCAN-ALLOW/, `${name}: the same receipt route`);
+    assert.match(r.stderr, /the user approves this call/, `${name}: the user approves the call`);
+    assert.doesNotMatch(r.stderr, /STAGED-SCAN-ALLOW/, `${name}: no receipt route`);
   }
 
   const { dir, git } = clean();
@@ -403,57 +405,31 @@ test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0
   const allow = path.join(dir, '.alfred', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
   fs.mkdirSync(path.dirname(allow), { recursive: true });
   fs.writeFileSync(allow, 'late.js:1\n');
-  assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 0, 'the receipt naming the hit opens it');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 2, 'a receipt naming the hit opens nothing now (guards ask, D3)');
 });
 
-// O1 (inventory A): STAGED-SCAN-ALLOW is read by hook-prelude.js readReceiptFile - a `session:` line naming the call's
-// session - so another session's 'Commit it as is' never opens this one's scan.
-test('O1: STAGED-SCAN-ALLOW counts only for the session it names', () => {
+// O1 and M7 (inventory A, E-batch) pinned the STAGED-SCAN-ALLOW receipt's session and line rules. Guards ask (D3, 2026-11-25): no
+// receipt opens the scan, so one case holds that whatever the receipt names, the scan blocks and prints no receipt lines.
+test('O1/M7: no STAGED-SCAN-ALLOW receipt opens the scan, and the denial prints no receipt lines', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-o1-'));
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
   fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
   git('add', '-A'); git('commit', '-qm', 'seed');
-  fs.writeFileSync(path.join(dir, 'late.js'), `const s = 'x${String.fromCodePoint(0x202E)}y';\n`);
+  const hit = `const s = 'x${String.fromCodePoint(0x202E)}y';\n`;
+  fs.writeFileSync(path.join(dir, 'late.js'), hit.repeat(21));
   git('add', 'late.js');
   const at = (session_id) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', session_id, tool_input: { command: 'git commit -m late' }, transcript_path: REVIEWED },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   const allow = path.join(dir, '.alfred', 'state', 'approvals', 'STAGED-SCAN-ALLOW');
   fs.mkdirSync(path.dirname(allow), { recursive: true });
-  fs.writeFileSync(allow, 'session: another-session\nlate.js:1\n');
-  assert.equal(at('o1').status, 2, 'another session\'s receipt opens nothing');
-  fs.writeFileSync(allow, 'session: o1\nlate.js:1\n');
-  assert.equal(at('o1').status, 0, 'this session\'s receipt opens the scan');
-  fs.writeFileSync(allow, 'late.js:1\n');
-  const r = at('o1');
-  assert.equal(r.status, 2, 'a receipt naming no session is shut');
-  assert.match(r.stderr, /\n  session: o1\n  late\.js:1\n/, 'the denial names the lines to write, its session first');
-});
-
-// E-batch M7: the scan's denial printed 15 receipt lines, so 20 kept hits were denied again on the retry.
-test('M7: past 15 scan hits the printed receipt lines cover every one', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-m7-'));
-  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
-  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
-  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
-  git('add', '-A'); git('commit', '-qm', 'seed');
-  const hit = `const s = 'x${String.fromCodePoint(0x202E)}y';\n`;
-  fs.writeFileSync(path.join(dir, 'one.js'), hit.repeat(12));
-  fs.writeFileSync(path.join(dir, 'two.js'), hit.repeat(9));
-  git('add', 'one.js', 'two.js');
-  const at = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', session_id: 'm7', tool_input: { command: 'git commit -m kept' }, transcript_path: REVIEWED },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-  const r = at();
-  assert.equal(r.status, 2);
-  const m = /retry the SAME\s+command -\n((?:  .*\n)+)/.exec(r.stderr);
-  assert.ok(m, 'the receipt lines are printed');
-  const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
-  assert.equal(lines[0], 'session: m7');
-  const allow = path.join(dir, '.alfred', 'state', 'approvals', 'STAGED-SCAN-ALLOW');
-  fs.mkdirSync(path.dirname(allow), { recursive: true });
-  fs.writeFileSync(allow, lines.join('\n') + '\n');
-  const retry = at();
-  assert.doesNotMatch(retry.stderr, /must never land/, `the printed lines open the scan: ${retry.stderr.slice(0, 300)}`);
+  for (const body of ['session: o1\nlate.js:1\n', 'session: o1\nlate.js\n', 'session: o1\n*\n', 'late.js:1\n', 'session: another-session\nlate.js:1\n']) {
+    fs.writeFileSync(allow, body);
+    const r = at('o1');
+    assert.equal(r.status, 2, `a receipt of ${JSON.stringify(body)} opens nothing`);
+    assert.match(r.stderr, SCAN_BLOCK);
+    assert.doesNotMatch(r.stderr, /session: o1|STAGED-SCAN-ALLOW|retry the SAME/, 'the denial prints no receipt lines');
+  }
 });
 
 // U26a (usage audit 2026-11-03): `git commit --amend --only` with no path and no -a rewrites the message alone - git takes
@@ -582,7 +558,7 @@ test('guard-ungated-commit: a chained add of a quoted name, a spaced name and a 
   assert.match(r.stderr, /café\.js:1 - a debugger statement/, 'a non-ASCII name is read as written');
   assert.match(r.stderr, /my notes\.md:1 - a credential-shaped literal/);
   writeReceipt(dir, 'STAGED-SCAN-ALLOW', ['cfg file.js', 'my file.js:1', 'café.js:1', 'my notes.md:1'].join('\n') + '\n');
-  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'every hit named in the receipt - the scan opens');
+  assert.match(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'a receipt naming every hit opens nothing');
 });
 
 test('guard-ungated-commit: a binary or oversize file is skipped, and a hit beside it still blocks', () => {
@@ -1625,10 +1601,10 @@ test('review 2026-10-23: a prelude without the review words refuses what needs a
   for (const f of fs.readdirSync(HOOKS)) if (f.endsWith('.js')) fs.copyFileSync(path.join(HOOKS, f), path.join(hooks, f));
   const words = ['bareSkill', 'reviewKind', 'REVIEW_SKILL', 'REVIEW_SEAT', 'codeReviewCall', 'reviewTargets', 'reviewCovers', 'briefTargets', 'REVIEW_PROOF', 'reviewProof', 'REVIEW_SNAPSHOT', 'snapshotReview', 'readReviewSnapshots', 'heldByReview'];
   fs.appendFileSync(path.join(hooks, 'hook-prelude.js'), `\nfor (const k of ${JSON.stringify(words)}) delete module.exports[k];\n`);
-  const gate = () => spawnSync(process.execPath, [path.join(hooks, 'guard-ungated-commit.js')], {
+  const gate = () => legacyBlock(spawnSync(process.execPath, [path.join(hooks, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: REVIEWED }), encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
-  });
+  }));
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
   const r = gate();
   assert.equal(r.status, 2, `a reviewed transcript under an old prelude is refused, not crashed (${r.stderr.slice(0, 200)})`);
@@ -2273,7 +2249,7 @@ test('D25: a skip label a hook answered is no waiver; the user\'s is; the answer
   const withoutByUser = current.replace(/(Object\.assign\(module\.exports, \{[^}]*?), byUser\b/, '$1');
   assert.notEqual(withoutByUser, current, 'the copy lost its byUser export');
   fs.writeFileSync(preludeCopy, withoutByUser);
-  const runOlder = (hook, payload, opts) => spawnSync(process.execPath, [path.join(older, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  const runOlder = (hook, payload, opts) => legacyBlock(spawnSync(process.execPath, [path.join(older, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts }));
   const refused = waive(tpOf('d25-older', 'user_temporary'), runOlder);
   assert.equal(refused.status, 2, 'a prelude with no byUser: the skip is refused');
   assert.match(refused.stderr, /picked by no person/);

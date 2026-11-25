@@ -77,7 +77,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 || global.BLOCK_VERDICT) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -96,7 +96,7 @@ if (cursorOff) process.exit(0);
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -107,6 +107,13 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-ungated-commit' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 // shell-writes.js is the one home of reading a shell command (2.1.6 re-verify 3 R3-M3, R3-M4): its walker finds each git
 // call as a COMMAND WORD - past assignments, keywords and wrappers - and walks the call's options word by word. The regex
 // family this guard kept here matched the options instead, and a run of them backtracked: `git` + 36 x ' -c' +
@@ -429,17 +436,16 @@ if (!PUSH_GATE_ON) {
 
 // Every `git add` in the command: what a commit after it takes in (the staged-diff scan and the receipt count, below).
 const addCalls = calls.filter((c) => c.sub === 'add');
-// The ask for a forge call the lexicon cannot read: the user decides whether it publishes. Nobody at the terminal (print
-// mode, auto-mode) cannot answer an ask, so there it is a deny naming the act.
+// The ask for a forge call the lexicon cannot read: the user decides whether it publishes. Where nobody can answer an ask
+// (hook-prelude.js canAsk: dontAsk, bypassPermissions, print mode, an unattended run, Cursor, no prelude) it is a deny naming the act.
 function forgeAsk(r) {
-  let nobody = false;
-  try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
+  let nobody = true;
+  try { nobody = !require('./hook-prelude.js').canAsk(payload); } catch { nobody = true; }
   const what = String(r.act || '').slice(0, 200);
   if (nobody) {
-    process.stderr.write(`Blocked: ${what} - a forge call the stack cannot classify (${r.why}), and nobody is at the terminal to\n` +
+    blockCall(payload, `Blocked: ${what} - a forge call the stack cannot classify (${r.why}), and nobody is at the terminal to\n` +
       `confirm it publishes nothing. If it merges, pushes or releases, run habits-commit-checkpoint's publish half first; if it\n` +
       `does not, add its verb to <data root>/forge-lexicon.json.`);
-    process.exit(2);
   }
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
     permissionDecisionReason: `${what} - a forge call the stack cannot classify (${r.why}). Approve only if it merges, pushes and releases nothing; a publish needs the checkpoint's receipt.` } }));
@@ -1632,7 +1638,7 @@ if (publishMatch) {
   if (gated && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE', sessionStartMs());
     if (!((r.waived || r.verified) && !r.problem)) {
-      process.stderr.write(
+      blockCall(payload,
         (r.stale
           ? `Blocked: ${shown} - the publish receipt at ${r.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
           : r.problem
@@ -1648,7 +1654,6 @@ if (publishMatch) {
           `words>" or WAIVED - answered: <the label they picked>. Never fabricate either; retry, and clear the file once it\n` +
           `lands. A remote already gated (branch protection) can turn this half off: guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF.`,
       );
-      process.exit(2);
     }
   }
   // A merge lands the CHANGE's head, not this checkout's: the receipt's head: must be that head or a descendant of it
@@ -1676,15 +1681,13 @@ if (publishMatch) {
     // script, an expansion), so anything before or beside it refuses the pair, and the denial names it.
     const first = isMcpCall ? null : runsFirst(at);
     if (first) {
-      process.stderr.write(`Blocked: ${mergeAct} - ${first}.\nThis hook judges a merge on the repository and its remote as they stand before the command runs, so it judges only a merge that runs first: run what comes before it on its own, then the merge in its own call.`);
-      process.exit(2);
+      blockCall(payload, `Blocked: ${mergeAct} - ${first}.\nThis hook judges a merge on the repository and its remote as they stand before the command runs, so it judges only a merge that runs first: run what comes before it on its own, then the merge in its own call.`);
     }
     let unseen = null;
     try { unseen = forgeLib.unseenHead({ cwd: root, change: m.change, sha: m.head, branch: m.branch, receiptHead }); } catch { unseen = null; }
     if (unseen) {
-      process.stderr.write(`Blocked: ${mergeAct} - ${unseen}.\n` +
+      blockCall(payload, `Blocked: ${mergeAct} - ${unseen}.\n` +
         'The publish receipt reviewed a different tree than the one this merge lands; the checkpoint\'s publish half reviews the change as it stands.');
-      process.exit(2);
     }
   }
 }
@@ -1695,8 +1698,8 @@ if (!commitMatch) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
 // --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
 // Conflict markers, a debugger, a focused test, a credential-shaped literal and a hidden character
 // (hidden-chars.js beside this hook, the lint's own class) on an ADDED line of what THIS act commits. It runs before the trivial-diff exemption and before every commit-gate
-// receipt - the review receipt is a different claim - and a hit the user means to keep is opened
-// only by its own STAGED-SCAN-ALLOW receipt. What the act commits: the index; plus the unstaged
+// receipt - the review receipt is a different claim - and a hit the user means to keep is asked about through
+// the permission prompt each time. What the act commits: the index; plus the unstaged
 // tracked changes under `commit -a` or a chained `git add` (nothing is staged yet when this hook
 // runs); plus the untracked files that add takes in. A commit NAMING paths commits their working
 // tree against HEAD - alone under `--only` (the default), on top of the index under `--include`.
@@ -1724,21 +1727,6 @@ function lineFinding(file, text, lineNo) {
   if (TEST_FILE.test(file) && /(?:^|[;{])\s*(?:(?:fdescribe|fit)\s*\(|(?:test\.)?(?:describe|it|test)\.only\s*\()/.test(text)) return 'a focused test';
   return '';
 }
-// A `<data root>/state/approvals/<name>` ALLOW receipt's lines (the pre-2.8.0 flow/ still read) - the USER's answer to a
-// block, read by hook-prelude.js readReceiptFile: under 8h, written after the session began, and a `session:` line naming
-// this call's session when the call names one (E1-6 / O1: another session's answer opened this one's scan).
-// `write` is where a denial says to put one; `shut` the sentence a denial adds when a receipt is there but not honoured.
-function allowLines(name) {
-  const file = receiptRead(name);
-  const write = receiptWrite(name);
-  let r = null;
-  try { r = prelude().readReceiptFile(file, payload); } catch { r = null; }
-  let shut = '';
-  try { shut = prelude().receiptShutText(r, path.relative(root, file).split(path.sep).join('/')); } catch { shut = ''; }
-  return { file, write, lines: r && r.live ? r.lines : [], shut };
-}
-// The lines a denial tells the model to write, its `session:` line first (hook-prelude.js receiptLinesText).
-const receiptLines = (lines) => { try { return prelude().receiptLinesText(payload, lines); } catch { return lines.map((l) => `  ${l}\n`).join(''); } };
 function prelude() { return require('./hook-prelude.js'); }
 
 // What the commit takes in, read from the command: the commit's own flags and paths, and every `git add` before it.
@@ -2129,28 +2117,15 @@ function stagedFindings() {
 }
 {
   const found = stagedFindings();
-  // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
-  // or `*` per line; this session's own, under 8h.
-  const { write: allowFile, lines: allow, shut: allowShut } = allowLines('STAGED-SCAN-ALLOW');
-  const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
-  if (open.length) {
-    global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
-    const allowRel = path.relative(root, allowFile).split(path.sep).join('/');
-    // Past 15 hits the receipt names each file once, printed whole (E-batch M7: 15 lines left the rest denied on the retry).
-    const scanLines = open.length > 15 ? [...new Set(open.map((f) => f.file))] : open.map((f) => `${f.file}:${f.line}`);
-    process.stderr.write(
-      `Blocked: the commit adds what must never land -\n${open.slice(0, 15).map((f) => `  ${f.file}:${f.line} - ${f.hit}`).join('\n')}\n` +
-      (open.length > 15 ? `  ... and ${open.length - 15} more\n` : '') +
+  if (found.length) {
+    global.BLOCK_DETAIL = { branch: 'staged-scan', count: found.length };
+    blockCall(payload,
+      `Blocked: the commit adds what must never land -\n${found.slice(0, 15).map((f) => `  ${f.file}:${f.line} - ${f.hit}`).join('\n')}\n` +
+      (found.length > 15 ? `  ... and ${found.length - 15} more\n` : '') +
       `Remove it and stage again. This is a fact check on the diff, separate from the commit-gate receipt,\n` +
-      `which does not open it. If a hit is MEANT to land (a test fixture, a documented sample), do not decide\n` +
-      `for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-      `  'Remove it and stage again (Recommended)'\n` +
-      `  'Commit it as is' - the user keeps the line on purpose\n` +
-      `On 'Commit it as is', write ${allowRel} with these lines (one \`file:line\` per kept hit, past 15 one \`file\` per\n` +
-      `file) and retry the SAME command -\n` + receiptLines(scanLines) +
-      `It is honoured for this session only, under 8h.\n` + allowShut,
+      `which does not open it.\n` +
+      `If a hit is meant to land (a test fixture, a documented sample), the user approves this call.`,
     );
-    process.exit(2);
   }
 }
 if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
@@ -2207,10 +2182,9 @@ if (sameBlockSeen(head)) {
   const next = c.next || (c.stale ? 'run the checkpoint again and write a fresh receipt with scripts/receipt.js commit - the old one is ignored'
     : c.problem ? 'fix what the receipt line above names, then write it again with scripts/receipt.js commit'
       : 'run the checkpoint (habits-commit-checkpoint) and write the receipt with scripts/receipt.js commit');
-  process.stderr.write(`${head}\nThis is the same refusal as before - running the commit again changes nothing. The one next step: ${next}.`);
-  process.exit(2);
+  blockCall(payload, `${head}\nThis is the same refusal as before - running the commit again changes nothing. The one next step: ${next}.`);
 }
-process.stderr.write(
+blockCall(payload,
   `${head}\n` +
     `Run the checkpoint first (load habits-commit-checkpoint): the formatter, then task-verify-code or review-code, plus review-security\n` +
     `on auth, crypto, secrets, payment or data-access paths. Then write ${c.write} with the skill's scripts/receipt.js\n` +
@@ -2225,4 +2199,3 @@ process.stderr.write(
     `to slip under the trivial bar, and clear the file after the batch's last commit (one receipt covers commits taking in\n` +
     `only the files its spec: names).`,
 );
-process.exit(2);

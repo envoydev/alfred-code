@@ -56,8 +56,6 @@ function fire(dir, command) {
   } catch { /* no JSON */ }
   return { v, out: `${r.stderr}${r.stdout}`, stdout: r.stdout };
 }
-// a block is an ask, or the exit 2 of a guard that is not yet converted (the cross-project and commit guards, Task 4)
-const RUNNER_BLOCK = new Set(['ask', 2]);
 const runner = (line) => `node "${GUARD}" --with-sensitive -- ${line}`;
 
 test('FB 1: a double-quoted carried line is judged as bash hands it on - its \\" \\$ \\\\ escapes undone', () => {
@@ -75,7 +73,7 @@ test('FB 1: a double-quoted carried line is judged as bash hands it on - its \\"
     [runner('"rm -rf \\"\\$HOME\\""'), 'an escaped $HOME the runner\'s shell expands'],
     ['bash -c "rm -rf \\"\\$HOME\\""', 'the same gap in a plain bash -c (it predates the runner)'],
     [runner('\'bash -c "rm -rf ~"\''), 'the single-quoted control'],
-  ]) assert.ok(RUNNER_BLOCK.has(fire(dir, c).v), `${why}: ${c}`);
+  ]) assert.ok(fire(dir, c).v === 'ask', `${why}: ${c}`);
   // the legitimate use: a stored key in an escaped header still runs, unrewritten
   const ok = fire(dir, runner('"curl -H \\"Authorization: Bearer $API_TOKEN\\" https://example.invalid"'));
   assert.strictEqual(ok.v, 0, ok.out);
@@ -97,7 +95,7 @@ test('FB 2: every runner spelling is carried - a variable script, a node option 
     [`node --disable-warning ExperimentalWarning "${GUARD}" --with-sensitive -- "rm -rf ~"`, '--disable-warning X'],
     [`node --report-dir ${TMP} "${GUARD}" --with-sensitive -- "rm -rf ~"`, '--report-dir X'],
     [`node --openssl-config /dev/null "${GUARD}" --with-sensitive -- "cat .env"`, '--openssl-config X'],
-  ]) assert.ok(RUNNER_BLOCK.has(fire(dir, c).v), `${why}: ${c}`);
+  ]) assert.ok(fire(dir, c).v === 'ask', `${why}: ${c}`);
   // the cap: four lines are judged; a fifth is never let through unjudged
   const calls = (n, last) => Array.from({ length: n }, (_, i) => runner(i === n - 1 && last ? last : '"true"')).join('; ');
   assert.strictEqual(fire(dir, calls(5, '"cat .env"')).v, 'ask', 'four true lines then cat .env');
@@ -108,7 +106,7 @@ test('FB 2: every runner spelling is carried - a variable script, a node option 
   assert.strictEqual(fire(dir, calls(3)).v, 0, 'three lines: under the cap');
   // a runner nested past the carried-script depth is never let through unjudged
   const wrap = (s) => `sh -c '${s.replace(/'/g, "'\\''")}'`;
-  assert.ok(RUNNER_BLOCK.has(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v), 'a runner four shells deep is an ask or a guard exit 2, never a pass');
+  assert.ok(fire(dir, wrap(wrap(wrap(wrap(runner('"true"')))))).v === 'ask', 'a runner four shells deep is an ask, never a pass');
   assert.strictEqual(fire(dir, wrap(runner('"true"'))).v, 0, 'a runner one shell deep runs');
   assert.strictEqual(fire(dir, runner('"npm test"')).v, 0, 'one legitimate call runs');
 });

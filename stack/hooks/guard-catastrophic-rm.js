@@ -129,10 +129,6 @@ const RM_HARM = (c) =>
     }
     return null;
 };
-// 2.8.0: an ALLOW receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one is still read for the
-// 2.x line, and is the only path when layout.js is not beside this file.
-let layout = null;
-try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 // Every git this guard runs: fsmonitor off, no optional locks (hook-prelude.js gitSafe, audit 2026-10-20 H2) - the same two
 // inline when the prelude is absent, since a protective read must not skip git or run a repository's own program.
 const gitSafe = (() => { try { return require('./hook-prelude.js').gitSafe; } catch { return (argv, opts = {}) => ['git', ['-c', 'core.fsmonitor=false', ...argv], { ...opts, env: { ...(opts.env || process.env), GIT_OPTIONAL_LOCKS: '0' } }]; } })();
@@ -742,8 +738,8 @@ function gitPlan(verb, args, isRev)
     return null;
 }
 
-// What a plan destroys, read from git itself: [{ kind, rows, targets, named }] - `rows` the lines the
-// denial lists, `targets` the paths the loss covers, `named` when the command named paths.
+// What a plan destroys, read from git itself: [{ kind, rows, named }] - `rows` the lines the
+// denial lists, `named` when the command named paths.
 // `run(argv)` is git in the call's own directory; it throws when git cannot answer. `opAborted`: the same command aborts
 // a merge, rebase, cherry-pick, revert or am in progress here before this call (below).
 function readLoss(plan, run, opAborted = false)
@@ -752,8 +748,8 @@ function readLoss(plan, run, opAborted = false)
     if (plan.kind === 'stash')
     {
         const entries = lines(run(['stash', 'list']));
-        if (plan.all) return [{ kind: 'stash', rows: entries, targets: entries.map((e) => e.split(':')[0]) }];
-        return [{ kind: 'stash', rows: entries.filter((e) => e.startsWith(`${plan.ref}:`)), targets: [plan.ref] }];
+        if (plan.all) return [{ kind: 'stash', rows: entries }];
+        return [{ kind: 'stash', rows: entries.filter((e) => e.startsWith(`${plan.ref}:`)) }];
     }
     if (plan.kind === 'clean')
     {
@@ -761,7 +757,7 @@ function readLoss(plan, run, opAborted = false)
         // exit 0; the dry run of the same flags lists exactly what goes, ignored files included.
         const removed = lines(run(plan.dry)).map((l) => /^Would remove (.+)$/.exec(l)).filter(Boolean).map((m) => m[1]);
         const named = plan.paths.length > 0 && !plan.paths.some((a) => /\$/.test(a));
-        return [{ kind: 'tree', rows: removed.map((f) => `clean removes ${f}`), targets: named ? plan.paths : removed, named }];
+        return [{ kind: 'tree', rows: removed.map((f) => `clean removes ${f}`), named }];
     }
     // The PATHSPEC the command actually names. The gate used to ask only 'is the tree dirty', which made
     // its own prescribed escape - 'name the ONE file to revert instead of the whole tree' - unreachable:
@@ -807,7 +803,6 @@ function readLoss(plan, run, opAborted = false)
     return [{
         kind: 'tree',
         rows: lost.map((r) => `${r.xy} ${r.orig ? `${r.orig} -> ` : ''}${r.file}`),
-        targets: spec.length ? spec : lost.map((r) => r.file),
         named: spec.length > 0,
     }];
 }
@@ -994,7 +989,7 @@ function main()
     // argv alone (no rev lookup - a checkout's word is a path, judged as the whole tree anyway), once per directory and
     // kind, at most OVER_CAP_READS of them; past that the rest is a loss nobody read, never let through.
     const OVER_CAP_READS = 16;
-    const unread = (why) => losses.push({ kind: 'tree', rows: [why], targets: ['*'], named: false });
+    const unread = (why) => losses.push({ kind: 'tree', rows: [why], named: false });
     const overCapRead = (plan, gitCwd, seen) =>
     {
         const key = `${gitCwd}|${plan.kind}|${plan.kind === 'tree' ? '' : JSON.stringify(plan)}`;
@@ -1027,9 +1022,8 @@ function main()
     for (const l of losses)
     {
         if (!l.rows.length) continue;
-        const g = groups.get(l.kind) || { kind: l.kind, rows: [], targets: [], named: true };
+        const g = groups.get(l.kind) || { kind: l.kind, rows: [], named: true };
         for (const r of l.rows) if (!g.rows.includes(r)) g.rows.push(r);
-        for (const t of l.targets) if (!g.targets.includes(t)) g.targets.push(t);
         g.named = g.named && Boolean(l.named);
         groups.set(l.kind, g);
     }
@@ -1044,13 +1038,15 @@ function main()
             g.rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
             (g.rows.length > 10 ? `\n  ... and ${g.rows.length - 10} more` : '')).join('\n');
         const one = kinds.length === 1 ? kinds[0].kind : '';
-        const keep = one === 'stash' ? 'Keep the stash - leave it, or `git stash apply` it first'
-            : one === 'tree' ? 'Keep the work - `git stash -u`, or commit it'
-                : 'Keep it all - run none of it; `git stash -u` or commit the work first';
+        const keep = one === 'stash' ? 'Keep the stash instead: leave it, or `git stash apply` it first.'
+            : one === 'tree' ? 'Keep the work instead: `git stash -u`, or commit it.'
+                : 'Keep it all instead: run none of it; `git stash -u` or commit the work first.';
+        const narrow = one === 'stash' ? 'Narrow it: drop ONE named entry instead of every one.\n'
+            : groups.has('tree') ? 'Narrow it: name the ONE file to revert instead of the whole tree.\n' : '';
         blockCall(payload,
             body +
             `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
-            `\nKeep the work instead: ${keep}\n` +
+            `\n${keep}\n` + narrow +
             `Reverting these files with Edit or Write instead is the same discard.\n`);
     }
 

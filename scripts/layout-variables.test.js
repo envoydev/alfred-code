@@ -4,6 +4,7 @@
 // file while the switch is on - and applied once per process, so every envOf copy reads the winner unchanged.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { legacyBlock } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -375,8 +376,9 @@ test('Review Focus 5: a CRLF file and a project path with a space', () =>
 
 // ---- Review Focus 6: a guard switch in a .variables file is never read ----------------------------------------------
 const GUARD_LINES = (sibling) => `${K('CONFIG_PROTECT')}=0\n${K('PUSH_GATE')}=0\n${K('ALLOW_WRITE_OUTSIDE')}=${sibling}\n`;
-const hook = (file, payload, root, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, file)],
-    { input: JSON.stringify(payload), encoding: 'utf8', cwd: root, env: { ...process.env, ...ON, CLAUDE_PROJECT_DIR: root, ...env } });
+// A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 these cases were written for.
+const hook = (file, payload, root, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, file)],
+    { input: JSON.stringify(payload), encoding: 'utf8', cwd: root, env: { ...process.env, ...ON, CLAUDE_PROJECT_DIR: root, ...env } }));
 // A clone ahead of its upstream by one commit, so an ungated `git push` publishes something.
 function aheadClone(dir)
 {

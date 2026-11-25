@@ -73,7 +73,7 @@ try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filena
         const exit = process.exit.bind(process);
         process.exit = (code) =>
         {
-            if (code === 2 && !unsetRepo)
+            if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo)
             {
                 try
                 {
@@ -93,7 +93,7 @@ try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filena
                         // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
                         agent: payload.agent_id || null,
                         tool_use_id: payload.tool_use_id || null,
-                        reason: last.split('\n')[0].slice(0, 200),
+                        reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -105,6 +105,14 @@ try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filena
             exit(code);
         };
     })();
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-config-protection' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const CWD = payload.cwd || ROOT;
@@ -199,8 +207,7 @@ const real = (p) => {
     dir = up;
   }
 };
-// 2.8.0: an ALLOW receipt lives in <data root>/state/approvals/ (layout.js); the pre-2.8.0 flow/ one is still read for the
-// 2.x line, and is the only path when layout.js is not beside this file.
+// layout.js finds the settings files; without it beside this file the settings paths are not read.
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 // The receipt reader (hook-prelude.js). No prelude, no reader: every receipt here reads shut.
@@ -213,11 +220,10 @@ try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
 // local - the repository root's since 2.1.211 - and managed files), and Claude Code's `disableAllHooks: true` stands every
 // hook down. So a write adding the rm, secret or force-push guard (hook-prelude.js PROTECTIVE) to the csv, or
 // setting disableAllHooks, stood that guard down from the next call on, and no guard judged it (replayed under
-// bypassPermissions). Such a write is denied with ONE ask on every route this guard covers - a file tool and a filesystem
+// bypassPermissions). Such a write is asked about (a deny where nobody can answer) on every route this guard covers - a file tool and a filesystem
 // server judged on the file it leaves, a shell write on the JSON it carries (a heredoc body, a quoted literal, a copied
-// file) and by name for the rest, an in-place sed applied in memory - and GUARD-OFF-ALLOW is a SECURITY receipt
-// (hook-prelude.js securityReceipt: this session's, under 8h, after the user's own 'Allow this guard switch-off' to this
-// denial with auto-run off). It runs before every stand-down - the csv (naming this guard first would open the protective
+// file) and by name for the rest, an in-place sed applied in memory - and no receipt and no chat yes opens it: the
+// permission prompt asks each time. It runs before every stand-down - the csv (naming this guard first would open the protective
 // ones), `minimal`, a repo never set up (no block row there, R86), a Cursor payload, the old CONFIG_PROTECT=0. Removing a
 // guard from the list, or any other key, passes. Not read: `.variables` (layout.js never reads HOOKS_OFF there, D7) and a
 // workspace member's files (they hand a child `<hook>:<part>` entries only, and no protective guard has a part). Review fix
@@ -232,8 +238,6 @@ const RENAMED_HOOKS = (receipts && receipts.HOOK_RENAMED) || {};
 // The key as envOf spells every stack setting: the prefix, then the suffix.
 const HOOKS_OFF_SUFFIX = 'HOOKS_OFF';
 const HOOKS_OFF_KEY = `ALFRED_CODE_${HOOKS_OFF_SUFFIX}`;
-const GUARD_OFF = 'GUARD-OFF-ALLOW';
-const GUARD_OFF_LABEL = 'Allow this guard switch-off';
 const HOME_DIR = (() => { try { return require('os').homedir() || ''; } catch { return process.env.HOME || ''; } })();
 const foldCase = (p) => (process.platform === 'win32' ? String(p).toLowerCase() : String(p));
 const under = (dir, file) => { const r = path.relative(dir, file); return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? r.split(path.sep).join('/') : null; };
@@ -287,8 +291,8 @@ const offListText = (env) => Object.keys(env).filter((k) => (process.platform ==
 // THE PLUGIN SWITCH-OFF (SYS-01b; a side agent's note, the user's design of 2026-11-03): `enabledPlugins` holding the core
 // `alfred-code@<key>` at false - or a file that enabled it no longer enabling it, since a dropped key loads nothing
 // (docs/plugin-cli-evidence.md S29) - stands EVERY Alfred Code guard down from the next session, wider than any off-list
-// entry; so do `claude plugin disable|uninstall|remove` of the core and `disable --all` (pluginCliOff, below). The same ask
-// and GUARD-OFF-ALLOW receipt. A reinstall or re-enable of the core later in the same command is no switch-off (the
+// entry; so do `claude plugin disable|uninstall|remove` of the core and `disable --all` (pluginCliOff, below). The same ask.
+// A reinstall or re-enable of the core later in the same command is no switch-off (the
 // update notes' same-version re-release). Ceilings: a scoped `claude plugin marketplace remove` of the core's marketplace,
 // and a dropped key on a route that cannot parse the file it leaves (a fragment, a shell write by name).
 const CORE_PLUGIN = 'alfred-code';
@@ -858,19 +862,14 @@ function guardOffShell() {
   return null;
 }
 function guardOffDenial(off) {
-  const receiptFile = layout ? layout.findState(ROOT, 'approvals', GUARD_OFF) : path.resolve(ROOT, docsRootEnv(), 'flow', GUARD_OFF);
-  const heldOff = receipts && receipts.securityReceipt ? receipts.securityReceipt(receiptFile, payload, { marker: GUARD_OFF, labels: [GUARD_OFF_LABEL] }) : null;
-  if (heldOff && heldOff.live && (heldOff.lines.includes('*') || heldOff.lines.includes(off.shown) || heldOff.lines.includes(off.abs))) return;
-  const receiptRel = path.relative(ROOT, layout ? layout.statePath(ROOT, 'approvals', GUARD_OFF) : receiptFile).split(path.sep).join('/');
   const twins = off.twins || [];
   const what = [...(off.added.length ? [`adds ${off.added.join(', ')} to ${HOOKS_OFF_KEY}`] : []), ...(off.all ? ['sets disableAllHooks: true'] : []),
     ...(off.core && !off.cli ? [`switches the ${CORE_PLUGIN} plugin off in enabledPlugins (false, or no longer true)`] : []),
     ...(twins.length ? [`wires a copied twin of ${twins.map((n) => `.claude/hooks/${n}.js`).join(', ')}, which the plugin's own stands down for`] : []),
     ...(off.twinFile ? [`puts a copy of ${off.twinFile}.js where the plugin's own stands down for it once a project settings entry names it`] : [])].join(' and ');
   const guarded = [...off.added, ...twins, ...(off.twinFile ? [off.twinFile] : [])];
-  const names = off.all ? 'every hook' : off.core ? 'every Alfred Code guard' : guarded.length ? guarded.join(', ') : 'a protective guard';
   global.BLOCK_DETAIL = { branch: 'guard-off', file: off.shown, guards: guarded, all: off.all, ...(off.core ? { core: true } : {}), ...(off.unread ? { unread: true } : {}) };
-  process.stderr.write(
+  blockCall(payload,
     (off.unread
       ? `Blocked: this write lands ${off.shown} by ${off.unread} - what it switches off is unknown, and a settings file can stand a protective guard down from the next call on.\n`
       : off.cli
@@ -879,17 +878,9 @@ function guardOffDenial(off) {
           ? `Blocked: removing ${off.shown} takes its enabledPlugins entry for the ${CORE_PLUGIN} plugin with it, which stands every Alfred Code guard down from the next session on.\n`
         : `Blocked: this write to ${off.shown} ${what}, which stands ${off.all ? 'every hook' : off.core ? 'every Alfred Code guard' : guarded.length > 1 ? 'those guards' : 'that guard'} down from the next ${off.core && !off.all ? 'session' : 'call'} on.\n`) +
     `The protective guards stop what cannot be undone (a recursive rm or a discard, a credential read, a force push),\n` +
-    `so switching one off is the user's call, never the model's. End this turn with ONE AskUserQuestion,\n` +
-    `in this order -\n` +
-    `  'Keep the guards on (Recommended)' - leave the setting as it is\n` +
-    `  '${GUARD_OFF_LABEL}' - the user wants ${names} off\n` +
-    `On '${GUARD_OFF_LABEL}', write the receipt ${receiptRel} with exactly these lines and retry the SAME call:\n` +
-    (receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, [off.shown]) : `  ${off.shown}\n`) +
-    `It counts only after the user's own answer to this denial, never one auto-run gave, for this session, under 8h.\n` +
-    `Removing a guard from the list, or any other key, passes.\n` +
-    (receipts && receipts.receiptShutText ? receipts.receiptShutText(heldOff, receiptRel) : ''),
+    `so switching one off is the user's call, never the model's.\n` +
+    `Removing a guard from the list, or any other key, passes.\n`,
   );
-  process.exit(2);
 }
 {
   let switched = null;
@@ -898,7 +889,7 @@ function guardOffDenial(off) {
       : shell && shell.isShellTool(payload.tool_name) ? guardOffShell() : guardOffFile();
   } catch { switched = null; /* a judge that throws passes the call: the guard fails open */ }
   if (switched && switched.autoRun) { global.BLOCK_DETAIL = { branch: 'auto-run-write', file: switched.shown };   // no ask, no receipt
-    process.stderr.write(`Blocked: this write leaves ${AUTO_RUN_KEY} at 1 in ${switched.shown} - ${AUTO_RUN_DENY}.\n`); process.exit(2); }
+    blockCall(payload, `Blocked: this write leaves ${AUTO_RUN_KEY} at 1 in ${switched.shown} - ${AUTO_RUN_DENY}.\n`); }
   if (switched) guardOffDenial(switched);
 }
 
@@ -925,7 +916,7 @@ function storeWrite() {
     const clearList = /[\\/]\.sensitive-paths$/i.test(file);
     let cursor = false;
     try { cursor = require('./hook-prelude.js').cursorHost(payload); } catch { cursor = typeof payload.cursor_version === 'string'; }
-    if (cursor) { process.stderr.write(`hand this edit to the user: ${file} is ${clearList ? 'the data-class guard\'s list of cleared paths' : 'a project rule source'}\n`); process.exit(2); }
+    if (cursor) blockCall(payload, `hand this edit to the user: ${file} is ${clearList ? 'the data-class guard\'s list of cleared paths' : 'a project rule source'}`);
     const reason = clearList
       ? `${file} is your list of sensitive and cleared paths for the data-class guard - a '!' line lets a dump or document be read without asking. Confirm this write only if you made this change.`
       : `${file} is a project rule source (or the workspace file): confirm this write, or make the change with /alfred-code:configure`;

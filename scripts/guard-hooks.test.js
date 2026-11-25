@@ -5,7 +5,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
-const { reviewedTranscript, REVIEW_ROW, userPick, verdictOf, blockText, askText } = require('./hook-test-env');
+const { reviewedTranscript, REVIEW_ROW, userPick, verdictOf, blockText, askText, legacyBlock } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -131,12 +131,12 @@ function scratchRepo() {
 
 test('guard-ungated-commit: the receipt must target the gate file, not merely name it', () => {
   const dir = scratchRepo();
-  const inRepo = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const inRepo = (command) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
     cwd: dir,
-  }).status;
+  })).status;
   assert.equal(inRepo('git commit -am wip'), 2, 'a non-trivial commit with no receipt is blocked');
   assert.equal(inRepo('echo "note: VERIFIED review authorized: go" > notes.txt && git commit -am wip'), 2,
     'prose naming the receipt words in an unrelated file must not satisfy the gate');
@@ -910,7 +910,7 @@ test('guard-ungated-commit: untracked-only new files are churn, not an empty tre
   // new files only read as 'nothing to commit' and passed ungated (reproduced).
   const dir = cleanRepo();
   for (const f of ['n1.txt', 'n2.txt', 'n3.txt']) fs.writeFileSync(path.join(dir, f), forty());
-  assert.equal(gateIn(dir, 'git add -A && git commit -m "feat: new module"'), 2, 'three 40-line new files are not trivial');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m "feat: new module"'), 'ask', 'three 40-line new files are not trivial');
   fs.unlinkSync(path.join(dir, 'n2.txt')); fs.unlinkSync(path.join(dir, 'n3.txt')); fs.writeFileSync(path.join(dir, 'n1.txt'), 'one line\n');
   assert.equal(gateIn(dir, 'git add -A && git commit -m "add note"'), 0, 'one small new file is the trivial class');
 });
@@ -942,20 +942,20 @@ test('guard-ungated-commit: the receipt states', () => {
   ].filter((l) => l != null).join('\n') + '\n';
 
   receipt('WAIVED - "skip the review"\n'); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'WAIVED');
-  receipt('WAIVED\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'WAIVED with no quoted words');
+  receipt('WAIVED\n'); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'WAIVED with no quoted words');
   receipt(full()); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'the conformant receipt');
-  receipt('VERIFIED scope\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'VERIFIED without the authorized line');
-  receipt(full({ auth: 'authorized: yes' })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'an authorized line with no quoted words');
-  receipt(full({ auth: 'authorized: PENDING - append the words' })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a PENDING placeholder');
-  receipt(full({ auth: 'authorized: ""' })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'an EMPTY quoted span');
-  receipt(full({ auth: 'authorized: "what time is it?"' })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a quote carrying no consent verb');
+  receipt('VERIFIED scope\n'); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'VERIFIED without the authorized line');
+  receipt(full({ auth: 'authorized: yes' })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'an authorized line with no quoted words');
+  receipt(full({ auth: 'authorized: PENDING - append the words' })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'a PENDING placeholder');
+  receipt(full({ auth: 'authorized: ""' })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'an EMPTY quoted span');
+  receipt(full({ auth: 'authorized: "what time is it?"' })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'a quote carrying no consent verb');
   receipt(full({ auth: 'answered: option 1 "Commit now"' })); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'consent given by picking an option has its own spelling');
-  receipt(full({ head: '0'.repeat(40) })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a head: naming a different commit');
+  receipt(full({ head: '0'.repeat(40) })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'a head: naming a different commit');
   receipt(full({ head: head.slice(0, 8) })); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a short sha is the same sha');
-  receipt(full({ head: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no head: line');
-  receipt(full({ spec: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no spec: line');
-  receipt(full({ spec: 'spec: 1 file' })); assert.equal(gateIn(dir, 'git add -A && git commit -m x'), 2, 'a spec covering fewer files than the commit takes in');
-  receipt(full({ probe: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no live-probe line');
+  receipt(full({ head: null })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'no head: line');
+  receipt(full({ spec: null })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'no spec: line');
+  receipt(full({ spec: 'spec: 1 file' })); assert.equal(gateIn(dir, 'git add -A && git commit -m x'), 'ask', 'a spec covering fewer files than the commit takes in');
+  receipt(full({ probe: null })); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'no live-probe line');
   receipt(full({ probe: 'live probe = NOT RUN - no test target' })); assert.equal(gateIn(dir, 'git commit -am x'), 0, "'live probe' spelled with a space, NOT RUN with a reason");
   // the denial itself lists `live_probe` among the accepted spellings - a model that followed it
   // retried into the same block
@@ -964,13 +964,13 @@ test('guard-ungated-commit: the receipt states', () => {
   const tp = transcript('no-skill', [assistantRow('m1', 'reviewed')]);
   const gateT = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
-  receipt(full({ first: 'VERIFIED task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 2, 'a verify skill named but never called');
+  receipt(full({ first: 'VERIFIED task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 'ask', 'a verify skill named but never called');
   receipt(full({ first: 'VERIFIED task-verify-code passed' }) + 'carried: cycle 3, reviewed 2026-09-05\n');
   assert.equal(gateT('git commit -am x'), 0, 'unless the receipt says the review is carried');
   // the 2.0.0 loop names - `quality-loop` matched the 1.x spelling only, so a receipt naming the
   // renamed loop minted consent with no loop ever run
-  receipt(full({ first: 'VERIFIED loop-code-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
-  receipt(full({ first: 'VERIFIED loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
+  receipt(full({ first: 'VERIFIED loop-code-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 'ask', 'a quality loop named but never called');
+  receipt(full({ first: 'VERIFIED loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 'ask', 'the architecture loop too');
   // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
   // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
   // a loop counts once its final report's Outcome line follows (2026-10-22)
@@ -980,7 +980,7 @@ test('guard-ungated-commit: the receipt states', () => {
   // a receipt is the session's own only when written after its transcript began (audit 2026-10-20 H4)
   const touch = () => { const now = Date.now() / 1000 + 1; fs.utimesSync(gate, now, now); };
   touch();
-  assert.equal(gateS('git commit -am x'), 2, 'the typed loop is loop-code-quality, never the architecture loop the receipt names');
+  assert.equal(gateS('git commit -am x'), 'ask', 'the typed loop is loop-code-quality, never the architecture loop the receipt names');
   receipt(full({ first: 'VERIFIED loop-code-quality round 2 gate' }));
   touch();
   assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
@@ -995,16 +995,16 @@ test('guard-ungated-commit: the receipt states', () => {
 
   receipt(full());
   const old = (Date.now() - 3 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
-  assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a 3h-old receipt is absent');
-  receipt('garbage\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'an unrecognized first line');
+  assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'a 3h-old receipt is absent');
+  receipt('garbage\n'); assert.equal(gateIn(dir, 'git commit -am x'), 'ask', 'an unrecognized first line');
   fs.unlinkSync(gate);
   // the atomic write+commit shape carries its receipt - and answers to the SAME contract, or it
   // would be the cheapest way to skip every clause above
   const atomic = full().trim().replace(/\n/g, '\\n');
   assert.equal(gateIn(dir, `printf '${atomic}\\n' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 0, 'the atomic write+commit shape carries its receipt');
-  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'the atomic shape gets no lighter contract');
-  assert.equal(gateIn(dir, `echo 'VERIFIED x' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'atomic VERIFIED without authorized:');
-  assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
+  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 'ask', 'the atomic shape gets no lighter contract');
+  assert.equal(gateIn(dir, `echo 'VERIFIED x' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 'ask', 'atomic VERIFIED without authorized:');
+  assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 'ask', 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "skip the review"\n');
   assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under ALFRED_CODE_DOCS_PATH');
@@ -1026,8 +1026,8 @@ test('guard-ungated-commit: an option label THIS run wrote is not the user askin
   const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`;
   const gateT = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
-  fs.writeFileSync(gate, body('authorized: "Commit now (Recommended)"')); assert.equal(gateT(), 2, 'the model\'s own option label, marker included');
-  fs.writeFileSync(gate, body('authorized: "Commit now"')); assert.equal(gateT(), 2, 'and with the marker stripped');
+  fs.writeFileSync(gate, body('authorized: "Commit now (Recommended)"')); assert.equal(gateT(), 'ask', 'the model\'s own option label, marker included');
+  fs.writeFileSync(gate, body('authorized: "Commit now"')); assert.equal(gateT(), 'ask', 'and with the marker stripped');
   fs.writeFileSync(gate, body('answered: Commit now')); assert.equal(gateT(), 0, 'the same choice, spelled as the answer it was');
   fs.writeFileSync(gate, body('authorized: "ok commit it and push"')); assert.equal(gateT(), 0, 'the user\'s own typed words are untouched');
 });
@@ -1036,15 +1036,15 @@ test('guard-ungated-commit: a cd or -C into a sibling repo judges THAT tree', ()
   const home = cleanRepo();
   const sib = scratchRepo();
   assert.equal(gateIn(home, 'git commit -am x'), 0, 'the clean home repo passes');
-  assert.equal(gateIn(home, `cd ${sib} && git commit -am x`), 2, 'cd into the dirty sibling');
-  assert.equal(gateIn(home, `git -C "${sib}" commit -am x`), 2, '-C into the dirty sibling');
+  assert.equal(gateIn(home, `cd ${sib} && git commit -am x`), 'ask', 'cd into the dirty sibling');
+  assert.equal(gateIn(home, `git -C "${sib}" commit -am x`), 'ask', '-C into the dirty sibling');
   // the PowerShell tool moves its cwd with Set-Location (or its sl / Push-Location spellings), and
   // the matcher claims that route - a sibling commit behind it was judged against the clean home
   const ps = (command) => runIn('guard-ungated-commit.js', { tool_name: 'PowerShell', tool_input: { command } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: home }, cwd: home }).status;
-  assert.equal(ps(`Set-Location ${sib}; git commit -am x`), 2, 'Set-Location into the dirty sibling');
-  assert.equal(ps(`sl '${sib}'; git commit -am x`), 2, 'the sl alias');
-  assert.equal(ps(`Push-Location -Path "${sib}"; git commit -am x`), 2, 'Push-Location with its -Path name');
+  assert.equal(ps(`Set-Location ${sib}; git commit -am x`), 'ask', 'Set-Location into the dirty sibling');
+  assert.equal(ps(`sl '${sib}'; git commit -am x`), 'ask', 'the sl alias');
+  assert.equal(ps(`Push-Location -Path "${sib}"; git commit -am x`), 'ask', 'Push-Location with its -Path name');
   assert.equal(ps('git commit -am x'), 0, 'the clean home still passes on PowerShell');
 });
 
@@ -1054,9 +1054,9 @@ test('guard-ungated-commit: a first push denial opens on the gate, not on git\'s
   const dir = scratchRepo();
   const r = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git push origin HEAD' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-  assert.equal(r.status, 2, 'still gated');
+  assert.equal(r.status, 'ask', 'still gated');
   assert.doesNotMatch(r.stderr, /^fatal:/m, 'no git noise in the reason');
-  assert.match(r.stderr, /^Blocked/, 'the reason leads');
+  assert.match(r.stderr, /If the user declined: Blocked: git push origin HEAD without the publish gate receipt/, 'the reason leads');
 });
 
 // A clone with a real upstream, so `git log @{u}..HEAD` answers - the publish gate's
@@ -1087,10 +1087,10 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
 
   assert.equal(gateIn(dir, 'git push'), 0, 'nothing ahead of the upstream publishes nothing');
   ahead();
-  assert.equal(gateIn(dir, 'git push'), 2, 'commits ahead, no receipt');
+  assert.equal(gateIn(dir, 'git push'), 'ask', 'commits ahead, no receipt');
   assert.equal(gateIn(dir, 'git push --dry-run'), 0, 'a dry run publishes nothing');
   assert.equal(gateIn(dir, 'git push -n'), 0, '... and so does -n');
-  assert.equal(gateIn(dir, 'gh pr merge 12 --squash'), 2, 'a merge lands code on the default branch');
+  assert.equal(gateIn(dir, 'gh pr merge 12 --squash'), 'ask', 'a merge lands code on the default branch');
 
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   // the publish receipt answers to the same contract as the commit one - the spec names the set
@@ -1098,23 +1098,23 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
   const pushOk = (auth = 'authorized: "push it"') =>
     `VERIFIED the release merge\n${auth}\nhead: ${head}\nspec: 2 commits on develop\nlive-probe: npm test green\n`;
   receipt('VERIFIED the release merge\n');
-  assert.equal(gateIn(dir, 'git push'), 2, 'VERIFIED without the authorized line is not consent');
+  assert.equal(gateIn(dir, 'git push'), 'ask', 'VERIFIED without the authorized line is not consent');
   receipt(pushOk('authorized: "what time is it?"'));
-  assert.equal(gateIn(dir, 'git push'), 2, 'a quote carrying no publish verb is not consent either');
+  assert.equal(gateIn(dir, 'git push'), 'ask', 'a quote carrying no publish verb is not consent either');
   receipt(pushOk().replace(/^head:.*\n/m, ''));
-  assert.equal(gateIn(dir, 'git push'), 2, 'no head: line');
+  assert.equal(gateIn(dir, 'git push'), 'ask', 'no head: line');
   receipt(pushOk());
   assert.equal(gateIn(dir, 'git push'), 0, 'the conformant publish receipt');
   receipt('WAIVED - "just push"\n');
   assert.equal(gateIn(dir, 'git push'), 0, 'an explicit waiver');
   const old = (Date.now() - 3 * 3600 * 1000) / 1000;
   fs.utimesSync(path.join(flow, 'PUSH-GATE'), old, old);
-  assert.equal(gateIn(dir, 'git push'), 2, 'a 3h-old receipt is absent');
+  assert.equal(gateIn(dir, 'git push'), 'ask', 'a 3h-old receipt is absent');
   receipt(null);
   const atomicPush = pushOk().trim().replace(/\n/g, '\\n');
   assert.equal(gateIn(dir, `printf '${atomicPush}\\n' > .alfred/docs/flow/PUSH-GATE && git push`), 0,
     'the atomic write+publish shape carries its own receipt');
-  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/PUSH-GATE && git push`), 2,
+  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/PUSH-GATE && git push`), 'ask',
     '... and gets no lighter contract than the file');
   assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' }), 0, 'the switch turns the publish half off');
   assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_PUSH_GATE: '0' }), 0, 'the old key, read for the 2.x line');
@@ -1127,7 +1127,7 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
   assert.equal(gateIn(dir, 'git commit -m "prep for git push"'), 0, 'a clean tree fires neither gate');
   fs.writeFileSync(path.join(dir, 'big.txt'), forty());
   spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' });
-  assert.equal(gateIn(dir, 'git commit -m "prep for git push"'), 2, 'and a dirty one fires the COMMIT gate, not the publish one');
+  assert.equal(gateIn(dir, 'git commit -m "prep for git push"'), 'ask', 'and a dirty one fires the COMMIT gate, not the publish one');
 });
 
 test('guard-catastrophic-rm: git destroys a working tree too, and prose about it does not', () => {
@@ -1211,7 +1211,8 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and no discard receipt
 
   // guards ask (D3, 2026-11-25): the discard is the guard's own ask each time, and no receipt opens it - the reason names none
   assert.doesNotMatch(rm('git restore a.txt').stderr, /DISCARD-ALLOW|AskUserQuestion|Discard it/, 'the reason names no receipt and no ask of the model\'s');
-  assert.match(rm('git restore a.txt').stderr, /Keep the work instead: Keep the work - `git stash -u`, or commit it/, 'the reason keeps the keep advice');
+  assert.match(rm('git restore a.txt').stderr, /^Keep the work instead: `git stash -u`, or commit it\.$/m, 'the reason keeps the keep advice, worded once');
+  assert.match(rm('git restore a.txt').stderr, /^Narrow it: name the ONE file to revert instead of the whole tree\.$/m, 'and the narrow advice');
   assert.match(rm('git restore a.txt').stderr, /Reverting these files with Edit or Write instead is the same discard\./, 'and the Edit and Write sentence');
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
@@ -2300,11 +2301,11 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
 const XP_ROOT = fs.mkdtempSync(path.join(TMP, 'projA-'));
 const XP_OTHER = fs.mkdtempSync(path.join(TMP, 'projB-'));
 const xp = (payload) => {
-  const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const r = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  });
+  }));
   return r.status;
 };
 const xpWrite = (file) => xp({ tool_name: 'Write', tool_input: { file_path: file } });
@@ -2321,13 +2322,13 @@ test('guard-cross-project-write: a write into another project is blocked', () =>
 
 test('guard-cross-project-write: the denial names an absolute card path under work/cross-project-tasks/, relative or absolute docs root', () => {
   const card = (env) => {
-    const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    const r = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
       input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'src', 'a.ts') } }),
       encoding: 'utf8',
       env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '', ...env },
-    });
+    }));
     assert.equal(r.status, 2, r.stderr);
-    const m = /'Task card in this project \(Recommended\)' - write (.+?):\n/.exec(r.stderr);
+    const m = /Write the task card at (.+?) instead: /.exec(r.stderr);
     assert.ok(m, r.stderr);
     return m[1];
   };
@@ -2377,8 +2378,8 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   // A real project does not live in the temp tree, so this case runs with THIS repo as the
   // root - the fixtures above deliberately do, which is what proves the containment rule.
   const repoRoot = path.join(__dirname, '..');
-  const inRepo = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER } }).status;
+  const inRepo = (payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER } })).status;
   const w = (f) => inRepo({ tool_name: 'Write', tool_input: { file_path: f } });
 
   assert.equal(w(path.join(os.tmpdir(), 'scratch', 'notes.md')), 0, 'the harness scratchpad');
@@ -2452,8 +2453,8 @@ test('guard-cross-project-write: a linked worktree of the project\'s own reposit
   const garbage = path.join(base, 'garbage');
   fs.mkdirSync(garbage);
   fs.writeFileSync(path.join(garbage, '.git'), '{not a gitdir line');
-  const run = (root, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const run = (root, payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } })).status;
   const write = (root, f) => run(root, { tool_name: 'Write', tool_input: { file_path: f } });
   assert.equal(write(main, path.join(wt, 'Server', 'Socket.csproj')), 0, 'the measured Edit: a file in the session\'s own worktree');
   assert.equal(run(main, { tool_name: 'Edit', tool_input: { file_path: path.join(wt, 'a.txt'), old_string: 'a', new_string: 'b' } }), 0, 'an Edit too');
@@ -2481,8 +2482,8 @@ test('guard-cross-project-write: the retired fork-liveness probe reads no transc
 
 test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
   const cfg = fs.mkdtempSync(path.join(TMP, 'xw-cfg-'));
-  const run = (root, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env } }).status;
+  const run = (root, payload, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env } })).status;
   const w = (f) => ({ tool_name: 'Write', tool_input: { file_path: f } });
   assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: cfg }), 0, 'the relocated account dir');
   assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: '' }), 2, 'unset, it is a sibling like any other');
@@ -2500,7 +2501,7 @@ test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness s
 // THE INSTALLED PLUGINS' OWN CODE (the ~/.claude gap, the user's design of 2026-11-03): the account folder is a write
 // allowance because memory lands there - and so did <account>/plugins/, where the cache holds the very guards that judge
 // the session. An Edit there could switch one off. plugins/ (minus plugins/data/, plugin state) and the running plugin's own
-// root now count as outside, with an ask whose allow answer opens them through the usual receipt.
+// root now count as outside, and a write there asks each time (guards ask, D3: no receipt and no typed folder opens it).
 test("guard-cross-project-write: the account's plugins folder and the running plugin's root are outside; plugins/data stays open (~/.claude gap)", (t) => {
   const cfg = fs.mkdtempSync(path.join(TMP, 'xw-plug-'));
   const root = fs.mkdtempSync(path.join(TMP, 'projP-'));
@@ -2511,9 +2512,9 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   // set up: on the plugin route a repo with no install record stands every non-protective guard down (GATE 4), this one included
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), '');
-  const go = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const go = (payload, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify({ transcript_path: tp, session_id: 'gap-1', ...payload }), encoding: 'utf8',
-      env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_ROOT: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } });
+      env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_ROOT: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } }));
   const w = (f, env) => go({ tool_name: 'Write', tool_input: { file_path: f } }, env);
   const sh = (c, env) => go({ tool_name: 'Bash', tool_input: { command: c } }, env);
   const plugins = path.join(cfg, 'plugins');
@@ -2528,9 +2529,9 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   const denied = w(guard);
   assert.equal(denied.status, 2, 'a Write of an installed guard');
   assert.match(denied.stderr, /installed plugins/, 'the denial says what the folder is');
-  assert.match(denied.stderr, /ONE AskUserQuestion/);
-  assert.match(denied.stderr, /'Drop the change \(Recommended\)'/, 'dropping it is the recommended answer');
-  assert.ok(denied.stderr.includes(`Allow writes into ${shownTree} for this session`), 'the allow option names the plugins folder');
+  assert.match(denied.stderr, /Drop the change: say what you meant to change and where its source lives\./, 'dropping it is the advice');
+  assert.doesNotMatch(denied.stderr, /AskUserQuestion|Allow writes into|CROSS-WRITE-ALLOW|receipt/, 'no ask of the model\'s and no receipt route');
+  assert.ok(denied.stderr.includes(shownTree), 'the reason names the plugins folder');
   assert.doesNotMatch(denied.stderr, /Task card/, 'no hand-off card: the plugins folder is no project');
   assert.equal(go({ tool_name: 'Edit', tool_input: { file_path: guard, old_string: 'a', new_string: 'b' } }).status, 2, 'an Edit');
   assert.equal(w(path.join(plugins, 'installed_plugins.json')).status, 2, 'the install registry');
@@ -2570,13 +2571,13 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
     assert.equal(sh(`rm -rf ${home}`, env).status, 2, 'the home above them, holding ~/.claude-work/plugins');
   }
 
-  // a typed folder opens the tree only from the tree down (the fresh review of 2026-11-03: a typed account dir opened it)
+  // a typed folder opens nothing now (guards ask, D3): the prompt asks each time, whatever the user typed
   const typedRow = (text) => JSON.stringify({ type: 'user', sessionId: 'gap-1', timestamp: new Date().toISOString(), entrypoint: 'cli', message: { role: 'user', content: text } }) + '\n';
   fs.writeFileSync(tp, typedRow(`look at ${cfg}/ please`)); pause(30);
   assert.equal(w(guard).status, 2, 'a typed account dir opens no plugin code');
-  assert.equal(w(path.join(cfg, 'notes', 'n.md')).status, 0, 'it still opens the rest of that dir');
+  assert.equal(w(path.join(cfg, 'notes', 'n.md')).status, 0, 'the rest of that dir was never closed');
   fs.writeFileSync(tp, typedRow(`patch ${path.join(plugins, 'cache')}/ for me`)); pause(30);
-  assert.equal(w(guard).status, 0, 'a typed folder inside the tree opens it');
+  assert.equal(w(guard).status, 2, 'a typed folder inside the tree opens nothing either');
   fs.writeFileSync(tp, '');
 
   // the running plugin's own root, wherever it sits (a --plugin-dir inside a folder an allowance opens)
@@ -2584,7 +2585,7 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   assert.equal(w(path.join(dev, 'hooks', 'g.js'), devEnv).status, 0, 'no plugin running from it: the allowance opens the folder');
   const devDenied = w(path.join(dev, 'hooks', 'g.js'), { ...devEnv, CLAUDE_PLUGIN_ROOT: dev });
   assert.equal(devDenied.status, 2, "the running plugin's root inside that allowance");
-  assert.ok(devDenied.stderr.includes(`Allow writes into ${fs.realpathSync.native(dev)} for this session`), 'the ask names the plugin root');
+  assert.ok(devDenied.stderr.includes(fs.realpathSync.native(dev)), 'the reason names the plugin root');
   assert.equal(w(path.join(devParent, 'notes.md'), { ...devEnv, CLAUDE_PLUGIN_ROOT: dev }).status, 0, 'a file beside it stays open');
   assert.equal(w(path.join(root, 'stack', 'hooks', 'g.js'), { CLAUDE_PLUGIN_ROOT: root }).status, 0, 'a plugin developed in this project: its own files');
   // every project, under every stand-down (the user's ruling of 2026-11-03, 'Run it in every project'): only a write into
@@ -2630,15 +2631,15 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   assert.equal(w(path.join(plugins, 'claude-hud', 'config.json')).status, 2, 'a garbage registry lets no folder pass');
   fs.rmSync(path.join(plugins, 'installed_plugins.json'));
 
-  // what opens it: an allowance naming the tree (never a broader one), a typed folder, the user's own allow answer
+  // what opens it: an allowance naming the tree (never a broader one) - never a typed folder or an allow answer
   assert.equal(w(guard, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: path.join(plugins, 'cache') }).status, 0, 'an allowance naming the cache');
   assert.equal(w(guard, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: cfg }).status, 2, 'the whole account dir as an allowance does not');
   fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
     + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
       ...userPick(), toolUseResult: { answers: { 'Write there?': `Allow writes into ${shownTree} for this session` } } }) + '\n'); pause(30);
   stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: gap-1\n${plugins}\n`);
-  assert.equal(w(guard).status, 0, "the user's allow answer and its receipt open it");
-  assert.equal(sh(`rm -rf ${cfg}`).status, 2, 'but not a removal of the account folder that holds it');
+  assert.equal(w(guard).status, 2, "the user's allow answer and its receipt open nothing now");
+  assert.equal(sh(`rm -rf ${cfg}`).status, 2, 'and a removal of the account folder that holds it asks too');
   if (process.platform === 'win32') t.diagnostic('the ~ cases are POSIX-only (HOME)');
 });
 
@@ -2747,12 +2748,12 @@ test('guard-cross-project-write: a script file a shell runs is read as its comma
 // 2.1.6 re-verify 3 R3-m4: the verdict flipped on size alone - a 1.1MB script writing outside was allowed, the same text
 // at 0.99MB denied - and so did every other place the reader stopped (a glob, `make` / `npm run`, a fish shebang, a
 // file the same command wrote with `tee` or `cp`, a fourth level of nesting). A script is read under the scan budget
-// (hook-prelude.js), and one the reader cannot read is asked through the CROSS-WRITE-ALLOW ask, never allowed.
-const xpFull = (command, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+// (hook-prelude.js), and one the reader cannot read is asked about each time, never allowed.
+const xpFull = (command, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
   input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
   encoding: 'utf8',
   env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env },
-});
+}));
 test('guard-cross-project-write: a script is judged at any size - read under the scan budget, asked past it, never allowed (2.1.6 re-verify 3 R3-m4)', () => {
   const dir = fs.mkdtempSync(path.join(XP_ROOT, 'cap-'));
   const rel = path.relative(XP_ROOT, dir);
@@ -2772,15 +2773,13 @@ test('guard-cross-project-write: a script is judged at any size - read under the
   const huge = xpFull(`bash ${rel}/huge.sh`);
   assert.strictEqual(huge.status, 2, 'past the scan budget the script is unread, and asked');
   assert.match(huge.stderr, /huge\.sh/, 'the ask names the script it could not read');
-  assert.match(huge.stderr, /CROSS-WRITE-ALLOW/, 'through the same receipt as any outside write');
-  const dropAt = huge.stderr.indexOf("'Drop it (Recommended)'");
-  assert.ok(dropAt >= 0 && huge.stderr.indexOf("'Allow ") > dropAt, 'the safe option is the Recommended one, listed first (audit 2026-10-30 fix #6)');
-  assert.doesNotMatch(huge.stderr, /for this session \(Recommended\)/, 'letting an unread script run is never the recommended option');
+  assert.match(huge.stderr, /Run a smaller piece the guard can read instead\./, 'the advice is a smaller script');
+  assert.doesNotMatch(huge.stderr, /CROSS-WRITE-ALLOW|AskUserQuestion|Allow /, 'no receipt route and no allow option');
   const flow = path.join(XP_ROOT, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'CROSS-WRITE-ALLOW'), `${path.join(dir, 'huge.sh')}\n`);
   try {
-    assert.strictEqual(xpFull(`bash ${rel}/huge.sh`).status, 0, "the user's 'allow' for that script is honoured");
+    assert.strictEqual(xpFull(`bash ${rel}/huge.sh`).status, 2, 'a receipt naming that script opens nothing now');
   } finally { fs.rmSync(path.join(flow, 'CROSS-WRITE-ALLOW'), { force: true }); }
 });
 test('guard-cross-project-write: the reader follows a glob, make, npm run, tee, cp, a fish shebang and a fourth level of nesting (2.1.6 re-verify 3 R3-m4)', () => {
@@ -2812,13 +2811,13 @@ test('guard-cross-project-write: a 245KB chain of cd steps and writes is judged 
   const size = 245 * 1024;
   const parts = [];
   for (let i = 0, n = 0; n < size; i++) { const l = `cd pkg${i} && cp a b${i}; cd ..\n`; parts.push(l); n += l.length; }
-  const r = spawnSync(process.execPath, ['-e',
+  const r = legacyBlock(spawnSync(process.execPath, ['-e',
     "process.on('exit', () => { const c = process.cpuUsage(); require('fs').writeSync(3, String((c.user + c.system) / 1000)); }); require(process.argv[1]);",
     path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Bash', cwd: XP_ROOT, tool_input: { command: parts.join('') } }),
     encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  });
+  }));
   assert.strictEqual(r.status, 0, `every write is inside the project: ${r.stderr}`);
   const cpuMs = Number(r.output[3]);
   assert.ok(cpuMs < 3000, `${cpuMs.toFixed(0)}ms of CPU for 245KB - the anchor cache is missing`);
@@ -2847,13 +2846,13 @@ test('guard-cross-project-write: prose describing a command is not a command', (
 
 test('guard-cross-project-write: it fails open rather than guessing', () => {
   assert.equal(xpBash('cp a.txt "$OTHER_REPO/a.txt"'), 0, 'an unexpanded variable is not judged');
-  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: 'not json', encoding: 'utf8' }).status, 0, 'unparseable stdin never blocks');
-  const opened = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  assert.equal(legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: 'not json', encoding: 'utf8' })).status, 0, 'unparseable stdin never blocks');
+  const opened = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: XP_OTHER },
-  }).status;
+  })).status;
   assert.equal(opened, 0, 'the escape hatch opens a second tree this project really owns');
 });
 
@@ -2865,11 +2864,11 @@ const FS_MOVE = 'mcp__filesystem__move_file'; // mcp-fixture
 test('guard-cross-project-write: a filesystem server write is judged like a Write, a move on both ends (audit 2026-11-03 SYS-02)', () => {
   const outFile = path.join(XP_OTHER, 'src', 'a.ts');
   for (const tool of FS_WRITE_NAMES) {
-    const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    const r = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
       input: JSON.stringify({ tool_name: tool, tool_input: { path: outFile, content: 'x', edits: [] } }),
       encoding: 'utf8',
       env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-    });
+    }));
     assert.equal(r.status, 2, `${tool}: outside the project`);
     assert.match(r.stderr, /outside this session's project/, tool);
     assert.equal(xp({ tool_name: tool, tool_input: { path: path.join(XP_ROOT, 'src', 'a.ts') } }), 0, `${tool}: inside the project`);
@@ -2918,7 +2917,7 @@ test('guard hooks record every block, and nothing on a pass', () => {
   assert.deepEqual(ledger(), [], 'a pass writes nothing - the ledger is blocks only');
 
   assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }), 'ask', 'an ask is a block too: its row is written');
-  assert.equal(run('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: '/etc/elsewhere/x.ts' } }), 2);
+  assert.equal(run('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: '/etc/elsewhere/x.ts' } }), 'ask');
   assert.equal(run('guard-unapproved-dispatch.js', { tool_name: 'Task', tool_input: { subagent_type: 'Explore', prompt: 'who calls Foo' } }), 2);
 
   const rows = ledger();
@@ -3016,8 +3015,8 @@ test('guard-cross-project-write: git listing forms in the other checkout are rea
 test('guard-cross-project-write: space account dirs, ~ in the allowance, and unresolvable roots', () => {
   const home = os.homedir();
   const repoRoot = path.join(__dirname, '..');
-  const inRepo = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER, ...env } }).status;
+  const inRepo = (payload, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER, ...env } })).status;
   // An isolated runner points HOME inside os.tmpdir(), where every path is session scratch the guard allows - the
   // 'outside HOME' cases below then cannot block, so they run only on a real home (audit 2026-10-08: 55/56 isolated).
   const tmpReal = fs.realpathSync(os.tmpdir());
@@ -3034,59 +3033,47 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'f.txt') } }, { CLAUDE_PROJECT_DIR: '/nonexistent/root' }), 0, 'a root that does not exist fails open, as the header promises');
   // Without CLAUDE_PROJECT_DIR the nearest .git ancestor of the session cwd is the root - the cwd
   // itself may be a subdirectory the session cd-ed into, which called a sibling folder 'outside'.
-  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  assert.equal(legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(repoRoot, 'stack', 'x.md') }, cwd: path.join(repoRoot, 'scripts') }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  }).status, 0, 'a subdirectory cwd still sees the whole repo');
+  })).status, 0, 'a subdirectory cwd still sees the whole repo');
 });
 
-test("guard-cross-project-write: a block ends in an ask, and the user's allow is honoured through a session receipt", () => {
-  // The denial used to end at 'write a task card' - the model wrote the card or just stopped, and
-  // the user never got the choice. Now the denial mandates ONE AskUserQuestion and names the
-  // receipt an 'allow' answer writes; the guard reads that receipt the way the dispatch guard reads
-  // APPROVAL - this session's own, under 8h - and a root that contains the project is dropped.
+test("guard-cross-project-write: a block asks each time, and a receipt, a typed path and an answered ask open nothing (guards ask, D3)", () => {
+  // The block is the permission prompt's question now (hook-prelude.js askOrBlock). The receipt an 'allow' answer once
+  // wrote, a root the user typed and an AskUserQuestion answered since are no longer read: each leaves the block asking.
   const root = fs.mkdtempSync(path.join(TMP, 'projC-'));
   const other = fs.mkdtempSync(path.join(TMP, 'projD-'));
   const receipt = path.join(root, '.alfred', 'docs', 'flow', 'CROSS-WRITE-ALLOW');
   const tp = path.join(root, 'session.jsonl');
-  const go = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const raw = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify({ transcript_path: tp, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } });
+  const go = (payload, env) => verdictOf(raw(payload, env));
   const target = path.join(other, 'src', 'a.ts');
-  const denied = go({ tool_name: 'Write', tool_input: { file_path: target } });
-  assert.equal(denied.status, 2);
-  assert.match(denied.stderr, /ONE AskUserQuestion/, 'the denial mandates the ask');
-  assert.match(denied.stderr, /Task card in this project \(Recommended\)/, 'the card is the recommended option');
-  // the NATIVE realpath, as the guard resolves it: the JS one keeps a Windows 8.3 short name (windows-latest's RUNNER~1)
-  assert.ok(denied.stderr.includes(`Allow writes into ${fs.realpathSync.native(other)} for this session`), 'the allow option names the other ROOT, not the file');
-  assert.match(denied.stderr, /state[\\/]approvals[\\/]CROSS-WRITE-ALLOW/, 'the denial names the receipt where 2.8.0 writes it (path.join spells the separator per OS - measured: windows-latest printed a backslash)');
-  assert.doesNotMatch(denied.stderr, /stale/, 'no receipt, no staleness talk');
-  // the receipt: one root per line, comments allowed, this session's own - and, since audit 2026-10-30 HK-03, written on
-  // the user's own allow answer, which the session's transcript holds - the result of an AskUserQuestion call (FA-4)
+  const write = { tool_name: 'Write', tool_input: { file_path: target } };
+  const first = raw(write);
+  assert.equal(verdictOf(first), 'ask', 'the block asks in a default payload');
+  assert.match(askText(first), /^alfred-code guard-cross-project-write: Write of a file targets /, 'the prompt names the guard and the write');
+  assert.match(blockText(first), /Write the task card at .+ instead: per task what changes where/, 'the model gets the card advice');
+  assert.doesNotMatch(blockText(first), /AskUserQuestion|Allow writes into|CROSS-WRITE-ALLOW|receipt/, 'no receipt route and no ask of the model\'s');
+  assert.match(blockText(first), /ALFRED_CODE_ALLOW_WRITE_OUTSIDE/, 'the permanent lever is still named');
+  assert.equal(go({ ...write, permission_mode: 'dontAsk' }), 'deny', 'dontAsk denies');
+  assert.equal(go({ ...write, permission_mode: 'bypassPermissions' }), 'deny', 'bypassPermissions denies');
+  assert.equal(go(write, { ALFRED_CODE_GUARD_ASK: '0' }), 'deny', 'the rollback switch denies');
+  const denied = raw({ ...write, permission_mode: 'dontAsk' });
+  assert.match(blockText(denied), /^Blocked: Write of a file targets /, 'a deny carries the full reason');
+  // the removed openers: a live receipt plus an answered 'Allow ... for this session' ask, and a typed path to the root
   fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
     + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
       ...userPick(), toolUseResult: { answers: { 'Write outside?': `Allow writes into ${fs.realpathSync.native(other)} for this session` } } }) + '\n'); pause(30);
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, `# allowed by the user in this session\n${other}\n`);
-  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target } }).status, 0, 'the receipt opens the named tree');
-  assert.equal(go({ tool_name: 'Bash', tool_input: { command: `echo x > ${target}` } }).status, 0, 'through the shell too');
-  assert.equal(go({ tool_name: 'Bash', tool_input: { command: `git -C ${other} commit -m x` } }).status, 0, 'and a git write there');
-  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: path.join(TMP, 'projE-elsewhere', 'f.txt') } }).status, 2, 'only the named tree');
-  // a root that CONTAINS the project would swallow the whole gate
-  fs.writeFileSync(receipt, `${TMP}\n`);
-  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target } }).status, 2, 'a containing root is dropped');
-  // stale: older than 8h
-  fs.writeFileSync(receipt, `${other}\n`);
-  const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
-  const aged = go({ tool_name: 'Write', tool_input: { file_path: target } });
-  assert.equal(aged.status, 2, 'a 9h-old receipt is absent');
-  assert.match(aged.stderr, /stale/, 'and the denial says so, so the model does not loop on rewriting it');
-  // stale: written before this session began
-  fs.writeFileSync(receipt, `${other}\n`); pause(50);
-  const tp2 = path.join(root, 'session2.jsonl');
-  fs.writeFileSync(tp2, '{}\n'); pause(20); fs.appendFileSync(tp2, '{}\n');
-  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target }, transcript_path: tp2 }).status, 2, "another session's receipt is not this one's consent");
-  stateReceipt(root, 'CROSS-WRITE-ALLOW', `${other}\n`);
-  assert.equal(go({ tool_name: 'Write', tool_input: { file_path: target } }).status, 0, '2.8.0: the receipt under state/approvals/ is read');
+  stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: sess\n${other}\n`);
+  assert.equal(go(write), 'ask', 'a live receipt and an answered allow ask leave the block asking');
+  assert.equal(go({ tool_name: 'Bash', tool_input: { command: `echo x > ${target}` } }), 'ask', 'through the shell too');
+  assert.equal(go({ tool_name: 'Bash', tool_input: { command: `git -C ${other} commit -m x` } }), 'ask', 'and a git write there');
+  fs.writeFileSync(tp, JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), entrypoint: 'cli', message: { role: 'user', content: `please edit ${other}/ for me` } }) + '\n'); pause(30);
+  assert.equal(go(write), 'ask', 'a path to that root typed in a user turn opens nothing');
 });
 
 test('every guard fails open on a JSON scalar or null payload', () => {
@@ -3761,12 +3748,12 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(docs, 'flow', 'COMMIT-GATE'),
     `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`);
-  const status = spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const status = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' }, transcript_path: REVIEWED }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: docs },
     cwd: dir,
-  }).status;
+  })).status;
   assert.equal(status, 0, 'a conformant receipt under an absolute in-repo docs root passes');
 });
 
@@ -4184,14 +4171,14 @@ test('PowerShell route: the shell guards judge the second spelling of the same c
   assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf bin obj node_modules'), 0, 'named build dirs pass');
   assert.equal(pwsh('guard-read-whole-file.js', `cat ${BIG}`), 2, 'whole-file dump of a large source');
   assert.equal(pwsh('guard-read-whole-file.js', `sed -n 1,40p ${BIG}`), 0, 'a ranged read passes');
-  assert.equal(pwsh('guard-ungated-commit.js', 'git push origin develop'), 2, 'a push with no PUSH-GATE receipt');
+  assert.equal(pwsh('guard-ungated-commit.js', 'git push origin develop'), 'ask', 'a push with no PUSH-GATE receipt');
   assert.equal(pwsh('guard-ungated-commit.js', 'git push --dry-run origin develop'), 0, 'a dry run publishes nothing');
 });
 
 test('PowerShell route: the cross-project write guard resolves the same target', () => {
   const outside = path.join(path.dirname(XP_ROOT), 'not-this-project-pwsh', 'f.txt');
-  assert.equal(pwsh('guard-cross-project-write.js', `echo hi > ${outside}`), 2, 'a redirection outside the project root');
-  assert.equal(run('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `echo hi > ${outside}` } }), 2, 'and the Bash spelling agrees');
+  assert.equal(pwsh('guard-cross-project-write.js', `echo hi > ${outside}`), 'ask', 'a redirection outside the project root');
+  assert.equal(run('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `echo hi > ${outside}` } }), 'ask', 'and the Bash spelling agrees');
   assert.equal(pwsh('guard-cross-project-write.js', 'echo hi > README.md'), 0, 'an in-project relative target passes');
 });
 
@@ -4329,14 +4316,51 @@ test('stage 1 B11: a check config can be loosened; switching a guard off is stil
   withProject(root, {}, () => {
     const eslint = at('eslint.config.js', 'export default [];');
     assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, 'an existing eslint config is edited like any file');
-    assert.strictEqual(run(H, switchOff), 2, 'adding a protective guard to the off-list is refused');
+    assert.strictEqual(run(H, switchOff), 'ask', 'adding a protective guard to the off-list is refused');
   });
   withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, () => {
     const r = spawnSync(process.execPath, [path.join(HOOKS, H)], { input: JSON.stringify(switchOff), encoding: 'utf8' });
-    assert.strictEqual(r.status, 2, `the csv naming this guard is a no-op for the switch-off refusal\n${r.stderr}`);
-    assert.match(r.stderr, /^Blocked: this write to \.claude\/settings\.json adds guard-catastrophic-rm/);
+    assert.strictEqual(verdictOf(r), 'ask', `the csv naming this guard is a no-op for the switch-off ask\n${r.stderr}`);
+    assert.match(blockText(r), /Blocked: this write to \.claude\/settings\.json adds guard-catastrophic-rm/);
     assert.doesNotMatch(r.stderr, /Error|\n\s+at /, 'no error on stderr');
   });
+});
+
+test('guard-config-protection: the switch-off asks, a chat yes and a receipt open nothing, dontAsk denies with the reason (D3)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-d3-');
+  const settings = at('.claude/settings.json', '{\n  "env": {}\n}\n');
+  const off = (extra = {}) => ({ session_id: 'cfg-d3', tool_name: 'Edit', cwd: root, tool_input: { file_path: settings, old_string: '"env": {}', new_string: '"env": { "ALFRED_CODE_HOOKS_OFF": "guard-catastrophic-rm" }' }, ...extra });
+  const fire = (payload) => withProject(root, {}, () => spawnSync(process.execPath, [path.join(HOOKS, H)], { input: JSON.stringify(payload), encoding: 'utf8', env: process.env }));
+  const asked = fire(off());
+  assert.equal(verdictOf(asked), 'ask', 'B19: the switch-off asks');
+  assert.match(askText(asked), /^alfred-code guard-config-protection: this write to \.claude\/settings\.json adds guard-catastrophic-rm/);
+  assert.doesNotMatch(blockText(asked), /AskUserQuestion|GUARD-OFF-ALLOW|Allow this guard switch-off|receipt/, 'no receipt route');
+  assert.match(blockText(asked), /Removing a guard from the list, or any other key, passes\./);
+  // the removed opener: a live GUARD-OFF-ALLOW receipt naming the file plus an answered 'Allow this guard switch-off' ask
+  const tp = path.join(root, 'session.jsonl');
+  fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'g1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
+    + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'g1', content: 'answered' }] },
+      ...userPick(), toolUseResult: { answers: { 'Switch off?': 'Allow this guard switch-off' } } }) + '\n'); pause(30);
+  stateReceipt(root, 'GUARD-OFF-ALLOW', `session: cfg-d3\n.claude/settings.json\n${settings}\n`);
+  assert.equal(verdictOf(fire(off({ transcript_path: tp }))), 'ask', 'the receipt and the answered ask leave the switch-off asking');
+  const denied = fire(off({ permission_mode: 'dontAsk' }));
+  assert.equal(verdictOf(denied), 'deny', 'dontAsk denies');
+  assert.match(blockText(denied), /^Blocked: this write to \.claude\/settings\.json adds guard-catastrophic-rm to ALFRED_CODE_HOOKS_OFF, which stands that guard down from the next call on\.\nThe protective guards stop what cannot be undone \(a recursive rm or a discard, a credential read, a force push\),\nso switching one off is the user's call, never the model's\.\nRemoving a guard from the list, or any other key, passes\.\n$/);
+  // B20: AUTO_RUN left at 1
+  const autoRun = (extra = {}) => ({ session_id: 'cfg-d3', tool_name: 'Edit', cwd: root, tool_input: { file_path: settings, old_string: '"env": {}', new_string: '"env": { "ALFRED_CODE_AUTO_RUN": "1" }' }, ...extra });
+  assert.equal(verdictOf(fire(autoRun())), 'ask', 'B20: auto-run left at 1 asks');
+  const autoDenied = fire(autoRun({ permission_mode: 'dontAsk' }));
+  assert.equal(verdictOf(autoDenied), 'deny', 'B20: dontAsk denies');
+  assert.match(blockText(autoDenied), /^Blocked: this write leaves ALFRED_CODE_AUTO_RUN at 1 in \.claude\/settings\.json - auto-run is turned on by typing \/alfred-code:mode:auto-run on, never by a write\.\n$/);
+  // B21: the rule store on Cursor keeps exit 2 with today's text; in Claude Code the store write stays its own ask
+  const store = at('.alfred/stack/rules/x.md', 'x');
+  const cursor = fire({ session_id: 'cfg-d3', tool_name: 'Write', cwd: root, cursor_version: '1.7.0', tool_input: { file_path: store, content: 'y' } });
+  assert.equal(cursor.status, 2, 'B21: Cursor keeps exit 2');
+  assert.match(cursor.stderr, /^hand this edit to the user: .*\.alfred\/stack\/rules\/x\.md is a project rule source\n$/, 'with today\'s text');
+  const storeAsk = fire({ session_id: 'cfg-d3', tool_name: 'Write', cwd: root, tool_input: { file_path: store, content: 'y' } });
+  assert.equal(verdictOf(storeAsk), 'ask', 'the store write asks in Claude Code');
+  assert.match(askText(storeAsk), /project rule source/, 'with its own reason, as written');
 });
 
 test('guard-config-protection: a block writes one ledger row naming the hook', () => {
@@ -4364,12 +4388,12 @@ const commitIn = (files, command = 'git commit -m "x"', opts) => gateIn(stagedRe
 
 test('guard-ungated-commit: the staged scan blocks conflict markers, debugger, focused tests and credentials - on ADDED lines only', () => {
   const token = ['ghp', '0123456789abcdefghij0123456789abcdef'].join('_');
-  assert.equal(commitIn({ 'a.ts': 'const a = 1;\ndebugger;\n' }), 2, 'debugger');
-  assert.equal(commitIn({ 'a.spec.ts': "fdescribe('x', () => {});\n" }), 2, 'focused test');
-  assert.equal(commitIn({ 'src/a.test.js': "it.only('x', () => {});\n" }), 2, 'it.only');
-  assert.equal(commitIn({ 'a.cs': 'System.Diagnostics.Debugger.Launch();\n' }), 2, 'Debugger.Launch');
-  assert.equal(commitIn({ 'a.txt': '<<<<<<< HEAD\n' }), 2, 'conflict marker');
-  assert.equal(commitIn({ 'notes.md': `token ${token}\n` }), 2, 'a credential blocks even in markdown');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\ndebugger;\n' }), 'ask', 'debugger');
+  assert.equal(commitIn({ 'a.spec.ts': "fdescribe('x', () => {});\n" }), 'ask', 'focused test');
+  assert.equal(commitIn({ 'src/a.test.js': "it.only('x', () => {});\n" }), 'ask', 'it.only');
+  assert.equal(commitIn({ 'a.cs': 'System.Diagnostics.Debugger.Launch();\n' }), 'ask', 'Debugger.Launch');
+  assert.equal(commitIn({ 'a.txt': '<<<<<<< HEAD\n' }), 'ask', 'conflict marker');
+  assert.equal(commitIn({ 'notes.md': `token ${token}\n` }), 'ask', 'a credential blocks even in markdown');
   assert.equal(commitIn({ 'notes.md': 'never commit a `debugger;` line\n' }), 0, 'prose about the pattern passes');
   assert.equal(commitIn({ 'model.py': 'model.fit(x, y)\n' }), 0, 'fit( outside a test file is not a focused test');
   assert.equal(commitIn({ 'a.ts': 'const a = 1;\n' }), 0, 'a clean one-line diff stays trivial and passes');
@@ -4382,20 +4406,20 @@ test('guard-ungated-commit: the staged scan ignores calls, strings and comments 
   assert.equal(commitIn({ 'src/a.test.ts': "const msg = \"describe.only( is banned\";\n" }), 0, 'a string holding it.only(');
   assert.equal(commitIn({ 'a.ts': 'const a = 1;\n// step through with the debugger\n' }), 0, 'a comment ending in the word');
   assert.equal(commitIn({ 'a.cs': 'var a = 1;\n// call Debugger.Break() here\n' }), 0, 'a C# comment');
-  assert.equal(commitIn({ 'a.ts': 'const a = 1;\nif (x) debugger;\n' }), 2, 'a debugger as the body of an if');
-  assert.equal(commitIn({ 'src/a.test.ts': "  fit('x', () => {});\n" }), 2, 'an indented fit statement');
-  assert.equal(commitIn({ 'src/a.test.ts': "describe('a', () => {});\ndescribe.only('x', () => {});\n" }), 2, 'describe.only at a statement start');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\nif (x) debugger;\n' }), 'ask', 'a debugger as the body of an if');
+  assert.equal(commitIn({ 'src/a.test.ts': "  fit('x', () => {});\n" }), 'ask', 'an indented fit statement');
+  assert.equal(commitIn({ 'src/a.test.ts': "describe('a', () => {});\ndescribe.only('x', () => {});\n" }), 'ask', 'describe.only at a statement start');
 });
 
 test('guard-ungated-commit: the staged scan reads what THIS act commits', () => {
   // a chained add stages mid-command: nothing is staged when the hook runs, so the tree is read
-  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add . && git commit -m "x"', { stage: false }), 2, 'git add . && commit');
-  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add -A; git commit -m "x"', { stage: false }), 2, 'git add -A; commit');
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add . && git commit -m "x"', { stage: false }), 'ask', 'git add . && commit');
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add -A; git commit -m "x"', { stage: false }), 'ask', 'git add -A; commit');
   // a plain commit takes only the index: an unstaged debugger is not part of it
   const dir = stagedRepo({ 'clean.ts': 'const a = 1;\n' });
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n<<<<<<< HEAD\n');
   assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'an unstaged conflict marker is not committed');
-  assert.equal(gateIn(dir, 'git commit -am "x"'), 2, 'commit -a takes the unstaged change too');
+  assert.equal(gateIn(dir, 'git commit -am "x"'), 'ask', 'commit -a takes the unstaged change too');
   // a REMOVED line is never a finding
   const rm = cleanRepo();
   fs.writeFileSync(path.join(rm, 'b.ts'), 'const b = 1;\ndebugger;\n');
@@ -4414,8 +4438,10 @@ test('guard-ungated-commit: no receipt opens the staged scan, and the block name
   fs.writeFileSync(path.join(dir, 'n4.ts'), 'const a = 1;\ndebugger;\n'); spawnSync('git', ['-C', dir, 'add', '-A']);
   const r = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' }, session_id: 'scan-sess' },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-  assert.equal(r.status, 2, 'the same waiver does not open the scan');
+  assert.equal(r.status, 'ask', 'the same waiver does not open the scan');
   assert.match(r.stderr, /n4\.ts:2 - a debugger statement/, 'file and line named');
+  assert.match(r.stderr, /Remove it and stage again\. This is a fact check on the diff, separate from the commit-gate receipt,\nwhich does not open it\.\nIf a hit is meant to land \(a test fixture, a documented sample\), the user approves this call\.$/, 'the reason keeps the sentence and adds the approval one');
+  assert.doesNotMatch(r.stderr, /AskUserQuestion|STAGED-SCAN-ALLOW|Commit it as is/, 'no receipt route');
   const ledger = path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'scan-sess.jsonl');
   const row = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop());
   assert.deepEqual(row.detail, { branch: 'staged-scan', count: 1 }, 'the block row carries the scan branch');
@@ -4435,34 +4461,31 @@ test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and keeps
     assert.equal(diffLen(), target, `fixture diff is exactly ${target} bytes`);
   };
   sized(LIMIT - 1);
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'a diff one byte under the cap is scanned');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 'ask', 'a diff one byte under the cap is scanned');
   // Past the cap the scan used to throw and return nothing, voiding every hit (the 2026-09-26 review):
   // the text is cut at the cap now, and a hit inside it still blocks.
   sized(LIMIT + 1);
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'a diff one byte over the cap is read up to the cap, and its hit stands');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 'ask', 'a diff one byte over the cap is read up to the cap, and its hit stands');
   fs.writeFileSync(file, `${'x'.repeat(LIMIT + 16)}\ndebugger;\n`); spawnSync('git', ['-C', dir, 'add', '-A']);
   assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'a single file past the cap is skipped, its text never read');
 });
 
-test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits it names, for 8h', () => {
+test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt opens nothing, and dontAsk denies with the reason (D3)', () => {
   const dir = stagedRepo({ 'a.spec.ts': "fit('x', () => {});\n", 'b.ts': 'debugger;\n' });
   const allow = path.join(dir, '.alfred', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
   fs.mkdirSync(path.dirname(allow), { recursive: true });
-  fs.writeFileSync(allow, 'a.spec.ts:1\n');
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'one hit kept, the other still blocks');
-  fs.writeFileSync(allow, 'a.spec.ts:1\nb.ts\n');
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'every hit named - the commit passes');
-  const hours = (h) => { const t = new Date(Date.now() - h * 3600 * 1000); fs.utimesSync(allow, t, t); };
-  // the 8h window alone: with no transcript there is no session start, which a 7.9h-old receipt would predate (H4)
-  const noSession = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' } }, {
-    env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
-  }).status;
-  hours(7.9);
-  assert.equal(noSession(), 0, 'just under 8h still holds');
-  hours(8.1);
-  assert.equal(noSession(), 2, 'past 8h the receipt is absent');
+  const call = (extra = {}, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' }, transcript_path: REVIEWED, ...extra }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir });
+  fs.writeFileSync(allow, '*\n');
+  assert.equal(verdictOf(call()), 'ask', 'a live receipt with * leaves the scan asking');
+  fs.writeFileSync(allow, 'session: x\na.spec.ts:1\nb.ts\n');
   stateReceipt(dir, 'STAGED-SCAN-ALLOW', 'a.spec.ts:1\nb.ts\n');
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, '2.8.0: the receipt under state/approvals/ is read');
+  assert.equal(verdictOf(call()), 'ask', 'a receipt naming every hit opens nothing either');
+  const denied = call({ permission_mode: 'dontAsk' });
+  assert.equal(verdictOf(denied), 'deny', 'B35: dontAsk denies');
+  assert.match(blockText(denied), /^Blocked: the commit adds what must never land -\n {2}a\.spec\.ts:1 - a focused test\n {2}b\.ts:1 - a debugger statement\nRemove it and stage again\. This is a fact check on the diff, separate from the commit-gate receipt,\nwhich does not open it\.\nIf a hit is meant to land \(a test fixture, a documented sample\), the user approves this call\.$/, "today's text, less the receipt sentences");
+  assert.equal(verdictOf(call({}, { ALFRED_CODE_GUARD_ASK: '0' })), 'deny', 'the rollback switch denies');
 });
 
 // --- one home for the fresh-session arithmetic ---------------------------------------------------
@@ -4641,10 +4664,10 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
 // The interpreter-write probe (audit 2026-10-10 T5) was dropped in the deep hooks review 2026-10-16: 622 rows nobody read.
 test('deep review: guard-cross-project-write passes an in-project interpreter write and writes no probe row', () => {
   const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'xp-probe-'));
-  const runP = (command, agent) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const runP = (command, agent) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'xp-probe', ...(agent ? { agent_id: agent } : {}) }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  });
+  }));
   const rows = () => { try { return fs.readFileSync(path.join(ledger, 'statistics', 'hook-blocks', 'xp-probe.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
   try {
     assert.strictEqual(runP("python3 - <<'EOF'\np='src/a.cs'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF").status, 0);
@@ -4948,7 +4971,7 @@ function memWs() {
     const env = { ...process.env, CLAUDE_PROJECT_DIR: at(rel), CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...extra };
     delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
     if (!('ALFRED_CODE_WORKSPACE' in extra)) delete env.ALFRED_CODE_WORKSPACE;
-    return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: at(rel), input: JSON.stringify({ cwd: at(rel), ...payload }), encoding: 'utf8', env });
+    return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: at(rel), input: JSON.stringify({ cwd: at(rel), ...payload }), encoding: 'utf8', env }));
   };
   const write = (rel, file, extra) => run(rel, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }, extra);
   return { top, at, put, home, acct, mem, run, write, rm: () => fs.rmSync(top, { recursive: true, force: true }) };
@@ -5044,8 +5067,8 @@ test('guard-cross-project-write: R171 a write into the memory folder an old star
       const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
       delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
       delete env.ALFRED_CODE_WORKSPACE;
-      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
-        input: JSON.stringify({ cwd: root, session_id: sid, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+      return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+        input: JSON.stringify({ cwd: root, session_id: sid, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
     };
     const rows = () => {
       const out = [];
@@ -5094,8 +5117,8 @@ test('guard-cross-project-write: R171 review - a tracked old file gets the gener
       const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
       delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
       delete env.ALFRED_CODE_WORKSPACE;
-      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
-        input: JSON.stringify({ cwd: root, session_id: 'r171-review', tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+      return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+        input: JSON.stringify({ cwd: root, session_id: 'r171-review', tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
     };
     const old = path.join(api, '.claude', 'settings.local.json');
     fs.writeFileSync(old, JSON.stringify({ autoMemoryDirectory: mem }));
@@ -5146,7 +5169,7 @@ test('guard-cross-project-write: R068 past 200 characters a child\'s write into 
     const write = (file) => {
       const env = { ...process.env, CLAUDE_PROJECT_DIR: api, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
       delete env.CLAUDE_CODE_PROJECT_DIR_NAME; delete env.ALFRED_CODE_WORKSPACE;
-      return spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: api, input: JSON.stringify({ cwd: api, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env });
+      return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: api, input: JSON.stringify({ cwd: api, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
     };
     for (const made of [false, true]) {
       if (made) for (const p of [ws, api]) fs.mkdirSync(mem(p), { recursive: true });
@@ -5319,10 +5342,10 @@ test('guard-cross-project-write: a root with its own autoMemoryDirectory under a
   const S = UIDX == null ? null : `/tmp/claude-${UIDX}`;
   const BASE = S && path.join(S, `alfred-t-${process.pid}`);
   const made = S && !fs.existsSync(S);
-  const run = (root, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const run = (root, payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify(payload), encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  }).status;
+  })).status;
   const write = (file, sid) => ({ tool_name: 'Write', tool_input: { file_path: file }, ...(sid ? { session_id: sid } : {}) });
   test('F14: a project under the scratch root keeps its session\'s scratchpad, and only that', { skip: !S && 'no process.getuid' }, (t) => {
     t.after(() => { fs.rmSync(BASE, { recursive: true, force: true }); if (made) fs.rmSync(S, { recursive: true, force: true }); });
@@ -5484,7 +5507,7 @@ test('audit 2026-10-30 HK-13, HK-14: every $HOME spelling and the other write ve
   spawnSync('git', ['init', '-q', sib], { encoding: 'utf8' });
   const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
   const xwIn = (command, { tool = 'Bash' } = {}) => runIn('guard-cross-project-write.js', { tool_name: tool, tool_input: { command }, cwd: dir }, { cwd: dir, env });
-  const blocks = (c, why, opts) => { const r = xwIn(c, opts); assert.equal(r.status, 2, `must block (${why}): ${c}\n${r.stderr}`); };
+  const blocks = (c, why, opts) => { const r = xwIn(c, opts); assert.equal(r.status, 'ask', `must block (${why}): ${c}\n${r.stderr}`); };
   const allows = (c, why, opts) => { const r = xwIn(c, opts); assert.equal(r.status, 0, `must allow (${why}): ${c}\n${r.stderr}`); };
   // HK-13: the home and project variables are expanded before the unexpanded-variable skip
   for (const c of [
@@ -5565,7 +5588,7 @@ test('stage 1 B8: a runtime spawning git commit is not read as a commit', () => 
     `ruby -e 'system("git commit -m x")'`,
     `perl -e 'system("git", "commit", "-m", "x")'`,
   ]) assert.equal(gateIn(dir, c), 0, `not read as a commit: ${c}`);
-  assert.equal(gateIn(dir, 'git commit -m x'), 2, 'a literal git commit is still gated');
+  assert.equal(gateIn(dir, 'git commit -m x'), 'ask', 'a literal git commit is still gated');
 });
 
 test('audit 2026-10-30 HK-19: shuf, git show <rev>:<path> and an added file\'s diff are sized like cat; a copy is not tracked (stage 1 A5)', () => {
@@ -5645,8 +5668,7 @@ const rcWithCall = (row) => (row.toolUseResult && row.toolUseResult.answers ? [r
 const rcFile = (file, rows) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, rows.flatMap(rcWithCall).map((r) => JSON.stringify(r)).join('\n') + '\n'); return file; };
 const rcLine = (row) => rcWithCall(row).map((r) => JSON.stringify(r) + '\n').join('');
 
-// Swap 1 took the secret guard's receipt; these two rode it, and what they pin is the shared reader (hook-prelude.js
-// receiptAnswered), so they ride the cross-project write guard's receipt now.
+// The cross-project write guard's receipt name: a receipt a chat yes once wrote, read by no guard now (guards ask, D3).
 const CROSS = 'CROSS-WRITE-ALLOW';
 function crossProject(prefix) {
   const root = fs.mkdtempSync(path.join(TMP, `${prefix}A-`));
@@ -5656,80 +5678,6 @@ function crossProject(prefix) {
     ...(tp ? { transcript_path: tp } : {}), cwd: root, ...extra }, { env });
   return { root, otherRoot, write, allow: `Allow writes into ${otherRoot} for this session`, mine: `session: ${RC}\n${otherRoot}\n` };
 }
-
-test('audit 2026-10-30 HK-03: a security receipt opens only on the user\'s own allow answer to the last denial, never one auto-run gave', () => {
-  const { root, otherRoot, write, allow: ALLOW, mine } = crossProject('rc-open');
-  let k = 0;
-  // the session's transcript, then the receipt the model writes (after it, so the transcript's birth never decides), then the Write
-  const attempt = (rows, receipt = mine) => {
-    const tp = rcFile(path.join(root, 'sessions', `t${++k}.jsonl`), rows);
-    pause(5);
-    stateReceipt(root, CROSS, receipt);
-    return write(tp);
-  };
-  const opens = (rows, why, receipt) => { const r = attempt(rows, receipt); assert.equal(r.status, 0, `must open (${why})\n${r.stderr}`); };
-  const shut = (rows, why, receipt) => { const r = attempt(rows, receipt); assert.equal(r.status, 2, `must stay shut (${why})`); return r; };
-  const ask = rc.typed('wire the client in the sibling repo');
-  const no = () => rc.denial(CROSS, 'Write');
-  opens([ask, no(), rc.answer(ALLOW)], 'the user answered the denial with the allow label');
-  opens([ask, no(), rc.answer(`${ALLOW} (Recommended)`)], 'a Recommended mark is the same label');
-  opens([ask, rc.answer(ALLOW)], 'no denial in the transcript yet: any answer of the session');
-  assert.match(shut([ask, no()], 'a receipt the model wrote with no ask answered').stderr, /no ask answered with the allow label/, 'the denial says why the receipt there is not honoured');
-  shut([ask, no(), rc.answer('Task card in this project (Recommended)')], 'a declined ask');
-  shut([ask, no(), rc.answer('Drop it')], 'an ask answered with another label');
-  shut([ask, no(), rc.answer('Discard it')], 'another guard\'s allow label');
-  shut([ask, no(), rc.answer(ALLOW), no()], 'an answer older than the last denial');
-  shut([ask, no(), rc.answer(ALLOW)], 'another session\'s receipt', `session: other\n${otherRoot}\n`);
-  shut([ask, no(), rc.answer(ALLOW)], 'a receipt naming no session, for a call naming one', `${otherRoot}\n`);
-  const timedOut = rc.answer(ALLOW);
-  timedOut.toolUseResult.afkTimeoutMs = 60000;
-  shut([ask, no(), timedOut], 'an ask the idle timeout closed');
-  // auto-run, judged at the answer's place in the transcript - never by the stamp or the ledger at read time
-  const on = rc.command('alfred-code:mode:auto-run', 'on');
-  const stampFile = path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL');
-  const ledger = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${RC}.jsonl`);
-  fs.writeFileSync(stampFile, `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${RC}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`);
-  fs.mkdirSync(path.dirname(ledger), { recursive: true });
-  fs.writeFileSync(ledger, JSON.stringify({ mode: 'auto', kind: 'auto-answer', session: RC }) + '\n');
-  const autoAnswered = [on, no(), rc.said('Asking for the write.'), rc.answer(`${ALLOW} (Recommended)`)];
-  shut(autoAnswered, 'a self-built Recommended-allow ask auto-answered under a live AUTO stamp');
-  fs.rmSync(ledger);
-  shut(autoAnswered, 'the same with the auto-answer ledger row deleted');
-  fs.rmSync(stampFile);
-  shut(autoAnswered, 'the stamp deleted after the answer opens nothing');
-  shut([...autoAnswered, rc.command('alfred-code:mode:auto-run', 'off')], 'nor does the off command typed after it');
-  shut([rc.command('mode-auto-run', 'wire the client'), no(), rc.answer(ALLOW)], 'a typed /mode-auto-run <request> turns auto-run on too');
-  opens([on, rc.command('alfred-code:mode:auto-run', 'off'), no(), rc.answer(ALLOW)], 'an answer after the typed off command counts');
-  opens([rc.typed('what does /alfred-code:mode:auto-run on do?'), no(), rc.answer(ALLOW)], 'a prose mention of the command switches nothing');
-  opens([rc.typed('/alfred-code:mode:auto-run on now'), no(), rc.answer(ALLOW)], 'a command with more than on or off after it switches nothing');
-  // no transcript in the payload (a CLI run, an older fixture): the session and time rules alone, as before
-  stateReceipt(root, CROSS, mine);
-  assert.equal(write(null).status, 0, 'no transcript');
-});
-
-test('audit 2026-10-30 HK-03: a seat\'s denial is anchored at its time in the seat\'s own transcript', () => {
-  // Read through the prelude's own function: the cross-write guard no longer honours a receipt for a seat (below), and
-  // the anchor serves every guard that does.
-  const { root, otherRoot, allow: ALLOW, mine } = crossProject('rc-seat');
-  const { securityReceipt } = require(path.join(HOOKS, 'hook-prelude.js'));
-  // Claude Code's layout: <dir>/<session>.jsonl, the seat's own at <dir>/<session>/subagents/agent-<id>.jsonl
-  const tp = path.join(root, 'projects', `${RC}.jsonl`);
-  const seatFile = path.join(root, 'projects', RC, 'subagents', 'agent-seat1.jsonl');
-  rcFile(tp, [rc.typed('wire the client'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
-  rcFile(seatFile, [rc.typed('Brief: wire the client'), rc.denial(CROSS, 'Write')]);
-  pause(5);
-  const file = stateReceipt(root, CROSS, mine);
-  const live = (extra = {}) => {
-    const held = securityReceipt(file, { session_id: RC, transcript_path: tp, cwd: root, agent_id: 'seat1', agent_type: 'Explore', ...extra }, { marker: CROSS, labels: [/^allow .+ for this session$/] });
-    return !!(held && held.live && held.lines.includes(otherRoot));
-  };
-  assert.equal(live(), false, 'an older allow answer plus a new denial in a seat stays shut');
-  fs.appendFileSync(tp, rcLine(rc.answer(ALLOW)));
-  assert.equal(live(), true, 'the user\'s answer after the seat\'s denial opens it');
-  const named = rcFile(path.join(root, 'elsewhere', 'agent.jsonl'), [rc.denial(CROSS, 'Write')]);
-  assert.equal(live({ agent_transcript_path: named }), false, 'the payload\'s own agent_transcript_path is read first: a later seat denial there shuts it');
-  assert.equal(live({ agent_id: 'seat2' }), true, 'a seat with no denial of its own: the main transcript\'s anchor');
-});
 
 // ---- the workspace is the boundary (the owner, 2026-11-11): a child writes anywhere in its workspace; a write past the
 // workspace asks in the main session and is refused, with no ask and no receipt, in a subagent -------------------------
@@ -5757,7 +5705,7 @@ test('guard-cross-project-write: a child session writes in its workspace root, a
     assert.equal(w.bash('ws/api', `cd ${w.at('ws/web')} && git commit -m x`).status, 0, 'a git write in a sibling checkout');
     const out = w.write('ws/api', w.at('other/src/a.ts'));
     assert.equal(out.status, 2, 'past the workspace');
-    assert.match(out.stderr, /AskUserQuestion/, 'the main session is asked');
+    assert.match(out.stderr, /Write the task card at /, 'the main session is asked, with the card advice');
     assert.ok(out.stderr.includes(`outside this session's workspace (${w.at('ws')})`), out.stderr);
     assert.equal(w.bash('ws/api', `git -C ${w.at('other')} commit -m x`).status, 2, 'a git write past the workspace');
     // the boundary itself: the workspace's own folder is in, its parent and a folder that only shares its prefix are out
@@ -5784,7 +5732,7 @@ test('guard-cross-project-write: with no workspace the project stays the boundar
   } finally { w.rm(); }
 });
 
-test('guard-cross-project-write: a subagent writes inside the workspace and is refused past it with no ask - a live receipt and a typed folder open nothing for it', () => {
+test('guard-cross-project-write: a subagent writes inside the workspace and is refused past it - a receipt and a typed folder open nothing for anyone', () => {
   const w = boundWs();
   try {
     const seat = { agent_id: 'seat1', agent_type: 'alfred-code:aspnet-implementer' };
@@ -5798,20 +5746,19 @@ test('guard-cross-project-write: a subagent writes inside the workspace and is r
       assert.match(r.stderr, /A subagent never writes outside/, r.stderr);
     };
     refused(w.write('ws/api', target, seat), 'no receipt');
-    // the user allowed that tree for this session: the main session writes there, the seat still does not
+    // a receipt the user's allow once wrote and a folder typed in chat open nothing, for the main session or the seat
     const ALLOW = `Allow writes into ${other} for this session`;
     const tp = rcFile(path.join(w.at('ws/api'), 'sessions', 't1.jsonl'), [rc.typed('wire the client in the other repo'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
     pause(5);
     stateReceipt(w.at('ws/api'), CROSS, `session: ${RC}\n${other}\n`);
     const said = { session_id: RC, transcript_path: tp };
-    assert.equal(w.write('ws/api', target, said).status, 0, 'the main session, on the user\'s allow answer');
+    assert.equal(w.write('ws/api', target, said).status, 2, 'the main session: the receipt and the answered ask open nothing');
     refused(w.write('ws/api', target, { ...said, ...seat }), 'a live receipt');
     refused(w.bash('ws/api', `echo x >> ${target}`, { ...said, ...seat }), 'a shell write');
     refused(w.bash('ws/api', `git -C ${other} commit -m x`, { ...said, ...seat }), 'a git write');
-    // a folder the user typed opens it for the main session only
     const typed = rcFile(path.join(w.at('ws/api'), 'sessions', 't2.jsonl'), [rc.typed(`put the report in ${other}/`)]);
     fs.rmSync(path.join(w.at('ws/api'), '.alfred', 'state', 'approvals', CROSS));
-    assert.equal(w.write('ws/api', target, { session_id: RC, transcript_path: typed }).status, 0, 'the main session, a typed folder');
+    assert.equal(w.write('ws/api', target, { session_id: RC, transcript_path: typed }).status, 2, 'the main session: a typed folder opens nothing');
     refused(w.write('ws/api', target, { session_id: RC, transcript_path: typed, ...seat }), 'a typed folder');
     // a tree the project declares its own stays open to a seat (this fixture sits under the temp folder, so that
     // allowance is dropped for every actor here by the containment rule and is not the one to read)
@@ -5819,7 +5766,59 @@ test('guard-cross-project-write: a subagent writes inside the workspace and is r
   } finally { w.rm(); }
 });
 
-test('guard-cross-project-write: a subagent\'s unread script is refused with no ask - the session\'s `unread` receipt opens it for the main session only', () => {
+test('guards ask (D3): the proof receipts still decide, the missing one asks, and dontAsk denies with the whole reason', () => {
+  // COMMIT-GATE and PUSH-GATE are proof, not a chat yes: a valid one passes, a missing one asks (a deny where nobody can answer).
+  const dir = pushRepo();
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  fs.appendFileSync(path.join(dir, 'a.txt'), 'more\n');
+  spawnSync('git', ['-C', dir, 'commit', '-qam', 'work'], { encoding: 'utf8' });
+  const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  const push = (extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push' }, transcript_path: REVIEWED, ...extra }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(verdictOf(push()), 'ask', 'B32: no PUSH-GATE receipt asks');
+  fs.writeFileSync(path.join(flow, 'PUSH-GATE'), `VERIFIED the release merge\nauthorized: "push it"\nhead: ${head}\nspec: 1 commit on main\nlive-probe: npm test green\n`);
+  assert.equal(verdictOf(push()), 0, 'a valid PUSH-GATE receipt passes the push');
+  fs.rmSync(path.join(flow, 'PUSH-GATE'));
+  for (const permission_mode of ['dontAsk', 'bypassPermissions']) {
+    const denied = push({ permission_mode });
+    assert.equal(verdictOf(denied), 'deny', `B32: ${permission_mode} denies`);
+    assert.match(blockText(denied), /^Blocked: git push without the publish gate receipt\.\nA publish leaves this machine for good\. Run habits-commit-checkpoint's publish half/, `${permission_mode}: today's text`);
+  }
+  const commitDir = scratchRepo();
+  const commit = (extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: REVIEWED, ...extra }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: commitDir }, cwd: commitDir });
+  assert.equal(verdictOf(commit()), 'ask', 'B36: no COMMIT-GATE receipt asks');
+  assert.equal(verdictOf(commit({ permission_mode: 'dontAsk' })), 'deny', 'B36: dontAsk denies');
+  fs.mkdirSync(path.join(commitDir, '.alfred', 'docs', 'flow'), { recursive: true });
+  fs.writeFileSync(path.join(commitDir, '.alfred', 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "commit it without the review"\n');
+  assert.equal(verdictOf(commit()), 0, 'a valid COMMIT-GATE receipt lets the commit pass');
+});
+
+test('guard-cross-project-write: a seat past its boundary asks in default and is denied under dontAsk (B24, B28)', () => {
+  const { root, otherRoot } = crossProject('seat-d3');
+  const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
+  const huge = path.join(fs.mkdtempSync(path.join(TMP, 'huge-d3-')), 'huge.sh');
+  fs.writeFileSync(huge, `${'#'.repeat(SCAN_LIMITS.bytes + 1024)}\necho done\n`);
+  try {
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+    const seat = { agent_id: 'seat1', agent_type: 'Explore' };
+    const fire = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ session_id: RC, cwd: root, ...seat, ...payload }), encoding: 'utf8', env, cwd: root });
+    const write = { tool_name: 'Write', tool_input: { file_path: path.join(otherRoot, 'src', 'a.ts') } };
+    const script = { tool_name: 'Bash', tool_input: { command: `bash ${huge}` } };
+    for (const [name, payload, re] of [['B24', write, /A subagent never writes outside/], ['B28', script, /A subagent never runs a command this guard could not read/]]) {
+      assert.equal(verdictOf(fire(payload)), 'ask', `${name}: a default payload asks`);
+      assert.match(blockText(fire(payload)), re, `${name}: the model text`);
+      const denied = fire({ ...payload, permission_mode: 'dontAsk' });
+      assert.equal(verdictOf(denied), 'deny', `${name}: dontAsk denies`);
+      assert.match(blockText(denied), re, `${name}: the same reason`);
+    }
+  } finally { fs.rmSync(path.dirname(huge), { recursive: true, force: true }); }
+});
+
+test('guard-cross-project-write: a subagent\'s unread script is refused - the session\'s `unread` receipt opens it for nobody', () => {
   const { root } = crossProject('seat-unread');
   const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
   const huge = path.join(fs.mkdtempSync(path.join(TMP, 'huge-')), 'huge.sh');
@@ -5829,18 +5828,18 @@ test('guard-cross-project-write: a subagent\'s unread script is refused with no 
     const sh = (extra = {}) => runIn('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `bash ${huge}` }, session_id: RC, cwd: root, ...extra }, { env });
     const seat = { agent_id: 'seat1', agent_type: 'Explore' };
     const refused = (r, why) => {
-      assert.equal(r.status, 2, `${why}: ${r.stderr}`);
-      assert.doesNotMatch(r.stderr, /AskUserQuestion|CROSS-WRITE-ALLOW/, `${why}: no ask, no receipt route`);
+      assert.equal(r.status, 'ask', `${why}: ${r.stderr}`);
+      assert.doesNotMatch(r.stderr, /AskUserQuestion|CROSS-WRITE-ALLOW/, `${why}: no ask of the model's, no receipt route`);
       assert.match(r.stderr, /A subagent never runs a command this guard could not read/, r.stderr);
     };
     const asked = sh();
-    assert.equal(asked.status, 2, asked.stderr);
-    assert.match(asked.stderr, /AskUserQuestion/, 'the main session is asked');
+    assert.equal(asked.status, 'ask', asked.stderr);
+    assert.match(asked.stderr, /Run a smaller piece the guard can read instead\./, 'the main session is asked, with the advice');
     refused(sh(seat), 'no receipt');
     const tp = rcFile(path.join(root, 'sessions', 't.jsonl'), [rc.typed('run the big script'), rc.denial(CROSS, 'Bash'), rc.answer('Allow this command for this session')]);
     pause(5);
     stateReceipt(root, CROSS, `session: ${RC}\nunread\n${huge}\n`);
-    assert.equal(sh({ transcript_path: tp }).status, 0, 'the main session, on the user\'s allow answer');
+    assert.equal(sh({ transcript_path: tp }).status, 'ask', 'the main session: the receipt and the answered ask open nothing');
     refused(sh({ transcript_path: tp, ...seat }), 'a live receipt');
   } finally { fs.rmSync(path.dirname(huge), { recursive: true, force: true }); }
 });
@@ -5864,9 +5863,9 @@ test('guard-cross-project-write: in a project with no workspace a subagent is re
   const tp = rcFile(path.join(root, 'sessions', 't.jsonl'), [rc.typed('wire the client'), rc.denial(CROSS, 'Write'), rc.answer(ALLOW)]);
   pause(5);
   stateReceipt(root, CROSS, mine);
-  assert.equal(write(tp).status, 0, 'the main session');
+  assert.equal(write(tp).status, 'ask', 'the main session: the receipt opens nothing');
   const r = write(tp, { agent_id: 'seat1', agent_type: 'Explore' });
-  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.status, 'ask', r.stderr);
   assert.doesNotMatch(r.stderr, /AskUserQuestion/, r.stderr);
   assert.ok(r.stderr.includes(`outside this session's project (`) && r.stderr.includes(otherRoot.split(path.sep).pop()), r.stderr);
 });
@@ -5895,29 +5894,23 @@ test('the DISCARD-ALLOW receipt and an answered discard ask open nothing', () =>
   assert.ok(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8') === 'changed\n', 'the dirty file is untouched');
 });
 
-test('audit 2026-10-30 HK-03 / HK-16: CROSS-WRITE is this session\'s and the user\'s; the denial prints the lines', () => {
+test('the CROSS-WRITE-ALLOW receipt, in any session or answer state, opens nothing (guards ask, D3)', () => {
   let k = 0;
   const session = (dir, rows) => { const tp = rcFile(path.join(dir, 'sessions', `s${++k}.jsonl`), rows); pause(5); return tp; };
-  // CROSS-WRITE-ALLOW: a file-tool write into a sibling tree
-  {
-    const root = fs.mkdtempSync(path.join(TMP, 'rc-crossA-'));
-    const other = fs.mkdtempSync(path.join(TMP, 'rc-crossB-'));
-    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
-    const write = (tp) => runIn('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: path.join(other, 'src', 'a.ts') }, session_id: RC, transcript_path: tp, cwd: root }, { env });
-    const otherRoot = fs.realpathSync.native(other);
-    const denied = write(session(root, [rc.typed('wire the client')]));
-    assert.equal(denied.status, 2);
-    assert.ok(denied.stderr.includes(`  session: ${RC}\n  ${otherRoot}\n`), `HK-16: the denial prints the exact lines\n${denied.stderr}`);
-    const label = `Allow writes into ${otherRoot} for this session`;
-    let tp = session(root, [rc.typed('wire the client'), rc.denial('CROSS-WRITE-ALLOW', 'Write'), rc.answer(label)]);
-    stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: ${RC}\n${otherRoot}\n`);
-    assert.equal(write(tp).status, 0, 'the lines it printed, after the user\'s allow');
-    stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: other\n${otherRoot}\n`);
-    assert.equal(write(tp).status, 2, 'HK-16: another session\'s receipt');
-    tp = session(root, [rc.typed('wire the client'), rc.denial('CROSS-WRITE-ALLOW', 'Write'), rc.answer('Task card in this project (Recommended)')]);
-    stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: ${RC}\n${otherRoot}\n`);
-    assert.equal(write(tp).status, 2, 'HK-03: the card was the answer');
-  }
+  const root = fs.mkdtempSync(path.join(TMP, 'rc-crossA-'));
+  const other = fs.mkdtempSync(path.join(TMP, 'rc-crossB-'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  const write = (tp) => runIn('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: path.join(other, 'src', 'a.ts') }, session_id: RC, transcript_path: tp, cwd: root }, { env });
+  const otherRoot = fs.realpathSync.native(other);
+  const denied = write(session(root, [rc.typed('wire the client')]));
+  assert.equal(denied.status, 'ask');
+  assert.doesNotMatch(denied.stderr, new RegExp(`session: ${RC}`), 'the reason prints no receipt lines');
+  const label = `Allow writes into ${otherRoot} for this session`;
+  const tp = session(root, [rc.typed('wire the client'), rc.denial('CROSS-WRITE-ALLOW', 'Write'), rc.answer(label)]);
+  stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: ${RC}\n${otherRoot}\n`);
+  assert.equal(write(tp).status, 'ask', 'the lines a denial once printed, after the user\'s allow answer');
+  stateReceipt(root, 'CROSS-WRITE-ALLOW', `session: ${RC}\n*\n${otherRoot}/src\n`);
+  assert.equal(write(tp).status, 'ask', 'wider lines open nothing either');
 });
 
 test('audit 2026-10-30 HK-03: an AUTO stamp counts only where the transcript shows the user typing it - the mode command\'s stamp and task-solve\'s waiver', () => {
@@ -6018,17 +6011,8 @@ test('audit 2026-10-30 HK-03: a plan APPROVAL re-stamped in a resumed session fr
   assert.equal(r.status, 0, `a workflow gate: no answer of this session is read\n${r.stderr}`);
 });
 
-test('audit 2026-10-30 HK-03 / HK-16: the two bounds the receipts brought - a receipt\'s 8h and the AUTO proof\'s 5MB window', () => {
-  const { readReceiptFile, approvalStamp, RECEIPT_MAX_MS } = require('../stack/hooks/hook-prelude.js');
-  // the age: one second under 8h is live, one second over is stale (no transcript, so the session's birth never decides)
-  const root = fs.mkdtempSync(path.join(TMP, 'rc-age-'));
-  const file = path.join(root, 'CONFIG-EDIT-ALLOW');
-  fs.writeFileSync(file, `session: ${RC}\n*\n`);
-  const aged = (ms) => { const t = (Date.now() - ms) / 1000; fs.utimesSync(file, t, t); return readReceiptFile(file, { session_id: RC }); };
-  assert.equal(aged(RECEIPT_MAX_MS - 1000).live, true, 'one second under 8h');
-  const over = aged(RECEIPT_MAX_MS + 1000);
-  assert.equal(over.live, false, 'one second over 8h');
-  assert.match(over.why, /stale - older than 8h/);
+test('audit 2026-10-30 HK-03: the AUTO proof\'s 5MB window', () => {
+  const { approvalStamp } = require('../stack/hooks/hook-prelude.js');
   // the window: a typed auto-run row counts while the newline before it sits inside 5MB of the recorded offset
   const WINDOW = 5 * 1024 * 1024;
   const typedOn = rcLine(rc.command('alfred-code:mode:auto-run', 'on'));
@@ -6065,8 +6049,8 @@ test('E1-2c: the cross-project guard judges unlink of an outside file', () => {
   assert.equal(xpBash('unlink build/old.txt'), 0, 'unlink inside the project passes');
   // E-batch M6: an allowed root that does NOT hold the project - the temp root's place on a real machine - proves the pass
   const scratch = fs.mkdtempSync(path.join(TMP, 'xp-scratch-'));
-  const inScratch = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
-    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: scratch } }).status;
+  const inScratch = (command) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: scratch } })).status;
   assert.equal(inScratch(`unlink ${path.join(scratch, 'f.txt')}`), 0, 'unlink in an allowed root apart from the project passes');
   assert.equal(inScratch(`shred -u ${path.join(scratch, 'f.txt')}`), 0, 'and so does shred');
   assert.equal(inScratch(`unlink ${path.join(XP_OTHER, 'f.txt')}`), 2, 'while the sibling project stays blocked');

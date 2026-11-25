@@ -39,7 +39,7 @@ const result = (id, content, extra = {}) => ({ type: 'user', sessionId: S, times
 const denial = (receipt, tool = 'Read') => ({ type: 'user', sessionId: S, timestamp: at(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `d${++ids}`, is_error: true,
   content: `PreToolUse:${tool} hook error: [node "guard.js"]: Blocked: ... write .alfred/state/approvals/${receipt} and retry` }] } });
 const askInput = (label, q = 'Go on?') => ({ questions: [{ question: q, header: 'Go', multiSelect: false, options: [{ label, description: 'the allow' }, { label: 'Drop it', description: 'the other' }] }] });
-const { userPick } = require('./hook-test-env');
+const { userPick, legacyBlock } = require('./hook-test-env');
 const answerRow = (id, label, q = 'Go on?', source) => result(id, `User has answered your questions: "${q}"="${label}". You can now continue with the user's answers in mind.`,
   { ...userPick(source), toolUseResult: { questions: [{ question: q, options: [] }], answers: { [q]: label } } });
 // An ask and its answer as Claude Code writes them: the model's call, then the harness's result row naming the call's id.
@@ -69,8 +69,9 @@ function project(name)
     receipt(name, body) { fs.writeFileSync(path.join(approvals, name), body); return this; },
   };
 }
-const run = (p, file, payload) => spawnSync(process.execPath, [path.join(HOOKS, file)], { input: JSON.stringify({ session_id: S, cwd: p.root, transcript_path: p.tp,
-  hook_event_name: 'PreToolUse', ...payload }), cwd: p.root, env: p.env, encoding: 'utf8' });
+// A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 these cases were written for.
+const run = (p, file, payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, file)], { input: JSON.stringify({ session_id: S, cwd: p.root, transcript_path: p.tp,
+  hook_event_name: 'PreToolUse', ...payload }), cwd: p.root, env: p.env, encoding: 'utf8' }));
 const live = (p, sid = S) => { const s = approvalStamp({ session_id: sid, transcript_path: p.tp, cwd: p.root }, { CLAUDE_PROJECT_DIR: p.root }); return Boolean(s && s.live); };
 const hookStamp = (p, offset) => fs.writeFileSync(p.gate, `AUTO - "x"\nsession: ${S}\nskill: task-solve\ntranscript-size: ${offset}\n`);
 const writeOut = (p) => run(p, 'file-guards.js', { tool_name: 'Write', tool_input: { file_path: path.join(OUT, 'src', 'a.ts'), content: 'x\n' } });
@@ -168,7 +169,7 @@ test('FA-2: a compaction summary and a sidechain row are no turn the user typed'
     assert.equal(live(q), true, 'an off command quoted in a summary switches nothing off: the user never typed it');
   }
   {
-    // receiptAnswered's typed-command read: an off command the model quotes in a summary never takes a later answer out of auto-run
+    // an off command the model quotes in a summary switches nothing: the cross-project receipt stays shut whatever the answer
     const p = project('fa2-receipt').write([typed('go'), command('alfred-code:mode:auto-run', 'on'),
       summary('<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>off</command-args>'), denial(CROSS, 'Write'), asked(ALLOW)]);
     p.receipt(CROSS, MINE);
@@ -210,12 +211,12 @@ test('swap 1: a forged ask row for another call opens no rotation consent', () =
 });
 
 test('FA-4: an answer counts only as the result of an AskUserQuestion call in the same transcript', () => {
+  // The cross-project receipt that read these answers opens nothing now (guards ask, D3); the hand-written waiver's 'Start AUTO here' still does.
   const shut = (rows, why) => { const p = project('fa4').write(rows); p.receipt(CROSS, MINE); assert.equal(writeOut(p).status, 2, why); };
-  const opens = (rows, why) => { const p = project('fa4').write(rows); p.receipt(CROSS, MINE); const r = writeOut(p); assert.equal(r.status, 0, `${why}\n${r.stderr}`); };
   const ask = typed('read the config and fix the token check');
   shut([ask, denial(CROSS, 'Write'), asked(ALLOW, 'mcp__forms__collect')], 'an answers-shaped result under another tool\'s id');
   shut([ask, denial(CROSS, 'Write'), answerRow('toolu_none', ALLOW)], 'an answer row naming no call at all');
-  opens([ask, denial(CROSS, 'Write'), asked(ALLOW)], 'twin: the AskUserQuestion call\'s own answer');
+  shut([ask, denial(CROSS, 'Write'), asked(ALLOW)], 'the AskUserQuestion call\'s own answer opens nothing either');
   // the hand-written waiver's 'Start AUTO here' answer reads the same way
   const hand = (rows) => { const p = project('fa4-start').write(rows); fs.writeFileSync(p.gate, 'AUTO - "run all recommended without asking me"\n'); return live(p, 'any-session'); };
   assert.equal(hand([typed('go'), asked('Start AUTO here (Recommended)', 'mcp__forms__collect')]), false, 'Start AUTO here under another tool\'s id');
@@ -240,32 +241,10 @@ test('E1-1: a typed off command after the words ends a hand-written waiver', () 
 // answer (meta/probes/answer-source.js). The standing auto-run answers asks with no typed `on` row, so the row decides.
 const P25 = require('../stack/hooks/hook-prelude.js');
 const transcriptOf = (text) => { const f = path.join(fs.mkdtempSync(path.join(TMP, 'd25-')), `${S}.jsonl`); fs.writeFileSync(f, text); return f; };
-const receiptIn = (text) => P25.receiptAnswered({ session_id: S, transcript_path: transcriptOf(text) }, { marker: CROSS, labels: [ALLOW] });
-const sinceTyped = (text) => P25.asksAnsweredSinceTyped({ session_id: S, transcript_path: transcriptOf(text) });
 let stampAt = 1;
 const verifiedByStart = (text) => P25.autoStampVerified({ file: 'hand-written', mtimeMs: stampAt++, session: '', first: 'AUTO - "a waiver nobody typed here"', text: '' },
   { transcript_path: transcriptOf(text) });
 for (const typedOn of [false, true]) for (const [source, opens] of [['user_temporary', !typedOn], ['hook', false], [null, false]]) {
-  test(`D25 a receipt: typed on ${typedOn}, source ${source} -> ${opens ? 'opens' : 'opens nothing'}`, () => {
-    const r = receiptIn(jsonl([typedOn ? command('alfred-code:mode:auto-run', 'on') : [], denial(CROSS), asked(ALLOW, 'AskUserQuestion', source)]));
-    assert.strictEqual(r.ok, opens, r.why);
-    if (!opens) assert.match(r.why, /^the allow answer was not the user's own: auto-run was on, or a hook gave it$/);
-  });
-  test(`D25 asksAnsweredSinceTyped: typed on ${typedOn}, source ${source} -> auto ${!opens}`, () =>
-    assert.strictEqual(sinceTyped(jsonl([typedOn ? command('alfred-code:mode:auto-run', 'on') : [], asked('Discard a.txt', 'AskUserQuestion', source)]))[0].auto, !opens));
   test(`D25 the hand-written stamp's proof: typed on ${typedOn}, source ${source}`, () =>
     assert.strictEqual(verifiedByStart(jsonl([typedOn ? command('alfred-code:mode:auto-run', 'on') : [], asked('Start AUTO here', 'AskUserQuestion', source)])), opens));
 }
-test('D25 through the guard: the variable on and no typed on row - a hook\'s allow answer opens no receipt, the user\'s does, and the row decides', () => {
-  const modeFile = (p, value) => fs.writeFileSync(path.join(p.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: value } }));
-  const hookAnswered = project('d25-hook').write([typed('go'), denial(CROSS, 'Write'), asked(ALLOW, 'AskUserQuestion', 'hook')]).receipt(CROSS, MINE);
-  modeFile(hookAnswered, '1');
-  const denied = writeOut(hookAnswered);
-  assert.equal(denied.status, 2, 'a hook gave the allow answer');
-  assert.match(denied.stderr, /the allow answer was not the user's own: auto-run was on, or a hook gave it/);
-  const userAnswered = project('d25-user').write([typed('go'), denial(CROSS, 'Write'), asked(ALLOW, 'AskUserQuestion', 'user_temporary')]).receipt(CROSS, MINE);
-  modeFile(userAnswered, '1');
-  assert.equal(writeOut(userAnswered).status, 0, 'the user picked the allow');
-  modeFile(hookAnswered, '0');
-  assert.equal(writeOut(hookAnswered).status, 2, 'the variable switched off after the answer: the row still says a hook gave it');
-});

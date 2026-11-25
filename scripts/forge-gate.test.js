@@ -5,7 +5,7 @@
 // ref watch that read it left in complexity stage 1 (B9).
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
-const { reviewedTranscript } = require('./hook-test-env');
+const { reviewedTranscript, legacyBlock, blockText, verdictOf: verdictOfHook } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -34,10 +34,13 @@ const receipt = (dir, head) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, ['VERIFIED the merge', 'authorized: "merge it"', `head: ${head}`, 'spec: 1 commit', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
 };
-const run = (dir, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+const runRaw = (dir, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
   input: JSON.stringify({ transcript_path: REVIEWED, session_id: 'forge-s1', cwd: dir, ...payload }), encoding: 'utf8',
   env: { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_CODE_ENTRYPOINT: 'cli', ...env }, cwd: dir,
 });
+// A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 these cases were written for.
+// The forge guard's own ask for an unclassified call carries no model text and stays an ask.
+const run = (...args) => { const r = runRaw(...args); return blockText(r) ? legacyBlock(r) : r; };
 const mcp = (tool, input) => ({ tool_name: `mcp__gitlab__${tool}`, tool_input: input, mcp_server: { name: 'gitlab', source: 'user' } });
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
 const decision = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecision; } catch { return null; } };
@@ -76,11 +79,18 @@ test('a forge call with no known verb asks', () => {
   assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /frobnicate/);
 });
 
-test('a forge call with no known verb is denied when nobody is at the terminal', () => {
+test('a forge call with no known verb is denied when nobody can answer - dontAsk and bypassPermissions too', () => {
   const { dir } = pushRepo();
-  const r = run(dir, mcp('pull_request_frobnicate', { iid: 4 }), { ALFRED_CODE_UNATTENDED: '1' });
+  const call = mcp('pull_request_frobnicate', { iid: 4 });
+  const r = run(dir, call, { ALFRED_CODE_UNATTENDED: '1' });
   assert.strictEqual(r.status, 2, r.stderr);
   assert.match(r.stderr, /nobody|unattended/i);
+  for (const permission_mode of ['dontAsk', 'bypassPermissions']) {
+    const denied = runRaw(dir, { ...call, permission_mode });
+    assert.strictEqual(verdictOfHook(denied), 'deny', `${permission_mode}: the call is denied, not asked`);
+    assert.match(blockText(denied), /^Blocked: .*pull_request_frobnicate.*nobody is at the terminal/s, permission_mode);
+  }
+  assert.strictEqual(verdictOfHook(runRaw(dir, { ...call, permission_mode: 'default' })), 'ask', 'a default payload asks');
 });
 
 test('a glab merge is gated like gh pr merge', () => {

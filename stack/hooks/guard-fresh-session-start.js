@@ -1830,8 +1830,8 @@ function chainedOfferSpent() {
 // here anyway with the cost stated' - and until 0.2.74 nothing honoured that answer: no receipt, no
 // state, no re-arm, so the retry re-blocked on the identical call and the route the guard itself
 // offered was a route the guard denied (measured 2026-09-12: the same Skill call replayed twice,
-// exit 2 both times). That is the failure DISCARD-ALLOW was bought for on the rm guard and
-// CROSS-WRITE-ALLOW on the cross-project guard. The sibling `guard-stop-contract.js` already solved
+// exit 2 both times). That is the failure a receipt once answered on the rm and cross-project guards, which now ask
+// through the permission prompt instead. The sibling `guard-stop-contract.js` already solved
 // it for its own fresh-session offer with exactly this shape, so this is the shape used here:
 // record the context the offer was made at, and stay silent until the context has grown REOFFER_GROWTH
 // times past it. An answered question is not re-asked; a run that has since doubled its carry is a

@@ -344,7 +344,8 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     assert.ok(cp.includes('read `git log -1 --stat` back into the close'), 'the commit is read back');
     assert.doesNotMatch(raw, /## Discarding uncommitted work/, 'the discard section is gone');
     assert.doesNotMatch(read('stack/hooks/guard-catastrophic-rm.js'), /write the receipt|DISCARD-ALLOW/, 'the rm guard asks for itself since guards ask (D3): its denial names no receipt route');
-    assert.ok(cp.includes('`<data root>/state/approvals/STAGED-SCAN-ALLOW`'), 'the staged-scan receipt has a writer');
+    assert.doesNotMatch(cp, /STAGED-SCAN-ALLOW/, 'the staged-scan receipt is gone: the scan asks the user (guards ask, D3)');
+    assert.ok(cp.includes('The scan asks the user through the permission prompt'), 'the checkpoint says the scan asks');
     assert.ok(!('discard-allow-receipt' in JSON.parse(read('meta/shared-rules.json')).rules), 'the registry holds no discard receipt: the rm guard reads none since guards ask (D3)');
 });
 
