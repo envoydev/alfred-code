@@ -85,7 +85,7 @@ test('the first root run after a child joins writes a key for every skill the ru
         after: (repo) => ({ over: overrides(repo), expected: linkedNames(repo, [CHILD]).filter((name) => rootLinks(repo).includes(name)).map((name) => `${CHILD}:${name}`).sort() }),
     });
     assert.ok(steps[1].expected.length > 5, `the run re-links the child to the root's whole set: ${steps[1].expected.length}\n${outs[1]}`);
-    assert.deepStrictEqual(Object.keys(steps[1].over).sort(), steps[1].expected);
+    assert.deepStrictEqual(Object.keys(steps[1].over).filter((key) => key.includes(':')).sort(), steps[1].expected, 'the <rel>:<name> keys; the root\'s own trim keys have no colon');
 });
 
 test('a member pick the root links into its own .claude/skills gets a key, though the root\'s own list does not name it', POSIX_ONLY, () =>

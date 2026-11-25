@@ -16,6 +16,9 @@ const ws = require('./workspace.js');
 const stamp = require('./stamp.js');
 const childKeep = require('./child-keep.js');
 const nativeRules = require('./native-rules.js');
+const { stackSkillsOf, relOnDisk } = require('./child-skills.js');
+const { trimWant } = require('./children-only-read.js');
+const childrenOnly = require('./children-only-constants.js');
 const hide = require('../workspace-include/hide.js');
 const brand = require('./brand.js');
 const settingsKeys = require('./settings-keys.js');
@@ -23,17 +26,6 @@ const { OBJECT_PATH, SKILL_HIDDEN, LAST_ROW } = require('./settings-keys-constan
 const { RULES_DIR_PARTS } = require('./native-rules-constants.js');
 
 const bare = (file) => file.replace(/\.md$/, '');
-const exists = (target) => { try { fs.lstatSync(target); return true; } catch { return false; } };
-
-// The stack's skills in one child that sit in its own `.claude/skills`: what its stamp's links and library lines name.
-function stackSkillsOf(childRoot)
-{
-    const file = stamp.stampFiles({ projectRoot: childRoot }).read;
-    if (!file) return [];
-    const named = hide.stackSkillNames(stamp.readLinks(file), Object.keys((stamp.readLibrary(file) || {}).skills || {}));
-    return named.filter((name) => exists(path.join(childRoot, '.claude', 'skills', name)));
-}
-
 // The native file the root keeps for a rule, when the stack wrote it: a file with no marker is the user's and is left loading.
 const nativeFileOf = (projectRoot, name) => path.join(projectRoot, ...RULES_DIR_PARTS, `${name}.md`);
 function isStackFile(file)
@@ -42,24 +34,23 @@ function isStackFile(file)
     catch { return false; }
 }
 
-// The child's path from the root as the disk spells it (a record may write another case on a disk that folds it). A child
-// that is a link to a project outside the root has no path inside it: the record's own spelling stands.
-function relOnDisk(top, childRoot, recorded)
-{
-    const rel = path.relative(top, childRoot);
-    return !rel || path.isAbsolute(rel) || rel.split(path.sep)[0] === '..' ? recorded.split(path.sep).join('/') : rel.split(path.sep).join('/');
-}
-
-// { '<rel>:<name>': 'off' } for the running project: each skill a child below holds as the stack's that this run links into
-// the root's own `.claude/skills` (`ctx.linkedSkills`, the names of the link step's want - a member pick the root links is
-// one, a store item kept for a set-aside child alone is not).
-function wantedSkills(ctx)
+// The `skillOverrides` keys of the running project: { want, said }. `want` holds `'<rel>:<name>': 'off'` for each skill a
+// child below holds as the stack's that this run links into the root's own `.claude/skills` (`ctx.linkedSkills`, the names of
+// the link step's want - a member pick the root links is one, a store item kept for a set-aside child alone is not), and
+// `'<name>': 'name-only'` for each skill the root links only for its children (children-only-read.js); `said` its `!!` lines.
+function skillKeys(ctx)
 {
     const top = fs.realpathSync.native(ctx.projectRoot);
     const { rows } = childKeep.recordsBelow(ctx.projectRoot, { env: ctx.env, dataRoot: ctx.dataInfo.root });
     const children = hide.belowRows(rows).map((row) => ({ rel: relOnDisk(top, row.root, row.rel), skills: stackSkillsOf(row.root) }));
-    return Object.fromEntries(hide.hiddenSkillKeys({ children, listed: ctx.linkedSkills || [] }).map((key) => [key, SKILL_HIDDEN]));
+    const hidden = Object.fromEntries(hide.hiddenSkillKeys({ children, listed: ctx.linkedSkills || [] }).map((key) => [key, SKILL_HIDDEN]));
+    let trims;
+    try { trims = trimWant(ctx); }
+    catch (err) { trims = { want: {}, said: [childrenOnly.failureLine(err.message)] }; }
+    return { want: { ...hidden, ...trims.want }, said: trims.said };
 }
+
+const wantedSkills = (ctx) => skillKeys(ctx).want;
 
 // { ruleGlobs: [glob], stays: [{ name, rel }] } for the running project. `ctx.lists` is the run's final set and
 // `ctx.held.keepOnly` the lines it keeps for a set-aside child alone, both set before the workspace step.
@@ -91,13 +82,19 @@ function syncSkillKeys(ctx)
     if (!ledger) return { created: false };
     const settingsMap = ledger.settings || {};
     const prior = settingsMap['settings.local.json'] || {};
-    const want = wantedSkills(ctx);
+    const { want, said } = skillKeys(ctx);
+    for (const line of said) ctx.log(`  ${line}`);
     if (!Object.keys(want).length && !Object.keys(prior).some((row) => settingsKeys.KEY_PATH.test(row))) return { created: false };
     let before = null;
     try { before = fs.readFileSync(file); }
     catch (err) { if (!err || err.code !== 'ENOENT') { ctx.note(`settings.local.json could not be read (${err && err.code}) - its ${OBJECT_PATH.skillOverrides} keys are left as they are`); return { created: false }; } }
     const got = settingsKeys.syncKeys({ file, objectPath: OBJECT_PATH.skillOverrides, want, prior, log: ctx.log, note: ctx.note, report: ctx.report });
     if (got.refused) return { created: false };
+    for (const name of Object.keys(want))
+    {
+        const row = settingsKeys.keyRow(OBJECT_PATH.skillOverrides, name);
+        if (want[name] === childrenOnly.NAME_ONLY && Object.hasOwn(got.rows, row) && !Object.hasOwn(prior, row)) ctx.log(childrenOnly.trimLogLine(name));
+    }
     const others = Object.fromEntries(Object.entries(prior).filter(([row]) => !settingsKeys.KEY_PATH.test(row)));
     // The ledger's own order (alfred-code.js ledgerOf): the other rows, the keys, then the memory row last.
     const { [LAST_ROW]: lastRow, ...beforeLast } = others;
@@ -117,4 +114,4 @@ function syncSkillKeys(ctx)
     return { created: got.created };
 }
 
-module.exports = { wantedSkills, wantedRules, syncSkillKeys, stackSkillsOf };
+module.exports = { wantedSkills, skillKeys, wantedRules, syncSkillKeys, stackSkillsOf };
