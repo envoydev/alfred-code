@@ -37,10 +37,15 @@ function recordsBelow(top, { env, dataRoot, log = quiet })
 // rewrite, notes }. `storeLines` are the skills, agents and rules the store holds for a keep; `rewrite` each record root whose
 // kept lines changed (a backstop line, a line read under a new name or dropped) with its new `keptFor`. Nothing is written
 // here - the run holds the workspace lock.
-function readKeep({ projectRoot, dataRoot, env = process.env, log = quiet, ownLines, priorOwn, renamed, retired })
+function readKeep({ projectRoot, dataRoot, env = process.env, log = quiet, ownLines, priorOwn, priorKept = [], renamed, retired })
 {
     const out = { storeLines: [], rewrite: [], notes: [] };
-    for (const record of recordsBelow(projectRoot, { env, dataRoot, log }).records)
+    const { records } = recordsBelow(projectRoot, { env, dataRoot, log });
+    // A line the last stamp kept that no record holds - its write-back was refused - is a drop the backstop keeps once more.
+    const written = new Set(records.flatMap((record) => Object.values(record.view.keptFor || {}).flat()));
+    const orphans = priorKept.filter((line) => !written.has(line));
+    const prior = priorOwn || orphans.length ? [...(priorOwn || []), ...orphans] : null;
+    for (const record of records)
     {
         const top = record.rel === '.';
         const { view } = record;
@@ -49,7 +54,7 @@ function readKeep({ projectRoot, dataRoot, env = process.env, log = quiet, ownLi
         const rels = [...new Set([...Object.keys(keptFor), ...asideRels])];
         if (!rels.length) continue;
         const ignoresByRel = ignoresOf(record.root, rels, env);
-        const backstop = top && priorOwn ? keep.backstopLines(priorOwn.filter(isEntry), ownLines, retired, asideRels, ignoresByRel, keptFor, low) : {};
+        const backstop = top && prior ? keep.backstopLines(prior.filter(isEntry), ownLines, retired, asideRels, ignoresByRel, keptFor, low) : {};
         const settled = keep.settleKept({ keptFor, children: view.children, backstop, childIgnores: ignoresByRel, rootLines: top ? ownLines : ownPicksOf(record.root), renamed, retired, low });
         out.storeLines.push(...keep.storeLines({ ...view, keptFor: settled.keptFor }, low));
         out.notes.push(...settled.notes);
@@ -60,9 +65,9 @@ function readKeep({ projectRoot, dataRoot, env = process.env, log = quiet, ownLi
 }
 
 // The `subtree()` rows below `top` that a parent's record sets aside, as the rels the records write them.
-function asideRows(top, { env })
+function asideRows(top, { env, dataRoot })
 {
-    const { rows, viewsByParent } = recordsBelow(top, { env });
+    const { rows, viewsByParent } = recordsBelow(top, { env, dataRoot });
     return select.asideRows(rows, viewsByParent);
 }
 

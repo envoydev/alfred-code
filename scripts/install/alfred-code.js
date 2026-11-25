@@ -847,7 +847,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // --print-plan returned before the stamp; a project with its switch off is left alone.
         if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
         {
-            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions, held: ctx.held }); }
+            try
+            {
+                // The keep's record writes wait for the run's lock to be released; the rows a parent sets aside are read after them.
+                childKeep.writeBack(ctx.held ? ctx.held.rewrite : [], { top: projectRoot, log });
+                const aside = childKeep.asideRows(projectRoot, { env, dataRoot: dataInfo.root });
+                workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions, aside });
+            }
             catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
         }
 
@@ -1845,7 +1851,7 @@ function membersHeld(ctx, locked)
         if (!locked) lines = lines.filter((l) => !priorOnly.includes(l));
         memberOwn = new Set(lines);
         const kept = childKeep.readKeep({ projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, env: ctx.env, log: (l) => ctx.log(`  ${l}`), ownLines: workspace.listLines(ctx.lists),
-            priorOwn: ctx.installedBefore, renamed: ctx.manifest.renamed, retired: ctx.manifest.retired });
+            priorOwn: ctx.installedBefore, priorKept: priorOnly, renamed: ctx.manifest.renamed, retired: ctx.manifest.retired });
         for (const n of kept.notes) ctx.log(`  ${n}`);
         held.rewrite = kept.rewrite;
         keptStore = kept.storeLines;

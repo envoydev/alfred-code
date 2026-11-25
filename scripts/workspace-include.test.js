@@ -193,3 +193,19 @@ test('inheritKept adds the kept lines to the parent\'s once, through the manifes
 });
 test('inheritKept with nothing kept is the parent\'s lines as they were', () =>
     assert.deepStrictEqual(inheritKept(['skill a'], [], {}, {}), { lines: ['skill a'], notes: [] }));
+
+test('settleKept reads a rename before it prunes: a renamed line the root holds under its new name is gone in one run', () =>
+{
+    const got = settleKept({ keptFor: { api: ['skill old'] }, children: ['api'], childIgnores: { api: [] }, rootLines: ['skill new'], renamed: { skills: { old: 'new' } }, retired: {} });
+    assert.deepStrictEqual([got.keptFor, got.changed, got.notes], [{}, true, ['kept line skill old read as skill new']]);
+    const ignored = settleKept({ keptFor: { api: ['skill old'] }, children: ['api'], childIgnores: { api: ['skill new'] }, rootLines: [], renamed: { skills: { old: 'new' } }, retired: {} });
+    assert.deepStrictEqual(ignored.keptFor, {}, 'a child that ignores the new name drops the line too');
+});
+test('settleKept drops an entry whose child left the workspace on every read, matching the child the way the caller folds', () =>
+{
+    const keptFor = { api: ['skill a'], gone: ['skill b'] };
+    const got = settleKept({ keptFor, children: ['api'], childIgnores: { api: [], gone: [] }, rootLines: [], renamed: {}, retired: {} });
+    assert.deepStrictEqual([got.keptFor, got.changed], [{ api: ['skill a'] }, true]);
+    const folded = settleKept({ keptFor: { API: ['skill a'] }, children: ['api'], childIgnores: { API: [] }, rootLines: [], renamed: {}, retired: {}, low: (text) => text.toLowerCase() });
+    assert.deepStrictEqual([folded.keptFor, folded.changed], [{ API: ['skill a'] }, false]);
+});

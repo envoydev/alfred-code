@@ -579,6 +579,27 @@ test('root: a drop with no --keep call is kept for each set-aside child by the b
     assert.ok(steps[2].store && steps[2].link === null);
 });
 
+test('root: a backstop line whose write-back the lock refused is kept again and written by the next run', POSIX_ONLY, () =>
+{
+    const lock = (repo) => path.join(repo, '.alfred', 'workspace.lock');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], KEEP_SEL, {
+        args: [['--scope', 'local'], ['--installed-only', '--drop', 'skill csharp'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i === 0) { setAside(repo, undefined); fs.writeFileSync(lock(repo), String(process.pid)); }
+            if (i === 1) fs.rmSync(lock(repo), { force: true });
+            return keepState(repo);
+        },
+    });
+    assert.match(outs[1], /!! workspace: the kept lines of \. were not written \(locked\)/);
+    assert.ok(steps[1].store, outs[1]);
+    assert.strictEqual(steps[1].record.keptFor, undefined, 'the refused write left the record without the line');
+    assert.strictEqual(lineOf(steps[1].stamp, 'kept-only'), 'skill/csharp');
+    assert.ok(steps[2].store, outs[2]);
+    assert.strictEqual(lineOf(steps[2].stamp, 'kept-only'), 'skill/csharp');
+    assert.deepStrictEqual(steps[2].record.keptFor, { api: ['skill csharp'] }, 'the next run wrote it');
+});
+
 test('root: the backstop keeps nothing for a child that ignores the dropped pick, and nothing for an included one', POSIX_ONLY, () =>
 {
     const ignoring = seedRun(['install', 'update'], KEEP_SEL, {

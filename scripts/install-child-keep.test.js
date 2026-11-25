@@ -50,10 +50,36 @@ test('readKeep adds the backstop for each set-aside child that does not ignore t
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test('readKeep drops an entry whose child left the workspace and writes the record, whatever else it holds', () =>
+{
+    const root = tree();
+    try
+    {
+        putWorkspace(root, { children: ['api', 'web'], includedChildren: ['web'], includeAsked: ['api', 'web'], keptFor: { api: ['skill a'], gone: ['skill z'] } });
+        const got = read(root);
+        assert.deepStrictEqual(got.rewrite[0].keptFor, { api: ['skill a'] });
+        assert.deepStrictEqual(got.storeLines, ['skill a', 'skill t']);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('readKeep keeps once more a line the last stamp kept that no record holds, and ignores one a record holds or a child ignores', () =>
+{
+    const root = tree();
+    try
+    {
+        const got = read(root, { priorKept: ['skill orphan', 'skill a', 'skill b'] });
+        assert.deepStrictEqual(got.rewrite[0].keptFor, { api: ['skill a', 'skill new', 'skill orphan'] }, 'a is in the record, b is ignored by api');
+        const none = read(root, { priorKept: ['skill a'] });
+        assert.deepStrictEqual(none.rewrite[0].keptFor, { api: ['skill a', 'skill new'] });
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('asideRows names the rows a record sets aside and the rows below them', () =>
 {
     const root = tree();
-    try { assert.deepStrictEqual([...childKeep.asideRows(root, { env: ENV })].sort(), ['api', 'api/tool']); }
+    try { assert.deepStrictEqual([...childKeep.asideRows(root, { env: ENV, dataRoot: '.alfred' })].sort(), ['api', 'api/tool']); }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

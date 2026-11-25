@@ -84,20 +84,23 @@ function mapKept(lines, renamed, retired)
 // The log lines (without their indent) for what `mapKept` read as another name and what it dropped as retired.
 const keptNotes = (mapped) => [...mapped.renamedPairs.map(([from, to]) => `kept line ${from} read as ${to}`), ...mapped.retiredLines.map((line) => `kept line ${line} dropped: retired`)];
 
-// One record's keep as the root's run reads it: the backstop's lines added, the lines the child ignores or the root holds
-// dropped, the rest read through the manifest. Returns { keptFor, notes, changed } - the record's own value is never touched.
+// One record's keep as the root's run reads it: the backstop's lines added, an entry whose child left the workspace dropped,
+// the lines read through the manifest, then the lines the child ignores or the root holds dropped (after the rename, so a
+// renamed line the root holds under its new name settles in one run). Returns { keptFor, notes, changed } - the record's own
+// value is never touched.
 function settleKept({ keptFor, children, backstop = {}, childIgnores, rootLines, renamed, retired, low = asWritten })
 {
     const record = { keptFor: { ...keptFor }, children };
     for (const [rel, lines] of Object.entries(backstop)) for (const line of lines) addKept(record, rel, line, low);
     const notes = [];
-    const read = Object.fromEntries(Object.entries(pruneKept(record.keptFor, childIgnores, rootLines)).map(([rel, lines]) =>
+    const mapped = Object.fromEntries(Object.entries(keptForJoined(record.keptFor, children, low)).map(([rel, lines]) =>
     {
-        const mapped = mapKept(lines, renamed, retired);
-        notes.push(...keptNotes(mapped));
-        return [rel, mapped.lines];
-    }).filter(([, lines]) => lines.length));
-    return { keptFor: read, notes: [...new Set(notes)], changed: JSON.stringify(read) !== JSON.stringify(keptFor) };
+        const read = mapKept(lines, renamed, retired);
+        notes.push(...keptNotes(read));
+        return [rel, read.lines];
+    }));
+    const settled = pruneKept(mapped, childIgnores, rootLines);
+    return { keptFor: settled, notes: [...new Set(notes)], changed: JSON.stringify(settled) !== JSON.stringify(keptFor) };
 }
 
 // A child's inherited set: its parent's lines and the lines the parent kept for it, read through the manifest.

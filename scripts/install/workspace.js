@@ -1455,7 +1455,7 @@ function relink(child, top, rel, ignores, log, { aside = false } = {})
     finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
 }
 
-function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare, held: ranHeld = {} } = {})
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare, aside = new Set() } = {})
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     const top = realOf(projectRoot);
@@ -1481,10 +1481,8 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
     const older = due && below.sort().map((dir) => [dir, stamp.readVersion(path.join(dir, '.claude', brand.BRAND.stamp))]).find(([, v]) => v && compare(v, compare(PLURAL_SINCE, release) > 0 ? release : PLURAL_SINCE) < 0);
     if (older) log(`  workspace.json keeps its singular keys: ${relPosix(top, older[0])} is at ${older[1]}`);
     else if (due) writeWorkspace(top, (record) => record, { runRoot: top, plural: true, log });
-    // The keep: the lines this run changed are written now the run's lock is released, and a set-aside child only has its links re-pointed or removed.
-    const childKeep = require('./child-keep.js');
-    childKeep.writeBack(ranHeld.rewrite || [], { top, log });
-    const aside = new Set([...childKeep.asideRows(top, { env })].map((rel) => workspaceFile.low(rel)));
+    // A set-aside child (the caller's rels) only has its links re-pointed or removed.
+    const asideFolded = new Set([...aside].map((rel) => workspaceFile.low(rel)));
     const out = { refreshed: [], current: [], skipped: [] };
     // A child's switch and its ancestors are read with the account alone: this run's launch values are not the child's.
     // A launch `0` still freezes the child's switch, as it would its own run.
@@ -1500,7 +1498,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         if (!on) { skip(''); continue; }
         const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
-        relink(child, top, rel, ownRead.view.ignores || [], log, { aside: aside.has(workspaceFile.low(rel)) });
+        relink(child, top, rel, ownRead.view.ignores || [], log, { aside: asideFolded.has(workspaceFile.low(rel)) });
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
