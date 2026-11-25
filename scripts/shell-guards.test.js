@@ -292,7 +292,7 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
   }
 });
 
-test('docs-session\'s hold reaches the combined answer as the JSON deny it always was', () => {
+test('docs-session\'s hold reaches the combined answer as one JSON ask, and a deny where nobody can answer', () => {
   const { repo, section } = require('./docs-fixture');
   const docs = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n', '.claude/alfred-code.stamp': 'version: 2.0.0\n' }, docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') } });
   // docs-session keeps its session state in the temp dir by session id, so every run needs its own.
@@ -303,8 +303,13 @@ test('docs-session\'s hold reaches the combined answer as the JSON deny it alway
     const out = run(DISPATCH, payload, { cwd: docs.root, env });
     assert.strictEqual(out.status, 0);
     const hso = JSON.parse(out.stdout).hookSpecificOutput;
-    assert.strictEqual(hso.permissionDecision, 'deny');
+    assert.strictEqual(hso.permissionDecision, 'ask');
     assert.match(hso.permissionDecisionReason, /Docs not read yet in this session/);
+    assert.match(hso.additionalContext, /If the user declined: Docs not read yet in this session/);
+    const nobody = run(DISPATCH, { ...payload, session_id: `${session}-d`, permission_mode: 'dontAsk' }, { cwd: docs.root, env });
+    const denied = JSON.parse(nobody.stdout).hookSpecificOutput;
+    assert.strictEqual(denied.permissionDecision, 'deny');
+    assert.match(denied.permissionDecisionReason, /Docs not read yet in this session/);
   } finally {
     docs.rm();
     for (const f of fs.readdirSync(os.tmpdir())) if (f.startsWith(`docs-session-${session}`)) fs.rmSync(path.join(os.tmpdir(), f), { force: true });

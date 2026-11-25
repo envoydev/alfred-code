@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { verdictOf, legacyBlock, blockText } = require('./hook-test-env');
 const { repo, section, HOOKS } = require('./docs-fixture');
 const { putWorkspace } = require('./workspace-fixture.js');
 
@@ -266,7 +267,11 @@ test('a syntax error in a PRESENT engine surfaces on stderr, never swallowed as 
 });
 
 const pre = (tool, input, session) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input });
-const denied = (out) => /"permissionDecision":"deny"/.test(out.stdout);
+const denied = (out) => verdictOf(out) === 'ask';
+// The model's text of a block, as the older suites read a deny's reason: an ask's text after its 'If the user declined: ', a deny's reason.
+// A hand-back is denied in every mode: a seat has nobody to ask (B62).
+const refused = (out) => verdictOf(out) === 'deny';
+const blockReason = (out) => legacyBlock(out).stderr;
 
 test('the first source change is held and handed the covering section; a show unlocks it', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
@@ -681,8 +686,8 @@ test('deep review: a seat is asked at its first hand-back, the retry passes with
     r.hook(subStart(s, 'agent-h1'), GIT);
     touchBy(r, s, 'h1');
     const first = r.hook(handBack(s, 'h1', 'status: DONE\ncontract_version: 3'), GIT);
-    assert.ok(denied(first), first.stdout);
-    const reason = JSON.parse(first.stdout).hookSpecificOutput.permissionDecisionReason;
+    assert.ok(refused(first), first.stdout);
+    const reason = blockReason(first);
     assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders'/);
     assert.match(reason, /Your report was NOT delivered\. Answer this first, then call SubagentHandback again: the docs line first\n\(docs ok, or the section you rewrote\), then your report unchanged/);
     assert.doesNotMatch(reason, /This reply is what your caller receives/, 'the SubagentStop closing is not this route\'s');
@@ -712,7 +717,7 @@ test('deep review: the hand-back route asks nobody it should not, and a seat tha
     const s2 = sid();
     r.hook(subStart(s2, 'h2'), GIT);
     wroteBy(r, s2, 'h2', 'src/Api/Program.cs', 'app.UseH2();\napp.Run();\n');
-    assert.ok(denied(r.hook(handBack(s2, 'h2', 'status: DONE'), GIT)));
+    assert.ok(refused(r.hook(handBack(s2, 'h2', 'status: DONE'), GIT)));
     assert.strictEqual(r.hook(subStop(s2, 'h2', { last_assistant_message: 'docs ok' }), GIT).stdout, '', 'stopping instead of retrying is not asked again');
     const row = answers(r).pop();
     assert.deepStrictEqual([row.via, row.saidDocsOk], ['handback', true], 'its last message is the answer');
@@ -1069,7 +1074,7 @@ test('a write this hook denied is never attributed to the seat that tried it', (
     r.hook(subStart(s, 'held'), GIT);
     r.hook(subStart(s, 'writer'), GIT);
     const denied = r.hook(preBy(s, 'held', 'src/Api/Program.cs'), GIT);
-    assert.match(denied.stdout, /"permissionDecision":"deny"/, 'the first change is held, so nothing was written');
+    assert.strictEqual(verdictOf(denied), 'ask', 'the first change is held, so nothing was written');
     // The writer's own change, with the gate out of the way so this call is the one that proceeds.
     r.hook(preBy(s, 'writer', 'src/Api/Program.cs'), { ...GIT, ALFRED_CODE_DOCS_GATE: '0' });
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
@@ -1831,7 +1836,7 @@ test('a write to a plan stamped Completed: is denied unless it changes only stam
     const edit = (o, nw, file = 'csv-export.md') => r.hook(pre('Edit', { file_path: `${r.root}/.claude/docs/plans/${file}`, old_string: o, new_string: nw }, s));
     const add = edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2 - the form fixes\n');
     assert.ok(denied(add), 'new scope appended to the stamped plan');
-    assert.match(JSON.parse(add.stdout).hookSpecificOutput.permissionDecisionReason, /stamped Completed: .*NEW plan file.*ungated: <why>/s);
+    assert.match(blockReason(add), /stamped Completed: .*NEW plan file.*ungated: <why>/s);
     assert.ok(!denied(edit('Completed: 2026-10-09\n', 'Completed: 2026-10-09 - Conformance: sound\n')), 'a stamp line may change');
     assert.ok(!denied(edit('- [ ] Task 1\n', '- [x] Task 1\n', 'open.md')), 'an open plan is edited freely');
     assert.ok(denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, content: `${PLAN}- [ ] Task 2\n` }, s))), 'a Write that adds a task');
@@ -2520,7 +2525,7 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     fs.writeFileSync(marker, String(Date.now()));
     const held = write('APPROVED 1 - "build it"\n');
     assert.ok(denied(held), 'after a timeout an APPROVED stamp is denied');
-    assert.match(JSON.parse(held.stdout).hookSpecificOutput.permissionDecisionReason, /the question timed out - re-ask/);
+    assert.match(blockReason(held), /the question timed out - re-ask/);
     assert.ok(denied(write('AUTO - "go"\n')), 'an AUTO line too');
     assert.ok(denied(r.hook(pre('Edit', { file_path: stamp, old_string: 'x', new_string: 'APPROVED 2 - "ok"' }, s), env)), 'an Edit that adds it');
     assert.ok(denied(r.hook(pre('Bash', { command: "printf 'APPROVED 1 - ok\\n' > .claude/docs/flow/APPROVAL" }, s), env)), 'a shell write that carries it');
@@ -2531,12 +2536,12 @@ test('S3: a stamp written while the last question timed out is denied; a delete,
     // 2.8.0: the stamp's own home, <data root>/state/approvals/ - the pre-2.8.0 flow/ above stays covered for the 2.x line
     const fresh = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/APPROVAL`, content: 'APPROVED 1 - "build it"\n' }, s), env);
     assert.ok(denied(fresh), 'the stamp under state/approvals/ is denied too');
-    assert.match(JSON.parse(fresh.stdout).hookSpecificOutput.permissionDecisionReason, /^Blocked: the question timed out - re-ask\. \.alfred\/state\/approvals\/APPROVAL would record/);
+    assert.match(blockReason(fresh), /^Blocked: the question timed out - re-ask\. \.alfred\/state\/approvals\/APPROVAL would record/);
     assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals && printf 'AUTO - go\\n' > .alfred/state/approvals/APPROVAL" }, s), env)), 'and a shell write there');
     // per-plan approvals (2026-10-20): a plan's own stamp is the same approval
     const plan = r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/APPROVAL`, content: 'APPROVED cart - "build it"\n' }, s), env);
     assert.ok(denied(plan), "a plan's stamp under state/approvals/<plan id>/ is denied too");
-    assert.match(JSON.parse(plan.stdout).hookSpecificOutput.permissionDecisionReason, /\.alfred\/state\/approvals\/cart\/APPROVAL would record/);
+    assert.match(blockReason(plan), /\.alfred\/state\/approvals\/cart\/APPROVAL would record/);
     assert.ok(denied(r.hook(pre('Bash', { command: "mkdir -p .alfred/state/approvals/cart && printf 'APPROVED cart - go\\n' > .alfred/state/approvals/cart/APPROVAL" }, s), env)), 'and a shell write there');
     assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/cart/NOTES`, content: 'APPROVED cart\n' }, s), env)), 'another file in the plan folder passes');
     fs.rmSync(marker, { force: true });
@@ -2730,8 +2735,8 @@ test('recomputed: a seat is never asked a weakness section, even one naming its 
     r.hook(subStart(s, 'agent-q1'), GIT);
     touchBy(r, s, 'q1');
     const back = r.hook(handBack(s, 'q1', 'status: DONE'), GIT);
-    assert.ok(denied(back), back.stdout);
-    assert.deepStrictEqual(askedIds(JSON.parse(back.stdout).hookSpecificOutput.permissionDecisionReason), ['patterns#orders']);
+    assert.ok(refused(back), back.stdout);
+    assert.deepStrictEqual(askedIds(blockReason(back)), ['patterns#orders']);
     assert.deepStrictEqual(askedIds(stopReason(r, s, GIT)), ['ARCHITECTURE-ASSESSMENT#w1']);
   } finally { r.rm(); }
 });
@@ -2744,8 +2749,8 @@ test('R083: a seat\'s "you changed" line names only the files of its durable hit
     touchBy(r, s, 'q2');
     wroteBy(r, s, 'q2', 'src/Legacy/Old.cs', 'class Old { int q; }\n');
     const back = r.hook(handBack(s, 'q2', 'status: DONE'), GIT);
-    assert.ok(denied(back), back.stdout);
-    const reason = JSON.parse(back.stdout).hookSpecificOutput.permissionDecisionReason;
+    assert.ok(refused(back), back.stdout);
+    const reason = blockReason(back);
     assert.match(reason, /you changed src\/Api\/Program\.cs/);
     assert.doesNotMatch(reason, /src\/Legacy\/Old\.cs/, 'the recomputed hit\'s file is the close\'s to ask');
   } finally { r.rm(); }
@@ -2997,6 +3002,21 @@ test('a three-level chain names parent then root', () => {
 // watched file, and the scoring seat holds no write tool (LSP, Read, Grep, Glob, WebFetch), so its hand-back is never
 // denied - a watched change by the main session or a writing seat beside it included - and the seal it gets is the
 // delivered report. The writing seat's hand-back beside it is denied, which shows the replay can produce the deny.
+test('B62: a SubagentHandback hold denies in every mode, with no additionalContext', () => {
+  for (const mode of ['default', 'auto', 'dontAsk']) {
+    const r = watched();
+    try {
+      const s = sid();
+      r.hook(subStart(s, 'agent-h1'), GIT);
+      touchBy(r, s, 'h1');
+      const out = r.hook({ ...handBack(s, 'h1', 'status: DONE\ncontract_version: 3'), permission_mode: mode }, GIT);
+      assert.strictEqual(verdictOf(out), 'deny', `${mode}: ${out.stdout}`);
+      assert.strictEqual(JSON.parse(out.stdout).hookSpecificOutput.additionalContext, undefined, mode);
+      assert.match(blockText(out), /^Docs check: you changed src\/Api\/Program\.cs/, mode);
+    } finally { r.rm(); }
+  }
+});
+
 test('HK-28 replay: an output-scoring seat is never denied at its hand-back, so the seal never seals an undelivered report', () => {
   const tools = /^tools:\s*(.*)$/m.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', 'output-scoring.md'), 'utf8'))[1].split(/,\s*/);
   for (const t of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell']) assert.ok(!tools.includes(t), `the scoring seat holds ${t}`);
@@ -3021,7 +3041,7 @@ test('HK-28 replay: an output-scoring seat is never denied at its hand-back, so 
       { cwd: r.root, input: JSON.stringify(handBackInput), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: r.root } });
     assert.deepStrictEqual([seal.status, seal.stdout.trim()], [0, ''], 'the seal never delays the hand-back');
     assert.match(fs.readFileSync(card, 'utf8'), /^seal: sha256 [0-9a-f]{64}\nscore-file: /, 'the delivered report is the sealed one');
-    assert.ok(denied(r.hook(handBack(s, 'impl1', 'status: DONE'), GIT)), 'the writing seat beside it is asked - the replay can deny');
+    assert.ok(refused(r.hook(handBack(s, 'impl1', 'status: DONE'), GIT)), 'the writing seat beside it is asked - the replay can deny');
   } finally { r.rm(); }
 });
 
@@ -3030,7 +3050,7 @@ test('HK-28 replay: an output-scoring seat is never denied at its hand-back, so 
 // `tools` (no docs), all stamped and joined; `api` a plain folder of the root's repository.
 const API_LINE = 'Project api - paths below are from api/.';
 const mKey = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
-const why = (out) => { try { return JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason || ''; } catch { return ''; } };
+const why = (out) => blockReason(out) || '';
 function joined({ apiCovers = 'src/**', apiOff = '', rootDocs = true, rootWatch = null, prefs = false } = {}) {
   const r = repo({
     docsPath: '.alfred/docs',
@@ -3251,9 +3271,9 @@ test('member: through the dispatcher, one reply carries both hooks\' hand-overs 
     const s = sid();
     const child = fg(edit(path.join(r.root, 'api', 'src', 'a.ts'), s));
     const text = `${child.stdout}${child.stderr}`.replace(/\\n/g, '\n');
-    // each hook's hand-over carries the path line; a hook that asks repeats it in the prompt's line and its model text
-    // (4 while docs-session still denies; Task 6 re-pins it once docs-session asks too)
-    assert.strictEqual(text.split(API_LINE).length - 1, 4, text);
+    // each hook's hand-over carries the path line; a hook that asks repeats it in the prompt's line and twice in its model
+    // text (the spoken sentence and the reason after 'If the user declined'), so both hooks ask: 3 + 3
+    assert.strictEqual(text.split(API_LINE).length - 1, 6, text);
     assert.match(text, /API-CODE/);
     assert.match(text, /API-SECTION/);
     assert.doesNotMatch(text, /ROOT-/);
@@ -3531,7 +3551,7 @@ test('entry: the joined reply at 9,499 / 9,500 / 9,501 holds the note and both p
 
 // ---- PF1 plan 2: a plan folder's JSON files are the scripts' alone, and an approved plan is not edited ----
 const { planFolder, PLANS: PLAN_ROOT } = require('./plan-folder-fixture.js');
-const reasonOf = (r) => JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason;
+const reasonOf = (r) => blockReason(r);
 
 test('PF1: status.json and scoring.json are written by their scripts only', () => {
   const r = repo({ files: { 'src/a.ts': 'x\n' } });

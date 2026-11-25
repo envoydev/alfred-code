@@ -363,7 +363,7 @@ test('guard-fresh-session-start: an offer skipped in print mode leaves one unatt
 // docs-session - no source-root hold and no Stop FINISH ask in print mode
 // ---------------------------------------------------------------------------------------------
 const PATTERNS = section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.');
-const denied = (out) => /"permissionDecision":"deny"/.test(out.stdout);
+const denied = (out) => /"permissionDecision":"ask"/.test(out.stdout); // the hold asks where a person can answer (guards ask, D1)
 
 test('docs-session: print mode is never held before its first source change; interactive still is', () =>
 {

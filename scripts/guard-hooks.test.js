@@ -335,9 +335,10 @@ test('guard-stop-contract: a re-ask denial stores <redacted> for a credential sh
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const payload = { session_id: 'rq1', cwd: root, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'tu2', tool_input: ask, transcript_path: transcript('rq1', rows) };
   const r = runIn('guard-stop-contract.js', payload, { env, cwd: root });
-  assert.equal(r.status, 'deny', r.stderr);
-  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny', 'the re-ask is denied');
+  assert.equal(r.status, 'ask', r.stderr);
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask', 'the re-ask is put to the user');
   const ledger = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'rq1.jsonl'), 'utf8');
+  assert.equal(ledger.trim().split('\n').length, 1, 'one row, the site\'s own');
   assert.ok(!ledger.includes(shape), 'the ledger row holds no credential shape');
   assert.match(ledger, /<redacted>/);
 });
@@ -1836,7 +1837,7 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fix
   assert.equal(staleNum.status, 0);
   assert.match(updOf(staleNum).questions[0].options[0].description, /Measured now: This session carries ~900k/, 'a stale number - 150k quoted while the carry is 900k - is corrected too');
   const mixedReasons = ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }, { label: 'Continue', description: 'here' }] }]);
-  assert.equal(mixedReasons.status, 2, 'numbers beside an unmarked question still deny once - the mark is no mechanical fix');
+  assert.equal(mixedReasons.status, 'ask', 'numbers beside an unmarked question are still put to the user once - the mark is no mechanical fix');
   assert.match(mixedReasons.stderr, /Measured now: This session carries ~900k/, 'with the numbers in the corrected questions');
   assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
@@ -1863,7 +1864,7 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fix
   assert.match(ctxOf(fixedSlip), /dashes and double quotes fixed in place.*single dashes, single quotes/s, 'and the note keeps the voice for later asks');
   const unmarkedSlip = [{ question: 'Pick one \u2014 now', header: 'Pick', options: [{ label: 'A', description: 'x' }, { label: 'B', description: 'y' }] }];
   const deniedSlip = ask(cold, unmarkedSlip);
-  assert.equal(deniedSlip.status, 2, 'a slip beside an unmarked question denies once, the corrected strings carried');
+  assert.equal(deniedSlip.status, 'ask', 'a slip beside an unmarked question is put to the user once, the corrected strings carried');
   assert.match(deniedSlip.stderr, /em- or en-dash/);
   assert.match(deniedSlip.stderr, /Pick one - now/);
   assert.equal(ask(cold, unmarkedSlip).status, 0, 'the same ask re-sent unchanged is let through - never a loop');
@@ -1888,7 +1889,7 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and fix
     { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: cold, session_id: noDirSession, tool_input: { questions } },
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: path.join(logDir, 'missing', 'dir') } });
   const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }, { label: 'No', description: 'later' }] }];
-  assert.equal(noDir(once).status, 2, 'the first send is denied');
+  assert.equal(noDir(once).status, 'ask', 'the first send is denied');
   assert.equal(noDir(once).status, 0, 'the re-send passes, the marker kept under the temp dir');
   // The rule line states the bar; the deny above enforces it (audit 2026-10-14 RU06: its mechanics left the always-on rule).
   const ruleLine = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8').split('\n').find((l) => /No double quotes in prose/.test(l));
@@ -4733,7 +4734,7 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
   // and a question left with one option is refused once, naming it
   const floorAsk = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
   const atFloor = ask(near, floorAsk);
-  assert.equal(atFloor.status, 2, 'at the cold floor the two-option hand-off ask is refused once');
+  assert.equal(atFloor.status, 'ask', 'at the cold floor the two-option hand-off ask is refused once');
   assert.match(atFloor.stderr, /no more than a fresh session's ~78k floor plus the ~13k it re-reads, so a fresh session saves nothing/);
   assert.match(atFloor.stderr, /take that option - 'Continue \(Recommended\)' - and drop the question/);
   assert.ok(!atFloor.stderr.includes('Measured now'), 'and no numbers are appended');

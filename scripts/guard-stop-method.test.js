@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
+const { verdictOf, blockText, askText } = require('./hook-test-env');
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-stop-contract.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-method-'));
@@ -699,7 +700,7 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         run(root, { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', session_id: sid, tool_use_id: `t-${++n}`,
             transcript_path: transcript(root, rows), tool_input: askInput(question) }, env);
     const decision = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecision || ''; } catch { return ''; } };
-    const reason = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason || ''; } catch { return ''; } };
+    const reason = (r) => blockText(r);
     const QUESTION = 'Tell me what issues you have found here?';
 
     test('re-ask: the same ask re-sent after an Other question is denied once, the identical second send goes out', () => {
@@ -707,21 +708,60 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         const sid = sidOf();
         const rows = opened(QUESTION);
         const first = reask(root, rows, { sid });
-        assert.strictEqual(decision(first), 'deny', first.stdout + first.stderr);
+        assert.strictEqual(decision(first), 'ask', first.stdout + first.stderr);
         assert.match(reason(first), /the user asked a question - answer it in prose and end the turn/);
         const f = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
-        assert.ok(fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).some((x) => x.detail && x.detail.branch === 'reask'), 'one block row');
+        const written = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+        assert.strictEqual(written.filter((x) => x.detail && x.detail.branch === 'reask').length, 1, 'one block row, the site\'s own - not two');
         const second = reask(root, rows, { sid });
-        assert.notStrictEqual(decision(second), 'deny', 'the valve: the second send goes out');
+        assert.notStrictEqual(decision(second), 'ask', 'the valve: the second send goes out');
+    });
+
+    test('re-ask: nobody to ask - the same ask is denied once with the full reason (B60)', () => {
+        const root = project();
+        const first = reask(root, opened(QUESTION), { env: { ALFRED_CODE_GUARD_ASK: '0' } });
+        assert.strictEqual(verdictOf(first), 'deny', first.stdout + first.stderr);
+        assert.match(blockText(first), /the user asked a question - answer it in prose and end the turn/);
+        assert.strictEqual(JSON.parse(first.stdout).hookSpecificOutput.additionalContext, undefined);
+    });
+
+    // B61: the ask's own voice slip beside an unmarked question - no mechanical fix alone - is held once, the corrected
+    // questions carried in the text the model reads.
+    const voiceAsk = (tag) => ({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', session_id: 'sess-1', tool_use_id: `t-${++n}`,
+        tool_input: { questions: [{ question: `Pick one \u2014 ${tag}`, header: 'Pick', options: [{ label: 'A', description: 'x' }, { label: 'B', description: 'y' }] }] } });
+    const voiceRun = (root, tag, extra = {}, env) => run(root, { ...voiceAsk(tag), transcript_path: transcript(root, [typed('clean up'), say('ok')]), ...extra }, env);
+
+    test("the stop contract's ask voice asks, carrying the corrected questions in the model text (B61)", () => {
+        const root = project();
+        const r = voiceRun(root, 'asks');
+        assert.strictEqual(verdictOf(r), 'ask', r.stdout + r.stderr);
+        assert.match(blockText(r), /Re-send the ask with these questions - only the dashes and quotes changed:\n\[/);
+        assert.match(blockText(r), /"question": "Pick one - asks"/);
+        assert.match(askText(r), /^alfred-code guard-stop-contract: this AskUserQuestion carries /);
+        assert.strictEqual(voiceRun(root, 'asks', { tool_use_id: 'again' }).stdout.includes('"ask"'), false, 'the identical re-send goes out');
+        const nobody = voiceRun(root, 'dontask', { permission_mode: 'dontAsk' });
+        assert.strictEqual(verdictOf(nobody), 'deny', nobody.stdout + nobody.stderr);
+        assert.match(blockText(nobody), /Re-send the ask with these questions/);
+        assert.strictEqual(JSON.parse(nobody.stdout).hookSpecificOutput.additionalContext, undefined);
+    });
+
+    test('a B61 ask writes one hook-blocks row', () => {
+        const root = project();
+        const r = voiceRun(root, 'row');
+        assert.strictEqual(verdictOf(r), 'ask', r.stdout + r.stderr);
+        const rows = ledger(root).filter((x) => !x.mode && x.detail && x.detail.branch === 'ask-voice');
+        assert.strictEqual(rows.length, 1, JSON.stringify(ledger(root)));
+        assert.match(rows[0].reason, /^Blocked: this AskUserQuestion carries/);
+        assert.strictEqual(rows[0].tool, 'AskUserQuestion');
     });
 
     test('re-ask: a label pick, another question text, the part switch and nobody at the terminal all pass', () => {
         const root = project();
-        assert.notStrictEqual(decision(reask(root, opened('The docs pass'))), 'deny', 'a label pick closed the ask');
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { question: 'Which file first?' })), 'deny', 'a different ask');
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' } })), 'deny', 'the part switch');
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_UNATTENDED: '1' } })), 'deny', 'an unattended run');
-        assert.strictEqual(decision(reask(root, opened(QUESTION))), 'deny', 'the control still denies');
+        assert.notStrictEqual(decision(reask(root, opened('The docs pass'))), 'ask', 'a label pick closed the ask');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { question: 'Which file first?' })), 'ask', 'a different ask');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_HOOKS_OFF: 'guard-stop-contract:question' } })), 'ask', 'the part switch');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION), { env: { ALFRED_CODE_UNATTENDED: '1' } })), 'ask', 'an unattended run');
+        assert.strictEqual(decision(reask(root, opened(QUESTION))), 'ask', 'the control still asks');
     });
 
     test('re-ask: a live auto-run waiver of this session passes', () => {
@@ -731,7 +771,7 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         fs.writeFileSync(path.join(root, '.alfred', 'state', 'approvals', 'APPROVAL'), `AUTO - "/alfred-code:mode:auto-run on"\nsession: ${sid}\nskill: alfred-code:mode:auto-run\ntranscript-size: 0\n`);
         const at = new Date(Date.now() - 60000).toISOString();
         const modeRow = { type: 'user', timestamp: at, message: { role: 'user', content: '<command-message>alfred-code:mode:auto-run</command-message>\n<command-name>/alfred-code:mode:auto-run</command-name>\n<command-args>on</command-args>' } };
-        assert.notStrictEqual(decision(reask(root, opened(QUESTION, [modeRow]), { sid })), 'deny');
+        assert.notStrictEqual(decision(reask(root, opened(QUESTION, [modeRow]), { sid })), 'ask');
     });
 }
 

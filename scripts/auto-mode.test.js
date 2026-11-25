@@ -653,7 +653,7 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
     assert.doesNotMatch(context(waits), /fresh session/i, 'nor noted with one');
     fs.rmSync(p.gate);
     const attended = ask(p, 'pay2', [outward], { transcript_path: cycle() });
-    assert.strictEqual(attended.status, 2, 'off auto-mode the new cycle\'s first ask is still sent back');
+    assert.strictEqual(attended.status, 'ask', 'off auto-mode the new cycle\'s first ask is still sent back');
     assert.match(attended.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~362k tokens per message/);
 });
 
@@ -678,7 +678,7 @@ test('auto-mode asks: the upgrade hard stop waits when put unmarked with its rea
     assert.doesNotMatch(r.stderr, /Blocked/);
     assert.ok(rows(p, 'u1').some((x) => x.kind === 'auto-ask-waits'), 'the wait is logged');
     const bare = ask(p, 'u1', [q('Stage 3 stays red after its resolver pass. How do we go on?', labels)]);
-    assert.strictEqual(bare.status, 2, 'unmarked with no reason is handed back by the mark check');
+    assert.strictEqual(bare.status, 'ask', 'unmarked with no reason is handed back by the mark check');
     assert.match(bare.stderr, /without exactly one option marked '\(Recommended\)'/);
 });
 
@@ -1054,7 +1054,7 @@ test('compact instead: an ask still carrying a fresh-session option goes out wit
     assert.strictEqual(upd(seat), null, 'a seat is never judged for it');
     const lone = run('guard-stop-contract.js', { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [q('Next?', ['Resume in a fresh session (Recommended)', 'Run stage 2 here'])] },
         session_id: 'k3', cwd: p.root, transcript_path: transcript() }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log, ALFRED_CODE_AUTO_COMPACT: '1' });
-    assert.strictEqual(lone.status, 2, 'a question the drop leaves with one option is still handed back');
+    assert.strictEqual(lone.status, 'ask', 'a question the drop leaves with one option is still handed back');
     assert.match(lone.stderr, /A question left with one option is no question/);
 });
 
@@ -1792,7 +1792,7 @@ test('fresh-session offers: off under each cause, and each string names the caus
     assert.match(context(told), new RegExp(`^This session compacts instead of offering a fresh session \\(${MINE}\\): past its window's trigger`));
     assert.match(bannerOf(start('f1'))[1], new RegExp(`^\\*\\*Context:\\*\\* auto-compact is on \\(${MINE}\\) - the session compacts `));
     const lone = asked('f1', ['Resume in a fresh session (Recommended)', 'Run stage 2 here']);
-    assert.strictEqual(lone.status, 2);
+    assert.strictEqual(lone.status, 'ask');
     assert.match(lone.stderr, new RegExp(`a fresh-session option, while this session compacts instead \\(${MINE}\\)`));
     const dropped = asked('f1', ['Resume in a fresh session (Recommended)', 'Run stage 2 here', 'Stop here']);
     assert.match(JSON.parse(dropped.stdout).hookSpecificOutput.additionalContext, /fresh-session option dropped \(this session compacts instead\)/);

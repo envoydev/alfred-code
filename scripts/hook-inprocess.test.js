@@ -56,7 +56,7 @@ test('the sample covers a pass, a block and an ask fixed in place, so the parity
   assert.ok(answers.some((r) => r.status === 0 && !r.stdout.trim()), 'a silent pass');
   assert.ok(answers.some((r) => r.status === 2 || /"decision"\s*:\s*"block"/.test(r.stdout)), 'a block');
   assert.ok(answers.some((r) => /updatedInput/.test(r.stdout)), 'an ask fixed in place');
-  assert.ok(answers.some((r) => r.status === 2 && /^Blocked: this AskUserQuestion/.test(r.stderr)), 'an ask denied');
+  assert.ok(answers.some((r) => r.status === 0 && /"permissionDecision":"ask"/.test(r.stdout) && /If the user declined: Blocked: this AskUserQuestion/.test(r.stdout)), 'an ask put to the user');
 });
 
 test('a run leaves this process as it found it: env, cwd, argv, exit hooks and no stack module cached', () => {
