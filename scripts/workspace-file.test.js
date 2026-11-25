@@ -456,3 +456,16 @@ test('keptFor: a __proto__ key is kept and named, never read as a child or writt
     const back = wf.renderRecord(r.record, r.unknown, r.invalid);
     assert.deepStrictEqual(Object.keys(back.keptFor), ['web', '__proto__']);
 });
+test('keptFor: a key that names a prototype member reads, renders and looks up like any child', () =>
+{
+    for (const rel of ['constructor', 'toString', 'hasOwnProperty', 'valueOf'])
+    {
+        const r = wf.readRecord(dirWith({ json: { keptFor: { [rel]: ['skill a', 'nope x'] } } }));
+        assert.deepStrictEqual(r.record.keptFor[rel], ['skill a'], rel);
+        assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).keptFor[rel], ['skill a', 'nope x'], rel);
+        assert.deepStrictEqual(wf.keptLinesFor(wf.viewOf(r.record), rel), ['skill a'], rel);
+        const bad = wf.readRecord(dirWith({ json: { keptFor: { [rel]: 'x' } } }));
+        assert.deepStrictEqual(wf.renderRecord(bad.record, bad.unknown, bad.invalid).keptFor, { [rel]: 'x' }, rel);
+    }
+    assert.deepStrictEqual(wf.keptLinesFor(wf.viewOf(wf.emptyRecord()), 'constructor'), []);
+});

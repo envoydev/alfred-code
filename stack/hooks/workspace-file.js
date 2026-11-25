@@ -64,6 +64,12 @@ function isKeptLine(line)
     return more.length === 0 && isIgnoreEntry(category, name);
 }
 
+// A keptFor key is a child path that is no prototype hole, and is read and set as an OWN key only: `constructor`,
+// `toString` and `hasOwnProperty` pass isChildPath and would else read the inherited member.
+const isKeptChild = (rel) => isChildPath(rel) && rel !== '__proto__';
+const ownValue = (map, key) => (Object.hasOwn(map, key) ? map[key] : undefined);
+const setOwn = (map, key, value) => Object.defineProperty(map, key, { value, enumerable: true, writable: true, configurable: true });
+
 const copyKeptFor = (keptFor) => Object.fromEntries(Object.entries(keptFor || {}).map(([rel, lines]) => [rel, [...lines]]));
 
 const isCategory = (category) => CATEGORIES.includes(category) || ROOT_ONLY.includes(category);
@@ -181,12 +187,13 @@ function fromObject(obj)
             for (const [rel, lines] of Object.entries(value))
             {
                 const at = `keptFor.${rel}`;
-                if (!isChildPath(rel) || rel === '__proto__') { bad(at, lines, 'kept child', true, `kept child '${rel}'`); continue; }
+                if (!isKeptChild(rel)) { bad(at, lines, 'kept child', true, `kept child '${rel}'`); continue; }
                 if (!Array.isArray(lines)) { bad(at, lines, `${at} (not a list)`); continue; }
                 for (const line of lines)
                 {
                     if (!isKeptLine(line)) { bad(at, line, 'kept line', true); continue; }
-                    const list = record.keptFor[rel] || (record.keptFor[rel] = []);
+                    if (!Object.hasOwn(record.keptFor, rel)) setOwn(record.keptFor, rel, []);
+                    const list = record.keptFor[rel];
                     if (!list.includes(line)) list.push(line);
                 }
             }
@@ -307,7 +314,7 @@ function viewOf(record)
 function keptLinesFor(view, rel)
 {
     const key = Object.keys(view.keptFor || {}).find((k) => low(k) === low(rel));
-    return key === undefined ? [] : [...view.keptFor[key]];
+    return key === undefined ? [] : [...ownValue(view.keptFor, key)];
 }
 
 // The keptFor value to write, or undefined: each rel's valid lines then its invalid ones; a bad child key is written back whole.
@@ -320,11 +327,11 @@ function keptForOut(record, scalar, entries, invalid)
     for (const rel of rels)
     {
         const key = `${KEPT_PREFIX}${rel}`;
-        const lines = held[rel] || [];
-        if (!lines.length && scalar(key)) { kept[rel] = scalar(key).value; continue; }
+        const lines = ownValue(held, rel) || [];
+        if (!lines.length && scalar(key)) { setOwn(kept, rel, scalar(key).value); continue; }
         const extra = entries(key);
-        if (!isChildPath(rel) || rel === '__proto__') { if (extra.length) Object.defineProperty(kept, rel, { value: extra[0], enumerable: true, writable: true, configurable: true }); continue; }
-        if (lines.length + extra.length) kept[rel] = [...lines, ...extra];
+        if (!isKeptChild(rel)) { if (extra.length) setOwn(kept, rel, extra[0]); continue; }
+        if (lines.length + extra.length) setOwn(kept, rel, [...lines, ...extra]);
     }
     if (Object.keys(kept).length) return kept;
     return scalar('keptFor') ? scalar('keptFor').value : undefined;
