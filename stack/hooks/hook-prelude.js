@@ -1553,7 +1553,11 @@ const BLOCK_LEAD_RE = /^(?:Blocked|Held once): /;
 const SENTENCE_END_RE = /^[\s\S]*?[.!?](?=\s|$)/;
 const NO_ANSWER_MODES = new Set(['dontAsk', 'bypassPermissions']);
 const SUBAGENT_HANDBACK = 'SubagentHandback';
-const guardLabel = (guard) => (guard ? `alfred-code ${guard}` : 'alfred-code');
+const guardLabel = (guard) =>
+{
+    try { return guard ? `alfred-code ${guard}` : 'alfred-code'; }
+    catch { return 'alfred-code'; }
+};
 
 // Whether a person can answer a prompt for this call. False for anything but a plain-object payload, the handback tool, a
 // Cursor payload, a mode that never prompts, ALFRED_CODE_UNATTENDED=1, print mode and the rollback switch
@@ -1574,6 +1578,13 @@ function canAsk(input, env = process.env)
     catch { return false; }
 }
 
+// The guard name an options argument carries; a missing or hostile argument gives ''.
+function guardOf(opts)
+{
+    try { return (opts && opts.guard) || ''; }
+    catch { return ''; }
+}
+
 // The reason as text; a reason whose conversion throws reads as the fallback line.
 function reasonText(reason, guard)
 {
@@ -1585,7 +1596,7 @@ function reasonText(reason, guard)
 // spaces, cut after the first . ! or ? that a space or the end follows, capped at 400 characters (cut at a word, then '...').
 function firstSentence(text)
 {
-    const joined = text.replace(BLOCK_LEAD_RE, '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+    const joined = text.trim().replace(BLOCK_LEAD_RE, '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
     const cut = (SENTENCE_END_RE.exec(joined) || [joined])[0].trim();
     if (cut.length <= ASK_SENTENCE_MAX) return cut;
     const room = cut.slice(0, ASK_SENTENCE_MAX - 3);
@@ -1595,11 +1606,14 @@ function firstSentence(text)
 
 // The verdict a block writes - pure, never throws. `ask` carries the user's text and, as additionalContext, the model's;
 // `deny` carries today's full reason and no additionalContext.
-function blockVerdict(input, reason, { env = process.env, guard = '' } = {})
+function blockVerdict(input, reason, opts)
 {
     let text;
+    let guard = '';
     try
     {
+        const { env = process.env, guard: named = '' } = opts || {};
+        guard = named;
         text = String(reason);
         const output = { hookEventName: 'PreToolUse' };
         if (!canAsk(input, env))
@@ -1618,17 +1632,36 @@ function blockVerdict(input, reason, { env = process.env, guard = '' } = {})
 }
 
 // Writes the verdict as the hook's one JSON object and returns the decision. A Cursor deny also writes the reason to stderr
-// (blockExitCode then gives 2). Sets global.BLOCK_VERDICT for the block row. It never exits - the site does.
-function askOrBlock(input, reason, { env = process.env, guard = '' } = {})
+// (blockExitCode then gives 2). Sets global.BLOCK_VERDICT for the block row. It never exits - the site does. A throw
+// anywhere in it writes a fixed deny (never no output, which Claude Code reads as a hook error that lets the call run).
+function askOrBlock(input, reason, opts)
 {
-    const verdict = blockVerdict(input, reason, { env, guard });
-    const denied = verdict.decision === 'deny';
-    const said = denied ? verdict.hookSpecificOutput.permissionDecisionReason : reasonText(reason, guard);
-    global.BLOCK_VERDICT = { decision: verdict.decision, reason: said };
-    try { process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput })); } catch { /* a closed pipe */ }
-    if (denied && cursorHost(input))
-        try { process.stderr.write(`${said}\n`); } catch { /* a closed pipe */ }
-    return verdict.decision;
+    let wrote = false;
+    try
+    {
+        const named = guardOf(opts);
+        const verdict = blockVerdict(input, reason, opts);
+        const denied = verdict.decision === 'deny';
+        const said = denied ? verdict.hookSpecificOutput.permissionDecisionReason : reasonText(reason, named);
+        global.BLOCK_VERDICT = { decision: verdict.decision, reason: said };
+        wrote = true;
+        try { process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput })); } catch { /* a closed pipe */ }
+        if (denied && cursorHost(input))
+            try { process.stderr.write(`${said}\n`); } catch { /* a closed pipe */ }
+        return verdict.decision;
+    }
+    catch
+    {
+        if (wrote) return 'deny';
+        const said = reasonText(reason, guardOf(opts));
+        try { global.BLOCK_VERDICT = { decision: 'deny', reason: said }; } catch { /* a hostile global */ }
+        try
+        {
+            process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: said } }));
+        }
+        catch { /* a closed pipe */ }
+        return 'deny';
+    }
 }
 
 // The exit code a block site returns: 2 only for a deny on a Cursor payload, which reads exit 2 as the block.

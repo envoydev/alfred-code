@@ -98,7 +98,45 @@ test('blockVerdict: Held once is dropped too, and a long first sentence is cappe
     const sentence = line.slice('alfred-code guard-x: '.length);
     assert.ok(sentence.length <= 400, `${sentence.length}`);
     assert.ok(sentence.endsWith('...'));
-    assert.ok(!sentence.slice(0, -3).endsWith(' '), 'cut at a word');
+    const kept = sentence.slice(0, -3);
+    assert.ok(long.startsWith(kept), 'the kept text is a prefix of the sentence');
+    assert.strictEqual(long[kept.length], ' ', 'the cut falls on a word boundary');
+});
+
+test('blockVerdict: a reason with leading blanks still loses its Blocked lead', () =>
+{
+    const v = blockVerdict(bash(), '  \n Blocked: lead space. Next.', { env: {}, guard: 'guard-x' });
+    assert.strictEqual(v.hookSpecificOutput.permissionDecisionReason.split('\n')[0], 'alfred-code guard-x: lead space.');
+});
+
+test('blockVerdict and askOrBlock: a null options argument still answers', () =>
+{
+    const v = blockVerdict(bash(), REASON, null);
+    assert.strictEqual(v.decision, 'ask');
+    assert.ok(v.hookSpecificOutput.permissionDecisionReason.startsWith('alfred-code: a recursive rm'));
+    const realWrite = process.stdout.write;
+    const out = [];
+    process.stdout.write = (chunk) => { out.push(String(chunk)); return true; };
+    try { assert.strictEqual(askOrBlock(bash({ permission_mode: 'dontAsk' }), REASON, null), 'deny'); }
+    finally { process.stdout.write = realWrite; }
+    assert.strictEqual(out.length, 1, 'one write');
+    assert.strictEqual(JSON.parse(out[0]).hookSpecificOutput.permissionDecisionReason, REASON);
+});
+
+test('askOrBlock: a throw inside it writes a fixed deny, never nothing', () =>
+{
+    const realWrite = process.stdout.write;
+    const out = [];
+    process.stdout.write = (chunk) => { out.push(String(chunk)); return true; };
+    Object.defineProperty(global, 'BLOCK_VERDICT', { configurable: true, set() { throw new Error('hostile global'); } });
+    let decision;
+    try { decision = askOrBlock(bash(), REASON, { env: {}, guard: GUARD }); }
+    finally { process.stdout.write = realWrite; delete global.BLOCK_VERDICT; }
+    assert.strictEqual(decision, 'deny');
+    assert.strictEqual(out.length, 1, 'one write');
+    const output = JSON.parse(out[0]).hookSpecificOutput;
+    assert.strictEqual(output.permissionDecision, 'deny');
+    assert.strictEqual(output.permissionDecisionReason, REASON);
 });
 
 test('blockVerdict: deny carries today\'s reason and no context', () =>
