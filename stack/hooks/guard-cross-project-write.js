@@ -150,7 +150,7 @@ function blockCall(input, text) {
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-cross-project-write' })); }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 
 // The project root is CLAUDE_PROJECT_DIR (the harness sets it for every hook). Without it - a

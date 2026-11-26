@@ -900,7 +900,7 @@ function blockCall(input, text) {
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-protected-force-push' })); }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 
 // Every git these helpers run is asked once per directory and name in a run (review 18, F3: each push replayed every

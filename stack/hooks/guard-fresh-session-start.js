@@ -141,7 +141,7 @@ function blockCall(input, text, denyOnly) {
     code = p.blockExitCode(input, decision);
   }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 // One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
 // block. Best-effort - a lost row is a lost measurement, never a changed turn.

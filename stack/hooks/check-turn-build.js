@@ -259,7 +259,7 @@ function stopCheck(payload)
   catch { /* a log row never throws */ }
   markHeld(payload);
   return {
-    code: 2,
+    code: 2, // guard-ask: Stop hold
     stderr: `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
       `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
       'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +

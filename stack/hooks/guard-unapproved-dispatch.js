@@ -149,7 +149,7 @@ function blockCall(input, text) {
     code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-unapproved-dispatch', ...(updatedInput ? { updatedInput } : {}) }));
   }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 
 // --- ALFRED_CODE_MAXIMUM_RUN_AGENTS (the maximum-run-agents design of 2026-10-27) --------------------------------

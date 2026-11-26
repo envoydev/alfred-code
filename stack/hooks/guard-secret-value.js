@@ -1692,7 +1692,7 @@ function blockCall(input, text) {
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-secret-value' })); }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 const refuse = (msg) => blockCall(payload, msg);
 // The store's values reach a command through --with-sensitive, which alfred-security.md says the denial names; a key

@@ -129,7 +129,7 @@ function blockCall(input, text) {
     code = p.blockExitCode(input, p.askOrBlock(input, said, { guard: 'guard-layer-table' }));
   }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 // One probe row per kind and id: a later gate run reads the same transcript again and writes none.
 function probeRow(kind, id, extra = {}) {
@@ -604,6 +604,7 @@ function voidAsk() {
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', ...context } }));
     return;
   }
+  // guard-ask: PostToolUse void
   process.stdout.write(JSON.stringify({ decision: 'block', reason: found.shown ? `${found.lead}\n${found.shown}\n${found.line}` : found.line,
     hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: voidedResponse(payload.tool_response, found.line), ...context } }));
   blockRow(found.line, found.branch);

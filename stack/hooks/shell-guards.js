@@ -305,7 +305,7 @@ function blockResult(payload, text, guard)
         const code = prelude.blockExitCode(payload, verdict.decision);
         return { guard, code, stdout: JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput }), stderr: code === 2 ? text : '' };
     }
-    catch { return { guard, code: 2, stdout: '', stderr: text }; }
+    catch { return { guard, code: 2, stdout: '', stderr: text }; } // guard-ask fallback: no prelude
 }
 
 // Whether a guard's answer is a deny - an exit 2 or a JSON `permissionDecision: deny`. An ask is no deny: the protective

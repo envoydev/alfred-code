@@ -992,7 +992,7 @@ function subagentStop(input, root, docs) {
     return;
   }
   const reason = seatAsk(input, root, docs, a, key, SEAT_REPORT_LAST);
-  if (reason) process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+  if (reason) process.stdout.write(JSON.stringify({ decision: 'block', reason })); // guard-ask: Stop hold
 }
 
 // The ask itself, shared by both routes: null when this agent owes none, else the reason - and the agent's state then
@@ -2056,7 +2056,7 @@ function stop(input, root, docs, state) {
   log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), deadScopes: deadIds, files: files.slice(0, 5), kinds: [...new Set([...hits, ...rcHits].map((h) => h.kind))] });
   blockRow(root, input, reason);
   markHeld(input);
-  process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+  process.stdout.write(JSON.stringify({ decision: 'block', reason })); // guard-ask: Stop hold
 }
 
 module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, pathsUnder, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
