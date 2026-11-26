@@ -72,6 +72,7 @@ test('read of another project asks, naming the workspace end', withFixture((fx) 
   assert.ok(shown.includes(fx.proj.replace(fx.home, '~')) || shown.includes(fx.proj), `names where the workspace ends: ${shown}`);
   assert.ok(shown.includes('~'), 'the home folder is shown as ~');
   assert.match(blockText(r), /Stay inside the workspace, or ask the user in chat/, 'the model is told what to do after a No');
+  assert.match(blockText(r), /join that project to the workspace, or list it in ALFRED_CODE_ALLOW_WRITE_OUTSIDE/, 'the model is told the two levers');
   assert.strictEqual(blockRows(fx, 'xr')[0].detail.branch, 'read-outside');
 }));
 
@@ -268,6 +269,7 @@ test('cross-read.js: the pure parts of the read half', () => {
   const text = cross.readText(hits, { boundary: '/home/me/work/proj', homes: ['/home/me'], seat: false, platform: 'linux' });
   assert.ok(text.startsWith('Grep reads outside this workspace (it ends at ~/work/proj) - No keeps the work workspace only: ~/a, ~/b, ~/c and 2 more. Approve only if you meant to look there.\n'), text);
   assert.match(text, /Stay inside the workspace, or ask the user in chat/);
+  assert.match(text, /join that project to the workspace, or list it in ALFRED_CODE_ALLOW_WRITE_OUTSIDE/);
   assert.match(cross.readText(hits.slice(0, 1), { boundary: '/b', homes: [], seat: true, platform: 'linux' }), /A subagent does not read outside/);
 });
 
@@ -587,4 +589,18 @@ test('a malformed settings file opens nothing and throws nothing', withFixture((
     fx.put('work/proj/.claude/settings.local.json', text);
     asks(fx, read(fx.other), {}, text);
   }
+}));
+
+test('ls -r is a reverse sort, not a recursive search, outside PowerShell', withFixture((fx) => {
+  passes(fx, bash('ls -r ~'), {}, 'ls -r ~');
+  passes(fx, bash('ls -r /'), {}, 'ls -r /');
+  passes(fx, bash(`ls -lr ${fx.home}`), {}, 'ls -lr');
+  asks(fx, bash(`ls -R ${path.dirname(fx.other)}`), {}, 'ls -R');
+  asks(fx, bash('ls --recursive ~'), {}, 'ls --recursive');
+  asks(fx, bash(`Get-ChildItem -recurse ${path.dirname(fx.other)}`), {}, 'Get-ChildItem -recurse');
+  asks(fx, bash('gci -r ~'), {}, 'gci -r');
+  const powershell = (command) => ({ tool_name: 'PowerShell', tool_input: { command } });
+  asks(fx, powershell('ls -r ~'), {}, 'ls -r is Get-ChildItem -Recurse under PowerShell');
+  asks(fx, powershell(`dir -Recurse ${path.dirname(fx.other)}`), {}, 'dir -Recurse under PowerShell');
+  passes(fx, powershell('ls ~'), {}, 'a plain listing under PowerShell');
 }));

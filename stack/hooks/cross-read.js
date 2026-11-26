@@ -6,7 +6,7 @@
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
 const READ_PATHS_SHOWN = 3;
 const READ_BRANCH = Object.freeze({ read: 'read-outside', search: 'search-outside' });
-const READ_NEXT_STEP = 'Stay inside the workspace, or ask the user in chat why the files past it are needed before trying again - do not reach them by another command.';
+const READ_NEXT_STEP = 'Stay inside the workspace, or ask the user in chat why the files past it are needed before trying again - do not reach them by another command. The user can join that project to the workspace, or list it in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.';
 const READ_SEAT_STEP = "A subagent does not read outside its session's workspace: stop this step and say in your result which files past it you needed - the main session asks the user.";
 const READ_GLOB_CHAR = /[*?[{]/;
 const BARE_DRIVE = /^[A-Za-z]:$/;
@@ -47,7 +47,11 @@ const SHORT_CLUSTER = /^-[A-Za-z]{2,}$/;
 // A verb whose every plain word is a root it walks, and the ones that walk only with a recursion flag.
 const ROOT_VERBS = new Set(['fd', 'fdfind', 'tree', 'du', 'locate', 'plocate']);
 const LISTING_VERB = /^(?:ls|dir|gci|get-childitem)$/i;
-const RECURSE_FLAG = /^(?:-R|-recurse)$/i;
+// `-R` and `--recursive` are case-sensitive (`ls -r` reverses the sort). PowerShell's own `-Recurse` and `-r` fold case: for
+// `gci` and `Get-ChildItem` anywhere, and for `ls` and `dir` (its aliases) when the call runs under the PowerShell tool.
+const RECURSE_FLAG = /^(?:-R|--recursive)$/;
+const POWERSHELL_RECURSE_FLAG = /^-(?:r|recurse)$/i;
+const POWERSHELL_LISTING_VERB = /^(?:gci|get-childitem)$/i;
 const FIND_VERBS = new Set(['find', 'gfind']);
 // Where find's roots end: its first test, action or group.
 // find's own leading options, which come before its roots.
@@ -62,6 +66,7 @@ const QUOTED_TILDE = /^["']/;
 const EXPLICIT_PATH = /^(?:[~/]|\.\.[/\\])/;
 const WIN_ABS_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
 const PATH_IN_TEXT = /(?<![\w.~/\\:-])(?:~[\\/]|\$\{?(?:HOME|USERPROFILE)\}?[\\/]|[A-Za-z]:[\\/]|\/)[^\s'"`;,)<>|&]+/g;
+const POWERSHELL_TOOL = /^PowerShell$/i;
 const READ_ALSO = 'Blocked: this call also reads outside this workspace (No keeps the work workspace only) - ';
 
 const foldsCase = (platform) => platform === 'win32' || platform === 'darwin';
@@ -118,14 +123,15 @@ const flagOf = (text) => (SHORT_CLUSTER.test(text) ? `-${text.slice(-1)}` : text
 
 // The words of one command word's own arguments that can name a path, as { word, text, search } - `search` marks a root a
 // search verb walks. A pattern, a sentence flag's value and a quoted `~` (a literal name to the shell) are no path.
-function argEntries(name, words, dequote) {
+function argEntries(name, words, dequote, powershell) {
   const out = [];
   const texts = words.map((word) => dequote(word.raw));
   const keep = (at, text, search) => { if (!(QUOTED_TILDE.test(words[at].raw) && text.startsWith('~'))) out.push({ word: words[at], text, search }); };
   const finds = FIND_VERBS.has(name);
   const spec = PATTERN_VERBS.get(name) || null;
   const messageFile = name === 'git' && texts.some((text) => GIT_MESSAGE_VERBS.has(text));
-  const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some((text) => RECURSE_FLAG.test(text)));
+  const recurses = (text) => RECURSE_FLAG.test(text) || ((powershell || POWERSHELL_LISTING_VERB.test(name)) && POWERSHELL_RECURSE_FLAG.test(text));
+  const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some(recurses));
   const patternGiven = (text) => { const flag = flagOf(text); return spec.pattern.test(flag) || (spec.file && spec.file.test(flag)) || (spec.none && spec.none.test(flag)); };
   let needsPattern = spec !== null && !texts.some(patternGiven);
   let rootsEnded = false;
@@ -156,8 +162,8 @@ function argEntries(name, words, dequote) {
 // { text, index, search, scanned }: the arguments of every command word - a wrapper's own options left out, so find's roots
 // count when it runs another command with `-exec` - an input redirect's target, a here-string's text and each absolute,
 // `~` or `$HOME` stretch inside a script word of a runtime or a database client's argument. `echo` and `printf` are
-// skipped. `dequote` gives a word as the shell hands it on.
-function shellCandidates(cmds, dequote) {
+// skipped. `dequote` gives a word as the shell hands it on; `powershell` says the call runs under the PowerShell tool.
+function shellCandidates(cmds, dequote, powershell = false) {
   const out = [];
   const push = (text, index, search, scanned) => { if (out.length < SHELL_WORDS_MAX) out.push({ text, index, search, scanned }); };
   const scanText = (text, index) => { for (const found of text.match(PATH_IN_TEXT) || []) push(found, index, false, true); };
@@ -175,7 +181,7 @@ function shellCandidates(cmds, dequote) {
       const own = words.slice(cand.at + 1, next ? next.at : words.length);
       const scripted = SCRIPT_VERB.test(cand.name);
       const database = DATABASE_VERB.test(cand.name);
-      for (const entry of argEntries(cand.name, own, dequote)) {
+      for (const entry of argEntries(cand.name, own, dequote, powershell)) {
         push(entry.text, entry.word.s, entry.search, false);
         if (database || (scripted && SCRIPT_TEXT.test(entry.text))) scanText(entry.text, entry.word.s);
       }
@@ -194,7 +200,7 @@ function shellReadHits(units, env) {
   const seen = new Set();
   let existing = 0;
   for (const unit of units) {
-    const cands = shellCandidates(unit.cmds, env.dequote);
+    const cands = shellCandidates(unit.cmds, env.dequote, POWERSHELL_TOOL.test(String(env.tool || '')));
     for (const body of unit.texts || []) for (const found of body.text.match(PATH_IN_TEXT) || []) cands.push({ text: found, index: body.index, search: false, scanned: true });
     for (const cand of cands) {
       if (existing >= SHELL_PATHS_MAX) return hits;
