@@ -533,6 +533,21 @@ test('an approved ask is taken over by its SubagentStart: one running file, no p
     assert.strictEqual(cap.count(reg).running, 1, 'the started agent counts once');
 });
 
+test('a seat\'s asked dispatch is released by its result in the SEAT\'s transcript, not the session\'s (limit G)', () =>
+{
+    const root = project();
+    const reg = regOf(root);
+    reg.transcript = transcriptFor(root);
+    const seatId = 'a0123456789abcdef';
+    put(reg, 'P', 'toolu_seat', { type: 'Explore', at: Date.now(), parent: seatId, asked: true, tool_use_id: 'toolu_seat' });
+    assert.strictEqual(cap.count(reg).running, 1, 'no result anywhere: it counts');
+    const seatFile = path.join(root, 's1', 'subagents', `agent-${seatId}.jsonl`);
+    fs.mkdirSync(path.dirname(seatFile), { recursive: true });
+    fs.writeFileSync(seatFile, `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_seat', content: DECLINE, is_error: true }] } })}\n`);
+    assert.strictEqual(cap.count(reg).running, 0, 'the seat\'s own transcript holds the decline');
+    assert.deepStrictEqual(pendings(reg), []);
+});
+
 test('an asked file past 60 s expires as any pending file does (limit G, the outer bound)', () =>
 {
     const { reg } = freshReg();

@@ -201,7 +201,10 @@ function resultOfAsked(reg, body)
     try
     {
         if (!reg.transcript || !body.tool_use_id) return false;
-        return require('./hook-prelude.js').toolResultOf(reg.transcript, String(body.tool_use_id)).found === true;
+        // A seat's own call lands in the seat's transcript, beside the session's, not in it.
+        const parent = cleanId(body.parent, { agent: true });
+        const file = parent ? subagentTranscript(reg.transcript, reg.sid, parent) : reg.transcript;
+        return Boolean(file) && require('./hook-prelude.js').toolResultOf(file, String(body.tool_use_id)).found === true;
     }
     catch { return false; }
 }
