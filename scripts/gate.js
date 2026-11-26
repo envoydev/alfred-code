@@ -4,8 +4,9 @@
 // push spends a CI run on them.
 //
 // Why it exists: CI is the only place the Windows leg ran, so a Windows-only failure surfaced 10-30
-// minutes after a push and cost a fix-push-wait cycle each time. Here the three legs run in parallel
-// on one machine against the COMMITTED tree, checked out the way ci.yml checks it out:
+// minutes after a push and cost a fix-push-wait cycle each time. Here the legs run on one machine against the
+// COMMITTED tree, checked out the way ci.yml checks it out. The mac and linux legs run in parallel; the win leg
+// wakes and stages the VM beside them, and its run waits for both, so it has the host's cores to itself:
 //   mac    native, on the Node major ci.yml pins (found under nvm or Homebrew; else the current node, flagged)
 //   linux  a `node:<major>` container, as its unprivileged `node` user (a runner is not root)
 //   win    a Parallels VM through `prlctl exec` as SYSTEM - elevated like a runner, which may create
@@ -587,7 +588,8 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep, t
         legScript: path.join(runDir, 'gate-leg.js'),
         bundle: path.join(runDir, 'repo.bundle'),
         log: leg => path.join(logDir, `${leg}.log`),
-        // the legs that run together share this machine's cores: each gets its part, near the 3 workers a runner has
+        // the mac and linux legs run together and split this machine's cores; the win leg's run waits for them and takes
+        // the host's whole share (scripts/gate/workers.js)
         legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, tests, concurrency: shares.others },
     };
     let cleaned = false;
