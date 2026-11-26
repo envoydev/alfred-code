@@ -806,6 +806,18 @@ function trustedReadMemory(t) {
   if (dir === null || !inside(dir, HOME_REAL) || fold(dir) === fold(HOME_REAL)) return false;
   try { return !workspaceRoots().some((r) => inside(r, dir)) && inside(t, dir); } catch { return false; }
 }
+// The directories the user granted Claude Code, read once (as trustedMemoryFolder is): from the account settings and an
+// untracked settings.local.json. One that holds the home folder opens nothing, as a plugin root that holds it does not.
+let grantedDirList;
+function grantedDirs() {
+  if (grantedDirList) return grantedDirList;
+  grantedDirList = [];
+  try {
+    if (layout && typeof layout.trustedAdditionalDirs === 'function')
+      grantedDirList = layout.trustedAdditionalDirs(ROOT, { untracked: untrackedLocal }).map(realish).filter((d) => !inside(HOME_REAL, d));
+  } catch { /* fail closed: nothing opened */ }
+  return grantedDirList;
+}
 function foreignProjectFolder(t, account) {
   const [first, key] = path.relative(account, t).split(path.sep);
   return memFold(first) === 'projects' && (!key || !ownMemoryKeys().has(memFold(key)));
@@ -823,7 +835,7 @@ function inReadZone(absAsWritten) {
   // The tests that need no git and no settings file first; the worktree and memory checks only for a path still in the zone.
   const account = CONFIG_DIRS.find((d) => inside(t, d));
   if (account ? !foreignProjectFolder(t, account) : crossRead.firstSegmentApart(path.relative(HOME_REAL, t).split(path.sep), process.platform)) return false;
-  return !(sameRepoWorktree(t) || ownMemory(t) || trustedReadMemory(t));
+  return !(sameRepoWorktree(t) || ownMemory(t) || trustedReadMemory(t) || grantedDirs().some((d) => inside(t, d)));
 }
 // HOME or any folder above it, or a folder that holds an account dir's `projects/` (the account dir itself, or a folder
 // above it under HOME): a search from there reaches every other project's memory.

@@ -551,3 +551,40 @@ test('a session launched in a linked worktree or a subfolder reads its own tool-
   const outside = fx.put('elsewhere/projects/-x/sess.jsonl', '{}\n');
   asks(fx, read(fx.foreign, { transcript_path: outside }), {}, 'a transcript outside every account projects/ folder adds no key');
 }));
+
+test('a directory the user granted Claude Code opens for reads, from the account settings or an untracked local file only', withFixture((fx) => {
+  const granted = path.dirname(fx.other);
+  const grant = (...dirs) => JSON.stringify({ permissions: { additionalDirectories: dirs } });
+  const account = fx.at('.claude', 'settings.json');
+  asks(fx, read(fx.other), {}, 'no grant');
+  fx.put('.claude/settings.json', grant(granted));
+  passes(fx, read(fx.other), {}, 'a directory in the account settings');
+  fx.put('.claude/settings.json', grant('~/other-proj'));
+  passes(fx, read(fx.other), {}, 'a ~/ entry');
+  fx.put('.claude/settings.json', grant('../../other-proj'));
+  passes(fx, read(fx.other), {}, 'a relative entry, from the project root');
+  fx.put('.claude/settings.json', grant('../other-proj'));
+  asks(fx, read(fx.other), {}, 'a relative entry that lands elsewhere opens nothing');
+  fx.put('.claude/settings.json', grant('~'));
+  asks(fx, read(fx.other), {}, 'an entry that holds the home folder opens nothing');
+  fs.rmSync(account);
+  const local = path.join(fx.proj, '.claude', 'settings.local.json');
+  fx.put('work/proj/.claude/settings.local.json', grant(granted));
+  passes(fx, read(fx.other), {}, 'a directory in an untracked settings.local.json');
+  assert.strictEqual(git(fx.proj, 'add', '-f', local).status, 0);
+  asks(fx, read(fx.other), {}, 'the same file once git tracks it');
+  git(fx.proj, 'rm', '-q', '--cached', local);
+  fs.rmSync(local);
+  fx.put('work/proj/.claude/settings.json', grant(granted));
+  asks(fx, read(fx.other), {}, 'a project settings.json can arrive in a clone and opens nothing');
+  git(fx.proj, 'add', '-f', path.join(fx.proj, '.claude', 'settings.json'));
+  asks(fx, read(fx.other), {}, 'a tracked settings.json opens nothing');
+}));
+
+test('a malformed settings file opens nothing and throws nothing', withFixture((fx) => {
+  for (const text of ['{ not json', '[]', '{"permissions":7}', '{"permissions":{"additionalDirectories":"x"}}', '{"permissions":{"additionalDirectories":[7,null,""]}}']) {
+    fx.put('.claude/settings.json', text);
+    fx.put('work/proj/.claude/settings.local.json', text);
+    asks(fx, read(fx.other), {}, text);
+  }
+}));

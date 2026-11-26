@@ -1024,6 +1024,24 @@ function trustedMemoryDir(root, { env = process.env, home = require('os').homedi
 {
     return autoMemorySetting(root, { account: env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), home, managed, trusted: true, untracked, platform });
 }
+// The directories the user granted Claude Code (`permissions.additionalDirectories`) in a file no repo can ship: the account's
+// settings.json, and the settings.local.json Claude Code reads (localSettingsFile) when `untracked(file)` vouches for it - asked
+// only for a file that holds a grant. A project's settings.json, or a tracked local file, can arrive in a clone and name any
+// folder, so neither opens anything. An entry is absolute, `~/`-rooted or relative to the project root, as Claude Code reads it.
+function trustedAdditionalDirs(root, { env = process.env, home = require('os').homedir(), untracked = () => false, platform = process.platform } = {})
+{
+    const local = localSettingsFile(root, { home, platform });
+    const files = [{ file: path.join(env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json'), vouch: false }, ...(local ? [{ file: local, vouch: true }] : [])];
+    const found = [];
+    for (const { file, vouch } of files)
+    {
+        const list = ((readObject(file) || {}).permissions || {}).additionalDirectories;
+        const entries = Array.isArray(list) ? list.filter((v) => typeof v === 'string' && v.trim()).map((v) => v.trim()) : [];
+        if (!entries.length || (vouch && !untracked(file))) continue;
+        for (const v of entries) found.push(/^~([\\/]|$)/.test(v) ? path.join(home, v.slice(1)) : path.resolve(root, v));
+    }
+    return found;
+}
 // R2: an ancestor's docs root from its own settings (a leftover ALFRED_CODE_DOCS_PATH, settings.local.json first), never
 // the child's env, else `<its data root>/docs` - absolute.
 function docsRootOf(root, { env = process.env, dataRoot } = {})
@@ -1259,7 +1277,7 @@ module.exports = {
     dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, PLAN_DEVICE, planFolderId, planFiles, planOf, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
     settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
-    memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
+    memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, trustedAdditionalDirs, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     MODE_KEYS, modeFile,
     VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, CHAIN_PRUNE_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, inheritedModes, valueIn,
