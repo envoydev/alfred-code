@@ -1389,7 +1389,9 @@ each time: a yes typed in chat opens nothing, and a Yes at the prompt opens only
 
 Where no one can answer, the guard still blocks as before: in `dontAsk` and `bypassPermissions` mode, in `claude -p`, with
 `ALFRED_CODE_UNATTENDED=1`, in Cursor, and for a seat's hand-back in every mode. To get the plain block back everywhere,
-set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`.
+set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`. One more refusal shows
+no prompt: when Claude tries to call a skill that only you may start, it is refused at once, since Claude Code would not
+run that call even after a Yes.
 
 **The chat-yes openers are gone.** The `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` and `STAGED-SCAN-ALLOW`
 files, a path you typed, and a discard picked in an answered question open no block now. No hook reads those files, and no hook deletes
