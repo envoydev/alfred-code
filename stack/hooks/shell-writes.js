@@ -1950,8 +1950,7 @@ function runtimeScripts(raw) {
   const P = parseShell(joinContinuations(blankComments(blankHeredocs(text, heredocs))));
   return P.tooDeep ? [] : runtimeScriptsOf(text, P, heredocs).map((s) => ({ ...s, P }));
 }
-function interpreterTargets(raw, P, heredocs) {
-  const scripts = runtimeScriptsOf(raw, P, heredocs);
+function interpreterTargets(raw, P, heredocs, scripts = runtimeScriptsOf(raw, P, heredocs)) {
   if (!scripts.length) return [];
   // A `$NAME` the SHELL expands in the script (a double-quoted `-e "..."`, an unquoted heredoc) takes the newest literal
   // the same command assigned it before the runtime (audit 2026-10-20 C25, 4d71a1b3: `D=<docs>/x; node -e "...
@@ -4458,7 +4457,8 @@ function scanShellIn(rawCommand, opts = {}) {
       }
     }
   }
-  targets.push(...interpreterTargets(raw, P, heredocs));
+  const runtimes = runtimeScriptsOf(raw, P, heredocs);
+  targets.push(...interpreterTargets(raw, P, heredocs, runtimes));
   // the PowerShell tool's own command calling .NET's file API (a quoted one is text, or a runtime's script read above)
   if (/IO\.(?:File|Directory)\]::/i.test(command)) {
     for (const m of command.matchAll(PS_FILE_CALL)) {
@@ -4468,16 +4468,19 @@ function scanShellIn(rawCommand, opts = {}) {
   }
   const files = opts.files !== undefined ? !!opts.files : !!opts.cwd;
   const depth = opts.depth || 0;
+  let scanned = [];
   const carried = carriedBoth(P, raw, heredocs, { cwd: opts.cwd || null, files }, run);
   const cds = carried.length ? P.cds.slice() : P.cds;
   if (carried.length && run.budget.deep(depth)) {
     for (const sc of carried) run.unread.push({ at: sc.at, why: `a script nested ${depth + 1} deep`, path: null });
   } else {
     const closesOf = new Map(P.cmds.map((c) => [c.words.length ? c.words[0].s : -1, c.end]));
+    // each carried script's own scan is kept (`scanned`) for the cross-project guard's read half: one read of each script, one budget
     for (const sc of carried) {
       if (run.budget.over()) { run.unread.push({ at: sc.at, why: run.budget.why, path: null }); continue; }
       const u0 = run.unread.length;
       const inner = scanShell(sc.text, { cwd: sc.cwd || null, files, aliases: opts.aliases, landing: opts.landing, depth: depth + 1, run, path: sc.path || null });
+      scanned.push({ at: sc.at, cmds: inner.cmds || [], expandVars: inner.expandVars, cds: inner.cds });
       for (let u = u0; u < run.unread.length; u++) run.unread[u] = { at: sc.at, why: run.unread[u].why, path: run.unread[u].path || sc.path || null };
       const verbatim = sc.mapped && inner.command.length === sc.text.length;
       const place = verbatim ? (i) => sc.at + i : (i) => sc.at + (i + 1) / (inner.command.length + 2);
@@ -4493,7 +4496,9 @@ function scanShellIn(rawCommand, opts = {}) {
     const deep = compiledAnchor(cds, opts.cwd || '/', normPath).tooLong;
     if (deep >= 0) run.unread.push({ at: deep, why: `a directory past ${MAX_PATH} characters`, path: null });
   }
-  return { command, quoted: P.spans, inQuotes: P.inQuotes, expandVars, cds, targets, gitWrites, aliasUnreadAt, unread: run.unread };
+  // `cmds`, `carried` and `runtimes`: the parsed commands, the scans of the scripts a shell is handed and the scripts a runtime
+  // is handed - what the cross-project guard's read half judges, with no second read or parse.
+  return { command, quoted: P.spans, inQuotes: P.inQuotes, expandVars, cds, targets, gitWrites, aliasUnreadAt, unread: run.unread, cmds: P.cmds, carried: scanned, runtimes };
 }
 // Where the subshell holding the command at `at` closes (undefined at the top level).
 function enclosingEnd(P, at, closesOf) {

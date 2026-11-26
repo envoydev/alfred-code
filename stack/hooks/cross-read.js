@@ -21,15 +21,28 @@ const SHELL_PATHS_MAX = 64;
 const SHELL_WORDS_MAX = 512;
 const SHELL_SCRIPTS_MAX = 8;
 const PROSE_VERBS = new Set(['echo', 'printf']);
-// The flags whose value is a sentence for a person: a commit message, a PR title or body.
-const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject', '-F']);
-// A verb whose first plain word is its pattern, never a root; `-e` gives the pattern and `-f` names a file of them.
-const PATTERN_VERBS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack']);
-const PATTERN_FLAG = /^(?:-e|--regexp)$/;
-const PATTERN_FILE_FLAG = /^(?:-f|--file)$/;
-// The pattern verbs' flags that take the next word as their value.
-const VALUE_FLAGS = new Set(['-A', '-B', '-C', '-m', '-g', '-t', '-T', '-d', '-j', '--glob', '--iglob', '--type', '--type-not', '--include', '--exclude',
-  '--exclude-dir', '--max-count', '--context', '--after-context', '--before-context', '--threads', '--max-depth', '--max-filesize', '--color', '--colour', '--label']);
+// The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` names the message file of a
+// git commit or tag only; for tail, ls and less it is a plain flag.
+const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
+const GIT_MESSAGE_FILE_FLAG = '-F';
+const GIT_MESSAGE_VERBS = new Set(['commit', 'tag']);
+// A verb whose first plain word is its pattern, never a root, unless a flag gives the pattern (`pattern`: its value is the
+// pattern) or means there is none (`none`). `file` names a file of patterns, read like any file. `values` are the flags
+// that take the next word, one set for each verb.
+const EQ_PATTERN = /^(?:-e|--regexp)$/;
+const EQ_FILE = /^(?:-f|--file)$/;
+const GREP_FLAGS = Object.freeze({ pattern: EQ_PATTERN, file: EQ_FILE, none: null, values: new Set(['-A', '-B', '-C', '-m', '-d', '-D', '--include', '--exclude', '--exclude-dir',
+  '--exclude-from', '--max-count', '--context', '--after-context', '--before-context', '--label', '--binary-files', '--devices', '--directories']) });
+const RG_FLAGS = Object.freeze({ pattern: EQ_PATTERN, file: EQ_FILE, none: /^--(?:files|type-list)$/, values: new Set(['-A', '-B', '-C', '-m', '-g', '-t', '-T', '-j', '-d', '-M', '-E', '-r',
+  '--glob', '--iglob', '--type', '--type-not', '--max-filesize', '--color', '--threads', '--context', '--max-depth', '--max-count', '--after-context', '--before-context', '--replace',
+  '--engine', '--encoding', '--path-separator', '--pre', '--pre-glob', '--sort', '--sortr', '--max-columns', '--ignore-file', '--type-add', '--type-clear', '--colors']) });
+// ag and ack: `-g` takes a file-name pattern in place of the search pattern, and `-f` is no file flag.
+const AG_FLAGS = Object.freeze({ pattern: /^-g$/, file: null, none: null, values: new Set(['-A', '-B', '-C', '-G', '-m', '-p', '-W', '--depth', '--ignore', '--ignore-dir',
+  '--file-search-regex', '--path-to-ignore', '--workers', '--pager', '--max-count']) });
+const ACK_FLAGS = Object.freeze({ pattern: /^-g$/, file: null, none: null, values: new Set(['-A', '-B', '-C', '-m', '-t', '--ignore-dir', '--ignore-file', '--type', '--max-count',
+  '--after-context', '--before-context', '--context', '--pager']) });
+const PATTERN_VERBS = new Map([['grep', GREP_FLAGS], ['egrep', GREP_FLAGS], ['fgrep', GREP_FLAGS], ['rg', RG_FLAGS], ['ag', AG_FLAGS], ['ack', ACK_FLAGS]]);
+const SHORT_CLUSTER = /^-[A-Za-z]{2,}$/;
 // A verb whose every plain word is a root it walks, and the ones that walk only with a recursion flag.
 const ROOT_VERBS = new Set(['fd', 'fdfind', 'tree', 'du', 'locate', 'plocate']);
 const LISTING_VERB = /^(?:ls|dir|gci|get-childitem)$/i;
@@ -99,6 +112,9 @@ function isExplicitPath(raw, platform) {
   return EXPLICIT_PATH.test(raw) || raw === '..' || raw.includes('/../') || (platform === 'win32' && WIN_ABS_PATH.test(raw));
 }
 
+// The flag a word stands for: a short cluster (`-rf`) ends in the flag that may take a value, `--file=x` is `--file`.
+const flagOf = (text) => (SHORT_CLUSTER.test(text) ? `-${text.slice(-1)}` : text.startsWith('--') ? text.split('=')[0] : text);
+
 // The words of one command word's own arguments that can name a path, as { word, text, search } - `search` marks a root a
 // search verb walks. A pattern, a sentence flag's value and a quoted `~` (a literal name to the shell) are no path.
 function argEntries(name, words, dequote) {
@@ -106,29 +122,31 @@ function argEntries(name, words, dequote) {
   const texts = words.map((word) => dequote(word.raw));
   const keep = (at, text, search) => { if (!(QUOTED_TILDE.test(words[at].raw) && text.startsWith('~'))) out.push({ word: words[at], text, search }); };
   const finds = FIND_VERBS.has(name);
-  const patterned = PATTERN_VERBS.has(name);
+  const spec = PATTERN_VERBS.get(name) || null;
+  const messageFile = name === 'git' && texts.some((text) => GIT_MESSAGE_VERBS.has(text));
   const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some((text) => RECURSE_FLAG.test(text)));
-  let needsPattern = patterned && !texts.some((text) => PATTERN_FLAG.test(text) || PATTERN_FILE_FLAG.test(text));
+  const patternGiven = (text) => { const flag = flagOf(text); return spec.pattern.test(flag) || (spec.file && spec.file.test(flag)) || (spec.none && spec.none.test(flag)); };
+  let needsPattern = spec !== null && !texts.some(patternGiven);
   let rootsEnded = false;
   let flagsEnded = false;
   for (let at = 0; at < words.length; at++) {
     const text = texts[at];
+    const flag = flagOf(text);
     if (!flagsEnded && text === '--') { flagsEnded = true; continue; }
-    if (!flagsEnded && patterned && PATTERN_FLAG.test(text)) { at++; continue; }
-    if (!flagsEnded && patterned && PATTERN_FILE_FLAG.test(text)) { if (at + 1 < words.length) keep(at + 1, texts[at + 1], false); at++; continue; }
-    if (!flagsEnded && patterned && VALUE_FLAGS.has(text)) { at++; continue; }
-    if (!flagsEnded && !patterned && PROSE_FLAGS.has(text)) { at++; continue; }
+    if (!flagsEnded && spec && spec.pattern.test(flag) && !text.includes('=')) { at++; continue; }
+    if (!flagsEnded && spec && spec.file && spec.file.test(flag) && !text.includes('=')) { if (at + 1 < words.length) keep(at + 1, texts[at + 1], false); at++; continue; }
+    if (!flagsEnded && spec && spec.values.has(flag) && !text.includes('=')) { at++; continue; }
+    if (!flagsEnded && !spec && (PROSE_FLAGS.has(text) || (messageFile && text === GIT_MESSAGE_FILE_FLAG))) { at++; continue; }
     if (!flagsEnded && text.startsWith('-')) {
       const eq = text.indexOf('=');
-      const flag = text.slice(0, eq);
       if (finds && !FIND_OPTION.test(text)) rootsEnded = true;
-      if (eq > 0 && PATTERN_FILE_FLAG.test(flag)) keep(at, text.slice(eq + 1), false);
-      else if (eq > 0 && !patterned && !PROSE_FLAGS.has(flag)) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
+      if (eq > 0 && spec && spec.file && spec.file.test(flag)) keep(at, text.slice(eq + 1), false);
+      else if (eq > 0 && !spec && !PROSE_FLAGS.has(text.slice(0, eq))) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
       continue;
     }
     if (needsPattern) { needsPattern = false; continue; }
     if (finds && !rootsEnded && FIND_EXPRESSION.test(text)) rootsEnded = true;
-    keep(at, text, (finds && !rootsEnded) || patterned || walks);
+    keep(at, text, (finds && !rootsEnded) || spec !== null || walks);
   }
   return out;
 }
@@ -166,8 +184,8 @@ function shellCandidates(cmds, dequote) {
 }
 
 // What a shell command reads past the boundary: [{ tool, path, search }]. `units` are the command and each script it
-// carries, each { command, expandVars(text, at), anchorAt(at), texts } - `texts` the bodies a runtime is handed. `env` is
-// what the guard knows: parse, dequote, isVar, platform, tool, root (the project's), cwd, resolve(word, base), exists,
+// carries, each { cmds, expandVars(text, at), anchorAt(at), texts } - `texts` the bodies a runtime is handed. `env` is
+// what the guard knows: dequote, isVar, platform, tool, root (the project's), cwd, resolve(word, base), exists,
 // key (the case fold), inZone(path) and searchZone(path). A word is a path by its own shape or, once a `cd` moved the
 // anchor, by being any word; a glob is judged by the folder it starts in. Cheap tests first, the zone test last.
 function shellReadHits(units, env) {
@@ -175,7 +193,7 @@ function shellReadHits(units, env) {
   const seen = new Set();
   let existing = 0;
   for (const unit of units) {
-    const cands = shellCandidates(env.parse(unit.command).cmds, env.dequote);
+    const cands = shellCandidates(unit.cmds, env.dequote);
     for (const body of unit.texts || []) for (const found of body.text.match(PATH_IN_TEXT) || []) cands.push({ text: found, index: body.index, search: false, scanned: true });
     for (const cand of cands) {
       if (existing >= SHELL_PATHS_MAX) return hits;

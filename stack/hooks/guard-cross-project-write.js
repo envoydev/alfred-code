@@ -915,19 +915,17 @@ const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
 const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNorm);
 // THE READ HALF on the shell route (the judging is cross-read.js `shellReadHits`): the units are the command itself and each
 // script it carries one level down - a heredoc or here-string into a shell, a `-c` string, a piped-in script, a script
-// file - read by shell-writes.js `carriedScripts` and `scanShell`, plus the bodies a runtime is handed (`runtimeScripts`).
+// file - and the bodies a runtime is handed. All come from the one scan above (shell-writes.js `scanShell`: `cmds`,
+// `carried`, `runtimes`), so no script file is read, parsed or charged to the scan budget a second time.
 function shellReadHits() {
-  const units = [{ command, expandVars: scan.expandVars, anchorAt, texts: [] }];
-  try { units[0].texts = shell.runtimeScripts(rawCommand).slice(0, crossRead.SHELL_SCRIPTS_MAX).map((s) => ({ text: String(s.body), index: s.index })); } catch { /* none */ }
-  try {
-    for (const carried of shell.carriedScripts(rawCommand, { cwd: SHELL_CWD, files: true }).slice(0, crossRead.SHELL_SCRIPTS_MAX)) {
-      const inner = shell.scanShell(carried.text, { cwd: SHELL_CWD, files: false });
-      const start = anchorAt(Math.floor(carried.at)) || SHELL_CWD;
-      units.push({ command: inner.command, expandVars: inner.expandVars, anchorAt: (index) => shell.anchorAt(inner.cds, index, start, anchorNorm), texts: [] });
-    }
-  } catch { /* the command alone */ }
+  const max = crossRead.SHELL_SCRIPTS_MAX;
+  const units = [{ cmds: scan.cmds || [], expandVars: scan.expandVars, anchorAt, texts: (scan.runtimes || []).slice(0, max).map((s) => ({ text: String(s.body), index: s.index })) }];
+  for (const carried of (scan.carried || []).slice(0, max)) {
+    const start = anchorAt(Math.floor(carried.at)) || SHELL_CWD;
+    units.push({ cmds: carried.cmds, expandVars: carried.expandVars, anchorAt: (index) => shell.anchorAt(carried.cds, index, start, anchorNorm), texts: [] });
+  }
   return crossRead.shellReadHits(units, {
-    parse: shell.parseShell, dequote: shell.dequote, isVar, platform: process.platform, tool, root: ROOT, cwd: SHELL_CWD,
+    dequote: shell.dequote, isVar, platform: process.platform, tool, root: ROOT, cwd: SHELL_CWD,
     resolve: (word, base) => resolveTarget(nativePath(expandTilde(word)), base), exists: fs.existsSync, key: fold,
     inZone: inReadZone, searchZone: searchRootInZone,
   });

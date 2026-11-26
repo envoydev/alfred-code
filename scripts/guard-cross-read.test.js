@@ -498,3 +498,39 @@ test('the dispatcher gives ONE ask for a write past the project and a read past 
   assert.match(contextOf(r), /Also: Bash reads outside this workspace/);
   assert.match(contextOf(r), /~\/other-proj\/a/);
 }));
+
+// ---- fix round 2 of the review of task 2 ------------------------------------------------------------------------------
+test('-F is a sentence flag only for a git commit or tag', withFixture((fx) => {
+  fx.put('work/proj/msg.txt');
+  for (const command of [`tail -F ${fx.other}`, `ls -F ${fx.other}`, `less -F ${fx.other}`, `grep -F x ${fx.other}`]) asks(fx, bash(command), {}, command);
+  for (const command of ['git commit -F msg.txt', `git commit -F ${fx.other}`, `git tag -a v1 -F ${fx.other}`]) passes(fx, bash(command), {}, command);
+}));
+
+test('a pattern verb whose flag means no pattern keeps its first word as a root', withFixture((fx) => {
+  for (const command of ['rg --files ~', `rg --files ${fx.other}`, `ag -g foo ${fx.other}`, `ack -g foo ${fx.other}`, `rg -e x ${fx.other}`, `grep -ne x ${fx.other}`]) {
+    asks(fx, bash(command), {}, command);
+  }
+  passes(fx, bash(`rg --files-with-matches "~/.claude" src`), {}, 'a pattern that is a quoted tilde');
+}));
+
+test('each pattern verb has its own value flags, and a short cluster ends in the flag that takes a value', withFixture((fx) => {
+  for (const command of [`grep -T x ${fx.other}`, `grep --color x ${fx.other}`, `grep -rf ${fx.other} src`, `rg -nf ${fx.other} src`, `grep -f ${fx.other} src`, `ag -f x ${fx.other}`]) {
+    asks(fx, bash(command), {}, command);
+  }
+  for (const command of [`grep -A 3 "/" ${path.join(fx.proj, 'x')}`, `grep -nA 3 "/" x`, `rg -g '*.js' "/" src`, `rg -tjs "~/x" src`, `grep -m 1 "/" x`]) passes(fx, bash(command), {}, command);
+}));
+
+test('each carried script file is read once for the scan and the read half together', { skip: process.platform === 'win32' && 'a preload path' }, withFixture((fx) => {
+  const log = fx.at('opens.log');
+  const spy = fx.put('spy/spy.js', `const fs = require('fs');\nconst open = fs.openSync;\nfs.openSync = function (p, ...rest) { if (String(p).endsWith('counted.sh')) fs.appendFileSync(${JSON.stringify(log)}, 'open\\n'); return open.call(this, p, ...rest); };\n`);
+  fx.put('work/proj/counted.sh', `echo hi\ncat ${fx.other}\n`);
+  const opens = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+  for (const command of ['bash counted.sh', 'bash counted.sh; bash counted.sh']) {
+    fs.rmSync(log, { force: true });
+    asks(fx, bash(command), { NODE_OPTIONS: `--require ${spy}` }, command);
+    assert.strictEqual(opens(), 1, `${command}: one open of the script`);
+  }
+  fs.rmSync(log, { force: true });
+  passes(fx, bash('bash counted.sh'), { NODE_OPTIONS: `--require ${spy}`, ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write:read' }, 'the read half off');
+  assert.strictEqual(opens(), 1, 'the scan alone opens it once');
+}));
