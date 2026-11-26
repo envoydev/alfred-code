@@ -21,6 +21,12 @@ const SHELL_PATHS_MAX = 64;
 const SHELL_WORDS_MAX = 512;
 const SHELL_SCRIPTS_MAX = 8;
 const PROSE_VERBS = new Set(['echo', 'printf']);
+// `-F<file>`, the file attached to the flag, of `git commit` and `git tag`: only the boolean short flags of those verbs may stand
+// before the `F` in a cluster (`-aF<file>`), so `-mFoo` stays a message. `-F-` is stdin, and a `~` after the flag is no home: the
+// shell expands it at the start of a word only.
+const GIT_FILE_ATTACHED = /^-[aeinopqsvz]*F(.+)$/;
+const GIT_FILE_VERBS = new Set(['commit', 'tag']);
+const STDIN_WORD = '-';
 // The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` is no sentence flag: git
 // commit and tag read the file it names, so its value is a plain word, judged like any other (`-F -` is stdin, a flag).
 const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
@@ -126,6 +132,7 @@ function argEntries(name, words, dequote, powershell) {
   const texts = words.map((word) => dequote(word.raw));
   const keep = (at, text, search) => { if (!(QUOTED_TILDE.test(words[at].raw) && text.startsWith('~'))) out.push({ word: words[at], text, search }); };
   const finds = FIND_VERBS.has(name);
+  const gitFile = name === 'git' && texts.some((text) => GIT_FILE_VERBS.has(text));
   const spec = PATTERN_VERBS.get(name) || null;
   const recurses = (text) => RECURSE_FLAG.test(text) || ((powershell || POWERSHELL_LISTING_VERB.test(name)) && POWERSHELL_RECURSE_FLAG.test(text));
   const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some(recurses));
@@ -142,6 +149,11 @@ function argEntries(name, words, dequote, powershell) {
     if (!flagsEnded && spec && spec.values.has(flag) && !text.includes('=')) { at++; continue; }
     if (!flagsEnded && !spec && PROSE_FLAGS.has(text)) { at++; continue; }
     if (!flagsEnded && text.startsWith('-')) {
+      const attached = gitFile ? GIT_FILE_ATTACHED.exec(text) : null;
+      if (attached) {
+        if (attached[1] !== STDIN_WORD && !attached[1].startsWith('~')) out.push({ word: words[at], text: attached[1], search: false });
+        continue;
+      }
       const eq = text.indexOf('=');
       if (finds && !FIND_OPTION.test(text)) rootsEnded = true;
       if (eq > 0 && spec && spec.file && spec.file.test(flag)) keep(at, text.slice(eq + 1), false);

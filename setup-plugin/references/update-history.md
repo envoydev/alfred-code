@@ -1486,7 +1486,7 @@ mode file, since Claude Code reads it there, and the project's own `off` still w
 
 Three guard changes come with it:
 - `git commit -F <file>` and `git tag -F <file>` read that file, so a file past the workspace asks like any read. `-F -`
-  (standard input) and `-m` text ask nothing. A file attached to the flag (`-F<file>`) is not judged.
+  (standard input) and `-m` text ask nothing.
 - When Claude tries to call a skill that only you may start, the call is refused without a prompt, since Claude Code
   would not run it even after a Yes.
 - Scripts a command runs are read up to three levels deep, so a script that runs another script, which reads another

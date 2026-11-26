@@ -116,3 +116,13 @@ test('each script has its own word budget of 512: the word at the limit is read,
   fx.script('inner.sh', filler(WORDS_MAX));
   passes(fx, 'bash outer.sh', 'the 513th word of that script');
 }));
+
+test('git commit -F<file> with the file attached to the flag reads the file, as -F <file> does', withFixture((fx) => {
+  fx.put('work/proj/msg.txt');
+  for (const command of [`git commit -F${fx.other}`, `git commit -a -F${fx.other}`, `git commit -aF${fx.other}`, `git commit --amend -F"${fx.other}"`,
+    `git tag -a v1 -F${fx.other}`, `git commit --file=${fx.other}`, `git commit --file ${fx.other}`, `git commit --file="${fx.other}"`,
+    `/usr/bin/git commit -F${fx.other}`, `timeout 5 git commit -F${fx.other}`]) asks(fx, command, command);
+  for (const command of ['git commit -Fmsg.txt', `git commit -F${path.join(fx.proj, 'msg.txt')}`, 'git commit -F-', 'git commit -aF-', 'git commit --file=-', 'git commit --file=msg.txt',
+    `git commit -m${fx.other}`, `git commit -m "see ${fx.other}"`, `git commit --message=${fx.other}`, `git commit -am${fx.other}`, `git tag -a v1 -m${fx.other}`,
+    `git grep -F${fx.other} x`, `git grep -Fn x`, `git commit -mF${fx.other}`, `git log -F${fx.other}`]) passes(fx, command, command);
+}));
