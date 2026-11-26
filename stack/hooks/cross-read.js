@@ -29,11 +29,11 @@ const GIT_FILE_VERBS = new Set(['commit', 'tag']);
 const STDIN_WORD = '-';
 // A `~` right after `--name=` in one word stays literal in bash and zsh (they expand it at the start of a word, and after `=` in
 // an assignment only), so the program gets `~/x`. That names no place under HOME only for a verb that opens the word as written:
-// git, the grep family, rg, ls, cat, sed and tar (measured: `grep --file=~/x` and `tar --file=~/x` open a file called `~`). npm
-// expands `~/` itself in a path option (`npm --prefix=~/x prefix` printed the home path), so npm, pnpm and every verb not listed
-// ask as before.
+// git, rg, ls, cat, sed and tar (measured: `tar --file=~/x` and GNU tar 1.35 / sed 4.9 open a file called `~`). npm expands `~/`
+// itself in a path option (`npm --prefix=~/x prefix` printed the home path), and so does the grep the Bash tool runs - Claude
+// Code's bundled ugrep reads `--file=~/x` from HOME - so grep, npm, pnpm and every verb not listed ask as before.
 const LONG_FLAG_TILDE = /^--[^=]+=~/;
-const LITERAL_TILDE_VERBS = Object.freeze(['git', 'grep', 'egrep', 'fgrep', 'rg', 'ls', 'cat', 'sed', 'tar']);
+const LITERAL_TILDE_VERBS = Object.freeze(['git', 'rg', 'ls', 'cat', 'sed', 'tar']);
 // The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` is no sentence flag: git
 // commit and tag read the file it names, so its value is a plain word, judged like any other (`-F -` is stdin, a flag).
 const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
