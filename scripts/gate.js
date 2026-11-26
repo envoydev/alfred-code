@@ -37,11 +37,11 @@ const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
 const { unknownTestFiles } = require('./gate/tests-arg.js');
 const { guestWorkers, hostShares } = require('./gate/workers.js');
 const { runAfterOthers } = require('./gate/after-others.js');
+const { LEG_TIMEOUT_MS, BOOT_SECOND_LENGTH } = require('./gate/constants.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
 const ZERO_SHA = /^0+$/;
-const LEG_TIMEOUT_MS = 45 * 60 * 1000;
 const VM_READY_MS = 5 * 60 * 1000;
 const KEEP_LOG_RUNS = 10;
 const KEEP_PASS_STAMPS = 50;
@@ -243,15 +243,17 @@ function alive(pid)
 }
 
 // Spawns one leg's process, writes everything it prints to the leg's log, reports each step as it
-// starts, and resolves with the leg's own RESULT line (null when it never printed one).
-function runProcess(leg, cmd, args, { env, log, onKill } = {})
+// starts, and resolves with the leg's own RESULT line (null when it never printed one) and whether its own
+// timer killed it.
+function runProcess(leg, cmd, args, { env, log, onKill, timeoutMs = LEG_TIMEOUT_MS[leg] } = {})
 {
     return new Promise(resolve => {
         const out = fs.createWriteStream(log);
         const child = rt.spawnCommandAsync(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
         let result = null;
         let buf = '';
-        const timer = setTimeout(() => { out.write(`\n[gate] ${leg} timed out after ${fmtMs(LEG_TIMEOUT_MS)}\n`); kill(); }, LEG_TIMEOUT_MS);
+        let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; out.write(`\n[gate] ${leg} timed out after ${fmtMs(timeoutMs)}\n`); kill(); }, timeoutMs);
         const kill = () => { if (onKill) onKill(); child.kill('SIGTERM'); };
         child.stdout.on('data', d => {
             out.write(d);
@@ -267,7 +269,7 @@ function runProcess(leg, cmd, args, { env, log, onKill } = {})
         });
         child.stderr.on('data', d => out.write(d));
         child.on('error', err => out.write(`\n[gate] ${cmd}: ${err.message}\n`));
-        child.on('close', code => { clearTimeout(timer); out.end(() => resolve({ code, result })); });
+        child.on('close', code => { clearTimeout(timer); out.end(() => resolve({ code, result, timedOut, limitMs: timeoutMs })); });
         runProcess.active.add(kill);
         child.on('close', () => runProcess.active.delete(kill));
     });
@@ -427,6 +429,23 @@ async function waitForExec(vm)
     return false;
 }
 
+// A run cut off with no result and a guest that rebooted: the VM went down under it - Windows Update restarts a VM
+// that sat off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from its
+// window (StartMenuExperienceHost.exe) - all measured. Returns that reason, or '' for any other run. A run the gate's
+// own timer killed is a timeout, never a reboot. The boot time is compared to the second: Windows derives it from the
+// uptime, so two reads can differ in the fraction.
+async function downReason(vm, r, bootBefore, probes = {})
+{
+    if (r.result || r.timedOut || !bootBefore) return '';
+    const { state = () => String(vmInfo(vm).State || '').toLowerCase(), ready = waitForExec, boot = guestBoot } = probes;
+    const down = `'${vm}' went down during the run - Windows Update restarting it, or a shutdown from its window; run the gate again`;
+    let now = '';
+    try { now = state(vm); } catch { /* unreadable counts as down */ }
+    if (now !== 'running') return down;
+    if (!(await ready(vm)) || (await boot(vm)).slice(0, BOOT_SECOND_LENGTH) !== bootBefore.slice(0, BOOT_SECOND_LENGTH)) return down;
+    return '';
+}
+
 async function legWin(ctx)
 {
     const vm = process.env.GATE_WINDOWS_VM || tryGit(ctx.root, ['config', '--get', 'gate.windowsVm']);
@@ -485,17 +504,8 @@ async function legWin(ctx)
                 { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
         },
     });
-    // A run cut off with no result: the VM went down under it - Windows Update restarts a VM that sat
-    // off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from
-    // its window (StartMenuExperienceHost.exe) - all measured. Say so rather than 'no result'.
-    if (!r.result && bootBefore)
-    {
-        const down = `'${vm}' went down during the run - Windows Update restarting it, or a shutdown from its window; run the gate again`;
-        let now = '';
-        try { now = String(vmInfo(vm).State || '').toLowerCase(); } catch { /* unreadable counts as down */ }
-        if (now !== 'running') return { ...r, reasons: [down] };
-        if (!(await waitForExec(vm)) || (await guestBoot(vm)) !== bootBefore) return { ...r, reasons: [down] };
-    }
+    const down = await downReason(vm, r, bootBefore);
+    if (down) return { ...r, reasons: [down] };
     const major = Number(String(r.result?.node || '').replace(/^v/, '').split('.')[0]);
     return { ...r, note: r.result && ctx.nodeMajor && major !== ctx.nodeMajor ? `node ${r.result.node} in the VM, not the v${ctx.nodeMajor} ci.yml pins` : '' };
 }
@@ -509,6 +519,7 @@ const cleanEnv = env => runnerEnv(env);
 function legVerdict(leg, r)
 {
     if (r.reasons) return { leg, ok: false, reasons: r.reasons, note: r.note || '' };
+    if (r.timedOut) return { leg, ok: false, reasons: [`the leg timed out after ${fmtMs(r.limitMs)} - the log ends where it was killed`], note: r.note || '' };
     if (!r.result) return { leg, ok: false, reasons: [`the leg printed no result (exit ${r.code})`], note: r.note || '' };
     const reasons = [...(r.result.reasons || [])];
     if (r.result.ok && r.code !== 0) reasons.push(`the leg exited ${r.code}`);
@@ -750,4 +761,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { restoreVm, LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };
+module.exports = { restoreVm, LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, runProcess, downReason, configuredLegs, installHook, uninstallHook };
