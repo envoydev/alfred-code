@@ -1903,13 +1903,13 @@ function askTimeoutMarker(sessionId, env = process.env)
 
 // THE TOOL RESULT OF ONE CALL, read from the transcript's tail (the walk's byte budget, the raw-needle reader of the
 // typed-row judges above). `{ found: true, isError, text }` for the newest row whose `tool_result` block carries the id; `{ found:
-// false }` for no id, no file, an unreadable or torn one, or a result older than the tail - it never throws. `declinedByUser`
+// false }` for no id, no file, an unreadable or torn one, or a result older than the tail (`tailBytes`, the walk's budget by default) - it never throws. `declinedByUser`
 // is Claude Code's own rejection of a permission prompt: an error result that opens 'The user doesn't want to proceed with
 // this tool use. The tool use was rejected' (read from real transcripts, 2026-11-26; the prompt of a hook `ask` ends the same
 // way). The words are the host's, so a deny a hook wrote - 'hook error', 'Blocked: ' - is none.
 const TOOL_RESULT_NOT_FOUND = Object.freeze({ found: false });
 const DECLINED_OPENING_RE = /^\s*The user doesn['\u2019]t want to proceed with this tool use\. The tool use was rejected/;
-function toolResultOf(transcriptPath, toolUseId)
+function toolResultOf(transcriptPath, toolUseId, { tailBytes = WALK_TAIL_BYTES } = {})
 {
     try
     {
@@ -1924,7 +1924,7 @@ function toolResultOf(transcriptPath, toolUseId)
             if (!block) return;
             const text = typeof block.content === 'string' ? block.content : Array.isArray(block.content) ? block.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('') : '';
             found = { found: true, isError: block.is_error === true, text };
-        }, Math.max(0, size - WALK_TAIL_BYTES));
+        }, Math.max(0, size - tailBytes));
         return found || TOOL_RESULT_NOT_FOUND;
     }
     catch { return TOOL_RESULT_NOT_FOUND; }

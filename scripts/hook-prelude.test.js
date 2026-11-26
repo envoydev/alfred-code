@@ -1931,6 +1931,7 @@ test('toolResultOf reads the tool result of one call id from the transcript tail
     assert.deepStrictEqual(toolResultOf(undefined, undefined), { found: false }, 'no arguments');
     const big = file([result('toolu_old', DECLINE, true), { type: 'assistant', pad: 'x'.repeat(3 * 1024 * 1024) }, call]);
     assert.deepStrictEqual(toolResultOf(big, 'toolu_old'), { found: false }, 'a result past the byte budget is not read');
+    assert.strictEqual(toolResultOf(big, 'toolu_old', { tailBytes: 4 * 1024 * 1024 }).found, true, 'a caller that read a wider tail before keeps it');
     assert.strictEqual(declinedByUser({ found: true, isError: true, text: DECLINE }), true);
     assert.strictEqual(declinedByUser({ found: true, isError: true, text: "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. x). To tell you how to proceed, the user said:\nno" }), true, 'the said-slot variant');
     assert.strictEqual(declinedByUser({ found: true, isError: false, text: DECLINE }), false, 'not an error result');
