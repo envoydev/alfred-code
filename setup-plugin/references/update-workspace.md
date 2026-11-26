@@ -125,7 +125,7 @@ node "$TMP/repo/scripts/stack-select.js" --redundant --ignored-in <rel> --instal
 `redundant: <category> <name> - owned by <stacks>, not detected` lines are the items the child inherits that fit none of
 its stacks. Show each child's lines as a table before the asks, one row per line with the state word `REDUNDANT`: the
 layer-table gate holds an ask until a `--redundant` call's result is in your text with that word. A child with none gets
-no ask and one line, `<rel>: no REDUNDANT row - keeps everything it inherits`.
+no ask and one line, `<rel>: no REDUNDANT row to offer - it keeps what it inherits, beside what it already ignores`.
 
 **The fit ask - ONE per joined child that has at least one `redundant:` line.** All of them ride in one
 AskUserQuestion call, up to four questions, one per child; more children take a second call, before the cascade. With
