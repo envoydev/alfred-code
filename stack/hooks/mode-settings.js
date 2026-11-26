@@ -118,7 +118,34 @@ function indexMisses(file) {
 // '' unless the mode file's env holds ALFRED_CODE_AUTO_RUN '1'; then its trust - only 'own' is a standing auto-run.
 const autoRunHeld = (root, file = layout.modeFile(root), data = readObj(file)) =>
   (plain(data) && plain(data.env) && data.env[AUTO_RUN] === '1' ? localTrust(file, (f) => indexMisses(f) ?? localGitStatus(f)) : '');
+// D2 (mode inheritance): the standing auto-run a joined child reads from a workspace member's mode file. `held` is the
+// member file's trust ('own', 'tracked', 'unvouched' - the word writeModes uses for git's 'unknown') for a 1, else '0'; null
+// when the checkout's own file decided, the switch is off, an ignore line stopped it or no member holds it. One verdict a root a process.
+const HELD = Object.freeze({ off: '0', unknown: 'unvouched' });
+const inheritedAt = new Map();
+function inheritedRecord(root, key, env)
+{
+    const record = layout.inheritedModes(env);
+    if (record.root !== null && layout.pathKey(record.root) === key) return record;
+    const copy = layout.launchEnv(env);   // the env as launched: the first root's applied winners are no launch value
+    layout.applyVariables(root, copy);
+    return layout.inheritedModes(copy);
+}
+function autoRunInherited(root, env = process.env)
+{
+    const key = layout.pathKey(root);
+    if (inheritedAt.has(key)) return inheritedAt.get(key);
+    const entry = inheritedRecord(root, key, env).modes[AUTO_RUN];
+    let verdict = null;
+    if (entry)
+    {
+        const trust = entry.value === '1' ? localTrust(entry.file, (f) => indexMisses(f) ?? localGitStatus(f)) : HELD.off;
+        verdict = { held: trust === 'unknown' ? HELD.unknown : trust, from: entry.from };
+    }
+    inheritedAt.set(key, verdict);
+    return verdict;
+}
 const said = (r) => [...r.replaced, ...r.left].map((n) => ` - ${n}`).join('')
   + (r.unignored ? ' - .claude/settings.local.json was created and git does not ignore it here: add it to .gitignore' : '');
 
-module.exports = { localGitStatus, localTrust, writeModes, WHY, autoRunHeld, said, indexMisses };
+module.exports = { localGitStatus, localTrust, writeModes, WHY, autoRunHeld, autoRunInherited, said, indexMisses };

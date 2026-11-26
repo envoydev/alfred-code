@@ -539,8 +539,13 @@ const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 // The standing auto-run (spec 3.5): the mode file's own ALFRED_CODE_AUTO_RUN=1, honoured where git vouches the file is this
 // machine's alone; memoised per process and root, and a copy without the helper honours nothing.
 const standingAt = new Map();
-const heldOwn = (root) => { try { return require('./mode-settings.js').autoRunHeld(root) === 'own'; } catch { return false; } };
-const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldOwn(root)); return standingAt.get(root); };
+// The own file's 1, or a workspace member's (mode inheritance D2: a joined child that holds no value of its own).
+const heldHere = (root) =>
+{
+    try { const modes = require('./mode-settings.js'); return modes.autoRunHeld(root) === 'own' || (modes.autoRunInherited(root) || {}).held === 'own'; }
+    catch { return false; }
+};
+const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldHere(root)); return standingAt.get(root); };
 // How long auto-run lasts, for the banner, the run contract and the Stop hold: the standing variable carries into new
 // sessions, a /mode-auto-run <request> stamp lasts its session (stage 3's final review, finding 7).
 const autoLasts = (root) => (root && autoRunStanding(root) ? 'auto-run stays on, new sessions included, until' : 'auto-run stays on for the session until');
