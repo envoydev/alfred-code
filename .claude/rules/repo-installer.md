@@ -193,7 +193,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the one call that scope takes) and never installed beside, uninstalled, disabled, moved or named with a
   `--scope managed` command (`plugins.leftAt`).
 - **The mode block (mode commands v2 stage 3, 3.11.0; before it the auto-compact window per model of 2026-10-14).**
-  The four mode keys (`layout.MODE_KEYS`: `ALFRED_CODE_AUTO_RUN`, `_AUTO_COMPACT`, `_SCORING`, `_SCORING_LEVEL`) in the
+  The five mode keys (`layout.MODE_KEYS`: `ALFRED_CODE_AUTO_RUN`, `_AUTO_COMPACT`, `_SCORING`, `_SCORING_LEVEL`, `_SCORING_ROUNDS`) in the
   env of the checkout's own settings file (`layout.modeFile`: `<root>/.claude/settings.local.json`; a same-repository
   child and a worktree resolve to the top's) are the user's typed modes, and ONE writer holds them, `stack/hooks/
   mode-settings.js writeModes(root, updates, env)`, which also writes Claude Code's `autoCompactEnabled` and
@@ -204,7 +204,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   still at the stack's own ledger hash taking its reseed row), and seeds no mode key into a local file with no
   `.variables`; after the pass one `refresh` call runs `writeModes` - `--auto-compact on` writes `1`, `off` removes the
   key, else a team's `1` (`.variables`, a chain member's included) is copied once into a file without the key; a
-  refused flag (`ctx.compactHeld`) copies nothing - and uninstall's `remove` takes the four keys out (an emptied file
+  refused flag (`ctx.compactHeld`) copies nothing - and uninstall's `remove` takes the five keys out (an emptied file
   goes). `ALFRED_CODE_AUTO_COMPACT` is never seeded since 3.11.0 (`seed: false`, its `flag` the installer's own), and
   the `auto-compact-seed-retired` migration takes a seeded `0` out of `settings.json` and `.variables`. The settings
   pass writes no window any more: rows an earlier release ledgered (`managed-settings: <file>:modelSettings.<id>.

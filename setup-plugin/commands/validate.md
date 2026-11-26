@@ -338,6 +338,11 @@ table of the actionable rows only - an install whose env already matches gets th
   instrumentation switch that is neither `0` nor `1`, a whole number outside `min`..`max`, a csv item outside its `values`). Show the value and the expected shape; the fix is the catalog default unless the user types
   another. The shape is the ONLY test - a value that differs from the default is a deliberate pin,
   never a finding.
+- **MODE KEYS** - the five mode keys (`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`,
+  `ALFRED_CODE_SCORING_LEVEL`, `ALFRED_CODE_SCORING_ROUNDS`) are the user's typed modes, no MISSING or INVALID row. A mode key is
+  reported as a mode with its state, never a value to fix, and named with its command (`/alfred-code:mode:auto-run on|off`,
+  `/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level] [rounds]`, typed alone on its line):
+  `variables.js set` refuses a mode key, and one refused key drops the whole call.
 
 Consent exactly like the artifact layers - one AskUserQuestion round, a typed answer picking rows by number - then
 restate the outcome in one line:
@@ -458,7 +463,9 @@ MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it in
 `variables.js set` - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
-through `variables.js set` or that merge. Emit + prereq-check it -
+through `variables.js set` or that merge. A mode key (`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`,
+`ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL`, `ALFRED_CODE_SCORING_ROUNDS`) is a mode, never in that `variables.js set`:
+step 8 named its command, and the user types it. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check`,
 output to `$TMP/select.out` - then:
 

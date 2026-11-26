@@ -1868,7 +1868,7 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.match(flatCascade, /scan-evidence\.js" --root <rel> --catalog "\$TMP\/repo\/meta\/evidence\.json" --out "\$TMP\/found-<n>\.json"/);
     assert.match(flatCascade, /stack-select\.js" --redundant --ignored-in <rel> --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json" --recs "\$TMP\/repo\/meta\/recommendations\.json" --graph "\$TMP\/repo\/meta\/stack-graph\.json" --stacks "<the child's stacks, csv>"/);
     assert.match(flatCascade, /cat "\$TMP\/repo\/setup-plugin\/references\/stack-detection\.md"/);
-    assert.match(flatCascade, /keeps everything it inherits/);
+    assert.match(flatCascade, /no REDUNDANT row to offer - it keeps what it inherits, beside what it already ignores/);
     assert.ok(!/its fit is checked at its own next update/.test(flatCascade), 'it has no own next update to wait for');
     assert.match(flatCascade, /`\/alfred-code:validate` in that project offers the same check/);
     // the order: the joins after step 2's answers (this project's own role answer first) and before the installer call;
@@ -2036,6 +2036,22 @@ test('validate: a catalog row\'s follow word is valid, named in the INVALID rule
     const text = flat(rule[0]);
     assert.match(text, /an hour count that is no non-negative number and not the row's `follow` word/, 'the hour shape accepts the follow word');
     for (const row of rows) assert.ok(text.includes(`\`${row.validate.follow}\``), `${row.key}: '${row.validate.follow}' is named valid in the INVALID rule`);
+});
+
+// variables.js set refuses a mode key and drops the whole call, so validate reports the five MODE keys as modes with their
+// command, in step 8 and again where step 10 builds the one set call, and keeps each out of it (configure.md does the same).
+test('validate: the five mode keys are reported as modes with their command and kept out of the variables.js set call', () => {
+    const body = cmdBody('validate');
+    const step8 = flat(/## 8\. Environment[\s\S]*?\n## 9\./.exec(body)[0]);
+    const step10 = flat(/## 10\. Apply[\s\S]*?stack-select\.js/.exec(body)[0]);
+    const layout = require('../stack/hooks/layout.js');
+    for (const [name, text] of [['step 8', step8], ['step 10', step10]]) {
+        for (const key of layout.MODE_KEYS) assert.ok(text.includes(`\`${key}\``), `${name} names ${key}`);
+        assert.match(text, /mode key[^.]*(is|are) (reported|a mode)/i, `${name} reports them as modes`);
+    }
+    for (const command of ['/alfred-code:mode:auto-run on|off', '/alfred-code:mode:auto-compact on|off', '/alfred-code:mode:scoring on|off [level] [rounds]'])
+        assert.ok(step8.includes(`\`${command}\``), `step 8 names ${command}`);
+    assert.match(step10, /never in that `variables\.js set`/, 'step 10 keeps every mode key out of the set call');
 });
 
 // R115 (burn-down 2026-11-04): Claude Code reads a multi-select submitted with nothing ticked as unanswered, so an

@@ -1406,7 +1406,10 @@ whole number from 1 to 10. `on 90` saves the level only and keeps the stored rou
 same holds for `off`.
 
 The command's rounds outrank `ALFRED_CODE_SCORING_ROUNDS` in `.alfred/.variables`, as the level does. A `.variables` value
-an older install holds is still read until you type a rounds value.
+an older install holds is still read until you type a rounds value. `variables.js set` now refuses
+`ALFRED_CODE_SCORING_ROUNDS`, as it does the level: type the scoring command instead. A rounds value the stack seeded
+into an older install's `settings.local.json` loses its ledger row on update and stays as typed (default 3); uninstall
+still removes it.
 
 Nothing to do in an installed project beyond the update. Report that the scoring command takes the rounds.
 

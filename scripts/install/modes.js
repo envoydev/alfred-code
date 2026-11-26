@@ -1,5 +1,5 @@
 'use strict';
-// The mode block and the installer (mode commands v2 stage 3): the four mode keys in the checkout's own settings.local.json
+// The mode block and the installer (mode commands v2 stage 3): the five mode keys (auto-run, auto-compact, scoring, its level and its rounds) in the checkout's own settings.local.json
 // are the user's typed modes. The settings pass sets them aside and puts them back as typed (setAside), one writeModes call
 // after it refreshes Claude Code's own two keys from them (refresh), and uninstall takes the block out (remove).
 const fs = require('node:fs');
@@ -72,7 +72,7 @@ function refresh({ projectRoot, configDir, dataRoot, autoCompact, held = false, 
     return r;
 }
 
-// Uninstall: the four keys leave the mode file, Claude Code's two keys only when the compact key was there; an emptied file goes.
+// Uninstall: the five keys leave the mode file, Claude Code's two keys only when the compact key was there; an emptied file goes.
 function remove({ projectRoot, log })
 {
     if (!ownsModeFile(projectRoot)) return null;
