@@ -15,7 +15,11 @@ const ROOT = path.join(__dirname, '..');
 // scripts/run-dir-gate writes the run-dir gate's verdict (setup-plugin/hooks/run-dir-gate.js hands it to emit), so it is swept too.
 const HOOK_DIRS = ['stack/hooks', 'setup-plugin/hooks', 'scripts/run-dir-gate'];
 const PRELUDE = 'hook-prelude.js';
-const DENY_RE = /permissionDecision:\s*['"]deny['"]|process\.exit\(\s*(?:2|DENY_EXIT)\s*\)|\bVERDICT\.deny\b/;
+const DENY_RE = /permissionDecision:\s*['"]deny['"]|process\.exit\(\s*(?:2|DENY_EXIT)\s*\)/;
+// The run-dir gate keeps its verdict words in its own VERDICT constant, so that form is read in its folder only.
+const RUN_DIR_FOLDER = 'scripts/run-dir-gate/';
+const RUN_DIR_DENY_RE = /\bVERDICT\.deny\b/;
+const denyIn = (rel, line) => DENY_RE.test(line) || (rel.startsWith(RUN_DIR_FOLDER) && RUN_DIR_DENY_RE.test(line));
 const MARKER = Object.freeze({
   stop: '// guard-ask: Stop hold',
   combine: '// guard-ask: combine re-emits a deny',
@@ -53,7 +57,7 @@ test('no PreToolUse deny is left outside the prelude', () => {
   for (const rel of hookFiles()) {
     const lines = linesOf(rel);
     lines.forEach((line, k) => {
-      if (!DENY_RE.test(line) || line.includes(MARKER.fallback)) return;
+      if (!denyIn(rel, line) || line.includes(MARKER.fallback)) return;
       if (!markerIn(line) && !(k > 0 && markerIn(lines[k - 1]))) unmarked.push(`${rel}:${k + 1}`);
     });
   }
@@ -108,5 +112,17 @@ test('B62: a docs-session hold on a hand-back is a deny in default, auto and don
       assert.strictEqual(verdictOf(out), 'deny', `${mode}: ${out.stdout}`);
       assert.match(blockText(out), /^Docs check: you changed src\/Api\/Program\.cs/, mode);
     } finally { r.rm(); }
+  }
+});
+
+test('the VERDICT.deny form is read in the run-dir gate folder only, and every other deny form is read everywhere', () => {
+  const verdictLine = "if (trusted) return { decision: VERDICT.deny, reason };";
+  assert.ok(denyIn('scripts/run-dir-gate/verdict.js', verdictLine), 'the run-dir gate names its deny through VERDICT');
+  assert.ok(!denyIn('stack/hooks/forge-gate.js', verdictLine), 'another hook has no VERDICT constant to read');
+  for (const rel of ['scripts/run-dir-gate/effects.js', 'stack/hooks/shell-guards.js', 'setup-plugin/hooks/guard-layer-table.js']) {
+    assert.ok(denyIn(rel, "out = { permissionDecision: 'deny' };"), `${rel}: a deny verdict`);
+    assert.ok(denyIn(rel, 'process.exit(2);'), `${rel}: an exit 2`);
+    assert.ok(denyIn(rel, 'process.exit( DENY_EXIT )'), `${rel}: the shared exit name`);
+    assert.ok(!denyIn(rel, "out = { permissionDecision: 'ask' };"), `${rel}: an ask is no deny`);
   }
 });
