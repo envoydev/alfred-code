@@ -21,11 +21,9 @@ const SHELL_PATHS_MAX = 64;
 const SHELL_WORDS_MAX = 512;
 const SHELL_SCRIPTS_MAX = 8;
 const PROSE_VERBS = new Set(['echo', 'printf']);
-// The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` names the message file of a
-// git commit or tag only; for tail, ls and less it is a plain flag.
+// The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` is no sentence flag: git
+// commit and tag read the file it names, so its value is a plain word, judged like any other (`-F -` is stdin, a flag).
 const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
-const GIT_MESSAGE_FILE_FLAG = '-F';
-const GIT_MESSAGE_VERBS = new Set(['commit', 'tag']);
 // A verb whose first plain word is its pattern, never a root, unless a flag gives the pattern (`pattern`: its value is the
 // pattern) or means there is none (`none`). `file` names a file of patterns, read like any file. `values` are the flags
 // that take the next word, one set for each verb.
@@ -129,7 +127,6 @@ function argEntries(name, words, dequote, powershell) {
   const keep = (at, text, search) => { if (!(QUOTED_TILDE.test(words[at].raw) && text.startsWith('~'))) out.push({ word: words[at], text, search }); };
   const finds = FIND_VERBS.has(name);
   const spec = PATTERN_VERBS.get(name) || null;
-  const messageFile = name === 'git' && texts.some((text) => GIT_MESSAGE_VERBS.has(text));
   const recurses = (text) => RECURSE_FLAG.test(text) || ((powershell || POWERSHELL_LISTING_VERB.test(name)) && POWERSHELL_RECURSE_FLAG.test(text));
   const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some(recurses));
   const patternGiven = (text) => { const flag = flagOf(text); return spec.pattern.test(flag) || (spec.file && spec.file.test(flag)) || (spec.none && spec.none.test(flag)); };
@@ -143,7 +140,7 @@ function argEntries(name, words, dequote, powershell) {
     if (!flagsEnded && spec && spec.pattern.test(flag) && !text.includes('=')) { at++; continue; }
     if (!flagsEnded && spec && spec.file && spec.file.test(flag) && !text.includes('=')) { if (at + 1 < words.length) keep(at + 1, texts[at + 1], false); at++; continue; }
     if (!flagsEnded && spec && spec.values.has(flag) && !text.includes('=')) { at++; continue; }
-    if (!flagsEnded && !spec && (PROSE_FLAGS.has(text) || (messageFile && text === GIT_MESSAGE_FILE_FLAG))) { at++; continue; }
+    if (!flagsEnded && !spec && PROSE_FLAGS.has(text)) { at++; continue; }
     if (!flagsEnded && text.startsWith('-')) {
       const eq = text.indexOf('=');
       if (finds && !FIND_OPTION.test(text)) rootsEnded = true;

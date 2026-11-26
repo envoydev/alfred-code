@@ -1558,7 +1558,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `expandVars`). A SEARCH PATTERN WORD IS NEVER JUDGED: the first plain word of `grep`, `egrep`, `fgrep`, `rg`, `ag` and `ack` is
     a pattern unless `-e` / `--regexp` (or, for ag and ack, `-g`) gives it, `rg --files` and `ack -f` have none, `-f` / `--file` (grep, rg) names a file of patterns, which is read like any file, and a quoted
     word whose text STARTS with `~` is a literal name, for every verb and for an input redirect; the value of a prose flag (`-m`, `--message`, `--body`, `--title`...) and of `echo`
-    / `printf` is a sentence, and `-F` is one only for `git commit` and `git tag`. Only a path that exists counts, deduped by resolved
+    / `printf` is a sentence, and `-F` is no sentence flag: `git commit -F <file>` and `git tag -F <file>` read that file, so it is a read like any other (`-F -` is stdin, no path). Only a path that exists counts, deduped by resolved
     path, at most 64 per command; 512 words per command and per carried script. CARRIED SCRIPTS are read ONE level (`scanShell`'s `carried`, `runtimes`
     and `cmds`: the guard never reads a script twice), at most 8 per command. THE ONE PROMPT: the read hits ride `readHits`
     (declared above the telemetry exit wrapper, which runs on every exit); `blockCall` joins them into the first sentence of any
@@ -1574,11 +1574,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     does too, and a copy with no `cross-read.js` beside it reads nothing (it is in `HOOK_MODULES`). No new variable. No sweep marker:
     every block goes through `blockCall`. KNOWN LIMITS:
     the CLI's `--add-dir` grants a directory only for that launch and no hook payload carries it, so such a directory still asks (list it in `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` or in the account settings' `additionalDirectories`);
-    `git commit -F` and `git tag -F` of a file past the workspace give no ask (the message file is prose); a script nested two levels
+    `git commit -F<file>` with the file attached to the flag gives no ask; a script nested two levels
     deep is not read; a `CLAUDE_CONFIG_DIR` outside HOME is judged only in part (its account dir asks on a Grep, its `projects/` does
     not, and a Read there is never in the zone); words past the 512th, paths past the 64th and scripts past the 8th fail open;
     `rm -rf` of another project's memory asks with 'reads' wording; `-m` as a prose flag on every verb also skips `ls -m <path>`;
-    `rg -rf <file>` over-asks; `messageFile` matches a commit or tag word anywhere in git's words, so it errs toward no ask; a `CLAUDE_PLUGIN_ROOT` set to the account dir would open other projects' memory (Claude Code never sets it so); a glob that reaches only the own memory asks, since its fixed prefix is `projects/`. Update step:
+    `rg -rf <file>` over-asks; a `CLAUDE_PLUGIN_ROOT` set to the account dir would open other projects' memory (Claude Code never sets it so); a glob that reaches only the own memory asks, since its fixed prefix is `projects/`. Update step:
     none (the plugin replaces the hook files; the copy route re-copies `cross-read.js` on each run).
     The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the rows other hooks read back could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is blocked - an ask where a person can answer, a deny where nobody can - with no allowance route (`recordAt`, branch `transcript`); memory and `settings.json` stay open; a Read, a grep and a copy OUT are no write, and the read half asks for another project's transcript as for any read past the workspace.
     A PATH THE USER TYPED opened writes from 2026-11-03 to 2026-11-25 (usage audit U20); it left with the other chat-yes openers (a typed

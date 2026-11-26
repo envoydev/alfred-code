@@ -436,7 +436,7 @@ test('a search verb\'s pattern is no root, and a quoted ~ is no home', withFixtu
   asks(fx, bash(`rg -f ${fx.other} src`), {}, '-f names a file that is read');
   asks(fx, bash(`grep -F x ${fx.other}`), {}, '-F is a grep flag, not a sentence flag');
   asks(fx, bash(`grep -m 1 -e foo ${fx.other}`), {}, 'a flag value is not the pattern');
-  passes(fx, bash(`git commit -F ${fx.other}`), {}, '-F names a message file for git');
+  asks(fx, bash(`git commit -F ${fx.other}`), {}, '-F names a file git reads, so it asks like any read');
 }));
 
 test('find judges its own roots, also when it runs another command', withFixture((fx) => {
@@ -502,10 +502,12 @@ test('the dispatcher gives ONE ask for a write past the project and a read past 
 }));
 
 // ---- fix round 2 of the review of task 2 ------------------------------------------------------------------------------
-test('-F is a sentence flag only for a git commit or tag', withFixture((fx) => {
+test('-F is a file git reads for a commit or tag, so its value is a read; -m stays a sentence and -F - is no path', withFixture((fx) => {
   fx.put('work/proj/msg.txt');
-  for (const command of [`tail -F ${fx.other}`, `ls -F ${fx.other}`, `less -F ${fx.other}`, `grep -F x ${fx.other}`]) asks(fx, bash(command), {}, command);
-  for (const command of ['git commit -F msg.txt', `git commit -F ${fx.other}`, `git tag -a v1 -F ${fx.other}`]) passes(fx, bash(command), {}, command);
+  for (const command of [`tail -F ${fx.other}`, `ls -F ${fx.other}`, `less -F ${fx.other}`, `grep -F x ${fx.other}`,
+    `git commit -F ${fx.other}`, `git commit -a -F ${fx.other}`, `git tag -a v1 -F ${fx.other}`, `git commit --amend -F "${fx.other}"`]) asks(fx, bash(command), {}, command);
+  for (const command of ['git commit -F msg.txt', 'git commit -F ./msg.txt', 'git tag -a v1 -F msg.txt', 'git commit -F -', 'git commit -F - <<EOF\nsubject\nEOF',
+    `git commit -m ${fx.other}`, `git commit --message "see ${fx.other}"`, `git tag -a v1 -m ${fx.other}`]) passes(fx, bash(command), {}, command);
 }));
 
 test('a pattern verb whose flag means no pattern keeps its first word as a root', withFixture((fx) => {
