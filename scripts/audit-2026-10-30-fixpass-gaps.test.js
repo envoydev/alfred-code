@@ -205,7 +205,9 @@ test('FC 4: a session transcript is no write target - under the config dir\'s pr
   const cfg2 = path.join(TMP, 'cfg2');
   denied('Write', { file_path: path.join(cfg2, 'projects', '-p', 's.jsonl'), content: 'x' }, { env: { CLAUDE_CONFIG_DIR: cfg2 } });
   // the twins keep today's verdicts: memory, reads, the account settings, a project jsonl, a folder with no transcript
-  for (const [tool, input] of [['Write', { file_path: path.join(p, 'memory', 'x.md'), content: 'x' }], ['Read', { file_path: t }],
+  // a Read of another project's folder under projects/ is the read half's own ask now (plan outside-workspace-reads)
+  assert.strictEqual(fire(dir, 'Read', { file_path: t }).v, 2,'a Read of another project\'s transcript asks');
+  for (const [tool, input] of [['Write', { file_path: path.join(p, 'memory', 'x.md'), content: 'x' }],
     ['Bash', { command: `grep -c user "${t}"` }], ['Bash', { command: `wc -l "${t}"` }], ['Write', { file_path: path.join(cfg, 'settings.json'), content: '{}' }],
     ['Write', { file_path: path.join(dir, 'data', 'rows.jsonl'), content: '{}' }], ['Bash', { command: `rm -rf "${path.join(p, 'memory')}"` }],
     ['Bash', { command: `cp "${t}" "${path.join(dir, 'copy.jsonl')}"` }]]) {

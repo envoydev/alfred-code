@@ -562,10 +562,10 @@ const filePayload = (tool, input, cwd, session = 'fg') => ({ session_id: session
 test('file-guards wiringRows: every guard\'s own file-tool row folds into ONE dispatcher row, on the tools the folded guards match', () => {
   const fg = require(FILES);
   const rows = ['a.js::@Stop', 'guard-read-whole-file.js::Read', 'guard-secret-value.js::Read', 'guard-read-whole-file.js::Bash|PowerShell|Monitor',
-    'guard-secret-value.js::Grep', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-cross-project-write.js::Write|Edit|MultiEdit|NotebookEdit',
+    'guard-secret-value.js::Grep', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-cross-project-write.js::Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob',
     'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*'];
   assert.deepStrictEqual(fg.wiringRows(rows), ['a.js::@Stop', `file-guards.js::${fg.MATCHER}`, 'guard-read-whole-file.js::Bash|PowerShell|Monitor', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*']);
-  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep', 'no Glob: nothing in the dispatcher judges one');
+  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob', 'Glob is on the matcher for the cross-project guard alone');
   // A strict subset is named in the args, and the wiring matches only the tools those guards judge.
   assert.deepStrictEqual(fg.wiringRows(['guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit'], { listGuards: true }),
     ['file-guards.js::Edit|Write|MultiEdit|NotebookEdit::guard-config-protection'], 'no Read spawn for a write guard');
@@ -595,18 +595,28 @@ test('file-guards: the core entry launches ONE process per file-tool call, with 
   const onFile = (tool) => block.PreToolUse.filter((g) => g.matcher === undefined || new RegExp(`^(?:${g.matcher})$`).test(tool)).flatMap((g) => g.hooks.map((h) => [h.command, ...(h.args || [])].join(' ')));
   for (const tool of ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'])
     assert.deepStrictEqual(onFile(tool), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js', 'node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], `${tool}: the dispatcher and instrumentation only`);
-  assert.deepStrictEqual(onFile('Glob'), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], 'a Glob starts no dispatcher (deep hooks review 2026-10-16)');
+  assert.deepStrictEqual(onFile('Glob'), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js', 'node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], 'a Glob starts the dispatcher, which runs one guard on it');
   const group = block.PreToolUse.find((g) => g.matcher === fg.MATCHER);
   assert.strictEqual(group.hooks[0].timeout, 10 * fg.GUARDS.length, 'every guard keeps the 10s it had as its own hook');
   assert.strictEqual(require('./install/settings.js').timeoutFor('file-guards.js', 'PreToolUse'), 10 * fg.GUARDS.length);
+});
+
+test('the file dispatcher runs only guard-cross-project-write on a Glob', () => {
+  const fg = require(FILES);
+  assert.deepStrictEqual(fg.GUARDS.filter(([, tools]) => tools.includes('Glob')).map(([g]) => g), ['guard-cross-project-write'], 'the table: Glob appears in that row alone');
+  assert.deepStrictEqual(fg.GUARDS.filter(([, tools]) => tools.includes('Glob') && tools.includes('Read')).map(([g]) => g), ['guard-cross-project-write'], 'and that row also holds Read and Grep');
+  assert.ok(fg.MATCHER.split('|').includes('Glob'));
 });
 
 test('file-guards: each guard\'s block reaches the combined answer through the dispatcher, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'fg-other-'));
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }, null, 2));
+  // inside the project: a Read of a file past it is the cross-project guard's own ask now (the read half, 2026-11-26)
+  const big = path.join(dir, 'big.js');
+  fs.copyFileSync(BIG, big);
   const cases = [
-    ['guard-read-whole-file', 'Read', { file_path: BIG }],
+    ['guard-read-whole-file', 'Read', { file_path: big }],
     ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }, { permission_mode: 'bypassPermissions' }], // where nobody can answer the ask: a block
     ['guard-config-protection', 'Write', { file_path: path.join(dir, '.claude', 'settings.local.json'), content: '{ "disableAllHooks": true }' }], // stage 1 B11: its switch-off half
     ['guard-cross-project-write', 'Write', { file_path: path.join(other, 'f.txt'), content: 'x' }],

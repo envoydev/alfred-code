@@ -1690,7 +1690,7 @@ function copyRouteSettings(specs)
 test('HK-02 legitimate twin: the copy route\'s own wiring and files still stand the plugin copy down (no double run)', () => {
     const secretRows = require('../meta/stack-manifest.json').hooks
         .filter((h) => h.file === 'guard-secret-value.js' && /^(?:@|\^mcp__)/.test(h.matcher)).map((h) => `guard-secret-value.js::${h.matcher}`);
-    const wired = copyRouteSettings(['shell-guards.js::Bash|PowerShell|Monitor', 'file-guards.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep', ...secretRows]);
+    const wired = copyRouteSettings(['shell-guards.js::Bash|PowerShell|Monitor', 'file-guards.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob', ...secretRows]);
     const p = twinProject({ settings: wired, files: ['shell-guards.js', 'file-guards.js', 'guard-secret-value.js', 'guard-catastrophic-rm.js',
         'guard-protected-force-push.js', 'hook-prelude.js', 'shell-writes.js'] });
     try
