@@ -534,3 +534,20 @@ test('each carried script file is read once for the scan and the read half toget
   passes(fx, bash('bash counted.sh'), { NODE_OPTIONS: `--require ${spy}`, ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write:read' }, 'the read half off');
   assert.strictEqual(opens(), 1, 'the scan alone opens it once');
 }));
+
+// ---- final review fix wave ---------------------------------------------------------------------------------------------
+test('a session launched in a linked worktree or a subfolder reads its own tool-results, another project\'s folder still asks', withFixture((fx) => {
+  const launches = [fx.at('work', 'proj', '.claude', 'worktrees', 'feat-1'), fx.at('work', 'proj', 'sub')];
+  for (const launch of launches) {
+    const folder = `.claude/projects/${keyOf(fx.put(`${path.relative(fx.home, launch)}/x`) && launch)}`;
+    const transcript = fx.put(`${folder}/sess-1.jsonl`, '{}\n');
+    const result = fx.put(`${folder}/sess-1/tool-results/out.txt`);
+    const withTranscript = { transcript_path: transcript };
+    passes(fx, read(result, withTranscript), {}, `a Read of the session's own tool-results (${path.basename(launch)})`);
+    passes(fx, grep(path.dirname(result), withTranscript), {}, `a Grep of the session's own tool-results (${path.basename(launch)})`);
+    asks(fx, read(fx.foreign, withTranscript), {}, 'another project\'s folder asks beside the transcript');
+    asks(fx, read(result), {}, 'the same file with no transcript_path asks');
+  }
+  const outside = fx.put('elsewhere/projects/-x/sess.jsonl', '{}\n');
+  asks(fx, read(fx.foreign, { transcript_path: outside }), {}, 'a transcript outside every account projects/ folder adds no key');
+}));

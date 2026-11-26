@@ -775,6 +775,15 @@ function workspaceRoots() {
   } catch { /* the project alone */ }
   return workspaceRootList;
 }
+// The session's own folder under an account's `projects/`, named by the payload's transcript: a session launched in a linked
+// worktree or a subfolder keeps its transcript and tool-results under the launch folder's key, not the project's. Only a
+// transcript that sits directly in `<account dir>/projects/<key>/` names one.
+function transcriptProjectKey() {
+  if (!TRANSCRIPT) return null;
+  const folder = path.dirname(TRANSCRIPT);
+  const parent = path.dirname(folder);
+  return CONFIG_DIRS.some((account) => fold(path.join(account, 'projects')) === fold(parent)) ? path.basename(folder) : null;
+}
 // The memory-folder keys that are this project's or a workspace member's: the folder directly under `projects/`.
 let memoryKeyList;
 function ownMemoryKeys() {
@@ -782,6 +791,8 @@ function ownMemoryKeys() {
   memoryKeyList = new Set();
   const named = process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
   if (named) memoryKeyList.add(memFold(named));
+  const launchKey = transcriptProjectKey();
+  if (launchKey) memoryKeyList.add(memFold(launchKey));
   try {
     for (const root of workspaceRoots())
       for (const dir of [...layout.memoryDirsOf(root), ...layout.defaultMemoryDirs(root)]) memoryKeyList.add(memFold(path.basename(path.dirname(dir))));
