@@ -217,8 +217,28 @@ function shellReadHits(units, env) {
   return hits;
 }
 
+// The units a scan reads, breadth first: `top` and each script it carries, then the scripts those carry, down every level the
+// shared reader scanned (SCAN_LIMITS.depth). At most `max` scripts in all, so a deep chain shares the cap with a wide one,
+// and a script run again from the same folder (`unit.key`, its path and where it starts) only once, so a cycle ends. The
+// scripts a unit carries are its `carried`, in the shape scanShell hands back; `childOf(parent, entry)` builds each unit.
+function scriptUnits(top, childOf, max = SHELL_SCRIPTS_MAX) {
+  const units = [top];
+  const seen = new Set();
+  let taken = 0;
+  for (let at = 0; at < units.length; at++) {
+    for (const entry of units[at].carried || []) {
+      if (taken >= max) return units;
+      const unit = childOf(units[at], entry);
+      if (unit.key) { if (seen.has(unit.key)) continue; seen.add(unit.key); }
+      taken++;
+      units.push(unit);
+    }
+  }
+  return units;
+}
+
 // The text of a call whose own block also reads past the boundary: the clause that says so first, before any path, so
 // the prompt's first sentence keeps it, and the read verdict after it for the model.
 const joinRead = (text, readVerdict) => `${READ_ALSO}${text.replace(/^Blocked: /, '')}\nAlso: ${readVerdict}`;
 
-module.exports = { SHELL_PATHS_MAX, SHELL_SCRIPTS_MAX, isExplicitPath, shellCandidates, shellReadHits, joinRead, READ_TOOLS, READ_PATHS_SHOWN, READ_BRANCH, globPrefix, firstSegmentApart, shownPath, readText };
+module.exports = { SHELL_PATHS_MAX, SHELL_SCRIPTS_MAX, scriptUnits, isExplicitPath, shellCandidates, shellReadHits, joinRead, READ_TOOLS, READ_PATHS_SHOWN, READ_BRANCH, globPrefix, firstSegmentApart, shownPath, readText };

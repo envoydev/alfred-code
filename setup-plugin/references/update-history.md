@@ -1465,7 +1465,6 @@ opens a tree for both halves.
 
 Known limits, said once here:
 - A directory you granted Claude Code in `permissions.additionalDirectories` of your account settings file stays open (a project's own settings files open nothing). A grant that holds the project opens that folder's siblings too. The CLI's `--add-dir` is not seen by a hook, so such a directory still asks.
-- A script nested two levels deep is not read.
 - A `CLAUDE_CONFIG_DIR` outside your home folder is judged only in part.
 - Words past the 512th, paths past the 64th and scripts past the 8th in one command are not judged.
 - A `CLAUDE_PLUGIN_ROOT` set to the account folder would open other projects' memory. Claude Code never sets it so.
@@ -1485,11 +1484,13 @@ sub-folder, found none, and ran without the project's variables or an inherited 
 install is still its own project. On Windows, a sub-folder's own `.claude/settings.local.json` keeps its place as the
 mode file, since Claude Code reads it there, and the project's own `off` still wins over an inherited `on`.
 
-Two guard changes come with it:
+Three guard changes come with it:
 - `git commit -F <file>` and `git tag -F <file>` read that file, so a file past the workspace asks like any read. `-F -`
   (standard input) and `-m` text ask nothing. A file attached to the flag (`-F<file>`) is not judged.
 - When Claude tries to call a skill that only you may start, the call is refused without a prompt, since Claude Code
   would not run it even after a Yes.
+- Scripts a command runs are read up to three levels deep, so a script that runs another script, which reads another
+  project's files, now asks. Before, only the first level was read.
 
 Nothing to do in an installed project beyond the update. Report that a sub-folder session now reads its project's
 settings.
