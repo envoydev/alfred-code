@@ -3445,7 +3445,7 @@ function lintHooksEntry(liveIn)
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
     const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'workspace-file.js', 'plan-status.js',
-        'mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js', 'cross-read.js']);
+        'mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js', 'cross-read.js', 'asked-calls.js']);
     const wired = new Set();
     for (const [event, blocks] of Object.entries(stack))
         for (const block of blocks)

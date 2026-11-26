@@ -3,7 +3,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true });   // its asks write relay records under the temp dir
 const { userPick, legacyBlock, verdictOf, blockText, askText } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -1653,7 +1653,7 @@ const readFile = (rel, payload, opts = {}) => fileCall('Read', { file_path: file
 const ASK_MODES = ['default', 'acceptEdits', 'plan', 'auto', undefined];
 const CURSOR = { cursor_version: '2.1.0', hook_event_name: 'preToolUse' };
 // The helper's prompt: the guard's label, this sentence, the recommendation. The presence route rides in the model's context.
-const ASK_RE = /^alfred-code guard-secret-value: Read of .*kubeconfig\.yaml: it holds a credential under `[^`]+`, and allowing it puts the value in this transcript permanently\.\nRecommended: No, unless you meant this call - Claude then gets the guard's fix\.$/;
+const ASK_RE = /^alfred-code guard-secret-value: Read of .*kubeconfig\.yaml: it holds a credential under `[^`]+`, and allowing it puts the value in this transcript permanently\.\nRecommended: No, unless you meant this call - after a No, Claude stops until you write\.$/;
 const ASK_CONTEXT_RE = /^A guard asked the user about this call: .*permanently\. If the result shows the call ran, the user approved it - do not redo it\. If the user declined: Read of .*kubeconfig\.yaml: it holds[\s\S]*Presence only: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]\n$/;
 const DENY_RE = /^Blocked: Read of .*kubeconfig\.yaml, which holds a credential under `[^`]+` - nobody can answer an ask here, and the value would enter the transcript permanently\. Presence: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]; the user opens the file\.$/m;
 // Where nobody can answer the Read is a deny (one JSON object, today's reason); on a Cursor payload it is exit 2 with the reason on stderr.
@@ -1665,7 +1665,7 @@ const denied = (r, what, cursor = false) => {
 // A block that asks: the user's text names the guard, the model's carries today's full reason.
 const asks = (r, reasonRe, what) => {
   assert.strictEqual(r.word, 'ask', what);
-  assert.match(r.userText, /^alfred-code guard-secret-value: .+\nRecommended: No, unless you meant this call - Claude then gets the guard's fix\.$/, what);
+  assert.match(r.userText, /^alfred-code guard-secret-value: .+\nRecommended: No, unless you meant this call - after a No, Claude stops until you write\.$/, what);
   assert.match(r.text, reasonRe, what);
   assert.strictEqual(r.asked.length, 0, `${what}: no consent row - only a credential Read writes one`);
 };

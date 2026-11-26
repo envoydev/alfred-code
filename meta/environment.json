@@ -301,7 +301,7 @@
       "default": "1",
       "ask": false,
       "seed": false,
-      "what": "Whether a guard that stops a tool call asks you first. Only `0` counts; unset or any other value (the walks check for `0` or `1`) is the default - Claude Code's permission prompt shows the guard's reason - Yes runs the call, No refuses it and Claude gets the guard's fix. `0`: every such block is a plain deny with the guard's full reason. Where nobody can answer - `dontAsk`, `bypassPermissions`, print mode, `ALFRED_CODE_UNATTENDED=1`, Cursor - a block is a deny whatever this says. Never written into a project; set `0` in the launch environment, a settings `env` or `.variables`.",
+      "what": "Whether a guard that stops a tool call asks you first. Only `0` counts; unset or any other value (the walks check for `0` or `1`) is the default - Claude Code's permission prompt shows the guard's reason - Yes runs the call, No refuses it and Claude stops until you write. `0`: every such block is a plain deny with the guard's full reason. Where nobody can answer - `dontAsk`, `bypassPermissions`, print mode, `ALFRED_CODE_UNATTENDED=1`, Cursor - a block is a deny whatever this says. Never written into a project; set `0` in the launch environment, a settings `env` or `.variables`.",
       "validate": {
         "type": "enum",
         "values": [

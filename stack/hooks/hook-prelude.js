@@ -1319,10 +1319,12 @@ function cursorHost(input)
 }
 
 // Guards ask instead of block (2026-11-25). A guard that stops a PreToolUse call hands its reason to askOrBlock: where a
-// person can answer, Claude Code's own permission prompt shows the guard's first sentence (Yes runs the call, No refuses it
-// and the model gets the full reason); where nobody can, the call is denied with the full reason, as before.
+// person can answer, Claude Code's own permission prompt shows the guard's first sentence (Yes runs the call; No refuses it
+// and ends the turn, and the model gets the full reason at the user's next message - asked-calls.js); where nobody can, the
+// call is denied with the full reason, as before.
 const ASKED_PREFIX = 'A guard asked the user about this call: ';
-const ASK_RECOMMENDATION = "Recommended: No, unless you meant this call - Claude then gets the guard's fix.";
+// After a No, Claude Code ends the turn and the model writes nothing until the user does (live, 2026-11-27, 2.1.332).
+const ASK_RECOMMENDATION = 'Recommended: No, unless you meant this call - after a No, Claude stops until you write.';
 const ASK_CONTEXT_MIDDLE = '. If the result shows the call ran, the user approved it - do not redo it. If the user declined: ';
 const ASK_SENTENCE_MAX = 400;
 const BLOCK_LEAD_RE = /^(?:Blocked|Held once): /;
@@ -1384,9 +1386,17 @@ function firstSentence(text)
     return `${(atWord > 0 ? room.slice(0, atWord) : room).trimEnd()}...`;
 }
 
+// A No at the prompt drops the hook's additionalContext, so the call is recorded for the next prompt's relay (asked-calls.js).
+function recordAskedCall(input, guard, reason, opts)
+{
+    try { require('./asked-calls.js').recordAsked(input, guard, reason, (opts && opts.env) || process.env); }
+    catch { /* an install without the module only loses the relay */ }
+}
+
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-// The verdict a block writes - pure, never throws. `ask` carries the user's text and, as additionalContext, the model's;
+// The verdict a block writes - never throws. `ask` carries the user's text and, as additionalContext, the model's, and is
+// recorded for the relay after a No (a No drops that context; the runner's inner pass records a guard twice, and the note says it once);
 // `deny` carries today's full reason and no additionalContext. `opts.updatedInput` (a plain object) rides an ask only:
 // Claude Code runs an approved ask with it, so a Yes keeps the input change the guard writes on an allowed call.
 function blockVerdict(input, reason, opts)
@@ -1401,6 +1411,7 @@ function blockVerdict(input, reason, opts)
         const output = { hookEventName: 'PreToolUse' };
         if (!canAsk(input, env))
             return { decision: 'deny', hookSpecificOutput: { ...output, permissionDecision: 'deny', permissionDecisionReason: text } };
+        recordAskedCall(input, guard, text, opts);
         const sentence = firstSentence(text) || 'a guard blocked this call.';
         const spoken = sentence.replace(/[.!?]+$/, '');
         return { decision: 'ask', hookSpecificOutput: { ...output, permissionDecision: 'ask',

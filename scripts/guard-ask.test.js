@@ -16,7 +16,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const REASON = 'Blocked: a recursive rm of ~ - nothing ran.\nDelete a subdirectory by name.';
 const GUARD = 'guard-catastrophic-rm';
-const RECOMMENDED = "Recommended: No, unless you meant this call - Claude then gets the guard's fix.";
+const RECOMMENDED = "Recommended: No, unless you meant this call - after a No, Claude stops until you write.";
 const bash = (extra = {}) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', ...extra });
 
 let rows = 0;

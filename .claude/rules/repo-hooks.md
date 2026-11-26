@@ -290,8 +290,18 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `askOrBlock(input, reason, { env, guard })` in `hook-prelude.js`, the one place a block decides - with `canAsk(input, env)`,
   `blockVerdict` and `blockExitCode` beside it - and each guard's own `blockCall` is one call to it. Where a person can answer, the hook
   writes `permissionDecision: 'ask'`: Claude Code's prompt shows the user text (`alfred-code <guard>: <first sentence of the
-  reason>` and a fixed line that recommends No unless the call was meant), Yes runs that one call, and No refuses it, the model
-  reading the guard's full reason (in `additionalContext`, after a line saying the user was asked) so it gets the fix. The prompt
+  reason>` and a fixed line that recommends No unless the call was meant), Yes runs that one call, and No refuses it and ends the turn:
+  the model writes nothing until the user does (measured live 2026-11-27, Claude Code 2.1.332, auto mode - the prompt shown,
+  Yes ran the call, No refused it). The guard's full reason rides in `additionalContext`, after a line saying the user was
+  asked, but a No DROPS it: the tool result carries only Claude Code's rejection text (measured the same day, session
+  transcript saved: at 'why?' the model said it was given no reason). So every ask a guard builds is recorded
+  (`blockVerdict`, which `askOrBlock`, the dispatchers' `blockResult`, the credential Read and the data-class and layer
+  asks all go through; `asked-calls.js recordAsked`: call id, guard, reason, in `alfred-asked-<session>.jsonl` under the
+  hook temp dir, the prefix swept after 7 days by `sweepStale`), and the
+  next UserPromptSubmit (`communication-reminder.js`) hands the model the guard and reason of each call the user declined,
+  once (`refusedCalls`: `toolResultOf` plus `declinedByUser`; a call that ran or a hook's deny is dropped, one with no
+  result kept for an hour). Limit: the prompt hook stands down in a repo never set up, where only the three protective
+  guards ask, so there the model still gets no reason. The prompt
   comes every time: a yes in chat opens nothing. Where nobody can answer, it writes the same reason as a plain `deny`. `canAsk` is false for
   `dontAsk`, `bypassPermissions`, print mode (`claude -p`), `ALFRED_CODE_UNATTENDED=1` and a Cursor payload (whose deny also writes the
   reason to stderr and exits 2, `blockExitCode`), and for a `SubagentHandback` call in EVERY mode: the hooks page says no prompt
