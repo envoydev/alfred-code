@@ -1436,7 +1436,7 @@ or unvouched file is said and never taken. After the update, a child under a roo
 it from its first new session: each prompt carries `auto-run: on, inherited from <rel>`, and the bare commands say
 `ON (from <rel>)` or `OFF (from <rel>)`. `/alfred-code:mode:auto-run off` typed in the child writes `0` there and leaves the
 root on. Where git tracks the child's own mode file, the off cannot be kept, and the command names `workspace.js ignore
---add 'env ALFRED_CODE_AUTO_RUN'` instead.
+--root . --add 'env ALFRED_CODE_AUTO_RUN'` instead.
 
 The update copies no inherited value into a child's file. A child that leaves its workspace keeps what it read in its own
 mode file, never in its tracked `.variables`, and an inherited auto-run ends there.

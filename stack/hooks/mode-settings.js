@@ -165,7 +165,7 @@ function fromTag(root, key, on, env = process.env)
 // cannot be written - as the refusal, which names the existing ignore command (a hook writes no workspace record).
 const offHere = (from) => `[mode] auto-run is OFF here - ${from} keeps it on for itself; remove ALFRED_CODE_AUTO_RUN from this folder's .claude/settings.local.json to inherit it again`;
 const offRefused = (from, why) => `[mode] auto-run stays ON here: it is inherited from ${from}, and ${why === 'tracked' ? 'git tracks this folder\'s .claude/settings.local.json'
-  : `this folder's .claude/settings.local.json cannot be changed (${WHY[why] || why})`}, so the off cannot be kept in it - run node ${process.env.CLAUDE_PLUGIN_ROOT || '<plugin>'}/scripts/workspace.js ignore --add 'env ALFRED_CODE_AUTO_RUN' here to stop inheriting it`;
+  : `this folder's .claude/settings.local.json cannot be changed (${WHY[why] || why})`}, so the off cannot be kept in it - run node ${process.env.CLAUDE_PLUGIN_ROOT || '<plugin>'}/scripts/workspace.js ignore --root . --add 'env ALFRED_CODE_AUTO_RUN' here to stop inheriting it`;
 const said = (r) => [...r.replaced, ...r.left].map((n) => ` - ${n}`).join('')
   + (r.unignored ? ' - .claude/settings.local.json was created and git does not ignore it here: add it to .gitignore' : '');
 

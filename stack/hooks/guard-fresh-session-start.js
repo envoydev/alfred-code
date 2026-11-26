@@ -814,7 +814,7 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
     try { const text = fs.readFileSync(file, 'utf8').slice(0, 4096);
       if (/^AUTO\b/.test(text) && /^session:/m.test(text)) { fs.rmSync(file); ended = true; } } catch { /* none, or left: an old reader */ }
     if (markerFile && fs.existsSync(markerFile)) try { fs.rmSync(markerFile); ended = true; } catch { /* left: the hold reads it */ }
-    if (ended || (held && !why)) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
+    if (ended || (held && !why) || (inherited && inherited.held === 'own' && !why)) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
   }
   if (flags.autoRun === 'off' && inherited && inherited.held === 'own')   // D3: an off over an inherited on
     return why ? ms.offRefused(inherited.from, r.why) : ms.offHere(inherited.from) + ms.said(r);
