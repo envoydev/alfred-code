@@ -34,7 +34,8 @@ const { WIN_NODE, WIN_STAGE } = require('./gate/constants.js');
 const { stageScript } = require('./gate/win-stage.js');
 const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
 const { unknownTestFiles } = require('./gate/tests-arg.js');
-const { guestWorkers } = require('./gate/workers.js');
+const { guestWorkers, hostShares } = require('./gate/workers.js');
+const { runAfterOthers } = require('./gate/after-others.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
@@ -467,15 +468,22 @@ async function legWin(ctx)
     fs.copyFileSync(ctx.bundle, path.join(hostDir, 'repo.bundle'));
     copyLeg(hostDir);
     // SYSTEM's own temp dir is the Windows one nothing cleans: the run's temp sits in its work dir
-    const concurrency = guestWorkers(ctx.legCfg.concurrency, info.Hardware?.cpu?.cpus);
+    const concurrency = guestWorkers(ctx.winWorkers, info.Hardware?.cpu?.cpus);
     writeLegFiles(hostDir, 'win', { ...ctx.legCfg, concurrency, bundle: `${leg}\\${WIN_STAGE.bundle}`, work, tempDir: true });
     // one gate per machine, so a run dir already there is a dead run's (the VM went down under it) - only inside gate\
     const stage = stageScript({ sweep: sweepGlob, guestDir, leg });
     try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(stage, 'utf16le').toString('base64')], 300000); }
     catch (err) { return { reasons: [`could not copy the leg's files from the share into ${leg}: ${String(err.stderr || err.message).trim().split('\n')[0]}`] }; }
-    const bootBefore = await guestBoot(vm);
-    const r = await runProcess('win', 'prlctl', ['exec', vm, winNode, `${leg}\\${WIN_STAGE.legScript}`, `${leg}\\${WIN_STAGE.config}`],
-        { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
+    // The VM was woken and staged above while the other legs ran; only the run waits for them, and its timer starts with it.
+    let bootBefore = '';
+    const r = await runAfterOthers({
+        leg: 'win', others: ctx.legs.filter(l => l !== 'win'), finished: () => ctx.othersDone('win'),
+        start: async () => {
+            bootBefore = await guestBoot(vm);
+            return runProcess('win', 'prlctl', ['exec', vm, winNode, `${leg}\\${WIN_STAGE.legScript}`, `${leg}\\${WIN_STAGE.config}`],
+                { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
+        },
+    });
     // A run cut off with no result: the VM went down under it - Windows Update restarts a VM that sat
     // off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from
     // its window (StartMenuExperienceHost.exe) - all measured. Say so rather than 'no result'.
@@ -569,14 +577,18 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep, t
     const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-gate-'));
     fs.chmodSync(runDir, 0o755);
     const gateRef = `refs/alfred-gate/${id}`;
+    const shares = hostShares(os.availableParallelism(), legs);
+    // the legs' verdicts, so the win leg can wait for the others; read only after a leg's first await, so `runs` is set
+    let runs = [];
+    const othersDone = leg => Promise.all(runs.filter((_, i) => legs[i] !== leg));
     const ctx = {
-        id, root, runDir, cleanups: [], cleanEnv,
+        id, root, runDir, cleanups: [], cleanEnv, legs, othersDone, winWorkers: shares.win,
         nodeMajor: ciNodeMajor(readFile(path.join(root, '.github', 'workflows', 'ci.yml'))),
         legScript: path.join(runDir, 'gate-leg.js'),
         bundle: path.join(runDir, 'repo.bundle'),
         log: leg => path.join(logDir, `${leg}.log`),
-        // the legs share this machine's cores: each gets its part, near the 3 workers a runner has
-        legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, tests, concurrency: Math.max(1, Math.floor((os.availableParallelism() - 1) / legs.length)) },
+        // the legs that run together share this machine's cores: each gets its part, near the 3 workers a runner has
+        legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, tests, concurrency: shares.others },
     };
     let cleaned = false;
     const cleanup = () => {
@@ -599,14 +611,15 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep, t
         fs.chmodSync(ctx.bundle, 0o644);
         const started = Date.now();
         console.log(`alfred-gate: ${label} @ ${short} on ${legs.join(', ')} (Node ${ctx.nodeMajor || '?'} as ci.yml pins)${tests ? ` - PARTIAL: ${tests.join(', ')} only, no pass stamp` : ''}`);
-        const verdicts = await Promise.all(legs.map(async leg => {
+        runs = legs.map(async leg => {
             let r;
             try { r = await LEG_RUNNERS[leg](ctx); }
             catch (err) { r = { reasons: [String(err.message || err)] }; }
             const v = legVerdict(leg, r);
             console.log(`  [${leg}] ${v.ok ? 'PASS' : 'FAIL'}`);
             return v;
-        }));
+        });
+        const verdicts = await Promise.all(runs);
         nodeSkew(verdicts, ctx.nodeMajor);
         console.log(`\nalfred-gate: ${label} @ ${short} - ${fmtMs(Date.now() - started)}`);
         for (const v of verdicts)

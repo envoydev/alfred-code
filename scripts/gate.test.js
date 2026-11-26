@@ -476,3 +476,40 @@ test('the win leg runs no more test workers than the VM has CPUs less one, as no
     assert.strictEqual(guestWorkers(11, 1), 1, 'never under one');
     assert.strictEqual(guestWorkers(11, undefined), 11, 'an unreadable CPU count keeps the host share');
 });
+
+// 2026-11-26: with all three legs running, the win leg hit its 45-minute limit; alone it takes 36 minutes.
+test('the win run waits for the other legs and its timer starts only at its own run', async () =>
+{
+    const { runAfterOthers } = require('./gate/after-others.js');
+    const events = [];
+    let clock = 0;
+    let othersDone;
+    const finished = () => new Promise((resolve) => { othersDone = resolve; });
+    const run = runAfterOthers({ leg: 'win', others: ['mac', 'linux'], finished, say: (line) => events.push(line), start: async () => { events.push(`start at ${clock}`); return { code: 0 }; } });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(events, ['  [win] waiting for mac, linux to finish'], 'the run has not started while the others run');
+    clock = 90 * 60 * 1000;
+    othersDone();
+    assert.deepStrictEqual(await run, { code: 0 });
+    assert.deepStrictEqual(events.slice(1), ['  [win] running', `start at ${clock}`], 'the run, and with it the timer, starts when the others are done');
+});
+
+test('the win run does not wait, and prints nothing extra, when no other leg is selected', async () =>
+{
+    const { runAfterOthers } = require('./gate/after-others.js');
+    const events = [];
+    const run = runAfterOthers({ leg: 'win', others: [], finished: () => { throw new Error('nothing to wait for'); }, say: (line) => events.push(line), start: async () => { events.push('start'); return { code: 0 }; } });
+    assert.deepStrictEqual(events, ['start'], 'start is called at once, before any await');
+    assert.deepStrictEqual(await run, { code: 0 });
+    assert.deepStrictEqual(events, ['start']);
+});
+
+test('the other legs split the host cores between them and the win leg, run alone after them, has them all', () =>
+{
+    const { hostShares } = require('./gate/workers.js');
+    assert.deepStrictEqual(hostShares(12, ['mac', 'linux', 'win']), { others: 5, win: 11 });
+    assert.deepStrictEqual(hostShares(12, ['mac', 'linux']), { others: 5, win: 11 });
+    assert.deepStrictEqual(hostShares(12, ['win']), { others: 11, win: 11 }, 'win alone: nothing to share with');
+    assert.deepStrictEqual(hostShares(12, ['linux', 'win']), { others: 11, win: 11 });
+    assert.deepStrictEqual(hostShares(1, ['mac', 'linux', 'win']), { others: 1, win: 1 }, 'never under one');
+});
