@@ -59,9 +59,10 @@ function refresh({ projectRoot, configDir, dataRoot, autoCompact, held = false, 
 {
     if (!ownsModeFile(projectRoot)) return null;
     const file = layout.modeFile(projectRoot);
-    const values = layout.variablesOf(projectRoot, { env: { CLAUDE_CONFIG_DIR: configDir }, dataRoot }).values;
+    const { values, modeFrom } = layout.variablesOf(projectRoot, { env: { CLAUDE_CONFIG_DIR: configDir }, dataRoot });
+    // A value a workspace member's mode file holds is read live by the loader: copied here it would freeze, and a later `off` at the root would not reach this project.
     const update = autoCompact === 'on' ? { [COMPACT]: '1' } : autoCompact === 'off' ? { [COMPACT]: null }
-        : !held && !Object.hasOwn(modeEnv(file), COMPACT) && values[COMPACT] === '1' ? { [COMPACT]: '1' } : {};
+        : !held && !Object.hasOwn(modeEnv(file), COMPACT) && !modeFrom.has(COMPACT) && values[COMPACT] === '1' ? { [COMPACT]: '1' } : {};
     const r = writeModes(projectRoot, update, { ...values, CLAUDE_CONFIG_DIR: configDir });
     if (r.why) log(`  !! modes: not written - ${WHY[r.why]}`);
     else if (r.changed)

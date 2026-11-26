@@ -641,6 +641,8 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
     const file = variables.fileOf(projectRoot, { env });
     const values = variables.read(file).values;
     const chained = chainValues(projectRoot, { env });
+    // A mode key a member's mode file wins is one person's untracked choice: a child's own line for it is never pruned, so a later `off` at the root cannot change it.
+    const modeWon = chainModes(projectRoot, { env });
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const dropped = [];
@@ -658,6 +660,7 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
         if (layout.CHAIN_PRUNE_NEVER.has(key)) own.push(key);
         else if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
+        else if (modeWon.has(key)) own.push(key);
         else if (chained[key] !== value) own.push(key);
         else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
         else dropped.push(key);
@@ -777,14 +780,17 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
         else if (view.parent && defaults.length) log(`workspace: ${view.parent} is gone - ${defaults.length} values read the stack's defaults here now (${defaults.join(', ')}); the next update seeds them`);
         return { written: [], defaults };
     }
-    const { values, from } = layout.variablesOf(root, { env });
+    const { values, from, modeFrom } = layout.variablesOf(root, { env });
     const byRel = new Map(members.map((m) => [m.rel, m]));
     const updates = {};
     const seeds = {};
+    const modeUpdates = {};
     for (const key of layout.VARIABLE_KEYS)
     {
         const member = byRel.get(from[key]);
         if (!member || values[key] === undefined) continue;
+        // A key a member's MODE FILE gave is one person's untracked choice: it never goes into the tracked `.variables`.
+        if (modeFrom.has(key)) { modeUpdates[key] = values[key]; continue; }
         // A stale stack seed in a member outside any git repository hands nothing on (holdsStaleSeed), here too.
         if (key === VERSIONING_KEY && holdsStaleSeed(member, values[key])) continue;
         updates[key] = values[key];
@@ -793,12 +799,36 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
         if (rows[key] === stamp.valueHash(values[key])) seeds[key] = rows[key];
     }
     const written = Object.keys(updates);
-    if (!written.length) return { written, defaults: [] };
+    const modes = keepModes(root, { env, values, from, modeUpdates, log });
+    if (!written.length) return { written, modes, defaults: [] };
     const done = variables.write(file, updates);
-    if (done.why) { log(`!! workspace: ${path.relative(root, file)} could not be written (${done.why}) - nothing was left; the values would change`); return { written: [], defaults: [], why: done.why }; }
+    if (done.why) { log(`!! workspace: ${path.relative(root, file)} could not be written (${done.why}) - nothing was left; the values would change`); return { written: [], modes, defaults: [], why: done.why }; }
     if (Object.keys(seeds).length) editVariablesLedger(root, (r) => ({ ...r, ...seeds }));
     log(`workspace: ${written.length} values this project read from the workspace written into ${path.relative(root, file).split(path.sep).join('/')} (${written.join(', ')}) - each reads the same after it leaves`);
-    return { written, defaults: [] };
+    return { written, modes, defaults: [] };
+}
+
+// keepOnLeave's other half (mode inheritance D3b): the mode keys a leaving child read from a member's mode file go into
+// its OWN mode file through the one writer, never into the tracked `.variables`. A refused write (git tracks the file, or
+// it cannot be read) keeps nothing and says so; the leave goes on. Auto-run is no variable and is not carried: it ends
+// here, and one line says so when it stood. Returns the keys written.
+function keepModes(root, { env, values, from, modeUpdates, log })
+{
+    const { writeModes, WHY, autoRunInherited } = require('../../stack/hooks/mode-settings.js');
+    const standing = autoRunInherited(root, env);
+    if (standing && standing.held === 'own')
+        log(`workspace: auto-run was inherited from ${standing.from} - it ends here; /alfred-code:mode:auto-run on in this project keeps it`);
+    const keys = Object.keys(modeUpdates);
+    if (!keys.length) return [];
+    const rels = [...new Set(keys.map((k) => from[k]))].join(', ');
+    const r = require('./modes.js').ownsModeFile(root) ? writeModes(root, modeUpdates, { ...env, ...values }) : { why: 'foreign' };
+    if (r.why)
+    {
+        log(`!! workspace: ${keys.join(', ')} were inherited from ${rels}'s mode file and could not be kept here (${WHY[r.why] || 'the mode file is another checkout\'s'}) - they read the stack's defaults now`);
+        return [];
+    }
+    log(`workspace: ${keys.length} ${keys.length === 1 ? 'value' : 'values'} this project read from ${rels}'s mode file written into its own .claude/settings.local.json (${keys.join(', ')}) - each reads the same after it leaves`);
+    return keys;
 }
 
 // W3 [F12]: before a project leaves, each rule the loader sends it from a member is copied into its own store (never over
@@ -1161,6 +1191,38 @@ function chainValues(projectRoot, { env = process.env, stale } = {})
         for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
     }
     return out;
+}
+
+// chainValues' sibling for the mode keys (mode inheritance D3b): the keys a member's MODE FILE wins in the loader, with
+// the loader's own order - nearest member first, a member's mode file ahead of its `.variables`, `ignore env K` lines
+// stopping K from that member on - and a mode file read only where the member owns it. Only pruneChained reads it:
+// chainValues stays on the members' `.variables`, which envPlan and settings.js applyEnv compare an answer with, and
+// neither may read one person's untracked file.
+function chainModes(projectRoot, { env = process.env } = {})
+{
+    const layout = require('../../stack/hooks/layout.js');
+    const won = new Set();
+    if (!layout.workspaceOn({ env, projectRoot })) return won;
+    const modeKeys = new Set(layout.MODE_KEYS);
+    const decided = new Set();
+    const { members } = chain(projectRoot);
+    const skip = new Set((readWorkspace(realOf(projectRoot)).view.ignores || []).filter((i) => i.category === 'env').map((i) => i.name));
+    for (const member of members)
+    {
+        const read = layout.readDotenv(path.join(member.root, ...member.dataRoot.split('/'), '.variables'));
+        const modeFile = layout.modeFile(member.root);
+        const owned = layout.pathKey(path.dirname(modeFile)) === layout.pathKey(path.join(member.root, '.claude'));
+        const data = owned ? readJson(modeFile) : null;
+        const modeEnv = data && data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : null;
+        for (const key of layout.VARIABLE_KEYS)
+        {
+            if (layout.MEMBER_NEVER.has(key) || skip.has(key) || decided.has(key)) continue;
+            if (modeKeys.has(key) && layout.valueIn(modeEnv, key) !== undefined) { won.add(key); decided.add(key); }
+            else if (read && layout.valueIn(read.values, key) !== undefined) decided.add(key);
+        }
+        for (const i of member.view.ignores || []) if (i.category === 'env') skip.add(i.name);
+    }
+    return won;
 }
 
 // What the settings pass seeds and drops for a joined child (workspace roles and variables, D5), or null for any other
@@ -2339,7 +2401,7 @@ module.exports = {
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
     nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, versioningNotices, layerHolding, keepOnLeave, chain, subtree, rescan, nestedInstalls,
-    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, chainModes, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,
