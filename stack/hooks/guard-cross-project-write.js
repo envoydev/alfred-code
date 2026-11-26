@@ -409,16 +409,22 @@ function untrackedLocal(file) {
   if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) return false;
   try { return require('./mode-settings.js').localGitStatus(file) === 1; } catch { return false; }
 }
-let trustedMemory;
-function ownMemory(t) {
-  if (trustedMemory === undefined) {
-    trustedMemory = null;
+// The memory folder the user's own settings name (real path), asked once: the write half's ownMemory and the read half's
+// trustedReadMemory both read it, and each ask can start git.
+let memoryFolder;
+function trustedMemoryFolder() {
+  if (memoryFolder === undefined) {
+    memoryFolder = null;
     try {
       const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT, { untracked: untrackedLocal }) : null;
-      if (dir && !inside(ROOT, realish(dir)) && !(HOME && inside(HOME, realish(dir)))) trustedMemory = realish(dir);
+      if (dir) memoryFolder = realish(dir);
     } catch { /* fail closed: no allowance */ }
   }
-  return trustedMemory !== null && inside(t, trustedMemory);
+  return memoryFolder;
+}
+function ownMemory(t) {
+  const dir = trustedMemoryFolder();
+  return dir !== null && !inside(ROOT, dir) && !(HOME && inside(HOME, dir)) && inside(t, dir);
 }
 function memoryBlock(what, shown, hit) {
   global.BLOCK_DETAIL = { branch: 'ancestor-memory' };
@@ -705,20 +711,21 @@ const tool = payload.tool_name;
 // it asks too. No project file opens a read - a sibling is inside only through a workspace join or
 // ALFRED_CODE_ALLOW_WRITE_OUTSIDE, both the user's. `guard-cross-project-write:read` in ALFRED_CODE_HOOKS_OFF turns
 // this half off alone; every stand-down of the guard turns it off too.
-const TOOLCHAIN_SEGMENTS = Object.freeze(['go/pkg', 'miniconda3', 'anaconda3', 'miniforge3', 'snap', 'Android', 'flutter', 'sdk', 'development/flutter']);
-const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
-const READ_PATHS_SHOWN = 3;
-const READ_BRANCH = Object.freeze({ read: 'read-outside', search: 'search-outside' });
-const READ_NEXT_STEP = 'Stay inside the workspace, or ask the user in chat why the files past it are needed before trying again - do not reach them by another command.';
-const READ_SEAT_STEP = "A subagent does not read outside its session's workspace: stop this step and say in your result which files past it you needed - the main session asks the user.";
-const READ_GLOB_CHAR = /[*?[{]/;
-const HOME_REAL = HOME ? realish(HOME) : '';
+// The pure parts - the named values, the glob prefix, the first-segment test and the prompt text - are `cross-read.js`
+// (HOOK_MODULES); a copy without it reads nothing past the boundary, as an older copy route did.
+let crossRead = null;
+try { crossRead = require('./cross-read.js'); } catch { /* an older copy route: no read half */ }
+// HOME as a real path; a filesystem root (HOME=/) is no home, since every system path would be in the zone.
+const HOME_REAL = (() => {
+  const real = HOME ? realish(HOME) : '';
+  return real === path.parse(real).root ? '' : real;
+})();
 // The account dirs the zone treats apart: ~/.claude and CLAUDE_CONFIG_DIR. They stay open to read except for another
 // project's folder under `projects/`.
 const CONFIG_DIRS = [...new Set([HOME ? path.join(HOME, '.claude') : '', process.env.CLAUDE_CONFIG_DIR || ''].filter(Boolean).map(expandTilde).map(realish))];
 
 function readHalfOff() {
-  if (PLUGIN_ONLY || unsetRepo) return true;
+  if (!crossRead || PLUGIN_ONLY || unsetRepo) return true;
   try { return Boolean(require('./hook-prelude.js').partOff('guard-cross-project-write', 'read')); } catch { return false; }
 }
 const readBoundary = () => workspaceTop() || ROOT;
@@ -772,17 +779,10 @@ function ownMemoryKeys() {
 }
 // The memory folder the user's own settings name under HOME (the write half's ownMemory trusts none there): the read half
 // opens it unless it is HOME, or holds this project or a member.
-let trustedReadDir;
 function trustedReadMemory(t) {
-  if (trustedReadDir === undefined) {
-    trustedReadDir = null;
-    try {
-      const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT, { untracked: untrackedLocal }) : null;
-      const real = dir ? realish(dir) : null;
-      if (real && inside(real, HOME_REAL) && fold(real) !== fold(HOME_REAL) && !workspaceRoots().some((r) => inside(r, real))) trustedReadDir = real;
-    } catch { /* fail closed: no allowance */ }
-  }
-  return trustedReadDir !== null && inside(t, trustedReadDir);
+  const dir = trustedMemoryFolder();
+  if (dir === null || !inside(dir, HOME_REAL) || fold(dir) === fold(HOME_REAL)) return false;
+  try { return !workspaceRoots().some((r) => inside(r, dir)) && inside(t, dir); } catch { return false; }
 }
 function foreignProjectFolder(t, account) {
   const [first, key] = path.relative(account, t).split(path.sep);
@@ -796,40 +796,19 @@ function inReadZone(absAsWritten) {
   if (reachesBoundary(abs, readBoundary())) return false;
   const opened = effectiveAllow.filter((d) => !CONFIG_DIRS.some((c) => fold(c) === fold(d)));
   if (opened.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return false;
-  if (sameRepoWorktree(t) || ownMemory(t) || trustedReadMemory(t)) return false;
+  // The tests that need no git and no settings file first; the worktree and memory checks only for a path still in the zone.
   const account = CONFIG_DIRS.find((d) => inside(t, d));
-  if (account) return foreignProjectFolder(t, account);
-  const parts = path.relative(HOME_REAL, t).split(path.sep).map(memFold);
-  const apart = [process.platform === 'darwin' ? 'library' : '', process.platform === 'win32' ? 'appdata' : ''];
-  if (parts[0].startsWith('.') || apart.includes(parts[0])) return false;
-  return !TOOLCHAIN_SEGMENTS.map(memFold).some((seg) => seg === parts[0] || seg === parts.slice(0, 2).join('/'));
+  if (account ? !foreignProjectFolder(t, account) : crossRead.firstSegmentApart(path.relative(HOME_REAL, t).split(path.sep), process.platform)) return false;
+  return !(sameRepoWorktree(t) || ownMemory(t) || trustedReadMemory(t));
 }
-// HOME or any folder above it, unless the boundary holds it.
+// HOME or any folder above it, or a folder that holds an account dir's `projects/` (the account dir itself, or a folder
+// above it under HOME): a search from there reaches every other project's memory.
 function searchRootInZone(abs) {
   if (!HOME_REAL) return false;
   const resolved = resolveTarget(String(abs), ROOT);
-  return inside(HOME_REAL, realish(resolved)) && !reachesBoundary(resolved, readBoundary());
-}
-// ~/... in a shown path, and the first three paths with a count of the rest.
-function shownPath(p) {
-  for (const home of [HOME, HOME_REAL]) {
-    if (home && fold(p) === fold(home)) return '~';
-    if (home && fold(p).startsWith(fold(home) + path.sep)) return `~${p.slice(home.length)}`;
-  }
-  return p;
-}
-function readText(hits) {
-  const names = hits.slice(0, READ_PATHS_SHOWN).map((h) => shownPath(h.path)).join(', ');
-  const more = hits.length > READ_PATHS_SHOWN ? ` and ${hits.length - READ_PATHS_SHOWN} more` : '';
-  return `${hits[0].tool} reads outside this workspace (it ends at ${shownPath(readBoundary())}) - No keeps the work workspace only: ${names}${more}. ` +
-    `Approve only if you meant to look there.\n${SEAT ? READ_SEAT_STEP : READ_NEXT_STEP}`;
-}
-// The segments of a glob pattern before its first glob character, as a path ('' when none leads it).
-function globPrefix(pattern) {
-  const segments = pattern.split(/[\\/]/);
-  const fixed = [];
-  for (const segment of segments) { if (READ_GLOB_CHAR.test(segment)) break; fixed.push(segment); }
-  return fixed.join('/') || (segments[0] === '' ? '/' : '');
+  const real = realish(resolved);
+  const reachesProjects = (account) => inside(path.join(account, 'projects'), real) && (fold(real) === fold(account) || inside(real, HOME_REAL));
+  return (inside(HOME_REAL, real) || CONFIG_DIRS.some(reachesProjects)) && !reachesBoundary(resolved, readBoundary());
 }
 const readWord = (value) => (typeof value === 'string' && value.trim() ? value : null);
 // What a Read, Grep or Glob reaches: [{ tool, path, search }] for each root past the boundary. Grep and Glob search from
@@ -842,7 +821,7 @@ function readHitsOf() {
   } else {
     const dir = readWord(input.path);
     roots.push(resolveTarget(dir ? expandTilde(dir) : SHELL_CWD, SHELL_CWD));
-    const prefix = tool === 'Glob' && readWord(input.pattern) ? globPrefix(input.pattern) : '';
+    const prefix = tool === 'Glob' && readWord(input.pattern) ? crossRead.globPrefix(input.pattern) : '';
     if (prefix) roots.push(resolveTarget(expandTilde(prefix), roots[0]));
   }
   const hits = [];
@@ -852,15 +831,16 @@ function readHitsOf() {
   }
   return hits;
 }
-if (READ_TOOLS.has(tool)) {
+if (crossRead && crossRead.READ_TOOLS.has(tool)) {
   if (readHalfOff()) process.exit(0);
   const hits = readHitsOf();
   if (!hits.length) process.exit(0);
+  const { READ_BRANCH, READ_PATHS_SHOWN } = crossRead;
   global.BLOCK_DETAIL = { branch: hits.some((h) => h.search) ? READ_BRANCH.search : READ_BRANCH.read, names: hits.slice(0, READ_PATHS_SHOWN).map((h) => path.basename(h.path)) };
-  blockCall(payload, readText(hits));
+  blockCall(payload, crossRead.readText(hits, { boundary: readBoundary(), homes: [HOME, HOME_REAL], seat: SEAT, platform: process.platform }));
 }
 
-if (tool === 'Write'|| tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
+if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));
