@@ -284,10 +284,11 @@ along with the row it names rather than spending its own question. A row carryin
 them (recommended), set your own (Other: one number per key, in the catalog's own order), or do not
 use the feature (which writes the row's `group_off` value to every key in the group). Only a row
 carrying `group_off` gets an off answer; never invent one for a row without it, and a group already
-sitting at that value is reported as off, with turning it back on as the change. The four MODE keys -
-`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL` - are no
+sitting at that value is reported as off, with turning it back on as the change. The five MODE keys -
+`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL`,
+`ALFRED_CODE_SCORING_ROUNDS` - are no
 question here: report each as a mode with its state, name its command (`/alfred-code:mode:auto-run on|off`,
-`/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level]`, typed alone on its line, which
+`/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level] [rounds]`, typed alone on its line, which
 keeps it in this checkout's `.claude/settings.local.json` until its off), and write none of them - `variables.js set`
 refuses a mode key. Nothing else needs editing. Apply on consent with ONE
 `node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> <KEY>=<value> ...` naming ONLY the chosen keys - it

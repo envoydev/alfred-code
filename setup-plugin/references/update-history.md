@@ -1398,3 +1398,14 @@ one an older release left under `.alfred/state/approvals/`: delete it by hand if
 
 Nothing to do in an installed project beyond the update. Report that the prompt replaces the block and that
 `ALFRED_CODE_GUARD_ASK=0` restores it.
+
+## after 3.19.1 - the scoring command takes the rounds
+
+**`/alfred-code:mode:scoring on 90 3` saves level 90 and 3 grading rounds.** Type it alone on its line. The rounds are a
+whole number from 1 to 10. `on 90` saves the level only and keeps the stored rounds, and `on` alone changes neither. The
+same holds for `off`.
+
+The command's rounds outrank `ALFRED_CODE_SCORING_ROUNDS` in `.alfred/.variables`, as the level does. A `.variables` value
+an older install holds is still read until you type a rounds value.
+
+Nothing to do in an installed project beyond the update. Report that the scoring command takes the rounds.

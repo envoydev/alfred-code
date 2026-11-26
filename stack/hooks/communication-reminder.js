@@ -440,11 +440,13 @@ function scoringNow(flags, root, sid) {
     if (!flag) return { ...s, flag };
     const level = flags.level ? Number(flags.level) : null;   // stored canonical: 080 is 80
     if (level !== null && (level < 60 || level > 100)) return { ...s, flag: null, said: '[mode] the level is a whole number from 60 to 100 - nothing changed' };
+    const rounds = flags.rounds ? Number(flags.rounds) : null;   // stored canonical: 03 is 3
+    if (rounds !== null && (rounds < 1 || rounds > 10)) return { ...s, flag: null, said: '[mode] the rounds are a whole number from 1 to 10 - nothing changed' };
     const ms = require('./mode-settings.js');
-    const r = ms.writeModes(root, { ALFRED_CODE_SCORING: flag === 'on' ? '1' : '0', ...(level ? { ALFRED_CODE_SCORING_LEVEL: String(level) } : {}) });
+    const r = ms.writeModes(root, { ALFRED_CODE_SCORING: flag === 'on' ? '1' : '0', ...(level ? { ALFRED_CODE_SCORING_LEVEL: String(level) } : {}), ...(rounds ? { ALFRED_CODE_SCORING_ROUNDS: String(rounds) } : {}) });
     if (r.why) return { ...s, flag: null, said: `[mode] scoring could not be saved: ${ms.WHY[r.why]} - nothing changed` };
-    if (r.changed) ledgerRow({ mode: 'probe', kind: 'scoring-flag', reason: `probe: scoring ${flag} saved to the mode file`, detail: { state: flag, level } });
-    return { ...s, on: flag === 'on', level: level || s.level, flag, saved: ms.said(r) };
+    if (r.changed) ledgerRow({ mode: 'probe', kind: 'scoring-flag', reason: `probe: scoring ${flag} saved to the mode file`, detail: { state: flag, level, rounds } });
+    return { ...s, on: flag === 'on', level: level || s.level, rounds: rounds || s.rounds, flag, saved: ms.said(r) };
   } catch { return null; }
 }
 // ' (at 400k)' when a settings file names this session's model's compaction window (the engine's own reader), else ''.
@@ -488,7 +490,7 @@ function modesText(prompt) {
     const on = [auto ? 'auto-run' : '', scoring ? `scoring (level ${s.level})` : '', compact ? `auto-compact${compactAt()}` : ''].filter(Boolean);
     const line = !(parsed && parsed.mode === 'scoring') || parsed.extra || !s ? ''
       : !s.usable || s.copy === 'user-invocable-only' ? `[mode] scoring is not available here: ${SCORING_UNUSABLE[s.copy] || (s.usable ? 'the scoring skill is user-invocable-only here' : 'a scoring hook is switched off')}`
-        : s.said || `[mode] scoring is ${scoring ? `ON (level ${s.level})` : `OFF${s.flag === 'off' ? ` (level ${s.level} kept)` : ''}`}${s.saved || ''}`;
+        : s.said || `[mode] scoring is ${scoring ? `ON (level ${s.level}, rounds ${s.rounds})` : `OFF${s.flag === 'off' ? ` (level ${s.level}, rounds ${s.rounds} kept)` : ''}`}${s.saved || ''}`;
     return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '', line, autoRun: auto, scoring: s };
   } catch { return none; }
 }

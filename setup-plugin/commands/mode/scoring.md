@@ -1,6 +1,6 @@
 ---
-description: "Turn output scoring on or off - on lasts until off, new sessions included - /alfred-code:mode:scoring on|off [level], typed alone on its line."
-argument-hint: on|off [level]
+description: "Turn output scoring on or off - on lasts until off, new sessions included - /alfred-code:mode:scoring on|off [level] [rounds], typed alone on its line."
+argument-hint: on|off [level] [rounds]
 disable-model-invocation: true
 ---
 

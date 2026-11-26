@@ -850,7 +850,7 @@ const commandSkill = (command) => bareSkill(String(command).replace(/^\//, ''));
 function modeFlags(text)
 {
     const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false,
-        old: [], level: null };
+        old: [], level: null, rounds: null };
     if (typeof text !== 'string') return flags;
     const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
     const line = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : text;
@@ -859,11 +859,12 @@ function modeFlags(text)
     const mode = MODE_COMMAND_RE.exec(tokens[0][0]);
     if (mode)
     {
-        // scoring alone takes one more token of digits after on or off - the level, its range judged by the caller
-        const level = tokens.length === 3 && /^scoring$/i.test(mode[1]) && /^\d+$/.test(tokens[2][0]) ? tokens[2][0] : null;
-        const word = tokens.length === 2 || level ? tokens[1][0].toLowerCase() : '';
+        // scoring alone takes one or two more tokens of digits after on or off - the level, then the rounds; the caller judges each range
+        const slots = /^scoring$/i.test(mode[1]) && tokens.length >= 3 && tokens.length <= 4 && tokens.slice(2).every((t) => /^\d+$/.test(t[0])) ? tokens.slice(2).map((t) => t[0]) : [];
+        const [level = null, rounds = null] = slots;
+        const word = tokens.length === 2 || slots.length ? tokens[1][0].toLowerCase() : '';
         Object.assign(flags, { commands: [tokens[0][0]], family: true, flagOnly: true, mode: mode[1].toLowerCase(), extra: tokens.length > 1 && word !== 'on' && word !== 'off' });
-        if (!flags.extra && word) Object.assign(flags, { [MODE_FIELD[flags.mode]]: word, level });
+        if (!flags.extra && word) Object.assign(flags, { [MODE_FIELD[flags.mode]]: word, level, rounds });
         return flags;
     }
     let i = 0;

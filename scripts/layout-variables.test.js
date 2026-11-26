@@ -66,9 +66,9 @@ test('modeFile: the root file for a project at its top, the top file for a child
     assert.strictEqual(layout.modeFile(child, { platform: 'win32' }), path.join(child, '.claude', 'settings.local.json'));
     assert.strictEqual(layout.modeFile(loose), path.join(loose, '.claude', 'settings.local.json'));
 });
-test('MODE_KEYS: the four, AUTO_RUN outside VARIABLE_KEYS, the other three inside', () =>
+test('MODE_KEYS: the five, AUTO_RUN outside VARIABLE_KEYS, the other four inside', () =>
 {
-    assert.deepStrictEqual(layout.MODE_KEYS, [K('AUTO_RUN'), K('AUTO_COMPACT'), K('SCORING'), K('SCORING_LEVEL')]);
+    assert.deepStrictEqual(layout.MODE_KEYS, [K('AUTO_RUN'), K('AUTO_COMPACT'), K('SCORING'), K('SCORING_LEVEL'), K('SCORING_ROUNDS')]);
     assert.ok(!layout.VARIABLE_KEYS.includes(K('AUTO_RUN')));
     for (const k of layout.MODE_KEYS.slice(1)) assert.ok(layout.VARIABLE_KEYS.includes(k), k);
 });
@@ -81,6 +81,16 @@ test('a same-repository child reads the three modes from the top file, over its 
     assert.strictEqual(values[K('SCORING_LEVEL')], '75');
     assert.strictEqual(values[K('AUTO_RUN')], undefined, 'never read by the loader');
     assert.notStrictEqual(values[K('HISTORY')], '9', 'only the mode keys cross');
+});
+
+test('the scoring rounds: the mode file outranks a child\'s own .variables, and an older install\'s .variables value is still read', { skip: process.platform === 'win32' }, () =>
+{
+    const at = tree({ '.': { git: true, local: { env: { [K('SCORING_ROUNDS')]: '6' } } }, 'api': { vars: `${K('SCORING_ROUNDS')}=4\n` } });
+    const mode = varsOf(at('api'), UNSET);
+    assert.deepStrictEqual([mode.values[K('SCORING_ROUNDS')], mode.from[K('SCORING_ROUNDS')]], ['6', 'settings.local.json'], 'the command\'s value outranks .variables');
+    const older = tree({ '.': { git: true, vars: `${K('SCORING_ROUNDS')}=4\n` } });
+    const old = varsOf(older('.'), UNSET);
+    assert.deepStrictEqual([old.values[K('SCORING_ROUNDS')], old.from[K('SCORING_ROUNDS')]], ['4', 'own'], 'an install with no mode-file rounds reads .variables');
 });
 
 test('VARIABLE_KEYS equals the catalog minus the hook switch-offs and the auto-run mode key', () =>

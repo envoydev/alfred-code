@@ -80,7 +80,7 @@ function main(env = process.env)
     }
     // A mode is the user's typed word in the mode file, never a variable line: the whole call is refused, nothing written.
     const MODES = { ALFRED_CODE_AUTO_RUN: 'auto-run on|off', ALFRED_CODE_AUTO_COMPACT: 'auto-compact on|off',
-        ALFRED_CODE_SCORING: 'scoring on|off', ALFRED_CODE_SCORING_LEVEL: 'scoring on|off <level>' };
+        ALFRED_CODE_SCORING: 'scoring on|off', ALFRED_CODE_SCORING_LEVEL: 'scoring on|off <level>', ALFRED_CODE_SCORING_ROUNDS: 'scoring on|off <level> <rounds>' };
     const modes = args.pairs.map((p) => p.slice(0, p.indexOf('='))).filter((k) => layout.MODE_KEYS.includes(k));
     for (const key of modes) console.error(`${key} is a mode - type /alfred-code:mode:${MODES[key]}`);
     if (modes.length) return 1;

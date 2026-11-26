@@ -436,8 +436,8 @@ const VARIABLE_KEYS = Object.freeze([
     'ALFRED_CODE_FRESH_SESSION_PAYBACK', 'ALFRED_CODE_WORKSPACE', 'ALFRED_CODE_ROOT_SKILLS', 'ALFRED_CODE_GUARD_ASK',
 ]);
 const VARIABLE_SET = new Set(VARIABLE_KEYS);
-// The four modes the mode commands switch, kept in the mode file (modeFile). AUTO_RUN is no variable: the loader never reads it.
-const MODE_KEYS = Object.freeze(['ALFRED_CODE_AUTO_RUN', 'ALFRED_CODE_AUTO_COMPACT', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL']);
+// The five keys the mode commands switch, kept in the mode file (modeFile). AUTO_RUN is no variable: the loader never reads it.
+const MODE_KEYS = Object.freeze(['ALFRED_CODE_AUTO_RUN', 'ALFRED_CODE_AUTO_COMPACT', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL', 'ALFRED_CODE_SCORING_ROUNDS']);
 const MODE_SET = new Set(MODE_KEYS);
 // until 4.0.0: the four keys 3.11.0 renamed are read as their new key wherever that key has no value in the same file
 // (a tracked file a teammate has not updated yet); new key -> old key.

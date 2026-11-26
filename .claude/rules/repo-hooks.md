@@ -110,8 +110,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   itself and no hook sees it (measured 2.1.322), so `/mode-auto-run <request>` and the mode keys set by hand are the
   switches. THE MODE BLOCK (mode commands v2 stage 3, 3.11.0): each command writes its key into the env of the
   checkout's own settings.local.json through `mode-settings.js writeModes` (`repo-installer.md`, 'The mode block') -
-  `auto-run on` writes `ALFRED_CODE_AUTO_RUN=1` and `ALFRED_CODE_AUTO_COMPACT=1`, `scoring on|off [level]` the two
-  scoring keys - and the mode stays on, new sessions included, until its off; every hook reads it through
+  `auto-run on` writes `ALFRED_CODE_AUTO_RUN=1` and `ALFRED_CODE_AUTO_COMPACT=1`, `scoring on|off [level] [rounds]` the
+  scoring keys (three) - and the mode stays on, new sessions included, until its off; every hook reads it through
   `layout.applyVariables`, and an auto-run `1` counts only from the checkout's own untracked file
   (`mode-settings.js autoRunHeld` / `hook-prelude.js autoRunStanding`: a tracked or unvouched one is said, never taken).
   `mode-settings.js` and `json-file.js` are copied hook modules (`HOOK_MODULES`). The per-session switch files
@@ -1653,9 +1653,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     session's timeout marker and a note that it is no answer - no approval, consent or pick, re-ask when the user is
     back; the next answered ask or typed prompt clears the marker.
     THE SCORING'S LINES (mode-output-scoring, spec 2026-10-24 5.2 / 5.12; the switch a command since 2026-11-12):
-    `/alfred-code:mode:scoring on|off [level]` (`modeFlags`) writes
-    the mode block's `ALFRED_CODE_SCORING` (and `_LEVEL`, 60 to 100), counts for its own prompt, and is answered with the
-    context's first line - `[mode] scoring is ON (level N)`, `[mode] scoring is OFF`, `[mode] scoring could not be saved:
+    `/alfred-code:mode:scoring on|off [level] [rounds]` (`modeFlags`) writes
+    the mode block's `ALFRED_CODE_SCORING` (and `_LEVEL`, 60 to 100, and `_ROUNDS`, 1 to 10), counts for its own prompt, and is answered with the
+    context's first line - `[mode] scoring is ON (level N, rounds R)`, `[mode] scoring is OFF`, `[mode] scoring could not be saved:
     <why> - nothing changed` or `[mode] scoring is not available here: <reason>`; while on, every typed prompt - and a compaction's start, which drops injected text -
     carries one `scoring: on (level, rounds, source[, auto-run]) ...` line naming the listed
     outputs in words, so an ordinary reply never reads as one; a message that turns it off carries `scoring: off`. A typed stack - the skill's slash name as a word of the prose, a `<command-args>` row included, or the bare name

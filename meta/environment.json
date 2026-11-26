@@ -61,7 +61,7 @@
       "default": "1",
       "renamed_from": "ALFRED_CODE_SCORER",
       "ask": false,
-      "what": "mode-output-scoring: `1` (the seed) grades each automatic output ALFRED_CODE_SCORING_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scoring` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `/alfred-code:mode:scoring on|off [level]`, typed on its own line, overrides it from the checkout's own settings.local.json until its off, new sessions included, and a typed `/<producer> /mode-output-scoring <request>` stack grades that one request even while it is off.",
+      "what": "mode-output-scoring: `1` (the seed) grades each automatic output ALFRED_CODE_SCORING_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scoring` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `/alfred-code:mode:scoring on|off [level] [rounds]`, typed on its own line, overrides it from the checkout's own settings.local.json until its off, new sessions included, and a typed `/<producer> /mode-output-scoring <request>` stack grades that one request even while it is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -102,7 +102,7 @@
       "default": "3",
       "renamed_from": "ALFRED_CODE_SCORER_ROUNDS",
       "ask": false,
-      "what": "mode-output-scoring: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
+      "what": "mode-output-scoring: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one. `/alfred-code:mode:scoring on 90 3` saves it in the checkout's mode file, which outranks this variable.",
       "validate": {
         "type": "int",
         "min": 1,

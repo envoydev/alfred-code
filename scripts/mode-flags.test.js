@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const { modeFlags, autoRunRefusal, runMarkerFile, runMarkerSkill, writeRunMarker, otherSessionLive, FLOW_FAMILY_RE } = require('../stack/hooks/hook-prelude.js');
 
-const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [], level: null };
+const EMPTY = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false, old: [], level: null, rounds: null };
 
 // The 2.2.0 old prefix, built at run time: the rename sweep fails any tracked file that spells an old name.
 const OLD_FLOW = ['alfred', 'task-solve'].join('-');
@@ -53,6 +53,19 @@ const ROWS = [
     [`${SCORING} on high`, { scoring: null, level: null, extra: true }],
     [`${SCORING} on 7.5`, { scoring: null, level: null, extra: true }],
     [`${SCORING} on -75`, { scoring: null, level: null, extra: true }],
+    // the scoring rounds slot: a fourth token of digits, scoring alone, after the level
+    [`${SCORING} on 90 3`, { scoring: 'on', level: '90', rounds: '3', extra: false }],
+    [`${SCORING} off 90 3`, { scoring: 'off', level: '90', rounds: '3', extra: false }],
+    [`${SCORING} on 90 0`, { scoring: 'on', level: '90', rounds: '0', extra: false }],
+    [`${SCORING} on 90 11`, { scoring: 'on', level: '90', rounds: '11', extra: false }],
+    [`${SCORING} on 90`, { scoring: 'on', level: '90', rounds: null, extra: false }],
+    [`${SCORING} on 90 3 4`, { scoring: null, level: null, rounds: null, extra: true }],
+    [`${SCORING} on 90 x`, { scoring: null, level: null, rounds: null, extra: true }],
+    [`${SCORING} on x 3`, { scoring: null, level: null, rounds: null, extra: true }],
+    [`${AUTO} on 3`, { autoRun: null, level: null, rounds: null, extra: true }],
+    [`${AUTO} on 90 3`, { autoRun: null, level: null, rounds: null, extra: true }],
+    [`${COMPACT} off 90 3`, { compact: null, level: null, rounds: null, extra: true }],
+    ['<command-name>/alfred-code:mode:scoring</command-name>\n<command-args>on 90 3</command-args>', { scoring: 'on', level: '90', rounds: '3', extra: false }],
     [`${AUTO} on 75`, { autoRun: null, level: null, extra: true }],
     [`${COMPACT} off 75`, { compact: null, level: null, extra: true }],
     ['<command-name>/alfred-code:mode:scoring</command-name>\n<command-args>on 75</command-args>', { scoring: 'on', level: '75', extra: false }],
