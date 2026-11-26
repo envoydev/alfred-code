@@ -131,3 +131,9 @@ test('git commit --file=~/x and -F~/x name a file called ~ in the folder, as the
   for (const command of ['git commit --file=~/other-proj/notes.md', 'git commit -F~/other-proj/notes.md', 'git tag -a v1 --file=~/other-proj/notes.md']) passes(fx, command, command);
   asks(fx, `git commit --file ~/other-proj/notes.md`, 'a separate word is a tilde the shell expands');
 }));
+
+test('a tilde right after --name= stays literal for every verb, a plain tilde word and an assignment still expand', withFixture((fx) => {
+  const notes = '~/other-proj/notes.md';
+  for (const command of [`ls --color=${notes}`, `cat --show=${notes}`, `grep --file=${notes} x`, `rg --file=${notes} x`, `sed --in-place=${notes} x`, `tar --file=${notes}`]) passes(fx, command, command);
+  for (const command of [`cat ${notes}`, `ls --color=$HOME/other-proj/notes.md`, `NAME=${notes}; cat $NAME`, `export NAME=${notes}; cat $NAME`, `ls --color ${notes}`]) asks(fx, command, command);
+}));
