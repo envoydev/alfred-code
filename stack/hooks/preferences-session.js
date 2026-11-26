@@ -1200,9 +1200,9 @@ function withPathLine(reason, line) {
   const head = lineEnd < 0 ? reason : reason.slice(0, lineEnd);
   const end = SENTENCE_END_RE.exec(head);
   if (lineEnd < 0 && !end) return `${reason}\n${line}`;
-  const cut = end ? end.index + 1 : lineEnd;
-  const rest = reason.slice(cut).replace(/^[ \t]+/, '');
-  return `${reason.slice(0, cut)}\n${line}${rest && !rest.startsWith('\n') ? '\n' : ''}${rest}`;
+  const cutAt = end ? end.index + 1 : lineEnd;
+  const rest = reason.slice(cutAt).replace(/^[ \t]+/, '');
+  return `${reason.slice(0, cutAt)}\n${line}${rest && !rest.startsWith('\n') ? '\n' : ''}${rest}`;
 }
 // Stage 6: the pieces an actor entering a member is still owed ride the one reply - a denial while the whole stays within
 // INLINE_CAP, else an additionalContext of ENTRY_ROOM (the first piece always goes); each is marked once written.

@@ -56,9 +56,9 @@ function latest(notes) {
 
 function put(name, text, { cwd } = {}) {
   const parts = segments(name, 3, 4);
-  if (!parts) return { code: 2, err: NAME_HELP };
+  if (!parts) return { code: 2, err: NAME_HELP }; // guard-ask: CLI usage
   let body = String(text || '').replace(/\s+$/, '');
-  if (!body.trim()) return { code: 2, err: NO_TEXT };
+  if (!body.trim()) return { code: 2, err: NO_TEXT }; // guard-ask: CLI usage
   if (body.length > NOTE_CAP) body = `${body.slice(0, NOTE_CAP)}\n[cut at ${NOTE_CAP} chars]`;
   const dir = storeDir(cwd);
   fs.mkdirSync(dir, { recursive: true });
@@ -71,7 +71,7 @@ function put(name, text, { cwd } = {}) {
 // or a resolver's earlier pass, never the whole run.
 function list(run, { cwd } = {}) {
   const parts = segments(run, 2, 4);
-  if (!parts) return { code: 2, err: 'handoff: list takes <feature>/<contract_version> or one note name' };
+  if (!parts) return { code: 2, err: 'handoff: list takes <feature>/<contract_version> or one note name' }; // guard-ask: CLI usage
   const prefix = `${run}/`;
   const wanted = parts.length === 2 ? (n) => n.name.startsWith(prefix) : (n) => n.name === run;
   const notes = latest(readNotes(fileOf(storeDir(cwd), parts[0])).filter(wanted));
@@ -90,7 +90,7 @@ function list(run, { cwd } = {}) {
 }
 
 function left(feature, { cwd } = {}) {
-  if (feature && !segments(feature, 1, 1)) return { code: 2, err: 'handoff: left takes a <feature> or nothing' };
+  if (feature && !segments(feature, 1, 1)) return { code: 2, err: 'handoff: left takes a <feature> or nothing' }; // guard-ask: CLI usage
   const dir = storeDir(cwd);
   let files = [];
   if (feature) files = [fileOf(dir, feature)];
@@ -103,7 +103,7 @@ function left(feature, { cwd } = {}) {
 }
 
 function purge(feature, { cwd } = {}) {
-  if (!segments(feature, 1, 1)) return { code: 2, err: 'handoff: purge takes a <feature>' };
+  if (!segments(feature, 1, 1)) return { code: 2, err: 'handoff: purge takes a <feature>' }; // guard-ask: CLI usage
   const file = fileOf(storeDir(cwd), feature);
   const names = latest(readNotes(file)).map((n) => n.name).sort();
   fs.rmSync(file, { force: true });
@@ -121,7 +121,7 @@ if (require.main === module) {
   };
   try {
     if (cmd === 'put') {
-      if (rest.length && (rest[0] !== TEXT_FLAG || rest.length !== 2)) finish({ code: 2, err: `handoff: put takes <name> ${TEXT_FLAG} '<the note>' and nothing else` });
+      if (rest.length && (rest[0] !== TEXT_FLAG || rest.length !== 2)) finish({ code: 2, err: `handoff: put takes <name> ${TEXT_FLAG} '<the note>' and nothing else` }); // guard-ask: CLI usage
       else if (rest.length) finish(put(arg, rest[1]));
       else {
         let text = '';
@@ -131,7 +131,7 @@ if (require.main === module) {
     } else if (cmd === 'list') finish(list(arg));
     else if (cmd === 'left') finish(left(arg));
     else if (cmd === 'purge') finish(purge(arg));
-    else finish({ code: 2, err: `usage: handoff.js put <name> ${TEXT_FLAG} '<the note>' | list <feature>/<contract_version>[/<seat>[/<task>]] | left [<feature>] | purge <feature>` });
+    else finish({ code: 2, err: `usage: handoff.js put <name> ${TEXT_FLAG} '<the note>' | list <feature>/<contract_version>[/<seat>[/<task>]] | left [<feature>] | purge <feature>` }); // guard-ask: CLI usage
   } catch (err) {
     finish({ code: 1, err: `handoff: the store cannot be read or written (${err.code || err.name})` });
   }

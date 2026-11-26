@@ -13,6 +13,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { putWorkspace } = require('./workspace-fixture.js');
+const { realLong } = require('./test-paths.js');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
@@ -167,6 +168,20 @@ test('guard-catastrophic-rm: the prompt of a blocked delete names the target (gu
   const runtime = asked('python3 -c "import shutil, os; shutil.rmtree(os.path.expanduser(\'~\')); print(\'done and a long tail of text\')"');
   assert.equal(verdictOf(runtime), 'ask');
   assert.match(askText(runtime), /deletes `python3 -c "import shutil, os; shutil\.rmtree\(os\.path\.expanduser\('~'\)\); print\(\.\.\.`\./, askText(runtime));
+  // the opening is shown inside a code span in the prompt's first sentence: a sentence stop in it ends the sentence early and a backtick breaks the span (T7 review Minor 3)
+  const sentence = asked('python3 -c "import shutil; shutil.rmtree(\'/\'); print(\'done. then more\')"');
+  assert.equal(verdictOf(sentence), 'ask');
+  assert.match(askText(sentence), /^alfred-code guard-catastrophic-rm: this command recursively deletes `python3 -c "import shutil; shutil\.rmtree\('\/'\); print\('done\.\.\.`\.\nRecommended:/, askText(sentence));
+  const ticked = asked('python3 -c "import shutil; shutil.rmtree(\'/\'); print(\'a `b` c\')"');
+  assert.equal(verdictOf(ticked), 'ask');
+  assert.match(askText(ticked), /^alfred-code guard-catastrophic-rm: this command recursively deletes `python3 -c "import shutil; shutil\.rmtree\('\/'\); print\('a 'b' c'\)"`\.\nRecommended:/, askText(ticked));
+  // a path word is no sentence stop: a `.` or `..` word (`cd ..`, `. ./env.sh`) must not cut the opening before the delete
+  const dotdot = asked('cd .. && python3 -c "import shutil; shutil.rmtree(os.path.expanduser(\'~\'))"');
+  assert.equal(verdictOf(dotdot), 'ask');
+  assert.match(askText(dotdot), /deletes `cd \.\. && python3 -c "import shutil; shutil\.rmtree\(os\.path\.expanduser\('~'\)\)"`\./, askText(dotdot));
+  const sourced = asked('. ./env.sh; python3 -c "import shutil; shutil.rmtree(os.path.expanduser(\'~\'))"');
+  assert.equal(verdictOf(sourced), 'ask');
+  assert.match(askText(sourced), /deletes `\. \.\/env\.sh; python3 -c "import shutil; shutil\.rmtree\(os\.path\.expanduser\('~'\)\)"`\./, askText(sourced));
   const resolved = asked('H=$HOME; rm -rf "$H"');
   assert.equal(verdictOf(resolved), 'ask');
   assert.ok(askText(resolved).includes(`\`${os.homedir()}\``) || askText(resolved).includes('`$H`'), askText(resolved));
@@ -562,7 +577,7 @@ test('audit 2026-10-08: the fresh-session guard reads commands and the router sk
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home, ...extra } });
   for (const s of ['alfred-code:init', 'alfred-code:alfred-code']) {
     const r = skillCall(s);
-    assert.equal(r.status, 'ask', `${s}: a flagged command or router skill in the cache`);
+    assert.equal(r.status, 'deny', `${s}: a flagged command or router skill in the cache`);
     assert.match(r.stderr, new RegExp(`can run /${s} themselves`), 'the escape names the command as it is typed');
   }
   // (the running plugin root is read through the same pluginHeads list; a plugin-launched hook in this unset-up
@@ -651,6 +666,14 @@ fs.cpSync(path.join(__dirname, '..', 'stack', 'rules'), path.join(RULES_PROJECT,
 const NOTES = path.join(TMP, 'notes.md');
 fs.writeFileSync(NOTES, Array.from({ length: 400 }, (_, i) => `note ${i}`).join('\n'));
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+// The whole shape of a deny where nobody can answer: exit 0, one decision object, today's reason and nothing else - no
+// additionalContext, no updatedInput, nothing on stderr. A prefix match passes a deny that grew or lost a part.
+const assertWholeDeny = (r, reason, what) => {
+  assert.equal(r.status, 0, `${what}: a Claude deny exits 0`);
+  assert.equal(r.stderr, '', `${what}: nothing on stderr`);
+  assert.deepStrictEqual(JSON.parse(r.stdout), { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }, what);
+};
 
 // A seeded repo whose HEAD sits on a named branch (the force-push guard reads HEAD for a bare push).
 function scratchRepoOn(branch) {
@@ -2151,7 +2174,7 @@ test('guard-fresh-session-start: a manual-only flag is read from the running plu
   assert.equal(call({}), 0, 'the stale 2.0.0 copy no longer decides over 2.1.0');
   skill(path.join(cache, '2.1.0'), true);
   skill(path.join(cache, '2.0.0'), false);
-  assert.equal(call({}), 'ask', 'the newest version says manual-only');
+  assert.equal(call({}), 'deny', 'the newest version says manual-only');
   // the running plugin's own root wins over any cached copy
   const running = path.join(cfg, 'running', 'mk2', 'alfred-code', '9.9.9');
   skill(running, false);
@@ -2177,11 +2200,11 @@ test('READER-2: skillHeads reads a moved plugins root', () => {
     if (value === undefined) delete env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else env.CLAUDE_CODE_PLUGIN_CACHE_DIR = value;
     return runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: `alfred-code:${name}` } }, { env }).status;
   };
-  assert.equal(call('bar', moved), 'ask', 'the moved root holds the flagged copy');
-  assert.equal(call('bar', `  ${moved} `), 'ask', 'a value with spaces around it is trimmed');
+  assert.equal(call('bar', moved), 'deny', 'the moved root holds the flagged copy');
+  assert.equal(call('bar', `  ${moved} `), 'deny', 'a value with spaces around it is trimmed');
   for (const value of [undefined, '', '   ']) {
     assert.equal(call('bar', value), 0, `${JSON.stringify(value)}: <config>/plugins/cache holds the unflagged copy`);
-    assert.equal(call('baz', value), 'ask', `${JSON.stringify(value)}: and its flagged one is read`);
+    assert.equal(call('baz', value), 'deny', `${JSON.stringify(value)}: and its flagged one is read`);
   }
 });
 
@@ -3140,7 +3163,13 @@ test("guard-cross-project-write: a block asks each time, and a receipt, a typed 
   assert.equal(go({ ...write, permission_mode: 'bypassPermissions' }), 'deny', 'bypassPermissions denies');
   assert.equal(go(write, { ALFRED_CODE_GUARD_ASK: '0' }), 'deny', 'the rollback switch denies');
   const denied = raw({ ...write, permission_mode: 'dontAsk' });
-  assert.match(blockText(denied), /^Blocked: Write of a file targets /, 'a deny carries the full reason');
+  const otherName = path.basename(other);
+  const rootLong = realLong(root); // the guard names its root by the long real path; CI's temp is RUNNER~1
+  assertWholeDeny(denied, `Blocked: Write of a file targets '${target}', outside this session's project (${rootLong}). A change another\n`
+    + `repo needs is handed off, not applied here.\n`
+    + `Write the task card at ${path.join(rootLong, '.alfred', 'docs', 'work', 'cross-project-tasks', `${otherName}.md`)} instead: per task what changes where (file + symbol), why, the shared contract,\n`
+    + `how ${otherName} verifies it; then finish your side, or say what is blocked until it lands.\n`
+    + `Reading ${otherName} may ask the user first (a read in the home folder's project area does). A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`, 'B27: a deny carries the full reason and nothing else');
   // the removed openers: a live receipt plus an answered 'Allow ... for this session' ask, and a typed path to the root
   fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
     + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
@@ -3857,7 +3886,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
     const blocked = skillCall('loop-code-quality');
-    assert.equal(blocked.status, 'ask', 'the model may not call a slash-only skill');
+    assert.equal(blocked.status, 'deny', 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
     // No threshold involved: this payload carries no transcript at all, so a context-based block
@@ -3926,7 +3955,7 @@ test('guard-fresh-session-start: the model\'s call to a built-in review is denie
 
     assert.equal(skillCall('other-plugin:code-review').status, 0, 'another plugin\'s skill of that name is not the built-in');
     assert.equal(skillCall('code-review', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 0, 'the part switch stands the deny down');
-    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 'ask', 'while the manual-only gate keeps working');
+    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 'deny', 'while the manual-only gate keeps working');
     const typed = runIn('guard-fresh-session-start.js',
         { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'code-review', prompt: '/code-review', cwd: root, session_id: 'builtin-review' },
         { env });
@@ -3962,8 +3991,8 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('loop-code-quality').status, 'ask', 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:loop-code-quality').status, 'ask', 'and under its scoped spelling');
+    assert.equal(skillCall('loop-code-quality').status, 'deny', 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:loop-code-quality').status, 'deny', 'and under its scoped spelling');
     assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
@@ -3976,7 +4005,7 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
     };
     writeAt(path.join(root, '.claude'), 'review-notes', '');
     writeAt(cfg, 'review-notes', 'disable-model-invocation: true\n');
-    assert.equal(skillCall('review-notes').status, 'ask', 'the personal copy is flagged, and it is the one that runs');
+    assert.equal(skillCall('review-notes').status, 'deny', 'the personal copy is flagged, and it is the one that runs');
     writeAt(path.join(root, '.claude'), 'draft-notes', 'disable-model-invocation: true\n');
     writeAt(cfg, 'draft-notes', '');
     assert.equal(skillCall('draft-notes').status, 0, 'an unflagged personal copy runs over a flagged project one');
@@ -4894,10 +4923,10 @@ test('H10: a bare built-in name is never a plugin command, the scoped one still 
   const call = (skill) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`h10-${skill.replace(/:/g, '-')}`, ctxRows('h10', 1000)) },
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home } });
   assert.equal(call('init').status, 0, 'the built-in /init is no plugin command');
-  assert.equal(call('alfred-code:init').status, 'ask', 'the core command under its own namespace is still denied');
-  assert.equal(call('alfred-code:mode:scoring').status, 'ask', 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
+  assert.equal(call('alfred-code:init').status, 'deny', 'the core command under its own namespace is still denied');
+  assert.equal(call('alfred-code:mode:scoring').status, 'deny', 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
   assert.equal(call('mode:scoring').status, 0, 'with no plugin before it the same name is no plugin command');
-  assert.equal(call('loop-code-quality').status, 'ask', 'a plugin skill still answers to its bare name');
+  assert.equal(call('loop-code-quality').status, 'deny', 'a plugin skill still answers to its bare name');
   fs.rmSync(home, { recursive: true, force: true });
 });
 
@@ -5011,6 +5040,76 @@ test('guard-stop-contract: the ask-fixed row waits for the call\'s result, and a
   result('q2', 'Your questions have been answered: "Pick q2 - now"="A (Recommended)". You can now continue with these answers in mind.');
   runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'af', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
   assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id), ['q2'], 'the answered one is counted at the next run');
+});
+
+// Limit H: a hook's ask on the very call the ask-fixed row waits for, declined by the user, is a call the user never saw -
+// the row is dropped like a hook's denial. An approved ask counts, and so does the user's own rejection of the AskUserQuestion
+// (no ask row for its id). The ask is the REAL layer-table gate's: it runs on each call and writes its own ledger row.
+test('guard-stop-contract: the ask-fixed row is dropped for a hook ask the user declined, and kept for an approved one and for their own rejection', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'askfixed-h-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'askfixed-h-log-'));
+  const tp = path.join(root, 'session.jsonl');
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 3.19.2\n');
+  const rows = [{ type: 'user', message: { content: 'set it up' } }];
+  const flush = () => fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const env = { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const ledgerDir = path.join(root, '.alfred', 'statistics', 'hook-blocks');
+  const GATE = path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js');
+  const DECLINE = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+  const printed = [];
+  const slip = (id) => {
+    const questions = [{ question: `Pick ${id} — now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+    rows.push({ type: 'assistant', message: { id: `t-${id}`, content: [{ type: 'tool_use', id: `tb-${id}`, name: 'Bash', input: { command: 'node "$TMP/repo/scripts/stack-select.js" --table agents' } }] } });
+    rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tb-${id}`, content: ' 1  x\ntotal: 43 agents - if fewer' }] } });
+    rows.push({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions } }] } });
+    flush();
+    printed.push(path.join(os.tmpdir(), `alfred-layer-printed-afh-tb-${id}`));
+    return { questions, stop: runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }, env) };
+  };
+  // The layer gate holds the unpasted table's ask on the same call, as it does beside the stop contract: its own row is the record.
+  const gateAsks = (id, questions) => {
+    const r = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }), encoding: 'utf8', ...env });
+    assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask', `the real gate asks on ${id}: ${r.stdout}`);
+  };
+  const result = (id, content, isError) => { rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } }); flush(); };
+  const fixedRows = () => { try { return fs.readFileSync(path.join(ledgerDir, 'afh.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.kind === 'ask-fixed'); } catch { return []; } };
+  try {
+    for (const id of ['h1', 'h2', 'h3']) {
+      const { questions } = slip(id);
+      if (id !== 'h3') gateAsks(id, questions);
+    }
+    const gateRows = fs.readFileSync(path.join(ledgerDir, 'afh.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.hook === 'guard-layer-table.js');
+    assert.deepStrictEqual(gateRows.map((r) => [r.tool_use_id, r.decision]), [['h1', 'ask'], ['h2', 'ask']], 'the gate\'s own ask row carries the call id and says ask');
+    assert.ok(gateRows.every((r) => !r.mode), 'and counts as a block, not a probe');
+    result('h1', DECLINE, true);
+    result('h2', 'Your questions have been answered: "Pick h2 - now"="A (Recommended)". You can now continue with these answers in mind.');
+    result('h3', DECLINE, true);
+    runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'afh', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
+    assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id).sort(), ['h2', 'h3'], 'the declined hook ask is dropped; the approved one and the user\'s own rejection (no ask row) are counted');
+  } finally { for (const f of printed) fs.rmSync(f, { force: true }); }
+});
+
+// The ask-fixed row's result read keeps its 4MB reach: a result with 3MB of later transcript behind it still settles the row.
+test('guard-stop-contract: an ask-fixed row settles on a result 3MB back from the end of the transcript', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'askfixed-wide-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'askfixed-wide-log-'));
+  const tp = path.join(root, 'session.jsonl');
+  const env = { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const questions = [{ question: `Pick w — now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+  const rows = [
+    { type: 'user', message: { content: 'set it up' } },
+    { type: 'assistant', message: { id: 'm-w1', content: [{ type: 'tool_use', id: 'w1', name: 'AskUserQuestion', input: { questions } }] } },
+  ];
+  const flush = () => fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  flush();
+  runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afw', tool_use_id: 'w1', transcript_path: tp, tool_input: { questions } }, env);
+  rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'Your questions have been answered: "Pick w - now"="A (Recommended)".' }] } });
+  rows.push({ type: 'assistant', message: { id: 'm-pad', content: [{ type: 'text', text: 'x'.repeat(3 * 1024 * 1024) }] } });
+  flush();
+  runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'afw', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
+  const written = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'afw.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(written.filter((r) => r.kind === 'ask-fixed').map((r) => r.tool_use_id), ['w1']);
 });
 
 // audit 2026-10-21 H5: heredocRunner re-split the whole line for every `<<<` and charged no work, so a line of
@@ -5867,7 +5966,16 @@ test('guards ask (D3): the proof receipts still decide, the missing one asks, an
   for (const permission_mode of ['dontAsk', 'bypassPermissions']) {
     const denied = push({ permission_mode });
     assert.equal(verdictOf(denied), 'deny', `B32: ${permission_mode} denies`);
-    assert.match(blockText(denied), /^Blocked: git push without the publish gate receipt\.\nA publish leaves this machine for good\. Run habits-commit-checkpoint's publish half/, `${permission_mode}: today's text`);
+    assertWholeDeny(denied, `Blocked: git push without the publish gate receipt.\n`
+      + `A publish leaves this machine for good. Run habits-commit-checkpoint's publish half (load it): say what goes to\n`
+      + `which branch, get the user's answer, then write ${path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE')} with the skill's scripts/receipt.js (\`push\`) - it\n`
+      + `fills head: and spec: from git:\n`
+      + `  VERIFIED <what is being published>\n`
+      + `  authorized: "<the user's words asking for THIS publish, verbatim>"  (in English, or answered: <the label they picked>)\n`
+      + `  live-probe: <what you ran, or NOT RUN - <reason>>   scope: <workspace, or the projects - when it spans several>\n`
+      + `The quote carries a publish verb and is never an option label this run wrote. A waiver is WAIVED - "<their\n`
+      + `words>" or WAIVED - answered: <the label they picked>. Never fabricate either; retry, and clear the file once it\n`
+      + `lands. A remote already gated (branch protection) can turn this half off: guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF.`, `B32 ${permission_mode}`);
   }
   const commitDir = scratchRepo();
   const commit = (extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {

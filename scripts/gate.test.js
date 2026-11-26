@@ -476,3 +476,73 @@ test('the win leg runs no more test workers than the VM has CPUs less one, as no
     assert.strictEqual(guestWorkers(11, 1), 1, 'never under one');
     assert.strictEqual(guestWorkers(11, undefined), 11, 'an unreadable CPU count keeps the host share');
 });
+
+// 2026-11-26: with all three legs running, the win leg hit its 45-minute limit; alone it takes 36 minutes.
+test('the win run waits for the other legs and its timer starts only at its own run', async () =>
+{
+    const { runAfterOthers } = require('./gate/after-others.js');
+    const events = [];
+    let clock = 0;
+    let othersDone;
+    const finished = () => new Promise((resolve) => { othersDone = resolve; });
+    const run = runAfterOthers({ leg: 'win', others: ['mac', 'linux'], finished, say: (line) => events.push(line), start: async () => { events.push(`start at ${clock}`); return { code: 0 }; } });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(events, ['  [win] waiting for mac, linux to finish'], 'the run has not started while the others run');
+    clock = 90 * 60 * 1000;
+    othersDone();
+    assert.deepStrictEqual(await run, { code: 0 });
+    assert.deepStrictEqual(events.slice(1), ['  [win] running', `start at ${clock}`], 'the run, and with it the timer, starts when the others are done');
+});
+
+test('the win run does not wait, and prints nothing extra, when no other leg is selected', async () =>
+{
+    const { runAfterOthers } = require('./gate/after-others.js');
+    const events = [];
+    const run = runAfterOthers({ leg: 'win', others: [], finished: () => { throw new Error('nothing to wait for'); }, say: (line) => events.push(line), start: async () => { events.push('start'); return { code: 0 }; } });
+    assert.deepStrictEqual(events, ['start'], 'start is called at once, before any await');
+    assert.deepStrictEqual(await run, { code: 0 });
+    assert.deepStrictEqual(events, ['start']);
+});
+
+test('the other legs split the host cores between them and the win leg, run alone after them, has them all', () =>
+{
+    const { hostShares } = require('./gate/workers.js');
+    assert.deepStrictEqual(hostShares(12, ['mac', 'linux', 'win']), { others: 5, win: 11 });
+    assert.deepStrictEqual(hostShares(12, ['mac', 'linux']), { others: 5, win: 11 });
+    assert.deepStrictEqual(hostShares(12, ['win']), { others: 11, win: 11 }, 'win alone: nothing to share with');
+    assert.deepStrictEqual(hostShares(12, ['linux', 'win']), { others: 11, win: 11 });
+    assert.deepStrictEqual(hostShares(1, ['mac', 'linux', 'win']), { others: 1, win: 1 }, 'never under one');
+});
+
+// 2026-11-26: the win leg hit its limit and was reported as 'went down', though the VM had not rebooted.
+test('a leg the timer killed says it timed out, with its own limit, and never that the VM went down', async () =>
+{
+    const dir = tmp('gate-timeout-');
+    try
+    {
+        const run = await gate.runProcess('mac', process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { env: process.env, log: path.join(dir, 'leg.log'), timeoutMs: 100 });
+        assert.strictEqual(run.timedOut, true, 'runProcess marks a run its own timer killed');
+        assert.match(gate.legVerdict('mac', { ...run, code: null }).reasons.join(), /timed out after/);
+        const quick = await gate.runProcess('mac', process.execPath, ['-e', ''], { env: process.env, log: path.join(dir, 'ok.log') });
+        assert.notStrictEqual(quick.timedOut, true, 'a run that ended on its own is not marked');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    const gone = { state: () => 'stopped', ready: async () => false, boot: async () => '' };
+    assert.strictEqual(await gate.downReason('vm', { timedOut: true, result: null }, '2026-11-26T16:25:06', gone), '', 'a timed out run is not a VM that went down');
+    assert.match(await gate.downReason('vm', { result: null }, '2026-11-26T16:25:06', gone), /went down/, 'a run cut off for another reason still is');
+});
+
+test('a boot time read twice by the same VM counts as one boot when only its fractional seconds differ', async () =>
+{
+    const up = { state: () => 'running', ready: async () => true };
+    const before = '2026-11-26T16:25:06.1234567+02:00';
+    assert.strictEqual(await gate.downReason('vm', { result: null }, before, { ...up, boot: async () => '2026-11-26T16:25:06.4000000+02:00' }), '');
+    assert.match(await gate.downReason('vm', { result: null }, before, { ...up, boot: async () => '2026-11-26T16:31:40.1234567+02:00' }), /went down/, 'a later boot is a restart');
+});
+
+test('the win leg has 60 minutes, the other legs 45', () =>
+{
+    const { LEG_TIMEOUT_MS } = require('./gate/constants.js');
+    const minutes = leg => LEG_TIMEOUT_MS[leg] / 60000;
+    assert.deepStrictEqual({ mac: minutes('mac'), linux: minutes('linux'), win: minutes('win') }, { mac: 45, linux: 45, win: 60 });
+});

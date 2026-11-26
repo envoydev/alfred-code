@@ -35,7 +35,7 @@ function tree(spec)
     {
         const dir = path.join(top, ...rel.split('/'));
         fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
+        if (o.stamp !== false) fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'sha: x\n');
         if (o.git) gitIn(dir, ['init', '-q']);
         if (o.local !== undefined) fs.writeFileSync(modeFileOf(dir), JSON.stringify({ env: o.local }));
         if (o.ws !== undefined) putWorkspace(dir, o.ws, { dataRoot: '.alfred' });
@@ -204,4 +204,25 @@ test('a hook whose payload names another checkout than the prelude applied for r
     const plain = tree({ 'plain': {} })('plain');
     const out = inPrelude(plain, `out.plain = p.autoRunStanding(${JSON.stringify(plain)}); out.child = p.autoRunStanding(${JSON.stringify(at('root/child'))});`);
     assert.deepStrictEqual(out, { plain: false, child: true });
+});
+
+test('inheritedMode in a sub-folder session reads the record the hook start made and applies the variables no second time', { skip: SKIP_GIT }, () =>
+{
+    const at = tree({
+        'root': { git: true, ws: { children: ['child'] }, local: { [K('SCORING')]: '1' } },
+        'root/child': { git: true, ws: { parent: '..' } },
+        'root/child/src': { stamp: false },
+    });
+    const env = { ...freshEnv(), [K('WORKSPACE')]: '1' };
+    layout.applyVariables(at('root/child/src'), env);
+    const real = layout.applyVariables;
+    let applied = 0;
+    layout.applyVariables = (...args) => { applied += 1; return real(...args); };
+    try
+    {
+        for (let call = 0; call < 2; call += 1) assert.strictEqual(M.inheritedMode(at('root/child/src'), K('SCORING'), env).from, '..');
+        assert.strictEqual(M.fromTag(at('root/child/src'), K('SCORING'), true, env), ' (from ..)');
+    }
+    finally { layout.applyVariables = real; }
+    assert.strictEqual(applied, 0);
 });

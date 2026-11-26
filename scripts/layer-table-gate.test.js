@@ -1016,3 +1016,20 @@ test('printed: the answer to a printed table writes one probe row - an option la
   assert.deepStrictEqual(rows('pa').map((x) => [x.detail.id, x.detail.answer]), [['a9', 'label']], 'a label answer, written once');
   assert.deepStrictEqual(rows('pb').map((x) => [x.detail.id, x.detail.answer]), [['a9', 'other']], 'an Other answer');
 });
+
+// The block row names the call and says `ask` only for a prompt: the stop contract reads a No on it as a refusal (limit H), and a
+// deny - nobody to answer - writes no `decision`.
+test('the block row carries the call id, and `decision: ask` only where the gate asked', () => {
+  const rowsFor = (extra) => {
+    const proj = fs.mkdtempSync(path.join(TMP, 'rows-ask-'));
+    fs.mkdirSync(path.join(proj, '.claude'));
+    fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'version: 3.19.2\n');
+    const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+    fs.writeFileSync(p, [typed('/alfred-code:configure'), recompute, result('r1', ''), say('[step 4/13 - agents]'), call('a9', 'AskUserQuestion', layerAsk('Agents: install the marked rows?'))].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'lt', hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: layerAsk('Agents: install the marked rows?'), tool_use_id: 'a9', transcript_path: p, ...extra }),
+      encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj } });
+    return fs.readFileSync(path.join(proj, '.alfred', 'statistics', 'hook-blocks', 'lt.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  };
+  assert.deepStrictEqual(rowsFor({}).map((r) => [r.tool_use_id, r.decision, r.detail.branch]), [['a9', 'ask', 'agents table']], 'the never-ran ask');
+  assert.deepStrictEqual(rowsFor({ permission_mode: 'dontAsk' }).map((r) => [r.tool_use_id, r.decision]), [['a9', undefined]], 'a deny names the call and says no ask');
+});

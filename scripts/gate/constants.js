@@ -24,4 +24,11 @@ const WIN_STAGE = Object.freeze({ folder: 'leg', legScript: 'gate-leg.js', confi
 // A test file `--tests` may name: the suite's own `*.test.js` (run-tests.js PATTERN).
 const TEST_FILE = /\.test\.js$/;
 
-module.exports = { WIN_NODE, WIN_STAGE, TEST_FILE };
+// How long one leg's process runs before the gate kills it. The win leg runs the whole suite alone in a VM after the
+// other legs, and took 36 minutes on a warm VM and over 45 after a fresh boot (2026-11-26).
+const LEG_TIMEOUT_MS = Object.freeze({ mac: 45 * 60 * 1000, linux: 45 * 60 * 1000, win: 60 * 60 * 1000 });
+
+// `2026-11-26T16:25:06` - the part of an ISO boot time up to the second.
+const BOOT_SECOND_LENGTH = 19;
+
+module.exports = { WIN_NODE, WIN_STAGE, TEST_FILE, LEG_TIMEOUT_MS, BOOT_SECOND_LENGTH };

@@ -104,7 +104,7 @@ function blockCall(input, text) {
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-read-whole-file' })); }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 const GATED_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/i; // any case: `BIG.TS` read whole passed
 // The image formats the Read tool renders for the model (the vision page's supported formats), judged by pixels, not bytes.

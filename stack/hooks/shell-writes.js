@@ -4475,12 +4475,12 @@ function scanShellIn(rawCommand, opts = {}) {
     for (const sc of carried) run.unread.push({ at: sc.at, why: `a script nested ${depth + 1} deep`, path: null });
   } else {
     const closesOf = new Map(P.cmds.map((c) => [c.words.length ? c.words[0].s : -1, c.end]));
-    // each carried script's own scan is kept (`scanned`) for the cross-project guard's read half: one read of each script, one budget
+    // each carried script's own scan is kept (`scanned`) for the cross-project guard's read half: one read of each script, one budget; `carried` and `runtimes` are the scripts and bodies of that script in turn, down to the scan depth
     for (const sc of carried) {
       if (run.budget.over()) { run.unread.push({ at: sc.at, why: run.budget.why, path: null }); continue; }
       const u0 = run.unread.length;
       const inner = scanShell(sc.text, { cwd: sc.cwd || null, files, aliases: opts.aliases, landing: opts.landing, depth: depth + 1, run, path: sc.path || null });
-      scanned.push({ at: sc.at, cmds: inner.cmds || [], expandVars: inner.expandVars, cds: inner.cds });
+      scanned.push({ at: sc.at, path: sc.path || null, cmds: inner.cmds || [], expandVars: inner.expandVars, cds: inner.cds, carried: inner.carried || [], runtimes: inner.runtimes || [] });
       for (let u = u0; u < run.unread.length; u++) run.unread[u] = { at: sc.at, why: run.unread[u].why, path: run.unread[u].path || sc.path || null };
       const verbatim = sc.mapped && inner.command.length === sc.text.length;
       const place = verbatim ? (i) => sc.at + i : (i) => sc.at + (i + 1) / (inner.command.length + 2);

@@ -4,8 +4,9 @@
 // push spends a CI run on them.
 //
 // Why it exists: CI is the only place the Windows leg ran, so a Windows-only failure surfaced 10-30
-// minutes after a push and cost a fix-push-wait cycle each time. Here the three legs run in parallel
-// on one machine against the COMMITTED tree, checked out the way ci.yml checks it out:
+// minutes after a push and cost a fix-push-wait cycle each time. Here the legs run on one machine against the
+// COMMITTED tree, checked out the way ci.yml checks it out. The mac and linux legs run in parallel; the win leg
+// wakes and stages the VM beside them, and its run waits for both, so it has the host's cores to itself:
 //   mac    native, on the Node major ci.yml pins (found under nvm or Homebrew; else the current node, flagged)
 //   linux  a `node:<major>` container, as its unprivileged `node` user (a runner is not root)
 //   win    a Parallels VM through `prlctl exec` as SYSTEM - elevated like a runner, which may create
@@ -34,12 +35,13 @@ const { WIN_NODE, WIN_STAGE } = require('./gate/constants.js');
 const { stageScript } = require('./gate/win-stage.js');
 const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
 const { unknownTestFiles } = require('./gate/tests-arg.js');
-const { guestWorkers } = require('./gate/workers.js');
+const { guestWorkers, hostShares } = require('./gate/workers.js');
+const { runAfterOthers } = require('./gate/after-others.js');
+const { LEG_TIMEOUT_MS, BOOT_SECOND_LENGTH } = require('./gate/constants.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
 const ZERO_SHA = /^0+$/;
-const LEG_TIMEOUT_MS = 45 * 60 * 1000;
 const VM_READY_MS = 5 * 60 * 1000;
 const KEEP_LOG_RUNS = 10;
 const KEEP_PASS_STAMPS = 50;
@@ -241,15 +243,17 @@ function alive(pid)
 }
 
 // Spawns one leg's process, writes everything it prints to the leg's log, reports each step as it
-// starts, and resolves with the leg's own RESULT line (null when it never printed one).
-function runProcess(leg, cmd, args, { env, log, onKill } = {})
+// starts, and resolves with the leg's own RESULT line (null when it never printed one) and whether its own
+// timer killed it.
+function runProcess(leg, cmd, args, { env, log, onKill, timeoutMs = LEG_TIMEOUT_MS[leg] } = {})
 {
     return new Promise(resolve => {
         const out = fs.createWriteStream(log);
         const child = rt.spawnCommandAsync(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
         let result = null;
         let buf = '';
-        const timer = setTimeout(() => { out.write(`\n[gate] ${leg} timed out after ${fmtMs(LEG_TIMEOUT_MS)}\n`); kill(); }, LEG_TIMEOUT_MS);
+        let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; out.write(`\n[gate] ${leg} timed out after ${fmtMs(timeoutMs)}\n`); kill(); }, timeoutMs);
         const kill = () => { if (onKill) onKill(); child.kill('SIGTERM'); };
         child.stdout.on('data', d => {
             out.write(d);
@@ -265,7 +269,7 @@ function runProcess(leg, cmd, args, { env, log, onKill } = {})
         });
         child.stderr.on('data', d => out.write(d));
         child.on('error', err => out.write(`\n[gate] ${cmd}: ${err.message}\n`));
-        child.on('close', code => { clearTimeout(timer); out.end(() => resolve({ code, result })); });
+        child.on('close', code => { clearTimeout(timer); out.end(() => resolve({ code, result, timedOut, limitMs: timeoutMs })); });
         runProcess.active.add(kill);
         child.on('close', () => runProcess.active.delete(kill));
     });
@@ -425,6 +429,23 @@ async function waitForExec(vm)
     return false;
 }
 
+// A run cut off with no result and a guest that rebooted: the VM went down under it - Windows Update restarts a VM
+// that sat off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from its
+// window (StartMenuExperienceHost.exe) - all measured. Returns that reason, or '' for any other run. A run the gate's
+// own timer killed is a timeout, never a reboot. The boot time is compared to the second: Windows derives it from the
+// uptime, so two reads can differ in the fraction.
+async function downReason(vm, r, bootBefore, probes = {})
+{
+    if (r.result || r.timedOut || !bootBefore) return '';
+    const { state = () => String(vmInfo(vm).State || '').toLowerCase(), ready = waitForExec, boot = guestBoot } = probes;
+    const down = `'${vm}' went down during the run - Windows Update restarting it, or a shutdown from its window; run the gate again`;
+    let now = '';
+    try { now = state(vm); } catch { /* unreadable counts as down */ }
+    if (now !== 'running') return down;
+    if (!(await ready(vm)) || (await boot(vm)).slice(0, BOOT_SECOND_LENGTH) !== bootBefore.slice(0, BOOT_SECOND_LENGTH)) return down;
+    return '';
+}
+
 async function legWin(ctx)
 {
     const vm = process.env.GATE_WINDOWS_VM || tryGit(ctx.root, ['config', '--get', 'gate.windowsVm']);
@@ -467,26 +488,24 @@ async function legWin(ctx)
     fs.copyFileSync(ctx.bundle, path.join(hostDir, 'repo.bundle'));
     copyLeg(hostDir);
     // SYSTEM's own temp dir is the Windows one nothing cleans: the run's temp sits in its work dir
-    const concurrency = guestWorkers(ctx.legCfg.concurrency, info.Hardware?.cpu?.cpus);
+    const concurrency = guestWorkers(ctx.winWorkers, info.Hardware?.cpu?.cpus);
     writeLegFiles(hostDir, 'win', { ...ctx.legCfg, concurrency, bundle: `${leg}\\${WIN_STAGE.bundle}`, work, tempDir: true });
     // one gate per machine, so a run dir already there is a dead run's (the VM went down under it) - only inside gate\
     const stage = stageScript({ sweep: sweepGlob, guestDir, leg });
     try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(stage, 'utf16le').toString('base64')], 300000); }
     catch (err) { return { reasons: [`could not copy the leg's files from the share into ${leg}: ${String(err.stderr || err.message).trim().split('\n')[0]}`] }; }
-    const bootBefore = await guestBoot(vm);
-    const r = await runProcess('win', 'prlctl', ['exec', vm, winNode, `${leg}\\${WIN_STAGE.legScript}`, `${leg}\\${WIN_STAGE.config}`],
-        { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
-    // A run cut off with no result: the VM went down under it - Windows Update restarts a VM that sat
-    // off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from
-    // its window (StartMenuExperienceHost.exe) - all measured. Say so rather than 'no result'.
-    if (!r.result && bootBefore)
-    {
-        const down = `'${vm}' went down during the run - Windows Update restarting it, or a shutdown from its window; run the gate again`;
-        let now = '';
-        try { now = String(vmInfo(vm).State || '').toLowerCase(); } catch { /* unreadable counts as down */ }
-        if (now !== 'running') return { ...r, reasons: [down] };
-        if (!(await waitForExec(vm)) || (await guestBoot(vm)) !== bootBefore) return { ...r, reasons: [down] };
-    }
+    // The VM was woken and staged above while the other legs ran; only the run waits for them, and its timer starts with it.
+    let bootBefore = '';
+    const r = await runAfterOthers({
+        leg: 'win', others: ctx.legs.filter(l => l !== 'win'), finished: () => ctx.othersDone('win'),
+        start: async () => {
+            bootBefore = await guestBoot(vm);
+            return runProcess('win', 'prlctl', ['exec', vm, winNode, `${leg}\\${WIN_STAGE.legScript}`, `${leg}\\${WIN_STAGE.config}`],
+                { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
+        },
+    });
+    const down = await downReason(vm, r, bootBefore);
+    if (down) return { ...r, reasons: [down] };
     const major = Number(String(r.result?.node || '').replace(/^v/, '').split('.')[0]);
     return { ...r, note: r.result && ctx.nodeMajor && major !== ctx.nodeMajor ? `node ${r.result.node} in the VM, not the v${ctx.nodeMajor} ci.yml pins` : '' };
 }
@@ -500,6 +519,7 @@ const cleanEnv = env => runnerEnv(env);
 function legVerdict(leg, r)
 {
     if (r.reasons) return { leg, ok: false, reasons: r.reasons, note: r.note || '' };
+    if (r.timedOut) return { leg, ok: false, reasons: [`the leg timed out after ${fmtMs(r.limitMs)} - the log ends where it was killed`], note: r.note || '' };
     if (!r.result) return { leg, ok: false, reasons: [`the leg printed no result (exit ${r.code})`], note: r.note || '' };
     const reasons = [...(r.result.reasons || [])];
     if (r.result.ok && r.code !== 0) reasons.push(`the leg exited ${r.code}`);
@@ -569,14 +589,19 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep, t
     const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-gate-'));
     fs.chmodSync(runDir, 0o755);
     const gateRef = `refs/alfred-gate/${id}`;
+    const shares = hostShares(os.availableParallelism(), legs);
+    // the legs' verdicts, so the win leg can wait for the others; read only after a leg's first await, so `runs` is set
+    let runs = [];
+    const othersDone = leg => Promise.all(runs.filter((_, i) => legs[i] !== leg));
     const ctx = {
-        id, root, runDir, cleanups: [], cleanEnv,
+        id, root, runDir, cleanups: [], cleanEnv, legs, othersDone, winWorkers: shares.win,
         nodeMajor: ciNodeMajor(readFile(path.join(root, '.github', 'workflows', 'ci.yml'))),
         legScript: path.join(runDir, 'gate-leg.js'),
         bundle: path.join(runDir, 'repo.bundle'),
         log: leg => path.join(logDir, `${leg}.log`),
-        // the legs share this machine's cores: each gets its part, near the 3 workers a runner has
-        legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, tests, concurrency: Math.max(1, Math.floor((os.availableParallelism() - 1) / legs.length)) },
+        // the mac and linux legs run together and split this machine's cores; the win leg's run waits for them and takes
+        // the host's whole share (scripts/gate/workers.js)
+        legCfg: { gateRef, mainRef, branch, name: path.basename(root), keep, tests, concurrency: shares.others },
     };
     let cleaned = false;
     const cleanup = () => {
@@ -599,14 +624,15 @@ async function runGate({ root, sha, branch, label = branch, legs, force, keep, t
         fs.chmodSync(ctx.bundle, 0o644);
         const started = Date.now();
         console.log(`alfred-gate: ${label} @ ${short} on ${legs.join(', ')} (Node ${ctx.nodeMajor || '?'} as ci.yml pins)${tests ? ` - PARTIAL: ${tests.join(', ')} only, no pass stamp` : ''}`);
-        const verdicts = await Promise.all(legs.map(async leg => {
+        runs = legs.map(async leg => {
             let r;
             try { r = await LEG_RUNNERS[leg](ctx); }
             catch (err) { r = { reasons: [String(err.message || err)] }; }
             const v = legVerdict(leg, r);
             console.log(`  [${leg}] ${v.ok ? 'PASS' : 'FAIL'}`);
             return v;
-        }));
+        });
+        const verdicts = await Promise.all(runs);
         nodeSkew(verdicts, ctx.nodeMajor);
         console.log(`\nalfred-gate: ${label} @ ${short} - ${fmtMs(Date.now() - started)}`);
         for (const v of verdicts)
@@ -735,4 +761,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { restoreVm, LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };
+module.exports = { restoreVm, LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, runProcess, downReason, configuredLegs, installHook, uninstallHook };

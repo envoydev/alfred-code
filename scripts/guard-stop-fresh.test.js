@@ -941,8 +941,20 @@ test('guard-stop-contract: the prose-ask denial quotes the session\'s own carry 
 // 5 + 6 + 7. the AskUserQuestion branch: absolute numbers, the long-run route, mid-turn prose,
 //            and the solve-task stop fields. Injection only - every path here exits 0 (the ask's own house voice is the one deny).
 // ---------------------------------------------------------------------------------------------
-// The note the hook injected beside the answer. A block - an ask the guard put to the user - injects none: its text is the block's.
-const ctxOf = (r) => { if (r.status === 'ask') return ''; try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+// The note the hook injected beside the answer; '' where the call passed with none. A block - an ask, a deny or an exit 2 - is
+// no note, so it throws: an `=== ''` assert would otherwise pass on a pass that turned into a block.
+const ctxOf = (r) => {
+  assert.strictEqual(r.status, 0, `a note is read from a pass, not a block (${r.status}: ${String(r.stdout).slice(0, 200)}${String(r.stderr).slice(0, 200)})`);
+  try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; }
+};
+test('ctxOf reads a note from a pass only - a block is a failure, so an empty-note assert cannot pass on one', () => {
+  const blocked = (decision) => verdictResult({ status: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, additionalContext: 'text' } }) });
+  assert.throws(() => ctxOf(blocked('ask')), assert.AssertionError, 'an ask');
+  assert.throws(() => ctxOf(blocked('deny')), assert.AssertionError, 'a deny');
+  assert.throws(() => ctxOf(verdictResult({ status: 2, stdout: '', stderr: 'blocked' })), assert.AssertionError, 'an exit 2');
+  assert.strictEqual(ctxOf(verdictResult({ status: 0, stdout: '', stderr: '' })), '', 'a pass with no output');
+  assert.strictEqual(ctxOf(verdictResult({ status: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'a note' } }) })), 'a note', 'a pass with a note');
+});
 const askIn = (tp, questions, env) => runIn('guard-stop-contract.js',
   { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
   { env: env || logEnv() });
@@ -1205,10 +1217,10 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
     'a solve-task stop with no fields anywhere is reminded');
   // (the first stop also owes its `Size:` receipt - audit 2026-10-10, T4 cross-track)
   assert.equal(ctxOf(askIn(cycle('sf-fields',
-    'Size: small - one module\nResult:    task 2 landed - docs/plans/csv.md\nProgress:  4 of 6 steps\nLeftovers: none'), oneQ)), '',
+    'Size: small - one module\nResult:    task 2 landed - docs/plans/csv.md - review: task-verify-code - clean\nProgress:  4 of 6 steps\nLeftovers: none'), oneQ)), '',
     'the stamped fields clear it');
   assert.equal(ctxOf(askIn(cycle('sf-bold',
-    '**Size:** small - one module\n**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
+    '**Size:** small - one module\n**Result:** task 2 landed - review: task-verify-code - clean\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
     'the markdown-bold variant 5 of 13 sessions actually wrote satisfies the format');
   // M7 (Task 22 fix round 1): on the plugin route the slash command is recorded with its plugin prefix.
   const prefixed = transcript('sf-plugin', [

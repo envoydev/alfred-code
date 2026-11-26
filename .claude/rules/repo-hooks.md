@@ -113,7 +113,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `auto-run on` writes `ALFRED_CODE_AUTO_RUN=1` and `ALFRED_CODE_AUTO_COMPACT=1`, `scoring on|off [level] [rounds]` the
   scoring keys (three) - and the mode stays on, new sessions included, until its off; every hook reads it through
   `layout.applyVariables`, and an auto-run `1` counts only from the checkout's own untracked file
-  (`mode-settings.js autoRunHeld` / `hook-prelude.js autoRunStanding`: a tracked or unvouched one is said, never taken). A joined child with no value of its own reads each mode key from the nearest workspace member that holds it, that member's mode file before its `.variables` (`layout.inheritedModes`, `mode-settings.js autoRunInherited`), an inherited `1` under the same untracked-and-vouched bar, and every state line names the member (`ON (from <rel>)`, `inherited from <rel>`).
+  (`mode-settings.js autoRunHeld` / `hook-prelude.js autoRunStanding`: a tracked or unvouched one is said, never taken). A joined child with no value of its own reads each mode key from the nearest workspace member that holds it, that member's mode file before its `.variables` (`layout.inheritedModes`, `mode-settings.js autoRunInherited`), an inherited `1` under the same untracked-and-vouched bar, and every state line names the member (`ON (from <rel>)`, `inherited from <rel>`). A session started in a child's sub-folder reads the child's chain: `layout.applyVariables` first resolves the folder it is handed to the project that owns it (`owningProject`, the nearest folder up to the git top holding the install record), and the mode file stays the one Claude Code reads for the launch folder (`modeFile`).
   `mode-settings.js` and `json-file.js` are copied hook modules (`HOOK_MODULES`). The per-session switch files
   (`AUTO-COMPACT-<session>`, `SCORING-<session>`) are gone, and an ask's answer counts as the user's only when its own
   row's `permissionDecision.source` opens `user` (`hook-prelude.js byUser`, D25), so under the standing variable no
@@ -295,7 +295,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   comes every time: a yes in chat opens nothing. Where nobody can answer, it writes the same reason as a plain `deny`. `canAsk` is false for
   `dontAsk`, `bypassPermissions`, print mode (`claude -p`), `ALFRED_CODE_UNATTENDED=1` and a Cursor payload (whose deny also writes the
   reason to stderr and exits 2, `blockExitCode`), and for a `SubagentHandback` call in EVERY mode: the hooks page says no prompt
-  appears for it and the call runs, so an ask there would let a hand-back through (B62). An idle user under auto-run is asked all the
+  appears for it and the call runs, so an ask there would let a hand-back through (B62). The model's `Skill` call of a `disable-model-invocation` skill (B38) is a deny in every mode, set by the guard itself and not by `canAsk`: Claude Code refuses that call whatever the hook says, so a Yes could run nothing. An idle user under auto-run is asked all the
   same - `canAsk` never reads the auto-run stamp. `ALFRED_CODE_GUARD_ASK=0` (the launch environment, a settings `env` or `.variables`;
   any other value asks) brings the plain block back everywhere. The helper never answers `allow`: a call no guard judged harmful gets
   no output, as before, and a failure inside it writes a `deny`, never nothing. It sets `global.BLOCK_VERDICT`, so the block row each
@@ -305,10 +305,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   protective ask lets every later guard judge and the one prompt names every harm. The dispatcher's own blocks (a read-only seat's
   write, the foreground wait, the runner's line cap and a runner line a guard blocks) use the same helper (`blockResult`). What does not change: Stop,
   SubagentStop, PostToolUse and UserPromptSubmit blocks (Claude Code has no ask there) and the CLI usage exits of the secret guard and
-  `secrets-run.js`; `scripts/guard-ask-sweep.test.js` fails any PreToolUse deny or exit 2 that carries no marker comment and pins the
-  marker counts per file. The run-dir gate (`setup-plugin/hooks/run-dir-gate.js`, its deny of another session's run dir) is on the same footing: its `emit` (`scripts/run-dir-gate/effects.js`) hands the deny to `askOrBlock`, and the sweep reads that folder too. The rm guard's prompt names the recursive delete first when the command holds one beside a discard or a marketplace removal. Four chat-yes openers left with it (the receipts, the typed paths and the discard pick, each named where its guard is described). Known limits:
-  an approved dispatch ask holds no agent-cap slot until its SubagentStart, so in a fan-out wider than the cap one seat can run over it,
-  and a nested seat may lose its parent link - fixing it needs a read of the tool result. Not measured live: the prompt in an interactive
+  `secrets-run.js`; `scripts/guard-ask-sweep.test.js` fails any hook source line that writes a `permissionDecision: 'deny'`, a top-level `decision: 'block'`, a `{ code: 2 }` result or `process.exit(2)` / `process.exit(DENY_EXIT)`, or exits through a variable the same function sets to 2 (`let code = 2`), and carries no marker comment, and pins the
+  marker counts per file. A variable set to 2 by another route (a ternary, a call, another function) is out of its reach. The run-dir gate (`setup-plugin/hooks/run-dir-gate.js`, its deny of another session's run dir) is on the same footing: its `emit` (`scripts/run-dir-gate/effects.js`) hands the deny to `askOrBlock`, and the sweep reads that folder too. The rm guard's prompt names the recursive delete first when the command holds one beside a discard or a marketplace removal. Four chat-yes openers left with it (the receipts, the typed paths and the discard pick, each named where its guard is described). Known limits:
+  a nested seat may lose its parent link. Not measured live: the prompt in an interactive
   session, a hook `ask` under `bypassPermissions`, and how a subagent's prompt surfaces.
   A MISSING HELPER never blocks (the user's ruling, 2026-11-19, on the hooks audit's Q6): without `shell-writes.js` the
   rm, force-push and commit guards and the secret guard's shell route read the raw words one segment at a time
@@ -825,7 +824,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     of a session's agents may run at once - default 5, `0` no cap, at most 50, anything not a whole number read as 5
     (`agent-cap.js capOf`). `agent-cap.js` is a module the three hooks require inside a try (`HOOK_MODULES`, copied on
     the copy route), so a copy without it runs unchanged. A PreToolUse payload carries no list of running agents, so the
-    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s),
+    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s; one the dispatch guard ASKED about stays, marked `asked: true` with its `tool_use_id`, and counts for at most 10 minutes (`ASKED_MS`, a user may take minutes to answer the prompt) or until `toolResultOf` (`hook-prelude.js`, the transcript tail's result of that id; a seat's dispatch reads the seat's own transcript) finds a result - a decline or any error result releases it at the next count, a start takes it over - so a fan-out wider than the cap cannot run over an ask the user answers within the bound; one answered later has lost its slot),
     `-R-<agent_id>` (a started agent, counted while its own `at` or its transcript's mtime is under 12 minutes old; after
     its SubagentStop only when the transcript moved more than 5 s past it - a hold sent it back (a hand-back's own hook rows land up to 3.65 s after it) - and kept 2 minutes so a
     resume finds it; a file a counted one names as `parent` counts too), `.lock` (exclusive create, 20ms retries, 1.5s
@@ -1134,7 +1133,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     confirm-ask with a negation earlier in its clause ('I couldn't confirm whether ...') is a report, no ask; and a prose
     question after this turn's two newest asks were both refused by a hook (`askRefusedThisTurn`: error results, neither
     an answer nor the user's rejection) stands with one `prose-after-refused-ask` probe row - one refusal is a fixable ask
-    and still holds (U06; the C15 offer shapes stay stops). The
+    and still holds (U06; the C15 offer shapes stay stops). The user's No on a hook's own `ask` counts as a refusal and is no answer
+    (limit H, `answersAsk` / `declinedHookAsk`): its result carries Claude Code's rejection text (`declinedByUser`, `hook-prelude.js`),
+    so it is joined to the call's block row in the hook-blocks ledger - `decision: 'ask'` on the stop contract's block rows (a
+    deny writes none; the secret guard's own ask row says `mode: 'ask'`) - and the user's own rejection of an AskUserQuestion,
+    which has no such row, keeps its old reading. The
     ask branch's typed-turn count follows the live `parentUuid` chain, and its stale-scope note counts `push` only in a
     git shape. Audit 2026-10-11 SD10: a line opening `Deferred by you:` is nothing owed when an ask answered THIS turn
     carries a deferral in its answer (the pinned contract with validate's close; with no such answer it is judged as
@@ -1216,7 +1219,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   444-539 ms into the hook), and holds an unpasted ask before the user sees it, the PostToolUse void the net. So the layer
     gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
     `guard-stop-askfixed-<session>.jsonl` (hook temp dir) with the call's `tool_use_id`, and this hook's next ask or Stop
-    writes it once the call's result is on disk - dropped when that result is a hook's denial, written as it stands past a
+    writes it once the call's result is on disk (`toolResultOf`, a 4MB tail) - dropped when that result is a hook's denial or the user's No on a hook's `ask` (the layer gate's ask row carries the call's `tool_use_id` and `decision: 'ask'`, the stop contract's own rows' form, `blockRow`; a deny row has no `decision`), written as it stands past a
     day - and a fix in place spends no deny marker (only a deny does, so a sibling's denial never costs the re-sent ask its
     own).
     Two LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load
@@ -1558,9 +1561,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `expandVars`). A SEARCH PATTERN WORD IS NEVER JUDGED: the first plain word of `grep`, `egrep`, `fgrep`, `rg`, `ag` and `ack` is
     a pattern unless `-e` / `--regexp` (or, for ag and ack, `-g`) gives it, `rg --files` and `ack -f` have none, `-f` / `--file` (grep, rg) names a file of patterns, which is read like any file, and a quoted
     word whose text STARTS with `~` is a literal name, for every verb and for an input redirect; the value of a prose flag (`-m`, `--message`, `--body`, `--title`...) and of `echo`
-    / `printf` is a sentence, and `-F` is one only for `git commit` and `git tag`. Only a path that exists counts, deduped by resolved
-    path, at most 64 per command; 512 words per command and per carried script. CARRIED SCRIPTS are read ONE level (`scanShell`'s `carried`, `runtimes`
-    and `cmds`: the guard never reads a script twice), at most 8 per command. THE ONE PROMPT: the read hits ride `readHits`
+    / `printf` is a sentence, and `-F` is no sentence flag: `git commit -F <file>` and `git tag -F <file>` read that file, so it is a read like any other (`-F -` is stdin, no path), and so does the file attached to the flag, `-F<file>`, `-aF<file>` and `--file=<file>` (`cross-read.js GIT_FILE_ATTACHED`: git commit and tag only, a cluster holds only the verbs' boolean flags before the `F` so `-mFoo` stays a message, `-F-` and `--file=-` are stdin, and a `~` right after `-F` is a literal name, as the shell hands it on). For the verbs that open the word as written - `git`, `rg`, `ls`, `cat`, `sed` and `tar`, the frozen `LITERAL_TILDE_VERBS` list - a `~` right after `--<name>=` in one word is literal too (`LONG_FLAG_TILDE`: bash and zsh expand `~` at the start of a word and after `=` in an assignment only), so it names no place under HOME; every other verb asks as before, since `npm` expands `~/` itself in a path option (`npm --prefix=~/x prefix` printed the home path), and so does the grep the Bash tool runs (Claude Code's bundled ugrep reads `--file=~/x` from HOME), and `pnpm` and `yarn` are judged the same way; a plain `~/x` word and `NAME=~/x` still expand. Only a path that exists counts, deduped by resolved
+    path, at most 64 per command; 512 words per command and per carried script. CARRIED SCRIPTS are read down to the scan depth, THREE levels (`scanShell`'s `carried`, `runtimes`
+    and `cmds`, each script's own `carried` and `runtimes` kept beside them; `cross-read.js scriptUnits` walks them breadth first: the guard never
+    reads a script twice - a script run again from the same folder is one unit, so a cycle ends - and takes at most 8 per command across
+    all levels, each with its own 512 words). THE ONE PROMPT: the read hits ride `readHits`
     (declared above the telemetry exit wrapper, which runs on every exit); `blockCall` joins them into the first sentence of any
     write-half block of the same call ('Blocked: this call also reads outside this workspace (No keeps the work workspace only) - '),
     `Also:` carrying the read text for the model, and a call nothing else blocked asks for them when it exits. THE VERDICT: '<tool>
@@ -1574,11 +1579,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     does too, and a copy with no `cross-read.js` beside it reads nothing (it is in `HOOK_MODULES`). No new variable. No sweep marker:
     every block goes through `blockCall`. KNOWN LIMITS:
     the CLI's `--add-dir` grants a directory only for that launch and no hook payload carries it, so such a directory still asks (list it in `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` or in the account settings' `additionalDirectories`);
-    `git commit -F` and `git tag -F` of a file past the workspace give no ask (the message file is prose); a script nested two levels
-    deep is not read; a `CLAUDE_CONFIG_DIR` outside HOME is judged only in part (its account dir asks on a Grep, its `projects/` does
+    a `CLAUDE_CONFIG_DIR` outside HOME is judged only in part (its account dir asks on a Grep, its `projects/` does
     not, and a Read there is never in the zone); words past the 512th, paths past the 64th and scripts past the 8th fail open;
     `rm -rf` of another project's memory asks with 'reads' wording; `-m` as a prose flag on every verb also skips `ls -m <path>`;
-    `rg -rf <file>` over-asks; `messageFile` matches a commit or tag word anywhere in git's words, so it errs toward no ask; a `CLAUDE_PLUGIN_ROOT` set to the account dir would open other projects' memory (Claude Code never sets it so); a glob that reaches only the own memory asks, since its fixed prefix is `projects/`. Update step:
+    `rg -rf <file>` over-asks; a `CLAUDE_PLUGIN_ROOT` set to the account dir would open other projects' memory (Claude Code never sets it so); a glob that reaches only the own memory asks, since its fixed prefix is `projects/`. Update step:
     none (the plugin replaces the hook files; the copy route re-copies `cross-read.js` on each run).
     The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the rows other hooks read back could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is blocked - an ask where a person can answer, a deny where nobody can - with no allowance route (`recordAt`, branch `transcript`); memory and `settings.json` stay open; a Read, a grep and a copy OUT are no write, and the read half asks for another project's transcript as for any read past the workspace.
     A PATH THE USER TYPED opened writes from 2026-11-03 to 2026-11-25 (usage audit U20); it left with the other chat-yes openers (a typed

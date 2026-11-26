@@ -112,7 +112,7 @@ function blockCall(input, text) {
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-ungated-commit' })); }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 // shell-writes.js is the one home of reading a shell command (2.1.6 re-verify 3 R3-M3, R3-M4): its walker finds each git
 // call as a COMMAND WORD - past assignments, keywords and wrappers - and walks the call's options word by word. The regex

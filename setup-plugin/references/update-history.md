@@ -1389,7 +1389,9 @@ each time: a yes typed in chat opens nothing, and a Yes at the prompt opens only
 
 Where no one can answer, the guard still blocks as before: in `dontAsk` and `bypassPermissions` mode, in `claude -p`, with
 `ALFRED_CODE_UNATTENDED=1`, in Cursor, and for a seat's hand-back in every mode. To get the plain block back everywhere,
-set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`.
+set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`. One more refusal shows
+no prompt: when Claude tries to call a skill that only you may start, it is refused at once, since Claude Code would not
+run that call even after a Yes.
 
 **The chat-yes openers are gone.** The `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` and `STAGED-SCAN-ALLOW`
 files, a path you typed, and a discard picked in an answered question open no block now. No hook reads those files, and no hook deletes
@@ -1463,11 +1465,8 @@ opens a tree for both halves.
 
 Known limits, said once here:
 - A directory you granted Claude Code in `permissions.additionalDirectories` of your account settings file stays open (a project's own settings files open nothing). A grant that holds the project opens that folder's siblings too. The CLI's `--add-dir` is not seen by a hook, so such a directory still asks.
-- `git commit -F` or `git tag -F` of a file past the workspace gives no ask.
-- A script nested two levels deep is not read.
 - A `CLAUDE_CONFIG_DIR` outside your home folder is judged only in part.
 - Words past the 512th, paths past the 64th and scripts past the 8th in one command are not judged.
-- `git commit` and `git tag` are found by their word anywhere in git's words, so a `-F` file can pass unasked.
 - A `CLAUDE_PLUGIN_ROOT` set to the account folder would open other projects' memory. Claude Code never sets it so.
 - `rm` of another project's memory folder asks with 'reads' wording.
 
@@ -1476,3 +1475,22 @@ your home folder would otherwise ask on every guard call, since the secret guard
 
 Nothing to do in an installed project beyond the update. Report that a read past the workspace now asks first and that
 `guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` turns it off.
+
+## after 3.19.2 - a sub-folder session inherits the modes, and `git commit -F` asks
+
+**A session started in a sub-folder of a project, such as `child/src`, now reads that project's settings and the modes
+its workspace passes down, as a session at the project's top folder does.** Before, it looked for the settings in the
+sub-folder, found none, and ran without the project's variables or an inherited scoring mode. A sub-folder with its own
+install is still its own project. On Windows, a sub-folder's own `.claude/settings.local.json` keeps its place as the
+mode file, since Claude Code reads it there, and the project's own `off` still wins over an inherited `on`.
+
+Three guard changes come with it:
+- `git commit -F <file>` and `git tag -F <file>` read that file, so a file past the workspace asks like any read. `-F -`
+  (standard input) and `-m` text ask nothing.
+- When Claude tries to call a skill that only you may start, the call is refused without a prompt, since Claude Code
+  would not run it even after a Yes.
+- Scripts a command runs are read up to three levels deep, so a script that runs another script, which reads another
+  project's files, now asks. Before, only the first level was read.
+
+Nothing to do in an installed project beyond the update. Report that a sub-folder session now reads its project's
+settings.

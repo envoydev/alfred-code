@@ -150,7 +150,7 @@ function blockCall(input, text) {
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-cross-project-write' })); }
   catch { process.stderr.write(text); }
-  process.exit(code);
+  process.exit(code); // guard-ask: blockCall exit
 }
 
 // The project root is CLAUDE_PROJECT_DIR (the harness sets it for every hook). Without it - a
@@ -938,16 +938,22 @@ const { isVar } = shell;
 const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
 const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNorm);
 // THE READ HALF on the shell route (the judging is cross-read.js `shellReadHits`): the units are the command itself and each
-// script it carries one level down - a heredoc or here-string into a shell, a `-c` string, a piped-in script, a script
-// file - and the bodies a runtime is handed. All come from the one scan above (shell-writes.js `scanShell`: `cmds`,
-// `carried`, `runtimes`), so no script file is read, parsed or charged to the scan budget a second time.
+// script it carries - a heredoc or here-string into a shell, a `-c` string, a piped-in script, a script file - down to the
+// depth the shared reader scans (`SCAN_LIMITS.depth`, cross-read.js `scriptUnits`: at most eight scripts, each once) - and the
+// bodies a runtime is handed. All come from the one scan above (shell-writes.js `scanShell`: `cmds`, `carried` with the
+// `carried` and `runtimes` of each, `runtimes`), so no script file is read, parsed or charged to the scan budget a second time.
 function shellReadHits() {
   const max = crossRead.SHELL_SCRIPTS_MAX;
-  const units = [{ cmds: scan.cmds || [], expandVars: scan.expandVars, anchorAt, texts: (scan.runtimes || []).slice(0, max).map((s) => ({ text: String(s.body), index: s.index })) }];
-  for (const carried of (scan.carried || []).slice(0, max)) {
-    const start = anchorAt(Math.floor(carried.at)) || SHELL_CWD;
-    units.push({ cmds: carried.cmds, expandVars: carried.expandVars, anchorAt: (index) => shell.anchorAt(carried.cds, index, start, anchorNorm), texts: [] });
-  }
+  const textsOf = (runtimes) => (runtimes || []).slice(0, max).map((s) => ({ text: String(s.body), index: s.index }));
+  const top = { cmds: scan.cmds || [], expandVars: scan.expandVars, anchorAt, texts: textsOf(scan.runtimes), carried: scan.carried };
+  const childOf = (parent, entry) => {
+    const start = parent.anchorAt(Math.floor(entry.at)) || SHELL_CWD;
+    return {
+      cmds: entry.cmds, expandVars: entry.expandVars, anchorAt: (index) => shell.anchorAt(entry.cds, index, start, anchorNorm),
+      texts: textsOf(entry.runtimes), carried: entry.carried, key: entry.path ? `${entry.path}\0${start}` : null,
+    };
+  };
+  const units = crossRead.scriptUnits(top, childOf);
   return crossRead.shellReadHits(units, {
     dequote: shell.dequote, isVar, platform: process.platform, tool, root: ROOT, cwd: SHELL_CWD,
     resolve: (word, base) => resolveTarget(nativePath(expandTilde(word)), base), exists: fs.existsSync, key: fold,

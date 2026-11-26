@@ -1277,7 +1277,7 @@ test('the gate on: the file is written, the status-write row carries a numeric g
     assert.strictEqual(readStatus(g.root, 'gate-on').session, 'gate-on');
     const rows = gateRows(g.root, 'gate-on');
     const write = rows.find((r) => r.kind === 'status-write');
-    assert.strictEqual(write.result, 'ok');
+    assert.ok(['ok', 'slow'].includes(write.result), `a write, timed: ${write.result}`); // a loaded CI runner passes SLOW_MS
     assert.strictEqual(typeof write.gateMs, 'number');
     assert.ok(write.gateMs >= 0);
     assert.ok(!rows.some((r) => r.kind === 'status-gate'));

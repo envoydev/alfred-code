@@ -9,4 +9,13 @@ function guestWorkers(hostShare, guestCpus)
     return Math.max(1, Math.min(hostShare, guestCpus - 1));
 }
 
-module.exports = { guestWorkers };
+// The test workers per leg, the host's cores split between the legs that run together. The mac and linux legs split them;
+// the win leg starts after them and has the cores to itself, as it did when it ran alone (2026-11-26).
+function hostShares(cores, legs)
+{
+    const alone = Math.max(1, cores - 1);
+    const others = legs.filter((leg) => leg !== 'win').length;
+    return { others: others > 1 ? Math.max(1, Math.floor(alone / others)) : alone, win: alone };
+}
+
+module.exports = { guestWorkers, hostShares };

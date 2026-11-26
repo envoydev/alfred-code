@@ -1135,7 +1135,7 @@ test('mode-auto-run: the model never calls it, and a typed /mode-auto-run mid-ru
     fs.cpSync(path.join(__dirname, '..', 'stack', 'skills', 'mode-auto-run'), path.join(p.root, '.claude', 'skills', 'mode-auto-run'), { recursive: true });
     const self = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'mode-auto-run', args: 'add x' },
         session_id: 'tb1', cwd: p.root, transcript_path: transcript([typed('go on')]) }, { CLAUDE_PROJECT_DIR: p.root });
-    assert.strictEqual(self.status, 'ask');
+    assert.strictEqual(self.status, 'deny');
     assert.match(self.stderr, /mode-auto-run is marked disable-model-invocation/);
     assert.ok(!fs.existsSync(p.gate));
     // mid-run: a typed /mode-auto-run with a request opens a new run under the mode; an empty one ends nothing; the off command ends it

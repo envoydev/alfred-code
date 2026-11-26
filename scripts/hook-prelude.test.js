@@ -1910,6 +1910,38 @@ test('transcriptField reads the newest row carrying the key; a torn last row rea
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+const DECLINE = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+test('toolResultOf reads the tool result of one call id from the transcript tail; declinedByUser names a refused prompt', () => {
+    const { toolResultOf, declinedByUser } = require(PRELUDE);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-result-'));
+    let n = 0;
+    const result = (id, content, isError) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError === undefined ? {} : { is_error: isError }) }] } });
+    const file = (rows, tail = '') => { const p = path.join(dir, `t${++n}.jsonl`); fs.writeFileSync(p, rows.map((r) => `${JSON.stringify(r)}\n`).join('') + tail); return p; };
+    const call = { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a', name: 'Agent', input: {} }] } };
+    assert.deepStrictEqual(toolResultOf(file([call, result('toolu_a', DECLINE, true)]), 'toolu_a'), { found: true, isError: true, text: DECLINE });
+    assert.deepStrictEqual(toolResultOf(file([call, result('toolu_a', [{ type: 'text', text: 'done' }])]), 'toolu_a'), { found: true, isError: false, text: 'done' }, 'a block list joins its text');
+    assert.deepStrictEqual(toolResultOf(file([call, result('toolu_b', 'other')]), 'toolu_a'), { found: false }, 'the result of another id');
+    assert.deepStrictEqual(toolResultOf(file([call]), 'toolu_a'), { found: false }, 'no result yet');
+    assert.deepStrictEqual(toolResultOf(file([result('toolu_a', 'first'), result('toolu_a', 'resumed')]), 'toolu_a').text, 'resumed', 'the newest row wins');
+    assert.deepStrictEqual(toolResultOf(file([call, result('toolu_a', 'ok')], '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_a","con'), 'toolu_a'), { found: true, isError: false, text: 'ok' }, 'a torn last row is skipped');
+    assert.deepStrictEqual(toolResultOf(file([call, result('toolu_a', 'x')]), ''), { found: false }, 'no id');
+    assert.deepStrictEqual(toolResultOf(file([]), 'toolu_a'), { found: false }, 'an empty file');
+    assert.deepStrictEqual(toolResultOf(path.join(dir, 'absent.jsonl'), 'toolu_a'), { found: false }, 'no file');
+    assert.deepStrictEqual(toolResultOf('', 'toolu_a'), { found: false }, 'no path');
+    assert.deepStrictEqual(toolResultOf(undefined, undefined), { found: false }, 'no arguments');
+    const big = file([result('toolu_old', DECLINE, true), { type: 'assistant', pad: 'x'.repeat(3 * 1024 * 1024) }, call]);
+    assert.deepStrictEqual(toolResultOf(big, 'toolu_old'), { found: false }, 'a result past the byte budget is not read');
+    assert.strictEqual(toolResultOf(big, 'toolu_old', { tailBytes: 4 * 1024 * 1024 }).found, true, 'a caller that read a wider tail before keeps it');
+    assert.strictEqual(declinedByUser({ found: true, isError: true, text: DECLINE }), true);
+    assert.strictEqual(declinedByUser({ found: true, isError: true, text: "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. x). To tell you how to proceed, the user said:\nno" }), true, 'the said-slot variant');
+    assert.strictEqual(declinedByUser({ found: true, isError: false, text: DECLINE }), false, 'not an error result');
+    assert.strictEqual(declinedByUser({ found: true, isError: true, text: 'PreToolUse:Agent hook error: Blocked: x' }), false, 'a hook denial is no decline');
+    assert.strictEqual(declinedByUser({ found: true, isError: true, text: `Result: ${DECLINE}` }), false, 'the opening decides, not a quote of it');
+    assert.strictEqual(declinedByUser({ found: false }), false);
+    assert.strictEqual(declinedByUser(null), false);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // Workspace stage 4c, Task 4: the rule loader carries the project's rules, so neither the off-list nor the minimal profile stands it down.
 test('prelude: hookDisabled and profileOff are false for rules-session whatever the off-list and the profile say', () =>
 {

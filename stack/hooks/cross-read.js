@@ -21,11 +21,22 @@ const SHELL_PATHS_MAX = 64;
 const SHELL_WORDS_MAX = 512;
 const SHELL_SCRIPTS_MAX = 8;
 const PROSE_VERBS = new Set(['echo', 'printf']);
-// The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` names the message file of a
-// git commit or tag only; for tail, ls and less it is a plain flag.
+// `-F<file>`, the file attached to the flag, of `git commit` and `git tag`: only the boolean short flags of those verbs may stand
+// before the `F` in a cluster (`-aF<file>`), so `-mFoo` stays a message. `-F-` is stdin, and a `~` right after the flag is no home
+// (see LONG_FLAG_TILDE for `--file=~`).
+const GIT_FILE_ATTACHED = /^-[aeinopqsvz]*F(.+)$/;
+const GIT_FILE_VERBS = new Set(['commit', 'tag']);
+const STDIN_WORD = '-';
+// A `~` right after `--name=` in one word stays literal in bash and zsh (they expand it at the start of a word, and after `=` in
+// an assignment only), so the program gets `~/x`. That names no place under HOME only for a verb that opens the word as written:
+// git, rg, ls, cat, sed and tar (measured: `tar --file=~/x` and GNU tar 1.35 / sed 4.9 open a file called `~`). npm expands `~/`
+// itself in a path option (`npm --prefix=~/x prefix` printed the home path), and so does the grep the Bash tool runs - Claude
+// Code's bundled ugrep reads `--file=~/x` from HOME - so grep, npm, pnpm and every verb not listed ask as before.
+const LONG_FLAG_TILDE = /^--[^=]+=~/;
+const LITERAL_TILDE_VERBS = Object.freeze(['git', 'rg', 'ls', 'cat', 'sed', 'tar']);
+// The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` is no sentence flag: git
+// commit and tag read the file it names, so its value is a plain word, judged like any other (`-F -` is stdin, a flag).
 const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
-const GIT_MESSAGE_FILE_FLAG = '-F';
-const GIT_MESSAGE_VERBS = new Set(['commit', 'tag']);
 // A verb whose first plain word is its pattern, never a root, unless a flag gives the pattern (`pattern`: its value is the
 // pattern) or means there is none (`none`). `file` names a file of patterns, read like any file. `values` are the flags
 // that take the next word, one set for each verb.
@@ -128,8 +139,8 @@ function argEntries(name, words, dequote, powershell) {
   const texts = words.map((word) => dequote(word.raw));
   const keep = (at, text, search) => { if (!(QUOTED_TILDE.test(words[at].raw) && text.startsWith('~'))) out.push({ word: words[at], text, search }); };
   const finds = FIND_VERBS.has(name);
+  const gitFile = name === 'git' && texts.some((text) => GIT_FILE_VERBS.has(text));
   const spec = PATTERN_VERBS.get(name) || null;
-  const messageFile = name === 'git' && texts.some((text) => GIT_MESSAGE_VERBS.has(text));
   const recurses = (text) => RECURSE_FLAG.test(text) || ((powershell || POWERSHELL_LISTING_VERB.test(name)) && POWERSHELL_RECURSE_FLAG.test(text));
   const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some(recurses));
   const patternGiven = (text) => { const flag = flagOf(text); return spec.pattern.test(flag) || (spec.file && spec.file.test(flag)) || (spec.none && spec.none.test(flag)); };
@@ -143,12 +154,18 @@ function argEntries(name, words, dequote, powershell) {
     if (!flagsEnded && spec && spec.pattern.test(flag) && !text.includes('=')) { at++; continue; }
     if (!flagsEnded && spec && spec.file && spec.file.test(flag) && !text.includes('=')) { if (at + 1 < words.length) keep(at + 1, texts[at + 1], false); at++; continue; }
     if (!flagsEnded && spec && spec.values.has(flag) && !text.includes('=')) { at++; continue; }
-    if (!flagsEnded && !spec && (PROSE_FLAGS.has(text) || (messageFile && text === GIT_MESSAGE_FILE_FLAG))) { at++; continue; }
+    if (!flagsEnded && !spec && PROSE_FLAGS.has(text)) { at++; continue; }
     if (!flagsEnded && text.startsWith('-')) {
+      const attached = gitFile ? GIT_FILE_ATTACHED.exec(text) : null;
+      if (attached) {
+        if (attached[1] !== STDIN_WORD && !attached[1].startsWith('~')) out.push({ word: words[at], text: attached[1], search: false });
+        continue;
+      }
       const eq = text.indexOf('=');
       if (finds && !FIND_OPTION.test(text)) rootsEnded = true;
-      if (eq > 0 && spec && spec.file && spec.file.test(flag)) keep(at, text.slice(eq + 1), false);
-      else if (eq > 0 && !spec && !PROSE_FLAGS.has(text.slice(0, eq))) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
+      const literalTilde = LITERAL_TILDE_VERBS.includes(name) && LONG_FLAG_TILDE.test(text);
+      if (eq > 0 && spec && spec.file && spec.file.test(flag)) { if (!literalTilde) keep(at, text.slice(eq + 1), false); }
+      else if (eq > 0 && !spec && !PROSE_FLAGS.has(text.slice(0, eq)) && !literalTilde) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
       continue;
     }
     if (needsPattern) { needsPattern = false; continue; }
@@ -220,8 +237,28 @@ function shellReadHits(units, env) {
   return hits;
 }
 
+// The units a scan reads, breadth first: `top` and each script it carries, then the scripts those carry, down every level the
+// shared reader scanned (SCAN_LIMITS.depth). At most `max` scripts in all, so a deep chain shares the cap with a wide one,
+// and a script run again from the same folder (`unit.key`, its path and where it starts) only once, so a cycle ends. The
+// scripts a unit carries are its `carried`, in the shape scanShell hands back; `childOf(parent, entry)` builds each unit.
+function scriptUnits(top, childOf, max = SHELL_SCRIPTS_MAX) {
+  const units = [top];
+  const seen = new Set();
+  let taken = 0;
+  for (let at = 0; at < units.length; at++) {
+    for (const entry of units[at].carried || []) {
+      if (taken >= max) return units;
+      const unit = childOf(units[at], entry);
+      if (unit.key) { if (seen.has(unit.key)) continue; seen.add(unit.key); }
+      taken++;
+      units.push(unit);
+    }
+  }
+  return units;
+}
+
 // The text of a call whose own block also reads past the boundary: the clause that says so first, before any path, so
 // the prompt's first sentence keeps it, and the read verdict after it for the model.
 const joinRead = (text, readVerdict) => `${READ_ALSO}${text.replace(/^Blocked: /, '')}\nAlso: ${readVerdict}`;
 
-module.exports = { SHELL_PATHS_MAX, SHELL_SCRIPTS_MAX, isExplicitPath, shellCandidates, shellReadHits, joinRead, READ_TOOLS, READ_PATHS_SHOWN, READ_BRANCH, globPrefix, firstSegmentApart, shownPath, readText };
+module.exports = { SHELL_PATHS_MAX, SHELL_SCRIPTS_MAX, scriptUnits, isExplicitPath, shellCandidates, shellReadHits, joinRead, READ_TOOLS, READ_PATHS_SHOWN, READ_BRANCH, globPrefix, firstSegmentApart, shownPath, readText };
