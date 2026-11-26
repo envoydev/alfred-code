@@ -142,12 +142,42 @@ if (cursorOff) process.exit(0);
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
           detail: global.BLOCK_DETAIL || undefined,
+          // An ask says so: a user's No on it reads like their own rejection of the AskUserQuestion, and this field tells the two apart (hookAskedCall).
+          ...(global.BLOCK_VERDICT && global.BLOCK_VERDICT.decision === 'ask' ? { decision: 'ask' } : {}),
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
     exit(code);
   };
 })();
+
+// Whether a hook asked the user about this call: a block row of the hook-blocks ledger that carries the call's id and says `ask`
+// (`decision: 'ask'` on a guard's block row, `mode: 'ask'` on the secret guard's own row). The ledger is a file the model can write:
+// a forged row makes one declined ask count as a hook's refusal and nothing more.
+function hookAskedCall(id) {
+  if (!id || typeof id !== 'string') return false;
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
+    const text = fs.readFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), 'utf8');
+    return text.split('\n').some((line) => {
+      if (!line.includes(id)) return false;
+      try { const r = JSON.parse(line); return r.tool_use_id === id && (r.decision === 'ask' || r.mode === 'ask'); } catch { return false; }
+    });
+  } catch { return false; }
+}
+// A hook's `ask` the user declined (limit H): Claude Code's rejection of a permission prompt on a call a hook asked about. A user's
+// own rejection of an AskUserQuestion carries the same text but no ask row, so it keeps its old reading.
+function declinedHookAsk(id, result) {
+  try { return require('./hook-prelude.js').declinedByUser(result) && hookAskedCall(id); } catch { return false; }
+}
+// Did this tool result ANSWER an ask - a picked or typed answer, or the user's own rejection of the AskUserQuestion? The user's No on a
+// hook's `ask` is neither: the question was never shown, so it settles nothing (limit H).
+function answersAsk(block) {
+  const text = resultText(block);
+  return ANSWER_RESULT_RE.test(text) && !declinedHookAsk(block && block.tool_use_id, { found: true, isError: Boolean(block && block.is_error === true), text });
+}
 
 // --- build and test runs: one classifier for the two method triggers -----------------------------
 // A command is a build or test run when one of its segments STARTS with a known runner, after env
@@ -1093,7 +1123,7 @@ function userQuestion() {
           const r = results.get(b.id);
           if (!r) continue;
           const text = resultText(r.block);
-          if (r.block.is_error === true && !ANSWER_RESULT_RE.test(text)) continue;   // a hook's denial decided nothing
+          if (r.block.is_error === true && !answersAsk(r.block)) continue;   // a hook's denial, or the user's No on a hook's ask, decided nothing
           const questions = (b.input && Array.isArray(b.input.questions)) ? b.input.questions : [];
           const askText = String((questions[0] && questions[0].question) || '');
           let input = null;
@@ -1379,7 +1409,7 @@ function askJustAnswered() {
           return calls > JUST_ANSWERED_CALLS ? false : undefined;
         }
         if (o.type !== 'user') return undefined;
-        if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)))) return true;
+        if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && answersAsk(b))) return true;
         // a Stop hook's own feedback row is the harness speaking, not the user's next turn
         if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
         return undefined;
@@ -1391,7 +1421,7 @@ function askJustAnswered() {
 }
 
 // Were this turn's two newest AskUserQuestion calls both refused by a HOOK - an error result that is no answer and no
-// user rejection (ANSWER_RESULT_RE)? One refusal is a fixable ask the model resends; two mean it cannot ask, so the
+// user rejection (ANSWER_RESULT_RE), or the user's No on a hook's own `ask` (declinedHookAsk)? One refusal is a fixable ask the model resends; two mean it cannot ask, so the
 // prose-ask hold lets the prose close stand (usage audit 2026-11-03 U06). Read by that hold alone.
 function askRefusedThisTurn() {
   try {
@@ -1410,7 +1440,7 @@ function askRefusedThisTurn() {
         for (const b of [...c].reverse()) {
           if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
           const r = results.get(b.id);
-          if (!r || r.is_error !== true || ANSWER_RESULT_RE.test(resultText(r))) return false;
+          if (!r || r.is_error !== true || answersAsk(r)) return false;
           if (++refused >= 2) return true;
         }
         return undefined;
@@ -3205,8 +3235,9 @@ if (autoRun) {
 // THE ask-fixed ROW IS SETTLED LATER (audit 2026-10-20, the hooks track's minor list): PreToolUse hooks run in parallel, so
 // a sibling gate (guard-layer-table.js) can deny the very call this hook fixed, and the row then counted a fix the user
 // never saw. The row waits in `guard-stop-askfixed-<session>.jsonl` with the call's tool_use_id, and this hook's next
-// AskUserQuestion or Stop writes it once the call's own tool_result is on disk - unless that result is a hook's denial
-// (the layer gate's marker, or Claude Code's 'hook error' / 'blocked' wording). A result not yet written waits; a pending
+// AskUserQuestion or Stop writes it once the call's own tool_result is on disk (hook-prelude.js toolResultOf) - unless that
+// result is a hook's denial (the layer gate's marker, or Claude Code's 'hook error' / 'blocked' wording) or the user's No on a
+// hook's `ask` (declinedHookAsk): the user never saw the question. A result not yet written waits; a pending
 // row older than a day is written as it stands.
 function askFixedFile() {
   return require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-stop-askfixed-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
@@ -3222,24 +3253,16 @@ function settleAskFixed() {
   try { pending = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return; }
   const results = {};
   try {
-    const p = payload.transcript_path;
-    const size = fs.statSync(p).size;
-    const from = Math.max(0, size - 4 * 1024 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - from);
-    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.includes('tool_result')) continue;
-      let o;
-      try { o = JSON.parse(line); } catch { continue; }
-      const c = o && o.message && o.message.content;
-      if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_result' && b.tool_use_id) results[b.tool_use_id] = resultText(b);
+    const pre = require('./hook-prelude.js');
+    for (const x of pending) {
+      const found = x && x.id ? pre.toolResultOf(payload.transcript_path, x.id, { tailBytes: 4 * 1024 * 1024 }) : null;
+      if (found && found.found) results[x.id] = found;
     }
   } catch { /* unreadable: every row waits, or ages out */ }
   const keep = [];
   for (const x of pending) {
     if (!x || !x.row) continue;
-    if (x.id in results) { if (!ASKFIXED_DENIED_RE.test(results[x.id])) ledgerRow({ ...x.row, tool_use_id: x.id }); }
+    if (x.id in results) { if (!ASKFIXED_DENIED_RE.test(results[x.id].text) && !declinedHookAsk(x.id, results[x.id])) ledgerRow({ ...x.row, tool_use_id: x.id }); }
     else if (Date.now() - Number(x.at || 0) > 24 * 3600 * 1000) ledgerRow({ ...x.row, tool_use_id: x.id, settled: 'aged' });
     else keep.push(x);
   }
@@ -3267,12 +3290,13 @@ function reAskDeny() {
   const why = `Blocked: the user asked a question - answer it in prose and end the turn. They met this ask with '${open.text.slice(0, 160)}', `
     + 'so it is not answered yet: answer that question, put no ask in this turn, and end it. The ask comes back when their next '
     + 'message picks, approves or says go on - or re-send it unchanged if the answer itself needs their pick now.';
-  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: redactShapes(why.split('\n')[0]).slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
   breadcrumb(`block reask: ${open.kind}`);
   // The ask (guards ask, D1): the prelude asks where a person can answer and denies otherwise. The row above is this site's
   // own, so the verdict it leaves for the exit wrapper is dropped: the wrapper must not write a second row for this block.
   let wrote = false;
-  try { const p = require('./hook-prelude.js'); p.askOrBlock(payload, why, { guard: 'guard-stop-contract' }); wrote = true; delete global.BLOCK_VERDICT; } catch { /* no prelude: today's deny */ }
+  let decision = '';
+  try { const p = require('./hook-prelude.js'); decision = p.askOrBlock(payload, why, { guard: 'guard-stop-contract' }); wrote = true; delete global.BLOCK_VERDICT; } catch { /* no prelude: today's deny */ }
+  ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: redactShapes(why.split('\n')[0]).slice(0, 200), detail: { branch: 'reask', kind: open.kind }, ...(decision === 'ask' ? { decision } : {}) });
   if (!wrote) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } })); // guard-ask fallback: no prelude
   reaskDenied = true;
   process.exit(0);

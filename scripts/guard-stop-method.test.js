@@ -713,6 +713,7 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         const f = path.join(root, '.alfred', 'statistics', 'hook-blocks', `${sid}.jsonl`);
         const written = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
         assert.strictEqual(written.filter((x) => x.detail && x.detail.branch === 'reask').length, 1, 'one block row, the site\'s own - not two');
+        assert.strictEqual(written.find((x) => x.detail && x.detail.branch === 'reask').decision, 'ask', 'the row says the host was asked, so a No on it reads as a declined ask');
         const second = reask(root, rows, { sid });
         assert.strictEqual(decision(second), '', 'the valve: the second send goes out');
     });
@@ -753,6 +754,7 @@ test('flow probes: a Windows plan path - backslashes, as Claude Code writes file
         assert.strictEqual(rows.length, 1, JSON.stringify(ledger(root)));
         assert.match(rows[0].reason, /^Blocked: this AskUserQuestion carries/);
         assert.strictEqual(rows[0].tool, 'AskUserQuestion');
+        assert.strictEqual(rows[0].decision, 'ask', 'the block row of an ask says so; a deny carries no decision');
     });
 
     test('re-ask: a label pick, another question text, the part switch and nobody at the terminal all pass', () => {

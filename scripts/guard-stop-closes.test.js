@@ -956,6 +956,42 @@ test('U06: a prose close may follow a second refused ask', () => {
   assert.strictEqual(ledger().filter((x) => x.kind === 'prose-after-refused-ask').length, 1, 'the user rejecting the ask is no hook refusal');
 });
 
+// Limit H (2026-11-26): a user's No on a hook's `ask` reads like their own rejection of an AskUserQuestion. The hook's ask
+// leaves a block row with `decision: 'ask'` and the call's id in the hook-blocks ledger, so the two are told apart by that row.
+test('U06: a hook ask the user declined counts as a refusal; an approved one and the user\'s own rejection do not', () => {
+  const ask = (id) => call(id, 'AskUserQuestion', { questions: [{ question: 'Which store?', options: [{ label: 'Redis (Recommended)', description: 'x' }, { label: 'Memory', description: 'y' }] }] });
+  const errorResult = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text, is_error: true }] } });
+  const USER_NO = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+  const HOOK_DENY = 'PreToolUse:AskUserQuestion hook error: [node guard-stop-contract.js]: This ask names an option the user must type into Other.';
+  const prose = 'The ask was refused twice, so here it is in prose: should I cache in Redis or in memory?';
+  const sid = `h-${process.pid}`;
+  const ledgerFile = (id) => path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'statistics', 'hook-blocks', `${id}.jsonl`);
+  const hookAsked = (id, calls) => {
+    fs.mkdirSync(path.dirname(ledgerFile(id)), { recursive: true });
+    fs.appendFileSync(ledgerFile(id), calls.map((c) => `${JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'AskUserQuestion', tool: 'AskUserQuestion', agent: null, tool_use_id: c, reason: 'Blocked: x', decision: 'ask' })}\n`).join(''));
+  };
+  const refusals = (id) => { try { return fs.readFileSync(ledgerFile(id), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => x.kind === 'prose-after-refused-ask').length; } catch { return 0; } };
+  const stop = (rows, id) => run({ hook_event_name: 'Stop', session_id: id, last_assistant_message: prose, transcript_path: transcript([...rows, say(`c${seq}`, prose)]) });
+  const turn = (results) => [typed('add caching'), ...results.flatMap(([id, text]) => [ask(id), errorResult(id, text)])];
+  const stopOf = (rows, calls, id) => { hookAsked(id, calls); return stop(rows, id); };
+  const declined = `${sid}-declined`;
+  assert.strictEqual(stopOf(turn([['d1', USER_NO], ['d2', USER_NO]]), ['d1', 'd2'], declined).status, 0, 'two declined hook asks: the model cannot ask, the prose close stands');
+  assert.strictEqual(refusals(declined), 1, 'counted as the two refusals they are');
+  const one = `${sid}-one`;
+  assert.strictEqual(stopOf(turn([['n1', USER_NO]]), ['n1'], one).status, 2, 'one declined hook ask settled nothing: it is a fixable ask, the prose close is still held');
+  const mixed = `${sid}-mixed`;
+  assert.strictEqual(stopOf(turn([['m1', USER_NO], ['m2', HOOK_DENY]]), ['m1'], mixed).status, 0, 'a declined hook ask and a hook denial are two refusals');
+  assert.strictEqual(refusals(mixed), 1);
+  const approved = `${sid}-approved`;
+  const answer = (id) => result(id, 'Your questions have been answered: "Which store?"="Redis (Recommended)". You can now continue with these answers in mind.');
+  assert.strictEqual(stopOf([typed('add caching'), ask('a1'), answer('a1'), ask('a2'), answer('a2')], ['a1', 'a2'], approved).status, 0, 'an approved hook ask is an answer: the close passes as before');
+  assert.strictEqual(refusals(approved), 0, 'and it is no refusal');
+  const own = `${sid}-own`;
+  assert.strictEqual(stop(turn([['o1', USER_NO]]), own).status, 0, 'the user\'s own rejection of an AskUserQuestion has no ask row: still an answer, as before');
+  assert.strictEqual(stop(turn([['o2', USER_NO], ['o3', USER_NO]]), `${own}-two`).status, 0);
+  assert.strictEqual(refusals(own) + refusals(`${own}-two`), 0, 'no refusal is counted for it');
+});
+
 // m3 (E-batch): an ask template pointing 'above' at the reply drew the stop contract's pointer check on every shipped run.
 test('m3: no shipped ask template draws a pointer', () => {
   const src = fs.readFileSync(HOOK, 'utf8');

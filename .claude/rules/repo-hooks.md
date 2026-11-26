@@ -824,7 +824,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     of a session's agents may run at once - default 5, `0` no cap, at most 50, anything not a whole number read as 5
     (`agent-cap.js capOf`). `agent-cap.js` is a module the three hooks require inside a try (`HOOK_MODULES`, copied on
     the copy route), so a copy without it runs unchanged. A PreToolUse payload carries no list of running agents, so the
-    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s; one the dispatch guard ASKED about stays, marked `asked: true` with its `tool_use_id`, and counts until `toolResultOf` (`hook-prelude.js`, the transcript tail's result of that id) finds a result - a decline or any error result releases it at the next count, a start takes it over - so a fan-out wider than the cap cannot run over an approved ask),
+    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s; one the dispatch guard ASKED about stays, marked `asked: true` with its `tool_use_id`, and counts until `toolResultOf` (`hook-prelude.js`, the transcript tail's result of that id; a seat's dispatch reads the seat's own transcript) finds a result - a decline or any error result releases it at the next count, a start takes it over - so a fan-out wider than the cap cannot run over an approved ask),
     `-R-<agent_id>` (a started agent, counted while its own `at` or its transcript's mtime is under 12 minutes old; after
     its SubagentStop only when the transcript moved more than 5 s past it - a hold sent it back (a hand-back's own hook rows land up to 3.65 s after it) - and kept 2 minutes so a
     resume finds it; a file a counted one names as `parent` counts too), `.lock` (exclusive create, 20ms retries, 1.5s
@@ -1133,7 +1133,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     confirm-ask with a negation earlier in its clause ('I couldn't confirm whether ...') is a report, no ask; and a prose
     question after this turn's two newest asks were both refused by a hook (`askRefusedThisTurn`: error results, neither
     an answer nor the user's rejection) stands with one `prose-after-refused-ask` probe row - one refusal is a fixable ask
-    and still holds (U06; the C15 offer shapes stay stops). The
+    and still holds (U06; the C15 offer shapes stay stops). The user's No on a hook's own `ask` counts as a refusal and is no answer
+    (limit H, `answersAsk` / `declinedHookAsk`): its result carries Claude Code's rejection text (`declinedByUser`, `hook-prelude.js`),
+    so it is joined to the call's block row in the hook-blocks ledger - `decision: 'ask'` on the stop contract's block rows (a
+    deny writes none; the secret guard's own ask row says `mode: 'ask'`) - and the user's own rejection of an AskUserQuestion,
+    which has no such row, keeps its old reading. The
     ask branch's typed-turn count follows the live `parentUuid` chain, and its stale-scope note counts `push` only in a
     git shape. Audit 2026-10-11 SD10: a line opening `Deferred by you:` is nothing owed when an ask answered THIS turn
     carries a deferral in its answer (the pinned contract with validate's close; with no such answer it is judged as
@@ -1215,7 +1219,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   444-539 ms into the hook), and holds an unpasted ask before the user sees it, the PostToolUse void the net. So the layer
     gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
     `guard-stop-askfixed-<session>.jsonl` (hook temp dir) with the call's `tool_use_id`, and this hook's next ask or Stop
-    writes it once the call's result is on disk - dropped when that result is a hook's denial, written as it stands past a
+    writes it once the call's result is on disk (`toolResultOf`, a 4MB tail) - dropped when that result is a hook's denial or the user's No on a hook's `ask`, written as it stands past a
     day - and a fix in place spends no deny marker (only a deny does, so a sibling's denial never costs the re-sent ask its
     own).
     Two LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load

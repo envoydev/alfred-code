@@ -5042,6 +5042,59 @@ test('guard-stop-contract: the ask-fixed row waits for the call\'s result, and a
   assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id), ['q2'], 'the answered one is counted at the next run');
 });
 
+// Limit H: a hook's ask on the very call the ask-fixed row waits for, declined by the user, is a call the user never saw -
+// the row is dropped like a hook's denial. An approved ask counts, and so does the user's own rejection of the AskUserQuestion
+// (no ask row for its id).
+test('guard-stop-contract: the ask-fixed row is dropped for a hook ask the user declined, and kept for an approved one and for their own rejection', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'askfixed-h-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'askfixed-h-log-'));
+  const tp = path.join(root, 'session.jsonl');
+  const rows = [{ type: 'user', message: { content: 'set it up' } }];
+  const flush = () => fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const env = { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const ledgerDir = path.join(root, '.alfred', 'statistics', 'hook-blocks');
+  const DECLINE = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+  const slip = (id) => {
+    const questions = [{ question: `Pick ${id} \u2014 now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+    rows.push({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions } }] } });
+    flush();
+    return runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }, env);
+  };
+  const result = (id, content, isError) => { rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } }); flush(); };
+  const hookAsked = (id) => { fs.mkdirSync(ledgerDir, { recursive: true }); fs.appendFileSync(path.join(ledgerDir, 'afh.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-layer-table.js', tool: 'AskUserQuestion', tool_use_id: id, reason: 'x', decision: 'ask' })}\n`); };
+  const fixedRows = () => { try { return fs.readFileSync(path.join(ledgerDir, 'afh.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.kind === 'ask-fixed'); } catch { return []; } };
+  for (const id of ['h1', 'h2', 'h3']) slip(id);
+  hookAsked('h1');
+  hookAsked('h2');
+  result('h1', DECLINE, true);
+  result('h2', 'Your questions have been answered: "Pick h2 - now"="A (Recommended)". You can now continue with these answers in mind.');
+  result('h3', DECLINE, true);
+  runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'afh', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
+  assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id).sort(), ['h2', 'h3'], 'the declined hook ask is dropped; the approved one and the user\'s own rejection (no ask row) are counted');
+});
+
+// The ask-fixed row's result read keeps its 4MB reach: a result with 3MB of later transcript behind it still settles the row.
+test('guard-stop-contract: an ask-fixed row settles on a result 3MB back from the end of the transcript', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'askfixed-wide-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'askfixed-wide-log-'));
+  const tp = path.join(root, 'session.jsonl');
+  const env = { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const questions = [{ question: `Pick w — now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+  const rows = [
+    { type: 'user', message: { content: 'set it up' } },
+    { type: 'assistant', message: { id: 'm-w1', content: [{ type: 'tool_use', id: 'w1', name: 'AskUserQuestion', input: { questions } }] } },
+  ];
+  const flush = () => fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  flush();
+  runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afw', tool_use_id: 'w1', transcript_path: tp, tool_input: { questions } }, env);
+  rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'Your questions have been answered: "Pick w - now"="A (Recommended)".' }] } });
+  rows.push({ type: 'assistant', message: { id: 'm-pad', content: [{ type: 'text', text: 'x'.repeat(3 * 1024 * 1024) }] } });
+  flush();
+  runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'afw', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
+  const written = fs.readFileSync(path.join(root, '.alfred', 'statistics', 'hook-blocks', 'afw.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(written.filter((r) => r.kind === 'ask-fixed').map((r) => r.tool_use_id), ['w1']);
+});
+
 // audit 2026-10-21 H5: heredocRunner re-split the whole line for every `<<<` and charged no work, so a line of
 // here-strings cost quadratic time the budget never saw (5.5 s at 40,000 characters, work 0). Each call now charges
 // the line it reads: the same command gets the same verdict on any machine, in bounded time.
