@@ -6,7 +6,8 @@
 // A PreToolUse payload carries no list of running agents, so the session keeps one: flat files in
 // <data root>/state/sessions/, one line of JSON each, written to a temp name and renamed into place, ordered by an
 // exclusive-create lock. The 7-day sweep of the AGENT-CAP- prefix takes them all.
-//   AGENT-CAP-<sid>-P-<tool_use_id>  a dispatch not started yet: { type, at, parent }
+//   AGENT-CAP-<sid>-P-<tool_use_id>  a dispatch not started yet: { type, at, parent } - once the dispatch guard asked about it, also
+//                                    { asked: true, tool_use_id }: it counts until the transcript holds that call's result
 //   AGENT-CAP-<sid>-R-<agent_id>     a started agent: { type, at, parent, transcript, stop }
 //   AGENT-CAP-<sid>.lock             the lock
 //   AGENT-CAP-<sid>.denied           a main-session denial the Stop half may continue once, until a typed prompt
@@ -141,6 +142,9 @@ function withLock(reg, fn)
 // and its transcript's mtime - is under 12 minutes, and after a stop only when the transcript was written more than a
 // 5 s past it (a hold sent the seat back); a file a counted one names as `parent` counts too. What does not count is
 // deleted, except a stopped file in its first 2 minutes; one that expired with no stop writes an `agent-cap-expired` row.
+// An `asked` pending file - a dispatch whose prompt the user may still answer - counts only while the transcript
+// (`reg.transcript`, set by capGates) holds no result for its call: a result of any kind, a decline or an error included,
+// releases it at once; a start takes it over before that. With no transcript it counts for its 60 s, as any pending file.
 function count(reg, { now = Date.now(), probe = () => {} } = {})
 {
     const none = { running: 0, types: [], counted: new Set(), live: [] };
@@ -152,7 +156,12 @@ function count(reg, { now = Date.now(), probe = () => {} } = {})
         {
             if (!e.body) { remove(e.file); continue; }
             const at = Number(e.body.at) || 0;
-            if (e.kind === 'P') { if (now - at < PENDING_MS) alive.set(e.name, e); else remove(e.file); continue; }
+            if (e.kind === 'P')
+            {
+                if (now - at < PENDING_MS && !(e.body.asked === true && resultOfAsked(reg, e.body))) alive.set(e.name, e);
+                else remove(e.file);
+                continue;
+            }
             const written = mtimeOf(e.body.transcript);
             e.activity = Math.max(at, written);
             const stop = Number(e.body.stop) || 0;
@@ -186,6 +195,17 @@ function count(reg, { now = Date.now(), probe = () => {} } = {})
     catch { return none; }
 }
 
+// Whether the session transcript already holds the result of an asked dispatch's call. A copy without the prelude reads none.
+function resultOfAsked(reg, body)
+{
+    try
+    {
+        if (!reg.transcript || !body.tool_use_id) return false;
+        return require('./hook-prelude.js').toolResultOf(reg.transcript, String(body.tool_use_id)).found === true;
+    }
+    catch { return false; }
+}
+
 function addPending(reg, toolUseId, { type = '', parent = '', now = Date.now() } = {})
 {
     try
@@ -195,6 +215,20 @@ function addPending(reg, toolUseId, { type = '', parent = '', now = Date.now() }
         return id;
     }
     catch { return ''; }
+}
+// The dispatch guard's ask kept the call's pending file: it is marked, so the count can read the call's result. False when the
+// file is not there to mark.
+function markAsked(reg, toolUseId, rawToolUseId)
+{
+    try
+    {
+        const file = fileOf(reg, 'P', cleanId(toolUseId));
+        const body = readEntry(file);
+        if (!body) return false;
+        writeEntry(file, { ...body, asked: true, tool_use_id: String(rawToolUseId || '') });
+        return true;
+    }
+    catch { return false; }
 }
 function dropPending(reg, toolUseId)
 {
@@ -291,6 +325,7 @@ function capGates(payload, env = process.env, { stop = false } = {})
         const root = env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
         const reg = openRegistry(root, payload.session_id, env);
         if (!reg) return null;
+        reg.transcript = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
         return { n, reg, root, canContinue: !stop || !(pre.hookDisabled('communication-reminder', env) || pre.profileOff('communication-reminder', env)) };
     }
     catch { return null; }
@@ -390,7 +425,7 @@ function probeWriter(root, payload, hookName)
 }
 
 module.exports = {
-    capOf, cleanId, openRegistry, capGates, withLock, count, addPending, dropPending, startAgent, stopAgent, reconcile, probeWriter,
+    capOf, cleanId, openRegistry, capGates, withLock, count, addPending, markAsked, dropPending, startAgent, stopAgent, reconcile, probeWriter,
     denialText, subagentTranscript, markDenied, clearDenied, startLine, stopReconcile, stopContinue, fileOf, deniedOf, readEntry, writeEntry, entries,
     AGENT_ID, CAP_DEFAULT, CAP_MAX, PENDING_MS, ACTIVE_MS, STOPPED_KEEP_MS, LOCK_WAIT_MS, LOCK_STALE_MS, TYPES_SHOWN, SETTLED_STATUS,
 };

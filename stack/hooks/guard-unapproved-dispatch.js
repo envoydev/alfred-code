@@ -155,18 +155,21 @@ function blockCall(input, text) {
 // --- ALFRED_CODE_MAXIMUM_RUN_AGENTS (the maximum-run-agents design of 2026-10-27) --------------------------------
 // How many of a session's agents may run at once, counted in agent-cap.js's per-session registry. The module is
 // required inside a try, so a copy without it runs every rule below unchanged. A dispatch this call's cap block passed
-// holds a pending file; any later block of the same call - an exit 2, a deny or an ask - drops it, so only a dispatch that
-// actually starts holds a slot (a declined ask would otherwise fill the cap with agents that never run). This wrapper sits
-// after the telemetry one and leaves it as it is.
+// holds a pending file; a later exit 2 or deny drops it, and a later ask keeps it marked `asked` (capHold): the user may
+// approve it, so a fan-out wider than the cap cannot run over it, and the count releases it when the transcript holds
+// the call's result - a decline included (agent-cap.js count). This wrapper sits after the telemetry one and leaves it as it is.
 let agentCap = null;
 try { agentCap = require('./agent-cap.js'); } catch { /* no module: no cap */ }
 let capRelease = null;
+let capHold = null;
 let capMarkDenied = null;
 (() => {
   const exit = process.exit;
   process.exit = (code) => {
     const verdict = global.BLOCK_VERDICT;
-    if ((code === 2 || verdict) && capRelease) { try { capRelease(); } catch { /* fail open */ } }
+    if ((code === 2 || verdict) && capRelease) {
+      try { if (!(verdict && verdict.decision === 'ask' && capHold && capHold())) capRelease(); } catch { /* fail open */ }
+    }
     // `.denied` tells the main session's Stop to send the dispatch again, so only a real denial writes it - never an ask,
     // which the user may approve (the seat ran) or decline.
     if ((code === 2 || (verdict && verdict.decision === 'deny')) && capMarkDenied) { try { capMarkDenied(); } catch { /* fail open */ } }
@@ -232,7 +235,10 @@ if (payload.tool_name === 'Agent' || payload.tool_name === 'Task') {
       const c = agentCap.count(g.reg, { probe: capProbe(g) });
       if (c.running >= g.n) return c;
       const id = agentCap.addPending(g.reg, payload.tool_use_id, { type: seatType, parent: payload.agent_id || '' });
-      if (id) capRelease = () => agentCap.dropPending(g.reg, id);
+      if (id) {
+        capRelease = () => agentCap.dropPending(g.reg, id);
+        capHold = () => Boolean(payload.tool_use_id) && agentCap.withLock(g.reg, () => agentCap.markAsked(g.reg, id, payload.tool_use_id)).value === true;
+      }
       if (!payload.agent_id) agentCap.clearDenied(g.reg);
       return null;
     });

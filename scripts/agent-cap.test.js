@@ -457,13 +457,27 @@ test('8 dispatches at once at cap 5 on an empty registry: 5 pass, 3 are denied (
     assert.strictEqual(pendings(regOf(root)).length, 5);
 });
 
-test('an ask drops the cap\'s pending file as a deny does: a declined dispatch holds no slot (AC5)', () =>
+// An asked dispatch holds its slot while its prompt waits: its pending file is marked `asked` with the call's id, and the
+// count reads the session transcript for that id's result (hook-prelude.js toolResultOf) - a result of any kind releases it.
+const DECLINE = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+const transcriptFor = (root, results = []) =>
+{
+    const file = path.join(root, 'session.jsonl');
+    fs.writeFileSync(file, results.map(([id, content, isError]) => `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } })}\n`).join(''));
+    return file;
+};
+const askedOnto = (root, ids) => ids.forEach((id) => assert.strictEqual(callHook(GUARD, root, agentPayload(root, { id, seat: 'aspnet-implementer', extra: { transcript_path: path.join(root, 'session.jsonl') } })).status, 'ask'));
+
+test('an ask keeps the cap\'s pending file, marked asked with the call id; a deny holds none (AC5, limit G)', () =>
 {
     const asked = project();
     const r = callHook(GUARD, asked, agentPayload(asked, { seat: 'aspnet-implementer' }));
     assert.strictEqual(r.status, 'ask');
     assert.match(r.stderr, /without an approval gate/);
-    assert.deepStrictEqual(pendings(regOf(asked)), [], 'only a dispatch that starts holds a slot');
+    const [name] = pendings(regOf(asked));
+    assert.ok(name, 'an approved ask may start, so it holds its slot until its start or its result');
+    const body = JSON.parse(fs.readFileSync(path.join(regOf(asked).dir, name), 'utf8'));
+    assert.deepStrictEqual({ ...body, at: 0 }, { type: 'aspnet-implementer', at: 0, parent: '', asked: true, tool_use_id: 'toolu_x' });
     const denied = project();
     const d = callHook(GUARD, denied, agentPayload(denied, { seat: 'aspnet-implementer', extra: { permission_mode: 'dontAsk' } }));
     assert.strictEqual(d.status, 'deny');
@@ -471,18 +485,60 @@ test('an ask drops the cap\'s pending file as a deny does: a declined dispatch h
     assert.deepStrictEqual(pendings(regOf(denied)), [], 'a dispatch another rule denies holds no slot');
 });
 
-test('declined asks fill no cap slot: the next dispatch gets its own reason, not the cap prompt (AC5)', () =>
+test('asked dispatches count toward the cap: the sixth reads the cap prompt while five prompts wait (limit G)', () =>
 {
     const root = project();
+    transcriptFor(root);
+    askedOnto(root, ['toolu_0', 'toolu_1', 'toolu_2', 'toolu_3', 'toolu_4']);
+    assert.strictEqual(pendings(regOf(root)).length, 5);
+    const sixth = callHook(GUARD, root, agentPayload(root, { id: 'toolu_5', seat: 'aspnet-implementer', extra: { transcript_path: path.join(root, 'session.jsonl') } }));
+    assert.strictEqual(sixth.status, 'ask', sixth.stderr);
+    assert.match(sixth.stderr, /^5 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 5: /, 'a fan-out wider than the cap is held at the cap');
+});
+
+test('a declined ask is released at the next count, and so is any error result; an approved one is kept until its start (limit G)', () =>
+{
+    const root = project();
+    const transcript = transcriptFor(root, [['toolu_0', DECLINE, true], ['toolu_1', 'PreToolUse:Agent hook error: Blocked: x', true]]);
+    askedOnto(root, ['toolu_0', 'toolu_1', 'toolu_2']);
+    const reg = regOf(root);
+    reg.transcript = transcript;
+    const c = cap.count(reg);
+    assert.strictEqual(c.running, 1, 'the declined and the errored one are released; the one with no result yet counts');
+    assert.deepStrictEqual(pendings(reg), ['AGENT-CAP-s1-P-toolu_2'], 'the released files are gone');
+    assert.strictEqual(cap.count(regOf(root)).running, 1, 'a count with no transcript reads no result: the asked file counts, up to its 60 s');
+    const sixOnes = project();
     for (let i = 0; i < 6; i += 1)
     {
-        const r = callHook(GUARD, root, agentPayload(root, { id: `toolu_${i}`, seat: 'aspnet-implementer' }));
+        const file = transcriptFor(sixOnes, Array.from({ length: i }, (_, k) => [`toolu_${k}`, DECLINE, true]));
+        const r = callHook(GUARD, sixOnes, agentPayload(sixOnes, { id: `toolu_${i}`, seat: 'aspnet-implementer', extra: { transcript_path: file } }));
         assert.strictEqual(r.status, 'ask', r.stderr);
-        assert.match(r.stderr, /without an approval gate/, `dispatch ${i} reads its own reason`);
+        assert.match(r.stderr, /without an approval gate/, `dispatch ${i} reads its own reason: the declined ones filled no slot`);
         assert.doesNotMatch(r.stderr, /agents are running/);
     }
-    assert.deepStrictEqual(pendings(regOf(root)), []);
-    assert.strictEqual(callHook(GUARD, root, agentPayload(root, { id: 'toolu_ok' })).status, 0, 'a plain dispatch still passes under the cap');
+});
+
+test('an approved ask is taken over by its SubagentStart: one running file, no pending file (limit G)', () =>
+{
+    const root = project();
+    transcriptFor(root);
+    askedOnto(root, ['toolu_0']);
+    const reg = regOf(root);
+    reg.transcript = path.join(root, 'session.jsonl');
+    assert.strictEqual(cap.count(reg).running, 1);
+    const start = callHook(GUARD, root, { hook_event_name: 'SubagentStart', session_id: 's1', cwd: root, agent_id: 'a0123456789abcdef', agent_type: 'aspnet-implementer', transcript_path: reg.transcript });
+    assert.strictEqual(start.status, 0);
+    assert.deepStrictEqual(pendings(reg), [], 'the start took the asked file');
+    assert.deepStrictEqual(names(reg), ['AGENT-CAP-s1-R-a0123456789abcdef']);
+    assert.strictEqual(cap.count(reg).running, 1, 'the started agent counts once');
+});
+
+test('an asked file past 60 s expires as any pending file does (limit G, the outer bound)', () =>
+{
+    const { reg } = freshReg();
+    put(reg, 'P', 'toolu_old', { type: 'Explore', at: Date.now() - 61 * 1000, parent: '', asked: true, tool_use_id: 'toolu_old' });
+    assert.strictEqual(cap.count(reg).running, 0);
+    assert.deepStrictEqual(names(reg), []);
 });
 
 test('the boundary: at exactly the cap denied, one under it passes (AC6)', () =>

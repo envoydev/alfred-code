@@ -307,8 +307,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   SubagentStop, PostToolUse and UserPromptSubmit blocks (Claude Code has no ask there) and the CLI usage exits of the secret guard and
   `secrets-run.js`; `scripts/guard-ask-sweep.test.js` fails any PreToolUse deny or exit 2 that carries no marker comment and pins the
   marker counts per file. The run-dir gate (`setup-plugin/hooks/run-dir-gate.js`, its deny of another session's run dir) is on the same footing: its `emit` (`scripts/run-dir-gate/effects.js`) hands the deny to `askOrBlock`, and the sweep reads that folder too. The rm guard's prompt names the recursive delete first when the command holds one beside a discard or a marketplace removal. Four chat-yes openers left with it (the receipts, the typed paths and the discard pick, each named where its guard is described). Known limits:
-  an approved dispatch ask holds no agent-cap slot until its SubagentStart, so in a fan-out wider than the cap one seat can run over it,
-  and a nested seat may lose its parent link - fixing it needs a read of the tool result. Not measured live: the prompt in an interactive
+  a nested seat may lose its parent link. Not measured live: the prompt in an interactive
   session, a hook `ask` under `bypassPermissions`, and how a subagent's prompt surfaces.
   A MISSING HELPER never blocks (the user's ruling, 2026-11-19, on the hooks audit's Q6): without `shell-writes.js` the
   rm, force-push and commit guards and the secret guard's shell route read the raw words one segment at a time
@@ -825,7 +824,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     of a session's agents may run at once - default 5, `0` no cap, at most 50, anything not a whole number read as 5
     (`agent-cap.js capOf`). `agent-cap.js` is a module the three hooks require inside a try (`HOOK_MODULES`, copied on
     the copy route), so a copy without it runs unchanged. A PreToolUse payload carries no list of running agents, so the
-    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s),
+    session keeps one in `<data root>/state/sessions/`: `AGENT-CAP-<sid>-P-<tool_use_id>` (a dispatch not started, 60s; one the dispatch guard ASKED about stays, marked `asked: true` with its `tool_use_id`, and counts until `toolResultOf` (`hook-prelude.js`, the transcript tail's result of that id) finds a result - a decline or any error result releases it at the next count, a start takes it over - so a fan-out wider than the cap cannot run over an approved ask),
     `-R-<agent_id>` (a started agent, counted while its own `at` or its transcript's mtime is under 12 minutes old; after
     its SubagentStop only when the transcript moved more than 5 s past it - a hold sent it back (a hand-back's own hook rows land up to 3.65 s after it) - and kept 2 minutes so a
     resume finds it; a file a counted one names as `parent` counts too), `.lock` (exclusive create, 20ms retries, 1.5s
