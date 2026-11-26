@@ -1322,7 +1322,8 @@ function cursorHost(input)
 // person can answer, Claude Code's own permission prompt shows the guard's first sentence (Yes runs the call, No refuses it
 // and the model gets the full reason); where nobody can, the call is denied with the full reason, as before.
 const ASKED_PREFIX = 'A guard asked the user about this call: ';
-const ASK_RECOMMENDATION = "Recommended: No, unless you meant this call - Claude then gets the guard's fix.";
+// After a No, Claude Code ends the turn and the model writes nothing until the user does (live, 2026-11-27, 2.1.332).
+const ASK_RECOMMENDATION = 'Recommended: No, unless you meant this call - after a No, Claude stops until you write.';
 const ASK_CONTEXT_MIDDLE = '. If the result shows the call ran, the user approved it - do not redo it. If the user declined: ';
 const ASK_SENTENCE_MAX = 400;
 const BLOCK_LEAD_RE = /^(?:Blocked|Held once): /;

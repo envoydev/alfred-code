@@ -1494,3 +1494,12 @@ Three guard changes come with it:
 
 Nothing to do in an installed project beyond the update. Report that a sub-folder session now reads its project's
 settings.
+
+## after 3.19.3 - the guard prompt says what a No does
+
+A guard's prompt now ends 'Recommended: No, unless you meant this call - after a No, Claude stops until you write.' It
+used to say Claude then gets the guard's fix, but Claude Code ends the turn on a No, and Claude writes nothing until
+you do. Yes is picked in advance at that prompt, so Enter runs the command: press 2 or Esc to refuse it.
+`ALFRED_CODE_GUARD_ASK=0` brings back the plain refusal with no prompt.
+
+Nothing to do in an installed project beyond the update.

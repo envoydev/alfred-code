@@ -290,8 +290,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `askOrBlock(input, reason, { env, guard })` in `hook-prelude.js`, the one place a block decides - with `canAsk(input, env)`,
   `blockVerdict` and `blockExitCode` beside it - and each guard's own `blockCall` is one call to it. Where a person can answer, the hook
   writes `permissionDecision: 'ask'`: Claude Code's prompt shows the user text (`alfred-code <guard>: <first sentence of the
-  reason>` and a fixed line that recommends No unless the call was meant), Yes runs that one call, and No refuses it, the model
-  reading the guard's full reason (in `additionalContext`, after a line saying the user was asked) so it gets the fix. The prompt
+  reason>` and a fixed line that recommends No unless the call was meant), Yes runs that one call, and No refuses it and ends the turn:
+  the model writes nothing until the user does (measured live 2026-11-27, Claude Code 2.1.332, auto mode - the prompt shown,
+  Yes ran the call, No refused it). The guard's full reason rides in `additionalContext`, after a line saying the user was
+  asked; whether the model reads it at the user's next message after a No is not measured (transcript saving was off). The prompt
   comes every time: a yes in chat opens nothing. Where nobody can answer, it writes the same reason as a plain `deny`. `canAsk` is false for
   `dontAsk`, `bypassPermissions`, print mode (`claude -p`), `ALFRED_CODE_UNATTENDED=1` and a Cursor payload (whose deny also writes the
   reason to stderr and exits 2, `blockExitCode`), and for a `SubagentHandback` call in EVERY mode: the hooks page says no prompt
