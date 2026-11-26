@@ -385,11 +385,20 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
 // seat's prompt and a missing prelude carry no line. Each other line rides after the budget with one leading space.
 const AUTO_LINE = 'auto-run: on - each ask takes its (Recommended) option; only /alfred-code:mode:auto-run off ends it';
 // The plugin's own walks are never auto-run's (the user's ruling, 2026-11-20): the line says so for their turns.
+// A standing auto-run the checkout inherits from a workspace member's mode file (mode inheritance D3): the member's rel, else ''.
+function inheritedAutoFrom(root) {
+  try { const i = require('./mode-settings.js').autoRunInherited(root, process.env); return i && i.held === 'own' ? i.from : ''; } catch { return ''; }
+}
+const inheritedAutoLine = (from) => `auto-run: on, inherited from ${from} - each ask takes its (Recommended) option; /alfred-code:mode:auto-run off here stops it for this folder`;
 const walkLine = (walk) => `auto-run: on, but not for /alfred-code:${walk} - put each of its asks to the user and wait for the answer`;
 const SCORING_UNUSABLE = { absent: 'the scoring skill is not installed in this project', off: 'the scoring skill is switched off in this project' };
 function scoringPhrases(outputs) {
   const p = outputs.map((o) => pre.SCORING_PHRASES[o]);
   return p.length > 1 ? `${p.slice(0, -1).join(', ')} or ${p[p.length - 1]}` : p[0];
+}
+// ' (from <rel>)' on the bare scoring line where the member's mode file holds the state it says (mode inheritance D3).
+function scoringFrom(root, on) {
+  try { return require('./mode-settings.js').fromTag(root, 'ALFRED_CODE_SCORING', on, process.env); } catch { return ''; }
 }
 function scoringOnLine(s, auto) {
   return `scoring: on (level ${s.level}, rounds ${s.rounds}, ${s.source}${auto ? ', auto-run' : ''}) - load mode-output-scoring before releasing a ${scoringPhrases(s.outputs)}; /alfred-code:mode:scoring off stops it`;
@@ -481,7 +490,8 @@ function modesText(prompt) {
     }
     if (auto) {
       const walk = typeof pre.pluginWalkNow === 'function' ? pre.pluginWalkNow(payload, prompt) : '';
-      lines.push(walk ? walkLine(walk) : AUTO_LINE);
+      const from = walk ? '' : inheritedAutoFrom(root);
+      lines.push(walk ? walkLine(walk) : from ? inheritedAutoLine(from) : AUTO_LINE);
     }
     const scoring = Boolean(s && s.usable && s.on);
     // auto-compact: auto-run, or the variable - this prompt's typed on or off first, while the hook that saves it runs
@@ -490,7 +500,7 @@ function modesText(prompt) {
     const on = [auto ? 'auto-run' : '', scoring ? `scoring (level ${s.level})` : '', compact ? `auto-compact${compactAt()}` : ''].filter(Boolean);
     const line = !(parsed && parsed.mode === 'scoring') || parsed.extra || !s ? ''
       : !s.usable || s.copy === 'user-invocable-only' ? `[mode] scoring is not available here: ${SCORING_UNUSABLE[s.copy] || (s.usable ? 'the scoring skill is user-invocable-only here' : 'a scoring hook is switched off')}`
-        : s.said || `[mode] scoring is ${scoring ? `ON (level ${s.level}, rounds ${s.rounds})` : `OFF${s.flag === 'off' ? ` (level ${s.level}, rounds ${s.rounds} kept)` : ''}`}${s.saved || ''}`;
+        : s.said || `[mode] scoring is ${scoring ? `ON${scoringFrom(root, true)} (level ${s.level}, rounds ${s.rounds})` : `OFF${scoringFrom(root, false)}${s.flag === 'off' ? ` (level ${s.level}, rounds ${s.rounds} kept)` : ''}`}${s.saved || ''}`;
     return { context: lines.map((l) => ` ${l}`).join('') + cap, message: prompt !== null && on.length ? `Modes ON: ${on.join(', ')}` : '', line, autoRun: auto, scoring: s };
   } catch { return none; }
 }

@@ -1424,3 +1424,22 @@ read, is offered everything as before. 'Keep everything inherited' still writes 
 same removals.
 
 Nothing to do in an installed project beyond the update. Report that a root validate skips what a child ignores.
+
+## after 3.19.1 - a joined child inherits its workspace's modes
+
+**A joined child now takes a mode its workspace root turned on or off, so a root that once typed `/alfred-code:mode:scoring off` turns scoring off in every joined child, and the child's own `/alfred-code:mode:scoring on` keeps it on there.** A child reads
+each of the five mode keys from its own files first, then from the nearest workspace member's mode file
+(`.claude/settings.local.json`). Its own value always wins, `0` included.
+
+An inherited auto-run `1` counts only from a member file git does not track and that is your machine's alone. A tracked
+or unvouched file is said and never taken. After the update, a child under a root that already has auto-run on runs with
+it from its first new session: each prompt carries `auto-run: on, inherited from <rel>`, and the bare commands say
+`ON (from <rel>)` or `OFF (from <rel>)`. `/alfred-code:mode:auto-run off` typed in the child writes `0` there and leaves the
+root on. Where git tracks the child's own mode file, the off cannot be kept, and the command names `workspace.js ignore
+--add 'env ALFRED_CODE_AUTO_RUN'` instead.
+
+The update copies no inherited value into a child's file. A child that leaves its workspace keeps what it read in its own
+mode file, never in its tracked `.variables`, and an inherited auto-run ends there.
+
+Nothing to do in an installed project beyond the update. Report that a joined child inherits its workspace's modes and
+that its own `off` or `on` wins.

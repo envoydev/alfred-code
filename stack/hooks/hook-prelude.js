@@ -1720,12 +1720,23 @@ const scoringNotedFile = scoringPath('SCORING-NOTED-');
 // Usable first: either hook standing down or its `scoring` part switched off, or no loadable copy of the skill, makes the
 // scoring unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
 // usable but never on by itself. Then ALFRED_CODE_SCORING (on when unset, B1), which the mode file sets through the loader.
+// Mode inheritance D3: where the scoring switch's value came from - the workspace member whose mode file holds it, else the env.
+function scoringSource(root, env)
+{
+    try
+    {
+        const entry = require('./mode-settings.js').inheritedMode(root, 'ALFRED_CODE_SCORING', env);
+        return entry ? `inherited from ${entry.from}` : 'env';
+    }
+    catch { return 'env'; }
+}
 function scoringState(root, sessionId, env = process.env)
 {
     const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORING_AUTOMATIC], ignored: [], source: 'env', copy: null };
     try
     {
         Object.assign(state, { level: scoringLevel(env), rounds: scoringRounds(env), ...scoringOutputs(env) });
+        state.source = scoringSource(root, env);
         if (standDown('communication-reminder', env, []) || partOff('communication-reminder', 'scoring', env)
             || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scoring', env)) return state;
         const copy = SCORING_SKILLS.map((n) => skillCopyState(root, n, env)).find((c) => c !== 'absent') || 'absent';

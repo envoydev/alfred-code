@@ -147,7 +147,26 @@ function autoRunInherited(root, env = process.env)
     inheritedAt.set(key, verdict);
     return verdict;
 }
+// D3: the mode `key` a joined child took from a workspace member's mode file - { value, from, file }, else null. The record
+// of the env a hook start applied, else the one resolve the same start would make (autoRunInherited reads it the same way).
+function inheritedMode(root, key, env = process.env)
+{
+    const checkout = layout.projectRootOf(root).checkout;
+    return inheritedRecord(checkout, layout.pathKey(checkout), env).modes[key] || null;
+}
+// ' (from <rel>)' after a bare state line, only where the member's value is the state said: a session stamp that turns
+// the mode on over a member's 0 is no inheritance.
+function fromTag(root, key, on, env = process.env)
+{
+    const entry = inheritedMode(root, key, env);
+    return entry && on === (String(entry.value).trim() === '1') ? ` (from ${entry.from})` : '';
+}
+// The child's own `off` over an inherited auto-run: said once it is written, or - where git tracks the child's file or it
+// cannot be written - as the refusal, which names the existing ignore command (a hook writes no workspace record).
+const offHere = (from) => `[mode] auto-run is OFF here - ${from} keeps it on for itself; remove ALFRED_CODE_AUTO_RUN from this folder's .claude/settings.local.json to inherit it again`;
+const offRefused = (from, why) => `[mode] auto-run stays ON here: it is inherited from ${from}, and ${why === 'tracked' ? 'git tracks this folder\'s .claude/settings.local.json'
+  : `this folder's .claude/settings.local.json cannot be changed (${WHY[why] || why})`}, so the off cannot be kept in it - run node ${process.env.CLAUDE_PLUGIN_ROOT || '<plugin>'}/scripts/workspace.js ignore --add 'env ALFRED_CODE_AUTO_RUN' here to stop inheriting it`;
 const said = (r) => [...r.replaced, ...r.left].map((n) => ` - ${n}`).join('')
   + (r.unignored ? ' - .claude/settings.local.json was created and git does not ignore it here: add it to .gitignore' : '');
 
-module.exports = { localGitStatus, localTrust, writeModes, WHY, autoRunHeld, autoRunInherited, said, indexMisses };
+module.exports = { localGitStatus, localTrust, writeModes, WHY, autoRunHeld, autoRunInherited, inheritedMode, fromTag, offHere, offRefused, said, indexMisses };

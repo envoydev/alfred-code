@@ -796,6 +796,7 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
   if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: communication-reminder.js saves it and says the line
   const ms = require('./mode-settings.js');
   const [input, held, envIs] = [{ ...payload, cwd: root }, ms.autoRunHeld(root), (k) => String(pre.envOf(process.env, k) ?? '').trim()];
+  const inherited = flags.mode === 'auto-run' && !held ? ms.autoRunInherited(root, process.env) : null;   // D2: read before the write below, which it never sees
   const refusal = flags.autoRun === 'on' ? pre.autoRunRefusal(input, undefined, flags) : '';   // a seat: the prompt never gets here
   const r = refusal ? { why: refusal }
     : flags.autoRun ? ms.writeModes(root, flags.autoRun === 'on' ? { ALFRED_CODE_AUTO_RUN: '1', ALFRED_CODE_AUTO_COMPACT: '1' } : { ALFRED_CODE_AUTO_RUN: '0' })
@@ -815,6 +816,8 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
     if (markerFile && fs.existsSync(markerFile)) try { fs.rmSync(markerFile); ended = true; } catch { /* left: the hold reads it */ }
     if (ended || (held && !why)) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
   }
+  if (flags.autoRun === 'off' && inherited && inherited.held === 'own')   // D3: an off over an inherited on
+    return why ? ms.offRefused(inherited.from, r.why) : ms.offHere(inherited.from) + ms.said(r);
   if (why && ended) return `[mode] ${flags.mode} could not be saved: ${why} - this session's run is ended, the file is unchanged`;
   if (why) return `[mode] ${flags.mode} could not be saved: ${why} - nothing changed`;
   if (flags.autoRun === 'on') return AUTO_ON + ms.said(r);
@@ -822,7 +825,12 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
     return `[mode] auto-run is OFF${envIs('AUTO_COMPACT') === '1' ? ' - auto-compact stays ON until /alfred-code:mode:auto-compact off' : ''}${ms.said(r)}`;
   if (held && held !== 'own' && flags.mode === 'auto-run')   // a 1 nobody vouches for is said, never taken
     return `[mode] auto-run is OFF: the file holds it, but ${ms.WHY[held === 'tracked' ? held : 'unvouched']} - asks stay with you`;
-  if (!r) return `[mode] ${flags.mode} is ${(flags.mode === 'auto-run' ? pre.autoRunFor : pre.compactCause)(input, undefined, flags) ? 'ON' : 'OFF'}`;
+  if (!r && inherited && ['tracked', 'unvouched'].includes(inherited.held))   // the same, for the member's file
+    return `[mode] auto-run is OFF: ${inherited.from}'s file holds it, but ${ms.WHY[inherited.held]} - asks stay with you`;
+  if (!r) {
+    const on = Boolean((flags.mode === 'auto-run' ? pre.autoRunFor : pre.compactCause)(input, undefined, flags));
+    return `[mode] ${flags.mode} is ${on ? 'ON' : 'OFF'}${ms.fromTag(root, flags.mode === 'auto-run' ? 'ALFRED_CODE_AUTO_RUN' : 'ALFRED_CODE_AUTO_COMPACT', on, process.env)}`;
+  }
   ledgerRow({ mode: 'auto', kind: 'compact-flag', reason: `auto-compact ${flags.compact}` });
   const allOff = ['FOR_1M', 'FOR_300K', 'FOR_200K', 'DEFAULT'].every((k) => envIs(`CONTEXT_WINDOW_${k}`) === '0');
   if (flags.compact === 'off') return '[mode] auto-compact is OFF: fresh-session asks are back. From the next session Claude Code no longer compacts'
@@ -1508,6 +1516,12 @@ function acwIgnoredNote() {
 const PROJECT_ROOT = () => process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const lasts = () => { try { return require('./hook-prelude.js').autoLasts(PROJECT_ROOT()); } catch { return 'auto-run stays on for the session until'; } };
 const standingHere = () => { try { return require('./hook-prelude.js').autoRunStanding(PROJECT_ROOT()); } catch { return false; } };
+// Where the standing auto-run is held, for the run contract: this folder's own mode file, or - mode inheritance D3 - the member's it inherits.
+const standingFile = () => {
+  try { const i = require('./mode-settings.js').autoRunInherited(PROJECT_ROOT(), process.env);
+    if (i && i.held === 'own') return `${i.from}/.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1 - this folder inherits it`; } catch { /* the own file's wording */ }
+  return '.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1';
+};
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
   // the model's own capacity, never a declared default: with none known, no window is quoted and the trigger is said
@@ -1609,7 +1623,7 @@ if (auto && !auto.marker && !auto.markerFailed) {
 if (auto) {
   const m = auto.marker;
   const contract = (auto.markerFailed ? '!! the run marker could not be written - each ask still takes its (Recommended) option, but no hook sends a turn back between steps; tell the user so in one line.\n' : '')
-    + `auto-run is ON for this /${auto.run} run: ${standingHere() ? 'auto-run is on for this checkout, new sessions included (.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1)'
+    + `auto-run is ON for this /${auto.run} run: ${standingHere() ? `auto-run is on for this checkout, new sessions included (${standingFile()})`
       : `auto-run is on for this session (${auto.file} holds the user's words)`}${m ? `, and ${m} marks this run` : ''}. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
