@@ -1901,6 +1901,36 @@ function askTimeoutMarker(sessionId, env = process.env)
     return path.join(envOf(env, 'HOOK_LOG_DIR') || os.tmpdir(), `alfred-ask-timeout-${part}`);
 }
 
+// THE TOOL RESULT OF ONE CALL, read from the transcript's tail (the walk's byte budget, the raw-needle reader of the
+// typed-row judges above). `{ found: true, isError, text }` for the newest row whose `tool_result` block carries the id; `{ found:
+// false }` for no id, no file, an unreadable or torn one, or a result older than the tail - it never throws. `declinedByUser`
+// is Claude Code's own rejection of a permission prompt: an error result that opens 'The user doesn't want to proceed with
+// this tool use. The tool use was rejected' (read from real transcripts, 2026-11-26; the prompt of a hook `ask` ends the same
+// way). The words are the host's, so a deny a hook wrote - 'hook error', 'Blocked: ' - is none.
+const TOOL_RESULT_NOT_FOUND = Object.freeze({ found: false });
+const DECLINED_OPENING_RE = /^\s*The user doesn['\u2019]t want to proceed with this tool use\. The tool use was rejected/;
+function toolResultOf(transcriptPath, toolUseId)
+{
+    try
+    {
+        if (!transcriptPath || typeof transcriptPath !== 'string' || !toolUseId || typeof toolUseId !== 'string') return TOOL_RESULT_NOT_FOUND;
+        const size = fs.statSync(transcriptPath).size;
+        let found = null;
+        linesWith(transcriptPath, [`"tool_use_id":${JSON.stringify(toolUseId)}`], (line) =>
+        {
+            const row = rowOf(line);
+            const content = row && row.type === 'user' && row.message && row.message.content;
+            const block = Array.isArray(content) ? content.find((b) => b && b.type === 'tool_result' && b.tool_use_id === toolUseId) : null;
+            if (!block) return;
+            const text = typeof block.content === 'string' ? block.content : Array.isArray(block.content) ? block.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('') : '';
+            found = { found: true, isError: block.is_error === true, text };
+        }, Math.max(0, size - WALK_TAIL_BYTES));
+        return found || TOOL_RESULT_NOT_FOUND;
+    }
+    catch { return TOOL_RESULT_NOT_FOUND; }
+}
+const declinedByUser = (result) => Boolean(result && result.found && result.isError === true && typeof result.text === 'string' && DECLINED_OPENING_RE.test(result.text));
+
 // A REVIEW, whatever its spelling - the one home of these words since 2026-10-22, when the session-start guard began to
 // snapshot a review the commit guard judges. Every rename of a review (a 1.x `project-` name, the 2.0.0 `alfred-` prefix,
 // a loop's older word order) kept the words that say what it reviews, so the kind is read from those words - never from
@@ -2119,5 +2149,5 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
+module.exports = { HOUSE_DASH, transcriptField, toolResultOf, declinedByUser, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
 Object.assign(module.exports, { printMode, canAsk, blockVerdict, askOrBlock, blockExitCode, ASKED_PREFIX, autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep, userAway, AWAY_AFTER_MS });   // beside the one-line list, which a new name would push past 160
