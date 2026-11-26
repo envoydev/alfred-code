@@ -543,7 +543,7 @@ function allowed(target) {
 // append could forge an answer row. Inside the config dir (`CLAUDE_CONFIG_DIR`, else `~/.claude`) a write to or removal
 // of a `*.jsonl` under `projects/` - and of the payload's own `transcript_path`, wherever it lives - is denied, and so is
 // removing a folder that holds one or copying into a folder that holds one directly. No receipt or allowance opens it:
-// the record is what every receipt reads. Reading it stays open (Read, grep, a copy out of it).
+// the record is what every receipt reads. Reading it asks the user first, as any read past this workspace does.
 const CONFIG_DIR = (() => {
   const d = process.env.CLAUDE_CONFIG_DIR || (HOME ? path.join(HOME, '.claude') : '');
   return d ? realish(expandTilde(d)) : null;
@@ -596,7 +596,7 @@ function recordBlock(what, shown) {
   blockCall(payload,
     `Blocked: ${what} targets '${shown}', which is or holds a session transcript - the record every receipt and hook\n` +
     `reads for the user's own answers. Nothing in a session writes, edits or removes one, and no receipt or allowance\n` +
-    `opens it. Reading it stays open (Read, grep). Drop this step; a note to keep goes in the project's memory folder.\n`,
+    `opens it. Reading it asks the user first, as any read past this workspace does. Drop this step; a note to keep goes in the project's memory folder.\n`,
   );
 }
 // Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's persisted cwd, which the payload

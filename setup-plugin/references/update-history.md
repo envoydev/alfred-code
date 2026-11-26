@@ -1443,3 +1443,33 @@ mode file, never in its tracked `.variables`, and an inherited auto-run ends the
 
 Nothing to do in an installed project beyond the update. Report that a joined child inherits its workspace's modes and
 that its own `off` or `on` wins.
+
+## after 3.19.1 - a read past the workspace asks first
+
+**Every Read, Grep and Glob past the workspace now asks first, and so does a shell command that reads there.
+`guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` turns the read half off.** Before, the cross-project guard
+asked only for a write. Now it also asks before a read of another project's files.
+
+The ask covers the project zone: the folders under your home folder that hold projects, and another project's Claude Code
+memory folder. These stay open: dot-folders, `Library` and `AppData`, the toolchain folders (`go/pkg`, `miniconda3`,
+`snap`, `Android`, `flutter`, `sdk` and the like), the temp dir, this project's own memory and its workspace members', and
+the plugin's own root. A workspace member's folder is inside the boundary and never asks. `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`
+opens a tree for both halves.
+
+- A search pattern word, such as the first word of `grep`, is never judged as a path.
+- A script a command runs is read one level deep.
+- A command that reads and also writes past the boundary gets ONE prompt for both.
+- A subagent gets the same prompt. After a No, it stops and reports which files it needed.
+
+Known limits, said once here:
+- `git commit -F` or `git tag -F` of a file past the workspace gives no ask.
+- A script nested two levels deep is not read.
+- A `CLAUDE_CONFIG_DIR` outside your home folder is judged only in part.
+- Words past the 512th, and scripts past the 8th, in one command are not judged.
+- `rm` of another project's memory folder asks with 'reads' wording.
+
+The plugin's own root (`CLAUDE_PLUGIN_ROOT`) is open for reads. A plugin loaded with `--plugin-dir` from a folder under
+your home folder would otherwise ask on every guard call, since the secret guard's runner reads files there.
+
+Nothing to do in an installed project beyond the update. Report that a read past the workspace now asks first and that
+`guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` turns it off.

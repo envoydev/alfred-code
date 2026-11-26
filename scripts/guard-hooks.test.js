@@ -2432,13 +2432,14 @@ test('guard-cross-project-write: the shell routes around the file tools the same
   assert.equal(xpBash('mv src/a.ts src/b.ts'), 0, 'but our own rename is ordinary work');
 });
 
-test('guard-cross-project-write: reading and investigating the other project stays open', () => {
-  // The whole point of the gate is that the handoff card must be SPECIFIC, which takes reading B.
+test("guard-cross-project-write: a read outside the home folder's project area stays open", () => {
+  // The handoff card must be SPECIFIC, which takes reading B. This fixture's other project sits under the temp dir, not the
+  // home folder, so the read half (guard-cross-read.test.js) leaves it alone.
   assert.equal(xpBash(`cat ${path.join(XP_OTHER, 'src', 'a.ts')}`), 0, 'reading a file there');
   assert.equal(xpBash(`grep -rn "Foo" ${XP_OTHER}`), 0, 'searching there');
   assert.equal(xpBash(`git -C ${XP_OTHER} log --oneline -5`), 0, 'read-only git in the other checkout');
   assert.equal(xpBash(`git -C ${XP_OTHER} diff HEAD~1`), 0, 'and a diff');
-  assert.equal(xp({ tool_name: 'Read', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }), 0, 'Read is not even matched');
+  assert.equal(xp({ tool_name: 'Read', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }), 0, 'a Read there is outside the zone too');
 });
 
 test('guard-cross-project-write: ordinary in-project work is never touched', () => {
@@ -3055,7 +3056,7 @@ test('guard-cross-project-write: a cd into the other project moves the anchor fo
   assert.equal(xpBash(`(cd ${XP_OTHER} && git commit -am x)`), 2, 'inside a subshell');
   assert.equal(xpBash(`pushd ${XP_OTHER} && git commit -am x`), 2, 'pushd too');
   assert.equal(xpBash(`cd ${XP_OTHER} && echo x > f.txt`), 2, 'a bare relative write after the cd lands over there');
-  assert.equal(xpBash(`cd ${XP_OTHER} && git log --oneline -3 && cat f.txt`), 0, 'reading after the cd stays open');
+  assert.equal(xpBash(`cd ${XP_OTHER} && git log --oneline -3 && cat f.txt`), 0, 'reading after the cd, outside the zone, stays open');
   assert.equal(xpBash('cd src && echo x > ../out.txt'), 0, '../ from a subdirectory of our own project resolves inside it');
   assert.equal(xpBash('cd $OTHER && echo x > f.txt'), 0, 'an anchor that cannot be followed judges nothing relative');
   assert.equal(xpBash(`cd $OTHER && echo x > ${path.join(XP_OTHER, 'f.txt')}`), 2, '...while an absolute target is still judged');
@@ -4279,7 +4280,7 @@ test('PowerShell route: the cmdlets that write, and Set-Location, are judged lik
   assert.equal(psx(`Set-Location -Path ${XP_OTHER}; git commit -m x`), 2, 'Set-Location then a bare git write');
   // the passes carry equal weight - an in-project write, a read of the sibling, a value that looks like a path
   assert.equal(psx('Set-Content -Path notes.txt -Value x'), 0, 'an in-project Set-Content');
-  assert.equal(psx(`Get-Content ${out}`), 0, 'reading the sibling stays open');
+  assert.equal(psx(`Get-Content ${out}`), 0, 'reading the sibling, outside the zone, stays open');
   assert.equal(psx(`Set-Content -Path notes.txt -Value ${out}`), 0, 'the -Value is data, not a target');
   assert.equal(psx(`Write-Output 'Remove-Item ${out}'`), 0, 'a quoted cmdlet is prose');
 });
