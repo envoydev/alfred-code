@@ -1537,7 +1537,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
     Its `interpreter-write` probe (audit 2026-10-10) was dropped in the deep hooks review 2026-10-16 (622 rows nobody
     read); the denial is cut to the ask and its three options (1,553 to ~600 fixed chars).
-    THE READ HALF (plan outside-workspace-reads, 2026-11-26; spec `docs/superpowers/specs/2026-11-26-outside-workspace-reads-design.md`):
+    THE READ HALF (plan outside-workspace-reads, 2026-11-26):
     a Read, Grep or Glob, or a shell command, whose target is past the boundary (`workspaceTop() || ROOT`) and in THE ZONE asks the
     user through the same `blockCall` as a write. THE ZONE is the home folder's project area: a folder under HOME that is not a
     dot-folder, not `Library` / `AppData` and not a toolchain folder (`TOOLCHAIN_SEGMENTS` in `cross-read.js`: `go/pkg` but not
@@ -1545,7 +1545,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     project's Claude Code memory folder under the account dir's `projects/`. Open past the boundary: the OS temp dir and session
     scratch, an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` tree (both halves), the project's own and its workspace members' memory (the keys
     of the chain and of each member the records list, at most 64), the memory folder the user's settings name when it is under HOME,
-    is not HOME and holds no member (`layout.trustedMemoryDir`, read half only; the write half's `ownMemory` trusts none there), a
+    is not HOME and holds no member (`layout.trustedMemoryDir`, read half only; the write half's `ownMemory` refuses only a folder that holds the project or is HOME or above), a
     linked worktree of the project, and the plugin's own root (`CLAUDE_PLUGIN_ROOT`, read-only open; the ruling of 2026-11-26: a
     `--plugin-dir` under HOME would otherwise ask on every secret-guard runner call, against 'never block broadly'; a root that holds
     HOME is not opened). A path is the project's when it or any folder on its way resolves inside the boundary, judged AS WRITTEN
@@ -1555,10 +1555,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     (`shellReadHits` in `cross-read.js`: the arguments of each command word past a wrapper, an input redirect's target, an
     `--opt=value`, the path stretches inside a runtime's or `sqlite3`'s script words, `$HOME` / `~` expanded by the scan's own
     `expandVars`). A SEARCH PATTERN WORD IS NEVER JUDGED: the first plain word of `grep`, `egrep`, `fgrep`, `rg`, `ag` and `ack` is
-    a pattern unless `-e` / `--regexp` (or, for ag and ack, `-g`) gives it, `rg --files` and `ack -f` have none, and a word that
-    starts with a quote and holds `~` is a name; the value of a prose flag (`-m`, `--message`, `--body`, `--title`...) and of `echo`
-    / `printf` is a sentence, and `-F` is one only for `git commit` and `git tag`. Only a path that exists counts, deduped by real
-    path, at most 64 per command and 512 words looked at. CARRIED SCRIPTS are read ONE level (`scanShell`'s `carried`, `runtimes`
+    a pattern unless `-e` / `--regexp` (or, for ag and ack, `-g`) gives it, `rg --files` and `ack -f` have none, `-f` / `--file` (grep, rg) names a file of patterns, which is read like any file, and a quoted
+    word whose text STARTS with `~` is a literal name, for every verb and for an input redirect; the value of a prose flag (`-m`, `--message`, `--body`, `--title`...) and of `echo`
+    / `printf` is a sentence, and `-F` is one only for `git commit` and `git tag`. Only a path that exists counts, deduped by resolved
+    path, at most 64 per command; 512 words per command and per carried script. CARRIED SCRIPTS are read ONE level (`scanShell`'s `carried`, `runtimes`
     and `cmds`: the guard never reads a script twice), at most 8 per command. THE ONE PROMPT: the read hits ride `readHits`
     (declared above the telemetry exit wrapper, which runs on every exit); `blockCall` joins them into the first sentence of any
     write-half block of the same call ('Blocked: this call also reads outside this workspace (No keeps the work workspace only) - '),
@@ -1568,15 +1568,15 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     for HOME, at most 3 paths then `and <n> more`. THE SEAT TEXT: a subagent (`agent_id`) sees the same verdict, and after a No its
     own model text, 'A subagent does not read outside its session's workspace: stop this step and say in your result which files
     past it you needed - the main session asks the user.' Where nobody can answer the ask is a deny with the same reason. Block rows:
-    branch `read-outside`, `search-outside` for a Grep or Glob root, basenames only, never a content. THE SWITCH:
+    branch `read-outside`, `search-outside` for a search root (Grep, Glob and the shell search verbs), basenames only, never a content. THE SWITCH:
     `guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` (`partOff`) turns this half off alone; every stand-down of the guard
     does too, and a copy with no `cross-read.js` beside it reads nothing (it is in `HOOK_MODULES`). No new variable. No sweep marker:
-    every block goes through `blockCall`. KNOWN LIMITS (the ledger's deferred lines, `docs/superpowers/sdd/2026-11-26-outside-workspace-reads/progress.md`):
+    every block goes through `blockCall`. KNOWN LIMITS:
     `git commit -F` and `git tag -F` of a file past the workspace give no ask (the message file is prose); a script nested two levels
     deep is not read; a `CLAUDE_CONFIG_DIR` outside HOME is judged only in part (its account dir asks on a Grep, its `projects/` does
     not, and a Read there is never in the zone); words past the 512th, paths past the 64th and scripts past the 8th fail open;
     `rm -rf` of another project's memory asks with 'reads' wording; `-m` as a prose flag on every verb also skips `ls -m <path>`;
-    `rg -rf <file>` over-asks; a glob that reaches only the own memory asks, since its fixed prefix is `projects/`. Update step:
+    `rg -rf <file>` over-asks; `messageFile` matches a commit or tag word anywhere in git's words, so it errs toward no ask; a `CLAUDE_PLUGIN_ROOT` set to the account dir would open other projects' memory (Claude Code never sets it so); a glob that reaches only the own memory asks, since its fixed prefix is `projects/`. Update step:
     none (the plugin replaces the hook files; the copy route re-copies `cross-read.js` on each run).
     The config dir's allowance stops at the RECORD (final review 2026-10-30 FC: a Write, an Edit or a shell append to a transcript passed, and the rows other hooks read back could be forged): a write to or removal of a `*.jsonl` under `<config dir>/projects/` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or of the payload's own `transcript_path` wherever it lives - a removal of a folder holding one (a bounded walk, 5,000 entries, past which it holds one), a copy or move into a folder holding one directly, a project-relative name when a transcript sits in the project - is blocked - an ask where a person can answer, a deny where nobody can - with no allowance route (`recordAt`, branch `transcript`); memory and `settings.json` stay open; a Read, a grep and a copy OUT are no write, and the read half asks for another project's transcript as for any read past the workspace.
     A PATH THE USER TYPED opened writes from 2026-11-03 to 2026-11-25 (usage audit U20); it left with the other chat-yes openers (a typed

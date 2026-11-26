@@ -1465,7 +1465,9 @@ Known limits, said once here:
 - `git commit -F` or `git tag -F` of a file past the workspace gives no ask.
 - A script nested two levels deep is not read.
 - A `CLAUDE_CONFIG_DIR` outside your home folder is judged only in part.
-- Words past the 512th, and scripts past the 8th, in one command are not judged.
+- Words past the 512th, paths past the 64th and scripts past the 8th in one command are not judged.
+- `git commit` and `git tag` are found by their word anywhere in git's words, so a `-F` file can pass unasked.
+- A `CLAUDE_PLUGIN_ROOT` set to the account folder would open other projects' memory. Claude Code never sets it so.
 - `rm` of another project's memory folder asks with 'reads' wording.
 
 The plugin's own root (`CLAUDE_PLUGIN_ROOT`) is open for reads. A plugin loaded with `--plugin-dir` from a folder under

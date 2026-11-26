@@ -543,7 +543,7 @@ function allowed(target) {
 // append could forge an answer row. Inside the config dir (`CLAUDE_CONFIG_DIR`, else `~/.claude`) a write to or removal
 // of a `*.jsonl` under `projects/` - and of the payload's own `transcript_path`, wherever it lives - is denied, and so is
 // removing a folder that holds one or copying into a folder that holds one directly. No receipt or allowance opens it:
-// the record is what every receipt reads. Reading it asks the user first, as any read past this workspace does.
+// the record is what every receipt reads. Reading another project's transcript asks the user first; this session's own stays open.
 const CONFIG_DIR = (() => {
   const d = process.env.CLAUDE_CONFIG_DIR || (HOME ? path.join(HOME, '.claude') : '');
   return d ? realish(expandTilde(d)) : null;
@@ -596,7 +596,7 @@ function recordBlock(what, shown) {
   blockCall(payload,
     `Blocked: ${what} targets '${shown}', which is or holds a session transcript - the record every receipt and hook\n` +
     `reads for the user's own answers. Nothing in a session writes, edits or removes one, and no receipt or allowance\n` +
-    `opens it. Reading it asks the user first, as any read past this workspace does. Drop this step; a note to keep goes in the project's memory folder.\n`,
+    `opens it. Reading another project's transcript asks the user first; this session's own stays open. Drop this step; a note to keep goes in the project's memory folder.\n`,
   );
 }
 // Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's persisted cwd, which the payload
@@ -707,7 +707,7 @@ function block(what, shown, abs = shown) {
     `repo needs is handed off, not applied here.\n` +
     `Write the task card at ${card} instead: per task what changes where (file + symbol), why, the shared contract,\n` +
     `how ${other} verifies it; then finish your side, or say what is blocked until it lands.\n` +
-    `Reading ${other} asks the user first. A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`,
+    `Reading ${other} may ask the user first (a read in the home folder's project area does). A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`,
   );
 }
 
@@ -788,8 +788,8 @@ function ownMemoryKeys() {
   } catch { /* no layout reader: the keys read so far */ }
   return memoryKeyList;
 }
-// The memory folder the user's own settings name under HOME (the write half's ownMemory trusts none there): the read half
-// opens it unless it is HOME, or holds this project or a member.
+// The memory folder the user's own settings name under HOME (the write half's ownMemory refuses only a folder that holds the project or is HOME or above): the read half
+// opens it when it is not HOME and holds neither this project nor a member.
 function trustedReadMemory(t) {
   const dir = trustedMemoryFolder();
   if (dir === null || !inside(dir, HOME_REAL) || fold(dir) === fold(HOME_REAL)) return false;
