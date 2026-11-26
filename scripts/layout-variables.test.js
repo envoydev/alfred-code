@@ -535,3 +535,133 @@ test('a BOM\'d settings.json and settings.local.json are read like any other', (
     const v = varsOf(at('p'), UNSET);
     assert.deepStrictEqual([v.values[K('TURN_CHECK')], v.values[K('HISTORY')]], ['1', '4']);
 });
+
+// Mode inheritance D1: a workspace member's mode file reaches a joined child that holds no value of its own.
+const rootAndChild = (root = {}, child = {}) => tree({
+    'root': { stamp: true, git: true, ws: { children: ['child'] }, ...root },
+    'root/child': { stamp: true, git: true, ws: { parent: '..' }, ...child },
+});
+const modeEnv = (env) => ({ local: { env } });
+const MODE_ON = { [K('SCORING')]: '1', [K('SCORING_LEVEL')]: '90' };
+
+test('a child takes the root\'s mode-file scoring keys, named by the root\'s bare rel, and modeFrom lists them', () =>
+{
+    const at = rootAndChild(modeEnv(MODE_ON));
+    const { values, from, modeFrom } = varsOf(at('root/child'));
+    assert.deepStrictEqual([values[K('SCORING')], values[K('SCORING_LEVEL')]], ['1', '90']);
+    assert.deepStrictEqual([from[K('SCORING')], from[K('SCORING_LEVEL')]], ['..', '..']);
+    assert.deepStrictEqual([...modeFrom].sort(), [K('SCORING'), K('SCORING_LEVEL')]);
+});
+
+test('the child\'s own 0 wins over the root\'s mode file', () =>
+{
+    const at = rootAndChild(modeEnv(MODE_ON), modeEnv({ [K('SCORING')]: '0' }));
+    const { values, from, modeFrom } = varsOf(at('root/child'));
+    assert.deepStrictEqual([values[K('SCORING')], from[K('SCORING')]], ['0', 'settings.local.json']);
+    assert.ok(!modeFrom.has(K('SCORING')));
+    assert.strictEqual(values[K('SCORING_LEVEL')], '90', 'the key the child does not hold still comes from the root');
+});
+
+test('the child\'s own .variables beats the root\'s mode file', () =>
+{
+    const at = rootAndChild(modeEnv({ [K('SCORING_LEVEL')]: '95' }), { vars: `${K('SCORING_LEVEL')}=80\n` });
+    const { values, from, modeFrom } = varsOf(at('root/child'));
+    assert.deepStrictEqual([values[K('SCORING_LEVEL')], from[K('SCORING_LEVEL')]], ['80', 'own']);
+    assert.ok(!modeFrom.has(K('SCORING_LEVEL')));
+});
+
+test('the root\'s mode file beats the root\'s .variables, and a key only in .variables is no mode-file key', () =>
+{
+    const at = rootAndChild({ ...modeEnv({ [K('SCORING_LEVEL')]: '95' }), vars: `${K('SCORING_LEVEL')}=60\n${K('SCORING_ROUNDS')}=5\n` });
+    const { values, from, modeFrom } = varsOf(at('root/child'));
+    assert.deepStrictEqual([values[K('SCORING_LEVEL')], from[K('SCORING_LEVEL')]], ['95', '..']);
+    assert.deepStrictEqual([values[K('SCORING_ROUNDS')], from[K('SCORING_ROUNDS')]], ['5', '..']);
+    assert.deepStrictEqual([...modeFrom], [K('SCORING_LEVEL')], 'the rounds came from the .variables file');
+});
+
+test('an ignore env line stops the key, and the workspace switch 0 stops every member read', () =>
+{
+    const stopped = rootAndChild(modeEnv(MODE_ON), { ws: { parent: '..', ignore: { env: [K('SCORING')] } } });
+    const skipped = varsOf(stopped('root/child'));
+    assert.strictEqual(skipped.values[K('SCORING')], undefined);
+    assert.strictEqual(skipped.values[K('SCORING_LEVEL')], '90', 'only the named key stops');
+    const at = rootAndChild(modeEnv(MODE_ON));
+    const off = varsOf(at('root/child'), { ...UNSET, [K('WORKSPACE')]: '0' });
+    assert.deepStrictEqual(off.values, { [K('WORKSPACE')]: '0' });
+    assert.strictEqual(off.modeFrom.size, 0);
+});
+
+test('a member with a mode file and no .variables still hands on its keys through a member with neither', () =>
+{
+    const at = tree({
+        'root': { stamp: true, git: true, ws: { children: ['mid'] }, local: { env: MODE_ON } },
+        'root/mid': { stamp: true, git: true, ws: { parent: '..', children: ['leaf'] } },
+        'root/mid/leaf': { stamp: true, git: true, ws: { parent: '..' } },
+    });
+    assert.ok(!fs.existsSync(path.join(at('root'), '.alfred', '.variables')), 'the fixture holds no .variables');
+    const { values, from } = varsOf(at('root/mid/leaf'));
+    assert.deepStrictEqual([values[K('SCORING')], from[K('SCORING')]], ['1', '../..']);
+});
+
+test('an unparseable member mode file is no value and throws nothing', () =>
+{
+    for (const text of ['{ not json', '{"env": 3}', '{"env": ["a"]}', 'null'])
+    {
+        const at = rootAndChild({ local: text, vars: `${K('SCORING_LEVEL')}=70\n` });
+        const { values, modeFrom } = varsOf(at('root/child'));
+        assert.strictEqual(values[K('SCORING')], undefined, text);
+        assert.strictEqual(values[K('SCORING_LEVEL')], '70', `${text}: the .variables still reads`);
+        assert.strictEqual(modeFrom.size, 0, text);
+    }
+});
+
+test('inheritedModes names the member and file after applyVariables, AUTO_RUN included', () =>
+{
+    const at = rootAndChild(modeEnv({ ...MODE_ON, [K('AUTO_RUN')]: '1' }));
+    const child = at('root/child');
+    const env = { ...ON };
+    layout.applyVariables(child, env);
+    const file = path.join(at('root'), '.claude', 'settings.local.json');
+    const record = layout.inheritedModes(env);
+    assert.strictEqual(record.root, child);
+    assert.deepStrictEqual(record.modes, {
+        [K('SCORING')]: { value: '1', from: '..', file },
+        [K('SCORING_LEVEL')]: { value: '90', from: '..', file },
+        [K('AUTO_RUN')]: { value: '1', from: '..', file },
+    });
+    assert.strictEqual(env[K('AUTO_RUN')], undefined, 'the loader never sets AUTO_RUN');
+});
+
+test('inheritedModes of a fresh env is { root: null, modes: {} }', () =>
+{
+    assert.deepStrictEqual(layout.inheritedModes({}), { root: null, modes: {} });
+});
+
+test('a child with its own AUTO_RUN records none, and the nearest member\'s value stands for the key', () =>
+{
+    const at = rootAndChild(modeEnv({ [K('AUTO_RUN')]: '1' }), modeEnv({ [K('AUTO_RUN')]: '0' }));
+    const own = { ...ON };
+    layout.applyVariables(at('root/child'), own);
+    assert.strictEqual(layout.inheritedModes(own).modes[K('AUTO_RUN')], undefined);
+    const near = tree({
+        'root': { stamp: true, git: true, ws: { children: ['mid'] }, local: { env: { [K('AUTO_RUN')]: '1' } } },
+        'root/mid': { stamp: true, git: true, ws: { parent: '..', children: ['leaf'] }, local: { env: { [K('AUTO_RUN')]: '0' } } },
+        'root/mid/leaf': { stamp: true, git: true, ws: { parent: '..' } },
+    });
+    const env = { ...ON };
+    layout.applyVariables(near('root/mid/leaf'), env);
+    const held = layout.inheritedModes(env).modes[K('AUTO_RUN')];
+    assert.deepStrictEqual([held.value, held.from], ['0', '..']);
+});
+
+test('inheritedModes records no AUTO_RUN under an ignore env line or the switch 0', () =>
+{
+    const at = rootAndChild(modeEnv({ [K('AUTO_RUN')]: '1' }), { ws: { parent: '..', ignore: { env: [K('AUTO_RUN')] } } });
+    const ignored = { ...ON };
+    layout.applyVariables(at('root/child'), ignored);
+    assert.deepStrictEqual(layout.inheritedModes(ignored).modes, {});
+    const plain = rootAndChild(modeEnv({ [K('AUTO_RUN')]: '1' }));
+    const off = { ...UNSET, [K('WORKSPACE')]: '0' };
+    layout.applyVariables(plain('root/child'), off);
+    assert.deepStrictEqual(layout.inheritedModes(off), { root: path.join(plain('root'), 'child'), modes: {} });
+});

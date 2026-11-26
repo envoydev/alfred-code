@@ -439,6 +439,7 @@ const VARIABLE_SET = new Set(VARIABLE_KEYS);
 // The five keys the mode commands switch, kept in the mode file (modeFile). AUTO_RUN is no variable: the loader never reads it.
 const MODE_KEYS = Object.freeze(['ALFRED_CODE_AUTO_RUN', 'ALFRED_CODE_AUTO_COMPACT', 'ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL', 'ALFRED_CODE_SCORING_ROUNDS']);
 const MODE_SET = new Set(MODE_KEYS);
+const AUTO_RUN_KEY = 'ALFRED_CODE_AUTO_RUN';
 // until 4.0.0: the four keys 3.11.0 renamed are read as their new key wherever that key has no value in the same file
 // (a tracked file a teammate has not updated yet); new key -> old key.
 const OLD_KEYS = Object.freeze({
@@ -628,21 +629,37 @@ function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
     const { values, from, notes } = layers;
     const hooksOffAt = (local, shared) => csvOf(local && Object.hasOwn(local, HOOKS_OFF_KEY) ? local[HOOKS_OFF_KEY] : (shared || {})[HOOKS_OFF_KEY]);
     const hooksOff = hooksOffAt(layers.local, layers.shared);
+    const modeFrom = new Set();
+    const inherited = {};
     if (which === 'all' && switchValueOn(values[SWITCH_KEY]))
     {
         const project = layers.main() || layers.checkout;
         const chain = workspaceChain(project, { env, startData: project === layers.checkout ? layers.dataRoot : undefined });
         const skip = new Set(chain.ignores.filter((i) => i.category === 'env').map((i) => i.name));
+        const ownAutoRunUnset = valueIn(settingsEnv(modeFile(layers.checkout)), AUTO_RUN_KEY) === undefined;
         for (const member of chain.members)
         {
             const file = path.join(member.root, ...member.dataRoot.split('/'), '.variables');
             const read = readDotenv(file);
             notes.push(...fileNotes(read, `.variables of ${member.rel}`, `${member.rel}/${member.dataRoot}/.secrets`));
+            // A member's mode file (the local file Claude Code reads there) is read once, ahead of its .variables, for the mode keys.
+            const modeAt = modeFile(member.root);
+            const memberModes = settingsEnv(modeAt);
             for (const key of VARIABLE_KEYS)
             {
-                if (values[key] !== undefined || MEMBER_NEVER.has(key) || skip.has(key) || !read) continue;
-                const value = valueIn(read.values, key);
-                if (value !== undefined) { values[key] = value; from[key] = member.rel; }
+                if (values[key] !== undefined || MEMBER_NEVER.has(key) || skip.has(key)) continue;
+                const fromMode = MODE_SET.has(key) ? valueIn(memberModes, key) : undefined;
+                const value = fromMode ?? (read ? valueIn(read.values, key) : undefined);
+                if (value === undefined) continue;
+                values[key] = value;
+                from[key] = member.rel;
+                if (fromMode !== undefined) { modeFrom.add(key); inherited[key] = { value, from: member.rel, file: modeAt }; }
+            }
+            // AUTO_RUN sits in no VARIABLE_KEYS row, so it is recorded for the standing-run reader and never set.
+            if (ownAutoRunUnset && inherited[AUTO_RUN_KEY] === undefined && !skip.has(AUTO_RUN_KEY))
+            {
+                const value = valueIn(memberModes, AUTO_RUN_KEY);
+                if (value !== undefined) inherited[AUTO_RUN_KEY] = { value, from: member.rel, file: modeAt };
             }
             if (!skip.has(HOOKS_OFF_KEY))
             {
@@ -652,7 +669,7 @@ function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
             for (const i of member.ignores) if (i.category === 'env') skip.add(i.name);
         }
     }
-    return { values, from, notes, hooksOff: [...new Set(hooksOff)].join(',') };
+    return { values, from, notes, hooksOff: [...new Set(hooksOff)].join(','), modeFrom, inherited, root: layers.checkout };
 }
 
 // `layers`: 'all' (the D4 order, what a hook reads), 'files' (the project's settings.local.json, .variables and
@@ -662,8 +679,8 @@ function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
 // unmoved folder through this loader (stack/mcp/data-root.js dataRootOf names it). A hook never passes it.
 function variablesOf(projectRoot, { env = process.env, layers = 'all', dataRoot } = {})
 {
-    const { values, from, notes } = resolveVariables(projectRoot, env, layers, dataRoot);
-    return { values, from, notes };
+    const { values, from, notes, modeFrom } = resolveVariables(projectRoot, env, layers, dataRoot);
+    return { values, from, notes, modeFrom };
 }
 const hooksOffOf = (projectRoot, { env = process.env } = {}) => resolveVariables(projectRoot, env).hooksOff;
 
@@ -673,6 +690,10 @@ const APPLIED = new WeakSet();
 // The launch value of each key applyVariables wrote over, per env object: `launchEnv(env)` hands the env as launched
 // (W1: a run's own layer is what it was started with, never the project's winner the prelude wrote into it).
 const LAUNCH = new WeakMap();
+// What each env object took from a workspace member's mode file, with the root it was resolved for (D1): { root, modes }.
+const INHERITED = new WeakMap();
+const NO_INHERITED = Object.freeze({ root: null, modes: Object.freeze({}) });
+const inheritedModes = (env = process.env) => INHERITED.get(env) || NO_INHERITED;
 const launchEnv = (env = process.env) =>
 {
     const out = { ...env };
@@ -683,7 +704,8 @@ function applyVariables(projectRoot, env = process.env)
 {
     if (APPLIED.has(env)) return [];
     APPLIED.add(env);
-    const { values, hooksOff } = resolveVariables(projectRoot, env);
+    const { values, hooksOff, inherited, root } = resolveVariables(projectRoot, env);
+    INHERITED.set(env, { root, modes: inherited });
     const set = [];
     const launch = {};
     LAUNCH.set(env, launch);
@@ -1237,5 +1259,5 @@ module.exports = {
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
     docsMemoryDir, DOCS_MEMORY_REFUSAL, docsMemoryRefusal, memoryRowHash, memoryRowMatches, memoryFiles, docsMemoryShare, realpathOrSelf, managedSettingsFile, ancestorPrefsDirs, workspaceMemoryOf, chainProjectOf,
     MODE_KEYS, modeFile,
-    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, CHAIN_PRUNE_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, valueIn,
+    VARIABLE_KEYS, OLD_KEYS, MEMBER_NEVER, CHAIN_PRUNE_NEVER, DOTENV_LINE, COMMENT_LINE, unquote, readDotenv, readText, mainCounterpart, variablesOf, hooksOffOf, applyVariables, launchEnv, inheritedModes, valueIn,
 };
