@@ -584,14 +584,16 @@ function ownVariables(checkout, env, mainOf, checkoutData)
 // session lays over its launch env: the project's settings.json, then the account's (in a hook the two agree).
 // `layers` 'files' reads the project's own three files alone, 'team' its two shared ones (see variablesOf). `dataRoot` is
 // the checkout's folder when the installer side names one (variablesOf); a hook never does.
-function ownLayers(projectRoot, env, layers = 'all', dataRoot = '.alfred')
+function ownLayers(projectRoot, env, layers = 'all', dataRoot = '.alfred', launchRoot = projectRoot)
 {
     const checkout = path.resolve(projectRoot);
+    // The folder the session started in: Claude Code reads its mode file (a sub-folder's own file on Windows).
+    const modeRoot = path.resolve(launchRoot);
     const claude = path.join(checkout, '.claude');
     const all = layers === 'all';
     const local = layers === 'team' ? null : settingsEnv(path.join(claude, 'settings.local.json'));
     // A same-repository child reads the modes from the file Claude Code keeps at the top (modeFile), over its own.
-    const modeAt = layers === 'team' ? null : modeFile(checkout);
+    const modeAt = layers === 'team' ? null : modeFile(modeRoot);
     const mode = modeAt && pathKey(modeAt) !== pathKey(path.join(claude, 'settings.local.json')) ? settingsEnv(modeAt) : null;
     const shared = settingsEnv(path.join(claude, 'settings.json'));
     const account = all ? settingsEnv(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json')) : null;
@@ -617,15 +619,15 @@ function ownLayers(projectRoot, env, layers = 'all', dataRoot = '.alfred')
         value = valueIn(shared, key) ?? valueIn(account, key) ?? (all ? valueIn(env, key) : undefined);
         if (value !== undefined) { values[key] = value; from[key] = 'env'; }
     }
-    return { checkout, main: mainOf, dataRoot, local, shared, values, from, notes };
+    return { checkout, modeRoot, main: mainOf, dataRoot, local, shared, values, from, notes };
 }
 
 // The whole read: every key's winner, where it came from, the notes, and the merged HOOKS_OFF csv (D4): the project's
 // entries (settings.local.json over settings.json, R99) plus each member's `<hook>:<part>` entries - a member's
 // whole-hook entry never reaches a child (release 1) - up to an `ignore env ALFRED_CODE_HOOKS_OFF`.
-function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
+function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined, launchRoot = projectRoot)
 {
-    const layers = ownLayers(projectRoot, env, which, dataRoot);
+    const layers = ownLayers(projectRoot, env, which, dataRoot, launchRoot);
     const { values, from, notes } = layers;
     const hooksOffAt = (local, shared) => csvOf(local && Object.hasOwn(local, HOOKS_OFF_KEY) ? local[HOOKS_OFF_KEY] : (shared || {})[HOOKS_OFF_KEY]);
     const hooksOff = hooksOffAt(layers.local, layers.shared);
@@ -636,7 +638,7 @@ function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
         const project = layers.main() || layers.checkout;
         const chain = workspaceChain(project, { env, startData: project === layers.checkout ? layers.dataRoot : undefined });
         const skip = new Set(chain.ignores.filter((i) => i.category === 'env').map((i) => i.name));
-        const ownAutoRunUnset = valueIn(settingsEnv(modeFile(layers.checkout)), AUTO_RUN_KEY) === undefined;
+        const ownAutoRunUnset = valueIn(settingsEnv(modeFile(layers.modeRoot)), AUTO_RUN_KEY) === undefined;
         for (const member of chain.members)
         {
             const file = path.join(member.root, ...member.dataRoot.split('/'), '.variables');
@@ -703,11 +705,19 @@ const launchEnv = (env = process.env) =>
     for (const [key, value] of Object.entries(LAUNCH.get(env) || {})) if (value === undefined) delete out[key]; else out[key] = value;
     return out;
 };
+// The project that owns a folder: the nearest folder at or above it holding the install record, up to the git top; the
+// folder itself where none does. A session in `<child>/src` is the child's session, so it reads the child's chain.
+function owningProject(start)
+{
+    const from = path.resolve(start);
+    const { checkout } = projectRootOf(from);
+    return holdsRecord(checkout) ? checkout : from;
+}
 function applyVariables(projectRoot, env = process.env)
 {
     if (APPLIED.has(env)) return [];
     APPLIED.add(env);
-    const { values, hooksOff, inherited, root } = resolveVariables(projectRoot, env);
+    const { values, hooksOff, inherited, root } = resolveVariables(owningProject(projectRoot), env, 'all', undefined, projectRoot);
     INHERITED.set(env, { root, modes: inherited });
     const set = [];
     const launch = {};

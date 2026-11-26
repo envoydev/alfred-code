@@ -201,3 +201,57 @@ test('only the mode keys cross: a non-mode key in the root\'s mode file reaches 
     assert.ok(!modeFrom.has(K('HISTORY')));
     assert.strictEqual(values[K('SCORING')], '1', 'the mode keys of the same file still cross');
 });
+
+// A session started in a sub-folder of a joined child (CLAUDE_PROJECT_DIR is the launch folder) takes what a session at
+// the child's root takes: applyVariables resolves the folder to the project that owns it first.
+const subFolderTree = (srcSpec = {}, root = modeEnv({ ...MODE_ON, [K('AUTO_RUN')]: '1' })) => tree({
+    'root': { stamp: true, git: true, ws: { children: ['child'] }, ...root },
+    'root/child': { stamp: true, git: true, ws: { parent: '..' } },
+    'root/child/src': srcSpec,
+});
+
+test('a session in a joined child\'s sub-folder takes the root\'s scoring keys, named from the child, and the root of the record is the child', () =>
+{
+    const at = subFolderTree();
+    const env = { ...ON };
+    layout.applyVariables(at('root/child/src'), env);
+    assert.deepStrictEqual([env[K('SCORING')], env[K('SCORING_LEVEL')]], ['1', '90']);
+    const file = path.join(at('root'), '.claude', 'settings.local.json');
+    const record = layout.inheritedModes(env);
+    assert.strictEqual(record.root, at('root/child'));
+    assert.deepStrictEqual(record.modes, {
+        [K('SCORING')]: { value: '1', from: '..', file },
+        [K('SCORING_LEVEL')]: { value: '90', from: '..', file },
+        [K('AUTO_RUN')]: { value: '1', from: '..', file },
+    });
+});
+
+test('a session at the child\'s root and one in its sub-folder read the same variables', () =>
+{
+    const at = subFolderTree();
+    const atChild = { ...ON };
+    const atSub = { ...ON };
+    layout.applyVariables(at('root/child'), atChild);
+    layout.applyVariables(at('root/child/src'), atSub);
+    assert.deepStrictEqual(atSub, atChild);
+    assert.deepStrictEqual(layout.inheritedModes(atSub).modes, layout.inheritedModes(atChild).modes);
+    assert.strictEqual(atChild[K('SCORING')], '1');
+});
+
+test('a plain folder with no record up to the git top reads its own files as before', () =>
+{
+    const at = tree({ 'plain': { git: true }, 'plain/sub': { local: { env: { [K('HISTORY')]: '4' } } } });
+    const env = { ...UNSET };
+    layout.applyVariables(at('plain/sub'), env);
+    assert.strictEqual(env[K('HISTORY')], '4');
+    assert.strictEqual(layout.inheritedModes(env).root, at('plain/sub'));
+});
+
+test('a sub-folder holding its own install record is its own project and inherits nothing from the child\'s chain', () =>
+{
+    const at = subFolderTree({ stamp: true });
+    const env = { ...ON };
+    layout.applyVariables(at('root/child/src'), env);
+    assert.strictEqual(env[K('SCORING')], undefined);
+    assert.deepStrictEqual(layout.inheritedModes(env), { root: at('root/child/src'), modes: {} });
+});
