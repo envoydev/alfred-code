@@ -973,7 +973,7 @@ test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
   const tmpRoot = real('/tmp');
   const holdsProtected = [process.env.CLAUDE_PROJECT_DIR, os.homedir(), process.cwd()]
     .some((p) => p && (real(p) + path.sep).startsWith(tmpRoot + path.sep));
-  assert.equal(rm('rm -rf /tmp/*'), holdsProtected ? 2 : 0, `rm -rf /tmp/* ${holdsProtected ? 'holds the project, the home dir or the cwd' : 'holds none of them'}`);
+  assert.equal(rm('rm -rf /tmp/*'), holdsProtected ? 'ask' : 0, `rm -rf /tmp/* ${holdsProtected ? 'holds the project, the home dir or the cwd' : 'holds none of them'}`);
 });
 
 // 2.1.6 audit (guards:S3): a repository's .git holds the unpushed commits, the stashes and the reflog - nothing recovers them.
