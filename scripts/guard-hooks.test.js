@@ -13,6 +13,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { putWorkspace } = require('./workspace-fixture.js');
+const { realLong } = require('./test-paths.js');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
@@ -3163,9 +3164,10 @@ test("guard-cross-project-write: a block asks each time, and a receipt, a typed 
   assert.equal(go(write, { ALFRED_CODE_GUARD_ASK: '0' }), 'deny', 'the rollback switch denies');
   const denied = raw({ ...write, permission_mode: 'dontAsk' });
   const otherName = path.basename(other);
-  assertWholeDeny(denied, `Blocked: Write of a file targets '${target}', outside this session's project (${root}). A change another\n`
+  const rootLong = realLong(root); // the guard names its root by the long real path; CI's temp is RUNNER~1
+  assertWholeDeny(denied, `Blocked: Write of a file targets '${target}', outside this session's project (${rootLong}). A change another\n`
     + `repo needs is handed off, not applied here.\n`
-    + `Write the task card at ${path.join(root, '.alfred', 'docs', 'work', 'cross-project-tasks', `${otherName}.md`)} instead: per task what changes where (file + symbol), why, the shared contract,\n`
+    + `Write the task card at ${path.join(rootLong, '.alfred', 'docs', 'work', 'cross-project-tasks', `${otherName}.md`)} instead: per task what changes where (file + symbol), why, the shared contract,\n`
     + `how ${otherName} verifies it; then finish your side, or say what is blocked until it lands.\n`
     + `Reading ${otherName} may ask the user first (a read in the home folder's project area does). A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`, 'B27: a deny carries the full reason and nothing else');
   // the removed openers: a live receipt plus an answered 'Allow ... for this session' ask, and a typed path to the root
