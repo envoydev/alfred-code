@@ -814,8 +814,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     required inside a try at the exit that uses it) reads the project's own file (in a linked git worktree with none, the main checkout's), then each linked workspace member's above,
     nearest first, a plugin prefix dropped from the seat and from a key. Every ALLOWED `Agent` / `Task` dispatch leaves through ONE exit, `answer(extra)`: it
     writes one `updatedInput` - the Explore / Plan prompt change and, where the call names no `model`, the entry's - with no
-    permission decision, and nothing when there is neither. A dispatch naming a model, a block, a repo never set up and the
-    guard stood down (the off-list, `minimal`, hooks off) leave the seat's own pin. Stage 0 measured what is taken
+    permission decision, and nothing when there is neither. A dispatch naming a model, a deny, a repo never set up and the
+    guard stood down (the off-list, `minimal`, hooks off) leave the seat's own pin; an ASKED block carries the entry's model in its `updatedInput` (`changedInput`). Stage 0 measured what is taken
     (`docs/workspace-source-evidence.md`): the Agent tool's schema takes `sonnet`, `opus`, `haiku` and `fable`, and a reply carrying any other
     model REFUSES the dispatch, so only those four apply (`FULL_IDS` false), and a skill's `model:` moves no request (`SKILLS_APPLY` false - a `skills` map is read and named, never
     applied); a `cursor` map is read and named until the Cursor run. No shape of the file blocks or throws: each problem is one

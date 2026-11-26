@@ -11,6 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { putWorkspace } = require('./workspace-fixture.js');
+const cap = require('../stack/hooks/agent-cap.js');
 
 const GUARD = path.join(__dirname, '..', 'stack', 'hooks', 'guard-unapproved-dispatch.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-ask-input-'));
@@ -38,9 +39,9 @@ const stamp = (root) =>
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, 'APPROVED plan-1 - "go ahead"\n');
 };
-const dispatch = (root, toolInput, extra = {}) => spawnSync(process.execPath, [GUARD], {
+const dispatch = (root, toolInput, extra = {}, env = { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' }) => spawnSync(process.execPath, [GUARD], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_use_id: 'toolu_x', session_id: 's1', cwd: root, tool_input: toolInput, ...extra }),
-    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' },
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env },
 });
 const output = (r) => JSON.parse(r.stdout).hookSpecificOutput;
 
@@ -103,5 +104,34 @@ test('a denied generic dispatch writes no updatedInput', () =>
     writeModels(root, 'general-purpose', 'opus');
     const r = dispatch(root, { subagent_type: 'general-purpose', prompt: 'write the notes' }, { permission_mode: 'bypassPermissions' });
     assert.strictEqual(verdictOf(r), 'deny');
+    assert.strictEqual(output(r).updatedInput, undefined);
+});
+
+// The agent-cap block (capDeny -> blockCall) is the other ask an Agent call meets; this pins existing behaviour, so it
+// passes on its first run.
+const AT_CAP = { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '1' };
+const withOneRunning = () =>
+{
+    const root = project();
+    const reg = cap.openRegistry(root, 's1', {});
+    fs.mkdirSync(reg.dir, { recursive: true });
+    fs.writeFileSync(path.join(reg.dir, `AGENT-CAP-${reg.sid}-R-run0`), JSON.stringify({ type: 'Explore', at: Date.now(), parent: '' }));
+    return root;
+};
+
+test('an agent-cap ask on an Explore dispatch carries the untrusted-content sentence in updatedInput', () =>
+{
+    const brief = 'Map the auth module';
+    const r = dispatch(withOneRunning(), { subagent_type: 'Explore', prompt: brief }, {}, AT_CAP);
+    assert.strictEqual(verdictOf(r), 'ask');
+    assert.match(output(r).permissionDecisionReason, /agents are running/);
+    assert.strictEqual(output(r).updatedInput.prompt, `${brief}\n\n${UNTRUSTED_SENTENCE}`);
+});
+
+test('an agent-cap deny under dontAsk writes no updatedInput', () =>
+{
+    const r = dispatch(withOneRunning(), { subagent_type: 'Explore', prompt: 'Map the auth module' }, { permission_mode: 'dontAsk' }, AT_CAP);
+    assert.strictEqual(verdictOf(r), 'deny');
+    assert.match(output(r).permissionDecisionReason, /agents are running/);
     assert.strictEqual(output(r).updatedInput, undefined);
 });
