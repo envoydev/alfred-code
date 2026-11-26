@@ -70,6 +70,17 @@ test('setAside: the block leaves the env and comes back in place; a 3.10 name is
     assert.deepStrictEqual(none.env, { X: 'y' });
 });
 
+test('setAside: a 3.10 name it renames, or drops beside its new one, counts as a change, so the settings pass writes the file', () =>
+{
+    const { setAside } = require('./install/modes.js');
+    const renamed = { env: { ALFRED_CODE_SCORER_ROUNDS: '5' } };
+    assert.strictEqual(setAside(renamed, 'settings.local.json')(renamed), true);
+    assert.deepStrictEqual(renamed.env, { ALFRED_CODE_SCORING_ROUNDS: '5' });
+    const both = { env: { ALFRED_CODE_SCORER_ROUNDS: '5', ALFRED_CODE_SCORING_ROUNDS: '3' } };
+    assert.strictEqual(setAside(both, 'settings.local.json')(both), true);
+    assert.deepStrictEqual(both.env, { ALFRED_CODE_SCORING_ROUNDS: '3' });
+});
+
 for (const scope of ['local', 'project', 'user'])
 {
     test(`a typed mode block survives an install, an update and a re-run at ${scope} scope`, POSIX_ONLY, () =>
