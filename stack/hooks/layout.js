@@ -638,7 +638,9 @@ function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined,
         const project = layers.main() || layers.checkout;
         const chain = workspaceChain(project, { env, startData: project === layers.checkout ? layers.dataRoot : undefined });
         const skip = new Set(chain.ignores.filter((i) => i.category === 'env').map((i) => i.name));
-        const ownAutoRunUnset = valueIn(settingsEnv(modeFile(layers.modeRoot)), AUTO_RUN_KEY) === undefined;
+        // The launch folder's own mode file wins first (a sub-folder's on Windows), then the owning project's own file, as at its root.
+        const ownAutoRunUnset = valueIn(settingsEnv(modeFile(layers.modeRoot)), AUTO_RUN_KEY) === undefined
+            && valueIn(layers.local, AUTO_RUN_KEY) === undefined;
         for (const member of chain.members)
         {
             const file = path.join(member.root, ...member.dataRoot.split('/'), '.variables');

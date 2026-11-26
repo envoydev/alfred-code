@@ -255,3 +255,48 @@ test('a sub-folder holding its own install record is its own project and inherit
     assert.strictEqual(env[K('SCORING')], undefined);
     assert.deepStrictEqual(layout.inheritedModes(env), { root: at('root/child/src'), modes: {} });
 });
+
+// Windows reads a sub-folder's own settings.local.json (localSettingsFile), so a session in a child's sub-folder has a mode
+// file of its own below the child; the child's own file still outranks what the root hands on, as at the child's root.
+function onWindows(run)
+{
+    const real = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try { run(); }
+    finally { Object.defineProperty(process, 'platform', real); }
+}
+
+test('on Windows a session in a child\'s sub-folder keeps the child\'s own off of auto-run and scoring over the root\'s on', () =>
+{
+    const at = subFolderTree({}, modeEnv({ ...MODE_ON, [K('AUTO_RUN')]: '1' }));
+    fs.writeFileSync(path.join(at('root/child'), '.claude', 'settings.local.json'), JSON.stringify({ env: { [K('AUTO_RUN')]: '0', [K('SCORING')]: '0' } }));
+    onWindows(() =>
+    {
+        const env = { ...ON };
+        layout.applyVariables(at('root/child/src'), env);
+        assert.strictEqual(env[K('SCORING')], '0', 'the scoring key is the child\'s own');
+        assert.strictEqual(layout.inheritedModes(env).modes[K('AUTO_RUN')], undefined, 'no auto-run is inherited over the child\'s own off');
+    });
+});
+
+test('on Windows a sub-folder\'s own mode file that holds auto-run still wins over the root\'s', () =>
+{
+    const at = subFolderTree({ local: { env: { [K('AUTO_RUN')]: '0' } } });
+    onWindows(() =>
+    {
+        const env = { ...ON };
+        layout.applyVariables(at('root/child/src'), env);
+        assert.strictEqual(layout.inheritedModes(env).modes[K('AUTO_RUN')], undefined);
+    });
+});
+
+test('on Windows a child with no auto-run of its own still inherits the root\'s from its sub-folder', () =>
+{
+    const at = subFolderTree();
+    onWindows(() =>
+    {
+        const env = { ...ON };
+        layout.applyVariables(at('root/child/src'), env);
+        assert.strictEqual(layout.inheritedModes(env).modes[K('AUTO_RUN')].value, '1');
+    });
+});
