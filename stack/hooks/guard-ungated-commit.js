@@ -442,14 +442,15 @@ function forgeAsk(r) {
   let nobody = true;
   try { nobody = !require('./hook-prelude.js').canAsk(payload); } catch { nobody = true; }
   const what = String(r.act || '').slice(0, 200);
+  const fix = `If it merges, pushes or releases, run habits-commit-checkpoint's publish half first; if it\n` +
+    `does not, add its verb to <data root>/forge-lexicon.json.`;
   if (nobody) {
     blockCall(payload, `Blocked: ${what} - a forge call the stack cannot classify (${r.why}), and no prompt can show here to\n` +
-      `confirm it publishes nothing. If it merges, pushes or releases, run habits-commit-checkpoint's publish half first; if it\n` +
-      `does not, add its verb to <data root>/forge-lexicon.json.`);
+      `confirm it publishes nothing. ${fix}`);
   }
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
-    permissionDecisionReason: `${what} - a forge call the stack cannot classify (${r.why}). Approve only if it merges, pushes and releases nothing; a publish needs the checkpoint's receipt.` } }));
-  process.exit(0);
+  // The prompt is the helper's own (its label, its recommendation, the fix for the model on a decline); the sentence is ours.
+  blockCall(payload, `Blocked: ${what} - a forge call the stack cannot classify (${r.why}); approve only if it merges, pushes and ` +
+    `releases nothing, since a publish needs the checkpoint's receipt.\n${fix}`);
 }
 if (!commitMatch && !publishMatch) { if (askMatch) forgeAsk(askMatch); process.exit(0); }
 

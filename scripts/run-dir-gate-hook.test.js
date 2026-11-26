@@ -95,8 +95,15 @@ test('a run dir of another session is denied on a trusted marker and a block row
     const denied = run(payload(fx, command), env);
     assert.equal(denied.status, 0, denied.stderr);
     const out = decisionOf(denied);
-    assert.equal(out.permissionDecision, 'deny');
-    assert.ok(out.permissionDecisionReason.includes(own) && out.permissionDecisionReason.includes(OFF_SWITCH));
+    // a person can answer: the prompt, with the full reason for the model (guards ask instead of block, final review Important 2)
+    assert.equal(out.permissionDecision, 'ask');
+    assert.match(out.permissionDecisionReason, /^alfred-code run-dir-gate: /);
+    assert.ok(out.additionalContext.includes(own) && out.additionalContext.includes(OFF_SWITCH), out.additionalContext);
+    // nobody can answer: the plain deny with the full reason, as before
+    const plain = decisionOf(run(payload(fx, command, { permission_mode: 'dontAsk' }), env));
+    assert.equal(plain.permissionDecision, 'deny');
+    assert.ok(plain.permissionDecisionReason.includes(own) && plain.permissionDecisionReason.includes(OFF_SWITCH));
+    assert.equal(decisionOf(run(payload(fx, command), { ...env, ALFRED_CODE_GUARD_ASK: '0' })).permissionDecision, 'deny', 'the rollback switch');
     const ledger = path.join(fx.cwd, '.alfred', 'statistics', 'hook-blocks', `${SESSION}.jsonl`);
     assert.equal(fs.existsSync(ledger), false, 'a repo never set up is written nothing');
     fs.mkdirSync(path.join(fx.cwd, '.claude'));
@@ -180,7 +187,8 @@ test('a marker that spells the run dir another way is no reason to deny it', (t)
     fx.marker(own);
     assert.equal(decisionOf(run(payload(fx, form(viaAlias)))).permissionDecision, 'allow', 'the command names the alias spelling');
     const other = fx.runDir('sess-other');
-    assert.equal(decisionOf(run(payload(fx, form(other)))).permissionDecision, 'deny', 'a truly other dir is still denied');
+    assert.equal(decisionOf(run(payload(fx, form(other)))).permissionDecision, 'ask', 'a truly other dir is still stopped');
+    assert.equal(decisionOf(run(payload(fx, form(other), { permission_mode: 'dontAsk' }))).permissionDecision, 'deny');
 });
 
 test('an allow writes no block row, even in a repo that is set up', () =>

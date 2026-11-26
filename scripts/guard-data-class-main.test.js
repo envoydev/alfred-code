@@ -65,6 +65,9 @@ test('an untracked 200 KB csv asks, and the reason names the size and the clear 
   assert.equal(out.permissionDecision, 'ask');
   assert.ok(out.permissionDecisionReason.includes('200 KB .csv'));
   assert.ok(out.permissionDecisionReason.includes('.alfred/.sensitive-paths'));
+  // the helper's prompt around the guard's sentence, and the remedy for the model on a decline (final review, Minor 2)
+  assert.match(out.permissionDecisionReason, /^alfred-code guard-data-class: Read of data\/orders\.csv: it looks like a data dump .*\.alfred\/\.sensitive-paths clears it for good\.\nRecommended: No, unless you meant this call/s);
+  assert.match(out.additionalContext, /^A guard asked the user about this call: Read of .*If the user declined: Read of .*use a synthetic or anonymized sample/s);
 });
 
 test('dontAsk, bypassPermissions and an unattended run deny without naming the list; the modes that can answer ask', () => {

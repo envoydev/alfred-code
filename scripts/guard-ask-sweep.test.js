@@ -12,14 +12,16 @@ const { repo, section } = require('./docs-fixture');
 const { canAsk } = require('../stack/hooks/hook-prelude.js');
 
 const ROOT = path.join(__dirname, '..');
-const HOOK_DIRS = ['stack/hooks', 'setup-plugin/hooks'];
+// scripts/run-dir-gate writes the run-dir gate's verdict (setup-plugin/hooks/run-dir-gate.js hands it to emit), so it is swept too.
+const HOOK_DIRS = ['stack/hooks', 'setup-plugin/hooks', 'scripts/run-dir-gate'];
 const PRELUDE = 'hook-prelude.js';
-const DENY_RE = /permissionDecision:\s*['"]deny['"]|process\.exit\(\s*(?:2|DENY_EXIT)\s*\)/;
+const DENY_RE = /permissionDecision:\s*['"]deny['"]|process\.exit\(\s*(?:2|DENY_EXIT)\s*\)|\bVERDICT\.deny\b/;
 const MARKER = Object.freeze({
   stop: '// guard-ask: Stop hold',
   combine: '// guard-ask: combine re-emits a deny',
   cli: '// guard-ask: CLI usage',
   fallback: '// guard-ask fallback: no prelude',
+  runDir: '// guard-ask: run-dir verdict',
 });
 // The marker count each file carries today, by marker. A site added to a Stop branch or a CLI usage exit changes one on purpose.
 const EXPECTED_MARKERS = Object.freeze({
@@ -30,13 +32,16 @@ const EXPECTED_MARKERS = Object.freeze({
   'stack/hooks/docs-session.js': { [MARKER.fallback]: 1 },
   'stack/hooks/preferences-session.js': { [MARKER.fallback]: 1 },
   'setup-plugin/hooks/guard-layer-table.js': { [MARKER.fallback]: 1 },
+  // the verdict builder and its answer; emit asks through the helper, so each site only names the verdict
+  'scripts/run-dir-gate/verdict.js': { [MARKER.runDir]: 2 },
+  'scripts/run-dir-gate/effects.js': { [MARKER.runDir]: 2 },
 });
 // Every hook with a PreToolUse block (the map of this change) routes it through the helper.
 const BLOCKING_HOOKS = [
   'shell-guards', 'preferences-session', 'guard-catastrophic-rm', 'guard-protected-force-push', 'guard-read-whole-file',
   'guard-secret-value', 'guard-config-protection', 'guard-cross-project-write', 'guard-data-class', 'guard-ungated-commit',
   'guard-fresh-session-start', 'guard-unapproved-dispatch', 'guard-stop-contract', 'docs-session',
-].map((name) => `stack/hooks/${name}.js`).concat('setup-plugin/hooks/guard-layer-table.js');
+].map((name) => `stack/hooks/${name}.js`).concat('setup-plugin/hooks/guard-layer-table.js', 'scripts/run-dir-gate/effects.js');
 
 const hookFiles = () => HOOK_DIRS.flatMap((dir) => fs.readdirSync(path.join(ROOT, dir))
   .filter((f) => f.endsWith('.js') && f !== PRELUDE).map((f) => `${dir}/${f}`));
@@ -72,6 +77,11 @@ test('every blocking hook routes through the helper', () => {
   }
   const files = new Set(hookFiles());
   for (const rel of BLOCKING_HOOKS) assert.ok(files.has(rel), `${rel} is a hook file the sweep reads`);
+});
+
+test('the run-dir gate hands its deny to the helper', () => {
+  const hook = fs.readFileSync(path.join(ROOT, 'setup-plugin/hooks/run-dir-gate.js'), 'utf8');
+  assert.match(hook, /emit\([^;]*\bprelude\b[^;]*\);/, 'the hook passes the prelude to emit');
 });
 
 test('B62: SubagentHandback denies in default, auto and dontAsk through canAsk', () => {

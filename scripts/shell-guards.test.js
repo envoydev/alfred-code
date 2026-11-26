@@ -329,7 +329,8 @@ test('several guards blocking one command: every reason, one ledger row per bloc
   // the read guard and the commit guard both ask: one prompt names both, and the model text carries both reasons
   assert.strictEqual(verdictOf(out), 'ask', `${out.stdout}${out.stderr}`);
   for (const x of alone) {
-    assert.ok(askText(out).includes(askText(x).trim()), `${x.g}'s line is in the one prompt`);
+    // the recommendation line comes once, after the joined texts (T7 Minor 7), so each guard's own text is compared without it
+    assert.ok(askText(out).includes(askText(x).replace(/\nRecommended: [^\n]*$/, '').trim()), `${x.g}'s line is in the one prompt`);
     assert.ok(blockText(out).includes(blockText(x).trim()), `${x.g}'s reason is in the model text`);
   }
   assert.deepStrictEqual(hooksOf(ledgerRows(dir)), alone.map((x) => `${x.g}.js`).sort());
@@ -1241,6 +1242,12 @@ test('combine: a deny beside a block ask stays a deny, the ask riding after it a
 test('combine: two block asks join their prompts with a blank line, and a plain context still rides beside a deny', () => {
   const out = shell.combine([r('guard-a.js', 0, blockAsk('Blocked: first harm. Fix one.', 'guard-a')), r('guard-b.js', 0, blockAsk('Blocked: second harm. Fix two.', 'guard-b'))]);
   assert.strictEqual(askText(out).split('\n\n').length, 2, askText(out));
+  // the recommendation comes once, after the joined texts, and the model's two contexts are a blank line apart (T7 Minor 7)
+  assert.strictEqual(askText(out).match(/Recommended: /g).length, 1, askText(out));
+  assert.match(askText(out), /second harm\.\nRecommended: No, unless you meant this call/, askText(out));
+  assert.ok(!/first harm\.\nRecommended/.test(askText(out)), 'not after the first text');
+  const contexts = JSON.parse(out.stdout).hookSpecificOutput.additionalContext;
+  assert.strictEqual(contexts.split('\n\nA guard asked the user about this call: ').length, 2, contexts);
   const withCtx = shell.combine([r('guard-a.js', 0, deny('Docs not read yet')), r('guard-c.js', 0, ctx('keep this note'))]);
   assert.strictEqual(JSON.parse(withCtx.stdout).hookSpecificOutput.additionalContext, 'keep this note');
 });

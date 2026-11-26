@@ -1987,8 +1987,9 @@ function askOrDeny(file, key) {
   try { nobody = !require('./hook-prelude.js').canAsk(payload, process.env); } catch { /* no prelude: deny */ }
   if (nobody) refuse(`Blocked: Read of ${file}, which ${what} - nobody can answer an ask here, and the value would enter the transcript permanently. Presence: ${presence}; the user opens the file.\n`);
   ledgerRow('ask', { branch: 'read', file: pathMod.basename(file) });
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
-    permissionDecisionReason: `Read of ${file}: it ${what}. Allowing it puts the value in this transcript permanently. Presence only: ${presence}` } }));
+  // The helper's own prompt (its label, its recommendation, the presence route for the model on a decline) around this sentence.
+  const verdict = require('./hook-prelude.js').blockVerdict(payload, `Read of ${file}: it ${what}, and allowing it puts the value in this transcript permanently.\nPresence only: ${presence}\n`, { guard: 'guard-secret-value' });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput }));
   process.exit(0);
 }
 // ---- Read matcher ----

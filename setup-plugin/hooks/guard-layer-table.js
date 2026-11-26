@@ -118,10 +118,16 @@ function blockRow(reason, table) {
   try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table } }); } catch { /* telemetry is never allowed to break the gate */ }
 }
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks where a person can answer and denies otherwise; with no
-// prelude, today's exit 2. The row is the caller's, written before the call.
+// prelude, today's exit 2. The row is the caller's, written before the call. A deny keeps the text's own `MARKER: ` lead, which the
+// readers below count in a tool result (the valve of three); a prompt names the guard itself, so its text drops the lead.
 function blockCall(input, text) {
   let code = 2;
-  try { const p = prelude || require(PRELUDE); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-layer-table' })); }
+  try {
+    const p = prelude || require(PRELUDE);
+    const lead = `${MARKER}: `;
+    const said = text.startsWith(lead) && p.canAsk(input) ? text.slice(lead.length) : text;
+    code = p.blockExitCode(input, p.askOrBlock(input, said, { guard: 'guard-layer-table' }));
+  }
   catch { process.stderr.write(text); }
   process.exit(code);
 }
@@ -676,7 +682,7 @@ function holdUnpasted() {
     const p = prelude || require(PRELUDE);
     asked = Boolean(found.shown && found.tableId && p.canAsk(payload) && markPrinted(payload.session_id, found.tableId));
     verdict = asked
-      ? p.blockVerdict(payload, `the ${name} ran but its output is not in the message above - ${PRINTED}. Send this same ask again, unchanged - do not re-run or paste the table.`, { guard: 'layer-table gate' })
+      ? p.blockVerdict(payload, `the ${name} ran but its output is not in the message above - ${PRINTED}. Send this same ask again, unchanged - do not re-run or paste the table.`, { guard: 'guard-layer-table' })
       : p.blockVerdict(payload, line, { guard: 'guard-layer-table', env: { ...process.env, ALFRED_CODE_GUARD_ASK: '0' } });
   } catch { /* no prelude: today's deny */ }
   const output = verdict ? verdict.hookSpecificOutput : { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: line }; // guard-ask fallback: no prelude

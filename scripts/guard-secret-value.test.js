@@ -1652,7 +1652,9 @@ const fileOf = (rel, fx = askFixture()) => path.join(fx.project, ...rel.split('/
 const readFile = (rel, payload, opts = {}) => fileCall('Read', { file_path: fileOf(rel, opts.fx) }, { ...opts, payload });
 const ASK_MODES = ['default', 'acceptEdits', 'plan', 'auto', undefined];
 const CURSOR = { cursor_version: '2.1.0', hook_event_name: 'preToolUse' };
-const ASK_RE = /^Read of .*kubeconfig\.yaml: it holds a credential under `[^`]+`\. Allowing it puts the value in this transcript permanently\. Presence only: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]$/;
+// The helper's prompt: the guard's label, this sentence, the recommendation. The presence route rides in the model's context.
+const ASK_RE = /^alfred-code guard-secret-value: Read of .*kubeconfig\.yaml: it holds a credential under `[^`]+`, and allowing it puts the value in this transcript permanently\.\nRecommended: No, unless you meant this call - Claude then gets the guard's fix\.$/;
+const ASK_CONTEXT_RE = /^A guard asked the user about this call: .*permanently\. If the result shows the call ran, the user approved it - do not redo it\. If the user declined: Read of .*kubeconfig\.yaml: it holds[\s\S]*Presence only: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]\n$/;
 const DENY_RE = /^Blocked: Read of .*kubeconfig\.yaml, which holds a credential under `[^`]+` - nobody can answer an ask here, and the value would enter the transcript permanently\. Presence: node ".*guard-secret-value\.js" --presence ".*kubeconfig\.yaml" \[KEY \.\.\.\]; the user opens the file\.$/m;
 // Where nobody can answer the Read is a deny (one JSON object, today's reason); on a Cursor payload it is exit 2 with the reason on stderr.
 const denied = (r, what, cursor = false) => {
@@ -1676,8 +1678,8 @@ test('swap 1 ask: a Read of a credential file asks an attended session', () => {
     assert.strictEqual(h.hookEventName, 'PreToolUse');
     assert.strictEqual(h.permissionDecision, 'ask');
     assert.match(h.permissionDecisionReason, /in this transcript permanently/);
-    assert.match(h.permissionDecisionReason, /--presence/);
     assert.match(h.permissionDecisionReason, ASK_RE, 'the exact ask text');
+    assert.match(h.additionalContext, ASK_CONTEXT_RE, 'a decline gives the model the presence route');
     assert.ok(!r.stdout.includes(KUBE_VAL) && !r.stderr.includes(KUBE_VAL), 'the ask carries no value');
     assert.ok(r.rows.some((x) => x.hook === 'guard-secret-value.js' && x.mode === 'ask' && x.tool_use_id === 'toolu_ask1' && x.detail.branch === 'read'
       && x.detail.file === 'kubeconfig.yaml'), `${mode}: one ask row naming the call and the file's basename`);

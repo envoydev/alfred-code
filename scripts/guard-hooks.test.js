@@ -172,6 +172,42 @@ test('guard-catastrophic-rm: the prompt of a blocked delete names the target (gu
   assert.ok(askText(resolved).includes(`\`${os.homedir()}\``) || askText(resolved).includes('`$H`'), askText(resolved));
 });
 
+test('guard-catastrophic-rm: a lesser harm never speaks alone for a command that also wipes a target (final review, Important 1)', () => {
+  const dir = scratchRepo();
+  const asked = (command, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...extra }, cwd: dir });
+  // the discard check fires first today, and its sentence named only one file
+  const both = asked('git checkout -- a.txt && rm -rf .git');
+  assert.equal(verdictOf(both), 'ask', askText(both));
+  assert.match(askText(both), /^alfred-code guard-catastrophic-rm: this command recursively deletes `\.git`\./, askText(both));
+  assert.match(blockText(both), /\nAnd this discards uncommitted work in 1 file\(s\)/, 'the discard follows in the one text');
+  assert.match(blockText(both), /recursive rm of a catastrophic/, 'with the rm rule first');
+  // the discard alone still reads as it did
+  const discardOnly = asked('git checkout -- a.txt');
+  assert.match(askText(discardOnly), /^alfred-code guard-catastrophic-rm: this discards uncommitted work/, askText(discardOnly));
+  assert.ok(!/recursively deletes/.test(blockText(discardOnly)));
+  // the marketplace removal gets the same treatment
+  const market = asked('claude plugin marketplace remove envoydev && rm -rf ~');
+  assert.match(askText(market), /^alfred-code guard-catastrophic-rm: this command recursively deletes `~`\./, askText(market));
+  assert.match(blockText(market), /\nAnd `claude plugin marketplace remove` with no --scope/, blockText(market));
+  assert.match(askText(asked('claude plugin marketplace remove envoydev')), /^alfred-code guard-catastrophic-rm: BLOCKED: `claude plugin marketplace remove`/);
+  // deny where nobody can answer: one text, same order
+  const denied = asked('git checkout -- a.txt && rm -rf .git', { ALFRED_CODE_GUARD_ASK: '0' });
+  assert.equal(verdictOf(denied), 'deny');
+  assert.match(blockText(denied), /^Blocked: this command recursively deletes `\.git`\.[\s\S]*\nAnd this discards uncommitted work/);
+});
+
+test('guard-catastrophic-rm: a throw while naming the target still blocks, under the command opening (T7 review Minor 2)', () => {
+  const preload = path.join(TMP, 'throw-on-naming.js');
+  fs.writeFileSync(preload, `const sw = require(${JSON.stringify(path.join(HOOKS, 'shell-writes.js'))});
+const real = sw.groupsAsCuts;
+sw.groupsAsCuts = (...args) => { if (new Error().stack.includes('wipeTargetOf')) throw new Error('naming failed'); return real(...args); };\n`);
+  const r = spawnSync(process.execPath, ['-r', preload, path.join(HOOKS, 'guard-catastrophic-rm.js')],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, cwd: TMP }), encoding: 'utf8' });
+  assert.equal(verdictOf(r), 'ask', `${r.stdout}${r.stderr}`);
+  assert.match(askText(r), /^alfred-code guard-catastrophic-rm: this command recursively deletes `rm -rf \/`\./, askText(r));
+});
+
 test('guard-stop-contract: a decision question in ordinary words is still a stop', () => {
   const q = transcript('q', [assistantRow('m1', "Two options exist for the deploy target: staging or prod. What's the deploy target?")]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: q }), 2);

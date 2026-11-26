@@ -515,6 +515,10 @@ function wipeTargetOf(parsed, command)
         const hit = pathArgs(args).find((a) => isCatastrophic(a) || isTopLevelDir(a));
         if (hit) return hit;
     }
+    return commandOpening(command);
+}
+function commandOpening(command)
+{
     const line = String(command || '').trim().replace(/\s+/g, ' ');
     return line.length > TARGET_NAME_MAX ? `${line.slice(0, TARGET_NAME_MAX - 3).trimEnd()}...` : line;
 }
@@ -915,10 +919,10 @@ function main()
             const m = /(?:^|[\s(/\\])claude(?:\.exe|\.cmd)?\s+plugins?\s+marketplace\s+(?:remove|rm)\b(.*)$/.exec(seg);
             if (!m || /(?:^|\s)(?:--scope(?:=|\s)|-h\b|--help\b)/.test(m[1])) continue;
             global.BLOCK_DETAIL = { branch: 'marketplace-remove-unscoped' };
-            blockCall(payload, 'BLOCKED: `claude plugin marketplace remove` with no --scope removes the marketplace from EVERY scope and '
+            blockCall(payload, withWipe('BLOCKED: `claude plugin marketplace remove` with no --scope removes the marketplace from EVERY scope and '
                 + 'uninstalls every plugin installed from it, in every project on this machine. Name the scope the declaration '
                 + 'sits at - `--scope user`, `project` or `local` (`claude plugin marketplace list --json` shows it) - and run it '
-                + 'once per scope the user asked for.\n');
+                + 'once per scope the user asked for.\n'));
         }
     };
 
@@ -944,6 +948,41 @@ function main()
     const powershell = /powershell/i.test(String(payload.tool_name || ''));
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const read = shellWrites.gitText(powershell ? rawCommand.replace(/\\/g, '\\\\').replace(/`([\s\S])/g, '\\$1') : rawCommand, path.resolve(payload.cwd || root));
+    // The recursive-delete verdict of the same command as the block text, or null. The prompt is the user's basis for a Yes,
+    // so a lesser harm (a one-file discard, a marketplace removal) never speaks alone for a command that also deletes
+    // a catastrophic target (final review 2026-11-26): that sentence goes first and the others follow as 'And ...'.
+    const wipeReason = () =>
+    {
+        setAnchors(payload);
+        const segmentWipe = isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand.replace(/\\/g, '/') : read.command));
+        // the parsed operands (HK-08..HK-10; never a PowerShell text, whose words the segment test reads) and a runtime's delete (HK-11)
+        const parsed = !segmentWipe && !powershell && parsedWipe(read);
+        const runtime = !segmentWipe && !parsed && runtimeWipe(rawCommand, powershell ? null : read, payload, powershell);
+        if (!segmentWipe && !parsed && !runtime) return null;
+        const shown = powershell || !read ? rawCommand : read.command;
+        let target;
+        try { target = wipeTargetOf(parsed, shown); }
+        catch { target = commandOpening(shown); } // the name is a courtesy: a throw here must never let the delete through
+        return {
+            detail: parsed || runtime ? { branch: parsed ? 'rm-resolved-target' : 'runtime-delete' } : undefined,
+            text: `Blocked: this command recursively deletes \`${target}\`.\n` +
+                'The rule blocks a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd, the project or a folder holding ' +
+                'it, a bare *, a .git directory or anything in it, or several top-level system dirs at once - read after the command\'s ' +
+                'own cd and the variables it sets) - or an unfiltered find -delete / -exec rm, a piped Remove-Item, or a runtime\'s ' +
+                'recursive delete (rmtree, rmSync recursive, rm_rf, Directory.Delete), over one - the filesystem has no reflog. A house ' +
+                'rule enforced here, no prose copy to consult. ' +
+                'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
+                'in the same -o branch, instead. A .git directory holds the unpushed commits, stashes and reflog: if the user ' +
+                'wants it gone, they run that themselves.\n' + submoduleRoute(parsed),
+        };
+    };
+    const withWipe = (text) =>
+    {
+        const wipe = wipeReason();
+        if (!wipe) return text;
+        if (wipe.detail) global.BLOCK_DETAIL = wipe.detail;
+        return `${wipe.text.replace(/\n?$/, '\n')}And ${text.replace(/^BLOCKED: |^Blocked: /, '')}`;
+    };
     marketplaceGate(rawCommand);
     marketplaceGate(read.command);
     const losses = [];
@@ -1064,37 +1103,24 @@ function main()
                 : 'Keep it all instead: run none of it; `git stash -u` or commit the work first.';
         const narrow = one === 'stash' ? 'Narrow it: drop ONE named entry instead of every one.\n'
             : groups.has('tree') ? 'Narrow it: name the ONE file to revert instead of the whole tree.\n' : '';
-        blockCall(payload,
+        blockCall(payload, withWipe(
             body +
             `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
             `\n${keep}\n` + narrow +
-            `Reverting these files with Edit or Write instead is the same discard.\n`);
+            `Reverting these files with Edit or Write instead is the same discard.\n`));
     }
 
     // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written - with
     // every backslash read as the path separator it is there (its escape is the backtick): `.\`, `.\*` and `..\` kept
     // the backslash and named no catastrophic target, so `Remove-Item -Recurse -Force .\` passed (audit 2026-10-08).
-    setAnchors(payload);
-    const segmentWipe = isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand.replace(/\\/g, '/') : read.command));
-    // the parsed operands (HK-08..HK-10; never a PowerShell text, whose words the segment test reads) and a runtime's delete (HK-11)
-    const parsed = !segmentWipe && !powershell && parsedWipe(read);
-    const runtime = !segmentWipe && !parsed && runtimeWipe(rawCommand, powershell ? null : read, payload, powershell);
-    if (!segmentWipe && !parsed && !runtime)
+    const wipe = wipeReason();
+    if (!wipe)
     {
         process.exit(0);
     }
-    if (parsed || runtime) global.BLOCK_DETAIL = { branch: parsed ? 'rm-resolved-target' : 'runtime-delete' };
+    if (wipe.detail) global.BLOCK_DETAIL = wipe.detail;
 
-    blockCall(payload,
-        `Blocked: this command recursively deletes \`${wipeTargetOf(parsed, powershell || !read ? rawCommand : read.command)}\`.\n` +
-        'The rule blocks a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd, the project or a folder holding ' +
-        'it, a bare *, a .git directory or anything in it, or several top-level system dirs at once - read after the command\'s ' +
-        'own cd and the variables it sets) - or an unfiltered find -delete / -exec rm, a piped Remove-Item, or a runtime\'s ' +
-        'recursive delete (rmtree, rmSync recursive, rm_rf, Directory.Delete), over one - the filesystem has no reflog. A house ' +
-        'rule enforced here, no prose copy to consult. ' +
-        'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
-        'in the same -o branch, instead. A .git directory holds the unpushed commits, stashes and reflog: if the user ' +
-        'wants it gone, they run that themselves.\n' + submoduleRoute(parsed));
+    blockCall(payload, wipe.text);
 }
 
 main();

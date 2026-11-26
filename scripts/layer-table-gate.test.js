@@ -168,7 +168,7 @@ function runPre(rows, id = 'a9', input = ask, env = {}, session = freshSession()
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: input, session_id: session, tool_use_id: id, transcript_path: p, ...extra }), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, stderr: r.stderr };
 }
-const HOLD_PROMPT = /^alfred-code layer-table gate: the agents table ran but its output is not in the message above - the gate printed the table for the user\./;
+const HOLD_PROMPT = /^alfred-code guard-layer-table: the agents table ran but its output is not in the message above - the gate printed the table for the user\./;
 test('PreToolUse holds an unpasted ask before the user sees it, printing the table; a pasted one and the re-ask pass (A8)', () => {
   const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
   const session = freshSession();
@@ -478,6 +478,20 @@ test('a layer ask inside a walk whose table never ran is denied, naming the --ta
   assert.strictEqual(r.status, 'ask');
   assert.match(r.stderr, /agents table never ran/);
   assert.match(r.stderr, /--table agents/);
+});
+
+test('a layer ask names the guard once: the prompt drops the text\'s own label, the deny keeps it for the valve (final review, Minor 1)', () => {
+  const rows = [typed('/alfred-code:configure'), recompute, result('r1', ''), say('[step 4/13 - agents]')];
+  const prompt = (r) => askText(r);
+  const never = run(rows, layerAsk('Agents: install the marked rows?'));
+  assert.match(prompt(never), /^alfred-code guard-layer-table: the agents table never ran - /, prompt(never));
+  assert.ok(!/layer-table gate/.test(prompt(never)), 'one label, not two');
+  const inventoryAsk = run([typed('/alfred-code:configure'), readBack, result('p1', ''), say('[step 1/13 - install status] what is installed · next: areas')], step1Ask);
+  assert.match(prompt(inventoryAsk), /^alfred-code guard-layer-table: the install inventory never ran - /, prompt(inventoryAsk));
+  assert.ok(!/layer-table gate/.test(prompt(inventoryAsk)));
+  // where nobody can answer the deny keeps its lead: a later run counts it in the result (the valve of three)
+  const denied = run(rows, layerAsk('Agents: install the marked rows?'), { ALFRED_CODE_GUARD_ASK: '0' });
+  assert.match(blockText(denied), /^alfred-code layer-table gate: the agents table never ran - /, blockText(denied));
 });
 
 test('the DELTA add / drop ask names its layer too', () => {

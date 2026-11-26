@@ -22,7 +22,7 @@ function main()
     if (prelude.standDown('run-dir-gate', process.env, process.argv, { setUp: false })) return;
     if (prelude.cursorStandDown(payload, __filename)) return;
     const { judge, emit } = require(path.join(GATE, 'effects.js'));
-    emit(judge(payload, process.env, ROOT), payload, { record: !prelude.neverSetUp(), env: process.env });
+    emit(judge(payload, process.env, ROOT), payload, { record: !prelude.neverSetUp(), env: process.env, prelude });
 }
 
 try { main(); } catch { /* fail-open */ }

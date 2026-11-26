@@ -326,6 +326,22 @@ function preludeOf()
     catch { return null; }
 }
 
+// The helper's recommendation line ends each of its prompts (hook-prelude.js ASK_RECOMMENDATION). Joined prompts keep it once,
+// after the last text, so the user reads one recommendation and never a copy beside each harm.
+const RECOMMENDED_LINE_RE = /\n?Recommended: [^\n]*$/;
+function joinPrompts(reasons)
+{
+    let recommended = '';
+    const texts = reasons.map((reason) =>
+    {
+        const m = RECOMMENDED_LINE_RE.exec(reason);
+        if (!m) return reason;
+        recommended = recommended || m[0].replace(/^\n/, '');
+        return reason.slice(0, m.index);
+    });
+    return [texts.join('\n\n'), recommended].filter(Boolean).join('\n');
+}
+
 function combine(results)
 {
     const blocks = [];
@@ -357,9 +373,12 @@ function combine(results)
         if (hso.permissionDecision === 'ask' && hso.permissionDecisionReason) asks.push(asked !== null ? asked : String(hso.permissionDecisionReason));
         // two guards that both ask: the prompt names every reason, a blank line between, so no harm is hidden behind another (spec D2)
         if (decision && hso.permissionDecision === 'ask' && decision.value === 'ask' && hso.permissionDecisionReason)
-            decision.reason = [decision.reason, hso.permissionDecisionReason].filter(Boolean).join('\n\n');
+        {
+            decision.reasons.push(hso.permissionDecisionReason);
+            decision.reason = joinPrompts(decision.reasons.filter(Boolean));
+        }
         else if (RANK[hso.permissionDecision] > (decision ? RANK[decision.value] : 0))
-            decision = { value: hso.permissionDecision, reason: hso.permissionDecisionReason };
+            decision = { value: hso.permissionDecision, reason: hso.permissionDecisionReason, reasons: [hso.permissionDecisionReason] };
     }
 
     const out = (code, hso, stderr = '') =>
@@ -371,7 +390,10 @@ function combine(results)
     };
     // A block ends the call and nobody was asked, so a block ask's 'A guard asked the user' context does not ride beside it: its
     // full reason is already in the `Also:` line. Any other context rides as before.
-    const contextOf = (list) => (list.length ? { additionalContext: list.map((c) => c.text).join('\n') } : {});
+    // A plain note joins the next with a line break; a block ask's model text is a paragraph, so it is set apart by a blank line.
+    const contextOf = (list) => (list.length
+        ? { additionalContext: list.reduce((all, c, k) => (k ? `${all}${c.asked || list[k - 1].asked ? '\n\n' : '\n'}${c.text}` : c.text), '') }
+        : {});
     const context = blocks.length ? contextOf(contexts.filter((c) => !c.asked)) : contextOf(contexts);
     // A block ends the call, so an ask beside it would be lost: its reason rides after the block's (2026-11-21).
     const withAsks = (text) => (asks.length

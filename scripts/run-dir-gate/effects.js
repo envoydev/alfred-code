@@ -168,13 +168,20 @@ function appendBlockRow(payload, reason, env)
     catch { /* telemetry never breaks the gate */ }
 }
 
-// Answers on stdout for a verdict; a deny also leaves its block row where the repo is set up (`record`).
-function emit(verdict, payload, { record, env })
+// Answers on stdout for a verdict; a deny also leaves its block row where the repo is set up (`record`). A deny goes through
+// the prelude's askOrBlock when the caller hands it over (guards ask instead of block, final review 2026-11-26): the user's
+// prompt where a person can answer, the plain deny where nobody can.
+function emit(verdict, payload, { record, env, prelude })
 {
     const output = hookOutput(verdict);
     if (!output) return;
-    if (verdict.decision === VERDICT.deny && record) appendBlockRow(payload, verdict.reason, env);
-    process.stdout.write(JSON.stringify(output));
+    if (verdict.decision === VERDICT.deny && record) appendBlockRow(payload, verdict.reason, env); // guard-ask: run-dir verdict, asked below
+    if (verdict.decision === VERDICT.deny && prelude && typeof prelude.askOrBlock === 'function') // guard-ask: run-dir verdict, asked below
+    {
+        prelude.askOrBlock(payload, verdict.reason, { env, guard: 'run-dir-gate' });
+        return;
+    }
+    process.stdout.write(JSON.stringify(output)); // no prelude handed over: the verdict as it stands
 }
 
 module.exports = { readBodies, writeTable, readRunDir, findMarker, markerPathFor, cygpathW, appendBlockRow, judge, emit };

@@ -5,7 +5,7 @@
 // ref watch that read it left in complexity stage 1 (B9).
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
-const { reviewedTranscript, legacyBlock, blockText, verdictOf: verdictOfHook } = require('./hook-test-env');
+const { reviewedTranscript, legacyBlock, blockText, askText, verdictOf: verdictOfHook } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -73,10 +73,11 @@ test('an MCP branch write needs the publish receipt', () => {
 
 test('a forge call with no known verb asks', () => {
   const { dir } = pushRepo();
-  const r = run(dir, mcp('pull_request_frobnicate', { iid: 4 }));
-  assert.strictEqual(r.status, 0, r.stderr);
-  assert.strictEqual(decision(r), 'ask');
-  assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /frobnicate/);
+  const r = runRaw(dir, { ...mcp('pull_request_frobnicate', { iid: 4 }), permission_mode: 'default' });
+  assert.strictEqual(verdictOfHook(r), 'ask');
+  // the helper's prompt (label, the guard's sentence, the recommendation) and the fix for the model on a decline (final review, Minor 2)
+  assert.match(askText(r), /^alfred-code guard-ungated-commit: .*frobnicate.*approve only if it merges, pushes and releases nothing.*\nRecommended: No, unless/s, askText(r));
+  assert.match(blockText(r), /^A guard asked the user about this call: .*If the user declined: Blocked: .*forge-lexicon\.json/s, blockText(r));
 });
 
 test('a forge call with no known verb is denied when nobody can answer - dontAsk and bypassPermissions too', () => {

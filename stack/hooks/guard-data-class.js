@@ -425,9 +425,9 @@ function rewriteBrief({ tool, text, paths, names, codeLines: lines, aliases }) {
 function askText(route, path, detail, listFile) {
   const clear = listFile === null ? '' : ` a '!${path}' line in ${listFile === undefined ? LIST_FILE : listFile} clears it for good.`;
   if (route === 'document') {
-    return `Read of ${path}: it is a business document (${detail}) - price lists, HR files and contracts belong only in an AI cleared for them. Allow only if this document is cleared for this AI;${clear}`.replace(/;$/, '.');
+    return `Read of ${path}: it is a business document (${detail}) - price lists, HR files and contracts belong only in an AI cleared for them; allow only if this document is cleared for this AI;${clear}`.replace(/;$/, '.');
   }
-  return `Read of ${path}: it looks like a data dump (${detail}). Real personal or production records should not enter this transcript - use a synthetic or anonymized sample. Allow only if this data is cleared for this AI;${clear}`.replace(/;$/, '.');
+  return `Read of ${path}: it looks like a data dump (${detail}); real personal or production records should not enter this transcript - use a synthetic or anonymized sample; allow only if this data is cleared for this AI;${clear}`.replace(/;$/, '.');
 }
 
 function denyText(route, path, detail) {
@@ -660,7 +660,9 @@ function writeLedger(ctx, outcome) {
 function deliver(ctx, outcome) {
   writeLedger(ctx, outcome);
   if (outcome.mode === 'ask') {
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: outcome.text } }));
+    // The helper's own prompt (its label, its recommendation, the model's context on a decline) around this guard's sentence.
+    const verdict = ctx.prelude.blockVerdict(ctx.payload, outcome.text, { guard: 'guard-data-class' });
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput }));
   } else if (outcome.mode === 'deny') {
     const verdict = ctx.prelude.askOrBlock(ctx.payload, outcome.text, { guard: 'guard-data-class' });
     process.exit(ctx.prelude.blockExitCode(ctx.payload, verdict));

@@ -22,7 +22,7 @@ function decide({ command, table, sessionId, dirs, marker, ctx })
     if (!sessionId || !Array.isArray(dirs) || dirs.length === 0) return VERDICT.silent;
     if (dirs.some((dir) => !dir.path || !dir.session)) return VERDICT.silent;
     const trusted = isTrusted(marker, sessionId);
-    if (trusted && dirs.some((dir) => !isMarkerDir(dir, marker))) return { decision: VERDICT.deny, reason: REASON.wrongDir(marker.dir) };
+    if (trusted && dirs.some((dir) => !isMarkerDir(dir, marker))) return { decision: VERDICT.deny, reason: REASON.wrongDir(marker.dir) }; // guard-ask: run-dir verdict, asked in emit
     if (!dirs.every((dir) => dir.owned && dir.session === sessionId && (trusted || dir.inTemp === true))) return VERDICT.silent;
     return approvesForms(command, ctx) ? VERDICT.allow : VERDICT.silent;
 }
@@ -31,7 +31,7 @@ function decide({ command, table, sessionId, dirs, marker, ctx })
 function hookOutput(verdict)
 {
     if (!verdict || !verdict.decision) return null;
-    const reason = verdict.decision === VERDICT.deny ? verdict.reason : ALLOW_REASON;
+    const reason = verdict.decision === VERDICT.deny ? verdict.reason : ALLOW_REASON; // guard-ask: run-dir verdict, asked in emit
     return { hookSpecificOutput: { hookEventName: EVENT, permissionDecision: verdict.decision, permissionDecisionReason: reason } };
 }
 
