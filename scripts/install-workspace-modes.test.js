@@ -11,6 +11,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const layout = require('../stack/hooks/layout.js');
 const wsLib = require('./install/workspace.js');
+const stampLib = require('./install/stamp.js');
 const modes = require('./install/modes.js');
 const { applyEnv } = require('./install/settings.js');
 const { putWorkspace } = require('./workspace-fixture.js');
@@ -143,7 +144,14 @@ test('envPlan with --auto-compact on keeps the child\'s own ALFRED_CODE_AUTO_COM
 
 // ------------------------------------------------------------------ keepOnLeave
 
-const keep = (dir, env = ON) => { const lines = []; const got = wsLib.keepOnLeave(dir, { env, log: (l) => lines.push(l) }); return { got, lines }; };
+// The two halves of a leave: keepOnLeave reads, and the caller's carry writes once the unlink holds.
+const keep = (dir, env = ON) =>
+{
+    const lines = [];
+    const got = wsLib.keepOnLeave(dir, { env, log: (l) => lines.push(l) });
+    wsLib.carryModes(dir, got.carry, { log: (l) => lines.push(l) });
+    return { got, lines };
+};
 
 test('a leaving child that inherited ALFRED_CODE_SCORING_LEVEL from the root\'s mode file holds it in its own mode file, its .variables unchanged', () =>
 {
@@ -195,4 +203,112 @@ test('a leave whose mode write is refused (git tracks the child\'s mode file) lo
     assert.strictEqual(textOf(modeFileOf(child)), before);
     assert.deepStrictEqual(got.written, [HISTORY], 'the leave goes on: the team\'s value is still kept');
     assert.strictEqual(got.why, undefined);
+});
+
+test('keepOnLeave alone writes no mode file and logs no carry line: the caller carries once the unlink holds', () =>
+{
+    const at = rootAndChild(modeEnv({ [LEVEL]: '90', [AUTO_RUN]: '1' }));
+    const child = at('root/child');
+    const lines = [];
+    wsLib.keepOnLeave(child, { env: ON, log: (l) => lines.push(l) });
+    assert.strictEqual(fs.existsSync(modeFileOf(child)), false);
+    assert.deepStrictEqual(lines, []);
+});
+
+test('a locked leave leaves the child\'s mode file as it was and logs no carry line', () =>
+{
+    const at = rootAndChild(modeEnv({ [LEVEL]: '90', [AUTO_RUN]: '1' }), { local: `${JSON.stringify({ env: { [SCORING]: '1' } }, null, 2)}\n` });
+    const [root, child] = [at('root'), at('root/child')];
+    const before = textOf(modeFileOf(child));
+    const lock = wsLib.locate(root).lock;
+    fs.writeFileSync(lock, '');
+    try
+    {
+        const r = wsLib.applyRole(child, 'leave:standalone', { env: ON });
+        assert.strictEqual(r.ok, false);
+        assert.strictEqual(r.code, 3);
+        assert.ok(!r.lines.some((l) => /mode file|auto-run/.test(l)), r.lines.join('\n'));
+    }
+    finally { fs.rmSync(lock, { force: true }); }
+    assert.strictEqual(textOf(modeFileOf(child)), before);
+    assert.strictEqual(layout.variablesOf(child, { env: ON }).values[LEVEL], '90', 'the child still follows its root');
+});
+
+test('a leave through the role answer carries the mode keys once the unlink holds', () =>
+{
+    const at = rootAndChild(modeEnv({ [LEVEL]: '90', [AUTO_RUN]: '1' }));
+    const child = at('root/child');
+    const r = wsLib.applyRole(child, 'leave:standalone', { env: ON });
+    assert.strictEqual(r.ok, true, r.lines.join('\n'));
+    assert.deepStrictEqual(modeEnvOf(child), { [LEVEL]: '90' });
+    assert.ok(r.lines.some((l) => /auto-run was inherited from \.\. - it ends here/.test(l)), r.lines.join('\n'));
+});
+
+test('the root\'s release of a child carries the mode keys once the child is unlinked', () =>
+{
+    const at = rootAndChild(modeEnv({ [LEVEL]: '90' }));
+    const lines = [];
+    const released = wsLib.releaseChildren({ projectRoot: at('root'), env: ON, log: (l) => lines.push(l) });
+    assert.deepStrictEqual(released, ['child']);
+    assert.deepStrictEqual(modeEnvOf(at('root/child')), { [LEVEL]: '90' });
+    assert.ok(lines.some((l) => l.startsWith('workspace: child: ') && l.includes(LEVEL)), lines.join('\n'));
+});
+
+test('a leave that creates the mode file says so when git does not ignore it', () =>
+{
+    const at = rootAndChild(modeEnv({ [LEVEL]: '90' }));
+    const child = at('root/child');
+    assert.strictEqual(fs.existsSync(modeFileOf(child)), false);
+    fs.writeFileSync(path.join(child, '.gitignore'), '!.claude/settings.local.json\n');   // a global ignore file on the machine running this must not hide the case
+    const { lines } = keep(child);
+    assert.ok(lines.some((l) => l.includes(LEVEL) && /\.claude\/settings\.local\.json was created and git does not ignore it here/.test(l)), lines.join('\n'));
+});
+
+test('a leave logs no auto-run line when git tracks the root\'s mode file', () =>
+{
+    const at = rootAndChild(modeEnv({ [AUTO_RUN]: '1', [LEVEL]: '90' }));
+    execFileSync('git', ['add', '-f', '.claude/settings.local.json'], { cwd: at('root') });
+    const { lines } = keep(at('root/child'));
+    assert.ok(!lines.some((l) => /auto-run/.test(l)), lines.join('\n'));
+});
+
+test('pruneChained with seeds keeps a seed-valued line for a mode key the root\'s mode file wins', () =>
+{
+    const row = `sha: x\nmanaged-env: .variables:${SCORING}=${stampLib.valueHash('1')}\n`;
+    const at = tree({
+        'root': { stamp: true, git: true, ws: { children: ['child'] }, ...modeEnv({ [SCORING]: '0' }) },
+        'root/child': { git: true, ws: { parent: '..' }, vars: `${SCORING}=1\n` },
+    });
+    const child = at('root/child');
+    fs.mkdirSync(path.join(child, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(child, '.claude', 'alfred-code.stamp'), row);
+    const got = wsLib.pruneChained(child, { env: ON, log: () => {}, seeds: true });
+    assert.ok(got.own.includes(SCORING), JSON.stringify(got));
+    assert.strictEqual(varsTextOf(child), `${SCORING}=1\n`);
+});
+
+// A member inside another repository reads that repository's mode file, which the member holding it hands on instead.
+const underForeignRepo = () => tree({
+    'top': { git: true, ...modeEnv({ [SCORING]: '0', [LEVEL]: '90' }) },
+    'top/mid': { stamp: true, ws: { children: ['leaf'] } },
+    'top/mid/leaf': { stamp: true, git: true, ws: { parent: '..' } },
+});
+
+test('chainModes reads no mode file the member does not own', () =>
+{
+    const at = underForeignRepo();
+    assert.deepStrictEqual([...wsLib.chainModes(at('top/mid/leaf'), { env: ON })], []);
+    assert.deepStrictEqual(layout.variablesOf(at('top/mid/leaf'), { env: ON }).values[LEVEL], undefined, 'the loader reads none either');
+});
+
+test('a carry for a project whose mode file is another checkout\'s writes nothing and says why', () =>
+{
+    const at = underForeignRepo();
+    const top = at('top');
+    const before = textOf(modeFileOf(top));
+    const lines = [];
+    const kept = wsLib.carryModes(at('top/mid'), { updates: { [LEVEL]: '90' }, rels: '..', writeEnv: ON, autoRunFrom: null }, { log: (l) => lines.push(l) });
+    assert.deepStrictEqual(kept, []);
+    assert.deepStrictEqual(lines, [`!! workspace: ${LEVEL} were inherited from ..'s mode file and could not be kept here (the mode file is another checkout's) - they read the stack's defaults now`]);
+    assert.strictEqual(textOf(modeFileOf(top)), before);
 });

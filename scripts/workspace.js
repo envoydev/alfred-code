@@ -666,15 +666,19 @@ function ignoreChild(out)
         .filter((r) => { const first = ws.chain(r.root, { env, maxDepth: 1 }).members[0]; return first && ws.realKey(first.root) === ws.realKey(root); });
     const source = joinedRows.length ? sourceArg() : null;
     const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR };
+    const carries = [];
     for (const r of joinedRows)
     {
         const say = (l) => out(l.replace(/^workspace: /, `workspace: ${r.rel}: `));
         const kept = ws.keepOnLeave(r.root, { env: childEnv, log: say });
         if (kept.why) throw new Exit(1, `!! workspace: ${r.rel} could not keep its values (${kept.why}) - nothing marked`);
+        carries.push([r, kept.carry, say]);
         ws.keepRules(r.root, { env: childEnv, log: say });
     }
     const w = ws.writeWorkspace(root, (m) => ws.addIgnoredChild(m, rel, ws.diskFolds(root)), { env, log: out });
     if (!w.ok) throw new Exit(w.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${w.why})`);
+    // The mark holds: the loader reads no member for these children now, so what they inherited from a member's mode file is carried into their own.
+    for (const [r, carry, say] of carries) ws.carryModes(r.root, carry, { log: say });
     let failed = false;
     for (const r of joinedRows)
     {
