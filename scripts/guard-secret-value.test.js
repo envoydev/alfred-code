@@ -3,7 +3,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true });   // its asks write relay records under the temp dir
 const { userPick, legacyBlock, verdictOf, blockText, askText } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');

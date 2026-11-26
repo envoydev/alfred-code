@@ -554,10 +554,12 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   }
   const nudge = inject ? ` CORRECTION: this reads as a correction - ${SAVE_LINE}` : '';
   const modes = modesText(payload.prompt);
+  // The reason of each guard ask the user said No to: Claude Code drops the ask's own context on a No (asked-calls.js).
+  const refused = (() => { try { const calls = require('./asked-calls.js'); return calls.refusalNote(calls.refusedCalls(payload)); } catch { return ''; } })();
   // The ON line is a systemMessage beside the context: the user sees it, the model reads the context lines (spec section 3).
   process.stdout.write(JSON.stringify({
     ...(modes.message ? { systemMessage: modes.message } : {}),
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + replyNote() + extra + repeat + nudge + modes.context + rulesSummary() },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: (modes.line ? `${modes.line}\n` : '') + BUDGET_TEXT + replyNote() + extra + repeat + nudge + refused + modes.context + rulesSummary() },
   }));
   // The session status file (session-status.js): this prompt's autoRun and scoring, under history-session's own gates.
   // The stand-down runs as the write's gate, only once the compare says a write is due (R137).
