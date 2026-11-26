@@ -1372,7 +1372,8 @@ function reasonText(reason, guard)
 }
 
 // The first sentence of a reason for the prompt: a leading 'Blocked: ' or 'Held once: ' dropped, line breaks joined into
-// spaces, cut after the first . ! or ? that a space or the end follows, capped at 400 characters (cut at a word, then '...').
+// spaces, cut after the first . ! or ? that a space or the end follows - a backtick code span read whole, never cut inside -
+// capped at 400 characters (cut at a word, then '...').
 function firstSentence(text)
 {
     const joined = text.trim().replace(BLOCK_LEAD_RE, '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
