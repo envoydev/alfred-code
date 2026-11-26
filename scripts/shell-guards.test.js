@@ -1306,10 +1306,13 @@ const OWN_BLOCKS = [
   { name: 'a runner line a guard blocks', branch: 'sensitive-runner', re: /--with-sensitive runner runs/, guard: 'guard-read-whole-file',
     command: () => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- "cat big.ts"`, extra: {} },
 ];
+// These fixtures name this repo's guard files by path, which sit in the project zone under the real home: the cross-project
+// guard's read half would ask beside the own block, and the tests here judge the own block alone.
+const READ_HALF_OFF = 'guard-cross-project-write:read';
 function fireOwn(dir, block, session, mode)
 {
   fs.writeFileSync(path.join(dir, 'big.ts'), 'const a = 1;\n'.repeat(500));
-  return run(DISPATCH, { ...bashPayload(block.command(), dir), session_id: session, ...block.extra, ...(mode ? { permission_mode: mode } : {}) }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
+  return run(DISPATCH, { ...bashPayload(block.command(), dir), session_id: session, ...block.extra, ...(mode ? { permission_mode: mode } : {}) }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOKS_OFF: READ_HALF_OFF } });
 }
 
 test('own checks ask: a read-only seat write, a foreground wait, the runner cap, a runner line a guard blocks', () => {

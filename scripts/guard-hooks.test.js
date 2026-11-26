@@ -5291,7 +5291,8 @@ test('guard-cross-project-write: R072 a glob that can match a member\'s memory i
       assert.equal(r.status, 2, `${command}: ${r.stderr}`);
       assert.match(r.stderr, /memory of/, r.stderr);
     }
-    const mine = bash(`cp f '${projects}'/${own.slice(0, -1)}?/memory/x.md`);
+    // The write half allows it; the read half asks about a glob starting at projects/ (plan outside-workspace-reads), so it is off here.
+    const mine = w.run('ws/api', { tool_name: 'Bash', tool_input: { command: `cp f '${projects}'/${own.slice(0, -1)}?/memory/x.md` } }, { ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write:read' });
     assert.equal(mine.status, 0, mine.stderr);
   } finally { w.rm(); }
 });
@@ -5644,11 +5645,14 @@ test('audit 2026-10-30 HK-13, HK-14: every $HOME spelling and the other write ve
     'patch -p1 < fix.diff',
     'patch -p1 -i ../sib/fix.diff',
     'git clone https://example.invalid/r.git vendor/r',
-    'git clone ../sib local-copy',
     'git init',
     'echo "curl -o ../sib/f.txt x"',
     `echo '[IO.File]::WriteAllText("${sib}/f.txt", "x")'`,
   ]) allows(c, 'HK-14 twin');
+  // a clone writes inside the project; it reads the sibling, which the read half asks about (plan outside-workspace-reads)
+  const clone = xwIn('git clone ../sib local-copy');
+  assert.equal(clone.status, 'ask', `a clone of a sibling asks as a read: ${clone.stderr}`);
+  assert.match(clone.stderr, /reads outside this workspace/);
   allows("[IO.File]::WriteAllText('out.txt', 'x')", 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
   allows(`[IO.File]::ReadAllText('${sib}/f.txt')`, 'HK-14 twin on the PowerShell tool', { tool: 'PowerShell' });
 });

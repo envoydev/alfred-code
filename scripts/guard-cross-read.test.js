@@ -286,3 +286,137 @@ test('cross-read.js ships with the copied hooks, and a guard beside no copy of i
   fs.copyFileSync(path.join(hooks, 'cross-read.js'), path.join(copy, 'cross-read.js'));
   assert.strictEqual(verdictOf(runCopy()), 'ask', 'the same copy asks once the module is beside it');
 }));
+
+// ---- the shell route and the one-prompt join (plan outside-workspace-reads, task 2) ----------------------------------
+const bash = (command, more = {}) => ({ tool_name: 'Bash', tool_input: { command }, ...more });
+const reasonOf = (r) => JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason;
+const contextOf = (r) => JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+const count = (text, part) => text.split(part).length - 1;
+
+test('a database opened by name asks', withFixture((fx) => {
+  const db = fx.put('other-proj/mem.db');
+  const r = asks(fx, bash(`sqlite3 ${db} "delete from t"`), {}, 'a database by its path');
+  assert.match(askText(r), /^alfred-code guard-cross-project-write: Bash reads outside this workspace/);
+  assert.strictEqual(blockRows(fx, 'xr')[0].detail.branch, 'read-outside');
+  assert.deepStrictEqual(blockRows(fx, 'xr')[0].detail.names, ['mem.db'], 'basenames only');
+  asks(fx, bash(`cat ${fx.other}`), {}, 'a plain cat');
+  asks(fx, bash(`cat ${path.dirname(fx.other)}/*.md`), {}, 'a glob names the folder it starts in');
+  asks(fx, bash('cat "$HOME/other-proj/notes.md"'), {}, 'a $HOME spelling');
+  asks(fx, bash('cat ~/other-proj/notes.md'), {}, 'a ~ spelling');
+  asks(fx, bash(`grep -c x < ${fx.other}`), {}, 'an input redirect');
+  passes(fx, bash(`echo x > ${path.join(fx.proj, 'out.txt')}`), {}, 'an output redirect inside the project');
+}));
+
+test('a home search asks', withFixture((fx) => {
+  const outer = path.dirname(fx.home);
+  for (const command of ["find ~ -name '*.db'", `find ${outer} -name x`, 'find / -name x', `rg x ${outer}`, `grep -r x ${fx.home}`]) {
+    asks(fx, bash(command), {}, command);
+    const rows = blockRows(fx, 'xr');
+    assert.strictEqual(rows[rows.length - 1].detail.branch, 'search-outside', command);
+  }
+  passes(fx, bash(`ls ${fx.home}`), {}, 'a listing of the home folder names no project');
+  passes(fx, bash('find . -name x'), {}, 'a search in the project');
+  passes(fx, bash('git status'), {}, 'a plain git call');
+}));
+
+test('a cd anchor is followed', withFixture((fx) => {
+  asks(fx, bash(`cd ${path.dirname(fx.other)} && cat notes.md`), {}, 'a relative word after a cd out');
+  asks(fx, bash('ls ..'), {}, '.. from the project is the folder above it');
+  passes(fx, bash('cd src 2>/dev/null; cat x'), {}, 'a cd that stays in the project');
+}));
+
+test('an inline script naming a path asks', withFixture((fx) => {
+  asks(fx, bash(`node -e "require('fs').readFileSync('${fx.other}')"`), {}, 'node -e');
+  asks(fx, bash(`python3 -c "open('${fx.other}').read()"`), {}, 'python3 -c');
+  asks(fx, bash(`bash -c 'cat ${fx.other}'`), {}, 'bash -c');
+  passes(fx, bash('node -e "console.log(1/2, \'a\')"'), {}, 'a script naming no path');
+}));
+
+test('prose never asks', withFixture((fx) => {
+  const other = path.dirname(fx.other);
+  passes(fx, bash(`git commit -m "see ${other}"`), {}, 'a commit message');
+  passes(fx, bash(`git commit -m ${other}`), {}, 'a commit message that is only a path');
+  passes(fx, bash('gh pr create --body "see ~/other-proj"'), {}, 'a PR body');
+  passes(fx, bash(`gh pr create --title x --body=${other}`), {}, 'a PR body with =');
+  passes(fx, bash(`echo ${other}`), {}, 'echo');
+  passes(fx, bash(`printf '%s' ${fx.other}`), {}, 'printf');
+}));
+
+test('system paths and missing paths pass', withFixture((fx) => {
+  if (process.platform !== 'win32') passes(fx, bash('cat /etc/hosts'), {}, 'a system file');
+  passes(fx, bash(`cat ${path.join(path.dirname(fx.other), 'missing.txt')}`), {}, 'a path that does not exist');
+  passes(fx, bash(`cat ${fx.at('.nvm', 'x')}`), {}, 'a dot-folder');
+  passes(fx, bash(`cat ${path.join(fx.proj, 'x')}`), {}, 'the project');
+}));
+
+test('an unread script beside a zone read names the read', withFixture((fx) => {
+  const { SCAN_LIMITS } = require('../stack/hooks/hook-prelude.js');
+  const huge = fx.put('scratch/huge.sh', `${'#'.repeat(SCAN_LIMITS.bytes + 1024)}\necho done\n`);
+  const r = asks(fx, bash(`sqlite3 ${fx.put('other-proj/mem.db')} 'select 1'; bash ${huge}`), {}, 'an unreadable script and a zone read');
+  assert.match(reasonOf(r), /also reads outside this workspace/);
+  assert.match(contextOf(r), /could not read/);
+}));
+
+test('a seat\'s write beside a zone read names the read', withFixture((fx) => {
+  fx.put('other-proj/a');
+  const r = asks(fx, bash(`cat ${fx.at('other-proj', 'a')} > ${fx.at('other-proj', 'b')}`, { agent_id: 'a1', agent_type: 'related-project-analyzer' }), {}, 'a seat');
+  assert.match(reasonOf(r), /also reads outside this workspace/);
+  assert.match(contextOf(r), /A subagent never writes outside/);
+}));
+
+test('a drive path is a candidate on win32', { skip: process.platform !== 'win32' && 'a Windows spelling' }, withFixture((fx) => {
+  asks(fx, bash(`type ${fx.other.replace(/\//g, '\\')}`), {}, 'a drive path');
+}));
+
+test('the also-reads clause survives long write paths', withFixture((fx) => {
+  const long = (name) => fx.put(`${name}${'d'.repeat(120 - name.length)}/f.txt`);
+  const first = long('first-');
+  const r = asks(fx, bash(`cat ${first} > ${path.join(path.dirname(first), 'out'.padEnd(120, 'o'))}`), {}, 'long paths');
+  assert.match(reasonOf(r), /also reads outside this workspace/);
+}));
+
+test('a read-only call is not joined twice', withFixture((fx) => {
+  const r = asks(fx, bash(`cat ${fx.other}`), {}, 'a read-only call');
+  assert.strictEqual(count(reasonOf(r), 'outside this workspace'), 1);
+  assert.doesNotMatch(reasonOf(r), /Also:/);
+  assert.doesNotMatch(contextOf(r), /Also:/);
+}));
+
+test('one prompt names both halves', withFixture((fx) => {
+  fx.put('other-proj/a');
+  const a = fx.at('other-proj', 'a');
+  const both = asks(fx, bash(`cat ${a} > ${fx.at('other-proj', 'b')}`), {}, 'a read and a write past the boundary');
+  assert.match(reasonOf(both), /also reads outside this workspace/);
+  assert.match(reasonOf(both), /other-proj/, 'names the write target');
+  assert.match(contextOf(both), /Also: .*outside this workspace/);
+  assert.ok(contextOf(both).includes('~/other-proj/a'), contextOf(both));
+  const readOnly = asks(fx, bash(`cat ${a} > ${path.join(fx.proj, 'b')}`), {}, 'a read with a write inside');
+  assert.match(reasonOf(readOnly), /Bash reads outside this workspace/);
+  assert.doesNotMatch(reasonOf(readOnly), /also reads/);
+}));
+
+test('65 path words judge only 64', withFixture((fx) => {
+  const files = Array.from({ length: 65 }, (_, i) => fx.put(`other-proj/f${i}.txt`));
+  const r = asks(fx, bash(`cat ${files.join(' ')}`), {}, '65 existing zone paths');
+  assert.match(blockText(r), /and 61 more/);
+  assert.strictEqual(blockText(r).split(', ').length - 1 >= 2, true);
+}));
+
+test('long zone paths in one shell call keep both required phrases before the paths', withFixture((fx) => {
+  const long = (name) => fx.put(`${name}${'d'.repeat(200 - name.length)}/f.txt`);
+  const files = ['aa-', 'bb-', 'cc-', 'dd-'].map(long);
+  const r = asks(fx, bash(`cat ${files.join(' ')}`), {}, 'four long zone paths');
+  const shown = askText(r);
+  assert.ok(shown.indexOf('outside this workspace') >= 0 && shown.indexOf('workspace only') >= 0, shown);
+  assert.ok(shown.indexOf('workspace only') < shown.indexOf('~/aa-'), 'the phrases come before the first path');
+  assert.match(blockText(r), /and 1 more\./);
+  assert.match(blockText(r), /Approve only if you meant to look there/);
+}));
+
+test('the shell route honours the switches and the allowance', withFixture((fx) => {
+  passes(fx, bash(`cat ${fx.other}`), { ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write:read' }, 'the read part off');
+  passes(fx, bash(`cat ${fx.other}`), { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: path.dirname(fx.other) }, 'a tree the user named');
+  passes(fx, bash(`cat ${fx.other}`), { ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write' }, 'the hook off');
+  const denied = run(fx, bash(`cat ${fx.other}`, { permission_mode: 'dontAsk' }));
+  assert.strictEqual(verdictOf(denied), 'deny');
+}));

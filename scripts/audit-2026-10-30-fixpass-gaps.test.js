@@ -206,11 +206,17 @@ test('FC 4: a session transcript is no write target - under the config dir\'s pr
   denied('Write', { file_path: path.join(cfg2, 'projects', '-p', 's.jsonl'), content: 'x' }, { env: { CLAUDE_CONFIG_DIR: cfg2 } });
   // the twins keep today's verdicts: memory, reads, the account settings, a project jsonl, a folder with no transcript
   // a Read of another project's folder under projects/ is the read half's own ask now (plan outside-workspace-reads)
-  assert.strictEqual(fire(dir, 'Read', { file_path: t }).v, 2,'a Read of another project\'s transcript asks');
+  assert.strictEqual(fire(dir, 'Read', { file_path: t }).v, 2, 'a Read of another project\'s transcript asks');
+  // so is a shell read of it (grep, wc, a copy out of it): it still writes nothing, and the ask is the read half's
+  for (const command of [`grep -c user "${t}"`, `wc -l "${t}"`, `cp "${t}" "${path.join(dir, 'copy.jsonl')}"`,
+    `rm -rf "${path.join(p, 'memory')}"`]) { // the last: the write half lets it pass, but it names another project's folder
+    const r = fire(dir, 'Bash', { command });
+    assert.strictEqual(r.v, 2, `a shell command naming another project's folder asks: ${command}\n${r.out}`);
+    assert.match(r.out, /outside this workspace/, command);
+  }
   for (const [tool, input] of [['Write', { file_path: path.join(p, 'memory', 'x.md'), content: 'x' }],
-    ['Bash', { command: `grep -c user "${t}"` }], ['Bash', { command: `wc -l "${t}"` }], ['Write', { file_path: path.join(cfg, 'settings.json'), content: '{}' }],
-    ['Write', { file_path: path.join(dir, 'data', 'rows.jsonl'), content: '{}' }], ['Bash', { command: `rm -rf "${path.join(p, 'memory')}"` }],
-    ['Bash', { command: `cp "${t}" "${path.join(dir, 'copy.jsonl')}"` }]]) {
+    ['Write', { file_path: path.join(cfg, 'settings.json'), content: '{}' }],
+    ['Write', { file_path: path.join(dir, 'data', 'rows.jsonl'), content: '{}' }]]) {
     const r = fire(dir, tool, input);
     assert.strictEqual(r.v, 0, `${tool} ${JSON.stringify(input)}\n${r.out}`);
   }

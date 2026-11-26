@@ -90,6 +90,11 @@ try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filena
 // Stood down by any gate: only a write into the installed plugins' code is judged (above).
 const PLUGIN_ONLY = off || cursorOff;
 
+// What the shell command reads past the boundary (THE READ HALF, below), kept until the call's own verdict: a block of the
+// write half takes it into its prompt (`blockCall`), and a call nothing else blocked asks for it when it exits. Declared
+// here, above the exit wrapper, which runs on every exit - the ones before the shell section too.
+let readHits = null;
+
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
 // FALSE positive is 10-100x the cost of the gate itself, and until this existed the block rate was
@@ -103,6 +108,11 @@ const PLUGIN_ONLY = off || cursorOff;
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
+    if (code === 0 && !global.BLOCK_VERDICT && readHits && readHits.length) {
+      const hits = readHits;
+      readHits = null;
+      askRead(hits); // exits: the wrapper runs again with the verdict set
+    }
     if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo) {
       try {
         const fs = require('fs');
@@ -136,6 +146,7 @@ const PLUGIN_ONLY = off || cursorOff;
 
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
 function blockCall(input, text) {
+  if (readHits && readHits.length) { text = crossRead.joinRead(text, readPrompt(readHits)); readHits = null; }
   let code = 2;
   try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-cross-project-write' })); }
   catch { process.stderr.write(text); }
@@ -831,13 +842,19 @@ function readHitsOf() {
   }
   return hits;
 }
+// The prompt for what was read: the verdict of the read half, for the user and the model.
+const readPrompt = (hits) => crossRead.readText(hits, { boundary: readBoundary(), homes: [HOME, HOME_REAL], seat: SEAT, platform: process.platform });
+// One ask for the hits: the block row names the branch and the basenames, never a content.
+function askRead(hits) {
+  const { READ_BRANCH, READ_PATHS_SHOWN } = crossRead;
+  global.BLOCK_DETAIL = { branch: hits.some((h) => h.search) ? READ_BRANCH.search : READ_BRANCH.read, names: hits.slice(0, READ_PATHS_SHOWN).map((h) => path.basename(h.path)) };
+  blockCall(payload, readPrompt(hits));
+}
 if (crossRead && crossRead.READ_TOOLS.has(tool)) {
   if (readHalfOff()) process.exit(0);
   const hits = readHitsOf();
   if (!hits.length) process.exit(0);
-  const { READ_BRANCH, READ_PATHS_SHOWN } = crossRead;
-  global.BLOCK_DETAIL = { branch: hits.some((h) => h.search) ? READ_BRANCH.search : READ_BRANCH.read, names: hits.slice(0, READ_PATHS_SHOWN).map((h) => path.basename(h.path)) };
-  blockCall(payload, crossRead.readText(hits, { boundary: readBoundary(), homes: [HOME, HOME_REAL], seat: SEAT, platform: process.platform }));
+  askRead(hits);
 }
 
 if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
@@ -894,6 +911,34 @@ const { isVar } = shell;
 // One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
 const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
 const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNorm);
+// THE READ HALF on the shell route: the paths this command names that exist, lie past the boundary and are in the zone (or
+// are a search root, for a search verb). The words come from cross-read.js `shellCandidates`; each is judged cheap tests
+// first, so a word that is no path costs nothing and a zone path starts git at most once (the memory folder, memoised).
+// A word is a path by its own shape (absolute, ~-rooted, reaching up with `..`, a drive path) or, once a `cd` moved the
+// anchor, by being any word; a glob is judged by the folder it starts in. At most SHELL_PATHS_MAX existing paths count.
+function shellReadHits() {
+  const hits = [];
+  const seen = new Set();
+  let existing = 0;
+  for (const cand of crossRead.shellCandidates(shell.parseShell(command).cmds, shell.dequote)) {
+    if (existing >= crossRead.SHELL_PATHS_MAX) break;
+    const word = scan.expandVars(cand.text, cand.index);
+    if (isVar(word)) continue;
+    const base = anchorAt(cand.index);
+    if (!cand.scanned && !crossRead.isExplicitPath(word, process.platform) && (!base || base === ROOT)) continue;
+    const fixed = /[*?[{]/.test(word) ? crossRead.globPrefix(word) || '.' : word;
+    const abs = resolveTarget(nativePath(expandTilde(fixed)), base || SHELL_CWD);
+    if (seen.has(fold(abs)) || !fs.existsSync(abs)) continue;
+    seen.add(fold(abs));
+    existing++;
+    const search = cand.search && searchRootInZone(abs);
+    if (search || inReadZone(abs)) hits.push({ tool, path: abs, search });
+  }
+  return hits;
+}
+if (!readHalfOff()) {
+  try { const found = shellReadHits(); if (found.length) readHits = found; } catch { /* the read half fails open */ }
+}
 // Judge one path token found at `index` in the command: only a token that can land out of tree
 // is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
