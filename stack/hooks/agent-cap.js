@@ -7,7 +7,7 @@
 // <data root>/state/sessions/, one line of JSON each, written to a temp name and renamed into place, ordered by an
 // exclusive-create lock. The 7-day sweep of the AGENT-CAP- prefix takes them all.
 //   AGENT-CAP-<sid>-P-<tool_use_id>  a dispatch not started yet: { type, at, parent } - once the dispatch guard asked about it, also
-//                                    { asked: true, tool_use_id }: it counts until the transcript holds that call's result
+//                                    { asked: true, tool_use_id }: it counts until the transcript holds that call's result, or ASKED_MS
 //   AGENT-CAP-<sid>-R-<agent_id>     a started agent: { type, at, parent, transcript, stop }
 //   AGENT-CAP-<sid>.lock             the lock
 //   AGENT-CAP-<sid>.denied           a main-session denial the Stop half may continue once, until a typed prompt
@@ -20,6 +20,9 @@ const path = require('path');
 const CAP_DEFAULT = 5;
 const CAP_MAX = 50;
 const PENDING_MS = 60 * 1000;
+// The outer bound of a pending file the dispatch guard ASKED about: a user may take minutes to answer the prompt, and the file
+// holds the slot until the call's result lands in the transcript (which releases it sooner) or this bound passes.
+const ASKED_MS = 10 * 60 * 1000;
 // Just over the Bash tool's 10-minute cap; measured 2026-10-27 over 2,289 subagent transcripts: 26 working gaps past it.
 const ACTIVE_MS = 12 * 60 * 1000;
 const STOPPED_KEEP_MS = 2 * 60 * 1000;
@@ -138,13 +141,13 @@ function withLock(reg, fn)
     finally { remove(lock); }
 }
 
-// The count, under the lock. A pending file counts under 60 s; a started one while its activity - the newer of its `at`
+// The count, under the lock. A pending file counts under 60 s (an asked one under 10 minutes, below); a started one while its activity - the newer of its `at`
 // and its transcript's mtime - is under 12 minutes, and after a stop only when the transcript was written more than a
 // 5 s past it (a hold sent the seat back); a file a counted one names as `parent` counts too. What does not count is
 // deleted, except a stopped file in its first 2 minutes; one that expired with no stop writes an `agent-cap-expired` row.
 // An `asked` pending file - a dispatch whose prompt the user may still answer - counts only while the transcript
 // (`reg.transcript`, set by capGates) holds no result for its call: a result of any kind, a decline or an error included,
-// releases it at once; a start takes it over before that. With no transcript it counts for its 60 s, as any pending file.
+// releases it at once; a start takes it over before that. With no transcript it counts for its 10 minutes (ASKED_MS).
 function count(reg, { now = Date.now(), probe = () => {} } = {})
 {
     const none = { running: 0, types: [], counted: new Set(), live: [] };
@@ -158,7 +161,8 @@ function count(reg, { now = Date.now(), probe = () => {} } = {})
             const at = Number(e.body.at) || 0;
             if (e.kind === 'P')
             {
-                if (now - at < PENDING_MS && !(e.body.asked === true && resultOfAsked(reg, e.body))) alive.set(e.name, e);
+                const asked = e.body.asked === true;
+                if (now - at < (asked ? ASKED_MS : PENDING_MS) && !(asked && resultOfAsked(reg, e.body))) alive.set(e.name, e);
                 else remove(e.file);
                 continue;
             }
@@ -430,5 +434,5 @@ function probeWriter(root, payload, hookName)
 module.exports = {
     capOf, cleanId, openRegistry, capGates, withLock, count, addPending, markAsked, dropPending, startAgent, stopAgent, reconcile, probeWriter,
     denialText, subagentTranscript, markDenied, clearDenied, startLine, stopReconcile, stopContinue, fileOf, deniedOf, readEntry, writeEntry, entries,
-    AGENT_ID, CAP_DEFAULT, CAP_MAX, PENDING_MS, ACTIVE_MS, STOPPED_KEEP_MS, LOCK_WAIT_MS, LOCK_STALE_MS, TYPES_SHOWN, SETTLED_STATUS,
+    AGENT_ID, CAP_DEFAULT, CAP_MAX, PENDING_MS, ASKED_MS, ACTIVE_MS, STOPPED_KEEP_MS, LOCK_WAIT_MS, LOCK_STALE_MS, TYPES_SHOWN, SETTLED_STATUS,
 };

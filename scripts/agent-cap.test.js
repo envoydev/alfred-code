@@ -548,12 +548,18 @@ test('a seat\'s asked dispatch is released by its result in the SEAT\'s transcri
     assert.deepStrictEqual(pendings(reg), []);
 });
 
-test('an asked file past 60 s expires as any pending file does (limit G, the outer bound)', () =>
+test('an asked file outlives the 60 s of a pending file and expires at its own bound of 10 minutes (limit G, the outer bound)', () =>
 {
     const { reg } = freshReg();
-    put(reg, 'P', 'toolu_old', { type: 'Explore', at: Date.now() - 61 * 1000, parent: '', asked: true, tool_use_id: 'toolu_old' });
-    assert.strictEqual(cap.count(reg).running, 0);
+    const base = 1_000_000_000_000;
+    put(reg, 'P', 'toolu_slow', { type: 'Explore', at: base, parent: '', asked: true, tool_use_id: 'toolu_slow' });
+    put(reg, 'P', 'toolu_plain', { type: 'Explore', at: base, parent: '' });
+    assert.strictEqual(cap.count(reg, { now: base + 61 * 1000 }).running, 1, 'at 61 s the asked file still counts and the plain pending one is gone');
+    assert.deepStrictEqual(names(reg), ['AGENT-CAP-sess-1-P-toolu_slow']);
+    assert.strictEqual(cap.count(reg, { now: base + cap.ASKED_MS - 1 }).running, 1, 'one under its bound it counts');
+    assert.strictEqual(cap.count(reg, { now: base + cap.ASKED_MS }).running, 0, 'at its bound it is gone');
     assert.deepStrictEqual(names(reg), []);
+    assert.strictEqual(cap.ASKED_MS, 10 * 60 * 1000);
 });
 
 test('the boundary: at exactly the cap denied, one under it passes (AC6)', () =>
