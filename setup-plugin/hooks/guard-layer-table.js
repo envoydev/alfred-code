@@ -120,7 +120,7 @@ function blockRow(reason, table, decision) {
   try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table }, ...(payload.tool_use_id ? { tool_use_id: String(payload.tool_use_id) } : {}), ...(decision === 'ask' ? { decision: 'ask' } : {}) }); } catch { /* telemetry is never allowed to break the gate */ }
 }
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks where a person can answer and denies otherwise; with no
-// prelude, today's exit 2. The row is the caller's, written before the call. A deny keeps the text's own `MARKER: ` lead, which the
+// prelude, today's exit 2. `blockCall` writes the row itself, after the verdict, so an ask row carries the call id and `decision: 'ask'`. A deny keeps the text's own `MARKER: ` lead, which the
 // readers below count in a tool result (the valve of three); a prompt names the guard itself, so its text drops the lead.
 function blockCall(input, text, branch) {
   let code = 2;
