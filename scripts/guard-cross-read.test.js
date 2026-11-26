@@ -393,7 +393,7 @@ test('one prompt names both halves', withFixture((fx) => {
   assert.match(reasonOf(both), /also reads outside this workspace/);
   assert.match(reasonOf(both), /other-proj/, 'names the write target');
   assert.match(contextOf(both), /Also: .*outside this workspace/);
-  assert.ok(contextOf(both).includes('~/other-proj/a'), contextOf(both));
+  assert.ok(contextOf(both).includes(path.join('~', 'other-proj', 'a')), contextOf(both));
   const readOnly = asks(fx, bash(`cat ${a} > ${path.join(fx.proj, 'b')}`), {}, 'a read with a write inside');
   assert.match(reasonOf(readOnly), /Bash reads outside this workspace/);
   assert.doesNotMatch(reasonOf(readOnly), /also reads/);
@@ -412,7 +412,7 @@ test('long zone paths in one shell call keep both required phrases before the pa
   const r = asks(fx, bash(`cat ${files.join(' ')}`), {}, 'four long zone paths');
   const shown = askText(r);
   assert.ok(shown.indexOf('outside this workspace') >= 0 && shown.indexOf('workspace only') >= 0, shown);
-  assert.ok(shown.indexOf('workspace only') < shown.indexOf('~/aa-'), 'the phrases come before the first path');
+  assert.ok(shown.indexOf('workspace only') < shown.indexOf(path.join('~', 'aa-')), 'the phrases come before the first path');
   assert.match(blockText(r), /and 1 more\./);
   assert.match(blockText(r), /Approve only if you meant to look there/);
 }));
@@ -498,7 +498,7 @@ test('the dispatcher gives ONE ask for a write past the project and a read past 
   assert.match(reason, /^alfred-code guard-cross-project-write: this call also reads outside this workspace/, 'the clause comes first');
   assert.strictEqual(count(reason, 'also reads outside this workspace'), 1);
   assert.match(contextOf(r), /Also: Bash reads outside this workspace/);
-  assert.match(contextOf(r), /~\/other-proj\/a/);
+  assert.match(contextOf(r), /~[\\/]other-proj[\\/]a/);
 }));
 
 // ---- fix round 2 of the review of task 2 ------------------------------------------------------------------------------

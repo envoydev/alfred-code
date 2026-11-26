@@ -315,7 +315,7 @@ test('chainModes reads no mode file the member does not own', () =>
     assert.deepStrictEqual(layout.variablesOf(at('top/mid/leaf'), { env: ON }).values[LEVEL], undefined, 'the loader reads none either');
 });
 
-test('a carry for a project whose mode file is another checkout\'s writes nothing and says why', () =>
+test('a carry for a project whose mode file is another checkout\'s writes nothing and says why', { skip: process.platform === 'win32' && 'Windows reads a subfolder\'s own settings.local.json (layout.localSettingsFile), so no member shares the root\'s mode file' }, () =>
 {
     const at = underForeignRepo();
     const top = at('top');

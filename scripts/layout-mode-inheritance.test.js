@@ -173,7 +173,7 @@ test('inheritedModes records no AUTO_RUN under an ignore env line or the switch 
     assert.deepStrictEqual(layout.inheritedModes(off), { root: path.join(plain('root'), 'child'), modes: {} });
 });
 
-test('a member inside the root\'s repository hands on nothing: the credit goes to the member that owns the file', () =>
+test('a member inside the root\'s repository hands on nothing: the credit goes to the member that owns the file', { skip: process.platform === 'win32' && 'Windows reads a subfolder\'s own settings.local.json (layout.localSettingsFile), so no member shares the root\'s mode file' }, () =>
 {
     const at = tree({
         'root': { stamp: true, git: true, ws: { children: ['mid'] }, local: { env: { [K('AUTO_RUN')]: '1', [K('SCORING')]: '1' } } },
