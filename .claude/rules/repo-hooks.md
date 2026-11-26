@@ -1219,7 +1219,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   444-539 ms into the hook), and holds an unpasted ask before the user sees it, the PostToolUse void the net. So the layer
     gate can deny the ask this hook fixed in place: the `ask-fixed` row waits in
     `guard-stop-askfixed-<session>.jsonl` (hook temp dir) with the call's `tool_use_id`, and this hook's next ask or Stop
-    writes it once the call's result is on disk (`toolResultOf`, a 4MB tail) - dropped when that result is a hook's denial or the user's No on a hook's `ask`, written as it stands past a
+    writes it once the call's result is on disk (`toolResultOf`, a 4MB tail) - dropped when that result is a hook's denial or the user's No on a hook's `ask` (the layer gate's ask row carries the call's `tool_use_id` and `decision: 'ask'`, the stop contract's own rows' form, `blockRow`; a deny row has no `decision`), written as it stands past a
     day - and a fix in place spends no deny marker (only a deny does, so a sibling's denial never costs the re-sent ask its
     own).
     Two LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load

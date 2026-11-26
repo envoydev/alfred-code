@@ -113,14 +113,16 @@ const appendRow = (row) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, JSON.stringify({ ts: new Date().toISOString(), hook: path.basename(__filename), event: EVENT, tool: payload.tool_name || '', ...row }) + '\n');
 };
-function blockRow(reason, table) {
+// The row names the call (`tool_use_id`) and, for an ask, says `ask`: the stop contract joins a hook's ask to the user's No on it
+// by those two fields (`hookAskedCall`), so a No on this gate's prompt is read as a refusal, not as an answer.
+function blockRow(reason, table, decision) {
   if (unsetRepo) return;
-  try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table } }); } catch { /* telemetry is never allowed to break the gate */ }
+  try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table }, ...(payload.tool_use_id ? { tool_use_id: String(payload.tool_use_id) } : {}), ...(decision === 'ask' ? { decision: 'ask' } : {}) }); } catch { /* telemetry is never allowed to break the gate */ }
 }
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks where a person can answer and denies otherwise; with no
 // prelude, today's exit 2. The row is the caller's, written before the call. A deny keeps the text's own `MARKER: ` lead, which the
 // readers below count in a tool result (the valve of three); a prompt names the guard itself, so its text drops the lead.
-function blockCall(input, text) {
+function blockCall(input, text, branch) {
   let code = 2;
   try {
     const p = prelude || require(PRELUDE);
@@ -129,6 +131,7 @@ function blockCall(input, text) {
     code = p.blockExitCode(input, p.askOrBlock(input, said, { guard: 'guard-layer-table' }));
   }
   catch { process.stderr.write(text); }
+  blockRow(text.split('\n')[0], branch, global.BLOCK_VERDICT && global.BLOCK_VERDICT.decision);
   process.exit(code); // guard-ask: blockCall exit
 }
 // One probe row per kind and id: a later gate run reads the same transcript again and writes none.
@@ -398,8 +401,7 @@ function judgeStep(rs, cmd) {
   });
   const denials = (kind) => uses.slice(answeredAt + 1).filter((b) => b.id in results && results[b.id].includes(`${MARKER}: ${kind}`)).length;
   const deny = (text, branch) => {
-    blockRow(text.split('\n')[0], branch);
-    blockCall(payload, text);
+    blockCall(payload, text, branch);
   };
   const next = TABLE_RE.exec(cmd);
   const nextLayer = next && next[1].toLowerCase();
@@ -688,7 +690,7 @@ function holdUnpasted() {
   } catch { /* no prelude: today's deny */ }
   const output = verdict ? verdict.hookSpecificOutput : { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: line }; // guard-ask fallback: no prelude
   process.stdout.write(JSON.stringify({ ...(found.shown ? { systemMessage: `Alfred - the ${name}:\n${found.shown}` } : {}), hookSpecificOutput: output }));
-  blockRow(line, found.branch);
+  blockRow(line, found.branch, verdict && verdict.decision);
   if (verdict) global.BLOCK_VERDICT = { decision: verdict.decision, reason: verdict.hookSpecificOutput.permissionDecisionReason };
   process.exit(verdict ? (prelude || require(PRELUDE)).blockExitCode(payload, verdict.decision) : 0);
 }
@@ -705,8 +707,7 @@ try {
       `from the layer's WHOLE catalog. Run \`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${missing}\` ` +
       `with the walk's other flags (walk.md, per layer beat 2), never redirected, then send ONE message: the step banner, ` +
       `its output byte-for-byte inside a fenced code block, then this same ask.\n`;
-    blockRow(denial.split('\n')[0], `${missing} table`);
-    blockCall(payload, denial);
+    blockCall(payload, denial, `${missing} table`);
   }
   if (asksStep1(payload.tool_input)) {
     const s = span(rows, 'the install inventory never ran');
@@ -716,8 +717,7 @@ try {
         `inventory table. Run \`node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"\` (after the ` +
         `step-1 read-back), then send ONE message: the step banner, its output byte-for-byte inside a fenced code block, ` +
         `the update-preview line, then this same ask.\n`;
-      blockRow(denial.split('\n')[0], 'install inventory');
-      blockCall(payload, denial);
+      blockCall(payload, denial, 'install inventory');
     }
   }
 } catch { /* fail-open */ }

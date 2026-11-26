@@ -5044,33 +5044,50 @@ test('guard-stop-contract: the ask-fixed row waits for the call\'s result, and a
 
 // Limit H: a hook's ask on the very call the ask-fixed row waits for, declined by the user, is a call the user never saw -
 // the row is dropped like a hook's denial. An approved ask counts, and so does the user's own rejection of the AskUserQuestion
-// (no ask row for its id).
+// (no ask row for its id). The ask is the REAL layer-table gate's: it runs on each call and writes its own ledger row.
 test('guard-stop-contract: the ask-fixed row is dropped for a hook ask the user declined, and kept for an approved one and for their own rejection', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'askfixed-h-'));
   const logDir = fs.mkdtempSync(path.join(TMP, 'askfixed-h-log-'));
   const tp = path.join(root, 'session.jsonl');
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 3.19.2\n');
   const rows = [{ type: 'user', message: { content: 'set it up' } }];
   const flush = () => fs.writeFileSync(tp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   const env = { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
   const ledgerDir = path.join(root, '.alfred', 'statistics', 'hook-blocks');
+  const GATE = path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js');
   const DECLINE = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+  const printed = [];
   const slip = (id) => {
-    const questions = [{ question: `Pick ${id} \u2014 now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+    const questions = [{ question: `Pick ${id} — now`, header: 'Pick', options: [{ label: 'A (Recommended)', description: 'x' }, { label: 'B', description: 'y' }] }];
+    rows.push({ type: 'assistant', message: { id: `t-${id}`, content: [{ type: 'tool_use', id: `tb-${id}`, name: 'Bash', input: { command: 'node "$TMP/repo/scripts/stack-select.js" --table agents' } }] } });
+    rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tb-${id}`, content: ' 1  x\ntotal: 43 agents - if fewer' }] } });
     rows.push({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions } }] } });
     flush();
-    return runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }, env);
+    printed.push(path.join(os.tmpdir(), `alfred-layer-printed-afh-tb-${id}`));
+    return { questions, stop: runIn('guard-stop-contract.js', { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }, env) };
+  };
+  // The layer gate holds the unpasted table's ask on the same call, as it does beside the stop contract: its own row is the record.
+  const gateAsks = (id, questions) => {
+    const r = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }), encoding: 'utf8', ...env });
+    assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask', `the real gate asks on ${id}: ${r.stdout}`);
   };
   const result = (id, content, isError) => { rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } }); flush(); };
-  const hookAsked = (id) => { fs.mkdirSync(ledgerDir, { recursive: true }); fs.appendFileSync(path.join(ledgerDir, 'afh.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-layer-table.js', tool: 'AskUserQuestion', tool_use_id: id, reason: 'x', decision: 'ask' })}\n`); };
   const fixedRows = () => { try { return fs.readFileSync(path.join(ledgerDir, 'afh.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.kind === 'ask-fixed'); } catch { return []; } };
-  for (const id of ['h1', 'h2', 'h3']) slip(id);
-  hookAsked('h1');
-  hookAsked('h2');
-  result('h1', DECLINE, true);
-  result('h2', 'Your questions have been answered: "Pick h2 - now"="A (Recommended)". You can now continue with these answers in mind.');
-  result('h3', DECLINE, true);
-  runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'afh', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
-  assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id).sort(), ['h2', 'h3'], 'the declined hook ask is dropped; the approved one and the user\'s own rejection (no ask row) are counted');
+  try {
+    for (const id of ['h1', 'h2', 'h3']) {
+      const { questions } = slip(id);
+      if (id !== 'h3') gateAsks(id, questions);
+    }
+    const gateRows = fs.readFileSync(path.join(ledgerDir, 'afh.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.hook === 'guard-layer-table.js');
+    assert.deepStrictEqual(gateRows.map((r) => [r.tool_use_id, r.decision]), [['h1', 'ask'], ['h2', 'ask']], 'the gate\'s own ask row carries the call id and says ask');
+    assert.ok(gateRows.every((r) => !r.mode), 'and counts as a block, not a probe');
+    result('h1', DECLINE, true);
+    result('h2', 'Your questions have been answered: "Pick h2 - now"="A (Recommended)". You can now continue with these answers in mind.');
+    result('h3', DECLINE, true);
+    runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'afh', transcript_path: tp, last_assistant_message: 'Picked A.' }, env);
+    assert.deepStrictEqual(fixedRows().map((r) => r.tool_use_id).sort(), ['h2', 'h3'], 'the declined hook ask is dropped; the approved one and the user\'s own rejection (no ask row) are counted');
+  } finally { for (const f of printed) fs.rmSync(f, { force: true }); }
 });
 
 // The ask-fixed row's result read keeps its 4MB reach: a result with 3MB of later transcript behind it still settles the row.
