@@ -328,7 +328,7 @@ function preludeOf()
 
 // The helper's recommendation line ends each of its prompts (hook-prelude.js ASK_RECOMMENDATION). Joined prompts keep it once,
 // after the last text, so the user reads one recommendation and never a copy beside each harm.
-const RECOMMENDED_LINE_RE = /\n?Recommended: [^\n]*$/;
+const RECOMMENDED_LINE_RE = /\nRecommended: [^\n]*$/; // its own line only: a missing-helper ask's mid-line advice stays
 function joinPrompts(reasons)
 {
     let recommended = '';

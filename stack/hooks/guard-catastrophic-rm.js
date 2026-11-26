@@ -978,7 +978,9 @@ function main()
     };
     const withWipe = (text) =>
     {
-        const wipe = wipeReason();
+        let wipe;
+        try { wipe = wipeReason(); }
+        catch { return text; } // a failed rm read keeps the lesser harm's own ask, never lets the call through
         if (!wipe) return text;
         if (wipe.detail) global.BLOCK_DETAIL = wipe.detail;
         return `${wipe.text.replace(/\n?$/, '\n')}And ${text.replace(/^BLOCKED: |^Blocked: /, '')}`;

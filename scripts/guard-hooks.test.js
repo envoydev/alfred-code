@@ -208,6 +208,18 @@ sw.groupsAsCuts = (...args) => { if (new Error().stack.includes('wipeTargetOf'))
   assert.match(askText(r), /^alfred-code guard-catastrophic-rm: this command recursively deletes `rm -rf \/`\./, askText(r));
 });
 
+test('guard-catastrophic-rm: a throw while reading the rm half beside a discard still asks about the discard (final re-review)', () => {
+  const dir = scratchRepo();
+  const preload = path.join(TMP, 'throw-on-wipe.js');
+  fs.writeFileSync(preload, `const sw = require(${JSON.stringify(path.join(HOOKS, 'shell-writes.js'))});
+const real = sw.blankHeredocs;
+sw.blankHeredocs = (...args) => { if (new Error().stack.includes('wipeReason')) throw new Error('wipe read failed'); return real(...args); };\n`);
+  const r = spawnSync(process.execPath, ['-r', preload, path.join(HOOKS, 'guard-catastrophic-rm.js')],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git checkout -- a.txt' }, cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(verdictOf(r), 'ask', `${r.stdout}${r.stderr}`);
+  assert.match(askText(r), /this discards uncommitted work/, askText(r));
+});
+
 test('guard-stop-contract: a decision question in ordinary words is still a stop', () => {
   const q = transcript('q', [assistantRow('m1', "Two options exist for the deploy target: staging or prod. What's the deploy target?")]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: q }), 2);

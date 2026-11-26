@@ -1229,6 +1229,16 @@ test('combine: two block asks are one prompt with both user texts and both model
   assert.ok(model.includes(`${DECLINED}Blocked: second harm. Fix two.`), model);
 });
 
+test('combine: a missing-helper ask keeps its own mid-line Recommended advice when two asks join (final re-review)', () => {
+  const plainAsk = (reason) => JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } });
+  const out = shell.combine([
+    r('guard-a.js', 0, plainAsk('alfred-code guard-a: a force push of main. Recommended: approve only if you meant to rewrite main.')),
+    r('guard-b.js', 0, plainAsk('alfred-code guard-b: a script piped into a shell. Recommended: approve only if you trust where the script comes from.')),
+  ]);
+  assert.ok(askText(out).includes('approve only if you meant to rewrite main'), askText(out));
+  assert.ok(askText(out).includes('approve only if you trust where the script comes from'), askText(out));
+});
+
 test('combine: a deny beside a block ask stays a deny, the ask riding after it as Also', () => {
   const askJson = blockAsk('Blocked: the ask harm. Fix it.', 'guard-b');
   const out = shell.combine([r('guard-a.js', 0, deny('Docs not read yet')), r('guard-b.js', 0, askJson)]);
