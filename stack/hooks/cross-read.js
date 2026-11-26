@@ -15,21 +15,39 @@ const TOOLCHAIN_SEGMENTS = Object.freeze(['go/pkg', 'miniconda3', 'anaconda3', '
 // The folders the OS keeps apart from user work, by platform.
 const OS_FOLDER = Object.freeze({ darwin: 'library', win32: 'appdata' });
 
-// The shell route: at most 64 existing paths are judged per command, and at most 512 words looked at (work, never time).
+// The shell route: at most 64 existing paths are judged per command, 512 words looked at and 8 carried scripts read (work,
+// never time).
 const SHELL_PATHS_MAX = 64;
 const SHELL_WORDS_MAX = 512;
+const SHELL_SCRIPTS_MAX = 8;
 const PROSE_VERBS = new Set(['echo', 'printf']);
 // The flags whose value is a sentence for a person: a commit message, a PR title or body.
-const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
-const SEARCH_VERBS = new Set(['find', 'gfind', 'fd', 'fdfind', 'rg', 'grep', 'egrep', 'fgrep', 'ag', 'ack', 'tree']);
+const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject', '-F']);
+// A verb whose first plain word is its pattern, never a root; `-e` gives the pattern and `-f` names a file of them.
+const PATTERN_VERBS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack']);
+const PATTERN_FLAG = /^(?:-e|--regexp)$/;
+const PATTERN_FILE_FLAG = /^(?:-f|--file)$/;
+// The pattern verbs' flags that take the next word as their value.
+const VALUE_FLAGS = new Set(['-A', '-B', '-C', '-m', '-g', '-t', '-T', '-d', '-j', '--glob', '--iglob', '--type', '--type-not', '--include', '--exclude',
+  '--exclude-dir', '--max-count', '--context', '--after-context', '--before-context', '--threads', '--max-depth', '--max-filesize', '--color', '--colour', '--label']);
+// A verb whose every plain word is a root it walks, and the ones that walk only with a recursion flag.
+const ROOT_VERBS = new Set(['fd', 'fdfind', 'tree', 'du', 'locate', 'plocate']);
+const LISTING_VERB = /^(?:ls|dir|gci|get-childitem)$/i;
+const RECURSE_FLAG = /^(?:-R|-recurse)$/i;
+const FIND_VERBS = new Set(['find', 'gfind']);
+// Where find's roots end: its first test, action or group.
+// find's own leading options, which come before its roots.
+const FIND_OPTION = /^-[HLP]$/;
+const FIND_EXPRESSION = /^(?:-.*|\(|\\\(|!)$/;
 // A runtime or shell whose script words are searched for a path, and a database client whose every argument is.
 const SCRIPT_VERB = /^(?:node(?:js)?|deno|bun|python[\d.]*|py|ruby|perl|php|pwsh|powershell|sh|bash|zsh|dash|ksh|eval)$/;
 // A word of a script, not a file name: it holds a blank, a quote or a paren.
 const SCRIPT_TEXT = /[\s'"(]/;
 const DATABASE_VERB = /^(?:sqlite3?|duckdb|psql)$/;
+const QUOTED_TILDE = /^["']/;
 const EXPLICIT_PATH = /^(?:[~/]|\.\.[/\\])/;
 const WIN_ABS_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
-const PATH_IN_TEXT = /(?<![\w.~/\\:-])(?:~[\\/]|[A-Za-z]:[\\/]|\/)[^\s'"`;,)<>|&]+/g;
+const PATH_IN_TEXT = /(?<![\w.~/\\:-])(?:~[\\/]|\$\{?(?:HOME|USERPROFILE)\}?[\\/]|[A-Za-z]:[\\/]|\/)[^\s'"`;,)<>|&]+/g;
 const READ_ALSO = 'Blocked: this call also reads outside this workspace (No keeps the work workspace only) - ';
 
 const foldsCase = (platform) => platform === 'win32' || platform === 'darwin';
@@ -81,38 +99,104 @@ function isExplicitPath(raw, platform) {
   return EXPLICIT_PATH.test(raw) || raw === '..' || raw.includes('/../') || (platform === 'win32' && WIN_ABS_PATH.test(raw));
 }
 
+// The words of one command word's own arguments that can name a path, as { word, text, search } - `search` marks a root a
+// search verb walks. A pattern, a sentence flag's value and a quoted `~` (a literal name to the shell) are no path.
+function argEntries(name, words, dequote) {
+  const out = [];
+  const texts = words.map((word) => dequote(word.raw));
+  const keep = (at, text, search) => { if (!(QUOTED_TILDE.test(words[at].raw) && text.startsWith('~'))) out.push({ word: words[at], text, search }); };
+  const finds = FIND_VERBS.has(name);
+  const patterned = PATTERN_VERBS.has(name);
+  const walks = ROOT_VERBS.has(name) || (LISTING_VERB.test(name) && texts.some((text) => RECURSE_FLAG.test(text)));
+  let needsPattern = patterned && !texts.some((text) => PATTERN_FLAG.test(text) || PATTERN_FILE_FLAG.test(text));
+  let rootsEnded = false;
+  let flagsEnded = false;
+  for (let at = 0; at < words.length; at++) {
+    const text = texts[at];
+    if (!flagsEnded && text === '--') { flagsEnded = true; continue; }
+    if (!flagsEnded && patterned && PATTERN_FLAG.test(text)) { at++; continue; }
+    if (!flagsEnded && patterned && PATTERN_FILE_FLAG.test(text)) { if (at + 1 < words.length) keep(at + 1, texts[at + 1], false); at++; continue; }
+    if (!flagsEnded && patterned && VALUE_FLAGS.has(text)) { at++; continue; }
+    if (!flagsEnded && !patterned && PROSE_FLAGS.has(text)) { at++; continue; }
+    if (!flagsEnded && text.startsWith('-')) {
+      const eq = text.indexOf('=');
+      const flag = text.slice(0, eq);
+      if (finds && !FIND_OPTION.test(text)) rootsEnded = true;
+      if (eq > 0 && PATTERN_FILE_FLAG.test(flag)) keep(at, text.slice(eq + 1), false);
+      else if (eq > 0 && !patterned && !PROSE_FLAGS.has(flag)) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
+      continue;
+    }
+    if (needsPattern) { needsPattern = false; continue; }
+    if (finds && !rootsEnded && FIND_EXPRESSION.test(text)) rootsEnded = true;
+    keep(at, text, (finds && !rootsEnded) || patterned || walks);
+  }
+  return out;
+}
+
 // The words of a parsed shell command (shell-writes.js parseShell's `cmds`) that can name a path to read, in order, each
-// { text, index, search, scanned }: an argument of the command word (a sentence flag and its value left out, `echo` and
-// `printf` skipped), an input redirect's target, and each absolute or `~` stretch inside a script word of a runtime or a
-// database client's argument. `dequote` gives a word as the shell hands it on.
+// { text, index, search, scanned }: the arguments of every command word - a wrapper's own options left out, so find's roots
+// count when it runs another command with `-exec` - an input redirect's target, a here-string's text and each absolute,
+// `~` or `$HOME` stretch inside a script word of a runtime or a database client's argument. `echo` and `printf` are
+// skipped. `dequote` gives a word as the shell hands it on.
 function shellCandidates(cmds, dequote) {
   const out = [];
   const push = (text, index, search, scanned) => { if (out.length < SHELL_WORDS_MAX) out.push({ text, index, search, scanned }); };
+  const scanText = (text, index) => { for (const found of text.match(PATH_IN_TEXT) || []) push(found, index, false, true); };
   for (const cmd of cmds) {
-    for (const redir of cmd.redirs) if (redir.op === '<') push(dequote(redir.target.raw), redir.target.s, false, false);
-    const verb = cmd.cands[cmd.cands.length - 1];
-    if (!verb || PROSE_VERBS.has(verb.name)) continue;
-    const search = SEARCH_VERBS.has(verb.name);
-    const scripted = SCRIPT_VERB.test(verb.name);
-    const database = DATABASE_VERB.test(verb.name);
-    for (let at = 0; at < verb.args.length; at++) {
-      const word = verb.args[at];
-      const text = dequote(word.raw);
-      if (PROSE_FLAGS.has(text)) { at++; continue; }
-      if (text.startsWith('-')) {
-        const eq = text.indexOf('=');
-        if (eq > 0 && !PROSE_FLAGS.has(text.slice(0, eq))) push(text.slice(eq + 1), word.s, search, false);
-        continue;
+    for (const redir of cmd.redirs) {
+      const text = dequote(redir.target.raw);
+      if (redir.op === '<' && !(QUOTED_TILDE.test(redir.target.raw) && text.startsWith('~'))) push(text, redir.target.s, false, false);
+      else if (redir.op === '<<<') scanText(text, redir.target.s);
+    }
+    const { cands, words } = cmd;
+    for (let k = 0; k < cands.length; k++) {
+      const cand = cands[k];
+      const next = cands[k + 1];
+      if (PROSE_VERBS.has(cand.name) || (next && next.chain.includes(cand.name))) continue; // a wrapper's own words are no paths
+      const own = words.slice(cand.at + 1, next ? next.at : words.length);
+      const scripted = SCRIPT_VERB.test(cand.name);
+      const database = DATABASE_VERB.test(cand.name);
+      for (const entry of argEntries(cand.name, own, dequote)) {
+        push(entry.text, entry.word.s, entry.search, false);
+        if (database || (scripted && SCRIPT_TEXT.test(entry.text))) scanText(entry.text, entry.word.s);
       }
-      push(text, word.s, search, false);
-      if (database || (scripted && SCRIPT_TEXT.test(text))) for (const found of text.match(PATH_IN_TEXT) || []) push(found, word.s, false, true);
     }
   }
   return out;
+}
+
+// What a shell command reads past the boundary: [{ tool, path, search }]. `units` are the command and each script it
+// carries, each { command, expandVars(text, at), anchorAt(at), texts } - `texts` the bodies a runtime is handed. `env` is
+// what the guard knows: parse, dequote, isVar, platform, tool, root (the project's), cwd, resolve(word, base), exists,
+// key (the case fold), inZone(path) and searchZone(path). A word is a path by its own shape or, once a `cd` moved the
+// anchor, by being any word; a glob is judged by the folder it starts in. Cheap tests first, the zone test last.
+function shellReadHits(units, env) {
+  const hits = [];
+  const seen = new Set();
+  let existing = 0;
+  for (const unit of units) {
+    const cands = shellCandidates(env.parse(unit.command).cmds, env.dequote);
+    for (const body of unit.texts || []) for (const found of body.text.match(PATH_IN_TEXT) || []) cands.push({ text: found, index: body.index, search: false, scanned: true });
+    for (const cand of cands) {
+      if (existing >= SHELL_PATHS_MAX) return hits;
+      const word = unit.expandVars(cand.text, cand.index);
+      if (env.isVar(word)) continue;
+      const base = unit.anchorAt(cand.index);
+      if (!cand.scanned && !isExplicitPath(word, env.platform) && (!base || base === env.root)) continue;
+      const fixed = READ_GLOB_CHAR.test(word) ? globPrefix(word) || '.' : word;
+      const abs = env.resolve(fixed, base || env.cwd);
+      if (seen.has(env.key(abs)) || !env.exists(abs)) continue;
+      seen.add(env.key(abs));
+      existing++;
+      const search = cand.search && env.searchZone(abs);
+      if (search || env.inZone(abs)) hits.push({ tool: env.tool, path: abs, search });
+    }
+  }
+  return hits;
 }
 
 // The text of a call whose own block also reads past the boundary: the clause that says so first, before any path, so
 // the prompt's first sentence keeps it, and the read verdict after it for the model.
 const joinRead = (text, readVerdict) => `${READ_ALSO}${text.replace(/^Blocked: /, '')}\nAlso: ${readVerdict}`;
 
-module.exports = { SHELL_PATHS_MAX, isExplicitPath, shellCandidates, joinRead, READ_TOOLS, READ_PATHS_SHOWN, READ_BRANCH, globPrefix, firstSegmentApart, shownPath, readText };
+module.exports = { SHELL_PATHS_MAX, SHELL_SCRIPTS_MAX, isExplicitPath, shellCandidates, shellReadHits, joinRead, READ_TOOLS, READ_PATHS_SHOWN, READ_BRANCH, globPrefix, firstSegmentApart, shownPath, readText };

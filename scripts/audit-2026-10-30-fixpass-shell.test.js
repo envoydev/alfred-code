@@ -29,9 +29,9 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 for (const k of Object.keys(process.env))
   if (/^ALFRED_CODE_/.test(k) || k === 'CLAUDE_PLUGIN_ROOT' || k === 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE') delete process.env[k];
-// The runner cases name this repo's guard file by path, in the project zone under the real home: the cross-project guard's read
-// half would ask beside them, and these cases judge the secret guard's runner.
-process.env.ALFRED_CODE_HOOKS_OFF = 'guard-cross-project-write:read';
+// The runner cases name this repo's guard file by path; the plugin root is the hooks folder, as a loaded plugin's is, so the
+// cross-project guard's read half leaves it open.
+process.env.CLAUDE_PLUGIN_ROOT = HOOKS;
 
 const git = (dir, ...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
 // A set-up project: a git repo with the install stamp, a credential file and a build log.

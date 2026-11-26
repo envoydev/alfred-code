@@ -807,6 +807,8 @@ function inReadZone(absAsWritten) {
   if (reachesBoundary(abs, readBoundary())) return false;
   const opened = effectiveAllow.filter((d) => !CONFIG_DIRS.some((c) => fold(c) === fold(d)));
   if (opened.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return false;
+  // The running plugin's own folder (CLAUDE_PLUGIN_ROOT, a `--plugin-dir` under HOME included) is read-only open, unless it holds the home folder.
+  if (PLUGIN_ROOT && !inside(HOME_REAL, PLUGIN_ROOT) && inside(t, PLUGIN_ROOT)) return false;
   // The tests that need no git and no settings file first; the worktree and memory checks only for a path still in the zone.
   const account = CONFIG_DIRS.find((d) => inside(t, d));
   if (account ? !foreignProjectFolder(t, account) : crossRead.firstSegmentApart(path.relative(HOME_REAL, t).split(path.sep), process.platform)) return false;
@@ -911,30 +913,24 @@ const { isVar } = shell;
 // One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
 const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
 const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNorm);
-// THE READ HALF on the shell route: the paths this command names that exist, lie past the boundary and are in the zone (or
-// are a search root, for a search verb). The words come from cross-read.js `shellCandidates`; each is judged cheap tests
-// first, so a word that is no path costs nothing and a zone path starts git at most once (the memory folder, memoised).
-// A word is a path by its own shape (absolute, ~-rooted, reaching up with `..`, a drive path) or, once a `cd` moved the
-// anchor, by being any word; a glob is judged by the folder it starts in. At most SHELL_PATHS_MAX existing paths count.
+// THE READ HALF on the shell route (the judging is cross-read.js `shellReadHits`): the units are the command itself and each
+// script it carries one level down - a heredoc or here-string into a shell, a `-c` string, a piped-in script, a script
+// file - read by shell-writes.js `carriedScripts` and `scanShell`, plus the bodies a runtime is handed (`runtimeScripts`).
 function shellReadHits() {
-  const hits = [];
-  const seen = new Set();
-  let existing = 0;
-  for (const cand of crossRead.shellCandidates(shell.parseShell(command).cmds, shell.dequote)) {
-    if (existing >= crossRead.SHELL_PATHS_MAX) break;
-    const word = scan.expandVars(cand.text, cand.index);
-    if (isVar(word)) continue;
-    const base = anchorAt(cand.index);
-    if (!cand.scanned && !crossRead.isExplicitPath(word, process.platform) && (!base || base === ROOT)) continue;
-    const fixed = /[*?[{]/.test(word) ? crossRead.globPrefix(word) || '.' : word;
-    const abs = resolveTarget(nativePath(expandTilde(fixed)), base || SHELL_CWD);
-    if (seen.has(fold(abs)) || !fs.existsSync(abs)) continue;
-    seen.add(fold(abs));
-    existing++;
-    const search = cand.search && searchRootInZone(abs);
-    if (search || inReadZone(abs)) hits.push({ tool, path: abs, search });
-  }
-  return hits;
+  const units = [{ command, expandVars: scan.expandVars, anchorAt, texts: [] }];
+  try { units[0].texts = shell.runtimeScripts(rawCommand).slice(0, crossRead.SHELL_SCRIPTS_MAX).map((s) => ({ text: String(s.body), index: s.index })); } catch { /* none */ }
+  try {
+    for (const carried of shell.carriedScripts(rawCommand, { cwd: SHELL_CWD, files: true }).slice(0, crossRead.SHELL_SCRIPTS_MAX)) {
+      const inner = shell.scanShell(carried.text, { cwd: SHELL_CWD, files: false });
+      const start = anchorAt(Math.floor(carried.at)) || SHELL_CWD;
+      units.push({ command: inner.command, expandVars: inner.expandVars, anchorAt: (index) => shell.anchorAt(inner.cds, index, start, anchorNorm), texts: [] });
+    }
+  } catch { /* the command alone */ }
+  return crossRead.shellReadHits(units, {
+    parse: shell.parseShell, dequote: shell.dequote, isVar, platform: process.platform, tool, root: ROOT, cwd: SHELL_CWD,
+    resolve: (word, base) => resolveTarget(nativePath(expandTilde(word)), base), exists: fs.existsSync, key: fold,
+    inZone: inReadZone, searchZone: searchRootInZone,
+  });
 }
 if (!readHalfOff()) {
   try { const found = shellReadHits(); if (found.length) readHits = found; } catch { /* the read half fails open */ }

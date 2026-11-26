@@ -340,6 +340,8 @@ test('prose never asks', withFixture((fx) => {
   passes(fx, bash(`gh pr create --title x --body=${other}`), {}, 'a PR body with =');
   passes(fx, bash(`echo ${other}`), {}, 'echo');
   passes(fx, bash(`printf '%s' ${fx.other}`), {}, 'printf');
+  passes(fx, bash(`git commit -m "$(cat <<'EOF'\nsee ${fx.other}\nEOF\n)"`), {}, 'a commit message heredoc');
+  passes(fx, bash(`cat <<'EOF' > ${path.join(fx.proj, 'note.txt')}\nsee ${fx.other}\nEOF\n`), {}, 'a heredoc written to a project file');
 }));
 
 test('system paths and missing paths pass', withFixture((fx) => {
@@ -419,4 +421,80 @@ test('the shell route honours the switches and the allowance', withFixture((fx) 
   passes(fx, bash(`cat ${fx.other}`), { ALFRED_CODE_HOOKS_OFF: 'guard-cross-project-write' }, 'the hook off');
   const denied = run(fx, bash(`cat ${fx.other}`, { permission_mode: 'dontAsk' }));
   assert.strictEqual(verdictOf(denied), 'deny');
+}));
+
+// ---- fix round 1 of the review of task 2 ------------------------------------------------------------------------------
+test('a search verb\'s pattern is no root, and a quoted ~ is no home', withFixture((fx) => {
+  fx.put('work/proj/package.json', '{}\n');
+  fx.put('work/proj/src/a.js');
+  for (const command of ['grep -rn "~/.claude" src', 'rg -n "~/.claude/projects" src', 'grep -rn "$HOME" src', 'grep -n "/" package.json', "rg '/' src",
+    "grep -c '~' package.json", "grep -rn '/Users/' .", 'grep -e "/" -r src', 'grep -F -n "/" package.json', 'cat "~/.claude/x"']) passes(fx, bash(command), {}, command);
+  asks(fx, bash(`grep -r x ${path.dirname(fx.other)}`), {}, 'a real root still asks');
+  asks(fx, bash(`grep -rn "/" ${fx.other}`), {}, 'the files after the pattern are roots');
+  asks(fx, bash(`rg -f ${fx.other} src`), {}, '-f names a file that is read');
+  asks(fx, bash(`grep -F x ${fx.other}`), {}, '-F is a grep flag, not a sentence flag');
+  asks(fx, bash(`grep -m 1 -e foo ${fx.other}`), {}, 'a flag value is not the pattern');
+  passes(fx, bash(`git commit -F ${fx.other}`), {}, '-F names a message file for git');
+}));
+
+test('find judges its own roots, also when it runs another command', withFixture((fx) => {
+  const db = fx.put('other-proj/mem.db');
+  for (const command of ["find ~ -name '*.db' -exec sqlite3 {} .tables \;", `find ${path.dirname(db)} -name '*.md' -exec cat {} \;`,
+    `find ${path.dirname(db)} -name '*.md' -exec cat {} +`, 'find ~ -name x -exec echo {} \;', `sudo -u root find ${path.dirname(db)} -name x`, 'du -sh ~', 'ls -R ~',
+    'Get-ChildItem -Recurse ~', 'gci -Recurse ~']) {
+    asks(fx, bash(command), {}, command);
+  }
+  passes(fx, bash('ls ~'), {}, 'a plain listing of home');
+  passes(fx, bash('find . -name x -exec cat {} \;'), {}, 'a search in the project');
+  passes(fx, bash('locate notes'), {}, 'locate with a word that is no path');
+}));
+
+test('a $HOME spelling inside a script word is expanded', withFixture((fx) => {
+  asks(fx, bash("bash -c 'cat $HOME/other-proj/notes.md'"), {}, '$HOME in bash -c');
+  asks(fx, bash('python3 -c "open(\'$HOME/other-proj/notes.md\').read()"'), {}, '$HOME in python -c');
+  asks(fx, bash("sh -c 'cat ${HOME}/other-proj/notes.md'"), {}, '${HOME} in sh -c');
+  passes(fx, bash("bash -c 'cat $HOME/missing-proj/notes.md'"), {}, 'a path that does not exist');
+}));
+
+test('a script a shell or a runtime is handed is read for paths', withFixture((fx) => {
+  const db = fx.put('other-proj/mem.db');
+  asks(fx, bash(`bash <<'X'\ncat ${fx.other}\nX\n`), {}, 'a heredoc into a shell');
+  asks(fx, bash(`python3 - <<'X'\nsqlite3.connect('${db}').execute('delete from t')\nX\n`), {}, 'a heredoc into a runtime');
+  asks(fx, bash(`bash <<< "cat ${fx.other}"`), {}, 'a here-string into a shell');
+  asks(fx, bash(`xargs cat <<< ${fx.other}`), {}, 'a here-string of a path');
+  asks(fx, bash(`echo 'cat ${fx.other}' | bash`), {}, 'a script piped into a shell');
+  asks(fx, bash(`cd ${path.dirname(db)} && bash <<'X'\ncat notes.md\nX\n`), {}, 'a heredoc after a cd out');
+  fx.put('work/proj/run.sh', `cat ${fx.other}\n`);
+  asks(fx, bash('bash run.sh'), {}, 'a script file the shell runs');
+  fx.put('work/proj/ok.sh', 'cat x\n');
+  passes(fx, bash('bash ok.sh'), {}, 'a script file naming only project files');
+  passes(fx, bash("bash <<'X'\ncat x\nX\n"), {}, 'a heredoc naming only the project');
+}));
+
+test('the plugin\'s own root is open to read, a sibling folder is not', withFixture((fx) => {
+  fx.put('work/proj/.claude/alfred-code.stamp', 'sha: x\n');
+  const plugin = path.dirname(fx.put('plugin-dev/guard-secret-value.js', '// guard\n'));
+  const env = { CLAUDE_PLUGIN_ROOT: plugin };
+  passes(fx, bash(`node "${path.join(plugin, 'guard-secret-value.js')}" --with-sensitive -- "true"`), env, 'the runner call');
+  passes(fx, read(path.join(plugin, 'guard-secret-value.js')), env, 'a Read inside the plugin root');
+  asks(fx, bash(`node "${fx.put('other-tool/run.js', '// x\n')}"`), env, 'a sibling folder');
+  asks(fx, read(fx.other), env, 'another project');
+  asks(fx, bash(`cat ${path.join(plugin, 'guard-secret-value.js')}`), { CLAUDE_PLUGIN_ROOT: fx.at('elsewhere') }, 'with the root elsewhere the folder asks');
+  asks(fx, read(fx.other), { CLAUDE_PLUGIN_ROOT: fx.home }, 'a plugin root holding the home folder opens nothing');
+}));
+
+test('the dispatcher gives ONE ask for a write past the project and a read past the workspace', withFixture((fx) => {
+  fx.put('other-proj/a');
+  const dispatcher = path.join(__dirname, '..', 'stack', 'hooks', 'shell-guards.js');
+  const r = spawnSync(process.execPath, [dispatcher], {
+    cwd: fx.proj, encoding: 'utf8', env: envOf(fx),
+    input: JSON.stringify({ cwd: fx.proj, session_id: 'xr', hook_event_name: 'PreToolUse', ...bash(`cat ${fx.at('other-proj', 'a')} > ${fx.at('other-proj', 'b')}`) }),
+  });
+  assert.strictEqual(verdictOf(r), 'ask', `${r.stdout}${r.stderr}`);
+  assert.strictEqual(r.stdout.trim().split('\n').length, 1, 'one JSON answer');
+  const reason = reasonOf(r);
+  assert.match(reason, /^alfred-code guard-cross-project-write: this call also reads outside this workspace/, 'the clause comes first');
+  assert.strictEqual(count(reason, 'also reads outside this workspace'), 1);
+  assert.match(contextOf(r), /Also: Bash reads outside this workspace/);
+  assert.match(contextOf(r), /~\/other-proj\/a/);
 }));
