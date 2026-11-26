@@ -507,7 +507,7 @@ test('-F is a sentence flag only for a git commit or tag', withFixture((fx) => {
 }));
 
 test('a pattern verb whose flag means no pattern keeps its first word as a root', withFixture((fx) => {
-  for (const command of ['rg --files ~', `rg --files ${fx.other}`, `ag -g foo ${fx.other}`, `ack -g foo ${fx.other}`, `rg -e x ${fx.other}`, `grep -ne x ${fx.other}`]) {
+  for (const command of ['rg --files ~', `rg --files ${fx.other}`, `ag -g foo ${fx.other}`, `ack -g foo ${fx.other}`, `ack -f ${fx.other}`, `ack -f --type=js ${fx.other}`, `rg -e x ${fx.other}`, `grep -ne x ${fx.other}`]) {
     asks(fx, bash(command), {}, command);
   }
   passes(fx, bash(`rg --files-with-matches "~/.claude" src`), {}, 'a pattern that is a quoted tilde');

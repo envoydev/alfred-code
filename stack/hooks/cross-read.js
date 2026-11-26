@@ -36,10 +36,11 @@ const GREP_FLAGS = Object.freeze({ pattern: EQ_PATTERN, file: EQ_FILE, none: nul
 const RG_FLAGS = Object.freeze({ pattern: EQ_PATTERN, file: EQ_FILE, none: /^--(?:files|type-list)$/, values: new Set(['-A', '-B', '-C', '-m', '-g', '-t', '-T', '-j', '-d', '-M', '-E', '-r',
   '--glob', '--iglob', '--type', '--type-not', '--max-filesize', '--color', '--threads', '--context', '--max-depth', '--max-count', '--after-context', '--before-context', '--replace',
   '--engine', '--encoding', '--path-separator', '--pre', '--pre-glob', '--sort', '--sortr', '--max-columns', '--ignore-file', '--type-add', '--type-clear', '--colors']) });
-// ag and ack: `-g` takes a file-name pattern in place of the search pattern, and `-f` is no file flag.
+// ag and ack: `-g` takes a file-name pattern in place of the search pattern, and `-f` is no file flag - ack's `-f` lists the
+// files it would search, with no pattern at all.
 const AG_FLAGS = Object.freeze({ pattern: /^-g$/, file: null, none: null, values: new Set(['-A', '-B', '-C', '-G', '-m', '-p', '-W', '--depth', '--ignore', '--ignore-dir',
   '--file-search-regex', '--path-to-ignore', '--workers', '--pager', '--max-count']) });
-const ACK_FLAGS = Object.freeze({ pattern: /^-g$/, file: null, none: null, values: new Set(['-A', '-B', '-C', '-m', '-t', '--ignore-dir', '--ignore-file', '--type', '--max-count',
+const ACK_FLAGS = Object.freeze({ pattern: /^-g$/, file: null, none: /^-f$/, values: new Set(['-A', '-B', '-C', '-m', '-t', '--ignore-dir', '--ignore-file', '--type', '--max-count',
   '--after-context', '--before-context', '--context', '--pager']) });
 const PATTERN_VERBS = new Map([['grep', GREP_FLAGS], ['egrep', GREP_FLAGS], ['fgrep', GREP_FLAGS], ['rg', RG_FLAGS], ['ag', AG_FLAGS], ['ack', ACK_FLAGS]]);
 const SHORT_CLUSTER = /^-[A-Za-z]{2,}$/;
