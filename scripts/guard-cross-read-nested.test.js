@@ -126,3 +126,8 @@ test('git commit -F<file> with the file attached to the flag reads the file, as 
     `git commit -m${fx.other}`, `git commit -m "see ${fx.other}"`, `git commit --message=${fx.other}`, `git commit -am${fx.other}`, `git tag -a v1 -m${fx.other}`,
     `git grep -F${fx.other} x`, `git grep -Fn x`, `git commit -mF${fx.other}`, `git log -F${fx.other}`]) passes(fx, command, command);
 }));
+
+test('git commit --file=~/x and -F~/x name a file called ~ in the folder, as the shell hands them on, so they ask nothing', withFixture((fx) => {
+  for (const command of ['git commit --file=~/other-proj/notes.md', 'git commit -F~/other-proj/notes.md', 'git tag -a v1 --file=~/other-proj/notes.md']) passes(fx, command, command);
+  asks(fx, `git commit --file ~/other-proj/notes.md`, 'a separate word is a tilde the shell expands');
+}));

@@ -22,11 +22,12 @@ const SHELL_WORDS_MAX = 512;
 const SHELL_SCRIPTS_MAX = 8;
 const PROSE_VERBS = new Set(['echo', 'printf']);
 // `-F<file>`, the file attached to the flag, of `git commit` and `git tag`: only the boolean short flags of those verbs may stand
-// before the `F` in a cluster (`-aF<file>`), so `-mFoo` stays a message. `-F-` is stdin, and a `~` after the flag is no home: the
-// shell expands it at the start of a word only.
+// before the `F` in a cluster (`-aF<file>`), so `-mFoo` stays a message. `-F-` is stdin, and a `~` right after the flag or after
+// `--file=` is no home: the shell expands it at the start of a word only.
 const GIT_FILE_ATTACHED = /^-[aeinopqsvz]*F(.+)$/;
 const GIT_FILE_VERBS = new Set(['commit', 'tag']);
 const STDIN_WORD = '-';
+const GIT_FILE_LONG_TILDE = '--file=~';
 // The flags whose value is a sentence for a person: a commit message, a PR title or body. `-F` is no sentence flag: git
 // commit and tag read the file it names, so its value is a plain word, judged like any other (`-F -` is stdin, a flag).
 const PROSE_FLAGS = new Set(['-m', '--message', '--body', '--title', '--notes', '--description', '--subject']);
@@ -157,7 +158,7 @@ function argEntries(name, words, dequote, powershell) {
       const eq = text.indexOf('=');
       if (finds && !FIND_OPTION.test(text)) rootsEnded = true;
       if (eq > 0 && spec && spec.file && spec.file.test(flag)) keep(at, text.slice(eq + 1), false);
-      else if (eq > 0 && !spec && !PROSE_FLAGS.has(text.slice(0, eq))) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
+      else if (eq > 0 && !spec && !PROSE_FLAGS.has(text.slice(0, eq)) && !(gitFile && text.startsWith(GIT_FILE_LONG_TILDE))) out.push({ word: words[at], text: text.slice(eq + 1), search: false });
       continue;
     }
     if (needsPattern) { needsPattern = false; continue; }
