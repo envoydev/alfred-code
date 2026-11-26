@@ -500,13 +500,15 @@ test('a declined ask is released at the next count, and so is any error result; 
 {
     const root = project();
     const transcript = transcriptFor(root, [['toolu_0', DECLINE, true], ['toolu_1', 'PreToolUse:Agent hook error: Blocked: x', true]]);
-    askedOnto(root, ['toolu_0', 'toolu_1', 'toolu_2']);
+    // Written by hand: a dispatch through the guard counts with the transcript and would release the declined ones on its way in.
     const reg = regOf(root);
+    for (const id of ['toolu_0', 'toolu_1', 'toolu_2']) put(reg, 'P', id, { type: 'aspnet-implementer', at: Date.now(), parent: '', asked: true, tool_use_id: id });
+    assert.strictEqual(cap.count(reg).running, 3, 'a count with no transcript reads no result: every asked file counts, the declined ones too');
+    assert.strictEqual(pendings(reg).length, 3, 'and releases none');
     reg.transcript = transcript;
     const c = cap.count(reg);
     assert.strictEqual(c.running, 1, 'the declined and the errored one are released; the one with no result yet counts');
     assert.deepStrictEqual(pendings(reg), ['AGENT-CAP-s1-P-toolu_2'], 'the released files are gone');
-    assert.strictEqual(cap.count(regOf(root)).running, 1, 'a count with no transcript reads no result: the asked file counts, up to its 60 s');
     const sixOnes = project();
     for (let i = 0; i < 6; i += 1)
     {
