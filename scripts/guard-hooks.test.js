@@ -652,6 +652,14 @@ const NOTES = path.join(TMP, 'notes.md');
 fs.writeFileSync(NOTES, Array.from({ length: 400 }, (_, i) => `note ${i}`).join('\n'));
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
+// The whole shape of a deny where nobody can answer: exit 0, one decision object, today's reason and nothing else - no
+// additionalContext, no updatedInput, nothing on stderr. A prefix match passes a deny that grew or lost a part.
+const assertWholeDeny = (r, reason, what) => {
+  assert.equal(r.status, 0, `${what}: a Claude deny exits 0`);
+  assert.equal(r.stderr, '', `${what}: nothing on stderr`);
+  assert.deepStrictEqual(JSON.parse(r.stdout), { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }, what);
+};
+
 // A seeded repo whose HEAD sits on a named branch (the force-push guard reads HEAD for a bare push).
 function scratchRepoOn(branch) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'branch-repo-'));
@@ -3140,7 +3148,12 @@ test("guard-cross-project-write: a block asks each time, and a receipt, a typed 
   assert.equal(go({ ...write, permission_mode: 'bypassPermissions' }), 'deny', 'bypassPermissions denies');
   assert.equal(go(write, { ALFRED_CODE_GUARD_ASK: '0' }), 'deny', 'the rollback switch denies');
   const denied = raw({ ...write, permission_mode: 'dontAsk' });
-  assert.match(blockText(denied), /^Blocked: Write of a file targets /, 'a deny carries the full reason');
+  const otherName = path.basename(other);
+  assertWholeDeny(denied, `Blocked: Write of a file targets '${target}', outside this session's project (${root}). A change another\n`
+    + `repo needs is handed off, not applied here.\n`
+    + `Write the task card at ${path.join(root, '.alfred', 'docs', 'work', 'cross-project-tasks', `${otherName}.md`)} instead: per task what changes where (file + symbol), why, the shared contract,\n`
+    + `how ${otherName} verifies it; then finish your side, or say what is blocked until it lands.\n`
+    + `Reading ${otherName} may ask the user first (a read in the home folder's project area does). A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`, 'B27: a deny carries the full reason and nothing else');
   // the removed openers: a live receipt plus an answered 'Allow ... for this session' ask, and a typed path to the root
   fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'AskUserQuestion', input: { questions: [] } }] } }) + '\n'
     + JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'answered' }] },
@@ -5867,7 +5880,16 @@ test('guards ask (D3): the proof receipts still decide, the missing one asks, an
   for (const permission_mode of ['dontAsk', 'bypassPermissions']) {
     const denied = push({ permission_mode });
     assert.equal(verdictOf(denied), 'deny', `B32: ${permission_mode} denies`);
-    assert.match(blockText(denied), /^Blocked: git push without the publish gate receipt\.\nA publish leaves this machine for good\. Run habits-commit-checkpoint's publish half/, `${permission_mode}: today's text`);
+    assertWholeDeny(denied, `Blocked: git push without the publish gate receipt.\n`
+      + `A publish leaves this machine for good. Run habits-commit-checkpoint's publish half (load it): say what goes to\n`
+      + `which branch, get the user's answer, then write ${path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE')} with the skill's scripts/receipt.js (\`push\`) - it\n`
+      + `fills head: and spec: from git:\n`
+      + `  VERIFIED <what is being published>\n`
+      + `  authorized: "<the user's words asking for THIS publish, verbatim>"  (in English, or answered: <the label they picked>)\n`
+      + `  live-probe: <what you ran, or NOT RUN - <reason>>   scope: <workspace, or the projects - when it spans several>\n`
+      + `The quote carries a publish verb and is never an option label this run wrote. A waiver is WAIVED - "<their\n`
+      + `words>" or WAIVED - answered: <the label they picked>. Never fabricate either; retry, and clear the file once it\n`
+      + `lands. A remote already gated (branch protection) can turn this half off: guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF.`, `B32 ${permission_mode}`);
   }
   const commitDir = scratchRepo();
   const commit = (extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
