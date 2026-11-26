@@ -37,7 +37,7 @@ cat "$TMP/repo/setup-plugin/references/stack-detection.md" ; node "$TMP/repo/scr
 `meta/recommendations.json` (`web-angular`, never `angular`); this is no veto ask. Then, per child:
 
 ```bash
-node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+node "$TMP/repo/scripts/stack-select.js" --redundant --ignored-in <rel> --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
 ```
 
 The `redundant: <category> <name> - owned by <stacks>, not detected` lines are what the child inherits that fits none

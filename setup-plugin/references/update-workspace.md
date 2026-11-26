@@ -118,7 +118,7 @@ child folder - the catalog keys of `meta/recommendations.json` (`web-angular`, n
 the fit ask below is the child's choice. Then, per child, the second call:
 
 ```bash
-node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+node "$TMP/repo/scripts/stack-select.js" --redundant --ignored-in <rel> --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
 ```
 
 `--installed` takes the parent's `--plan-out` file as it is - the file validate's own `installed.json` is. The
@@ -187,7 +187,7 @@ When that first call did not run (no `rescan:` row), make it once, with one `sca
 apply `stack-detection.md` to its folder, then the second call with one more flag, `--only`:
 
 ```bash
-node "$TMP/repo/scripts/stack-select.js" --redundant --only "$TMP/added.txt" --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+node "$TMP/repo/scripts/stack-select.js" --redundant --only "$TMP/added.txt" --ignored-in <rel> --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
 ```
 
 `--only` prints only a `redundant:` line naming an item of the file; a missing file exits 2 with one line on stderr and

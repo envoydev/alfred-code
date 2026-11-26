@@ -622,6 +622,11 @@
           "--hooks-answered": [
             true
           ],
+          "--ignored-in": [
+            {
+              "kind": "word"
+            }
+          ],
           "--inherited-check": [
             {
               "kind": "runDir",

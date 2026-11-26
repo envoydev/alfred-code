@@ -1409,3 +1409,15 @@ The command's rounds outrank `ALFRED_CODE_SCORING_ROUNDS` in `.alfred/.variables
 an older install holds is still read until you type a rounds value.
 
 Nothing to do in an installed project beyond the update. Report that the scoring command takes the rounds.
+
+## after 3.19.1 - a root validate no longer re-offers what a child ignores
+
+**A root's fit check now leaves out an item a child project already ignores.** At a workspace root, `/alfred-code:validate`
+and the update's fit check list what each child inherits that fits none of its stacks. An item you answered 'Ignore' for
+is in that child's `workspace.json` already, and it no longer comes back as a removal on the next root validate.
+
+The check reads each child's own record and skips the items it names. A child with no record, or a record that cannot be
+read, is offered everything as before. 'Keep everything inherited' still writes nothing, so the next validate offers the
+same removals.
+
+Nothing to do in an installed project beyond the update. Report that a root validate skips what a child ignores.

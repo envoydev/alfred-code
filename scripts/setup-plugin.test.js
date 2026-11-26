@@ -1732,7 +1732,7 @@ test('validate at a workspace root carries its reconcile to the joined children 
     assert.ok(walk.indexOf('validate-workspace.md') < walk.indexOf('## 11. Post-check'), 'the children are carried before the post-check');
 
     const ref = flat(refBody('validate-workspace'));
-    assert.match(ref, /--redundant --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json"/, 'the fit check reads the set this run just wrote');
+    assert.match(ref, /--redundant --ignored-in <rel> --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json"/, 'the fit check reads the set this run just wrote');
     assert.match(ref, /node "\$TMP\/repo\/scripts\/workspace\.js" cascade --root \. --source "\$TMP\/repo" --answers "\$TMP\/answers\.json"/);
     assert.match(ref, /workspace\.js" answer --file "\$TMP\/answers\.json" --hold/, 'only this project is a hold, never a skipped call');
     assert.match(ref, /nobody answers a fit ask .* take 'Keep everything inherited'/, 'an unanswered run never ignores what a child may own');
@@ -1866,7 +1866,7 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.ok(!/parent-<n>/.test(flatCascade), 'no parent file per child');
     assert.ok(!/<rel>\/<up>|a row below another/.test(flatCascade), 'the parent of a rescan row is always this project');
     assert.match(flatCascade, /scan-evidence\.js" --root <rel> --catalog "\$TMP\/repo\/meta\/evidence\.json" --out "\$TMP\/found-<n>\.json"/);
-    assert.match(flatCascade, /stack-select\.js" --redundant --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json" --recs "\$TMP\/repo\/meta\/recommendations\.json" --graph "\$TMP\/repo\/meta\/stack-graph\.json" --stacks "<the child's stacks, csv>"/);
+    assert.match(flatCascade, /stack-select\.js" --redundant --ignored-in <rel> --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json" --recs "\$TMP\/repo\/meta\/recommendations\.json" --graph "\$TMP\/repo\/meta\/stack-graph\.json" --stacks "<the child's stacks, csv>"/);
     assert.match(flatCascade, /cat "\$TMP\/repo\/setup-plugin\/references\/stack-detection\.md"/);
     assert.match(flatCascade, /keeps everything it inherits/);
     assert.ok(!/its fit is checked at its own next update/.test(flatCascade), 'it has no own next update to wait for');
